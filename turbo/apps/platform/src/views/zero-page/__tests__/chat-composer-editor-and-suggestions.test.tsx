@@ -21,8 +21,6 @@ import {
   UNTITLED_THREAD_ID,
   OTHER_AGENT_THREAD_ID,
   linkByText,
-  mockNavigatorUserAgent,
-  mockIPadOSNavigator,
   mockOrgModelRoutes,
   mockAgent,
   mockThread,
@@ -79,20 +77,21 @@ beforeEach(() => {
 
 describe("chat composer models", () => {
   it("does not autofocus the agent chat composer on iPadOS", async () => {
-    const restoreNavigator = mockIPadOSNavigator();
-    try {
-      mockOrgModelRoutes("claude-fable-5");
-      mockAgent();
+    context.mocks.browser.userAgent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) " +
+        "AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15",
+    );
+    context.mocks.browser.platform("MacIntel");
+    context.mocks.browser.maxTouchPoints(5);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
 
-      detachedSetupPage({
-        context,
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await expect(findComposerEditor()).resolves.not.toHaveFocus();
-    } finally {
-      restoreNavigator();
-    }
+    await expect(findComposerEditor()).resolves.not.toHaveFocus();
   });
 
   it("keeps the agent chat composer at three-line height", async () => {
@@ -204,11 +203,14 @@ describe("chat composer models", () => {
     root.id = "root";
     root.style.padding = "44px 6px 8px 10px";
     document.body.append(root);
-
-    const originalVisualViewport = Object.getOwnPropertyDescriptor(
-      window,
-      "visualViewport",
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        root.remove();
+      },
+      { once: true },
     );
+
     const visualViewport = Object.assign(new EventTarget(), {
       height: 800,
       offsetLeft: 0,
@@ -220,18 +222,15 @@ describe("chat composer models", () => {
       scale: 1,
       width: 390,
     }) as VisualViewport;
-    Object.defineProperty(window, "visualViewport", {
-      configurable: true,
-      value: visualViewport,
-    });
+    vi.stubGlobal("visualViewport", visualViewport);
 
     const caretRect = new DOMRect(20, 300, 0, 24);
-    const getClientRects = vi
-      .spyOn(Range.prototype, "getClientRects")
-      .mockReturnValue([caretRect] as unknown as DOMRectList);
-    const getBoundingClientRect = vi
-      .spyOn(Range.prototype, "getBoundingClientRect")
-      .mockReturnValue(caretRect);
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([
+      caretRect,
+    ] as unknown as DOMRectList);
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(
+      caretRect,
+    );
 
     const editor = await findComposerEditor();
     await user.click(editor);
@@ -244,15 +243,6 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(mountedComposerText()).toContain("/sales-research");
     });
-
-    getClientRects.mockRestore();
-    getBoundingClientRect.mockRestore();
-    root.remove();
-    if (originalVisualViewport) {
-      Object.defineProperty(window, "visualViewport", originalVisualViewport);
-    } else {
-      delete (window as { visualViewport?: VisualViewport }).visualViewport;
-    }
   });
 
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
@@ -1117,60 +1107,56 @@ describe("chat composer models", () => {
   });
 
   it("keeps Shift+Enter and Mac Ctrl+A/Ctrl+E scoped to composer lines", async () => {
-    const restoreUserAgent = mockNavigatorUserAgent(
+    context.mocks.browser.userAgent(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     );
-    try {
-      const user = userEvent.setup({ delay: null });
-      mockOrgModelRoutes("claude-fable-5");
-      mockAgent();
-      context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
-        return respond(200, []);
-      });
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
 
-      detachedSetupPage({
-        context,
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await findComposerEditor();
-      // Select-all before typing so a retry against a freshly mounted editor
-      // replaces the draft instead of appending to it.
-      await waitFor(async () => {
-        const composer = mountedComposer();
-        await user.click(composer);
-        await user.keyboard("{Control>}a{/Control}");
-        await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
-        if (
-          !mountedComposer().innerHTML.includes(
-            "<p>first line</p><p>second line</p>",
-          )
-        ) {
-          throw new Error("Composer did not accept the typed lines");
-        }
-      });
-      await user.keyboard("{Control>}a{/Control}X");
+    await findComposerEditor();
+    // Select-all before typing so a retry against a freshly mounted editor
+    // replaces the draft instead of appending to it.
+    await waitFor(async () => {
+      const composer = mountedComposer();
+      await user.click(composer);
+      await user.keyboard("{Control>}a{/Control}");
+      await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
+      if (
+        !mountedComposer().innerHTML.includes(
+          "<p>first line</p><p>second line</p>",
+        )
+      ) {
+        throw new Error("Composer did not accept the typed lines");
+      }
+    });
+    await user.keyboard("{Control>}a{/Control}X");
 
-      await waitFor(() => {
-        expect(mountedComposer().innerHTML).toContain(
-          "<p>first line</p><p>Xsecond line</p>",
-        );
-        expect(mountedComposer().innerHTML).not.toContain("<br>");
-      });
+    await waitFor(() => {
+      expect(mountedComposer().innerHTML).toContain(
+        "<p>first line</p><p>Xsecond line</p>",
+      );
+      expect(mountedComposer().innerHTML).not.toContain("<br>");
+    });
 
-      placeCaretAfterText(mountedComposer(), "Xsecond line");
-      await user.keyboard("{Shift>}{Enter}{/Shift}third line");
-      placeCaretAfterText(mountedComposer(), "Xsecond line");
-      await user.keyboard("{Control>}e{/Control}Y");
+    placeCaretAfterText(mountedComposer(), "Xsecond line");
+    await user.keyboard("{Shift>}{Enter}{/Shift}third line");
+    placeCaretAfterText(mountedComposer(), "Xsecond line");
+    await user.keyboard("{Control>}e{/Control}Y");
 
-      await waitFor(() => {
-        expect(mountedComposer().innerHTML).toContain(
-          "<p>first line</p><p>Xsecond lineY</p><p>third line</p>",
-        );
-        expect(mountedComposer().innerHTML).not.toContain("<br>");
-      });
-    } finally {
-      restoreUserAgent();
-    }
+    await waitFor(() => {
+      expect(mountedComposer().innerHTML).toContain(
+        "<p>first line</p><p>Xsecond lineY</p><p>third line</p>",
+      );
+      expect(mountedComposer().innerHTML).not.toContain("<br>");
+    });
   });
 });

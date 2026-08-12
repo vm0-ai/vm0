@@ -186,7 +186,7 @@ export function mockOrganization(options: {
   internalMockedInvitations = options.pendingInvitations ?? [];
 }
 
-export function clearMockedAuth() {
+function clearMockedAuth() {
   internalMockedUser = null;
   internalMockedSession = null;
   internalMockedOrganization = null;
@@ -227,6 +227,10 @@ export function clearMockedAuth() {
   mockedClerk.buildSignInUrl.mockReset();
   mockedClerk.buildSignInUrl.mockImplementation(defaultBuildSignInUrlImpl);
   mockedClerk.initialize.mockReset();
+}
+
+export function clearMockedAuthOnAbort(signal: AbortSignal): void {
+  signal.addEventListener("abort", clearMockedAuth, { once: true });
 }
 
 const clerkListeners: MockedClerkListener[] = [];

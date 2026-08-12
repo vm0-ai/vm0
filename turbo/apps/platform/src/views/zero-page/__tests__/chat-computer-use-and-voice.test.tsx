@@ -503,15 +503,7 @@ describe("chat lifecycle", () => {
   });
 
   it("uses Okou copy on an Okou host", async () => {
-    const previousUrl = window.location.href;
-    window.location.href = "https://app.okou.ai/";
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        window.location.href = previousUrl;
-      },
-      { once: true },
-    );
+    context.mocks.browser.url("https://app.okou.ai/");
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000005";
     mockChatLifecycle(context, { threadId });
@@ -948,39 +940,35 @@ describe("chat lifecycle", () => {
       });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      const textarea = await waitFor(() => {
-        return chatComposerTextarea();
+    const textarea = await waitFor(() => {
+      return chatComposerTextarea();
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    await waitFor(() => {
+      expect(textarea).toHaveTextContent("Summarize the standup");
+    });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "Summarize the standup" }],
+        },
+        draftAttachments: null,
       });
-
-      await user.click(await screen.findByLabelText("Voice input"));
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByLabelText("Stop recording"));
-
-      await waitFor(() => {
-        expect(textarea).toHaveTextContent("Summarize the standup");
-      });
-      await waitFor(() => {
-        expect(draftPatches).toContainEqual({
-          draftUserMessage: {
-            version: 1,
-            parts: [{ type: "text", text: "Summarize the standup" }],
-          },
-          draftAttachments: null,
-        });
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
-    } finally {
-      toastError.mockRestore();
-    }
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
   });
 
   it("waits for active voice input before sending", async () => {
@@ -1008,56 +996,50 @@ describe("chat lifecycle", () => {
       });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      const composer = await waitFor(() => {
-        return screen.getByPlaceholderText(PLACEHOLDER);
-      });
-      await fill(composer, "Typed introduction");
-      const sendButton = screen.getByLabelText("Send");
-      await waitFor(() => {
-        expect(sendButton).toBeEnabled();
-      });
-      await user.click(await screen.findByLabelText("Voice input"));
-      await waitFor(() => {
-        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-      });
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await fill(composer, "Typed introduction");
+    const sendButton = screen.getByLabelText("Send");
+    await waitFor(() => {
+      expect(sendButton).toBeEnabled();
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
 
-      const firstRequest = Promise.race([
-        (async () => {
-          await transcriptionRequested.promise;
-          return "transcription" as const;
-        })(),
-        (async () => {
-          await submissionRequested.promise;
-          return "submission" as const;
-        })(),
-      ]);
-      await user.click(sendButton);
+    const firstRequest = Promise.race([
+      (async () => {
+        await transcriptionRequested.promise;
+        return "transcription" as const;
+      })(),
+      (async () => {
+        await submissionRequested.promise;
+        return "submission" as const;
+      })(),
+    ]);
+    await user.click(sendButton);
 
-      await expect(firstRequest).resolves.toBe("transcription");
-      expect(sentPrompts).toStrictEqual([]);
+    await expect(firstRequest).resolves.toBe("transcription");
+    expect(sentPrompts).toStrictEqual([]);
 
-      await user.click(screen.getByLabelText("Send"));
-      expect(submissionRequested.settled()).toBeFalsy();
+    await user.click(screen.getByLabelText("Send"));
+    expect(submissionRequested.settled()).toBeFalsy();
 
-      transcriptionReady.resolve(undefined);
+    transcriptionReady.resolve(undefined);
 
-      await waitFor(() => {
-        expect(sentPrompts).toHaveLength(1);
-      });
-      expect(sentPrompts[0]).toContain("Typed introduction");
-      expect(sentPrompts[0]).toContain("completed voice input");
-      expect(sentPrompts[0]?.match(/completed voice input/g)).toHaveLength(1);
-      await waitFor(() => {
-        expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
-      });
-    } finally {
-      if (!transcriptionReady.settled()) {
-        transcriptionReady.resolve(undefined);
-      }
-    }
+    await waitFor(() => {
+      expect(sentPrompts).toHaveLength(1);
+    });
+    expect(sentPrompts[0]).toContain("Typed introduction");
+    expect(sentPrompts[0]).toContain("completed voice input");
+    expect(sentPrompts[0]?.match(/completed voice input/g)).toHaveLength(1);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
   });
 
   it("waits for voice input to finish starting before sending", async () => {
@@ -1085,36 +1067,30 @@ describe("chat lifecycle", () => {
       });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      const composer = await waitFor(() => {
-        return screen.getByPlaceholderText(PLACEHOLDER);
-      });
-      await fill(composer, "Typed introduction");
-      await user.click(await screen.findByLabelText("Voice input"));
-      await waitFor(() => {
-        expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
-      });
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await fill(composer, "Typed introduction");
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
+    });
 
-      await user.click(screen.getByLabelText("Send"));
+    await user.click(screen.getByLabelText("Send"));
 
-      expect(submissionRequested.settled()).toBeFalsy();
-      microphoneReady.resolve(undefined);
+    expect(submissionRequested.settled()).toBeFalsy();
+    microphoneReady.resolve(undefined);
 
-      await waitFor(() => {
-        expect(sentPrompts).toHaveLength(1);
-      });
-      expect(sentPrompts[0]).toContain("Typed introduction");
-      expect(sentPrompts[0]).toContain("startup voice input");
-      await waitFor(() => {
-        expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
-      });
-    } finally {
-      if (!microphoneReady.settled()) {
-        microphoneReady.resolve(undefined);
-      }
-    }
+    await waitFor(() => {
+      expect(sentPrompts).toHaveLength(1);
+    });
+    expect(sentPrompts[0]).toContain("Typed introduction");
+    expect(sentPrompts[0]).toContain("startup voice input");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
   });
 
   it("transcribes a voice input segment after silence while recording", async () => {
@@ -1478,41 +1454,37 @@ describe("chat lifecycle", () => {
       );
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
 
-      await user.click(await screen.findByLabelText("Voice input"));
-      await waitFor(() => {
-        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-      });
-      await user.click(screen.getByLabelText("Stop recording"));
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Stop recording"));
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(
-          screen.getByRole("heading", { name: "Compare plans" }),
-        ).toBeInTheDocument();
-        expect(
-          screen.getByText("Upgrade or downgrade anytime."),
-        ).toBeInTheDocument();
-      });
-      await waitFor(() => {
-        expect(screen.queryByLabelText("Stop recording")).toBeNull();
-      });
-      expect(toastError).not.toHaveBeenCalledWith(
-        "Voice transcription failed. Try again.",
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+        { id: "voice-input-quota-limit" },
       );
-    } finally {
-      toastError.mockRestore();
-    }
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Upgrade or downgrade anytime."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Stop recording")).toBeNull();
+    });
+    expect(toastError).not.toHaveBeenCalledWith(
+      "Voice transcription failed. Try again.",
+    );
   });
 
   it("opens billing recovery before recording when voice input quota is already depleted", async () => {
@@ -1532,28 +1504,24 @@ describe("chat lifecycle", () => {
       });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      const voiceInput = await screen.findByLabelText("Voice input");
-      expect(voiceInput).toBeEnabled();
-      await user.click(voiceInput);
+    const voiceInput = await screen.findByLabelText("Voice input");
+    expect(voiceInput).toBeEnabled();
+    await user.click(voiceInput);
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(
-          screen.getByRole("heading", { name: "Compare plans" }),
-        ).toBeInTheDocument();
-      });
-      expect(screen.queryByLabelText("Stop recording")).toBeNull();
-      expect(transcriptionCalls).toBe(0);
-    } finally {
-      toastError.mockRestore();
-    }
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Stop recording")).toBeNull();
+    expect(transcriptionCalls).toBe(0);
   });
 
   it("shows member guidance without opening billing when voice input is limited", async () => {
@@ -1571,21 +1539,17 @@ describe("chat lifecycle", () => {
       return respond(200, { allowed: false, count: 10, limit: 10 });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await user.click(await screen.findByLabelText("Voice input"));
+    await user.click(await screen.findByLabelText("Voice input"));
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-      });
-      expect(screen.queryByRole("dialog")).toBeNull();
-    } finally {
-      toastError.mockRestore();
-    }
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens billing with Team upgrade guidance for a Pro workspace admin", async () => {
@@ -1601,24 +1565,20 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, { threadId });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await user.click(await screen.findByLabelText("Voice input"));
+    await user.click(await screen.findByLabelText("Voice input"));
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Upgrade to Team for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(
-          screen.getByRole("heading", { name: "Compare plans" }),
-        ).toBeInTheDocument();
-      });
-    } finally {
-      toastError.mockRestore();
-    }
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows Team upgrade guidance without opening billing for a Pro workspace member", async () => {
@@ -1639,21 +1599,17 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, { threadId });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await user.click(await screen.findByLabelText("Voice input"));
+    await user.click(await screen.findByLabelText("Voice input"));
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Ask a workspace admin to upgrade to Team for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-      });
-      expect(screen.queryByRole("dialog")).toBeNull();
-    } finally {
-      toastError.mockRestore();
-    }
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Ask a workspace admin to upgrade to Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it.each(["team", "custom"] as const)(
@@ -1674,21 +1630,17 @@ describe("chat lifecycle", () => {
       });
       mockChatLifecycle(context, { threadId });
 
-      try {
-        detachedSetupPage({ context, path: `/chats/${threadId}` });
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-        await user.click(await screen.findByLabelText("Voice input"));
+      await user.click(await screen.findByLabelText("Voice input"));
 
-        await waitFor(() => {
-          expect(toastError).toHaveBeenCalledWith(
-            "Voice input limit reached. Please wait for your limit to reset.",
-            { id: "voice-input-quota-limit" },
-          );
-        });
-        expect(screen.queryByRole("dialog")).toBeNull();
-      } finally {
-        toastError.mockRestore();
-      }
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Please wait for your limit to reset.",
+          { id: "voice-input-quota-limit" },
+        );
+      });
+      expect(screen.queryByRole("dialog")).toBeNull();
     },
   );
 
@@ -1711,31 +1663,27 @@ describe("chat lifecycle", () => {
       );
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
 
-      await user.click(await screen.findByLabelText("Voice input"));
-      await waitFor(() => {
-        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-      });
-      await user.click(screen.getByLabelText("Stop recording"));
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Stop recording"));
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(
-          screen.getByRole("heading", { name: "Compare plans" }),
-        ).toBeInTheDocument();
-      });
-    } finally {
-      toastError.mockRestore();
-    }
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+    });
   });
 });

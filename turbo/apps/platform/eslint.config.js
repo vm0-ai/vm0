@@ -41,6 +41,7 @@ export default [
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
+      "ccstate/no-direct-session-storage": "error",
       "ccstate/no-detach-in-signals": "error",
       "ccstate/no-direct-fetch": "error",
       "ccstate/no-empty-promise-catch": "error",
@@ -143,6 +144,17 @@ export default [
             "Use nowDate() from src/lib/time instead of new Date() so tests can control the platform clock.",
         },
       ],
+    },
+  },
+  {
+    files: [
+      "src/**/*.test.{ts,tsx}",
+      "src/**/*.spec.{ts,tsx}",
+      "src/**/__tests__/**/*.{ts,tsx}",
+    ],
+    ignores: ["src/signals/__tests__/test-helpers.ts"],
+    rules: {
+      "ccstate/no-test-after-each": "error",
     },
   },
   {

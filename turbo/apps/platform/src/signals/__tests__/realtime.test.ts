@@ -3,10 +3,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   mockClerkSessionSignedOut,
   mockOrganization,
   mockedClerk,
@@ -51,6 +51,7 @@ const failReadyCatchup$ = command((_ctx, _signal: AbortSignal) => {
 });
 
 function mockSignedInUser(): void {
+  clearMockedAuthOnAbort(context.signal);
   mockUser(
     {
       id: "test-user-123",
@@ -76,6 +77,18 @@ function abortError(message: string): Error {
   return error;
 }
 
+function testSubscriber(): AbortController {
+  const controller = new AbortController();
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      controller.abort(context.signal.reason);
+    },
+    { once: true },
+  );
+  return controller;
+}
+
 function abortListenerCallCount(calls: readonly unknown[][]): number {
   return calls.filter((call) => {
     return call[0] === "abort";
@@ -83,10 +96,6 @@ function abortListenerCallCount(calls: readonly unknown[][]): number {
 }
 
 describe("realtime signals", () => {
-  afterEach(() => {
-    clearMockedAuth();
-  });
-
   it("resolves a pending loop after realtime setup connects", async () => {
     mockSignedInUser();
     const topic = "test:pending-resolve";
@@ -121,7 +130,7 @@ describe("realtime signals", () => {
   it("removes and rejects a pending loop when the subscriber aborts", async () => {
     mockSignedInUser();
     const topic = "test:pending-abort";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
 
     const loopPromise = context.store.set(
       setAblyLoop$,
@@ -169,7 +178,7 @@ describe("realtime signals", () => {
   it("cleans up a loop subscription when abort races subscribe resolution", async () => {
     mockSignedInUser();
     const topic = "test:subscribe-abort-race";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
 
     await context.store.set(setupRealtime$, context.signal);
     const loopPromise = context.store.set(
@@ -180,6 +189,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
     subscriber.abort(abortError("subscriber aborted"));
 
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
@@ -189,7 +199,7 @@ describe("realtime signals", () => {
   it("cleans up a payload subscription when abort races subscribe resolution", async () => {
     mockSignedInUser();
     const topic = "test:payload-subscribe-abort-race";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
 
     await context.store.set(setupRealtime$, context.signal);
     const loopPromise = context.store.set(
@@ -200,6 +210,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
     subscriber.abort(abortError("subscriber aborted"));
 
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
@@ -229,7 +240,7 @@ describe("realtime signals", () => {
   it("reruns an active loop on reconnect", async () => {
     mockSignedInUser();
     const topic = "test:reconnect";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     let runs = 0;
     const loop$ = command((_ctx, _signal: AbortSignal) => {
       runs += 1;
@@ -245,6 +256,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
     await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
@@ -258,15 +270,12 @@ describe("realtime signals", () => {
     await waitFor(() => {
       expect(runs).toBe(2);
     });
-
-    subscriber.abort(abortError("test done"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("waits for one foreground auth recovery before rerunning an active loop", async () => {
     mockSignedInUser();
     const topic = "test:visibility";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const touchCanFinish = context.mocks.deferred<void>();
     mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
     let runs = 0;
@@ -284,6 +293,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
     await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
@@ -305,16 +315,13 @@ describe("realtime signals", () => {
     await waitFor(() => {
       expect(runs).toBe(2);
     });
-
-    subscriber.abort(abortError("test done"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("rebuilds a failed realtime client after foreground auth and pokes once", async () => {
     mockSignedInUser();
     const loopTopic = "test:failed-foreground-loop";
     const payloadTopic = "test:failed-foreground-payload";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const touchCanFinish = context.mocks.deferred<void>();
     mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
     const payloads: unknown[] = [];
@@ -350,62 +357,56 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
+    context.track(payloadLoopPromise);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasSubscription(loopTopic)).toBeTruthy();
-        expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeTruthy();
-      });
-      context.mocks.ably.trigger(loopTopic);
-      context.mocks.ably.trigger(payloadTopic, { messageId: "before-failure" });
-      await waitFor(() => {
-        expect(loopRuns).toBe(1);
-        expect(payloads).toStrictEqual([{ messageId: "before-failure" }]);
-      });
-
-      context.mocks.ably.triggerFailure("terminal connection failure");
-      expect(context.mocks.ably.hasSubscription(loopTopic)).toBeFalsy();
-      expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeFalsy();
-
-      document.dispatchEvent(new Event("visibilitychange"));
-      window.dispatchEvent(new Event("focus"));
-      await waitFor(() => {
-        expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-      });
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(loopTopic)).toBeTruthy();
+      expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(loopTopic);
+    context.mocks.ably.trigger(payloadTopic, { messageId: "before-failure" });
+    await waitFor(() => {
       expect(loopRuns).toBe(1);
-      expect(payloadCatchUps).toBe(0);
+      expect(payloads).toStrictEqual([{ messageId: "before-failure" }]);
+    });
 
-      touchCanFinish.resolve();
-      await waitFor(() => {
-        expect(context.mocks.ably.hasSubscription(loopTopic)).toBeTruthy();
-        expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeTruthy();
-        expect(loopRuns).toBe(2);
-        expect(payloadCatchUps).toBe(1);
-      });
+    context.mocks.ably.triggerFailure("terminal connection failure");
+    expect(context.mocks.ably.hasSubscription(loopTopic)).toBeFalsy();
+    expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeFalsy();
 
-      context.mocks.ably.trigger(loopTopic);
-      context.mocks.ably.trigger(payloadTopic, { messageId: "after-recovery" });
-      await waitFor(() => {
-        expect(loopRuns).toBe(3);
-        expect(payloads).toStrictEqual([
-          { messageId: "before-failure" },
-          { messageId: "after-recovery" },
-        ]);
-      });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+    expect(loopRuns).toBe(1);
+    expect(payloadCatchUps).toBe(0);
+
+    touchCanFinish.resolve();
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(loopTopic)).toBeTruthy();
+      expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeTruthy();
+      expect(loopRuns).toBe(2);
       expect(payloadCatchUps).toBe(1);
-    } finally {
-      subscriber.abort(abortError("test done"));
-      await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
-      await expect(payloadLoopPromise).rejects.toMatchObject({
-        name: "AbortError",
-      });
-    }
+    });
+
+    context.mocks.ably.trigger(loopTopic);
+    context.mocks.ably.trigger(payloadTopic, { messageId: "after-recovery" });
+    await waitFor(() => {
+      expect(loopRuns).toBe(3);
+      expect(payloads).toStrictEqual([
+        { messageId: "before-failure" },
+        { messageId: "after-recovery" },
+      ]);
+    });
+    expect(payloadCatchUps).toBe(1);
   });
 
   it("waits for the next foreground catch-up after rebuilding fails", async () => {
     mockSignedInUser();
     const topic = "test:failed-rebuild-retry";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const failedTokenCanRespond = context.mocks.deferred<void>();
     let tokenRequests = 0;
     context.mocks.api(
@@ -443,51 +444,47 @@ describe("realtime signals", () => {
       { topic, loopCommand$: loop$ },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
-      });
-      context.mocks.ably.trigger(topic);
-      await waitFor(() => {
-        expect(runs).toBe(1);
-      });
-
-      context.mocks.ably.triggerFailure("terminal connection failure");
-      document.dispatchEvent(new Event("visibilitychange"));
-      await waitFor(() => {
-        expect(tokenRequests).toBe(2);
-      });
-      const foregroundReady = await context.store.get(foregroundReady$);
-      expect(foregroundReady.pending).toBeTruthy();
-
-      failedTokenCanRespond.resolve();
-      await expect(foregroundReady.promise).rejects.toThrow(
-        /Ably connection failed/,
-      );
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
       expect(runs).toBe(1);
-      expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+    });
 
-      window.dispatchEvent(new Event("focus"));
-      await waitFor(() => {
-        expect(tokenRequests).toBe(3);
-        expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
-        expect(runs).toBe(2);
-      });
-      context.mocks.ably.trigger(topic);
-      await waitFor(() => {
-        expect(runs).toBe(3);
-      });
-    } finally {
-      subscriber.abort(abortError("test done"));
-      await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
-    }
+    context.mocks.ably.triggerFailure("terminal connection failure");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(tokenRequests).toBe(2);
+    });
+    const foregroundReady = await context.store.get(foregroundReady$);
+    expect(foregroundReady.pending).toBeTruthy();
+
+    failedTokenCanRespond.resolve();
+    await expect(foregroundReady.promise).rejects.toThrow(
+      /Ably connection failed/,
+    );
+    expect(runs).toBe(1);
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(tokenRequests).toBe(3);
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(runs).toBe(2);
+    });
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(3);
+    });
   });
 
   it("keeps signed-out foreground recovery silent and skips catch-up", async () => {
     mockSignedInUser();
     const topic = "test:signed-out-visibility";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
     let runs = 0;
     const loop$ = command((_ctx, _signal: AbortSignal) => {
@@ -505,6 +502,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
     await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
@@ -521,10 +519,6 @@ describe("realtime signals", () => {
     expect(runs).toBe(1);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
-
-    subscriber.abort(abortError("test done"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
-    toastError.mockRestore();
   });
 
   it("shares an in-flight foreground recovery with a concurrent 401", async () => {
@@ -588,7 +582,7 @@ describe("realtime signals", () => {
   it("retries Clerk-wrapped foreground network failures before catch-up", async () => {
     mockSignedInUser();
     const topic = "test:visibility-network-retry";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     let touchAttempts = 0;
     mockedClerk.sessionTouch.mockImplementation(() => {
       touchAttempts += 1;
@@ -616,6 +610,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
     await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
@@ -630,9 +625,6 @@ describe("realtime signals", () => {
       expect(runs).toBe(2);
     });
     expect(touchAttempts).toBe(2);
-
-    subscriber.abort(abortError("test done"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("reruns a loop for a notification received while the handler is in flight", async () => {
@@ -709,7 +701,7 @@ describe("realtime signals", () => {
   it("removes settled realtime wait abort listeners between notifications", async () => {
     mockSignedInUser();
     const topic = "test:listener-cleanup";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const addListener = vi.spyOn(subscriber.signal, "addEventListener");
     const removeListener = vi.spyOn(subscriber.signal, "removeEventListener");
     let runs = 0;
@@ -746,7 +738,7 @@ describe("realtime signals", () => {
       abortListenerCallCount(removeListener.mock.calls),
     ).toBeGreaterThanOrEqual(removesAfterSubscribe + 5);
 
-    subscriber.abort(abortError("test done"));
+    subscriber.abort(abortError("verify listener cleanup"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
     expect(
       abortListenerCallCount(removeListener.mock.calls),
@@ -756,7 +748,7 @@ describe("realtime signals", () => {
   it("passes Ably payloads to payload loops", async () => {
     mockSignedInUser();
     const topic = "test:payload";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const payloads: unknown[] = [];
     const loop$ = command((_ctx, payload: unknown, _signal: AbortSignal) => {
       payloads.push(payload);
@@ -772,6 +764,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
     await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
@@ -781,15 +774,12 @@ describe("realtime signals", () => {
     await waitFor(() => {
       expect(payloads).toStrictEqual([{ threadId: "thread-1" }]);
     });
-
-    subscriber.abort(abortError("test done"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("uses catch-up commands for payload subscriptions and reconnects", async () => {
     mockSignedInUser();
     const topic = "test:payload-catch-up";
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const payloads: unknown[] = [];
     let catchUps = 0;
     const loop$ = command(
@@ -814,6 +804,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
     await waitFor(() => {
       expect(catchUps).toBe(1);
@@ -828,14 +819,11 @@ describe("realtime signals", () => {
       expect(catchUps).toBe(2);
     });
     expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
-
-    subscriber.abort(abortError("test done"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("serializes user-channel messages received while the handler is in flight", async () => {
     mockSignedInUser();
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const firstRunCanFinish = context.mocks.deferred<void>();
     const handledNames: (string | undefined)[] = [];
     let activeHandlers = 0;
@@ -888,14 +876,14 @@ describe("realtime signals", () => {
     });
     expect(maxActiveHandlers).toBe(1);
 
-    subscriber.abort(abortError("test done"));
+    subscriber.abort(abortError("verify subscription cleanup"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
     expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
   });
 
   it("runs user-channel catch-up on reconnect without a queued message", async () => {
     mockSignedInUser();
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const handledMessages: unknown[] = [];
     let catchUps = 0;
     const loop$ = command(
@@ -918,6 +906,7 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
     await waitFor(() => {
       expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
@@ -928,14 +917,11 @@ describe("realtime signals", () => {
       expect(catchUps).toBe(1);
     });
     expect(handledMessages).toStrictEqual([]);
-
-    subscriber.abort(abortError("test done"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("waits for the next reconnect after user-channel catch-up fails", async () => {
     mockSignedInUser();
-    const subscriber = new AbortController();
+    const subscriber = testSubscriber();
     const handledMessages: unknown[] = [];
     const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
     let catchUps = 0;
@@ -962,32 +948,27 @@ describe("realtime signals", () => {
       },
       subscriber.signal,
     );
+    context.track(loopPromise);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
-      context.mocks.ably.triggerReconnect();
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    context.mocks.ably.triggerReconnect();
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledTimes(1);
-      });
-      expect(catchUps).toBe(1);
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledTimes(1);
+    });
+    expect(catchUps).toBe(1);
 
-      context.mocks.ably.trigger("chatThreadMessageCreated:thread-1");
-      await waitFor(() => {
-        expect(handledMessages).toHaveLength(1);
-      });
+    context.mocks.ably.trigger("chatThreadMessageCreated:thread-1");
+    await waitFor(() => {
+      expect(handledMessages).toHaveLength(1);
+    });
 
-      context.mocks.ably.triggerReconnect();
-      await waitFor(() => {
-        expect(catchUps).toBe(2);
-      });
-    } finally {
-      subscriber.abort(abortError("test done"));
-      await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
-      toastError.mockRestore();
-    }
+    context.mocks.ably.triggerReconnect();
+    await waitFor(() => {
+      expect(catchUps).toBe(2);
+    });
   });
 
   it("retries a payload notification after a transient handler error", async () => {
@@ -1064,7 +1045,6 @@ describe("realtime signals", () => {
     expect(poisonAttempts).toBe(8);
     expect(handled).toStrictEqual([{ messageId: "message-1" }]);
     expect(toastError).toHaveBeenCalledTimes(1);
-    toastError.mockRestore();
   });
 
   it("stops retrying a failing notification handler until the next poke", async () => {
@@ -1103,7 +1083,6 @@ describe("realtime signals", () => {
     context.mocks.ably.trigger(topic);
     await expect(loopPromise).resolves.toBeUndefined();
     expect(runs).toBe(5);
-    toastError.mockRestore();
   });
 
   it("propagates ready catch-up failures without aborting subscriptions", async () => {

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -19,21 +19,13 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
-import { clearMockNow, mockNow } from "../../../lib/time.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-
-afterEach(async () => {
-  clearMockNow();
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 function connectedPersonalCodexProvider(
   overrides: Partial<ModelProviderResponse> = {},
@@ -531,7 +523,7 @@ describe("zero sidebar account menu", () => {
 
   it("shows subscription usage grouped below credits in the account menu", async () => {
     mockBrowserTimeZone("America/New_York");
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -892,15 +884,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("links the production satellite to the primary hosted user profile", async () => {
-    const previousUrl = window.location.href;
-    window.location.href = "https://app.okou.ai/";
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        window.location.href = previousUrl;
-      },
-      { once: true },
-    );
+    context.mocks.browser.url("https://app.okou.ai/");
     prepareDefaultAgent();
 
     detachedSetupPage({
@@ -1060,7 +1044,7 @@ describe("zero sidebar account menu", () => {
 
   it("preserves satellite session sync after signing out", async () => {
     prepareDefaultAgent();
-    window.location.href = "https://app.okou.ai/";
+    context.mocks.browser.url("https://app.okou.ai/");
 
     detachedSetupPage({
       context,

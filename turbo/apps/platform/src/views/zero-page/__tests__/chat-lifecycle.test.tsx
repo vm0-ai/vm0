@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
@@ -57,9 +57,13 @@ function dispatchTouch(
 
 function openSoftwareKeyboard(): void {
   document.documentElement.dataset.keyboardOpen = "true";
-  onTestFinished(() => {
-    delete document.documentElement.dataset.keyboardOpen;
-  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      delete document.documentElement.dataset.keyboardOpen;
+    },
+    { once: true },
+  );
 }
 
 function makeVerticallyScrollable(
@@ -747,11 +751,6 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const clipboard = context.mocks.browser.clipboardWrite();
     const sendGate = context.mocks.deferred<void>();
-    onTestFinished(() => {
-      if (!sendGate.settled()) {
-        sendGate.resolve();
-      }
-    });
     const threadId = "b0000000-0000-4000-a000-000000000993";
     const prompt = "Keep the model visible while sending";
     const selectedModel = "claude-sonnet-4-6";

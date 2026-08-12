@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 
 export type OnboardingChoice =
   | "workflow"
@@ -42,6 +43,15 @@ export const ONBOARDING_CHECKOUT_STATE_PARAM = "onboarding_checkout_state";
 const ONBOARDING_CHECKOUT_STATE_STORAGE_KEY = "vm0:onboarding:checkout-state";
 const ONBOARDING_CHECKOUT_PROMPT_STORAGE_KEY = "vm0:onboarding:checkout-prompt";
 const ONBOARDING_CHECKOUT_NOTE_STORAGE_KEY = "vm0:onboarding:checkout-note";
+const onboardingCheckoutStateStorage = sessionStorageSignals(
+  ONBOARDING_CHECKOUT_STATE_STORAGE_KEY,
+);
+const onboardingCheckoutPromptStorage = sessionStorageSignals(
+  ONBOARDING_CHECKOUT_PROMPT_STORAGE_KEY,
+);
+const onboardingCheckoutNoteStorage = sessionStorageSignals(
+  ONBOARDING_CHECKOUT_NOTE_STORAGE_KEY,
+);
 
 interface OnboardingUiState {
   readonly workflowPreviewId: string | null;
@@ -79,53 +89,38 @@ function emptyOnboardingUiState(): OnboardingUiState {
   };
 }
 
-function onboardingCheckoutStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+export const storeOnboardingCheckoutDraft$ = command(
+  ({ set }, draft: OnboardingCheckoutDraft): string => {
+    const stateId = crypto.randomUUID();
+    set(onboardingCheckoutStateStorage.set$, stateId);
+    set(onboardingCheckoutPromptStorage.set$, draft.prompt);
+    set(onboardingCheckoutNoteStorage.set$, draft.note);
+    return stateId;
+  },
+);
 
-  return window.sessionStorage;
-}
+export const readOnboardingCheckoutDraft$ = command(
+  ({ get }, searchParams: URLSearchParams): OnboardingCheckoutDraft | null => {
+    const stateId = searchParams.get(ONBOARDING_CHECKOUT_STATE_PARAM);
+    if (!stateId || get(onboardingCheckoutStateStorage.get$) !== stateId) {
+      return null;
+    }
 
-export function storeOnboardingCheckoutDraft(
-  draft: OnboardingCheckoutDraft,
-): string {
-  const stateId = crypto.randomUUID();
-  const storage = onboardingCheckoutStorage();
-  storage?.setItem(ONBOARDING_CHECKOUT_STATE_STORAGE_KEY, stateId);
-  storage?.setItem(ONBOARDING_CHECKOUT_PROMPT_STORAGE_KEY, draft.prompt);
-  storage?.setItem(ONBOARDING_CHECKOUT_NOTE_STORAGE_KEY, draft.note);
-  return stateId;
-}
+    const prompt = get(onboardingCheckoutPromptStorage.get$);
+    const note = get(onboardingCheckoutNoteStorage.get$);
+    if (prompt === null || note === null) {
+      return null;
+    }
 
-export function readOnboardingCheckoutDraft(
-  searchParams: URLSearchParams,
-): OnboardingCheckoutDraft | null {
-  const stateId = searchParams.get(ONBOARDING_CHECKOUT_STATE_PARAM);
-  const storage = onboardingCheckoutStorage();
-  if (
-    !stateId ||
-    !storage ||
-    storage.getItem(ONBOARDING_CHECKOUT_STATE_STORAGE_KEY) !== stateId
-  ) {
-    return null;
-  }
+    return { prompt, note };
+  },
+);
 
-  const prompt = storage.getItem(ONBOARDING_CHECKOUT_PROMPT_STORAGE_KEY);
-  const note = storage.getItem(ONBOARDING_CHECKOUT_NOTE_STORAGE_KEY);
-  if (prompt === null || note === null) {
-    return null;
-  }
-
-  return { prompt, note };
-}
-
-function clearOnboardingCheckoutDraft(): void {
-  const storage = onboardingCheckoutStorage();
-  storage?.removeItem(ONBOARDING_CHECKOUT_STATE_STORAGE_KEY);
-  storage?.removeItem(ONBOARDING_CHECKOUT_PROMPT_STORAGE_KEY);
-  storage?.removeItem(ONBOARDING_CHECKOUT_NOTE_STORAGE_KEY);
-}
+const clearOnboardingCheckoutDraft$ = command(({ set }) => {
+  set(onboardingCheckoutStateStorage.clear$);
+  set(onboardingCheckoutPromptStorage.clear$);
+  set(onboardingCheckoutNoteStorage.clear$);
+});
 
 const internalOnboardingDraft$ = state<OnboardingDraft>(emptyOnboardingDraft());
 const internalOnboardingUi$ = state<OnboardingUiState>(
@@ -149,7 +144,7 @@ export const updateOnboardingDraft$ = command(
 );
 
 export const resetOnboardingDraft$ = command(({ set }) => {
-  clearOnboardingCheckoutDraft();
+  set(clearOnboardingCheckoutDraft$);
   set(internalOnboardingDraft$, emptyOnboardingDraft());
 });
 
@@ -192,11 +187,13 @@ function onboardingChoice(value: string | null): OnboardingChoice | null {
   return null;
 }
 
-function onboardingRouteText(searchParams: URLSearchParams): {
+function onboardingRouteText(
+  searchParams: URLSearchParams,
+  checkoutDraft: OnboardingCheckoutDraft | null,
+): {
   readonly prompt: string | null;
   readonly note: string | null;
 } {
-  const checkoutDraft = readOnboardingCheckoutDraft(searchParams);
   return {
     prompt: searchParams.get("prompt") ?? checkoutDraft?.prompt ?? null,
     note: searchParams.get("onboarding_note") ?? checkoutDraft?.note ?? null,
@@ -212,7 +209,10 @@ export const hydrateOnboardingRoute$ = command(
     }
 
     const current = get(internalOnboardingDraft$);
-    const routeText = onboardingRouteText(searchParams);
+    const routeText = onboardingRouteText(
+      searchParams,
+      set(readOnboardingCheckoutDraft$, searchParams),
+    );
     const categoryId = searchParams.get("category");
     const workflowId = searchParams.get("workflow");
     const templateSlug =

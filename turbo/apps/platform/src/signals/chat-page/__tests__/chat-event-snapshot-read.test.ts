@@ -1,10 +1,10 @@
 import { waitFor } from "@testing-library/react";
 import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   mockOrganization,
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
@@ -27,6 +27,26 @@ const resetSubscriberSignal$ = resetSignal();
 
 const SNAPSHOT_URL = "https://r2.example.com/chat-events/snapshot.ndjson.gz";
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
+
+function userId(): string {
+  return `snapshot-read-user-${context.resourceId}`;
+}
+
+function orgId(): string {
+  return `snapshot-read-org-${context.resourceId}`;
+}
+
+async function openTestChatDb() {
+  const db = await context.store.get(chatIdb$);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      db.close();
+    },
+    { once: true },
+  );
+  return db;
+}
 
 function baseRow(threadId: string, seqId: number): ChatEventRowV4 {
   return {
@@ -93,30 +113,27 @@ function createSignals(threadId: string) {
 }
 
 function mockSignedInUser(): void {
+  clearMockedAuthOnAbort(context.signal);
   mockUser(
     {
-      id: "snapshot-read-user",
+      id: userId(),
       fullName: "Snapshot Read User",
       email: "snapshot-read@example.com",
     },
     { token: "test-token" },
   );
   mockOrganization({
-    activeOrg: { id: "snapshot-read-org", name: "Snapshot Read Org" },
-    memberships: [{ id: "snapshot-read-org" }],
+    activeOrg: { id: orgId(), name: "Snapshot Read Org" },
+    memberships: [{ id: orgId() }],
   });
 }
 
 describe("chat event snapshot read", () => {
-  afterEach(() => {
-    clearMockedAuth();
-  });
-
   it("tails from snapshot coverage beyond the final archive row", async () => {
     mockSignedInUser();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const tailEventRow = baseRow(threadId, 4);
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
@@ -138,52 +155,45 @@ describe("chat event snapshot read", () => {
     });
 
     const signals = createSignals(threadId);
-    try {
-      await context.store.set(
-        signals.initializeIndexedDbEvents$,
-        context.signal,
-      );
-      expect(context.store.get(signals.chatEvents$)).toHaveLength(0);
+    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
+    expect(context.store.get(signals.chatEvents$)).toHaveLength(0);
 
-      await context.store.set(signals.syncRemoteEvents$, context.signal);
+    await context.store.set(signals.syncRemoteEvents$, context.signal);
 
-      const events = context.store.get(signals.chatEvents$);
-      expect(
-        events.map((event) => {
-          return {
-            id: event.id,
-            seqId: event.seqId,
-            eventType: event.eventType,
-          };
-        }),
-      ).toStrictEqual([
-        { id: promptEventRow.id, seqId: 1, eventType: "input.prompt" },
-        { id: assistantEventRow.id, seqId: 2, eventType: "output.message" },
-        { id: tailEventRow.id, seqId: 4, eventType: "output.message" },
-      ]);
-      const prompt = events[0];
-      if (prompt?.eventType !== "input.prompt") {
-        throw new Error("Expected a projected prompt event");
-      }
-      expect(prompt.userMessage).toStrictEqual({
-        version: 1,
-        parts: [{ type: "text", text: "snapshot prompt" }],
-      });
-      expect(prompt).not.toHaveProperty("contextType");
-      expect(rowRequests).toStrictEqual([3, 4]);
-
-      await expect(
-        appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
-      ).resolves.toStrictEqual(tailEventRow);
-    } finally {
-      appDb.close();
+    const events = context.store.get(signals.chatEvents$);
+    expect(
+      events.map((event) => {
+        return {
+          id: event.id,
+          seqId: event.seqId,
+          eventType: event.eventType,
+        };
+      }),
+    ).toStrictEqual([
+      { id: promptEventRow.id, seqId: 1, eventType: "input.prompt" },
+      { id: assistantEventRow.id, seqId: 2, eventType: "output.message" },
+      { id: tailEventRow.id, seqId: 4, eventType: "output.message" },
+    ]);
+    const prompt = events[0];
+    if (prompt?.eventType !== "input.prompt") {
+      throw new Error("Expected a projected prompt event");
     }
+    expect(prompt.userMessage).toStrictEqual({
+      version: 1,
+      parts: [{ type: "text", text: "snapshot prompt" }],
+    });
+    expect(prompt).not.toHaveProperty("contextType");
+    expect(rowRequests).toStrictEqual([3, 4]);
+
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
+    ).resolves.toStrictEqual(tailEventRow);
   });
 
   it("cold-starts from the rows endpoint when the thread has no snapshot yet", async () => {
     mockSignedInUser();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(404, {
@@ -205,34 +215,26 @@ describe("chat event snapshot read", () => {
     });
 
     const signals = createSignals(threadId);
-    try {
-      await context.store.set(
-        signals.initializeIndexedDbEvents$,
-        context.signal,
-      );
-      await context.store.set(signals.syncRemoteEvents$, context.signal);
+    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
+    await context.store.set(signals.syncRemoteEvents$, context.signal);
 
-      expect(
-        context.store.get(signals.chatEvents$).map((event) => {
-          return { id: event.id, seqId: event.seqId };
-        }),
-      ).toStrictEqual([
-        { id: promptEventRow.id, seqId: 1 },
-        { id: assistantEventRow.id, seqId: 2 },
-      ]);
-      expect(rowRequests).toStrictEqual([0, 2]);
-      await expect(
-        appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
-      ).resolves.toStrictEqual(assistantEventRow);
-    } finally {
-      appDb.close();
-    }
+    expect(
+      context.store.get(signals.chatEvents$).map((event) => {
+        return { id: event.id, seqId: event.seqId };
+      }),
+    ).toStrictEqual([
+      { id: promptEventRow.id, seqId: 1 },
+      { id: assistantEventRow.id, seqId: 2 },
+    ]);
+    expect(rowRequests).toStrictEqual([0, 2]);
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
+    ).resolves.toStrictEqual(assistantEventRow);
   });
 
   it("fails loudly when the rows cursor expires right after a cold start", async () => {
     mockSignedInUser();
     const { threadId } = threadFixture();
-    const appDb = await context.store.get(chatIdb$);
 
     // A head the reader refuses to serve: the snapshot endpoint fails closed
     // while the rows endpoint still expects that head's cursor.
@@ -256,19 +258,12 @@ describe("chat event snapshot read", () => {
     });
 
     const signals = createSignals(threadId);
-    try {
-      await context.store.set(
-        signals.initializeIndexedDbEvents$,
-        context.signal,
-      );
+    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
 
-      await expect(
-        context.store.set(signals.syncRemoteEvents$, context.signal),
-      ).rejects.toThrow("cursor expired right after a cold start");
-      expect(rowRequests).toStrictEqual([0]);
-    } finally {
-      appDb.close();
-    }
+    await expect(
+      context.store.set(signals.syncRemoteEvents$, context.signal),
+    ).rejects.toThrow("cursor expired right after a cold start");
+    expect(rowRequests).toStrictEqual([0]);
   });
 
   it("initializes from cached rows without touching the network", async () => {
@@ -277,7 +272,6 @@ describe("chat event snapshot read", () => {
       throw new Error("snapshot endpoint must not be called");
     });
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
-    const appDb = await context.store.get(chatIdb$);
     await context.store.set(
       writeIndexedDbChatEventRows$,
       [promptEventRow, assistantEventRow],
@@ -285,26 +279,19 @@ describe("chat event snapshot read", () => {
     );
 
     const signals = createSignals(threadId);
-    try {
-      await context.store.set(
-        signals.initializeIndexedDbEvents$,
-        context.signal,
-      );
-      const events = context.store.get(signals.chatEvents$);
-      expect(
-        events.map((event) => {
-          return event.id;
-        }),
-      ).toStrictEqual([promptEventRow.id, assistantEventRow.id]);
-    } finally {
-      appDb.close();
-    }
+    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
+    const events = context.store.get(signals.chatEvents$);
+    expect(
+      events.map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual([promptEventRow.id, assistantEventRow.id]);
   });
 
   it("rebuilds from a fresh snapshot when the rows cursor expires", async () => {
     mockSignedInUser();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
     const staleRow = baseRow(threadId, 5);
     await context.store.set(
       writeIndexedDbChatEventRows$,
@@ -335,35 +322,28 @@ describe("chat event snapshot read", () => {
     });
 
     const signals = createSignals(threadId);
-    try {
-      await context.store.set(
-        signals.initializeIndexedDbEvents$,
-        context.signal,
-      );
-      await context.store.set(signals.syncRemoteEvents$, context.signal);
+    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
+    await context.store.set(signals.syncRemoteEvents$, context.signal);
 
-      const eventIds = context.store.get(signals.chatEvents$).map((event) => {
-        return event.id;
-      });
-      expect(eventIds).toContain(promptEventRow.id);
-      expect(eventIds).toContain(assistantEventRow.id);
+    const eventIds = context.store.get(signals.chatEvents$).map((event) => {
+      return event.id;
+    });
+    expect(eventIds).toContain(promptEventRow.id);
+    expect(eventIds).toContain(assistantEventRow.id);
 
-      await expect(
-        appDb.get(CHAT_EVENT_ROWS_STORE, staleRow.id),
-      ).resolves.toBeUndefined();
-      await expect(
-        appDb.get(CHAT_EVENT_ROWS_STORE, promptEventRow.id),
-      ).resolves.toStrictEqual(promptEventRow);
-    } finally {
-      appDb.close();
-    }
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, staleRow.id),
+    ).resolves.toBeUndefined();
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, promptEventRow.id),
+    ).resolves.toStrictEqual(promptEventRow);
   });
 
   it("background-syncs new rows into the row cache", async () => {
     mockSignedInUser();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
     await context.store.set(
       writeIndexedDbChatEventRows$,
       [promptEventRow, assistantEventRow],
@@ -385,31 +365,26 @@ describe("chat event snapshot read", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
 
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
 
-      await waitFor(async () => {
-        await expect(
-          appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
-        ).resolves.toStrictEqual(tailEventRow);
-      });
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
+    await waitFor(async () => {
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
+      ).resolves.toStrictEqual(tailEventRow);
+    });
   });
 
   it("background-cold-starts raw rows and forwards them to an active thread", async () => {
     mockSignedInUser();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
@@ -441,40 +416,35 @@ describe("chat event snapshot read", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
 
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
 
-      await waitFor(() => {
-        expect(
-          context.store.get(signals.chatEvents$).map((event) => {
-            return event.id;
-          }),
-        ).toStrictEqual([
-          promptEventRow.id,
-          assistantEventRow.id,
-          tailEventRow.id,
-        ]);
-      });
-      expect(rowRequests).toStrictEqual([assistantEventRow.seqId]);
-      await expect(
-        appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
-      ).resolves.toStrictEqual(tailEventRow);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
+    await waitFor(() => {
+      expect(
+        context.store.get(signals.chatEvents$).map((event) => {
+          return event.id;
+        }),
+      ).toStrictEqual([
+        promptEventRow.id,
+        assistantEventRow.id,
+        tailEventRow.id,
+      ]);
+    });
+    expect(rowRequests).toStrictEqual([assistantEventRow.seqId]);
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
+    ).resolves.toStrictEqual(tailEventRow);
   });
 
   it("background-cold-starts from row zero when no snapshot exists", async () => {
     mockSignedInUser();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(404, {
@@ -502,25 +472,20 @@ describe("chat event snapshot read", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
 
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
 
-      await waitFor(async () => {
-        await expect(
-          appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
-        ).resolves.toStrictEqual(assistantEventRow);
-      });
-      expect(rowRequests).toStrictEqual([0]);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
+    await waitFor(async () => {
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
+      ).resolves.toStrictEqual(assistantEventRow);
+    });
+    expect(rowRequests).toStrictEqual([0]);
   });
 
   it("background-rebuilds raw rows when the cached cursor expires", async () => {
@@ -528,7 +493,7 @@ describe("chat event snapshot read", () => {
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const staleRow = baseRow(threadId, 5);
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
     await context.store.set(
       writeIndexedDbChatEventRows$,
       [staleRow],
@@ -568,33 +533,28 @@ describe("chat event snapshot read", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
 
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
 
-      await waitFor(async () => {
-        await expect(
-          appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
-        ).resolves.toStrictEqual(tailEventRow);
-      });
-      expect(rowRequests).toStrictEqual([
-        staleRow.seqId,
-        assistantEventRow.seqId,
-      ]);
+    await waitFor(async () => {
       await expect(
-        appDb.get(CHAT_EVENT_ROWS_STORE, staleRow.id),
-      ).resolves.toBeUndefined();
-      await expect(
-        appDb.get(CHAT_EVENT_ROWS_STORE, promptEventRow.id),
-      ).resolves.toStrictEqual(promptEventRow);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
+        appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
+      ).resolves.toStrictEqual(tailEventRow);
+    });
+    expect(rowRequests).toStrictEqual([
+      staleRow.seqId,
+      assistantEventRow.seqId,
+    ]);
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, staleRow.id),
+    ).resolves.toBeUndefined();
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, promptEventRow.id),
+    ).resolves.toStrictEqual(promptEventRow);
   });
 });

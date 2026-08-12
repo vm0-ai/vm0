@@ -4,7 +4,9 @@ import {
   type AdAttributionMetadata,
   type SourceType,
 } from "@vm0/api-contracts/contracts/zero-attribution";
+import { command } from "ccstate";
 import { registerPostHogAttribution } from "../../lib/posthog.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 
 const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
@@ -56,13 +58,9 @@ const STRIPE_CLICK_ID_PRESENT_PARAMS = [
   ["wbraid", "wbraid_present"],
 ] as const;
 
-function getSessionStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.sessionStorage;
-}
+const storedAdAttributionStorage = sessionStorageSignals(
+  STORED_AD_ATTRIBUTION_KEY,
+);
 
 function collectAttributionParams(
   searchParams: URLSearchParams,
@@ -137,10 +135,13 @@ function collectAttributionFromCookie(cookieString: string): string {
 }
 
 function registerStoredAttribution(
-  storage: Storage,
+  storedAttribution: string,
   cookieString: string,
 ): void {
-  const metadata = getStoredAdAttributionMetadata(storage, cookieString);
+  const metadata = adAttributionMetadataFromStoredValue(
+    storedAttribution,
+    cookieString,
+  );
   if (!metadata) {
     return;
   }
@@ -154,48 +155,38 @@ function registerStoredAttribution(
   registerPostHogAttribution(properties);
 }
 
-export function recordAdAttribution(
-  searchParams: URLSearchParams,
-  storage: Storage | null = getSessionStorage(),
-  cookieString: string = getCookieString(),
-): void {
-  if (!storage) {
+export const recordAdAttribution$ = command(
+  ({ get, set }, searchParams: URLSearchParams): void => {
+    const cookieString = getCookieString();
+    const storedAttribution = get(storedAdAttributionStorage.get$);
+
+    // First-touch: once captured this session, never overwrite.
+    if (storedAttribution) {
+      registerStoredAttribution(storedAttribution, cookieString);
+      return;
+    }
+
+    // Prefer params on the current URL (an ad pointing straight at the app),
+    // otherwise fall back to the shared .vm0.ai cookie set by the marketing site.
+    const serializedAttribution =
+      collectAttributionParams(searchParams).toString() ||
+      collectAttributionFromCookie(cookieString);
+    if (!serializedAttribution) {
+      return;
+    }
+
+    set(storedAdAttributionStorage.set$, serializedAttribution);
+    registerStoredAttribution(serializedAttribution, cookieString);
+  },
+);
+
+export const applyStoredAdAttribution$ = command(({ get }, url: URL): void => {
+  const storedAttribution = get(storedAdAttributionStorage.get$);
+  if (!storedAttribution) {
     return;
   }
 
-  // First-touch: once captured this session, never overwrite.
-  if (storage.getItem(STORED_AD_ATTRIBUTION_KEY)) {
-    registerStoredAttribution(storage, cookieString);
-    return;
-  }
-
-  // Prefer params on the current URL (an ad pointing straight at the app),
-  // otherwise fall back to the shared .vm0.ai cookie set by the marketing site.
-  const serializedAttribution =
-    collectAttributionParams(searchParams).toString() ||
-    collectAttributionFromCookie(cookieString);
-  if (!serializedAttribution) {
-    return;
-  }
-
-  storage.setItem(STORED_AD_ATTRIBUTION_KEY, serializedAttribution);
-  registerStoredAttribution(storage, cookieString);
-}
-
-export function applyStoredAdAttribution(
-  url: URL,
-  storage: Storage | null = getSessionStorage(),
-): void {
-  if (!storage) {
-    return;
-  }
-
-  const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
-  if (!stored) {
-    return;
-  }
-
-  const attributionParams = new URLSearchParams(stored);
+  const attributionParams = new URLSearchParams(storedAttribution);
   for (const param of AD_ATTRIBUTION_PARAMS) {
     if (url.searchParams.has(param)) {
       continue;
@@ -205,18 +196,13 @@ export function applyStoredAdAttribution(
       url.searchParams.append(param, value);
     }
   }
-}
+});
 
-export function getStoredAdAttributionMetadata(
-  storage: Storage | null = getSessionStorage(),
-  cookieString: string = getCookieString(),
+function adAttributionMetadataFromStoredValue(
+  storedAttribution: string | null,
+  cookieString: string,
 ): AdAttributionMetadata | undefined {
-  if (!storage) {
-    return undefined;
-  }
-
-  const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
-  const attributionParams = new URLSearchParams(stored ?? "");
+  const attributionParams = new URLSearchParams(storedAttribution ?? "");
   const metadata: AdAttributionMetadata = {};
 
   const sourceType = attributionParams.get("source_type");
@@ -246,3 +232,10 @@ export function getStoredAdAttributionMetadata(
 
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
+
+export const readStoredAdAttributionMetadata$ = command(({ get }) => {
+  return adAttributionMetadataFromStoredValue(
+    get(storedAdAttributionStorage.get$),
+    getCookieString(),
+  );
+});

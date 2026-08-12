@@ -1,8 +1,7 @@
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -13,10 +12,6 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-
-afterEach(() => {
-  toast.dismiss();
-});
 
 async function openGeneralTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=general" });

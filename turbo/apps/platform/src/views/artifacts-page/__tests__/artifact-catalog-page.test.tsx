@@ -5,15 +5,14 @@ import {
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { i18n, initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
+import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -75,11 +74,6 @@ async function findCard(title: string): Promise<HTMLElement> {
 }
 
 describe("artifact catalog page", () => {
-  afterEach(async () => {
-    document.documentElement.lang = DEFAULT_LOCALE;
-    await initializeI18n(DEFAULT_LOCALE);
-  });
-
   it("renders artifacts with their kind and resized thumbnails", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, {

@@ -5,10 +5,10 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   mockOrganization,
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
@@ -28,14 +28,32 @@ vi.mock("idb", async () => {
 const context = testContext();
 const resetSubscriberSignal$ = resetSignal();
 
-const USER_ID = "background-sync-user";
-const ORG_ID = "background-sync-org";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
 const THIRD_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
 const FIRST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_EVENT_ID = "00000000-0000-4000-8000-000000000804";
+
+function userId(): string {
+  return `background-sync-user-${context.resourceId}`;
+}
+
+function orgId(): string {
+  return `background-sync-org-${context.resourceId}`;
+}
+
+async function openTestChatDb() {
+  const db = await context.store.get(chatIdb$);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      db.close();
+    },
+    { once: true },
+  );
+  return db;
+}
 
 function assistantRow(
   threadId: string,
@@ -83,17 +101,18 @@ const newRow = assistantRow(
 );
 
 function mockSignedInUser(): void {
+  clearMockedAuthOnAbort(context.signal);
   mockUser(
     {
-      id: USER_ID,
+      id: userId(),
       fullName: "Background Sync User",
       email: "background-sync@example.com",
     },
     { token: "test-token" },
   );
   mockOrganization({
-    activeOrg: { id: ORG_ID, name: "Background Sync Org" },
-    memberships: [{ id: ORG_ID }],
+    activeOrg: { id: orgId(), name: "Background Sync Org" },
+    memberships: [{ id: orgId() }],
   });
 }
 
@@ -103,14 +122,14 @@ async function setupAuthenticatedBackgroundSync(): Promise<void> {
     path: "/error",
     withoutRender: true,
     user: {
-      id: USER_ID,
+      id: userId(),
       fullName: "Background Sync User",
       email: "background-sync@example.com",
     },
     session: { token: "test-token" },
     org: {
-      activeOrg: { id: ORG_ID, name: "Background Sync Org" },
-      memberships: [{ id: ORG_ID }],
+      activeOrg: { id: orgId(), name: "Background Sync Org" },
+      memberships: [{ id: orgId() }],
     },
     featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
   });
@@ -128,10 +147,6 @@ function mockMissingSnapshots(): void {
 }
 
 describe("chat event background sync", () => {
-  afterEach(() => {
-    clearMockedAuth();
-  });
-
   it("subscribes while prefetching unread and active threads once", async () => {
     const initialThreadIdsReady = context.mocks.deferred<void>();
     const requestedThreadIds: string[] = [];
@@ -217,7 +232,7 @@ describe("chat event background sync", () => {
 
   it("fills only rows after the cached thread end", async () => {
     mockSignedInUser();
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
     await context.store.set(
       writeIndexedDbChatEventRows$,
       [firstCachedRow, lastCachedRow],
@@ -242,35 +257,29 @@ describe("chat event background sync", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+
+    context.mocks.ably.trigger("threadListChanged");
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`);
+
+    await waitFor(async () => {
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, NEW_EVENT_ID),
+      ).resolves.toMatchObject({
+        id: NEW_EVENT_ID,
+        chatThreadId: THREAD_ID,
       });
+    });
 
-      context.mocks.ably.trigger("threadListChanged");
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`);
-
-      await waitFor(async () => {
-        await expect(
-          appDb.get(CHAT_EVENT_ROWS_STORE, NEW_EVENT_ID),
-        ).resolves.toMatchObject({
-          id: NEW_EVENT_ID,
-          chatThreadId: THREAD_ID,
-        });
-      });
-
-      expect(cursors).toStrictEqual([2]);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
+    expect(cursors).toStrictEqual([2]);
   });
 
   it("skips a delayed created event whose sequence is already cached", async () => {
     mockSignedInUser();
-    const appDb = await context.store.get(chatIdb$);
     await context.store.set(
       writeIndexedDbChatEventRows$,
       [firstCachedRow, lastCachedRow],
@@ -299,23 +308,18 @@ describe("chat event background sync", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
 
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
-        syncThroughSeqId: lastCachedRow.seqId,
-      });
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
+      syncThroughSeqId: lastCachedRow.seqId,
+    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
 
-      await otherThreadRequested.promise;
-      expect(cachedThreadRequests).toBe(0);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
+    await otherThreadRequested.promise;
+    expect(cachedThreadRequests).toBe(0);
   });
 });

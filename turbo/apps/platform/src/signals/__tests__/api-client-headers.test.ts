@@ -5,7 +5,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   mockClerkSessionSignedOut,
   mockClerkSessionTransitioning,
   mockedClerk,
@@ -60,13 +60,11 @@ function mockSignedInUser(): void {
     },
     { token: "test-token" },
   );
-  context.signal.addEventListener("abort", () => {
-    clearMockedAuth();
-  });
+  clearMockedAuthOnAbort(context.signal);
 }
 
 function setBrowserUrl(url: string): void {
-  window.location.href = url;
+  context.mocks.browser.url(url);
 }
 
 function getFetchForTest() {

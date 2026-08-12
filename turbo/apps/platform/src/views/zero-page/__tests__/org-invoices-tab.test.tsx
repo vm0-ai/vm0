@@ -1,7 +1,7 @@
 import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
@@ -9,14 +9,8 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { unixSecondsFromIso } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
-
-afterEach(async () => {
-  await i18n.changeLanguage("en-US");
-  document.documentElement.lang = "en-US";
-});
 
 function buttonByText(text: string): HTMLElement {
   const element = queryAllByRoleFast("button").find((candidate) => {
@@ -108,25 +102,19 @@ describe("organization invoices settings", () => {
       return respond(200, { invoices: [] });
     });
 
-    try {
-      await openInvoicesTab();
+    await openInvoicesTab();
 
-      await expect(
-        screen.findByTestId("invoice-list-skeleton"),
-      ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByTestId("invoice-list-skeleton"),
+    ).resolves.toBeInTheDocument();
 
-      invoicesReady.resolve();
-      await waitFor(() => {
-        expect(
-          screen.queryByTestId("invoice-list-skeleton"),
-        ).not.toBeInTheDocument();
-        expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
-      });
-    } finally {
-      if (!invoicesReady.settled()) {
-        invoicesReady.resolve();
-      }
-    }
+    invoicesReady.resolve();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("invoice-list-skeleton"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
+    });
   });
 
   it("localizes invoice presentation while preserving provider values", async () => {
@@ -252,57 +240,49 @@ describe("organization invoices settings", () => {
         );
       },
     );
-    try {
-      await openInvoicesTab();
+    await openInvoicesTab();
 
-      await waitFor(() => {
-        expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
-        expect(screen.getAllByText("Paid")).toHaveLength(4);
-        expect(screen.getByText("3/15/2026")).toBeInTheDocument();
-        expect(screen.getByText("$20.00")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
+      expect(screen.getAllByText("Paid")).toHaveLength(4);
+      expect(screen.getByText("3/15/2026")).toBeInTheDocument();
+      expect(screen.getByText("$20.00")).toBeInTheDocument();
+    });
+    expect(
+      screen.getAllByLabelText("Download March 2026 invoice")[0],
+    ).toHaveAttribute("href", "https://billing.stripe.com/invoice/test");
+
+    await user.click(buttonByText("Download receipts"));
+    expect(
+      screen.getByRole("heading", { name: "Download receipts" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByLabelText("From month"));
+    await user.click(selectOptionByText("December 2025"));
+    expect(
+      screen.getByText("Select a range of no more than 3 consecutive months."),
+    ).toBeInTheDocument();
+    expect(buttonByText("Download ZIP")).toBeDisabled();
+
+    await user.click(screen.getByLabelText("From month"));
+    await user.click(selectOptionByText("February 2026"));
+    expect(buttonByText("Download ZIP")).not.toBeDisabled();
+    await user.click(buttonByText("Download ZIP"));
+
+    await expect(
+      screen.findByText("Preparing receipt download..."),
+    ).resolves.toBeInTheDocument();
+    receiptsReady.resolve();
+    await waitFor(() => {
+      expect(requestedRange).toStrictEqual({
+        startMonth: "2026-02",
+        endMonth: "2026-03",
       });
-      expect(
-        screen.getAllByLabelText("Download March 2026 invoice")[0],
-      ).toHaveAttribute("href", "https://billing.stripe.com/invoice/test");
-
-      await user.click(buttonByText("Download receipts"));
-      expect(
-        screen.getByRole("heading", { name: "Download receipts" }),
-      ).toBeInTheDocument();
-      await user.click(screen.getByLabelText("From month"));
-      await user.click(selectOptionByText("December 2025"));
-      expect(
-        screen.getByText(
-          "Select a range of no more than 3 consecutive months.",
-        ),
-      ).toBeInTheDocument();
-      expect(buttonByText("Download ZIP")).toBeDisabled();
-
-      await user.click(screen.getByLabelText("From month"));
-      await user.click(selectOptionByText("February 2026"));
-      expect(buttonByText("Download ZIP")).not.toBeDisabled();
-      await user.click(buttonByText("Download ZIP"));
-
-      await expect(
-        screen.findByText("Preparing receipt download..."),
-      ).resolves.toBeInTheDocument();
-      receiptsReady.resolve();
-      await waitFor(() => {
-        expect(requestedRange).toStrictEqual({
-          startMonth: "2026-02",
-          endMonth: "2026-03",
-        });
-        expect(browserDownload.downloads).toHaveLength(1);
-        expect(screen.getByText("Receipts downloaded")).toBeInTheDocument();
-      });
-      expect(browserDownload.downloads[0]?.filename).toBe(
-        "receipts-2026-02-to-2026-03.zip",
-      );
-    } finally {
-      if (!receiptsReady.settled()) {
-        receiptsReady.resolve();
-      }
-    }
+      expect(browserDownload.downloads).toHaveLength(1);
+      expect(screen.getByText("Receipts downloaded")).toBeInTheDocument();
+    });
+    expect(browserDownload.downloads[0]?.filename).toBe(
+      "receipts-2026-02-to-2026-03.zip",
+    );
   });
 
   it("shows an error toast when receipt download fails", async () => {

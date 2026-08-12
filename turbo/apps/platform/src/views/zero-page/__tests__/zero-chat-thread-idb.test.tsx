@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadByIdContract,
@@ -14,8 +14,6 @@ import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_EVENT_ROWS_STORE,
-  CHAT_THREAD_EVENTS_STORE,
-  CHAT_THREAD_EVENT_SYNC_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "../../../signals/external/chat-idb-schema.ts";
 import {
@@ -39,13 +37,10 @@ const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const OTHER_THREAD_TITLE = "Other pricing research";
 const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
-const IDB_USER_ID = "zero-chat-thread-idb-user";
-const IDB_ORG_ID = "zero-chat-thread-idb-org";
 const EMPTY_THREAD_MESSAGE = "Send a message to start the conversation";
 
 function observeEmptyThreadMessage(): {
   readonly wasShown: () => boolean;
-  readonly disconnect: () => void;
 } {
   let wasShown = false;
   const record = () => {
@@ -58,79 +53,65 @@ function observeEmptyThreadMessage(): {
   };
   const observer = new MutationObserver(record);
   observer.observe(document.body, { childList: true, subtree: true });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      observer.disconnect();
+    },
+    { once: true },
+  );
   record();
   return {
     wasShown: () => {
       return wasShown;
     },
-    disconnect: () => {
-      observer.disconnect();
-    },
   };
+}
+
+function idbUserId(): string {
+  return `zero-chat-thread-idb-user-${context.resourceId}`;
+}
+
+function idbOrgId(): string {
+  return `zero-chat-thread-idb-org-${context.resourceId}`;
 }
 
 async function primeRuntimeChatDb(): Promise<
   Awaited<ReturnType<typeof openChatIdb>>
 > {
-  mockUser({ id: IDB_USER_ID, fullName: "Test User" }, { token: "test-token" });
+  mockUser({ id: idbUserId(), fullName: "Test User" }, { token: "test-token" });
   mockOrganization({
-    activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
-    memberships: [{ id: IDB_ORG_ID }],
+    activeOrg: { id: idbOrgId(), name: "Default Org" },
+    memberships: [{ id: idbOrgId() }],
   });
-  return await context.store.get(chatIdb$);
+  const db = await context.store.get(chatIdb$);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      db.close();
+    },
+    { once: true },
+  );
+  return db;
 }
 
 function setupChatPage(): void {
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    user: { id: IDB_USER_ID, fullName: "Test User" },
+    user: { id: idbUserId(), fullName: "Test User" },
     org: {
-      activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
-      memberships: [{ id: IDB_ORG_ID }],
+      activeOrg: { id: idbOrgId(), name: "Default Org" },
+      memberships: [{ id: idbOrgId() }],
     },
   });
-}
-
-async function clearCachedChatData(): Promise<void> {
-  const db = await openChatIdb(IDB_USER_ID, IDB_ORG_ID);
-  try {
-    const tx = db.transaction(
-      [
-        CHAT_EVENT_ROWS_STORE,
-        CHAT_THREAD_SNAPSHOT_STORE,
-        CHAT_THREAD_EVENTS_STORE,
-        CHAT_THREAD_EVENT_SYNC_STORE,
-      ],
-      "readwrite",
-    );
-    const eventRowsStore = tx.objectStore(CHAT_EVENT_ROWS_STORE);
-    const threadSnapshotStore = tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE);
-    const threadEventsStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
-    const threadEventSyncStore = tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE);
-    const clearEventRows = eventRowsStore.clear.bind(eventRowsStore);
-    const clearThreadSnapshot =
-      threadSnapshotStore.clear.bind(threadSnapshotStore);
-    const clearThreadEvents = threadEventsStore.clear.bind(threadEventsStore);
-    const clearThreadEventSync =
-      threadEventSyncStore.clear.bind(threadEventSyncStore);
-    await Promise.all([
-      clearEventRows(),
-      clearThreadSnapshot(),
-      clearThreadEvents(),
-      clearThreadEventSync(),
-      tx.done,
-    ]);
-  } finally {
-    db.close();
-  }
 }
 
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
     {
       id: AGENT_ID,
-      ownerId: IDB_USER_ID,
+      ownerId: idbUserId(),
       displayName: "Zero",
       description: null,
       sound: null,
@@ -201,14 +182,6 @@ function trackActiveAgentError(): () => boolean {
 }
 
 describe("okou chat thread IndexedDB fallback", () => {
-  beforeEach(async () => {
-    await clearCachedChatData();
-  });
-
-  afterEach(async () => {
-    await clearCachedChatData();
-  });
-
   it("keeps the app skeleton visible until uncached thread metadata syncs", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
@@ -220,7 +193,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    const runtimeDb = await primeRuntimeChatDb();
+    await primeRuntimeChatDb();
     const snapshotRequested = context.mocks.deferred<void>();
     const releaseSnapshot = context.mocks.deferred<void>();
     const activeAgentErrorLogged = trackActiveAgentError();
@@ -235,36 +208,27 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, { events: [], hasMore: false });
     });
 
-    try {
-      setupChatPage();
-      await snapshotRequested.promise;
+    setupChatPage();
+    await snapshotRequested.promise;
 
-      const appSkeleton = await screen.findByTestId("app-skeleton");
-      expect(appSkeleton).not.toHaveAttribute("aria-hidden");
-      expect(
-        screen.queryByPlaceholderText(PLACEHOLDER),
-      ).not.toBeInTheDocument();
-      expect(activeAgentErrorLogged()).toBeFalsy();
+    const appSkeleton = await screen.findByTestId("app-skeleton");
+    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+    expect(screen.queryByPlaceholderText(PLACEHOLDER)).not.toBeInTheDocument();
+    expect(activeAgentErrorLogged()).toBeFalsy();
 
-      releaseSnapshot.resolve();
+    releaseSnapshot.resolve();
 
-      await expect(
-        screen.findByPlaceholderText(PLACEHOLDER),
-      ).resolves.toBeInTheDocument();
-      await waitFor(() => {
-        expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
-      });
-      expect(activeAgentErrorLogged()).toBeFalsy();
-    } finally {
-      if (!releaseSnapshot.settled()) {
-        releaseSnapshot.resolve();
-      }
-      runtimeDb.close();
-    }
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+    });
+    expect(activeAgentErrorLogged()).toBeFalsy();
   });
 
   it("shows chat thread not found after remote metadata sync confirms a miss", async () => {
-    const runtimeDb = await primeRuntimeChatDb();
+    await primeRuntimeChatDb();
     const snapshotRequested = context.mocks.deferred<void>();
     const releaseSnapshot = context.mocks.deferred<void>();
     const activeAgentErrorLogged = trackActiveAgentError();
@@ -281,32 +245,23 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, { events: [], hasMore: false });
     });
 
-    try {
-      setupChatPage();
-      await snapshotRequested.promise;
+    setupChatPage();
+    await snapshotRequested.promise;
 
-      const appSkeleton = await screen.findByTestId("app-skeleton");
-      expect(appSkeleton).not.toHaveAttribute("aria-hidden");
-      expect(
-        screen.queryByRole("heading", { name: "Chat thread not found" }),
-      ).not.toBeInTheDocument();
+    const appSkeleton = await screen.findByTestId("app-skeleton");
+    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+    expect(
+      screen.queryByRole("heading", { name: "Chat thread not found" }),
+    ).not.toBeInTheDocument();
 
-      releaseSnapshot.resolve();
+    releaseSnapshot.resolve();
 
-      await expect(
-        screen.findByRole("heading", { name: "Chat thread not found" }),
-      ).resolves.toBeInTheDocument();
-      expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
-      expect(
-        screen.queryByPlaceholderText(PLACEHOLDER),
-      ).not.toBeInTheDocument();
-      expect(activeAgentErrorLogged()).toBeFalsy();
-    } finally {
-      if (!releaseSnapshot.settled()) {
-        releaseSnapshot.resolve();
-      }
-      runtimeDb.close();
-    }
+    await expect(
+      screen.findByRole("heading", { name: "Chat thread not found" }),
+    ).resolves.toBeInTheDocument();
+    expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByPlaceholderText(PLACEHOLDER)).not.toBeInTheDocument();
+    expect(activeAgentErrorLogged()).toBeFalsy();
   });
 
   it("keeps a notification-opened thread pending until foreground metadata catch-up", async () => {
@@ -325,7 +280,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    const runtimeDb = await primeRuntimeChatDb();
+    await primeRuntimeChatDb();
     let notificationThreadAvailable = false;
     let snapshotRequests = 0;
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -371,63 +326,59 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, { events: [], hasMore: false });
     });
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/chats/${OTHER_THREAD_ID}`,
-        user: { id: IDB_USER_ID, fullName: "Test User" },
-        org: {
-          activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
-          memberships: [{ id: IDB_ORG_ID }],
-        },
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${OTHER_THREAD_ID}`,
+      user: { id: idbUserId(), fullName: "Test User" },
+      org: {
+        activeOrg: { id: idbOrgId(), name: "Default Org" },
+        memberships: [{ id: idbOrgId() }],
+      },
+    });
 
-      await expect(
-        screen.findByPlaceholderText(PLACEHOLDER),
-      ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    expect(
+      document.querySelector(
+        `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
+      ),
+    ).not.toBeNull();
+    const completedSnapshotRequests = snapshotRequests;
+    expect(completedSnapshotRequests).toBeGreaterThan(0);
+
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    notificationThreadAvailable = true;
+    context.store.set(navigateToChat$, THREAD_ID);
+
+    expect(
+      screen.queryByRole("heading", { name: "Chat thread not found" }),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector(
+        `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
+      ),
+    ).not.toBeNull();
+    expect(snapshotRequests).toBe(completedSnapshotRequests);
+
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => {
       expect(
         document.querySelector(
-          `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
+          `[data-chat-thread-container-id="${THREAD_ID}"]`,
         ),
       ).not.toBeNull();
-      const completedSnapshotRequests = snapshotRequests;
-      expect(completedSnapshotRequests).toBeGreaterThan(0);
-
-      visibilityState = "hidden";
-      document.dispatchEvent(new Event("visibilitychange"));
-      notificationThreadAvailable = true;
-      context.store.set(navigateToChat$, THREAD_ID);
-
-      expect(
-        screen.queryByRole("heading", { name: "Chat thread not found" }),
-      ).not.toBeInTheDocument();
-      expect(
-        document.querySelector(
-          `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
-        ),
-      ).not.toBeNull();
-      expect(snapshotRequests).toBe(completedSnapshotRequests);
-
-      visibilityState = "visible";
-      document.dispatchEvent(new Event("visibilitychange"));
-
-      await waitFor(() => {
-        expect(
-          document.querySelector(
-            `[data-chat-thread-container-id="${THREAD_ID}"]`,
-          ),
-        ).not.toBeNull();
-      });
-      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
-        "Notification thread",
-      );
-      expect(
-        screen.queryByRole("heading", { name: "Chat thread not found" }),
-      ).not.toBeInTheDocument();
-      expect(snapshotRequests).toBeGreaterThan(completedSnapshotRequests);
-    } finally {
-      runtimeDb.close();
-    }
+    });
+    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+      "Notification thread",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Chat thread not found" }),
+    ).not.toBeInTheDocument();
+    expect(snapshotRequests).toBeGreaterThan(completedSnapshotRequests);
   });
 
   it("renders from cached thread metadata without waiting for remote sync", async () => {
@@ -449,25 +400,18 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, { events: [], hasMore: false });
     });
 
-    try {
-      setupChatPage();
-      await remoteEventsRequested.promise;
+    setupChatPage();
+    await remoteEventsRequested.promise;
 
-      await expect(
-        screen.findByPlaceholderText(PLACEHOLDER),
-      ).resolves.toBeInTheDocument();
-      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
-        "aria-hidden",
-        "true",
-      );
-      expect(releaseRemoteEvents.settled()).toBeFalsy();
-      expect(activeAgentErrorLogged()).toBeFalsy();
-    } finally {
-      if (!releaseRemoteEvents.settled()) {
-        releaseRemoteEvents.resolve();
-      }
-      runtimeDb.close();
-    }
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(releaseRemoteEvents.settled()).toBeFalsy();
+    expect(activeAgentErrorLogged()).toBeFalsy();
   });
 
   it("renders IndexedDB rows without an empty state while mark-read is blocked", async () => {
@@ -534,31 +478,21 @@ describe("okou chat thread IndexedDB fallback", () => {
     });
     const emptyThread = observeEmptyThreadMessage();
 
-    try {
-      setupChatPage();
-      await markReadStarted.promise;
+    setupChatPage();
+    await markReadStarted.promise;
 
-      await expect(
-        screen.findByText(cachedMessage),
-      ).resolves.toBeInTheDocument();
-      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-      expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
-      expect(emptyThread.wasShown()).toBeFalsy();
-      expect(releaseMarkRead.settled()).toBeFalsy();
-    } finally {
-      emptyThread.disconnect();
-      if (!releaseMarkRead.settled()) {
-        releaseMarkRead.resolve();
-      }
-      runtimeDb.close();
-    }
+    await expect(screen.findByText(cachedMessage)).resolves.toBeInTheDocument();
+    expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
+    expect(emptyThread.wasShown()).toBeFalsy();
+    expect(releaseMarkRead.settled()).toBeFalsy();
   });
 
   it("renders remote rows without an empty state while mark-read is blocked", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
-    const runtimeDb = await primeRuntimeChatDb();
+    await primeRuntimeChatDb();
     const snapshotUrl =
       "https://r2.example.com/chat-events/loading-handoff.ndjson.gz";
     const snapshotBodyRequested = context.mocks.deferred<void>();
@@ -661,40 +595,33 @@ describe("okou chat thread IndexedDB fallback", () => {
         uncoveredLoadingGap = true;
       }
     });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        observer.disconnect();
+      },
+      { once: true },
+    );
     const emptyThread = observeEmptyThreadMessage();
-    try {
-      setupChatPage();
-      await snapshotBodyRequested.promise;
+    setupChatPage();
+    await snapshotBodyRequested.promise;
 
-      await waitFor(() => {
-        expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
+    await waitFor(() => {
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
 
-      releaseSnapshotBody.resolve();
-      await markReadStarted.promise;
+    releaseSnapshotBody.resolve();
+    await markReadStarted.promise;
 
-      await expect(
-        screen.findByText(USER_MESSAGE),
-      ).resolves.toBeInTheDocument();
-      await expect(
-        screen.findByText(ASSISTANT_MESSAGE),
-      ).resolves.toBeInTheDocument();
-      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-      expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
-      expect(emptyThread.wasShown()).toBeFalsy();
-      expect(uncoveredLoadingGap).toBeFalsy();
-      expect(releaseMarkRead.settled()).toBeFalsy();
-    } finally {
-      observer.disconnect();
-      emptyThread.disconnect();
-      if (!releaseSnapshotBody.settled()) {
-        releaseSnapshotBody.resolve();
-      }
-      if (!releaseMarkRead.settled()) {
-        releaseMarkRead.resolve();
-      }
-      runtimeDb.close();
-    }
+    await expect(screen.findByText(USER_MESSAGE)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(ASSISTANT_MESSAGE),
+    ).resolves.toBeInTheDocument();
+    expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
+    expect(emptyThread.wasShown()).toBeFalsy();
+    expect(uncoveredLoadingGap).toBeFalsy();
+    expect(releaseMarkRead.settled()).toBeFalsy();
   });
 });

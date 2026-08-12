@@ -87,15 +87,15 @@ describe("model-first canonical catalog", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
       "claude-fable-5",
       "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "claude-sonnet-4-6",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-sonnet-4-6",
-      "deepseek-v4-flash",
       "deepseek-v4-pro",
+      "deepseek-v4-flash",
     ]);
   });
 
@@ -300,15 +300,15 @@ describe("model-first canonical catalog", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
       "claude-fable-5",
       "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "claude-sonnet-4-6",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-sonnet-4-6",
-      "deepseek-v4-flash",
       "deepseek-v4-pro",
+      "deepseek-v4-flash",
     ]);
     expect(SUPPORTED_RUN_MODELS).toContain("gpt-5.5");
     expect(SUPPORTED_RUN_MODELS).toContain("claude-sonnet-4-6");

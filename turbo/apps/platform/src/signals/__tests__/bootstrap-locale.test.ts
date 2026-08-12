@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import indexHtml from "../../../index.html?raw";
 import { setupPage } from "../../__tests__/page-helper.ts";
@@ -6,6 +6,7 @@ import { formatAppNumber } from "../../i18n/format.ts";
 import { DEFAULT_LOCALE, resources } from "../../i18n/resources.ts";
 import { i18n } from "../../i18n/index.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 import { locale$, setLocale$ } from "../locale.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -13,6 +14,7 @@ const ACTIVE_ORG_STORAGE_KEY = "clerk-active-org-id";
 const TEST_ORG_ID = "org_inline_locale";
 const TEST_LOCALE_STORAGE_KEY = `vm0:locale:${TEST_ORG_ID}`;
 const testLocaleStorage = localStorageSignals(TEST_LOCALE_STORAGE_KEY);
+const activeOrgIdStorage = sessionStorageSignals(ACTIVE_ORG_STORAGE_KEY);
 
 type LocaleEntrypointScript = (
   windowObject: Window,
@@ -42,6 +44,7 @@ function getInlineScriptSource(marker: string, surface: string): string {
 }
 
 function executeLocaleEntrypoint(): void {
+  bindBootstrapStateToSignal();
   const executeEntrypointScript = new Function(
     "window",
     "document",
@@ -54,6 +57,7 @@ function executeLocaleEntrypoint(): void {
 }
 
 function executeBrowserCompatibilityEntrypoint(userAgent: string): void {
+  bindBootstrapStateToSignal();
   const executeEntrypointScript = new Function(
     "window",
     "document",
@@ -71,6 +75,7 @@ function executeBrowserCompatibilityEntrypoint(userAgent: string): void {
 }
 
 function executeMetadataEntrypoint(): void {
+  bindBootstrapStateToSignal();
   const executeEntrypointScript = new Function(
     "window",
     "document",
@@ -82,19 +87,21 @@ function executeMetadataEntrypoint(): void {
 
 const context = testContext();
 
-afterEach(() => {
-  sessionStorage.removeItem(ACTIVE_ORG_STORAGE_KEY);
-  Reflect.deleteProperty(window, "__vm0BrowserSupported");
-  Reflect.deleteProperty(window, "__vm0BrowserUpgrade");
-  Reflect.deleteProperty(window, "__vm0PreBundleCopy");
-  delete document.documentElement.dataset.appBrandName;
-  delete document.documentElement.dataset.appHeadManaged;
-  delete document.documentElement.dataset.browserUpgradeTarget;
-  delete document.documentElement.dataset.browserSupported;
-  testLocaleStorage.updateRaw(() => {
-    return null;
-  });
-});
+function bindBootstrapStateToSignal(): void {
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      Reflect.deleteProperty(window, "__vm0BrowserSupported");
+      Reflect.deleteProperty(window, "__vm0BrowserUpgrade");
+      Reflect.deleteProperty(window, "__vm0PreBundleCopy");
+      delete document.documentElement.dataset.appBrandName;
+      delete document.documentElement.dataset.appHeadManaged;
+      delete document.documentElement.dataset.browserUpgradeTarget;
+      delete document.documentElement.dataset.browserSupported;
+    },
+    { once: true },
+  );
+}
 
 describe("bootstrap locale", () => {
   it("normalizes a Japanese browser language before bundle render", () => {
@@ -281,19 +288,22 @@ describe("bootstrap locale", () => {
     ).toBe("2 jam");
 
     const indonesianAgents = resources["id-ID"].agents;
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        i18n.addResourceBundle("id-ID", "agents", indonesianAgents, true, true);
+      },
+      { once: true },
+    );
     i18n.removeResourceBundle("id-ID", "agents");
-    try {
-      expect(
-        i18n.t(
-          ($) => {
-            return $.fallbackName;
-          },
-          { ns: "agents" },
-        ),
-      ).toBe("Agent");
-    } finally {
-      i18n.addResourceBundle("id-ID", "agents", indonesianAgents, true, true);
-    }
+    expect(
+      i18n.t(
+        ($) => {
+          return $.fallbackName;
+        },
+        { ns: "agents" },
+      ),
+    ).toBe("Agent");
 
     const metadata = document.createElement("meta");
     metadata.name = "description";
@@ -336,21 +346,17 @@ describe("bootstrap locale", () => {
   it("detects German from the browser before a workspace is active", () => {
     context.mocks.browser.language("de");
 
-    try {
-      executeLocaleEntrypoint();
+    executeLocaleEntrypoint();
 
-      expect(document.documentElement.lang).toBe("de-DE");
-      expect(window.__vm0PreBundleCopy).toMatchObject({
-        loading: {
-          ariaLabel: "Ihr Arbeitsbereich wird geladen",
-        },
-        metadata: {
-          title: "Zero — Ihr KI-Kollege von vm0",
-        },
-      });
-    } finally {
-      document.documentElement.lang = DEFAULT_LOCALE;
-    }
+    expect(document.documentElement.lang).toBe("de-DE");
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "Ihr Arbeitsbereich wird geladen",
+      },
+      metadata: {
+        title: "Zero — Ihr KI-Kollege von vm0",
+      },
+    });
   });
 
   it("loads French bundles with localized formatting, plurals, and English fallback", async () => {
@@ -414,7 +420,7 @@ describe("bootstrap locale", () => {
 
   it("uses the cached locale across pre-bundle UI and i18next", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "id-ID");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
@@ -468,6 +474,19 @@ describe("bootstrap locale", () => {
     });
 
     const indonesianAgentResources = resources["id-ID"].agents;
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        i18n.addResourceBundle(
+          "id-ID",
+          "agents",
+          indonesianAgentResources,
+          true,
+          true,
+        );
+      },
+      { once: true },
+    );
     i18n.removeResourceBundle("id-ID", "agents");
     expect(
       i18n.t(
@@ -477,20 +496,12 @@ describe("bootstrap locale", () => {
         { ns: "agents" },
       ),
     ).toBe("Save");
-    i18n.addResourceBundle(
-      "id-ID",
-      "agents",
-      indonesianAgentResources,
-      true,
-      true,
-    );
-
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
   it("loads German before bundle render and restores it from workspace cache", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "de-DE");
 
     executeLocaleEntrypoint();
@@ -574,7 +585,7 @@ describe("bootstrap locale", () => {
   });
 
   it("uses cached Spanish across pre-bundle UI and i18next", async () => {
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "es-ES");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
@@ -658,23 +669,26 @@ describe("bootstrap locale", () => {
     expect(i18n.hasResourceBundle("it-IT", "agents")).toBeTruthy();
 
     const italianCommon = structuredClone(resources["it-IT"].common);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        i18n.addResourceBundle("it-IT", "common", italianCommon, true, true);
+      },
+      { once: true },
+    );
     i18n.removeResourceBundle("it-IT", "common");
-    try {
-      expect(
-        i18n.t(($) => {
-          return $.settings.shared.save;
-        }),
-      ).toBe("Save");
-    } finally {
-      i18n.addResourceBundle("it-IT", "common", italianCommon, true, true);
-    }
+    expect(
+      i18n.t(($) => {
+        return $.settings.shared.save;
+      }),
+    ).toBe("Save");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
   it("restores cached French before the application bundle renders", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "fr-FR");
 
     executeLocaleEntrypoint();
@@ -706,7 +720,7 @@ describe("bootstrap locale", () => {
 
   it("uses cached Hindi across pre-bundle UI and i18next", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "hi-IN");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
@@ -756,6 +770,19 @@ describe("bootstrap locale", () => {
     });
 
     const hindiAgentResources = resources["hi-IN"].agents;
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        i18n.addResourceBundle(
+          "hi-IN",
+          "agents",
+          hindiAgentResources,
+          true,
+          true,
+        );
+      },
+      { once: true },
+    );
     i18n.removeResourceBundle("hi-IN", "agents");
     expect(
       i18n.t(
@@ -765,14 +792,12 @@ describe("bootstrap locale", () => {
         { ns: "agents" },
       ),
     ).toBe("Save");
-    i18n.addResourceBundle("hi-IN", "agents", hindiAgentResources, true, true);
-
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
   it("falls back to English for unsupported browser and cached locales", () => {
     context.mocks.browser.language("nl-NL");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "nl-NL");
 
     executeLocaleEntrypoint();

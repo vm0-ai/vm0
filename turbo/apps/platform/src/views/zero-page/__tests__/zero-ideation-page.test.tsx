@@ -3,7 +3,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -15,16 +15,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reloadConnectors$ } from "../../../signals/external/connectors.ts";
 import { setIdeationActiveTab$ } from "../../../signals/zero-page/zero-ideation.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
-import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 const PT_BR_PLACEHOLDER =
   "Peça para automatizar fluxos de trabalho, gerenciar tarefas...";
-
-afterEach(async () => {
-  await i18n.changeLanguage("en-US");
-  document.documentElement.lang = "en-US";
-});
 
 const agentId = "c0000000-0000-4000-a000-000000000001";
 

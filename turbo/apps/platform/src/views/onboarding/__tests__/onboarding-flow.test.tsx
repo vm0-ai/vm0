@@ -1056,14 +1056,6 @@ describe("onboarding flow", () => {
   });
 
   it("reports Onboarding Start and Checkout Start to Google Ads", async () => {
-    // Both conversions dedupe through sessionStorage, which outlives a single
-    // test in this file.
-    window.sessionStorage.removeItem(
-      "vm0.googleAdsOnboardingStartConversionRecorded",
-    );
-    window.sessionStorage.removeItem(
-      "vm0.googleAdsCheckoutStartConversionRecorded",
-    );
     const gtag = installGtagMock();
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
     mockChatLifecycle(context);

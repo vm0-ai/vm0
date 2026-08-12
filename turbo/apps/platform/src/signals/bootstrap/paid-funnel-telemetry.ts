@@ -4,13 +4,16 @@
 // Ads bids on (`Onboarding Start`, `Checkout Start`) fire from the same call
 // sites as their PostHog counterparts.
 
+import type { AdAttributionMetadata } from "@vm0/api-contracts/contracts/zero-attribution";
+import { command } from "ccstate";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import {
   fireGoogleAdsConversion,
   GOOGLE_ADS_CHECKOUT_START_SEND_TO,
   GOOGLE_ADS_ONBOARDING_START_SEND_TO,
 } from "./google-ads-conversion.ts";
-import { getStoredAdAttributionMetadata } from "./ad-attribution.ts";
+import { readStoredAdAttributionMetadata$ } from "./ad-attribution.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 import type { OnboardingRouteStep } from "../onboarding/onboarding-state.ts";
 
 const ONBOARDING_START_CONVERSION_KEY =
@@ -19,6 +22,12 @@ const CHECKOUT_START_CONVERSION_KEY =
   "vm0.googleAdsCheckoutStartConversionRecorded";
 const ONBOARDING_START_CONVERSION_VALUE_USD = 1;
 const CHECKOUT_START_CONVERSION_VALUE_USD = 1;
+const onboardingStartConversionStorage = sessionStorageSignals(
+  ONBOARDING_START_CONVERSION_KEY,
+);
+const checkoutStartConversionStorage = sessionStorageSignals(
+  CHECKOUT_START_CONVERSION_KEY,
+);
 
 // Ordered so `step_index` / `step_count` stay comparable across the three
 // template branches that share the same two-step shape.
@@ -34,18 +43,11 @@ const ONBOARDING_STEP_ORDER: readonly OnboardingRouteStep[] = [
   "video-run",
 ];
 
-function getSessionStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.sessionStorage;
-}
-
 type TelemetryProperties = Record<string, string | number | boolean>;
 
-function attributionProperties(): TelemetryProperties {
-  const attribution = getStoredAdAttributionMetadata();
+function attributionProperties(
+  attribution: AdAttributionMetadata | undefined,
+): TelemetryProperties {
   const properties: TelemetryProperties = {
     flow: "paid_onboarding",
     route_path: window.location.pathname,
@@ -62,59 +64,71 @@ function attributionProperties(): TelemetryProperties {
   return properties;
 }
 
-export function capturePaidOnboardingStepViewed(
-  step: OnboardingRouteStep,
-): void {
-  const stepIndex = ONBOARDING_STEP_ORDER.indexOf(step);
-  capturePaidOnboardingEvent("StepViewed", {
-    ...attributionProperties(),
-    step_key: step,
-    step_index: stepIndex,
-    step_count: ONBOARDING_STEP_ORDER.length,
-  });
+export const capturePaidOnboardingStepViewed$ = command(
+  ({ get, set }, step: OnboardingRouteStep): void => {
+    const stepIndex = ONBOARDING_STEP_ORDER.indexOf(step);
+    capturePaidOnboardingEvent("StepViewed", {
+      ...attributionProperties(set(readStoredAdAttributionMetadata$)),
+      step_key: step,
+      step_index: stepIndex,
+      step_count: ONBOARDING_STEP_ORDER.length,
+    });
 
-  // `Onboarding Start` counts one entry into the onboarding flow, so it is
-  // deduped per session rather than fired on every step view.
-  fireGoogleAdsConversion({
-    sendTo: GOOGLE_ADS_ONBOARDING_START_SEND_TO,
-    dedupeKey: ONBOARDING_START_CONVERSION_KEY,
-    dedupeValue: GOOGLE_ADS_ONBOARDING_START_SEND_TO,
-    value: ONBOARDING_START_CONVERSION_VALUE_USD,
-    storage: getSessionStorage(),
-  });
-}
+    // `Onboarding Start` counts one entry into the onboarding flow, so it is
+    // deduped per session rather than fired on every step view.
+    const conversionFired = fireGoogleAdsConversion({
+      sendTo: GOOGLE_ADS_ONBOARDING_START_SEND_TO,
+      dedupeValue: GOOGLE_ADS_ONBOARDING_START_SEND_TO,
+      value: ONBOARDING_START_CONVERSION_VALUE_USD,
+      storedDedupeValue: get(onboardingStartConversionStorage.get$),
+    });
+    if (conversionFired) {
+      set(
+        onboardingStartConversionStorage.set$,
+        GOOGLE_ADS_ONBOARDING_START_SEND_TO,
+      );
+    }
+  },
+);
 
-export function capturePaidOnboardingCheckoutCreated(
-  checkoutSource: string,
-): void {
-  capturePaidOnboardingEvent("CheckoutCreated", {
-    ...attributionProperties(),
-    checkout_source: checkoutSource,
-  });
-}
+export const capturePaidOnboardingCheckoutCreated$ = command(
+  ({ set }, checkoutSource: string): void => {
+    capturePaidOnboardingEvent("CheckoutCreated", {
+      ...attributionProperties(set(readStoredAdAttributionMetadata$)),
+      checkout_source: checkoutSource,
+    });
+  },
+);
 
-export function capturePaidOnboardingRedirectToStripe(
-  checkoutSource: string,
-): void {
-  capturePaidOnboardingEvent("RedirectToStripe", {
-    ...attributionProperties(),
-    checkout_source: checkoutSource,
-  });
+export const capturePaidOnboardingRedirectToStripe$ = command(
+  ({ get, set }, checkoutSource: string): void => {
+    capturePaidOnboardingEvent("RedirectToStripe", {
+      ...attributionProperties(set(readStoredAdAttributionMetadata$)),
+      checkout_source: checkoutSource,
+    });
 
-  fireGoogleAdsConversion({
-    sendTo: GOOGLE_ADS_CHECKOUT_START_SEND_TO,
-    dedupeKey: CHECKOUT_START_CONVERSION_KEY,
-    dedupeValue: GOOGLE_ADS_CHECKOUT_START_SEND_TO,
-    value: CHECKOUT_START_CONVERSION_VALUE_USD,
-    storage: getSessionStorage(),
-  });
-}
+    const conversionFired = fireGoogleAdsConversion({
+      sendTo: GOOGLE_ADS_CHECKOUT_START_SEND_TO,
+      dedupeValue: GOOGLE_ADS_CHECKOUT_START_SEND_TO,
+      value: CHECKOUT_START_CONVERSION_VALUE_USD,
+      storedDedupeValue: get(checkoutStartConversionStorage.get$),
+    });
+    if (conversionFired) {
+      set(
+        checkoutStartConversionStorage.set$,
+        GOOGLE_ADS_CHECKOUT_START_SEND_TO,
+      );
+    }
+  },
+);
 
-export function capturePaidOnboardingAppHandoff(prompt: string): void {
-  capturePaidOnboardingEvent("AppHandoff", {
-    ...attributionProperties(),
-    destination: "app",
-    prompt_present: prompt.trim().length > 0,
-    prompt_length: prompt.length,
-  });
-}
+export const capturePaidOnboardingAppHandoff$ = command(
+  ({ set }, prompt: string): void => {
+    capturePaidOnboardingEvent("AppHandoff", {
+      ...attributionProperties(set(readStoredAdAttributionMetadata$)),
+      destination: "app",
+      prompt_present: prompt.trim().length > 0,
+      prompt_length: prompt.length,
+    });
+  },
+);

@@ -27,7 +27,7 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
@@ -133,55 +133,6 @@ export function presentationTemplateGridScrollContainer(): HTMLElement {
     throw new Error("Presentation template grid scroll container not found");
   }
   return scrollContainer;
-}
-
-export function mockNavigatorUserAgent(userAgent: string): () => void {
-  const original = Object.getOwnPropertyDescriptor(navigator, "userAgent");
-  Object.defineProperty(navigator, "userAgent", {
-    configurable: true,
-    value: userAgent,
-  });
-  return () => {
-    if (original) {
-      Object.defineProperty(navigator, "userAgent", original);
-    } else {
-      delete (navigator as { userAgent?: string }).userAgent;
-    }
-  };
-}
-
-export function mockIPadOSNavigator(): () => void {
-  const userAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
-  const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
-  const maxTouchPoints = Object.getOwnPropertyDescriptor(
-    navigator,
-    "maxTouchPoints",
-  );
-  Object.defineProperties(navigator, {
-    userAgent: {
-      configurable: true,
-      value:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) " +
-        "AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15",
-    },
-    platform: { configurable: true, value: "MacIntel" },
-    maxTouchPoints: { configurable: true, value: 5 },
-  });
-  const restore = (
-    property: "userAgent" | "platform" | "maxTouchPoints",
-    descriptor: PropertyDescriptor | undefined,
-  ) => {
-    if (descriptor) {
-      Object.defineProperty(navigator, property, descriptor);
-    } else {
-      delete (navigator as Partial<Record<typeof property, unknown>>)[property];
-    }
-  };
-  return () => {
-    restore("userAgent", userAgent);
-    restore("platform", platform);
-    restore("maxTouchPoints", maxTouchPoints);
-  };
 }
 
 export function buildProvider(
@@ -534,14 +485,8 @@ export function mockAgentConnectorAuthorizations(
 
 export function trackTemplatePreviewImagePreloads(): {
   readonly srcs: readonly string[];
-  readonly restore: () => void;
 } {
   const srcs: string[] = [];
-  const originalGlobalImage = Object.getOwnPropertyDescriptor(
-    globalThis,
-    "Image",
-  );
-  const originalWindowImage = Object.getOwnPropertyDescriptor(window, "Image");
 
   class TestImagePreload {
     decoding = "";
@@ -564,42 +509,15 @@ export function trackTemplatePreviewImagePreloads(): {
   }
 
   const imageConstructor = TestImagePreload as unknown as typeof Image;
-  Object.defineProperty(globalThis, "Image", {
-    configurable: true,
-    value: imageConstructor,
-    writable: true,
-  });
-  Object.defineProperty(window, "Image", {
-    configurable: true,
-    value: imageConstructor,
-    writable: true,
-  });
+  vi.stubGlobal("Image", imageConstructor);
 
-  return {
-    srcs,
-    restore: () => {
-      if (originalGlobalImage) {
-        Object.defineProperty(globalThis, "Image", originalGlobalImage);
-      } else {
-        Reflect.deleteProperty(globalThis, "Image");
-      }
-      if (originalWindowImage) {
-        Object.defineProperty(window, "Image", originalWindowImage);
-      } else {
-        Reflect.deleteProperty(window, "Image");
-      }
-    },
-  };
+  return { srcs };
 }
 
-export function mockImmediateIdleCallback(): () => void {
-  const originalRequestIdleCallback = Object.getOwnPropertyDescriptor(
-    window,
+export function mockImmediateIdleCallback(): void {
+  vi.stubGlobal(
     "requestIdleCallback",
-  );
-  Object.defineProperty(window, "requestIdleCallback", {
-    configurable: true,
-    value: (callback: IdleRequestCallback): number => {
+    (callback: IdleRequestCallback): number => {
       callback({
         didTimeout: false,
         timeRemaining: () => {
@@ -608,20 +526,58 @@ export function mockImmediateIdleCallback(): () => void {
       });
       return 1;
     },
-    writable: true,
-  });
+  );
+}
 
-  return () => {
-    if (originalRequestIdleCallback) {
-      Object.defineProperty(
-        window,
-        "requestIdleCallback",
-        originalRequestIdleCallback,
-      );
-    } else {
-      Reflect.deleteProperty(window, "requestIdleCallback");
-    }
-  };
+export function mockUrlObjectMethods(
+  createObjectURLImplementation: (blob: Blob) => string,
+) {
+  const createObjectURLDescriptor = Object.getOwnPropertyDescriptor(
+    URL,
+    "createObjectURL",
+  );
+  const revokeObjectURLDescriptor = Object.getOwnPropertyDescriptor(
+    URL,
+    "revokeObjectURL",
+  );
+  const createObjectURL = vi.fn(createObjectURLImplementation);
+  const revokeObjectURL = vi.fn();
+  Object.defineProperties(URL, {
+    createObjectURL: {
+      configurable: true,
+      value: createObjectURL,
+    },
+    revokeObjectURL: {
+      configurable: true,
+      value: revokeObjectURL,
+    },
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (createObjectURLDescriptor) {
+        Object.defineProperty(
+          URL,
+          "createObjectURL",
+          createObjectURLDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(URL, "createObjectURL");
+      }
+      if (revokeObjectURLDescriptor) {
+        Object.defineProperty(
+          URL,
+          "revokeObjectURL",
+          revokeObjectURLDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(URL, "revokeObjectURL");
+      }
+    },
+    { once: true },
+  );
+
+  return { createObjectURL, revokeObjectURL };
 }
 
 export async function findComposerModel(label: string): Promise<HTMLElement> {
