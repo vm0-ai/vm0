@@ -83,10 +83,10 @@ export function createVideoTemplateAuthoringPacket(
     outputDir,
   } as const;
   const instructions = [
-    `# Zero generate video --template ${options.template.id}`,
+    `# Okou generate video --template ${options.template.id}`,
     "",
     "This is a federated generation source-selection packet for the current agent.",
-    "Zero is not generating this video on the server yet. The video template has already been selected by the caller - resolve it and generate the templated video.",
+    "Okou is not generating this video on the server yet. The video template has already been selected by the caller - resolve it and generate the templated video.",
     "",
     "## User Prompt",
     options.prompt,

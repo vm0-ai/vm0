@@ -32,7 +32,7 @@ async function resolveAgentId(
   if (!currentThreadId) {
     printChatUsageError(
       "ZERO_CHAT_THREAD_ID is not set",
-      "Pass --agent <agent-id> or run inside a Zero web chat thread.",
+      "Pass --agent <agent-id> or run inside a web chat thread.",
     );
   }
   if (!isUuid(currentThreadId)) {
@@ -70,15 +70,15 @@ export const createCommand = new Command()
     "after",
     `
 Examples:
-  Create a chat:     zero chat create "Launch plan"
-  Pick the model:    zero chat create "Launch plan" --model claude-sonnet-5
-  Enable priority:   zero chat create "Launch plan" --priority
-  Use standard:      zero chat create "Launch plan" --no-priority
-  Pick the agent:    zero chat create "Launch plan" --agent <agent-id>
-  Print JSON:        zero chat create "Launch plan" --json
+  Create a chat:     okou chat create "Launch plan"
+  Pick the model:    okou chat create "Launch plan" --model claude-sonnet-5
+  Enable priority:   okou chat create "Launch plan" --priority
+  Use standard:      okou chat create "Launch plan" --no-priority
+  Pick the agent:    okou chat create "Launch plan" --agent <agent-id>
+  Print JSON:        okou chat create "Launch plan" --json
 
 Notes:
-  - Creates an empty thread; send its first message with zero chat send
+  - Creates an empty thread; send its first message with okou chat send
   - Defaults --agent to the agent of ZERO_CHAT_THREAD_ID
   - Defaults --model to the model of the run that owns ZERO_TOKEN
   - Defaults priority to the priority of the current chat thread
@@ -91,7 +91,7 @@ Notes:
       if (!title) {
         printChatUsageError(
           "Chat title is required",
-          'Run: zero chat create "New title"',
+          'Run: okou chat create "New title"',
         );
       }
 
@@ -132,7 +132,7 @@ Notes:
       console.log("Send the first message:");
       console.log(
         chalk.cyan(
-          `  zero chat send --thread-id ${thread.threadId} --text "<message>"`,
+          `  okou chat send --thread-id ${thread.threadId} --text "<message>"`,
         ),
       );
     }),

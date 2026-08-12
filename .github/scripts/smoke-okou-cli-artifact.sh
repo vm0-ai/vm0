@@ -46,17 +46,17 @@ assert_clean_success() {
 }
 
 assert_clean_success okou okou-help --help
-assert_clean_success zero zero-help --help
+assert_clean_success zero zero-help --help # okou-cutover-audit: compatibility-only
 cmp "$tmp_dir/okou-help.stdout" "$tmp_dir/zero-help.stdout"
 grep -Fq "Usage: okou" "$tmp_dir/okou-help.stdout"
 grep -Fq "Okou CLI" "$tmp_dir/okou-help.stdout"
 
 assert_clean_success okou okou-version --version
-assert_clean_success zero zero-version --version
+assert_clean_success zero zero-version --version # okou-cutover-audit: compatibility-only
 cmp "$tmp_dir/okou-version.stdout" "$tmp_dir/zero-version.stdout"
 grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$tmp_dir/okou-version.stdout"
 
-assert_clean_success zero zero-agent-loop-help __agent-loop --help
+assert_clean_success zero zero-agent-loop-help __agent-loop --help # okou-cutover-audit: compatibility-only
 grep -Fq -- "--standby" "$tmp_dir/zero-agent-loop-help.stdout"
 
 okou_error_status=0

@@ -1,5 +1,5 @@
 /**
- * Tests for zero telegram download-file command.
+ * Tests for okou telegram download-file command.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -14,7 +14,7 @@ import chalk from "chalk";
 const DOWNLOAD_URL =
   "http://localhost:3000/api/zero/integrations/telegram/download-file";
 
-describe("zero telegram download-file command", () => {
+describe("okou telegram download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

@@ -8,7 +8,7 @@ import { sendCommand } from "../message/send";
 const FEISHU_MESSAGE_URL =
   "http://localhost:3000/api/zero/integrations/feishu/message";
 
-describe("zero feishu message send command", () => {
+describe("okou feishu message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((): never => {
     throw new Error("process.exit called");
   });

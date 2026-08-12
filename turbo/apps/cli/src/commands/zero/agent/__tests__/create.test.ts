@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent create command
+ * Tests for okou agent create command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -24,7 +24,7 @@ const mockAgent = {
   avatarUrl: null,
 };
 
-describe("zero agent create command", () => {
+describe("okou agent create command", () => {
   let mockExit: ReturnType<typeof vi.spyOn>;
   let mockConsoleLog: ReturnType<typeof vi.spyOn>;
   let mockConsoleError: ReturnType<typeof vi.spyOn>;
@@ -63,10 +63,10 @@ describe("zero agent create command", () => {
         "Next steps to authorize connectors for this agent:",
       );
       expect(logCalls).toContain(
-        "zero connector search <keyword> --agent comp_xyz789",
+        "okou connector search <keyword> --agent comp_xyz789",
       );
       expect(logCalls).toContain(
-        "zero connector status <slug> --agent comp_xyz789",
+        "okou connector status <slug> --agent comp_xyz789",
       );
     });
 

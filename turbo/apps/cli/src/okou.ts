@@ -1,4 +1,4 @@
-// Okou CLI entry point - standalone binary for zero platform commands
+// Okou CLI entry point - standalone binary for vm0 platform commands
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
@@ -108,7 +108,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "agent",
-    description: "View or manage zero agents",
+    description: "View or manage agents",
     load: async () => {
       return (await import("./commands/zero/agent")).zeroAgentCommand;
     },
@@ -246,7 +246,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "intro",
-    description: "Print Zero's self-introduction and capability guide",
+    description: "Print Okou's self-introduction and capability guide",
     load: async () => {
       return (await import("./commands/zero/intro")).zeroIntroCommand;
     },
@@ -275,7 +275,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "computer-use",
-    description: "Desktop app computer use through Zero CLI",
+    description: "Desktop app computer use through Okou CLI",
     load: async () => {
       return (await import("./commands/zero/computer-use"))
         .zeroComputerUseCommand;
@@ -319,28 +319,28 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "maps",
-    description: "Use managed zero maps services",
+    description: "Use managed Okou maps services",
     load: async () => {
       return (await import("./commands/zero/maps")).zeroMapsCommand;
     },
   },
   {
     name: "weather",
-    description: "Use managed Zero weather services",
+    description: "Use managed Okou weather services",
     load: async () => {
       return (await import("./commands/zero/weather")).zeroWeatherCommand;
     },
   },
   {
     name: "scrape",
-    description: "Scrape public web pages through managed zero scrape",
+    description: "Scrape public web pages through managed Okou scrape",
     load: async () => {
       return (await import("./commands/zero/scrape")).zeroScrapeCommand;
     },
   },
   {
     name: "people-search",
-    description: "Find professionals through managed zero people search",
+    description: "Find professionals through managed Okou people search",
     load: async () => {
       return (await import("./commands/zero/people-search"))
         .zeroPeopleSearchCommand;
@@ -348,7 +348,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "web-search",
-    description: "Search the public web through managed zero web search",
+    description: "Search the public web through managed Okou web search",
     load: async () => {
       return (await import("./commands/zero/web-search")).zeroWebSearchCommand;
     },
@@ -369,7 +369,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "finance",
-    description: "Query financial instruments through managed zero finance",
+    description: "Query financial instruments through managed Okou finance",
     load: async () => {
       return (await import("./commands/zero/finance")).zeroFinanceCommand;
     },
@@ -383,7 +383,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "banking",
-    description: "Use managed zero banking services",
+    description: "Use managed Okou banking services",
     load: async () => {
       return (await import("./commands/zero/banking")).zeroBankingCommand;
     },
@@ -484,112 +484,112 @@ export function buildZeroHelpText(
   const canReadHost = !payload || payload.capabilities.includes("host:read");
   const canWriteHost = !payload || payload.capabilities.includes("host:write");
   const examples = [
-    "  Check a connector?     zero connector check --env-name <ENV_NAME>",
+    "  Check a connector?     okou connector check --env-name <ENV_NAME>",
     ...(payload && !payload.capabilities.includes("billing:read")
       ? []
-      : ["  Check credits?         zero credit"]),
+      : ["  Check credits?         okou credit"]),
     ...(payload && !payload.capabilities.includes("billing:write")
       ? []
-      : ["  Buy credits?           zero credit 20000"]),
+      : ["  Buy credits?           okou credit 20000"]),
     ...commandExampleIfVisible(
       "upgrade",
-      "  Upgrade plan?         zero upgrade pro",
+      "  Upgrade plan?         okou upgrade pro",
       payload,
     ),
-    "  Send a Slack message?  zero slack message send --help",
+    "  Send a Slack message?  okou slack message send --help",
     ...commandExampleIfVisible(
       "feishu",
-      "  Send Feishu?          zero feishu message send --help",
+      "  Send Feishu?          okou feishu message send --help",
       payload,
     ),
     ...commandExampleIfVisible(
       "mail",
-      "  Link Gmail draft?     zero mail link --help",
+      "  Link Gmail draft?     okou mail link --help",
       payload,
     ),
-    "  Send Teams?           zero teams message send --help",
-    "  Upload Teams?         zero teams upload-file --help",
-    "  Download Teams?       zero teams download-file --help",
-    "  Upload GitHub?        zero github upload-file --help",
-    "  Download GitHub?      zero github download-file --help",
-    "  List Telegram bots?    zero telegram bot list",
-    "  Send Telegram?         zero telegram message send --help",
-    "  Upload Telegram?       zero telegram upload-file --help",
-    "  Download Telegram?     zero telegram download-file --help",
-    "  Send AgentPhone?       zero phone message --help",
-    "  Upload AgentPhone?     zero phone upload-file --help",
-    "  Download AgentPhone?   zero phone download-file --help",
-    "  List models?          zero model ls",
-    "  Model routing?        zero model-provider ls",
-    "  Update yourself?       zero agent --help",
-    "  Manage workflows?     zero workflow --help",
+    "  Send Teams?           okou teams message send --help",
+    "  Upload Teams?         okou teams upload-file --help",
+    "  Download Teams?       okou teams download-file --help",
+    "  Upload GitHub?        okou github upload-file --help",
+    "  Download GitHub?      okou github download-file --help",
+    "  List Telegram bots?    okou telegram bot list",
+    "  Send Telegram?         okou telegram message send --help",
+    "  Upload Telegram?       okou telegram upload-file --help",
+    "  Download Telegram?     okou telegram download-file --help",
+    "  Send AgentPhone?       okou phone message --help",
+    "  Upload AgentPhone?     okou phone upload-file --help",
+    "  Download AgentPhone?   okou phone download-file --help",
+    "  List models?          okou model ls",
+    "  Model routing?        okou model-provider ls",
+    "  Update yourself?       okou agent --help",
+    "  Manage workflows?     okou workflow --help",
     ...commandExampleIfVisible(
       "chat",
-      '  Rename this chat?     zero chat rename "New title"',
+      '  Rename this chat?     okou chat rename "New title"',
       payload,
     ),
-    "  Introduce Zero?       zero intro",
-    "  List generators?       zero generate --help",
-    '  Generate image?        zero generate image --raw-prompt "..."',
-    '  Generate website?      zero generate website --prompt "..."',
-    '  Generate voice?        zero generate voice --prompt "..."',
+    "  Introduce Okou?       okou intro",
+    "  List generators?       okou generate --help",
+    '  Generate image?        okou generate image --raw-prompt "..."',
+    '  Generate website?      okou generate website --prompt "..."',
+    '  Generate voice?        okou generate voice --prompt "..."',
     ...(canWriteHost
-      ? ["  Host a static site?    zero host ./dist --site my-site --spa"]
+      ? ["  Host a static site?    okou host ./dist --site my-site --spa"]
       : []),
     ...(canReadHost
-      ? ["  Clone hosted site?     zero host clone <public-slug>"]
+      ? ["  Clone hosted site?     okou host clone <public-slug>"]
       : []),
     ...commandExampleIfVisible(
       "maps",
-      '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
+      '  Get directions?       okou maps directions --origin "SFO" --destination "Mountain View" --json',
       payload,
     ),
     ...commandExampleIfVisible(
       "weather",
-      "  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json",
+      "  Check weather?        okou weather current --lat 39.9042 --lng 116.4074 --json",
       payload,
     ),
     ...commandExampleIfVisible(
       "scrape",
-      "  Scrape a web page?    zero scrape https://example.com --json",
+      "  Scrape a web page?    okou scrape https://example.com --json",
       payload,
     ),
     ...commandExampleIfVisible(
       "web-search",
-      '  Search the public web? zero web-search "latest news" --json',
+      '  Search the public web? okou web-search "latest news" --json',
       payload,
     ),
     ...commandExampleIfVisible(
       "recognize",
-      '  Recognize an image?    zero recognize --file ./image.png --prompt "Describe it"',
+      '  Recognize an image?    okou recognize --file ./image.png --prompt "Describe it"',
       payload,
     ),
     ...commandExampleIfVisible(
       "translate",
-      '  Translate text?        zero translate "Hello" --to Chinese',
+      '  Translate text?        okou translate "Hello" --to Chinese',
       payload,
     ),
     ...commandExampleIfVisible(
       "finance",
-      "  Get a market quote?   zero finance quote AAPL --json",
+      "  Get a market quote?   okou finance quote AAPL --json",
       payload,
     ),
     ...commandExampleIfVisible(
       "seo",
-      '  Research SEO data?    zero seo serp "technical seo" --json',
+      '  Research SEO data?    okou seo serp "technical seo" --json',
       payload,
     ),
     ...commandExampleIfVisible(
       "people-search",
-      '  Find a professional?   zero people-search "platform engineering leaders" --json',
+      '  Find a professional?   okou people-search "platform engineering leaders" --json',
       payload,
     ),
     ...commandExampleIfVisible(
       "banking",
-      "  Read bank data?       zero banking accounts --json",
+      "  Read bank data?       okou banking accounts --json",
       payload,
     ),
-    "  Check your identity?   zero whoami",
+    "  Check your identity?   okou whoami",
   ];
 
   return `\nExamples:\n${examples.join("\n")}`;
@@ -622,9 +622,7 @@ declare const __CLI_VERSION__: string;
 
 program
   .name("okou")
-  .description(
-    "Okou CLI — interact with the zero platform from inside the sandbox",
-  )
+  .description("Okou CLI — interact with vm0 from inside the sandbox")
   .version(__CLI_VERSION__)
   .addHelpText("after", () => {
     return buildZeroHelpText();

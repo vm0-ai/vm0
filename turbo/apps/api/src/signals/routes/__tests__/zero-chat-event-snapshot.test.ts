@@ -92,6 +92,20 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
+async function replaceHeadWithRetiredVersion(
+  threadId: string,
+): Promise<string> {
+  const head = await readChatEventSnapshotHead(context, threadId);
+  const body = readFakeChatEventObject(head.object_key);
+  if (body === undefined) {
+    throw new Error("Expected a current snapshot object");
+  }
+  const retiredKey = `chat-events/${threadId}/retired-v3-${randomUUID()}.ndjson.gz`;
+  writeFakeChatEventObject(retiredKey, body);
+  await setChatEventSnapshotHeadVersion(context, threadId, 3, retiredKey);
+  return retiredKey;
+}
+
 describe("chat event snapshot read endpoints", () => {
   beforeEach(() => {
     installFakeChatEventR2(context);
@@ -262,6 +276,57 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
+  it("immediately retires snapshot versions below the supported minimum", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot version retirement agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `snapshot-version-retirement-${randomUUID()}`,
+    });
+
+    await projectChatEventSearch();
+    await runSnapshotCron();
+    const retiredKey = await replaceHeadWithRetiredVersion(threadId);
+
+    const retired = await runSnapshotCron();
+    expect(retired.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(1);
+    expect(readFakeChatEventObject(retiredKey)).toBeUndefined();
+    const current = await readChatEventSnapshotHead(context, threadId);
+    expect(current).toMatchObject({
+      archive_schema_version: 4,
+      snapshot_count: 1,
+    });
+  }, 60_000);
+
+  it("keeps database retirement successful when R2 deletion fails", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot best-effort cleanup agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `snapshot-best-effort-${randomUUID()}`,
+    });
+
+    await projectChatEventSearch();
+    await runSnapshotCron();
+    const retiredKey = await replaceHeadWithRetiredVersion(threadId);
+    installFakeChatEventR2(context, undefined, undefined, () => {
+      return Promise.reject(new Error("R2 delete unavailable"));
+    });
+
+    const retired = await runSnapshotCron();
+    expect(retired.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(1);
+    expect(readFakeChatEventObject(retiredKey)).toBeDefined();
+    const current = await readChatEventSnapshotHead(context, threadId);
+    expect(current).toMatchObject({
+      archive_schema_version: 4,
+      snapshot_count: 1,
+    });
+  }, 60_000);
+
   it("garbage-collects unreferenced snapshot objects", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
@@ -323,5 +388,30 @@ describe("chat event snapshot read endpoints", () => {
     const newHead = await readChatEventSnapshotHead(context, threadId);
     expect(newHead.object_key).not.toBe(head.object_key);
     expect(readFakeChatEventObject(newHead.object_key)).toBeDefined();
+  }, 120_000);
+
+  it("limits object cleanup to the fixed per-pass quota", async () => {
+    const shard = "ffe";
+    const marker = randomUUID();
+    const keys = Array.from({ length: 1001 }, (_, index) => {
+      const subpartition = (index % 16).toString(16);
+      return `chat-events/${shard}${subpartition}-quota-${marker}-${index.toString().padStart(4, "0")}.ndjson.gz`;
+    });
+    for (const key of keys) {
+      writeFakeChatEventObject(key, Buffer.from("orphan"));
+    }
+    mockNow(new Date(now() + 8 * 24 * 60 * 60 * 1000));
+    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", shard);
+    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", "false");
+
+    const result = await runSnapshotCron();
+
+    expect(
+      result.retiredSnapshotReferencesDeleted + result.r2ObjectsDeleted,
+    ).toBe(1000);
+    const remaining = keys.filter((key) => {
+      return readFakeChatEventObject(key) !== undefined;
+    });
+    expect(remaining.length).toBeGreaterThanOrEqual(1);
   }, 120_000);
 });

@@ -58,7 +58,7 @@ function configureProvider(): void {
   mockEnv("ZERO_FINANCE_APIDOJO_TOKEN", "test-rapidapi-token");
 }
 
-describe("zero finance routes", () => {
+describe("okou finance routes", () => {
   it("rejects zero tokens without finance:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {

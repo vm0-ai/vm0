@@ -127,11 +127,11 @@ export const zeroLogsCommand = new Command()
     "after",
     `
 Examples:
-  zero logs list
-  zero logs <runId>
-  zero logs <runId> --tail 10
-  zero logs <runId> --all
-  zero logs search "error"`,
+  okou logs list
+  okou logs <runId>
+  okou logs <runId> --tail 10
+  okou logs <runId> --all
+  okou logs search "error"`,
   )
   .action(
     withErrorHandler(
@@ -153,7 +153,7 @@ Examples:
           console.error(
             chalk.red(`✗ Invalid run ID "${runId}" — expected a UUID`),
           );
-          console.error(chalk.dim("  Run: zero logs list    to find run IDs"));
+          console.error(chalk.dim("  Run: okou logs list    to find run IDs"));
           process.exit(1);
         }
 

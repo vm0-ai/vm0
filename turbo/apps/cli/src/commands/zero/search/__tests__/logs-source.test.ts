@@ -1,5 +1,5 @@
 /**
- * Parity test for `zero search --source logs` vs `zero logs search`.
+ * Parity test for `okou search --source logs` vs `okou logs search`.
  *
  * Entry point: parseAsync() on both commands
  * Mock (external): Web API via MSW (same stub for both)
@@ -57,7 +57,7 @@ async function capture(
   return lines.join("\n");
 }
 
-describe("zero search --source logs parity with zero logs search", () => {
+describe("okou search --source logs parity with okou logs search", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

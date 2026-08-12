@@ -20,8 +20,8 @@ export const downloadFileCommand = new Command()
     "after",
     `
 Examples:
-  Download to default temp path: zero teams download-file <file-id>
-  Download to explicit path:     zero teams download-file <file-id> -o /tmp/file.png
+  Download to default temp path: okou teams download-file <file-id>
+  Download to explicit path:     okou teams download-file <file-id> -o /tmp/file.png
 
 Output:
   Prints a JSON object to stdout on success:

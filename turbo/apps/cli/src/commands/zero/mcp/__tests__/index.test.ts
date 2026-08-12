@@ -208,7 +208,7 @@ function outputText(spy: ReturnType<typeof vi.spyOn>): string {
   return spy.mock.calls.flat().join("\n");
 }
 
-describe("zero mcp command", () => {
+describe("okou mcp command", () => {
   const exit = vi.spyOn(process, "exit").mockImplementation(processExit);
   const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -250,7 +250,7 @@ describe("zero mcp command", () => {
       ]),
     );
 
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
+    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
 
     expect(consoleLog).toHaveBeenCalledWith(
       JSON.stringify({
@@ -302,7 +302,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "list-tools",
       "_acme-mcp",
       "--json",
@@ -346,7 +346,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "search",
@@ -401,7 +401,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "search",
@@ -445,7 +445,7 @@ describe("zero mcp command", () => {
     try {
       await zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -477,7 +477,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -498,7 +498,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -520,7 +520,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -556,7 +556,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "side-effect",
@@ -593,7 +593,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "missing",
@@ -624,7 +624,7 @@ describe("zero mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("MCP server request failed");
@@ -633,7 +633,7 @@ describe("zero mcp command", () => {
   it("treats an empty discovery response as an ordinary empty result", async () => {
     server.use(stubRunMcpConnectors([]));
 
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
+    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
 
     expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
   });
@@ -654,7 +654,7 @@ describe("zero mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("Discovery failed");
@@ -668,7 +668,7 @@ describe("zero mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
     ).rejects.toThrow("process.exit called");
   });
 
@@ -679,7 +679,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "list-tools",
         "_not-admitted",
       ]),
@@ -701,7 +701,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -736,7 +736,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "search",
@@ -772,7 +772,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "side-effect",
@@ -809,7 +809,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "missing",
@@ -847,7 +847,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(listRequests).toBe(2);
@@ -865,7 +865,7 @@ describe("zero mcp command", () => {
     stubMcpServer({ era: "modern", pages: [tools] });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("2,000 tool limit");
@@ -893,7 +893,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(listRequests).toBe(100);
@@ -924,7 +924,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("16 MiB aggregate limit");
@@ -949,7 +949,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain(
@@ -969,7 +969,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",

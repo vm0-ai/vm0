@@ -33,7 +33,7 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List agent run logs")
-  .option("--agent <id>", "Filter by Zero agent ID")
+  .option("--agent <id>", "Filter by agent ID")
   .option(
     "--status <status>",
     "Filter by status (queued|pending|running|completed|failed|timeout|cancelled)",
@@ -47,11 +47,11 @@ export const listCommand = new Command()
     "after",
     `
 Examples:
-  zero logs list
-  zero logs list --agent 123e4567-e89b-12d3-a456-426614174000
-  zero logs list --status completed --limit 10
-  zero logs list --since 1h
-  zero logs list --since 1d --status completed`,
+  okou logs list
+  okou logs list --agent 123e4567-e89b-12d3-a456-426614174000
+  okou logs list --status completed --limit 10
+  okou logs list --since 1h
+  okou logs list --since 1d --status completed`,
   )
   .action(
     withErrorHandler(
@@ -74,7 +74,7 @@ Examples:
             ),
           );
           console.error(
-            chalk.dim("  Run: zero logs list    to find agent IDs"),
+            chalk.dim("  Run: okou logs list    to find agent IDs"),
           );
           process.exit(1);
         }

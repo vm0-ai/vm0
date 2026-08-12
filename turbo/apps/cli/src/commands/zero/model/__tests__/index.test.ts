@@ -41,7 +41,7 @@ const MODEL_POLICIES_RESPONSE = {
   ],
 };
 
-describe("zero model command", () => {
+describe("okou model command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
@@ -84,7 +84,7 @@ describe("zero model command", () => {
     expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).not.toContain("price tier: $$$");
-    expect(logCalls).toContain("zero model-provider set --help");
+    expect(logCalls).toContain("okou model-provider set --help");
   });
 
   it("should point web users at the input-side model selector", async () => {

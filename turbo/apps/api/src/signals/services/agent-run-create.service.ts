@@ -354,9 +354,9 @@ type CreateRunBody = Omit<
 type DbTransaction = Tx;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
-  "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
+  "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `okou web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 const ZERO_IMAGE_RECOGNITION_PROMPT =
-  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `zero recognize --file <image-path> --prompt "<instruction>"`.';
+  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou recognize --file <image-path> --prompt "<instruction>"`.';
 
 function withZeroTokenSecret(
   body: CreateRunBody,

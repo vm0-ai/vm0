@@ -14,7 +14,7 @@
  * - computed-const-args-package-scope: Enforce package scope for constant functions
  * - no-store-in-params: Prevent Store type in function params
  * - no-side-effect-in-render: Prevent side-effect calls (set, detach) directly in render
- * - no-non-zero-api: Enforce that platform app only calls /api/zero/ endpoints
+ * - no-non-zero-api: Enforce that platform app only calls branded API endpoints
  * - command-async-signal: Async commands must accept AbortSignal as last param
  * - no-getter-setter-params: Functions must not accept ccstate Getter/Setter — use command()
  * - no-accessor-escape: ccstate get/set accessors must only be called directly

@@ -1631,7 +1631,7 @@ describe("activity detail polling", () => {
       screen.getByText("Configure a model provider to start running agents."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("$ zero model-provider set --help"),
+      screen.getByText("$ okou model-provider set --help"),
     ).toBeInTheDocument();
   });
 
@@ -1671,7 +1671,7 @@ describe("activity detail polling", () => {
                       type: "toolCall",
                       id: "weather-help",
                       name: "bash",
-                      arguments: { command: "zero weather --help" },
+                      arguments: { command: "okou weather --help" },
                     },
                   ],
                 },
@@ -1688,7 +1688,7 @@ describe("activity detail polling", () => {
                   role: "toolResult",
                   toolCallId: "weather-help",
                   toolName: "bash",
-                  content: [{ type: "text", text: "Usage: zero weather" }],
+                  content: [{ type: "text", text: "Usage: okou weather" }],
                   isError: false,
                 },
               },
@@ -1727,13 +1727,13 @@ describe("activity detail polling", () => {
     await waitFor(() => {
       expect(screen.getByText("I will check the weather.")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("zero weather --help")).toHaveLength(2);
+    expect(screen.getAllByText("okou weather --help")).toHaveLength(2);
     expect(
       screen.getByText("The weather command needs coordinates."),
     ).toBeInTheDocument();
     const assistantMessage = screen.getByText("I will check the weather.");
     const handoffMarker = screen.getByText("Handoff · API Server → Sandbox");
-    const toolResult = screen.getByText("Usage: zero weather");
+    const toolResult = screen.getByText("Usage: okou weather");
     expect(
       assistantMessage.compareDocumentPosition(handoffMarker) &
         Node.DOCUMENT_POSITION_FOLLOWING,

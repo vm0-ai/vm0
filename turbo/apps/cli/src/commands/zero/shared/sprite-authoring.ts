@@ -1,7 +1,7 @@
 /**
  * Sprite generation source-selection packet.
  *
- * `zero generate sprite` does not run a server-side pipeline. Like the website
+ * `okou generate sprite` does not run a server-side pipeline. Like the website
  * and styled-image commands, it "bounces" a structured authoring packet back to
  * the calling agent: the resolved sprite plan, the recommended image model, the
  * upstream sprite skill to resolve, and the hard containment rules the agent
@@ -109,10 +109,10 @@ export function createSpriteAuthoringPacket(
   ];
 
   const instructions = [
-    "# Zero generate sprite",
+    "# Okou generate sprite",
     "",
     "This is a federated generation source-selection packet for the current agent.",
-    "Zero is not generating these sprites on the server. You resolve the sprite skill below, write the art prompt yourself, generate each raw sheet with built-in image generation, then run the skill's local processor for chroma-key cleanup, frame extraction, alignment, QC, and transparent/GIF export.",
+    "Okou is not generating these sprites on the server. You resolve the sprite skill below, write the art prompt yourself, generate each raw sheet with built-in image generation, then run the skill's local processor for chroma-key cleanup, frame extraction, alignment, QC, and transparent/GIF export.",
     "",
     "## User Prompt",
     prompt,
@@ -126,7 +126,7 @@ export function createSpriteAuthoringPacket(
     `- Output name: ${plan.name}`,
     "",
     "## Recommended Model",
-    `- Use \`${plan.model}\` for every raw sheet via built-in image generation (\`zero generate image --provider built-in --model ${plan.model} --raw-prompt "..."\`, or the in-context image tool).`,
+    `- Use \`${plan.model}\` for every raw sheet via built-in image generation (\`okou generate image --provider built-in --model ${plan.model} --raw-prompt "..."\`, or the in-context image tool).`,
     "- gpt-image-2 is recommended for sprite sheets: it accepts flexible WIDTHxHEIGHT sizes and high quality for crisp, evenly-spaced grids. It does not emit transparent backgrounds, which is expected here — the solid magenta background is chroma-keyed by the local processor.",
     "- Pick a sheet-friendly square or grid-aligned size (for example 1024x1024 for 2x2/3x3/4x4) so each cell stays evenly spaced.",
     "",

@@ -248,7 +248,7 @@ async function successfulRequest(
   );
 }
 
-describe("zero people-search route", () => {
+describe("okou people-search route", () => {
   it("rejects zero tokens without people-search capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {

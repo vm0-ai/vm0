@@ -18,7 +18,7 @@ const UPLOAD_COMPLETE_URL =
   "http://localhost:3000/api/zero/integrations/phone/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/phone-upload";
 
-describe("zero phone commands", () => {
+describe("okou phone commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

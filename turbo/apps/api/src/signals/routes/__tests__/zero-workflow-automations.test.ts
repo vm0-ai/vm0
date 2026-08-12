@@ -558,7 +558,7 @@ function configureNotionDatabaseMock(args?: {
   );
 }
 
-describe("zero workflow automations", () => {
+describe("okou workflow automations", () => {
   async function setupFixture(
     tier: "pro" | "team" = "pro",
   ): Promise<AutomationScenario> {

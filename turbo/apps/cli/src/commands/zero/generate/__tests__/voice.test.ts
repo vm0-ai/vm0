@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate voice command
+ * Tests for okou generate voice command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -26,7 +26,7 @@ const VOICE_RESULT = {
   voice: "cedar",
 };
 
-describe("zero generate voice command", () => {
+describe("okou generate voice command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

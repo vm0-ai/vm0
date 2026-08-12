@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow copy command
+ * Tests for okou workflow copy command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -55,7 +55,7 @@ function workflowSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("zero workflow copy command", () => {
+describe("okou workflow copy command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

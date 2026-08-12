@@ -93,13 +93,13 @@ export const queuedCommand = new Command()
     "after",
     `
 Examples:
-  Show this queue:    zero chat queued
-  Show another queue: zero chat queued --thread-id <thread-id>
-  Print JSON:         zero chat queued --thread-id <thread-id> --json
+  Show this queue:    okou chat queued
+  Show another queue: okou chat queued --thread-id <thread-id>
+  Print JSON:         okou chat queued --thread-id <thread-id> --json
 
 Notes:
   - Lists the same unassociated user and automation events shown as queued by Platform
-  - Event IDs can be passed to zero chat cancel --event-id
+  - Event IDs can be passed to okou chat cancel --event-id
   - Authenticates via ZERO_TOKEN (requires chat-event:read capability)`,
   )
   .action(

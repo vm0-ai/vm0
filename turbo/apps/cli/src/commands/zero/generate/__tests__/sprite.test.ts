@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate sprite command
+ * Tests for okou generate sprite command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -12,7 +12,7 @@ import chalk from "chalk";
 import { generateCommand } from "../index";
 import { spriteCommand } from "../sprite";
 
-describe("zero generate sprite command", () => {
+describe("okou generate sprite command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -51,7 +51,7 @@ describe("zero generate sprite command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Zero generate sprite");
+    expect(stdout).toContain("# Okou generate sprite");
     expect(stdout).toContain("federated generation source-selection packet");
     expect(stdout).toContain("A green slime monster idle loop");
     expect(stdout).toContain("- Asset type: creature");

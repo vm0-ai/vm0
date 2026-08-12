@@ -276,12 +276,12 @@ function buildWebsiteTemplatePackagePrompt(
       `- Package resource: ${pkg.resourceId}`,
       "",
       "When you produce a website from the user's request:",
-      `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
+      `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
       `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
       `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
-      "- Host the finished static website: zero host <output-dir> --site <slug>",
+      "- Host the finished static website: okou host <output-dir> --site <slug>",
       "- Return the hosted website URL and keep the generated static site as the final deliverable.",
     ].join("\n"),
   };
@@ -446,11 +446,11 @@ function buildVideoGenerationTemplatePrompt(
       ...parameterLines,
       "",
       "When you produce a video from the user's request:",
-      `- Run once to fetch the locked video authoring packet: zero generate video --provider built-in --template ${template.id} --prompt "<user request>"`,
+      `- Run once to fetch the locked video authoring packet: okou generate video --provider built-in --template ${template.id} --prompt "<user request>"`,
       `- The packet points back to the selected template source (${templateSource}); read its SKILL.md before final generation.`,
       finalGenerationLine,
       "- If a connector/provider is requested, follow connector guidance instead.",
-      "- If a flag above no longer applies, run `zero generate video -h` to discover the current flags, models, and providers.",
+      "- If a flag above no longer applies, run `okou generate video -h` to discover the current flags, models, and providers.",
     ].join("\n"),
   };
 }
@@ -468,7 +468,7 @@ function buildAvatarGenerationTemplatePrompt(
         `- Keep voice ID ${voiceId} exactly; do not list voices or substitute a different voice.`,
       ]
     : [
-        "- List the available voices with `zero generate avatar-video --provider built-in --list-voices --json`, applying a voice-language filter when the user specifies a language, then choose a suitable voice.",
+        "- List the available voices with `okou generate avatar-video --provider built-in --list-voices --json`, applying a voice-language filter when the user specifies a language, then choose a suitable voice.",
       ];
   const generationVoiceId = voiceId ?? "<voice-id>";
   const generationAspectRatio = aspectRatio ?? "portrait";
@@ -484,9 +484,9 @@ function buildAvatarGenerationTemplatePrompt(
       "",
       "When you produce a talking-avatar video from the user's request:",
       `- Keep avatar ID ${avatarId} exactly; do not list avatars or substitute a different avatar.`,
-      "- Run `zero generate avatar-video -h` to inspect the current supported flags.",
+      "- Run `okou generate avatar-video -h` to inspect the current supported flags.",
       ...voiceInstructionLines,
-      `- Generate with \`zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${generationVoiceId} --aspect-ratio ${generationAspectRatio} --script "<script>"\`.`,
+      `- Generate with \`okou generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${generationVoiceId} --aspect-ratio ${generationAspectRatio} --script "<script>"\`.`,
       "- If the user provides a public audio URL, use `--audio-url` instead of `--script`.",
       "- Return the generated `/f/` video URL as the final deliverable.",
       "- Use a connector/provider only when the user explicitly requests one.",
@@ -504,7 +504,7 @@ function buildIllustrationGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown generation image style" };
   }
   const styleSource = `private R2 registry resource ${imageStyle.id}`;
-  const compileCommand = `zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile --style-source r2`;
+  const compileCommand = `okou generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile --style-source r2`;
   const sourceInstruction =
     "Follow the returned packet completely, including pulling the private R2 package and reading its extracted SKILL.md. If the R2 source is unavailable, stop without generating; do not fall back to GitHub.";
 
@@ -521,8 +521,8 @@ function buildIllustrationGenerationTemplatePrompt(
       "When you produce an illustration or image from the user's request:",
       `- Run once: ${compileCommand}`,
       `- ${sourceInstruction}`,
-      '- Then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved compatible CLI options and required reference image URLs, without `--style`.',
-      "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
+      '- Then run `okou generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved compatible CLI options and required reference image URLs, without `--style`.',
+      "- If a flag above no longer applies, run `okou generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),
   };
 }

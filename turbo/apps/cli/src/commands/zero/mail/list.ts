@@ -77,7 +77,7 @@ export const listCommand = new Command()
       }
       console.log();
       console.log(
-        chalk.dim("  Run: zero mail connect gmail|outlook when needed"),
+        chalk.dim("  Run: okou mail connect gmail|outlook when needed"),
       );
     }),
   );

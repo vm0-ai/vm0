@@ -107,7 +107,7 @@ function connectorSelectionCommand(
   if (method !== "GET") {
     args.push(`--method ${shellQuoteArg(method)}`);
   }
-  return `zero connector check ${args.join(" ")}`;
+  return `okou connector check ${args.join(" ")}`;
 }
 
 function rawPathFromUrl(url: string): string | undefined {
@@ -272,7 +272,7 @@ function ambiguousConnectorError(
 function unknownConnectorError(request: ConnectorCheckRequest): Error {
   if (request.mode === "url" && request.connectorSlug !== undefined) {
     return new Error(
-      `Unknown connector slug: ${request.connectorSlug}\nRun: zero connector search ${shellQuoteArg(request.connectorSlug)}`,
+      `Unknown connector slug: ${request.connectorSlug}\nRun: okou connector search ${shellQuoteArg(request.connectorSlug)}`,
     );
   }
   return new Error("The requested connector is unknown.");
@@ -713,7 +713,7 @@ function permissionRequestCommand(
   permission: string,
   request: UrlDiagnosticRequest,
 ): string {
-  return `zero connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
+  return `okou connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
 }
 
 function printPermissionRequestCommands(
@@ -725,7 +725,7 @@ function printPermissionRequestCommands(
 ): void {
   if (request === undefined) {
     console.log(
-      "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD> before requesting this permission.",
+      "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD> before requesting this permission.",
     );
     return;
   }
@@ -737,7 +737,7 @@ function printPermissionRequestCommands(
 
   console.log("");
   console.log(
-    "Or, if this is the only connector or permission action needed, run the callback command below. After the user completes this action, Zero will automatically start the next round with the callback prompt:",
+    "Or, if this is the only connector or permission action needed, run the callback command below. After the user completes this action, Okou will automatically start the next round with the callback prompt:",
   );
   console.log(`${command} --callback-prompt "${CALLBACK_PROMPT_PLACEHOLDER}"`);
 }
@@ -883,7 +883,7 @@ function printRediagnoseHint(
     args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
   }
   console.log(
-    `To re-diagnose after changes, run: zero connector check ${args.join(" ")}`,
+    `To re-diagnose after changes, run: okou connector check ${args.join(" ")}`,
   );
 }
 
@@ -926,11 +926,11 @@ export const checkConnectorCommand = new Command()
     "after",
     `
 Examples:
-  zero connector check --env-name GITHUB_TOKEN
-  zero connector check --url https://api.github.com/repos/owner/repo
-  zero connector check --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
-  zero connector check --url https://slack.com/api/chat.postMessage --method POST
-  zero connector check --env-name SLACK_TOKEN --check-permission chat:write
+  okou connector check --env-name GITHUB_TOKEN
+  okou connector check --url https://api.github.com/repos/owner/repo
+  okou connector check --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
+  okou connector check --url https://slack.com/api/chat.postMessage --method POST
+  okou connector check --env-name SLACK_TOKEN --check-permission chat:write
 
 How connectors work:
   A Connector holds the real credentials for an external service. These credentials

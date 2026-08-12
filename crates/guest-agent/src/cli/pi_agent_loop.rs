@@ -1,6 +1,6 @@
-//! Guest-owned bridge for the internal `zero __agent-loop --standby` process.
+//! Guest-owned bridge for the internal `okou __agent-loop --standby` process.
 //!
-//! The zero child owns Pi model/tool execution but never receives the sandbox
+//! The Okou child owns Pi model/tool execution but never receives the sandbox
 //! API token. Guest-agent proxies transcript reads and exact Pi event writes
 //! over a local JSONL protocol, preserving the native Pi message payload
 //! without passing it through the legacy CLI secret masker.
@@ -125,7 +125,7 @@ pub(super) async fn execute_pi_standby(
     let args = [
         "--yes".to_string(),
         format!("--package={package_url}"),
-        "zero".to_string(),
+        "okou".to_string(),
         "__agent-loop".to_string(),
         "--standby".to_string(),
     ];

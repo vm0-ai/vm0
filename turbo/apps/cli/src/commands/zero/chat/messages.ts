@@ -262,10 +262,10 @@ export const messagesCommand = new Command()
     "after",
     `
 Examples:
-  Read this chat:     zero chat messages
-  Read another chat:  zero chat messages --thread-id <thread-id>
-  Read the last 5:    zero chat messages --limit 5
-  Print JSON:         zero chat messages --thread-id <thread-id> --json
+  Read this chat:     okou chat messages
+  Read another chat:  okou chat messages --thread-id <thread-id>
+  Read the last 5:    okou chat messages --limit 5
+  Print JSON:         okou chat messages --thread-id <thread-id> --json
 
 Notes:
   - Prints user and assistant messages oldest first, the order the chat UI shows
@@ -291,7 +291,7 @@ Notes:
       if (messages.length === 0) {
         console.log(chalk.dim("No chat messages found"));
         console.log(
-          chalk.dim(`  Send one: zero chat send --thread-id ${threadId}`),
+          chalk.dim(`  Send one: okou chat send --thread-id ${threadId}`),
         );
         return;
       }

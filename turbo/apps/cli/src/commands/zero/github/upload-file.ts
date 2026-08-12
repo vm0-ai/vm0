@@ -52,8 +52,8 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:          zero github upload-file -f /tmp/report.pdf -r vm0-ai/vm0 -i 42
-  With a caption:         zero github upload-file -f /tmp/data.csv -r vm0-ai/vm0 -i 42 --caption "Daily report"
+  Upload a file:          okou github upload-file -f /tmp/report.pdf -r vm0-ai/vm0 -i 42
+  With a caption:         okou github upload-file -f /tmp/data.csv -r vm0-ai/vm0 -i 42 --caption "Daily report"
 
 Output:
   Prints a JSON object to stdout on success:

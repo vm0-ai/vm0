@@ -58,10 +58,10 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload to a chat:    zero feishu upload-file -f /tmp/report.pdf -c oc_xxx
-  Send a DM:           zero feishu upload-file -f /tmp/report.pdf -u ou_xxx
-  Reply with a file:   zero feishu upload-file -f /tmp/report.pdf -r om_xxx --thread
-  Select a custom app: zero feishu upload-file -f /tmp/report.pdf -i <installation-id> -c oc_xxx
+  Upload to a chat:    okou feishu upload-file -f /tmp/report.pdf -c oc_xxx
+  Send a DM:           okou feishu upload-file -f /tmp/report.pdf -u ou_xxx
+  Reply with a file:   okou feishu upload-file -f /tmp/report.pdf -r om_xxx --thread
+  Select a custom app: okou feishu upload-file -f /tmp/report.pdf -i <installation-id> -c oc_xxx
 
 Output:
   Prints a JSON object to stdout on success:
