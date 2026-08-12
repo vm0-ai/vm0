@@ -2527,7 +2527,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, canonicalRun.runId, [200]);
   });
 
-  it("persists canonical mounts across session continuation", async () => {
+  it("persists canonical mounts across historyless session continuation", async () => {
     const api = createRunsApi(context);
     const storages = createStoragesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -2685,15 +2685,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       versionId: preparedMemory.versionId,
       files: [memoryFile],
     });
-    const historyHash = createHash("sha256")
-      .update(`canonical storage history ${initialRun.runId}`)
-      .digest("hex");
     const checkpoint = await webhooks.requestAgentCheckpoint(
       {
         runId: initialRun.runId,
         cliAgentType: "claude-code",
         cliAgentSessionId: `bdd-storage-cli-${initialRun.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
         artifactSnapshots: [
           {
             name: initialMemory.name,
@@ -2795,6 +2792,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       prompt: "continue canonical storage session",
     });
     const sessionClaim = await api.claimRunnerJob(sessionRun.runId);
+    expect(sessionClaim.resumeSession).toBeNull();
     const sessionManifest = sessionClaim.storageManifest;
     if (!sessionManifest || !("storageMounts" in sessionManifest)) {
       throw new Error("Expected canonical mounts from session persistence");

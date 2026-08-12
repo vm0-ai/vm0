@@ -367,21 +367,32 @@ export const createAgentCheckpoint$ = command(
       runStorageMounts: run.storageMounts,
       artifactSnapshots: input.body.artifactSnapshots,
     });
+    const historyHash = input.body.cliAgentSessionHistoryHash;
 
-    await db
-      .insert(blobs)
-      .values({
-        hash: input.body.cliAgentSessionHistoryHash,
-        rawSize: 0,
-        encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-        encodedSize: 0,
-        refCount: 1,
-      })
-      .onConflictDoUpdate({
-        target: blobs.hash,
-        set: { refCount: sql`${blobs.refCount} + 1` },
-      });
-    signal.throwIfAborted();
+    if (historyHash !== undefined) {
+      await db
+        .insert(blobs)
+        .values({
+          hash: historyHash,
+          rawSize: 0,
+          encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+          encodedSize: 0,
+          refCount: 1,
+        })
+        .onConflictDoUpdate({
+          target: blobs.hash,
+          set: { refCount: sql`${blobs.refCount} + 1` },
+        });
+      signal.throwIfAborted();
+    }
+
+    const historyFields =
+      historyHash === undefined
+        ? {
+            cliAgentSessionHistory: null,
+            cliAgentSessionHistoryHash: null,
+          }
+        : { cliAgentSessionHistoryHash: historyHash };
 
     const [conversation] = await db
       .insert(conversations)
@@ -389,14 +400,14 @@ export const createAgentCheckpoint$ = command(
         runId: input.body.runId,
         cliAgentType: input.body.cliAgentType,
         cliAgentSessionId: input.body.cliAgentSessionId,
-        cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+        ...historyFields,
       })
       .onConflictDoUpdate({
         target: conversations.runId,
         set: {
           cliAgentType: input.body.cliAgentType,
           cliAgentSessionId: input.body.cliAgentSessionId,
-          cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+          ...historyFields,
         },
       })
       .returning({ id: conversations.id });
