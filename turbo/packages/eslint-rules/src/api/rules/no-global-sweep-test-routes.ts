@@ -4,6 +4,7 @@ import {
   importReference,
   memberName,
   propertyName,
+  resolveLocalExpression,
   unwrapExpression,
   variableInScope,
 } from "../syntax.ts";
@@ -619,7 +620,7 @@ export const noGlobalSweepTestRoutes = createRule({
     }
 
     function isStaticallyUndefined(expression: TSESTree.Expression): boolean {
-      const current = unwrapExpression(expression);
+      const current = resolveLocalExpression(context.sourceCode, expression);
       if (
         current.type === AST_NODE_TYPES.UnaryExpression &&
         current.operator === "void"

@@ -327,6 +327,36 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
       errors: [{ messageId: "globalSweep" }],
     },
     {
+      name: "aliased undefined activates canonical plain parameter defaults",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        const absent = undefined;
+        function mount(build = appFactory.createApp) {
+          return build({ routes: ROUTES });
+        }
+        mount(absent);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "aliased void activates canonical object parameter defaults",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        const absent = void 0;
+        function mount(
+          { createApp: build } = { createApp: appFactory.createApp },
+        ) {
+          return build({ routes: ROUTES });
+        }
+        mount(absent);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "later undefined spreads activate canonical property defaults",
       filename: behaviorTest,
       code: `
