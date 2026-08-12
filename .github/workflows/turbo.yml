@@ -182,9 +182,6 @@ jobs:
       - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
 
-      - name: Audit Okou CLI cutover
-        run: .github/scripts/audit-okou-cli-cutover.sh
-
       - name: Detect changes
         id: detect
         env:

@@ -4,10 +4,19 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 audit_script="${repo_root}/.github/scripts/audit-okou-cli-cutover.sh"
-workflow="${repo_root}/.github/workflows/turbo.yml"
+security_workflow="${repo_root}/.github/workflows/security.yml"
+turbo_workflow="${repo_root}/.github/workflows/turbo.yml"
 
-if ! grep -Fq 'run: .github/scripts/audit-okou-cli-cutover.sh' "${workflow}"; then
-  echo "Turbo CI does not run the Okou cutover audit" >&2
+install_line="$(grep -nF 'sudo apt-get install -y --no-install-recommends ansible-core ripgrep' "${security_workflow}" | cut -d: -f1 || true)"
+audit_step_line="$(grep -nF -- '- name: Audit Okou CLI cutover' "${security_workflow}" | cut -d: -f1 || true)"
+audit_run_line="$(grep -nF 'run: .github/scripts/audit-okou-cli-cutover.sh' "${security_workflow}" | cut -d: -f1 || true)"
+if [[ -z "${install_line}" || -z "${audit_step_line}" || -z "${audit_run_line}" ||
+  "${audit_step_line}" -le "${install_line}" || "${audit_run_line}" -le "${audit_step_line}" ]]; then
+  echo "Security CI does not run the Okou cutover audit after installing ripgrep" >&2
+  exit 1
+fi
+if grep -Fq 'run: .github/scripts/audit-okou-cli-cutover.sh' "${turbo_workflow}"; then
+  echo "Turbo prepare must not run the Okou cutover audit without ripgrep" >&2
   exit 1
 fi
 

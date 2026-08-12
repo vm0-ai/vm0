@@ -19,12 +19,12 @@ alias, and the old `zero __agent-loop` boundary from that artifact. <!-- okou-cu
 
 ## Deployment compatibility
 
-| API / release artifact | Runner or guest-agent | Expected entry point | Evidence |
-| --- | --- | --- | --- |
-| New API with dual-entry artifact | New Runner | `okou __agent-loop` | The guest-agent process-boundary integration test puts a fake `npx` on `PATH` and asserts the exact Pi standby launch argv. The Runner E2E separately exercises the canonical user command and real CLI HTTP boundary. |
-| New API with dual-entry artifact | Old Runner | `zero __agent-loop` | The artifact smoke test and Runner E2E execute the legacy internal boundary. | <!-- okou-cutover-audit: compatibility-only -->
-| Old API selecting the recorded dual-entry artifact | New Runner | `okou __agent-loop` | Safe because both entry points are present in the immutable artifact. |
-| Old API selecting a pre-Okou artifact | New Runner | unsupported | Never deploy this pairing. Roll API and Runner back together to an old/old pairing instead. |
+| API / release artifact                             | Runner or guest-agent | Expected entry point | Evidence                                                                                                                                                                                                               |
+| -------------------------------------------------- | --------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New API with dual-entry artifact                   | New Runner            | `okou __agent-loop`  | The guest-agent process-boundary integration test puts a fake `npx` on `PATH` and asserts the exact Pi standby launch argv. The Runner E2E separately exercises the canonical user command and real CLI HTTP boundary. |
+| New API with dual-entry artifact                   | Old Runner            | `zero __agent-loop`  | The artifact smoke test and Runner E2E execute the legacy internal boundary. <!-- okou-cutover-audit: compatibility-only -->                                                                                           |
+| Old API selecting the recorded dual-entry artifact | New Runner            | `okou __agent-loop`  | Safe because both entry points are present in the immutable artifact.                                                                                                                                                  |
+| Old API selecting a pre-Okou artifact              | New Runner            | unsupported          | Never deploy this pairing. Roll API and Runner back together to an old/old pairing instead.                                                                                                                            |
 
 Old queued and active execution contexts keep their immutable historical
 artifact URL. They are not rewritten and continue with the Runner and artifact
@@ -53,7 +53,9 @@ untracked non-ignored files, checks the guest-agent
 bootstrap directly, prints only category plus file and line number, and fails
 on an unclassified reference. It never prints command arguments, secrets,
 identifiers, or content. Its shell test proves both the failure boundary and
-the output-redaction property.
+the output-redaction property. Security CI runs the audit explicitly after
+installing `ripgrep`; the hot Turbo toolchain job does not install network
+dependencies for it.
 
 The external first-party durable source `vm0-ai/vm0-skills` was audited at
 commit `8efee9aaeedbcd5a372401679beac740daad9101`. Sixteen files contained 149

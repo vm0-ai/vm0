@@ -210,6 +210,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ansible-core ripgrep
 
+      - name: Audit Okou CLI cutover
+        run: .github/scripts/audit-okou-cli-cutover.sh
+
       - name: Run workflow script tests
         run: |
           shopt -s nullglob
