@@ -90,6 +90,11 @@ const desktopUpdateManifestOverride = testOverride<
   return {};
 });
 
+export function clearDesktopUpdateManifestCacheForTest(): void {
+  desktopUpdateManifestCache.clear();
+  desktopUpdateManifestOverride.clear();
+}
+
 function compareDesktopVersions(left: string, right: string): number {
   const leftParts = left.split(/[+-]/, 1)[0]?.split(".").map(Number) ?? [];
   const rightParts = right.split(/[+-]/, 1)[0]?.split(".").map(Number) ?? [];

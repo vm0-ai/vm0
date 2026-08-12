@@ -58,7 +58,6 @@ async fn cancellation_preserves_a_steer_response_already_in_flight()
     );
     let active_input = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         &runtime.config.prompt,
         &journal_path,
         HttpClient::with_api_config(server.base_url(), "test-token", "", RUN_ID, Duration::ZERO)?,

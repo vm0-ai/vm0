@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  activeInputDeliveryReserveResponseSchema,
   compatibleStoredExecutionContextSchema,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   connectorRuntimeSyncResultSchema,
@@ -13,7 +14,6 @@ import {
   heartbeatBodySchema,
   heldSandboxStateSchema,
   heldWorkspaceStateSchema,
-  immediateSuccessorIntentSignalSchema,
   jobSchema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
@@ -31,6 +31,39 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+
+describe("active-input reservation contract", () => {
+  const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
+  const eventId = "223f8797-a456-4eea-98f7-f7ab88c43c00";
+  const secondEventId = "b5490696-d307-42f7-927c-9b5ca037cb46";
+
+  it("keeps the deployed eventIds array with exactly one source event", () => {
+    expect(
+      activeInputDeliveryReserveResponseSchema.parse({
+        outcome: "reserved",
+        deliveryId,
+        eventIds: [eventId],
+        prompt: "follow-up",
+      }),
+    ).toStrictEqual({
+      outcome: "reserved",
+      deliveryId,
+      eventIds: [eventId],
+      prompt: "follow-up",
+    });
+
+    for (const eventIds of [[], [eventId, secondEventId]]) {
+      expect(
+        activeInputDeliveryReserveResponseSchema.safeParse({
+          outcome: "reserved",
+          deliveryId,
+          eventIds,
+          prompt: "follow-up",
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
 
 describe("cancellation recovery timing contract", () => {
   it("keeps the API stale fallback beyond the runner recovery deadline", () => {
@@ -1763,42 +1796,6 @@ describe("runner apiStartTime contract", () => {
     expect(elapsedSinceApiStartMs(1_700_000_000_000.5, 1_700_000_001_250)).toBe(
       undefined,
     );
-  });
-});
-
-describe("immediate successor intent contract", () => {
-  const signal = {
-    action: "arm",
-    predecessorRunId: "00000000-0000-4000-8000-000000000001",
-    intentId: "00000000-0000-4000-8000-000000000002",
-    runnerIdentity: {
-      runnerId: "00000000-0000-4000-8000-000000000003",
-      heartbeatGeneration: 7,
-    },
-    eventClass: "automation",
-    decidedAt: "2026-08-10T08:00:00.000Z",
-    expiresAt: "2026-08-10T08:00:01.500Z",
-  } as const;
-
-  it("accepts the bounded additive signal", () => {
-    expect(immediateSuccessorIntentSignalSchema.parse(signal)).toStrictEqual(
-      signal,
-    );
-  });
-
-  it("rejects unknown fields and malformed identities", () => {
-    expect(
-      immediateSuccessorIntentSignalSchema.safeParse({
-        ...signal,
-        opaqueReuseKey: "thread:secret",
-      }).success,
-    ).toBe(false);
-    expect(
-      immediateSuccessorIntentSignalSchema.safeParse({
-        ...signal,
-        intentId: "not-a-uuid",
-      }).success,
-    ).toBe(false);
   });
 });
 

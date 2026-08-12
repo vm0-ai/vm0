@@ -3,15 +3,22 @@ import {
   upsertOrgMetadataFixture,
 } from "./org-metadata";
 import {
+  createUsagePricingFixture,
   deleteUsagePricingRows,
   ensureUsagePricingRow,
+  type UsagePricingFixture,
+  type UsagePricingKey,
   type UsagePricingRow,
   upsertUsagePricingRows,
 } from "./usage-pricing";
 
-export type { UsagePricingRow };
+export type { UsagePricingFixture, UsagePricingKey, UsagePricingRow };
 
 export const seedOrgMetadata = upsertOrgMetadataFixture;
 export { setOnboardingPaymentPendingFixture };
 export const seedUsagePricingRows = upsertUsagePricingRows;
-export { deleteUsagePricingRows, ensureUsagePricingRow };
+export {
+  createUsagePricingFixture,
+  deleteUsagePricingRows,
+  ensureUsagePricingRow,
+};

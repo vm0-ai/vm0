@@ -349,6 +349,19 @@ mod tests {
 
     const CONTROL_TEST_READ_TIMEOUT: Duration = Duration::from_secs(3);
 
+    fn active_input_payload(sequence: u64) -> Vec<u8> {
+        let delivery_id = uuid::Uuid::new_v5(
+            &uuid::Uuid::NAMESPACE_OID,
+            format!("vm0:control-test:active-input:{sequence}").as_bytes(),
+        );
+        serde_json::to_vec(&serde_json::json!({
+            "type": "active-input",
+            "deliveryId": delivery_id.to_string(),
+            "text": "hello",
+        }))
+        .expect("active-input control payload should serialize")
+    }
+
     fn accept_control_stream_and_read_hello(
         listener: &std::os::unix::net::UnixListener,
     ) -> UnixStream {
@@ -369,11 +382,8 @@ mod tests {
         let shutdown = CancellationToken::new();
         let worker_shutdown = shutdown.clone();
         let stream_slot = Arc::new(Mutex::new(None));
-        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
-            "control-test",
-            true,
-            "initial",
-        );
+        let active_runtime =
+            crate::active_input::ActiveInputRuntime::new_for_test("control-test", "initial");
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();
@@ -393,7 +403,7 @@ mod tests {
             &mut stream,
             &process_control_ipc::ControlRequest {
                 message_id: "msg-1".to_owned(),
-                payload: br#"{"type":"active-input","text":"hello"}"#.to_vec(),
+                payload: active_input_payload(0),
             },
         )
         .unwrap();
@@ -418,11 +428,8 @@ mod tests {
         let shutdown = CancellationToken::new();
         let worker_shutdown = shutdown.clone();
         let stream_slot = Arc::new(Mutex::new(None));
-        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
-            "control-test",
-            true,
-            "initial",
-        );
+        let active_runtime =
+            crate::active_input::ActiveInputRuntime::new_for_test("control-test", "initial");
         let active_input = active_runtime.controller();
         let cli_cancellation = CancellationToken::new();
         let worker_cli_cancellation = cli_cancellation.clone();
@@ -493,11 +500,8 @@ mod tests {
         let shutdown = CancellationToken::new();
         let worker_shutdown = shutdown.clone();
         let stream_slot = Arc::new(Mutex::new(None));
-        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
-            "control-test",
-            true,
-            "initial",
-        );
+        let active_runtime =
+            crate::active_input::ActiveInputRuntime::new_for_test("control-test", "initial");
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();
@@ -517,7 +521,7 @@ mod tests {
             &mut stream,
             &process_control_ipc::ControlRequest {
                 message_id: "bad-1".to_owned(),
-                payload: br#"{"type":"other","text":"hello"}"#.to_vec(),
+                payload: br#"{"type":"other","deliveryId":"00000000-0000-4000-8000-000000000001","text":"hello"}"#.to_vec(),
             },
         )
         .unwrap();
@@ -546,11 +550,8 @@ mod tests {
         let shutdown = CancellationToken::new();
         let worker_shutdown = shutdown.clone();
         let stream_slot = Arc::new(Mutex::new(None));
-        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
-            "control-test",
-            true,
-            "initial",
-        );
+        let active_runtime =
+            crate::active_input::ActiveInputRuntime::new_for_test("control-test", "initial");
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();
@@ -576,7 +577,7 @@ mod tests {
                 &mut stream,
                 &process_control_ipc::ControlRequest {
                     message_id: message_id.clone(),
-                    payload: br#"{"type":"active-input","text":"hello"}"#.to_vec(),
+                    payload: active_input_payload(index),
                 },
             )
             .unwrap();
@@ -617,11 +618,8 @@ mod tests {
         let endpoint = process_control_ipc::endpoint_name(43, &nonce);
         let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
         let shutdown = CancellationToken::new();
-        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
-            "control-test",
-            true,
-            "initial",
-        );
+        let active_runtime =
+            crate::active_input::ActiveInputRuntime::new_for_test("control-test", "initial");
         let active_input = active_runtime.controller();
         let handle = ControlHandle::spawn_endpoint(
             endpoint,
@@ -653,11 +651,8 @@ mod tests {
         let endpoint = process_control_ipc::endpoint_name(45, &nonce);
         let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
         let shutdown = CancellationToken::new();
-        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
-            "control-test",
-            true,
-            "initial",
-        );
+        let active_runtime =
+            crate::active_input::ActiveInputRuntime::new_for_test("control-test", "initial");
         let active_input = active_runtime.controller();
         let handle = ControlHandle::spawn_endpoint(
             endpoint,
@@ -691,11 +686,8 @@ mod tests {
         let shutdown = CancellationToken::new();
         let stream_slot = Arc::new(Mutex::new(None));
         let worker_slot = Arc::clone(&stream_slot);
-        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
-            "control-test",
-            true,
-            "initial",
-        );
+        let active_runtime =
+            crate::active_input::ActiveInputRuntime::new_for_test("control-test", "initial");
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();

@@ -21,11 +21,6 @@ import {
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
-import {
-  findImmediateSuccessorIntentHandle,
-  scheduleImmediateSuccessorIntent,
-  type ImmediateSuccessorIntentHandle,
-} from "./immediate-successor-intent.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
@@ -269,15 +264,11 @@ async function revokeGoalEvent(
   db: Db,
   event: PendingGoalQueueEvent,
   signal: AbortSignal,
-  onRevoked?: () => void,
 ): Promise<boolean> {
   const revoked = await revokeGoalQueueEvent(db, {
     chatThreadId: event.chatThreadId,
     eventId: event.id,
   });
-  if (revoked) {
-    onRevoked?.();
-  }
   signal.throwIfAborted();
   if (revoked) {
     await publishGoalQueueChanged(event, signal);
@@ -291,7 +282,6 @@ const launchQueuedGoal$ = command(
     args: {
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
-      readonly intent: ImmediateSuccessorIntentHandle | undefined;
       readonly apiStartTime: number;
       readonly attempt: GoalDrainAttempt;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -365,14 +355,6 @@ const launchQueuedGoal$ = command(
       signal.throwIfAborted();
       return { kind: "run_error", response: result };
     }
-    const runnableImmediately =
-      result.body.status === "pending" || result.body.status === "running";
-    if (!runnableImmediately) {
-      // Run persistence is irreversible. Settle the observation before an
-      // abort can hide a queued or terminal creation result from the outer
-      // drain.
-      args.intent?.revoke();
-    }
     signal.throwIfAborted();
     return {
       kind: "ok",
@@ -387,7 +369,6 @@ async function handleGoalLaunchResult(
     readonly event: PendingGoalQueueEvent;
     readonly goal: GoalQueueTarget;
     readonly result: RunGoalResult;
-    readonly intent: ImmediateSuccessorIntentHandle | undefined;
   },
   signal: AbortSignal,
 ): Promise<"continue" | "done"> {
@@ -399,9 +380,7 @@ async function handleGoalLaunchResult(
     const stillValid = await loadGoalQueueTarget(args.db, args.event);
     signal.throwIfAborted();
     if (!stillValid) {
-      await revokeGoalEvent(args.db, args.event, signal, () => {
-        args.intent?.revoke();
-      });
+      await revokeGoalEvent(args.db, args.event, signal);
       return "done";
     }
     return stillValid.stateRevision === args.goal.stateRevision
@@ -414,9 +393,6 @@ async function handleGoalLaunchResult(
     expectedGoalStateRevision: args.goal.stateRevision,
     reason: args.result.response.body.error.message,
   });
-  if (settlement.kind === "revoked" || settlement.kind === "rejected") {
-    args.intent?.revoke();
-  }
   signal.throwIfAborted();
   if (settlement.kind === "stale") {
     return "continue";
@@ -442,8 +418,6 @@ export const drainGoalQueueForThread$ = command(
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime: number;
-      readonly goalImmediateSuccessorIntent?: ImmediateSuccessorIntentHandle;
-      readonly immediateSuccessorPredecessorRunId?: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly queueItemCreatedBefore?: Date;
     },
@@ -494,16 +468,6 @@ export const drainGoalQueueForThread$ = command(
         }),
       );
 
-      const prearmedImmediateSuccessorIntent =
-        args.goalImmediateSuccessorIntent?.eventClass === "goal" &&
-        args.goalImmediateSuccessorIntent.intentId === event.id
-          ? args.goalImmediateSuccessorIntent
-          : findImmediateSuccessorIntentHandle({
-              predecessorRunId: args.immediateSuccessorPredecessorRunId,
-              intentId: event.id,
-              eventClass: "goal",
-            });
-
       const goal = await timing.measure(
         "api_dispatch_pre_create_zero_goal_drain_load_target",
         "nested",
@@ -518,9 +482,7 @@ export const drainGoalQueueForThread$ = command(
           "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event",
           "nested",
           async () => {
-            return await revokeGoalEvent(db, event, signal, () => {
-              prearmedImmediateSuccessorIntent?.revoke();
-            });
+            return await revokeGoalEvent(db, event, signal);
           },
           phaseDimensions,
         );
@@ -528,24 +490,11 @@ export const drainGoalQueueForThread$ = command(
         continue;
       }
 
-      const immediateSuccessorIntent =
-        prearmedImmediateSuccessorIntent ??
-        scheduleImmediateSuccessorIntent({
-          db,
-          predecessorRunId: args.immediateSuccessorPredecessorRunId,
-          chatThreadId: event.chatThreadId,
-          orgId: goal.orgId,
-          intentId: event.id,
-          eventClass: "goal",
-          decisionPoint: "queue_drain",
-        });
-
       const result = await set(
         launchQueuedGoal$,
         {
           event,
           goal,
-          intent: immediateSuccessorIntent,
           apiStartTime,
           attempt: attemptCategory,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
@@ -560,7 +509,6 @@ export const drainGoalQueueForThread$ = command(
           event,
           goal,
           result,
-          intent: immediateSuccessorIntent,
         },
         signal,
       );

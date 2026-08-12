@@ -46,7 +46,6 @@ async fn claude_receipts_delivery_only_after_follow_up_reaches_stdin()
     );
     let active_input = ActiveInputRuntime::new_with_receipts(
         run_id,
-        true,
         &runtime.config.prompt,
         &journal_path,
         receipt_http,

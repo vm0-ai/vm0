@@ -25,6 +25,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
+import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { tapError } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
@@ -481,6 +482,7 @@ export const handleBillingRedirect$ = command(({ get, set }) => {
 
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
   set(reloadBillingStatus$);
+  set(reloadQueueData$);
   set(reloadUsagePackManagement$);
   set(reloadUsageRecords$);
   return false;
