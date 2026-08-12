@@ -111,8 +111,10 @@ unless playwright_run.fetch("run").include?('--fully-parallel') &&
     playwright_run.fetch("run").include?('--workers=1')
   raise "Playwright E2E must balance shards while serializing each test identity"
 end
-unless playwright_run.dig("env", "JOB_REF").include?("matrix.shard") &&
-    playwright_run.dig("env", "JOB_REF").include?("-pw-")
+playwright_job_ref = playwright_run.dig("env", "JOB_REF")
+unless playwright_job_ref.include?("matrix.shard") &&
+    playwright_job_ref.include?("format('{0}-v{1}'") &&
+    playwright_job_ref.include?("format('{0}-c{1}'")
   raise "Playwright E2E shards must isolate Clerk cleanup namespaces"
 end
 unless playwright.dig("concurrency", "group").include?("matrix.shard")

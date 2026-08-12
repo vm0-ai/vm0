@@ -2808,7 +2808,7 @@ jobs:
           # Keep the Clerk email local part within its 64-character limit.
           # This namespace is only a test-resource owner; infrastructure keeps
           # the full `-vercel` runtime suffix.
-          JOB_REF: ${{ format('{0}-pw-{1}', matrix.runtime == 'vercel' && format('{0}-v', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref, matrix.shard) }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-v{1}', needs.prepare.outputs.job-ref, matrix.shard) || format('{0}-c{1}', needs.prepare.outputs.job-ref, matrix.shard) }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2819,7 +2819,7 @@ jobs:
           cleanup-generation playwright,paid-onboarding
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ format('{0}-pw-{1}', matrix.runtime == 'vercel' && format('{0}-v', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref, matrix.shard) }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-v{1}', needs.prepare.outputs.job-ref, matrix.shard) || format('{0}-c{1}', needs.prepare.outputs.job-ref, matrix.shard) }}
       - name: Setup SSH for preview diagnostics
         if: always() && github.event_name != 'push'
         continue-on-error: true

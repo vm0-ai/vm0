@@ -190,8 +190,10 @@ unless playwright_run.fetch("env").fetch("PLAYWRIGHT_SHARD") == "${{ matrix.shar
     playwright_run.fetch("run").include?('--workers=1')
   raise "Playwright E2E shards must balance individual tests without intra-org concurrency"
 end
-unless playwright_run.fetch("env").fetch("JOB_REF").include?("matrix.shard") &&
-    playwright_run.fetch("env").fetch("JOB_REF").include?("-pw-")
+playwright_job_ref = playwright_run.fetch("env").fetch("JOB_REF")
+unless playwright_job_ref.include?("matrix.shard") &&
+    playwright_job_ref.include?("format('{0}-v{1}'") &&
+    playwright_job_ref.include?("format('{0}-c{1}'")
   raise "Playwright E2E shards must isolate Clerk cleanup namespaces"
 end
 
