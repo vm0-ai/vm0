@@ -436,6 +436,11 @@ def test_presigned_query_preserves_ordinary_pairs() -> None:
 )
 def test_query_pair_count_boundary(pair_count: int, accepted: bool) -> None:
     url = _presigned_url_with_query_pair_count(pair_count)
+    if not accepted:
+        assert "?a=" in url
+        # %FF has valid percent syntax but invalid UTF-8, so this also proves
+        # the pair-count preflight runs before query-component decoding.
+        url = url.replace("?a=", "?invalid=%FF", 1)
     parts = urllib.parse.urlsplit(url)
     assert len(f"{parts.path}?{parts.query}".encode()) < 64 * 1024
     headers = [("Host", STS_HOST)]
@@ -454,25 +459,22 @@ def test_query_pair_count_boundary(pair_count: int, accepted: bool) -> None:
         assert len(signed_query.split("&")) == MAX_AWS_SIGV4_QUERY_PAIRS
         return
 
-    with patch("aws_sigv4._unquote_query_component") as unquote_query_component:
-        with pytest.raises(
-            AwsSigV4SigningError,
-            match=r"^AWS request has too many query parameters$",
-        ):
-            inspect_request(url=url, headers=headers)
-        with pytest.raises(
-            AwsSigV4SigningError,
-            match=r"^AWS request has too many query parameters$",
-        ):
-            sign_request(
-                method="GET",
-                url=url,
-                headers=headers,
-                body=None,
-                credentials=_credentials(),
-            )
-
-    unquote_query_component.assert_not_called()
+    with pytest.raises(
+        AwsSigV4SigningError,
+        match=r"^AWS request has too many query parameters$",
+    ):
+        inspect_request(url=url, headers=headers)
+    with pytest.raises(
+        AwsSigV4SigningError,
+        match=r"^AWS request has too many query parameters$",
+    ):
+        sign_request(
+            method="GET",
+            url=url,
+            headers=headers,
+            body=None,
+            credentials=_credentials(),
+        )
 
 
 def test_query_pair_count_ignores_empty_segments() -> None:
