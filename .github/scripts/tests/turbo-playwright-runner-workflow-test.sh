@@ -89,6 +89,9 @@ end
 unless runner.dig("strategy", "fail-fast") == false
   raise "runner E2E shards must not fail fast"
 end
+unless runner.dig("strategy", "max-parallel") == 2
+  raise "runner E2E must bound direct-Postgres concurrency"
+end
 expected_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}"
 unless runner.dig("strategy", "matrix") == expected_matrix
   raise "runner E2E must use the generated non-empty shard matrix"
@@ -189,7 +192,9 @@ raise "missing runner E2E shard generation" unless shard_generation_step
 shard_generation_script = shard_generation_step.fetch("run")
 unless shard_generation_step["id"] == "shards" &&
     shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner 7") &&
+    shard_generation_script.include?('$shards[] as $shard') &&
     shard_generation_script.include?('["cloudflare", "vercel"][] as $runtime') &&
+    shard_generation_script.include?('$shard + {runtime: $runtime, total: $total}') &&
     shard_generation_script.include?('length == 14') &&
     shard_generation_script.include?('.total | type == "number" and . == 7') &&
     shard_generation_script.include?('.credentialLane == "limited-free" or .credentialLane == "codex" or .credentialLane == "claude"') &&

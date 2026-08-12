@@ -3621,9 +3621,9 @@ jobs:
             .include as $shards |
             ($shards | length) as $total |
             {include: [
+              $shards[] as $shard |
               ["cloudflare", "vercel"][] as $runtime |
-              $shards[] |
-              . + {runtime: $runtime, total: $total}
+              $shard + {runtime: $runtime, total: $total}
             ]}
           ' <<<"$base_matrix")"
           jq -e '
@@ -4068,6 +4068,10 @@ jobs:
       needs.cli-e2e-03-runner-bootstrap.result == 'success'
     strategy:
       fail-fast: false
+      # Both preview runtimes connect directly to PostgreSQL. Keep two shards
+      # active at once so the complete dual-runtime suite does not create a
+      # connection storm while retaining parallel coverage.
+      max-parallel: 2
       matrix: ${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}
     env:
       E2E_RUNNER_RUNTIME: ${{ matrix.runtime }}
