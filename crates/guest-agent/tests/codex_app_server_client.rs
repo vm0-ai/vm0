@@ -11,6 +11,7 @@ use std::time::Duration;
 use guest_agent::cli::codex_app_server::{
     CodexAppServerClient, CodexAppServerConfig, CodexAppServerError, InitializeResponse,
 };
+use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -423,7 +424,10 @@ async fn codex_app_server_oversized_stdout_line_is_rejected() -> Result<(), Stri
     let result = wait_result_allow_error(client.initialize(), "initialize").await;
     match result {
         Err(CodexAppServerError::Protocol(message)) => {
-            assert!(message.contains("app-server stdout line exceeded"));
+            let expected_error = format!(
+                "app-server stdout line exceeded {CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES} bytes"
+            );
+            assert!(message.contains(&expected_error));
             assert!(!message.contains("xxx"));
         }
         other => {

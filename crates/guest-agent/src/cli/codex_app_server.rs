@@ -17,6 +17,7 @@ use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use guest_common::log_warn;
+use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -35,7 +36,6 @@ use super::{
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
 const NOTIFICATION_QUEUE_MAX_BYTES: usize = 16 * 1024 * 1024;
-const STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 const SHUTDOWN_SIGKILL_GRACE: Duration = Duration::from_secs(2);
 const STDERR_DRAIN_GRACE: Duration = Duration::from_secs(2);
 
@@ -1091,8 +1091,12 @@ async fn read_stdout_line<R>(
 where
     R: AsyncBufRead + Unpin,
 {
-    match line_reader::read_bounded_utf8_line(stdout_reader, partial_line, STDOUT_MAX_LINE_BYTES)
-        .await
+    match line_reader::read_bounded_utf8_line(
+        stdout_reader,
+        partial_line,
+        CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES,
+    )
+    .await
     {
         Ok(line) => Ok(line),
         Err(line_reader::BoundedLineError::Io(error)) => Err(CodexAppServerError::Io(error)),
@@ -1117,7 +1121,7 @@ where
 
 fn stdout_line_too_large_error() -> CodexAppServerError {
     CodexAppServerError::Protocol(format!(
-        "app-server stdout line exceeded {STDOUT_MAX_LINE_BYTES} bytes"
+        "app-server stdout line exceeded {CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES} bytes"
     ))
 }
 

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 import auth_base_forwarder as forwarder
-from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream
 
 
 class TestAuthBaseForwarderSecurity:
@@ -299,6 +299,46 @@ class TestAuthBaseForwarderTransportSecurity:
         )
         wrapped_sock.do_handshake.assert_called_once_with()
         assert conn.sock is wrapped_sock
+
+    def test_validated_connection_cleans_up_wrapped_socket_when_tls_handshake_fails(self):
+        raw_sock = MagicMock()
+        handshake_error = ssl.SSLError("handshake failed")
+        wrapped_sock = FakeSocket(b"", handshake_side_effect=handshake_error)
+        context = MagicMock()
+        context.wrap_socket.return_value = wrapped_sock
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
+            validated_addresses=(
+                forwarder._ValidatedAddress(
+                    forwarder.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
+            ),
+        )
+        vars(conn)["_context"] = context
+
+        with (
+            patch.object(forwarder.socket, "socket", return_value=raw_sock),
+            pytest.raises(ssl.SSLError) as raised,
+        ):
+            conn.request("GET", "/")
+
+        assert raised.value is handshake_error
+        assert wrapped_sock.handshake_count == 1
+        assert conn.sock is None
+        assert wrapped_sock.closed
+        assert wrapped_sock.close_count == 1
+        assert wrapped_sock.sent == b""
+        raw_sock.close.assert_not_called()
+
+        assert abort_handle.abort_for_shutdown()
+        assert wrapped_sock.shutdown_calls == []
+        assert wrapped_sock.close_count == 1
 
     def test_validated_connection_retries_checked_addresses_without_new_dns(self):
         failed_sock = MagicMock()
