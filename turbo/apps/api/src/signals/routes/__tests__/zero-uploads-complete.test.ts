@@ -77,7 +77,9 @@ function zeroBearer(
   })}`;
 }
 
-async function createRunUploadFixture(): Promise<RunUploadFixture> {
+async function createRunUploadFixture(
+  options: { readonly chatThread?: boolean } = {},
+): Promise<RunUploadFixture> {
   const actor = bdd.user();
   const orgId = requireOrgId(actor);
   const objectStore = chatCallbacks.acceptChatObjectStorage();
@@ -93,21 +95,38 @@ async function createRunUploadFixture(): Promise<RunUploadFixture> {
     visibility: "private",
   });
 
-  const run = await runsApi.createRun(actor, {
-    agentId: agent.agentId,
-    prompt: "produce an uploaded artifact",
-    modelProvider: "anthropic-api-key",
-  });
+  let runId: string;
+  if (options.chatThread) {
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "produce a thread-linked uploaded artifact",
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected chat send to create a thread-linked run");
+    }
+    runId = sent.body.runId;
+  } else {
+    const run = await runsApi.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "produce an uploaded artifact",
+      modelProvider: "anthropic-api-key",
+    });
+    runId = run.runId;
+  }
   const orgActor = { ...actor, orgId };
   mockClerkMembership(context, orgActor, "org:admin");
 
   return {
     actor: orgActor,
-    runId: run.runId,
+    runId,
     bearer: `Bearer ${zeroToken({
       userId: actor.userId,
       orgId,
-      runId: run.runId,
+      runId,
       capabilities: ["file:write"],
     })}`,
     objectStore,
@@ -148,7 +167,7 @@ describe("POST /api/zero/uploads/complete", () => {
   });
 
   it("keeps a completed upload successful when realtime invalidation fails", async () => {
-    const fixture = await createRunUploadFixture();
+    const fixture = await createRunUploadFixture({ chatThread: true });
     const fileId = randomUUID();
     addUploadObject(fixture, fileId, "realtime-independent.pdf");
     await flushWaitUntilForTest();
