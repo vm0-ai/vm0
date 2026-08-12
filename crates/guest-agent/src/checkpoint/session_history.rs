@@ -1309,7 +1309,7 @@ mod tests {
         let database = b"SQLite format 3\0\xff\x00native-pi-session";
         std::fs::write(&database_path, database).unwrap();
 
-        let prepared = prepare_session_history(
+        let prepared = match prepare_session_history(
             CheckpointMode::Recovery,
             env::Framework::Pi,
             CheckpointSessionHistoryLimits::Production,
@@ -1317,7 +1317,13 @@ mod tests {
             database_path.to_str().unwrap(),
             std::time::Instant::now(),
         )
-        .expect("Pi SQLite bytes should not be validated as JSONL");
+        .expect("Pi SQLite bytes should not be validated as JSONL")
+        {
+            PreparedSessionHistoryOutcome::Upload(prepared) => prepared,
+            PreparedSessionHistoryOutcome::DiscardedOversized => {
+                panic!("Pi SQLite history must not use native history pruning")
+            }
+        };
 
         assert_eq!(prepared.raw_size, database.len() as u64);
         assert_eq!(prepared.hash, hex::encode(Sha256::digest(database)));
