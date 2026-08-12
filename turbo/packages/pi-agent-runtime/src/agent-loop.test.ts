@@ -239,24 +239,23 @@ function fireScheduledDeadline(
   expect(timeoutMs).toBe(expectedTimeoutMs);
 }
 
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  readonly resolve: (value: T) => void;
-}
-
-function createDeferred<T>(): Deferred<T> {
-  let resolvePromise: ((value: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
-    resolvePromise = resolve;
-  });
-  if (!resolvePromise) {
-    throw new Error("Deferred promise was not initialized");
+function waitForAbort(controller: AbortController): Promise<void> {
+  if (controller.signal.aborted) {
+    return Promise.resolve();
   }
-  return { promise, resolve: resolvePromise };
+  return new Promise((resolve) => {
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        resolve();
+      },
+      { once: true },
+    );
+  });
 }
 
 class LaterBashExecutionEnv extends NodeExecutionEnv {
-  readonly started = createDeferred<void>();
+  readonly started = new AbortController();
   readonly abortedCommands: string[] = [];
 
   override exec(
@@ -273,7 +272,7 @@ class LaterBashExecutionEnv extends NodeExecutionEnv {
       },
       { once: true },
     );
-    this.started.resolve();
+    this.started.abort();
     return new Promise<never>(() => {});
   }
 }
@@ -539,7 +538,7 @@ describe("Pi DeepSeek provider", () => {
         new AbortController().signal,
       );
 
-      await env.started.promise;
+      await waitForAbort(env.started);
       const laterDeadline = timeoutSpy.mock.calls.find((call) => {
         return call[1] === 60_000;
       });
@@ -625,7 +624,7 @@ describe("Pi DeepSeek provider", () => {
         controller.signal,
       );
 
-      await env.started.promise;
+      await waitForAbort(env.started);
       const reason = new Error("parent cancelled later Pi tool");
       reason.name = "AbortError";
       controller.abort(reason);

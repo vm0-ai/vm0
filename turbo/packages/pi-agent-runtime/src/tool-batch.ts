@@ -213,10 +213,12 @@ async function executeToolCalls(
       toolName: toolCall.name,
       args: toolCall.arguments,
     });
+    signal.throwIfAborted();
     const preparation = prepareToolCall(tools, toolCall, signal);
     if (preparation.kind === "immediate") {
       const finalized: FinalizedToolCall = preparation;
       await emitToolExecutionEnd(finalized, onEvent);
+      signal.throwIfAborted();
       finalizedCalls.push(finalized);
     } else {
       finalizedCalls.push(async () => {
@@ -226,12 +228,11 @@ async function executeToolCalls(
           onEvent,
         );
         await emitToolExecutionEnd(finalized, onEvent);
+        signal.throwIfAborted();
         return finalized;
       });
     }
-    if (signal.aborted) {
-      break;
-    }
+    signal.throwIfAborted();
   }
 
   const ordered = await Promise.all(
@@ -239,11 +240,14 @@ async function executeToolCalls(
       return typeof entry === "function" ? entry() : Promise.resolve(entry);
     }),
   );
+  signal.throwIfAborted();
   const messages: ToolResultMessage[] = [];
   for (const finalized of ordered) {
     const message = toolResultMessage(finalized);
     await onEvent({ type: "message_start", message });
+    signal.throwIfAborted();
     await onEvent({ type: "message_end", message });
+    signal.throwIfAborted();
     messages.push(message);
   }
   return messages;

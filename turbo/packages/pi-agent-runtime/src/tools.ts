@@ -161,17 +161,18 @@ export function createPiReadTool(env: ExecutionEnv): PiAgentTool {
 
 function createPiBashTool(env: ExecutionEnv): PiAgentTool {
   const tool = createBashTool();
+  const defaultTimeoutSeconds = PI_TOOL_DEFAULT_TIMEOUT_MS / 1_000;
+  const maxTimeoutSeconds = PI_TOOL_MAX_TIMEOUT_MS / 1_000;
   return {
     ...tool,
-    description: `${tool.description} Commands time out after 600 seconds by default; timeout may be set up to 1800 seconds.`,
+    description: `${tool.description} Commands time out after ${defaultTimeoutSeconds} seconds by default; timeout may be set up to ${maxTimeoutSeconds} seconds.`,
     parameters: {
       ...tool.parameters,
       properties: {
         ...tool.parameters.properties,
         timeout: {
           ...tool.parameters.properties.timeout,
-          description:
-            "Timeout in seconds (optional; default 600, maximum 1800)",
+          description: `Timeout in seconds (optional; default ${defaultTimeoutSeconds}, maximum ${maxTimeoutSeconds})`,
         },
       },
     },

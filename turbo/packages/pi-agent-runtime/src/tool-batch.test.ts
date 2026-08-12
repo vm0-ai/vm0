@@ -19,20 +19,19 @@ const ZERO_USAGE = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  readonly resolve: (value: T) => void;
-}
-
-function createDeferred<T>(): Deferred<T> {
-  let resolvePromise: ((value: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
-    resolvePromise = resolve;
-  });
-  if (!resolvePromise) {
-    throw new Error("Deferred promise was not initialized");
+function waitForAbort(controller: AbortController): Promise<void> {
+  if (controller.signal.aborted) {
+    return Promise.resolve();
   }
-  return { promise, resolve: resolvePromise };
+  return new Promise((resolve) => {
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        resolve();
+      },
+      { once: true },
+    );
+  });
 }
 
 function hasNonEmptyTextContent(value: unknown): boolean {
@@ -77,7 +76,7 @@ function fireScheduledDeadline(
 }
 
 class HangingReadExecutionEnv extends NodeExecutionEnv {
-  readonly started = createDeferred<void>();
+  readonly started = new AbortController();
   readonly abortedPaths: string[] = [];
   readonly #hangingPathSuffix: string;
 
@@ -103,13 +102,13 @@ class HangingReadExecutionEnv extends NodeExecutionEnv {
       },
       { once: true },
     );
-    this.started.resolve();
+    this.started.abort();
     return new Promise<never>(() => {});
   }
 }
 
 class HangingBashExecutionEnv extends NodeExecutionEnv {
-  readonly started = createDeferred<void>();
+  readonly started = new AbortController();
   readonly abortedCommands: string[] = [];
   readonly nativeTimeouts: Array<number | undefined> = [];
 
@@ -125,7 +124,7 @@ class HangingBashExecutionEnv extends NodeExecutionEnv {
       },
       { once: true },
     );
-    this.started.resolve();
+    this.started.abort();
     return new Promise<never>(() => {});
   }
 }
@@ -248,7 +247,7 @@ describe("Pi handoff tool batch", () => {
         new AbortController().signal,
       );
 
-      await env.started.promise;
+      await waitForAbort(env.started);
       fireScheduledDeadline(
         timeoutSpy.mock.calls[0],
         PI_TOOL_DEFAULT_TIMEOUT_MS,
@@ -313,7 +312,7 @@ describe("Pi handoff tool batch", () => {
           new AbortController().signal,
         );
 
-        await env.started.promise;
+        await waitForAbort(env.started);
         fireScheduledDeadline(timeoutSpy.mock.calls[0], expectedTimeoutMs);
 
         await expect(resultsPromise).resolves.toMatchObject([
@@ -356,13 +355,42 @@ describe("Pi handoff tool batch", () => {
         controller.signal,
       );
 
-      await env.started.promise;
+      await waitForAbort(env.started);
       const reason = new Error("parent cancelled");
       reason.name = "AbortError";
       controller.abort(reason);
 
       await expect(resultsPromise).rejects.toBe(reason);
       expect(env.abortedPaths).toHaveLength(1);
+    } finally {
+      await env.cleanup();
+    }
+  });
+
+  it("propagates parent cancellation while emitting an immediate result", async () => {
+    const env = new NodeExecutionEnv({ cwd: tmpdir() });
+    const controller = new AbortController();
+    const reason = new Error("parent cancelled during result emission");
+    reason.name = "AbortError";
+    try {
+      const resultsPromise = executePiToolBatch(
+        {
+          messages: [
+            assistant("handoff", [
+              { id: "unknown-cancel", name: "unknown", arguments: {} },
+            ]),
+          ],
+          executionEnv: env,
+          onEvent(event) {
+            if (event.type === "tool_execution_end") {
+              controller.abort(reason);
+            }
+          },
+        },
+        controller.signal,
+      );
+
+      await expect(resultsPromise).rejects.toBe(reason);
     } finally {
       await env.cleanup();
     }
@@ -397,7 +425,7 @@ describe("Pi handoff tool batch", () => {
         new AbortController().signal,
       );
 
-      await env.started.promise;
+      await waitForAbort(env.started);
       fireScheduledDeadline(
         timeoutSpy.mock.calls[0],
         PI_TOOL_DEFAULT_TIMEOUT_MS,
@@ -432,7 +460,7 @@ describe("Pi handoff tool batch", () => {
     const pidFile = join(root, "pids.txt");
     const env = new NodeExecutionEnv({ cwd: root });
     const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    const ready = createDeferred<void>();
+    const ready = new AbortController();
     try {
       const resultsPromise = executePiToolBatch(
         {
@@ -443,7 +471,7 @@ describe("Pi handoff tool batch", () => {
                 name: "bash",
                 arguments: {
                   command: `sleep 30 & child=$!; echo "$$ $child" | tee ${JSON.stringify(pidFile)}; wait`,
-                  timeout: 60,
+                  timeout: 1,
                 },
               },
             ]),
@@ -454,26 +482,26 @@ describe("Pi handoff tool batch", () => {
               event.type === "tool_execution_update" &&
               hasNonEmptyTextContent(event.partialResult)
             ) {
-              ready.resolve();
+              ready.abort();
             }
           },
         },
         new AbortController().signal,
       );
 
-      await ready.promise;
+      await waitForAbort(ready);
       const pids = (await readFile(pidFile, "utf8"))
         .trim()
         .split(" ")
         .map(Number);
       expect(pids).toHaveLength(2);
-      fireScheduledDeadline(timeoutSpy.mock.calls[0], 60_000);
+      fireScheduledDeadline(timeoutSpy.mock.calls[0], 1_000);
 
       await expect(resultsPromise).resolves.toMatchObject([
         {
           toolCallId: "bash-process-tree",
           isError: true,
-          details: { code: "tool_timeout", timeoutMs: 60_000 },
+          details: { code: "tool_timeout", timeoutMs: 1_000 },
         },
       ]);
       await vi.waitFor(
