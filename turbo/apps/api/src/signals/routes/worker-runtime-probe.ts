@@ -54,12 +54,14 @@ const probeWorkerOutboundSafety$ = command(
     if (privateFetch.status === "fulfilled") {
       await privateFetch.value.body?.cancel();
     }
+    const nativePrivateFetchBlocked =
+      privateFetch.status === "rejected" || privateFetch.value.status >= 400;
     return {
       status: 200 as const,
       body: {
         ok: true as const,
         dns_private_address_blocked: dnsPrivateAddressBlocked,
-        native_private_fetch_blocked: privateFetch.status === "rejected",
+        native_private_fetch_blocked: nativePrivateFetchBlocked,
       },
     };
   },

@@ -67,7 +67,7 @@ describe("POST /api/test/worker-runtime/outbound-safety", () => {
     server.use(
       http.get("https://localtest.me/", ({ request }) => {
         redirect = request.redirect;
-        return HttpResponse.error();
+        return new HttpResponse(null, { status: 403 });
       }),
     );
 
