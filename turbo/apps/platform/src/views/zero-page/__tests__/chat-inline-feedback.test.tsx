@@ -239,6 +239,50 @@ function dispatchDocumentShortcut(
 }
 
 describe("chat inline feedback", () => {
+  it("leaves the source passage out of the browser highlight registry", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply =
+      "This passage should stop repainting after feedback starts.";
+    const browserHighlights = new Map<string, object>();
+    vi.stubGlobal("CSS", { highlights: browserHighlights });
+    vi.stubGlobal("Highlight", class BrowserHighlight {});
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback repaint regression",
+      chatEvents: [
+        {
+          id: "msg-feedback-highlight-user",
+          role: "user",
+          content: "Review the passage",
+          runId: "run-feedback-highlight",
+          createdAt: "2026-08-12T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-highlight-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-highlight",
+          createdAt: "2026-08-12T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(await screen.findByText("Provide feedback"));
+    await findFeedbackNote();
+    await waitForDeferredSelectionCapture();
+
+    expect(browserHighlights.has("zero-feedback")).toBeFalsy();
+    expect(browserHighlights.size).toBe(0);
+  });
+
   it("inserts a template node inside a feedback note", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The illustration direction is too generic.";

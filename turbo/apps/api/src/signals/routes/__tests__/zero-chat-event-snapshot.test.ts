@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import { chatEventRowV4Schema } from "@vm0/api-contracts/contracts/chat-event-rows";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadEventsContract,
+  type UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import {
   cronProjectChatEventSearchContract,
   cronSnapshotChatEventsContract,
@@ -90,6 +94,7 @@ async function sendNoCreditMessage(
     readonly agentId: string;
     readonly threadId?: string;
     readonly prompt: string;
+    readonly userMessage?: UserMessageDocument;
   },
 ): Promise<string> {
   await api.ensureOrgModelProvider(actor);
@@ -133,6 +138,18 @@ describe("chat event snapshot read endpoints", () => {
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       prompt: `snapshot-download-${randomUUID()}`,
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "feedback",
+            quote: "Snapshot feedback quote",
+            note: [{ type: "text", text: "Keep the canonical location." }],
+            eventId: "snapshot-feedback-source-event",
+            range: { start: 4, end: 13 },
+          },
+        ],
+      },
     });
 
     const missing = await accept(
@@ -164,6 +181,55 @@ describe("chat event snapshot read endpoints", () => {
       url: FAKE_CHAT_EVENT_SNAPSHOT_URL,
       expiresInSeconds: 900,
       lastSeqId: head.last_seq_id,
+    });
+
+    const snapshotObject = readFakeChatEventObject(head.object_key);
+    if (snapshotObject === undefined) {
+      throw new Error("Expected the feedback snapshot object");
+    }
+    const archivedEvents = gunzipSync(snapshotObject)
+      .toString("utf8")
+      .trim()
+      .split("\n")
+      .map((line) => {
+        return chatEventFromRow(chatEventRowV4Schema.parse(JSON.parse(line)));
+      });
+    const archivedInput = archivedEvents.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    if (archivedInput?.eventType !== "input.prompt") {
+      throw new Error("Expected the archived feedback input");
+    }
+    const archivedFeedback = archivedInput.userMessage.parts.find((part) => {
+      return part.type === "feedback";
+    });
+    expect(archivedFeedback).toStrictEqual({
+      type: "feedback",
+      quote: "Snapshot feedback quote",
+      note: [{ type: "text", text: "Keep the canonical location." }],
+    });
+
+    const canonicalEvents = await accept(
+      eventsClient().list({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: {},
+      }),
+      [200],
+    );
+    const canonicalInput = canonicalEvents.body.events.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    if (canonicalInput?.eventType !== "input.prompt") {
+      throw new Error("Expected the canonical feedback input");
+    }
+    expect(
+      canonicalInput.userMessage.parts.find((part) => {
+        return part.type === "feedback";
+      }),
+    ).toMatchObject({
+      eventId: "snapshot-feedback-source-event",
+      range: { start: 4, end: 13 },
     });
 
     // Unsupported heads fail closed instead of entering a rewrite fallback.

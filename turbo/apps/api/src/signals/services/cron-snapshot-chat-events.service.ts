@@ -35,6 +35,7 @@ import {
   type S3Object,
 } from "../external/s3";
 import { settle } from "../utils";
+import { projectLegacyChatEventRow } from "./chat-feedback-location-compatibility.service";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
@@ -195,7 +196,14 @@ export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRowV4 {
 }
 
 function archiveLine(row: ArchiveEventRow): Buffer {
-  return encodeArchiveLine(chatEventRowFromDbRow(row));
+  // Snapshot URLs cannot vary by requesting App version. Until the
+  // capability-tagged reader has exceeded the ~2-day stale-client window,
+  // archive the previous strict feedback shape while keeping the canonical DB
+  // row intact. Cleanup must remove this projection and bump
+  // ARCHIVE_SCHEMA_VERSION so every existing head is rebuilt with locations.
+  return encodeArchiveLine(
+    projectLegacyChatEventRow(chatEventRowFromDbRow(row)),
+  );
 }
 
 function sha256Hex(buffer: Buffer): string {
