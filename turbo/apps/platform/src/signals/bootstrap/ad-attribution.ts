@@ -198,7 +198,7 @@ export const applyStoredAdAttribution$ = command(({ get }, url: URL): void => {
   }
 });
 
-export function adAttributionMetadataFromStoredValue(
+function adAttributionMetadataFromStoredValue(
   storedAttribution: string | null,
   cookieString: string,
 ): AdAttributionMetadata | undefined {

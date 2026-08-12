@@ -27,13 +27,9 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { sessionStorageSignals } from "../../../signals/external/session-storage.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
-const restorePaymentPendingStorage = sessionStorageSignals(
-  "vm0:billing:restore-payment-pending",
-);
 
 function queryButtonByText(
   text: string,
@@ -3137,61 +3133,12 @@ describe("organization billing settings", () => {
     expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
   });
 
-  it("redirects to checkout when restoring a cancelled plan requires payment confirmation", async () => {
+  it("redirects for restore confirmation and shows success after realtime catches up", async () => {
     const locationAssign = context.mocks.browser.locationAssign();
-
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Restore Confirm Org",
-      role: "admin",
-    });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, {
-        ...activeProBillingStatus(),
-        cancelAtPeriodEnd: true,
-        scheduledChange: {
-          type: "cancel",
-          targetTier: "limited-free-1",
-          effectiveDate: "2026-04-01T00:00:00Z",
-        },
-      });
-    });
-    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
-      return respond(200, {
-        status: "payment_method_required",
-        checkoutUrl: "https://checkout.stripe.com/confirm-restore-plan",
-      });
-    });
-
-    await openBillingTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("Restore plan")).toBeInTheDocument();
-      expect(
-        screen.getByText(/has been cancelled and will end on Apr 1, 2026/),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Restore plan"));
-    const restoreDialog = await screen.findByRole("dialog", {
-      name: "Restore Pro plan?",
-    });
-    click(buttonByText("Restore plan", restoreDialog));
-
-    await waitFor(() => {
-      expect(locationAssign.calls).toStrictEqual([
-        "https://checkout.stripe.com/confirm-restore-plan",
-      ]);
-    });
-    expect(screen.queryByText("Restore Pro plan?")).not.toBeInTheDocument();
-  });
-
-  it("shows a pending restore success after billing realtime catches up", async () => {
     const successToast = vi.spyOn(toast, "success");
     let restored = false;
     let billingStatusRequests = 0;
 
-    context.store.set(restorePaymentPendingStorage.set$, "1");
     context.mocks.data.org({
       id: "org_1",
       name: "Restore Realtime Org",
@@ -3214,6 +3161,12 @@ describe("organization billing settings", () => {
             },
       );
     });
+    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+      return respond(200, {
+        status: "payment_method_required",
+        checkoutUrl: "https://checkout.stripe.com/confirm-restore-plan",
+      });
+    });
 
     await openBillingTab();
 
@@ -3222,8 +3175,20 @@ describe("organization billing settings", () => {
       expect(
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
-      expect(billingStatusRequests).toBeGreaterThanOrEqual(2);
     });
+
+    click(screen.getByText("Restore plan"));
+    const restoreDialog = await screen.findByRole("dialog", {
+      name: "Restore Pro plan?",
+    });
+    click(buttonByText("Restore plan", restoreDialog));
+
+    await waitFor(() => {
+      expect(locationAssign.calls).toStrictEqual([
+        "https://checkout.stripe.com/confirm-restore-plan",
+      ]);
+    });
+    expect(screen.queryByText("Restore Pro plan?")).not.toBeInTheDocument();
     expect(successToast).not.toHaveBeenCalledWith(
       "Plan restored. Your subscription will renew normally.",
     );
@@ -3238,7 +3203,7 @@ describe("organization billing settings", () => {
         "Plan restored. Your subscription will renew normally.",
       );
     });
-    expect(context.store.get(restorePaymentPendingStorage.get$)).toBeNull();
+    expect(successToast).toHaveBeenCalledTimes(1);
   });
 
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {

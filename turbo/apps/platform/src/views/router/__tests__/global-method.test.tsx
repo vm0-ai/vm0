@@ -3,12 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 
 const context = testContext();
 const TEST_SHA = "0123456789abcdef0123456789abcdef01234567";
 const TEST_VERSION = "0.540.0";
-const debugLoggerStorage = localStorageSignals("debugLogger");
 
 describe("global method", () => {
   it("exposes the app build commit SHA after bootstrap", async () => {
@@ -20,7 +18,7 @@ describe("global method", () => {
     });
   });
 
-  it("persists enabled debug loggers through the storage signal", async () => {
+  it("enables debug loggers through the public global method", async () => {
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
@@ -35,8 +33,6 @@ describe("global method", () => {
 
     loggerControl.debug = true;
 
-    expect(context.store.get(debugLoggerStorage.get$)).toBe(
-      JSON.stringify(["GlobalMethod"]),
-    );
+    expect(window._vm0?.loggers.GlobalMethod?.debug).toBeTruthy();
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
+import {
+  zeroAttributionContract,
+  type AdAttributionMetadata,
+} from "@vm0/api-contracts/contracts/zero-attribution";
 
 import {
   clearMockedAuthOnAbort,
@@ -86,14 +89,37 @@ function storePaidSignupAttribution(): void {
   );
 }
 
+function setGoogleAnalyticsCookie(value: string): void {
+  context.mocks.browser.cookie(`_ga=${encodeURIComponent(value)}`);
+}
+
 describe("signup attribution Google Ads conversion", () => {
   it("fires the Signup conversion after first-time signup attribution is recorded", async () => {
     const gtag = installGtagMock();
+    let recordedAttribution: AdAttributionMetadata | undefined;
     mockSignedInUser();
     storePaidSignupAttribution();
+    setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
+    context.mocks.api(
+      zeroAttributionContract.recordSignup,
+      ({ body, respond }) => {
+        recordedAttribution = body.attribution;
+        return respond(200, { recorded: true });
+      },
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
+    expect(recordedAttribution).toStrictEqual({
+      source_type: "paid",
+      gclid: "click-123",
+      gclid_present: "true",
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "signup-campaign",
+      vm0_source: "homepage",
+      ga_client_id: "123456789.987654321",
+    });
     expect(gtag).toHaveBeenCalledWith(
       "event",
       "conversion",
@@ -109,12 +135,24 @@ describe("signup attribution Google Ads conversion", () => {
     expect(gtag).toHaveBeenCalledTimes(1);
   });
 
-  it("fires the Signup conversion for a recent signup without stored ad attribution", async () => {
+  it("records the GA4 client ID for a recent signup without stored ad attribution", async () => {
     const gtag = installGtagMock();
+    let recordedAttribution: AdAttributionMetadata | undefined;
     mockSignedInUser();
+    setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
+    context.mocks.api(
+      zeroAttributionContract.recordSignup,
+      ({ body, respond }) => {
+        recordedAttribution = body.attribution;
+        return respond(200, { recorded: true });
+      },
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
+    expect(recordedAttribution).toStrictEqual({
+      ga_client_id: "123456789.987654321",
+    });
     expect(gtag).toHaveBeenCalledWith(
       "event",
       "conversion",
@@ -133,6 +171,22 @@ describe("signup attribution Google Ads conversion", () => {
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
+    expect(gtag).not.toHaveBeenCalled();
+  });
+
+  it("ignores a malformed analytics cookie when no other attribution exists", async () => {
+    const gtag = installGtagMock();
+    let attributionRequests = 0;
+    mockSignedInUser({ createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)) });
+    setGoogleAnalyticsCookie("not-a-ga-cookie");
+    context.mocks.api(zeroAttributionContract.recordSignup, ({ respond }) => {
+      attributionRequests += 1;
+      return respond(200, { recorded: true });
+    });
+
+    await context.store.set(recordSignupAttribution$, context.signal);
+
+    expect(attributionRequests).toBe(0);
     expect(gtag).not.toHaveBeenCalled();
   });
 

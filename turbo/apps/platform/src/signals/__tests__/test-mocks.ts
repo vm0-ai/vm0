@@ -269,6 +269,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
+      cookie: (cookie: string): void => {
+        vi.spyOn(document, "cookie", "get").mockReturnValue(cookie);
+      },
       clipboardWriteText: (): ClipboardWriteMock => {
         return mockClipboardWriteText();
       },

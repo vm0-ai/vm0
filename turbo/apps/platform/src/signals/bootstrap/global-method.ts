@@ -6,8 +6,9 @@ import { inspectLogInput$ } from "./inspect-log-input";
 import { extendDebugLoggerLocalStorage$ } from "./loggers";
 
 const L = logger("GlobalMethod");
+const ENABLE_DEBUG_LOGGER_EVENT = "vm0:enable-debug-logger";
 
-function createLoggerControl(name: string, enableDebugLogger: () => void) {
+function createLoggerControl(name: string) {
   const loggers = getLoggers();
   const loggerInstance = loggers[name];
   if (!loggerInstance) {
@@ -21,7 +22,9 @@ function createLoggerControl(name: string, enableDebugLogger: () => void) {
     set debug(value: boolean) {
       if (value) {
         loggerInstance.level = Level.Debug;
-        enableDebugLogger();
+        window.dispatchEvent(
+          new CustomEvent(ENABLE_DEBUG_LOGGER_EVENT, { detail: name }),
+        );
       } else if (loggerInstance.level === Level.Debug) {
         loggerInstance.level = Level.Info;
       }
@@ -33,14 +36,26 @@ export const setupGlobalMethod$ = command(
   ({ get, set }, signal: AbortSignal) => {
     L.debug("Setting up global method vm0");
 
+    window.addEventListener(
+      ENABLE_DEBUG_LOGGER_EVENT,
+      (event) => {
+        if (
+          !(event instanceof CustomEvent) ||
+          typeof event.detail !== "string"
+        ) {
+          return;
+        }
+        set(extendDebugLoggerLocalStorage$, event.detail);
+      },
+      { signal },
+    );
+
     window._vm0 = {
       get loggers() {
         const loggers = getLoggers();
         const result: DebugLoggers = {};
         for (const name of Object.keys(loggers)) {
-          result[name] = createLoggerControl(name, () => {
-            set(extendDebugLoggerLocalStorage$, name);
-          });
+          result[name] = createLoggerControl(name);
         }
         return result;
       },
