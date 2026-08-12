@@ -41,6 +41,7 @@ export default [
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
+      "ccstate/no-direct-session-storage": "error",
       "ccstate/no-detach-in-signals": "error",
       "ccstate/no-direct-fetch": "error",
       "ccstate/no-empty-promise-catch": "error",

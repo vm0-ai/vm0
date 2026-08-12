@@ -303,7 +303,8 @@ Features:
 - Provides AbortSignal for cleanup
 - Provides `context.mocks` for API, browser, upload, Ably, and test data mocks
 - Automatically resets mock handlers after each test
-- Cleans up localStorage mocks
+- Cleans up localStorage and sessionStorage keys written through their signal
+  abstractions
 
 ## setupPage Options
 
@@ -335,3 +336,5 @@ detachedSetupPage({
 4. **Use factories for complex mock data** - Create helper functions for repetitive mock responses
 5. **Test user flows, not implementation** - Focus on what users see and do
 6. **Capture request data when needed** - Verify correct data is sent to APIs
+7. **Use the Storage signal abstractions** - Do not write browser Storage
+   directly or remove keys in test cleanup hooks

@@ -6,9 +6,11 @@ import {
   mockOrganization,
 } from "../../__tests__/mock-auth.ts";
 import { setupPage } from "../../__tests__/page-helper.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
+const activeOrgIdStorage = sessionStorageSignals("clerk-active-org-id");
 
 describe("organization auth lifecycle", () => {
   it("keeps the active organization through a transient Clerk refresh", async () => {
@@ -31,7 +33,7 @@ describe("organization auth lifecycle", () => {
     });
     emitMockedClerkEvent();
 
-    expect(sessionStorage.getItem("clerk-active-org-id")).toBe("org_A");
+    expect(context.store.get(activeOrgIdStorage.get$)).toBe("org_A");
 
     mockOrganization({
       activeOrg: { id: "org_A", name: "Org A" },

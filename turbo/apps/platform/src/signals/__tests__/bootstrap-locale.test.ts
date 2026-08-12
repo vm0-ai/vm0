@@ -6,6 +6,7 @@ import { formatAppNumber } from "../../i18n/format.ts";
 import { DEFAULT_LOCALE, resources } from "../../i18n/resources.ts";
 import { i18n } from "../../i18n/index.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 import { locale$, setLocale$ } from "../locale.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -13,6 +14,7 @@ const ACTIVE_ORG_STORAGE_KEY = "clerk-active-org-id";
 const TEST_ORG_ID = "org_inline_locale";
 const TEST_LOCALE_STORAGE_KEY = `vm0:locale:${TEST_ORG_ID}`;
 const testLocaleStorage = localStorageSignals(TEST_LOCALE_STORAGE_KEY);
+const activeOrgIdStorage = sessionStorageSignals(ACTIVE_ORG_STORAGE_KEY);
 
 type LocaleEntrypointScript = (
   windowObject: Window,
@@ -83,7 +85,6 @@ function executeMetadataEntrypoint(): void {
 const context = testContext();
 
 afterEach(() => {
-  sessionStorage.removeItem(ACTIVE_ORG_STORAGE_KEY);
   Reflect.deleteProperty(window, "__vm0BrowserSupported");
   Reflect.deleteProperty(window, "__vm0BrowserUpgrade");
   Reflect.deleteProperty(window, "__vm0PreBundleCopy");
@@ -91,9 +92,6 @@ afterEach(() => {
   delete document.documentElement.dataset.appHeadManaged;
   delete document.documentElement.dataset.browserUpgradeTarget;
   delete document.documentElement.dataset.browserSupported;
-  testLocaleStorage.updateRaw(() => {
-    return null;
-  });
 });
 
 describe("bootstrap locale", () => {
@@ -414,7 +412,7 @@ describe("bootstrap locale", () => {
 
   it("uses the cached locale across pre-bundle UI and i18next", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "id-ID");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
@@ -490,7 +488,7 @@ describe("bootstrap locale", () => {
 
   it("loads German before bundle render and restores it from workspace cache", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "de-DE");
 
     executeLocaleEntrypoint();
@@ -574,7 +572,7 @@ describe("bootstrap locale", () => {
   });
 
   it("uses cached Spanish across pre-bundle UI and i18next", async () => {
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "es-ES");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
@@ -674,7 +672,7 @@ describe("bootstrap locale", () => {
 
   it("restores cached French before the application bundle renders", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "fr-FR");
 
     executeLocaleEntrypoint();
@@ -706,7 +704,7 @@ describe("bootstrap locale", () => {
 
   it("uses cached Hindi across pre-bundle UI and i18next", async () => {
     context.mocks.browser.language("en-US");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "hi-IN");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
@@ -772,7 +770,7 @@ describe("bootstrap locale", () => {
 
   it("falls back to English for unsupported browser and cached locales", () => {
     context.mocks.browser.language("nl-NL");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "nl-NL");
 
     executeLocaleEntrypoint();

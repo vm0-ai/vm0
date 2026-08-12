@@ -1,30 +1,21 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { getStoredAdAttributionMetadata } from "../bootstrap/ad-attribution.ts";
-
-const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
+import { adAttributionMetadataFromStoredValue } from "../bootstrap/ad-attribution.ts";
 
 describe("ga4 client id attribution", () => {
-  afterEach(() => {
-    window.sessionStorage.removeItem(STORED_AD_ATTRIBUTION_KEY);
-  });
-
   it("extracts the GA4 client ID from the shared _ga cookie", () => {
-    window.sessionStorage.setItem(
-      STORED_AD_ATTRIBUTION_KEY,
-      new URLSearchParams({
-        source_type: "paid",
-        gclid: "click-123",
-        utm_source: "google",
-        utm_medium: "cpc",
-        vm0_campaign_id: "24006983243",
-        vm0_ad_group_id: "12345",
-      }).toString(),
-    );
+    const storedAttribution = new URLSearchParams({
+      source_type: "paid",
+      gclid: "click-123",
+      utm_source: "google",
+      utm_medium: "cpc",
+      vm0_campaign_id: "24006983243",
+      vm0_ad_group_id: "12345",
+    }).toString();
 
     expect(
-      getStoredAdAttributionMetadata(
-        window.sessionStorage,
+      adAttributionMetadataFromStoredValue(
+        storedAttribution,
         "_ga=GA1.1.123456789.987654321",
       ),
     ).toStrictEqual({
@@ -41,8 +32,8 @@ describe("ga4 client id attribution", () => {
 
   it("returns the GA4 client ID even when no ad click was stored", () => {
     expect(
-      getStoredAdAttributionMetadata(
-        window.sessionStorage,
+      adAttributionMetadataFromStoredValue(
+        null,
         "_ga=GA1.1.123456789.987654321",
       ),
     ).toStrictEqual({ ga_client_id: "123456789.987654321" });
@@ -50,10 +41,7 @@ describe("ga4 client id attribution", () => {
 
   it("ignores malformed analytics cookies", () => {
     expect(
-      getStoredAdAttributionMetadata(
-        window.sessionStorage,
-        "_ga=not-a-ga-cookie",
-      ),
+      adAttributionMetadataFromStoredValue(null, "_ga=not-a-ga-cookie"),
     ).toBeUndefined();
   });
 });

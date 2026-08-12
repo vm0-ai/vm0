@@ -37,13 +37,13 @@ import {
   hydrateOnboardingRoute$,
   onboardingDraft$,
   ONBOARDING_CHECKOUT_STATE_PARAM,
-  readOnboardingCheckoutDraft,
+  readOnboardingCheckoutDraft$,
   type OnboardingDraft,
   type OnboardingRouteStep,
 } from "./onboarding-state.ts";
 import {
-  capturePaidOnboardingAppHandoff,
-  capturePaidOnboardingStepViewed,
+  capturePaidOnboardingAppHandoff$,
+  capturePaidOnboardingStepViewed$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 
@@ -110,7 +110,7 @@ function createOnboardingPageSetup(
     const searchParams = get(searchParams$);
 
     if (config.step === "video-run") {
-      const checkoutDraft = readOnboardingCheckoutDraft(searchParams);
+      const checkoutDraft = set(readOnboardingCheckoutDraft$, searchParams);
       const checkoutSessionId = searchParams.get(
         "onboarding_billing_session_id",
       );
@@ -125,7 +125,7 @@ function createOnboardingPageSetup(
         );
         const handoffParams = promptHandoffParams(searchParams);
         handoffParams.set("prompt", checkoutPrompt);
-        capturePaidOnboardingAppHandoff(checkoutPrompt);
+        set(capturePaidOnboardingAppHandoff$, checkoutPrompt);
         set(detachedNavigateTo$, ROUTES.prompt, {
           searchParams: handoffParams,
           replace: true,
@@ -160,7 +160,7 @@ function createOnboardingPageSetup(
     const title = config.title(get(brandName$));
     set(updatePage$, createElement(config.Page), "none");
     set(updateDocumentTitle$, title);
-    capturePaidOnboardingStepViewed(config.step);
+    set(capturePaidOnboardingStepViewed$, config.step);
     await set(hideAppSkeleton$, signal);
   });
 }

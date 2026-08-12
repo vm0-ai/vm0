@@ -10,16 +10,16 @@ import { zeroClient$ } from "../api-client.ts";
 import { ROUTES } from "../route-paths.ts";
 import { setLoop } from "../utils.ts";
 import { billingStatusAsync$ } from "../zero-page/billing.ts";
-import { getStoredAdAttributionMetadata } from "../bootstrap/ad-attribution.ts";
+import { readStoredAdAttributionMetadata$ } from "../bootstrap/ad-attribution.ts";
 import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import {
   ONBOARDING_CHECKOUT_STATE_PARAM,
   resetOnboardingDraft$,
-  storeOnboardingCheckoutDraft,
+  storeOnboardingCheckoutDraft$,
 } from "./onboarding-state.ts";
 import {
-  capturePaidOnboardingCheckoutCreated,
-  capturePaidOnboardingRedirectToStripe,
+  capturePaidOnboardingCheckoutCreated$,
+  capturePaidOnboardingRedirectToStripe$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
 
 export const completeOnboarding$ = command(
@@ -92,7 +92,7 @@ function checkoutReturnUrl(
 
 export const prepareOnboardingVideoRun$ = command(
   async (
-    { get },
+    { get, set },
     input: OnboardingVideoCheckoutInput,
     signal: AbortSignal,
   ): Promise<OnboardingVideoRunResult> => {
@@ -102,12 +102,12 @@ export const prepareOnboardingVideoRun$ = command(
       return "run";
     }
 
-    const checkoutState = storeOnboardingCheckoutDraft({
+    const checkoutState = set(storeOnboardingCheckoutDraft$, {
       prompt: input.prompt,
       note: input.note,
     });
     const client = get(zeroClient$)(zeroBillingCheckoutContract);
-    const adAttribution = getStoredAdAttributionMetadata();
+    const adAttribution = set(readStoredAdAttributionMetadata$);
     const result = await accept(
       client.create({
         body: {
@@ -121,8 +121,8 @@ export const prepareOnboardingVideoRun$ = command(
       [200],
     );
     signal.throwIfAborted();
-    capturePaidOnboardingCheckoutCreated("onboarding_video");
-    capturePaidOnboardingRedirectToStripe("onboarding_video");
+    set(capturePaidOnboardingCheckoutCreated$, "onboarding_video");
+    set(capturePaidOnboardingRedirectToStripe$, "onboarding_video");
     window.location.href = result.body.url;
     return "checkout";
   },

@@ -2,6 +2,7 @@ import { createStore, type Store } from "ccstate";
 import { afterEach, beforeAll } from "vitest";
 import { logger, resetLoggerForTest } from "../log";
 import { resetLocalStorageForTest$ } from "../external/local-storage";
+import { resetSessionStorageForTest$ } from "../external/session-storage.ts";
 import { resetAllMockHandlers } from "../../mocks/handlers";
 import { createTestMocks, type TestMocks } from "./test-mocks.ts";
 
@@ -34,6 +35,7 @@ export function testContext(): TestContext {
         store = createStore();
         context.signal.addEventListener("abort", () => {
           store?.set(resetLocalStorageForTest$);
+          store?.set(resetSessionStorageForTest$);
           resetLoggerForTest();
           resetAllMockHandlers();
 

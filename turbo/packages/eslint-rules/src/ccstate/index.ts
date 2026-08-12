@@ -20,6 +20,7 @@
  * - no-accessor-escape: ccstate get/set accessors must only be called directly
  * - no-new-abort-controller: Disallow new AbortController() — use signal hierarchy
  * - no-direct-local-storage: Disallow direct localStorage access — use localStorageSignals()
+ * - no-direct-session-storage: Disallow direct sessionStorage access — use sessionStorageSignals()
  * - no-detach-in-signals: Disallow detach() in signals/ — use await or signal chain
  * - no-direct-fetch: Disallow direct fetch$ usage — use zeroClient$ instead
  * - no-empty-promise-catch: Disallow .catch(() => {}) — use detach() for proper promise tracking
@@ -52,6 +53,7 @@ import noAccessorEscape from "./rules/no-accessor-escape.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
 import noNewPromise from "./rules/no-new-promise.ts";
 import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
+import noDirectSessionStorage from "./rules/no-direct-session-storage.ts";
 import noDetachInSignals from "./rules/no-detach-in-signals.ts";
 import noDirectFetch from "./rules/no-direct-fetch.ts";
 import noEmptyPromiseCatch from "./rules/no-empty-promise-catch.ts";
@@ -95,6 +97,7 @@ const plugin = {
     "no-new-abort-controller": noNewAbortController,
     "no-new-promise": noNewPromise,
     "no-direct-local-storage": noDirectLocalStorage,
+    "no-direct-session-storage": noDirectSessionStorage,
     "no-detach-in-signals": noDetachInSignals,
     "no-direct-fetch": noDirectFetch,
     "no-empty-promise-catch": noEmptyPromiseCatch,

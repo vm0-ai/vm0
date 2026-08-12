@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 
 import {
@@ -13,13 +13,15 @@ import {
   nowDate,
 } from "../../__tests__/time.ts";
 import { recordSignupAttribution$ } from "../bootstrap/signup-attribution.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
-const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
-const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
 const SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
+const storedAdAttributionStorage = sessionStorageSignals(
+  STORED_AD_ATTRIBUTION_KEY,
+);
 
 type WindowWithGtag = Window & {
   gtag?: (...args: unknown[]) => void;
@@ -73,8 +75,8 @@ function installGtagMock() {
 }
 
 function storePaidSignupAttribution(): void {
-  window.sessionStorage.setItem(
-    STORED_AD_ATTRIBUTION_KEY,
+  context.store.set(
+    storedAdAttributionStorage.set$,
     new URLSearchParams({
       source_type: "paid",
       gclid: "click-123",
@@ -87,12 +89,6 @@ function storePaidSignupAttribution(): void {
 }
 
 describe("signup attribution Google Ads conversion", () => {
-  afterEach(() => {
-    window.sessionStorage.removeItem(STORED_AD_ATTRIBUTION_KEY);
-    window.sessionStorage.removeItem(SIGNUP_ATTRIBUTION_RECORDED_KEY);
-    window.sessionStorage.removeItem(SIGNUP_CONVERSION_RECORDED_KEY);
-  });
-
   it("fires the Signup conversion after first-time signup attribution is recorded", async () => {
     const gtag = installGtagMock();
     mockSignedInUser();

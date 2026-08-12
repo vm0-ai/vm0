@@ -3,11 +3,11 @@ import { getLoggers, Level, logger } from "../log";
 import type { DebugLoggers } from "../../types/global-method";
 import { getBuildCommitSha, getBuildVersion } from "../../lib/build-info";
 import { inspectLogInput$ } from "./inspect-log-input";
-import { extendDebugLoggerLocalStorage } from "./loggers";
+import { extendDebugLoggerLocalStorage$ } from "./loggers";
 
 const L = logger("GlobalMethod");
 
-function createLoggerControl(name: string) {
+function createLoggerControl(name: string, enableDebugLogger: () => void) {
   const loggers = getLoggers();
   const loggerInstance = loggers[name];
   if (!loggerInstance) {
@@ -21,7 +21,7 @@ function createLoggerControl(name: string) {
     set debug(value: boolean) {
       if (value) {
         loggerInstance.level = Level.Debug;
-        extendDebugLoggerLocalStorage(name);
+        enableDebugLogger();
       } else if (loggerInstance.level === Level.Debug) {
         loggerInstance.level = Level.Info;
       }
@@ -29,27 +29,31 @@ function createLoggerControl(name: string) {
   };
 }
 
-export const setupGlobalMethod$ = command(({ get }, signal: AbortSignal) => {
-  L.debug("Setting up global method vm0");
+export const setupGlobalMethod$ = command(
+  ({ get, set }, signal: AbortSignal) => {
+    L.debug("Setting up global method vm0");
 
-  window._vm0 = {
-    get loggers() {
-      const loggers = getLoggers();
-      const result: DebugLoggers = {};
-      for (const name of Object.keys(loggers)) {
-        result[name] = createLoggerControl(name);
-      }
-      return result;
-    },
-    inspectLogs() {
-      get(inspectLogInput$)?.click();
-    },
-    getBuildCommitSha,
-    getBuildVersion,
-  };
+    window._vm0 = {
+      get loggers() {
+        const loggers = getLoggers();
+        const result: DebugLoggers = {};
+        for (const name of Object.keys(loggers)) {
+          result[name] = createLoggerControl(name, () => {
+            set(extendDebugLoggerLocalStorage$, name);
+          });
+        }
+        return result;
+      },
+      inspectLogs() {
+        get(inspectLogInput$)?.click();
+      },
+      getBuildCommitSha,
+      getBuildVersion,
+    };
 
-  signal.addEventListener("abort", () => {
-    L.debug("Cleaning up global method vm0");
-    delete window._vm0;
-  });
-});
+    signal.addEventListener("abort", () => {
+      L.debug("Cleaning up global method vm0");
+      delete window._vm0;
+    });
+  },
+);

@@ -29,15 +29,16 @@ import { setAblyLoop$ } from "../realtime.ts";
 import { tapError } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
-  applyStoredAdAttribution,
-  getStoredAdAttributionMetadata,
+  applyStoredAdAttribution$,
+  readStoredAdAttributionMetadata$,
 } from "../bootstrap/ad-attribution.ts";
 import {
-  capturePaidOnboardingCheckoutCreated,
-  capturePaidOnboardingRedirectToStripe,
+  capturePaidOnboardingCheckoutCreated$,
+  capturePaidOnboardingRedirectToStripe$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 import {
   setUsagePackMigrationRevisionPreview$,
   setUsagePackMigrationPreview$,
@@ -65,6 +66,12 @@ export type ConcurrencyChangeMode = "quantity" | "cancel";
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
 const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
+const restorePaymentPendingStorage = sessionStorageSignals(
+  RESTORE_PAYMENT_PENDING_KEY,
+);
+const downgradePaymentPendingStorage = sessionStorageSignals(
+  DOWNGRADE_PAYMENT_PENDING_KEY,
+);
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN = 1;
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
 
@@ -99,21 +106,13 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
   return "pro-suspend";
 }
 
-function pendingRestoreStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+const rememberPendingRestorePayment$ = command(({ set }) => {
+  set(restorePaymentPendingStorage.set$, "1");
+});
 
-  return window.sessionStorage;
-}
-
-function rememberPendingRestorePayment(): void {
-  pendingRestoreStorage()?.setItem(RESTORE_PAYMENT_PENDING_KEY, "1");
-}
-
-function clearPendingRestorePayment(): void {
-  pendingRestoreStorage()?.removeItem(RESTORE_PAYMENT_PENDING_KEY);
-}
+const clearPendingRestorePayment$ = command(({ set }) => {
+  set(restorePaymentPendingStorage.clear$);
+});
 
 function downgradeSuccessToastMessage(
   targetTier: DowngradeTargetTier,
@@ -145,15 +144,15 @@ function downgradeSuccessToastMessage(
       });
 }
 
-function rememberPendingDowngradePayment(
-  targetTier: DowngradeTargetTier,
-): void {
-  pendingRestoreStorage()?.setItem(DOWNGRADE_PAYMENT_PENDING_KEY, targetTier);
-}
+const rememberPendingDowngradePayment$ = command(
+  ({ set }, targetTier: DowngradeTargetTier) => {
+    set(downgradePaymentPendingStorage.set$, targetTier);
+  },
+);
 
-function clearPendingDowngradePayment(): void {
-  pendingRestoreStorage()?.removeItem(DOWNGRADE_PAYMENT_PENDING_KEY);
-}
+const clearPendingDowngradePayment$ = command(({ set }) => {
+  set(downgradePaymentPendingStorage.clear$);
+});
 
 function pendingDowngradeTargetTier(
   value: string | null,
@@ -168,57 +167,59 @@ function pendingDowngradeTargetTier(
   return null;
 }
 
-function maybeShowPendingDowngradeToast(status: BillingStatusResponse): void {
-  const storage = pendingRestoreStorage();
-  const targetTier = pendingDowngradeTargetTier(
-    storage?.getItem(DOWNGRADE_PAYMENT_PENDING_KEY) ?? null,
-  );
-  if (!targetTier) {
-    return;
-  }
+const maybeShowPendingDowngradeToast$ = command(
+  ({ get, set }, status: BillingStatusResponse): void => {
+    const targetTier = pendingDowngradeTargetTier(
+      get(downgradePaymentPendingStorage.get$),
+    );
+    if (!targetTier) {
+      return;
+    }
 
-  const scheduledChange = status.scheduledChange;
-  const scheduled =
-    targetTier === "pro"
-      ? scheduledChange?.type === "downgrade" &&
-        scheduledChange.targetTier === "pro"
-      : scheduledChange?.type === "cancel" || status.cancelAtPeriodEnd;
-  if (!scheduled) {
-    return;
-  }
+    const scheduledChange = status.scheduledChange;
+    const scheduled =
+      targetTier === "pro"
+        ? scheduledChange?.type === "downgrade" &&
+          scheduledChange.targetTier === "pro"
+        : scheduledChange?.type === "cancel" || status.cancelAtPeriodEnd;
+    if (!scheduled) {
+      return;
+    }
 
-  storage?.removeItem(DOWNGRADE_PAYMENT_PENDING_KEY);
-  toast.success(
-    downgradeSuccessToastMessage(
-      targetTier,
-      scheduledChange?.effectiveDate ?? status.currentPeriodEnd,
-    ),
-  );
-}
+    set(downgradePaymentPendingStorage.clear$);
+    toast.success(
+      downgradeSuccessToastMessage(
+        targetTier,
+        scheduledChange?.effectiveDate ?? status.currentPeriodEnd,
+      ),
+    );
+  },
+);
 
-function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
-  const storage = pendingRestoreStorage();
-  if (storage?.getItem(RESTORE_PAYMENT_PENDING_KEY) !== "1") {
-    return;
-  }
+const maybeShowPendingRestoreToast$ = command(
+  ({ get, set }, status: BillingStatusResponse): void => {
+    if (get(restorePaymentPendingStorage.get$) !== "1") {
+      return;
+    }
 
-  const tier = apiTierToBillingTier(status.tier);
-  const restored =
-    status.hasSubscription &&
-    (tier === "pro" || tier === "team" || tier === "custom") &&
-    !status.cancelAtPeriodEnd &&
-    status.scheduledChange === null;
-  if (!restored) {
-    return;
-  }
+    const tier = apiTierToBillingTier(status.tier);
+    const restored =
+      status.hasSubscription &&
+      (tier === "pro" || tier === "team" || tier === "custom") &&
+      !status.cancelAtPeriodEnd &&
+      status.scheduledChange === null;
+    if (!restored) {
+      return;
+    }
 
-  storage.removeItem(RESTORE_PAYMENT_PENDING_KEY);
-  toast.success(
-    i18n.t(($) => {
-      return $.billing.toasts.planRestored;
-    }),
-  );
-}
+    set(restorePaymentPendingStorage.clear$);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.planRestored;
+      }),
+    );
+  },
+);
 
 // ---------------------------------------------------------------------------
 // State
@@ -351,8 +352,6 @@ export const billingStatusAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroBillingStatusContract);
   const result = await accept(client.get(), [200]);
-  maybeShowPendingRestoreToast(result.body);
-  maybeShowPendingDowngradeToast(result.body);
   return result.body;
 });
 
@@ -415,69 +414,82 @@ const reloadUsagePackMigration$ = command(({ set }) => {
   });
 });
 
-export const handleBillingRedirect$ = command(({ get, set }) => {
-  const searchParams = new URLSearchParams(get(searchParams$));
-  const billing = searchParams.get("billing");
-  const credits = searchParams.get("credits");
-  const concurrency = searchParams.get("concurrency");
-  if (!billing && !credits && !concurrency) {
-    return;
-  }
+export const handleBillingRedirect$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const hasPendingPayment =
+      get(restorePaymentPendingStorage.get$) === "1" ||
+      pendingDowngradeTargetTier(get(downgradePaymentPendingStorage.get$)) !==
+        null;
+    if (hasPendingPayment) {
+      const status = await get(billingStatusAsync$);
+      signal.throwIfAborted();
+      set(maybeShowPendingRestoreToast$, status);
+      set(maybeShowPendingDowngradeToast$, status);
+    }
 
-  searchParams.delete("billing");
-  searchParams.delete("billing_session_id");
-  searchParams.delete("credits");
-  searchParams.delete("credit_checkout_session_id");
-  searchParams.delete("concurrency");
-  set(replaceSearchParams$, searchParams);
+    const searchParams = new URLSearchParams(get(searchParams$));
+    const billing = searchParams.get("billing");
+    const credits = searchParams.get("credits");
+    const concurrency = searchParams.get("concurrency");
+    if (!billing && !credits && !concurrency) {
+      return;
+    }
 
-  if (billing === "pro" || billing === "team") {
-    const label =
-      billing === "pro"
-        ? i18n.t(($) => {
-            return $.billing.plans.pro.name;
-          })
-        : i18n.t(($) => {
-            return $.billing.plans.team.name;
-          });
-    toast.success(
-      i18n.t(
-        ($) => {
-          return $.billing.toasts.checkoutCompleted;
-        },
-        { plan: label },
-      ),
-    );
-    set(reloadBillingStatus$);
-  }
+    searchParams.delete("billing");
+    searchParams.delete("billing_session_id");
+    searchParams.delete("credits");
+    searchParams.delete("credit_checkout_session_id");
+    searchParams.delete("concurrency");
+    set(replaceSearchParams$, searchParams);
 
-  if (credits === "purchased") {
-    toast.success(
-      i18n.t(($) => {
-        return $.billing.toasts.creditsAdded;
-      }),
-    );
-    set(reloadBillingStatus$);
-  }
+    if (billing === "pro" || billing === "team") {
+      const label =
+        billing === "pro"
+          ? i18n.t(($) => {
+              return $.billing.plans.pro.name;
+            })
+          : i18n.t(($) => {
+              return $.billing.plans.team.name;
+            });
+      toast.success(
+        i18n.t(
+          ($) => {
+            return $.billing.toasts.checkoutCompleted;
+          },
+          { plan: label },
+        ),
+      );
+      set(reloadBillingStatus$);
+    }
 
-  if (concurrency === "purchased") {
-    toast.success(
-      i18n.t(($) => {
-        return $.billing.toasts.concurrencyAdded;
-      }),
-    );
-    set(reloadBillingStatus$);
-  }
+    if (credits === "purchased") {
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.creditsAdded;
+        }),
+      );
+      set(reloadBillingStatus$);
+    }
 
-  if (concurrency === "reduced") {
-    toast.success(
-      i18n.t(($) => {
-        return $.billing.toasts.concurrencyReduced;
-      }),
-    );
-    set(reloadBillingStatus$);
-  }
-});
+    if (concurrency === "purchased") {
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.concurrencyAdded;
+        }),
+      );
+      set(reloadBillingStatus$);
+    }
+
+    if (concurrency === "reduced") {
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.concurrencyReduced;
+        }),
+      );
+      set(reloadBillingStatus$);
+    }
+  },
+);
 
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
   set(reloadBillingStatus$);
@@ -506,7 +518,7 @@ function checkoutReturnUrl(): URL {
 
 export const startCheckout$ = command(
   async (
-    { get },
+    { get, set },
     tier: "pro" | "team",
     newTab: boolean,
     options: { readonly trialDays?: 7 } | undefined,
@@ -515,7 +527,7 @@ export const startCheckout$ = command(
     const successUrl = checkoutReturnUrl();
     successUrl.searchParams.set("billing", tier);
     successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
-    applyStoredAdAttribution(successUrl);
+    set(applyStoredAdAttribution$, successUrl);
     const stripeSuccessUrl = successUrl
       .toString()
       .replace(
@@ -524,8 +536,8 @@ export const startCheckout$ = command(
       );
     const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("billing", "canceled");
-    applyStoredAdAttribution(cancelUrl);
-    const adAttribution = getStoredAdAttributionMetadata();
+    set(applyStoredAdAttribution$, cancelUrl);
+    const adAttribution = set(readStoredAdAttributionMetadata$);
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCheckoutContract);
@@ -545,8 +557,8 @@ export const startCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
-    capturePaidOnboardingCheckoutCreated("paywall");
-    capturePaidOnboardingRedirectToStripe("paywall");
+    set(capturePaidOnboardingCheckoutCreated$, "paywall");
+    set(capturePaidOnboardingRedirectToStripe$, "paywall");
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
@@ -558,7 +570,7 @@ export const startCheckout$ = command(
 
 export const startUsagePackCheckout$ = command(
   async (
-    { get },
+    { get, set },
     args: {
       readonly tier: "pro" | "team";
       readonly memberUsagePacks: readonly MemberUsagePack[];
@@ -570,7 +582,7 @@ export const startUsagePackCheckout$ = command(
     const successUrl = new URL(currentUrl);
     successUrl.searchParams.set("billing", args.tier);
     successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
-    applyStoredAdAttribution(successUrl);
+    set(applyStoredAdAttribution$, successUrl);
     const stripeSuccessUrl = successUrl
       .toString()
       .replace(
@@ -579,8 +591,8 @@ export const startUsagePackCheckout$ = command(
       );
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
-    applyStoredAdAttribution(cancelUrl);
-    const adAttribution = getStoredAdAttributionMetadata();
+    set(applyStoredAdAttribution$, cancelUrl);
+    const adAttribution = set(readStoredAdAttributionMetadata$);
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingUsagePackCheckoutContract);
@@ -1124,13 +1136,13 @@ export const confirmDowngrade$ = command(
     signal.throwIfAborted();
     const response = result.body;
     if (!("success" in response)) {
-      rememberPendingDowngradePayment(targetTier);
+      set(rememberPendingDowngradePayment$, targetTier);
       set(internalDowngradeDialogOpen$, false);
       window.location.assign(response.checkoutUrl);
       return;
     }
 
-    clearPendingDowngradePayment();
+    set(clearPendingDowngradePayment$);
     set(internalDowngradeDialogOpen$, false);
     // Reload billing status to reflect the change
     set(billingReload$, (x) => {
@@ -1155,13 +1167,13 @@ export const restorePlan$ = command(
     );
     signal.throwIfAborted();
     if (result.body.status === "payment_method_required") {
-      rememberPendingRestorePayment();
+      set(rememberPendingRestorePayment$);
       set(internalRestoreDialogOpen$, false);
       window.location.assign(result.body.checkoutUrl);
       return;
     }
 
-    clearPendingRestorePayment();
+    set(clearPendingRestorePayment$);
     set(internalRestoreDialogOpen$, false);
     set(billingReload$, (x) => {
       return x + 1;
