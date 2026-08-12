@@ -429,7 +429,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
 // Workflow schedule lifecycle and execution coverage lives in
 // zero-workflow-automations.test.ts and zero-workflow-automation-scheduler.test.ts.
-// This file retains shared cron authorization and email outbox boundaries.
+// Shared cron authorization remains covered here.
 
 describe("SCHED-02: cron routes", () => {
   it("rejects invalid cron auth on shared cron routes", async () => {
@@ -448,7 +448,7 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
   it("rejects unauthorized drain requests", async () => {
     const email = createEmailApi(context);
 
-    const unauthorizedDrain = await email.drainEmailOutboxCron(false);
+    const unauthorizedDrain = await email.requestEmailOutboxCronWithoutAuth();
     expect(unauthorizedDrain.status).toBe(401);
   });
 
@@ -462,6 +462,7 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     });
 
     const { to, subject } = await email.enqueueDataExportEmail(actor);
+    const item = await email.findEmailOutboxItem({ to, subject });
     expect(resendSendCallsTo(to)).toBe(0);
 
     context.mocks.resend.send.mockResolvedValue({
@@ -469,10 +470,9 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
       error: { message: "data export drain down" },
     });
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
-    const failedDrain = await email.drainEmailOutboxCron(true);
-    if (failedDrain.status !== 200) {
-      throw new Error("Expected failed email outbox drain to return success");
-    }
+    const failedDrain = await email.drainEmailOutboxItems([item.id]);
+    expect(failedDrain).toBe(1);
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(resendSendCallsTo(to)).toBe(1);
 
     context.mocks.resend.send.mockReset();
@@ -480,20 +480,14 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
       data: { id: "resend-bdd-1" },
     });
 
-    const beforeRetry = await email.drainEmailOutboxCron(true);
-    if (beforeRetry.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(beforeRetry.body.success).toBeTruthy();
+    const beforeRetry = await email.drainEmailOutboxItems([item.id]);
+    expect(beforeRetry).toBe(0);
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(0);
     expect(resendSendCallsTo(to)).toBe(0);
 
     mockNow(baseTime + 1000);
-    const drain = await email.drainEmailOutboxCron(true);
-    if (drain.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(drain.body.success).toBeTruthy();
-    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
+    const drain = await email.drainEmailOutboxItems([item.id]);
+    expect(drain).toBe(1);
     expect(context.mocks.resend.send).toHaveBeenCalledWith(
       expect.objectContaining({
         from: "Zero <vm0@mail.example.com>",
@@ -502,19 +496,20 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
         html: expect.stringContaining("Your data export is ready"),
       }),
     );
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(resendSendCallsTo(to)).toBe(1);
 
-    const second = await email.drainEmailOutboxCron(true);
-    if (second.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
+    const second = await email.drainEmailOutboxItems([item.id]);
+    expect(second).toBe(0);
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(resendSendCallsTo(to)).toBe(1);
   });
 
   it("skips an outbox row locked by the inline drain", async () => {
     const email = createEmailApi(context);
     const actor = createBddApi(context).user();
-    const { to } = await email.enqueueDataExportEmail(actor);
+    const { to, subject } = await email.enqueueDataExportEmail(actor);
+    const item = await email.findEmailOutboxItem({ to, subject });
     const sendStarted = createDeferredPromise<void>(context.signal);
     const releaseSend = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
@@ -539,26 +534,25 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     });
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
 
-    const firstDrain = email.drainEmailOutboxCron(true);
+    const firstDrain = email.drainEmailOutboxItems([item.id]);
     await sendStarted.promise;
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(resendSendCallsTo(to)).toBe(1);
 
-    const concurrentDrain = await email.drainEmailOutboxCron(true);
-    if (concurrentDrain.status !== 200) {
-      throw new Error("Expected concurrent email outbox drain to succeed");
-    }
-    expect(concurrentDrain.body.success).toBeTruthy();
+    const concurrentDrain = await email.drainEmailOutboxItems([item.id]);
+    expect(concurrentDrain).toBe(0);
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(resendSendCallsTo(to)).toBe(1);
 
     releaseSend.resolve(undefined);
-    await firstDrain;
+    await expect(firstDrain).resolves.toBe(1);
     await flushWaitUntilForTest();
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(resendSendCallsTo(to)).toBe(1);
 
-    const afterRelease = await email.drainEmailOutboxCron(true);
-    if (afterRelease.status !== 200) {
-      throw new Error("Expected final email outbox drain to succeed");
-    }
+    const afterRelease = await email.drainEmailOutboxItems([item.id]);
+    expect(afterRelease).toBe(0);
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(resendSendCallsTo(to)).toBe(1);
   });
 });
