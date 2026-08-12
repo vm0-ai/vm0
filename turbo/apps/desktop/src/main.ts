@@ -1443,6 +1443,18 @@ if (!hasSingleInstanceLock) {
     installTray();
     queueDesktopAuthCallbackArgv(process.argv);
 
+    if (isDesktopSmokeTestEnabled(process.env)) {
+      try {
+        await verifyDesktopSmokeBridge();
+      } catch (error) {
+        console.error("[smoke-test] desktop renderer bridge failed", error);
+        app.exit(1);
+        return;
+      }
+      writeSync(1, `${DESKTOP_SMOKE_TEST_READY_MARKER}\n`);
+      process.exit(0);
+    }
+
     startDesktopLaunchComputerUse({
       pendingCallback: desktopAuthSession.takePendingCallback(),
       consumeAuthCallback: (callback) =>
@@ -1465,18 +1477,6 @@ if (!hasSingleInstanceLock) {
     app.on("activate", () => {
       void createMainWindow();
     });
-
-    if (isDesktopSmokeTestEnabled(process.env)) {
-      try {
-        await verifyDesktopSmokeBridge();
-      } catch (error) {
-        console.error("[smoke-test] desktop renderer bridge failed", error);
-        app.exit(1);
-        return;
-      }
-      writeSync(1, `${DESKTOP_SMOKE_TEST_READY_MARKER}\n`);
-      process.exit(0);
-    }
   });
 
   app.on("window-all-closed", () => {
