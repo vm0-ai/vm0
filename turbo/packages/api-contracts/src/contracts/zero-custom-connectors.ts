@@ -130,7 +130,7 @@ const customConnectorResponseBaseSchema = z.object({
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
-  authMode: customConnectorAuthModeSchema.optional(),
+  authMode: customConnectorAuthModeSchema,
   oauthConfig: customConnectorOAuthConfigSchema.optional(),
   permissionBundleRef: customConnectorPermissionBundleRefSchema
     .nullable()
