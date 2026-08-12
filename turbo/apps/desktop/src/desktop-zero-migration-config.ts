@@ -1,5 +1,5 @@
 export const ZERO_MIGRATION_BRIDGE_CONFIG = {
-  minimumVersion: "0.33.4",
+  minimumVersion: "0.34.0",
   downloadUrl:
     "https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg",
   reminderDelayMs: 7 * 24 * 60 * 60 * 1_000,

@@ -179,7 +179,7 @@ under independent release tags and update manifests.
 
 ### Final Zero bridge release
 
-Production Zero builds at version `0.33.4` or newer show a soft migration
+Production Zero builds at version `0.34.0` or newer show a soft migration
 reminder for Okou. `Remind Me Later` keeps Zero running and defers the reminder
 for seven days. `Download Okou` records the migration handoff before waiting for
 the active Computer Use command, stops the Zero host after that command finishes,

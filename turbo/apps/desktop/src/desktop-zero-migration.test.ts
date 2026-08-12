@@ -27,7 +27,7 @@ function createController(options: {
   return new DesktopZeroMigrationController({
     enabled: options.enabled ?? true,
     product: options.product ?? "zero",
-    appVersion: options.appVersion ?? "0.33.4",
+    appVersion: options.appVersion ?? "0.34.0",
     preferencesPath: options.filePath,
     drainAndStopZero: options.drainAndStopZero ?? vi.fn(async () => {}),
     startZero: options.startZero ?? vi.fn(async () => {}),
@@ -56,7 +56,7 @@ describe("DesktopZeroMigrationController", () => {
       createController({ filePath, product: "okou" }).getState().mode,
     ).toBe("hidden");
     expect(
-      createController({ filePath, appVersion: "0.33.3" }).getState().mode,
+      createController({ filePath, appVersion: "0.33.4" }).getState().mode,
     ).toBe("hidden");
     expect(createController({ filePath, enabled: false }).getState().mode).toBe(
       "hidden",
