@@ -31,8 +31,8 @@ describe("okou chat rename command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(() => {
@@ -97,7 +97,7 @@ describe("okou chat rename command", () => {
   });
 
   it("renames --thread instead of the current chat thread", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.post(OTHER_RENAME_URL, async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
@@ -137,8 +137,8 @@ describe("okou chat rename command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("requires ZERO_CHAT_THREAD_ID from the current web chat", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+  it("requires OKOU_CHAT_THREAD_ID from the current web chat", async () => {
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
 
     await expect(async () => {
       await zeroChatCommand.parseAsync([

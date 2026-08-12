@@ -13,7 +13,7 @@ function buildZeroToken(capabilities: readonly string[]): string {
       userId: "user-credit",
       runId: "run-credit",
       orgId: "org-credit",
-      scope: "zero",
+      scope: "okou",
       capabilities,
       iat: 1000,
       exp: 2000,
@@ -64,7 +64,7 @@ describe("okou credit command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     server.use(stubBillingStatus());
   });
 
@@ -231,7 +231,7 @@ describe("okou credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(["billing:write"]));
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:write"]));
 
     try {
       await zeroCreditCommand.parseAsync(["node", "cli"]);
@@ -254,7 +254,7 @@ describe("okou credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(["billing:read"]));
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:read"]));
 
     try {
       await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);

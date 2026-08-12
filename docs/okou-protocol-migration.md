@@ -1,8 +1,9 @@
 # Okou protocol migration
 
 This document records the Phase B protocol contract for issues #26487 and
-#26490 and the new-context writer stop tracked by #26652. Phase B is live at
-release target `d2fddbf6714b35182e1ef4b787adf84724f6ee02`.
+#26490, the new-context writer stop tracked by #26652, and the current-artifact
+CLI canonicalization tracked by #26711. Phase B is live at release target
+`d2fddbf6714b35182e1ef4b787adf84724f6ee02`.
 
 ## Canonical and compatibility surfaces
 
@@ -17,9 +18,12 @@ Slack, Teams, Feishu, and GitHub `redirect_uri` values deliberately remain on
 the Zero alias until the corresponding third-party allowlists are migrated in
 a separately verified rollout. Both callback paths reach the same handler.
 
-Current consumers prefer `OKOU_*` variables and fall back to their `ZERO_*`
-aliases. New first-party Okou-agent and presentation-template execution
-contexts emit only:
+Current API and Desktop consumers prefer `OKOU_*` variables and retain their
+`ZERO_*` fallback readers. The current private CLI source reads only canonical
+Okou runtime context and accepts only Okou-scope run tokens. Historical
+commit-addressed CLI artifacts retain their compatibility readers for the
+execution contexts that selected them. New first-party Okou-agent and
+presentation-template execution contexts emit only:
 
 - `OKOU_APP_URL`;
 - `OKOU_AGENT_ID`;
@@ -45,22 +49,32 @@ text and legacy environment keys cannot reach the sandbox.
 
 Already-stored queued, active, and finalizing execution contexts remain
 byte-for-byte unchanged. Their stored `ZERO_*` environment, Zero-scoped token,
-and historical `CLI_PKG_URL` continue through the normal runner and API
-compatibility readers. The API and CLI still prefer `OKOU_*` with `ZERO_*`
-fallback, both HTTP namespaces remain routed, and both token scopes remain
-accepted.
+and historical `CLI_PKG_URL` continue through the historical CLI artifact and
+normal runner and API compatibility readers. Both HTTP namespaces remain
+routed, and the API continues to accept both token scopes.
 
-Removing any fallback reader, `/api/zero/**` route, Zero token-scope verifier,
-historical artifact, callback, Desktop identity, or persisted object requires a
-separate drain gate. Production verification of the writer stop must inspect
-new context names and token scope without exposing values; declining Zero
-request volume alone is not proof that all legacy contexts have drained.
+The current CLI defaults to `https://api.okou.ai` and sends branded requests
+through `/api/okou/**`. Merging that host change requires the custom domain to
+have valid TLS and to reach the production API boundary; static App HTML,
+redirects, and an unreachable hostname do not pass the gate. The existing
+`VM0_API_BACKEND_URL` override remains available for development, previews,
+and operational rollback.
+
+Removing any other fallback reader, `/api/zero/**` route, server-side Zero
+token-scope verifier, historical artifact, callback, Desktop identity, or
+persisted object requires a separate drain gate. The focused current-CLI slice
+is safe only because old contexts keep their stored commit-addressed artifact
+while the released writer stop makes new contexts canonical-only. Production
+verification must inspect names and token scope without exposing values;
+declining Zero request volume alone is not proof that all legacy contexts have
+drained.
 
 ## Rollback
 
 Roll the writer stop back to the Phase B release target above to restore dual
-emission. Leave both namespace routes, both environment readers, both
-token-scope verifiers, the Zero CLI alias, both Desktop identities, stored
-callbacks, queued contexts, and immutable historical artifacts in place.
-Release and production verification remain separate from this implementation
-change.
+emission. Roll the current CLI source back by selecting the last verified
+dual-reader commit-addressed artifact and restoring the previous API origin.
+Leave both namespace routes, server-side environment readers and token-scope
+verifiers, both Desktop identities, stored callbacks, queued contexts, and
+immutable historical artifacts in place. Release and production verification
+remain separate from implementation changes.

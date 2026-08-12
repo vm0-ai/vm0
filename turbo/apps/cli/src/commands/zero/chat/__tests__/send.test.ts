@@ -40,8 +40,8 @@ describe("okou chat send command", () => {
     chalk.level = 0;
     tempDir = mkdtempSync(path.join(tmpdir(), "zero-chat-send-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(() => {
@@ -119,7 +119,7 @@ describe("okou chat send command", () => {
   });
 
   it("reports a message that remains queued and honors --thread-id", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(metadataUrl(OTHER_THREAD_ID), () => {
         return HttpResponse.json({

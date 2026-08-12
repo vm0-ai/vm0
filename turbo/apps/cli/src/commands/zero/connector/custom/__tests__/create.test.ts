@@ -23,7 +23,7 @@ function buildZeroToken(capabilities: readonly string[]): string {
       userId: "user-1",
       runId: "run-1",
       orgId: "org-1",
-      scope: "zero",
+      scope: "okou",
       capabilities,
       iat: 1,
       exp: 2,
@@ -116,8 +116,8 @@ describe("okou connector custom create", () => {
     chalk.level = 0;
     tempDir = mkdtempSync(join(tmpdir(), "zero-custom-connector-create-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(["connector:write"]));
-    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["connector:write"]));
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
   });
 
   afterEach(() => {
@@ -382,7 +382,7 @@ describe("okou connector custom create", () => {
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       return undefined as never;
     });
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(["connector:read"]));
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["connector:read"]));
 
     try {
       await customConnectorCommand.parseAsync([
