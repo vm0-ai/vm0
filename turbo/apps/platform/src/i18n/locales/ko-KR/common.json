@@ -4543,7 +4543,6 @@
     "mermaid": {
       "diagramLabel": "다이어그램",
       "expand": "다이어그램 확대",
-      "invalidDiagram": "유효하지 않은 다이어그램",
       "viewSource": "다이어그램 소스"
     },
     "notFound": {
