@@ -45,10 +45,9 @@ if [[ "${argv_status}" -ne 0 ]]; then
   exit "${argv_status}"
 fi
 
-compatibility_count=0
 internal_count=0
 historical_count=0
-fixture_count=0
+unsupported_user_owned_count=0
 unclassified_count=0
 
 while IFS=: read -r file line content; do
@@ -70,24 +69,14 @@ while IFS=: read -r file line content; do
       ;;
   esac
 
-  if [[ -z "${category}" && "${content}" == *"okou-cutover-audit: compatibility-only"* ]]; then
-    category="compatibility-only"
-    compatibility_count=$((compatibility_count + 1))
-  fi
-
-  if [[ -z "${category}" && "${file}" == ".github/scripts/smoke-okou-cli-artifact.sh" && "${content}" == "  zero \\" ]]; then
-    category="compatibility-only"
-    compatibility_count=$((compatibility_count + 1))
-  fi
-
   if [[ -z "${category}" && "${content}" == *"okou-cutover-audit: historical"* ]]; then
     category="historical"
     historical_count=$((historical_count + 1))
   fi
 
-  if [[ -z "${category}" && "${content}" == *"okou-cutover-audit: test-fixture"* ]]; then
-    category="test-fixture"
-    fixture_count=$((fixture_count + 1))
+  if [[ -z "${category}" && "${content}" == *"okou-cutover-audit: unsupported-user-owned"* ]]; then
+    category="unsupported-user-owned"
+    unsupported_user_owned_count=$((unsupported_user_owned_count + 1))
   fi
 
   if [[ -z "${category}" && "${content}" =~ /zero[[:space:]]+model ]]; then
@@ -114,6 +103,71 @@ while IFS= read -r file; do
   unclassified_count=$((unclassified_count + 1))
 done <"${legacy_argv_file}"
 
+report_boundary_failure() {
+  local file="$1"
+  local detail="$2"
+  printf 'unclassified %s:%s\n' "${file}" "${detail}"
+  unclassified_count=$((unclassified_count + 1))
+}
+
+cli_package_path="turbo/apps/cli/package.json"
+if [[ -f "${repo_root}/${cli_package_path}" ]] &&
+  ! jq -e '
+    .bin == {okou: "./dist/okou.js"}
+    and (.scripts.postbuild | type == "string")
+    and ((.scripts.postbuild | contains("zero")) | not)
+  ' "${repo_root}/${cli_package_path}" >/dev/null; then
+  report_boundary_failure "${cli_package_path}" "legacy executable export or packed metadata"
+fi
+
+cli_entrypoint_path="turbo/apps/cli/src/okou.ts"
+if [[ -f "${repo_root}/${cli_entrypoint_path}" ]] &&
+  rg -q 'endsWith\("zero(\.js|\.ts)?"\)' "${repo_root}/${cli_entrypoint_path}"; then
+  report_boundary_failure "${cli_entrypoint_path}" "legacy executable path detection"
+fi
+
+artifact_verifier_path=".github/scripts/verify-okou-cli-artifact.sh"
+if [[ -f "${repo_root}/${artifact_verifier_path}" ]] &&
+  (! rg -q -F 'and ((.bin | keys) == ["okou"])' "${repo_root}/${artifact_verifier_path}" ||
+    ! rg -q -F "grep -Fxq 'package/zero.js'" "${repo_root}/${artifact_verifier_path}"); then
+  report_boundary_failure "${artifact_verifier_path}" "single-bin or no-zero.js invariant missing"
+fi
+
+artifact_smoke_path=".github/scripts/smoke-okou-cli-artifact.sh"
+if [[ -f "${repo_root}/${artifact_smoke_path}" ]] &&
+  (! rg -q -F 'assert_clean_success okou okou-help --help' "${repo_root}/${artifact_smoke_path}" ||
+    ! rg -q -F 'assert_clean_success okou okou-agent-loop-help __agent-loop --help' "${repo_root}/${artifact_smoke_path}" ||
+    ! rg -q -F 'assert_unsupported_entrypoint zero zero-help --help' "${repo_root}/${artifact_smoke_path}" ||
+    rg -q 'assert_clean_success[[:space:]]+zero([[:space:]]|$)' "${repo_root}/${artifact_smoke_path}"); then
+  report_boundary_failure "${artifact_smoke_path}" "canonical success or legacy rejection boundary missing"
+fi
+
+local_deploy_test_path=".github/scripts/tests/deploy-cli-local-test.sh"
+if [[ -f "${repo_root}/${local_deploy_test_path}" ]] &&
+  ! rg -q -F 'and ((.bin | keys) == ["okou"])' "${repo_root}/${local_deploy_test_path}"; then
+  report_boundary_failure "${local_deploy_test_path}" "single-bin package assertion missing"
+fi
+
+turbo_workflow_path=".github/workflows/turbo.yml"
+if [[ -f "${repo_root}/${turbo_workflow_path}" ]] &&
+  (rg -q -F '"$node_prefix/bin/zero"' "${repo_root}/${turbo_workflow_path}" ||
+    ! rg -q -F 'okou __agent-loop --help' "${repo_root}/${turbo_workflow_path}"); then
+  report_boundary_failure "${turbo_workflow_path}" "legacy symlink present or canonical loop smoke missing"
+fi
+
+e2e_setup_path="e2e/helpers/setup.bash"
+if [[ -f "${repo_root}/${e2e_setup_path}" ]] &&
+  rg -q -F 'ZERO_CLI' "${repo_root}/${e2e_setup_path}"; then
+  report_boundary_failure "${e2e_setup_path}" "legacy E2E command wrapper"
+fi
+
+e2e_trace_path="e2e/helpers/trace-cli.sh"
+if [[ -f "${repo_root}/${e2e_trace_path}" ]] &&
+  (! rg -q -F 'CLI_ENTRYPOINT="okou"' "${repo_root}/${e2e_trace_path}" ||
+    rg -q -F '<okou|zero>' "${repo_root}/${e2e_trace_path}"); then
+  report_boundary_failure "${e2e_trace_path}" "legacy entry-point selection"
+fi
+
 guest_agent_path="crates/guest-agent/src/cli/pi_agent_loop.rs"
 if rg -q -F '"zero".to_string()' "${repo_root}/${guest_agent_path}"; then
   echo "unclassified ${guest_agent_path}: guest-agent still invokes zero" >&2
@@ -124,11 +178,10 @@ if ! rg -q -F '"okou".to_string()' "${repo_root}/${guest_agent_path}"; then
   unclassified_count=$((unclassified_count + 1))
 fi
 
-printf 'summary compatibility-only=%s approved-internal-protocol=%s historical=%s test-fixture=%s unclassified=%s\n' \
-  "${compatibility_count}" \
+printf 'summary approved-internal-protocol=%s historical=%s unsupported-user-owned=%s unclassified=%s\n' \
   "${internal_count}" \
   "${historical_count}" \
-  "${fixture_count}" \
+  "${unsupported_user_owned_count}" \
   "${unclassified_count}"
 
 if [[ "${unclassified_count}" -ne 0 ]]; then
