@@ -9288,6 +9288,10 @@ describe("CHAT-02: shared user message queue", () => {
       "You are communicating with the user through the web chat UI.",
     ].join("\n\n");
     expect(run.appendSystemPrompt).toContain(webPrompt);
+    expect(run.appendSystemPrompt).toContain("# This Chat Thread");
+    expect(run.appendSystemPrompt).toContain(
+      `- CHAT_THREAD_ID: ${anchor.threadId}`,
+    );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
 
