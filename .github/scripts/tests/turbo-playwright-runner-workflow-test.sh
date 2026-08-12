@@ -10,6 +10,7 @@ RUNNER_HELPERS=(
   "${REPO_ROOT}/e2e/helpers/runner-chat.bash"
 )
 RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
+RUNNER_MOCK_CLAUDE_BOOTSTRAP="${REPO_ROOT}/e2e/playwright/runner-mock-claude-bootstrap.bash"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -39,14 +40,14 @@ grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must upgrade through public paid onboarding"
 grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must complete the public Stripe checkout"
-if [[ "$(grep -Fc 'upgradeToPro: true' "$RUNNER_TOKEN")" -ne 2 ]]; then
-  fail "real Codex and Claude runner accounts must both upgrade to Pro"
+if [[ "$(grep -Fc 'upgradeToPro: true' "$RUNNER_TOKEN")" -ne 3 ]]; then
+  fail "real Codex, real Claude, and mock Claude runner accounts must upgrade to Pro"
 fi
 if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 1 ]]; then
-  fail "the mock runner account must remain on limited-free"
+  fail "the default mock runner account must remain on limited-free"
 fi
 
-ruby -ryaml - "$WORKFLOW" <<'RUBY'
+ruby -ryaml - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
@@ -140,6 +141,7 @@ expected_organization_outputs = {
   "runner-organization-id" => "runner-organization-id",
   "codex-organization-id" => "codex-organization-id",
   "claude-organization-id" => "claude-organization-id",
+  "mock-claude-organization-id" => "mock-claude-organization-id",
 }
 expected_organization_outputs.each do |job_output, step_output|
   expected = "${{ steps.account.outputs.#{step_output} }}"
@@ -174,6 +176,10 @@ end
 unless token_step.dig("env", "ZERO_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
   raise "runner E2E token generation must use the app preview URL"
 end
+unless token_step.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID") ==
+    "${{ steps.account.outputs.mock-claude-organization-id }}"
+  raise "runner E2E token generation must receive the mock Claude organization"
+end
 
 upload_step = account_prepare.fetch("steps").find do |step|
   step["name"] == "Upload runner E2E API tokens"
@@ -187,6 +193,7 @@ end
   e2e-api-credentials-runner.json
   e2e-api-credentials-runner-real-codex.json
   e2e-api-credentials-runner-real-claude.json
+  e2e-api-credentials-runner-mock-claude.json
 ].each do |file_name|
   unless upload_step.dig("with", "path").include?(file_name)
     raise "runner E2E token artifact must include #{file_name}"
@@ -197,6 +204,11 @@ unless Array(bootstrap["needs"]).include?("cli-e2e-03-runner-prepare")
   raise "runner bootstrap must wait for the token artifact"
 end
 bootstrap_steps = bootstrap.fetch("steps")
+unless bootstrap_steps.any? do |step|
+    step["uses"]&.start_with?("actions/checkout@")
+  end
+  raise "runner bootstrap must checkout the focused helper scripts"
+end
 unless bootstrap_steps.any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
       step.dig("with", "name") == "e2e-tokens"
@@ -228,6 +240,37 @@ unless provider_step.fetch("run").include?(
     '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}',
   )
   raise "runner bootstrap must restore the historical mock provider"
+end
+mock_claude_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap mock Claude account"
+end
+raise "missing mock Claude account bootstrap" unless mock_claude_step
+unless mock_claude_step.fetch("run").end_with?(
+    "runner-mock-claude-bootstrap.bash /tmp/e2e-api-credentials-runner-mock-claude.json",
+  )
+  raise "mock Claude account bootstrap must use the focused executable"
+end
+unless mock_claude_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
+    "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+  raise "mock Claude bootstrap must receive the preview bypass secret"
+end
+mock_claude_script = File.read(ARGV.fetch(1))
+%w[
+  /api/zero/model-providers
+  /api/zero/model-policies
+  /api/zero/feature-switches
+  claude-code-oauth-token
+  claude-sonnet-4-6
+  realAgentInPreview
+].each do |required_fragment|
+  unless mock_claude_script.include?(required_fragment)
+    raise "mock Claude bootstrap must include #{required_fragment}"
+  end
+end
+unless mock_claude_script.include?(
+    '.effectiveSwitches.realAgentInPreview == false',
+  )
+  raise "mock Claude bootstrap must keep the real runtime disabled"
 end
 codex_step = bootstrap_steps.find do |step|
   step["name"] == "Bootstrap real Codex account"
@@ -277,6 +320,12 @@ raise "missing runner E2E shard scaffold" unless shard_step
 unless runner.dig("env", "E2E_RUNNER_TEST_FILES_JSON") == "${{ toJSON(matrix.files) }}" &&
     runner.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ strategy.job-total }}"
   raise "runner E2E shards must receive their exact file list and dynamic total"
+end
+unless runner.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORG_ID") ==
+    "${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-organization-id }}" &&
+    runner.dig("env", "E2E_RUNNER_MOCK_CLAUDE_EMAIL") ==
+      "${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-email }}"
+  raise "runner E2E shards must receive the mock Claude identity"
 end
 
 run_step = runner.fetch("steps").find do |step|
@@ -328,6 +377,7 @@ end
   E2E_RUNNER_ORGANIZATION_ID
   E2E_RUNNER_CODEX_ORGANIZATION_ID
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
+  E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID
 ].each do |environment_name|
   if cleanup_step.fetch("env", {}).key?(environment_name)
     raise "runner E2E cleanup must not depend on #{environment_name}"

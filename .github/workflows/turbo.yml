@@ -2584,9 +2584,11 @@ jobs:
       runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
       codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}
       claude-organization-id: ${{ steps.account.outputs.claude-organization-id }}
+      mock-claude-organization-id: ${{ steps.account.outputs.mock-claude-organization-id }}
       runner-email: ${{ steps.account.outputs.runner-email }}
       codex-email: ${{ steps.account.outputs.codex-email }}
       claude-email: ${{ steps.account.outputs.claude-email }}
+      mock-claude-email: ${{ steps.account.outputs.mock-claude-email }}
       runner-shard-matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2628,6 +2630,7 @@ jobs:
           E2E_RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
           E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
           E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
+          E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Upload runner E2E API tokens
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -2637,6 +2640,7 @@ jobs:
             /tmp/e2e-api-credentials-runner.json
             /tmp/e2e-api-credentials-runner-real-codex.json
             /tmp/e2e-api-credentials-runner-real-claude.json
+            /tmp/e2e-api-credentials-runner-mock-claude.json
           retention-days: 1
 
   cli-e2e-03-runner-bootstrap:
@@ -2656,6 +2660,7 @@ jobs:
       needs.deploy-api.result == 'success' &&
       needs.cli-e2e-03-runner-prepare.result == 'success'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download runner E2E API tokens
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -2704,6 +2709,11 @@ jobs:
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
             "${E2E_API_URL}/api/zero/model-providers" >/dev/null
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap mock Claude account
+        shell: bash
+        run: cd e2e && bash playwright/runner-mock-claude-bootstrap.bash /tmp/e2e-api-credentials-runner-mock-claude.json
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap real Codex account
@@ -2862,9 +2872,11 @@ jobs:
       E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
       E2E_RUNNER_CODEX_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
       E2E_RUNNER_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-organization-id }}
+      E2E_RUNNER_MOCK_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-organization-id }}
       E2E_RUNNER_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-email }}
       E2E_RUNNER_CODEX_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-email }}
       E2E_RUNNER_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-email }}
+      E2E_RUNNER_MOCK_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-email }}
       E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
       E2E_RUNNER_SHARD_TOTAL: ${{ strategy.job-total }}
       E2E_RUNNER_TEST_FILES_JSON: ${{ toJSON(matrix.files) }}
@@ -2891,7 +2903,8 @@ jobs:
           for credential_file in \
             /tmp/e2e-api-credentials-runner.json \
             /tmp/e2e-api-credentials-runner-real-codex.json \
-            /tmp/e2e-api-credentials-runner-real-claude.json; do
+            /tmp/e2e-api-credentials-runner-real-claude.json \
+            /tmp/e2e-api-credentials-runner-mock-claude.json; do
             jq -er '.token | select(type == "string" and length > 0)' "$credential_file" >/dev/null
             jq -er '.apiUrl | select(type == "string" and length > 0)' "$credential_file" >/dev/null
           done
@@ -2907,9 +2920,11 @@ jobs:
           : "${E2E_CLERK_ORG_ID:?runner E2E organization is required}"
           : "${E2E_RUNNER_CODEX_ORG_ID:?runner Codex E2E organization is required}"
           : "${E2E_RUNNER_CLAUDE_ORG_ID:?runner Claude E2E organization is required}"
+          : "${E2E_RUNNER_MOCK_CLAUDE_ORG_ID:?runner mock Claude E2E organization is required}"
           : "${E2E_RUNNER_EMAIL:?runner E2E account is required}"
           : "${E2E_RUNNER_CODEX_EMAIL:?runner Codex E2E account is required}"
           : "${E2E_RUNNER_CLAUDE_EMAIL:?runner Claude E2E account is required}"
+          : "${E2E_RUNNER_MOCK_CLAUDE_EMAIL:?runner mock Claude E2E account is required}"
           : "${E2E_API_TOKEN:?runner E2E API token is required}"
           : "${E2E_API_URL:?runner E2E API URL is required}"
           jq -e '
