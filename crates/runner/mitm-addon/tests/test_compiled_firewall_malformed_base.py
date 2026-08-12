@@ -176,6 +176,62 @@ def test_malformed_base_params_fail_closed_after_base_match(base, url):
     assert matched.reason == "malformed_firewall_config"
 
 
+@pytest.mark.parametrize(
+    ("base", "matched_url", "unrelated_url"),
+    [
+        pytest.param(
+            "https://api-{region}-{env}.example.com",
+            "https://api-us-prod.example.com/items",
+            "https://evil.example.com/items",
+            id="host-prefix",
+        ),
+        pytest.param(
+            "https://{region}-{env}-api.example.com",
+            "https://us-prod-api.example.com/items",
+            "https://us-prod-evil.example.com/items",
+            id="host-suffix",
+        ),
+        pytest.param(
+            "https://api.example.com/admin-{region}-{env}",
+            "https://api.example.com/admin-us-prod/items",
+            "https://api.example.com/public/items",
+            id="path-prefix",
+        ),
+        pytest.param(
+            "https://api.example.com/{region}-{env}-admin",
+            "https://api.example.com/us-prod-admin/items",
+            "https://api.example.com/us-prod-public/items",
+            id="path-suffix",
+        ),
+    ],
+)
+def test_malformed_multi_param_base_respects_outer_literal_scope(
+    base,
+    matched_url,
+    unrelated_url,
+):
+    compiled_firewalls = compile_firewalls_or_fail(_github_firewalls(base))
+    policies = _github_policies()
+
+    unrelated = matching.match_compiled_firewall_request(
+        unrelated_url,
+        "GET",
+        compiled_firewalls,
+        policies,
+    )
+    matched = matching.match_compiled_firewall_request(
+        matched_url,
+        "GET",
+        compiled_firewalls,
+        policies,
+    )
+
+    assert unrelated is None
+    assert isinstance(matched, matching.FirewallBlock)
+    assert matched.permissions == ()
+    assert matched.reason == "malformed_firewall_config"
+
+
 def test_malformed_base_path_plus_requires_segment_scope():
     compiled_firewalls = compile_firewalls_or_fail(
         _github_firewalls("https://api.example.com/{path+}")
