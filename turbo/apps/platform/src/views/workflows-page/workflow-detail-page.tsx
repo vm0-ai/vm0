@@ -1,7 +1,7 @@
 // Workflow detail hosts the instruction editor, supplementary file manager
 // (SKILL.md is never shown), automations, visibility controls, metadata
 // editing, slash use, copy, and delete.
-import { useState, type FormEvent, type ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
@@ -124,6 +124,7 @@ import {
   createWorkflowNotionPageContentUpdatedAutomation$,
   createWorkflowStrapiEntryPublishedAutomation$,
   createWorkflowWebhookAutomation$,
+  createGithubPullRequestAction$,
   createScheduleCronFields$,
   createWorkflowScheduleAutomation$,
   createWorkflowStripeInvoicePaidAutomation$,
@@ -134,6 +135,7 @@ import {
   deleteWorkflow$,
   deleteWorkflowAutomation$,
   editingScheduleCronFields$,
+  editingGithubPullRequestAction$,
   editingGmailMatchConditions$,
   editingWorkflowAutomationId$,
   patchWorkflowMetadataForm$,
@@ -145,12 +147,14 @@ import {
   resetWorkflowMetadataForm$,
   runWorkflowAutomationNow$,
   selectedWorkflowFilePath$,
+  setCreateGithubPullRequestAction$,
   setCreateGmailMatchConditions$,
   setCreateNotionPageContentUpdatedScope$,
   createStrapiIntegrationId$,
   setCreateStrapiIntegrationId$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookAutomation$,
+  setEditingGithubPullRequestAction$,
   setEditingGmailMatchConditions$,
   setEditingScheduleCronFields$,
   setEditingWorkflowAutomationId$,
@@ -612,29 +616,88 @@ const GITHUB_SUBJECT_OPTIONS: readonly {
 const GITHUB_PULL_REQUEST_ACTION_OPTIONS: readonly {
   readonly value: GithubPullRequestAction;
   readonly label: string;
-}[] = (
-  [
-    "opened",
-    "reopened",
-    "closed",
-    "ready_for_review",
-    "converted_to_draft",
-    "synchronize",
-    "enqueued",
-    "dequeued",
-    "labeled",
-    "unlabeled",
-  ] as const
-).map((value) => {
-  return {
-    value,
+}[] = [
+  {
+    value: "opened",
     get label() {
       return i18n.t(($) => {
-        return $.workflows.automations.github.pullRequestActions[value];
+        return $.workflows.automations.github.pullRequestActionOpened;
       });
     },
-  };
-});
+  },
+  {
+    value: "reopened",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionReopened;
+      });
+    },
+  },
+  {
+    value: "closed",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionClosed;
+      });
+    },
+  },
+  {
+    value: "ready_for_review",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionReadyForReview;
+      });
+    },
+  },
+  {
+    value: "converted_to_draft",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionConvertedToDraft;
+      });
+    },
+  },
+  {
+    value: "synchronize",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionSynchronize;
+      });
+    },
+  },
+  {
+    value: "enqueued",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionEnqueued;
+      });
+    },
+  },
+  {
+    value: "dequeued",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionDequeued;
+      });
+    },
+  },
+  {
+    value: "labeled",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionLabeled;
+      });
+    },
+  },
+  {
+    value: "unlabeled",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionUnlabeled;
+      });
+    },
+  },
+];
 
 const GITHUB_WORKFLOW_RUN_CONCLUSION_OPTIONS: readonly {
   readonly value: GithubWorkflowRunConclusion;
@@ -8224,6 +8287,113 @@ function GithubCommentAutomationFields({
   );
 }
 
+function GithubPullRequestMergedSelect({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      {i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestMerged;
+      })}
+      <Select
+        name="merged"
+        defaultValue={
+          config?.merged === undefined ? "any" : String(config.merged)
+        }
+        disabled={disabled}
+      >
+        <SelectTrigger
+          className="h-9 w-full"
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.github.pullRequestMerged;
+          })}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="any">
+            {i18n.t(($) => {
+              return $.workflows.automations.github.any;
+            })}
+          </SelectItem>
+          <SelectItem value="true">
+            {i18n.t(($) => {
+              return $.workflows.automations.github.pullRequestMergedOnly;
+            })}
+          </SelectItem>
+          <SelectItem value="false">
+            {i18n.t(($) => {
+              return $.workflows.automations.github
+                .pullRequestClosedWithoutMergeOnly;
+            })}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function GithubPullRequestFilterFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  return (
+    <>
+      <GithubFilterInput
+        name="baseBranches"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.baseBranches;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.branchesPlaceholder;
+        })}
+        defaultValues={config?.filters.baseBranches}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="authors"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestAuthors;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.authorsPlaceholder;
+        })}
+        defaultValues={config?.filters.authors}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="pullRequestNumbers"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestNumbers;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestNumbersPlaceholder;
+        })}
+        defaultValues={config?.filters.pullRequestNumbers}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="labels"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestLabels;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestLabelsPlaceholder;
+        })}
+        defaultValues={config?.filters.labels}
+        disabled={disabled}
+      />
+    </>
+  );
+}
+
 function GithubPullRequestAutomationFields({
   disabled,
   config,
@@ -8231,9 +8401,12 @@ function GithubPullRequestAutomationFields({
   readonly disabled: boolean;
   readonly config?: GithubPullRequestEventConfig;
 }) {
-  const [action, setAction] = useState<GithubPullRequestAction>(
-    config?.action ?? "closed",
-  );
+  const createAction = useGet(createGithubPullRequestAction$);
+  const editingAction = useGet(editingGithubPullRequestAction$);
+  const setCreateAction = useSet(setCreateGithubPullRequestAction$);
+  const setEditingAction = useSet(setEditingGithubPullRequestAction$);
+  const action = config ? (editingAction ?? config.action) : createAction;
+  const setAction = config ? setEditingAction : setCreateAction;
   return (
     <>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -8285,94 +8458,12 @@ function GithubPullRequestAutomationFields({
         </Select>
       </label>
       {action === "closed" ? (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {i18n.t(($) => {
-            return $.workflows.automations.github.pullRequestMerged;
-          })}
-          <Select
-            name="merged"
-            defaultValue={
-              config?.merged === undefined ? "any" : String(config.merged)
-            }
-            disabled={disabled}
-          >
-            <SelectTrigger
-              className="h-9 w-full"
-              aria-label={i18n.t(($) => {
-                return $.workflows.automations.github.pullRequestMerged;
-              })}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">
-                {i18n.t(($) => {
-                  return $.workflows.automations.github.any;
-                })}
-              </SelectItem>
-              <SelectItem value="true">
-                {i18n.t(($) => {
-                  return $.workflows.automations.github.pullRequestMergedOnly;
-                })}
-              </SelectItem>
-              <SelectItem value="false">
-                {i18n.t(($) => {
-                  return $.workflows.automations.github
-                    .pullRequestClosedWithoutMergeOnly;
-                })}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </label>
+        <GithubPullRequestMergedSelect disabled={disabled} config={config} />
       ) : null}
-      <GithubFilterInput
-        name="baseBranches"
-        label={i18n.t(($) => {
-          return $.workflows.automations.github.baseBranches;
-        })}
-        placeholder={i18n.t(($) => {
-          return $.workflows.automations.github.branchesPlaceholder;
-        })}
-        defaultValues={config?.filters.baseBranches}
-        disabled={disabled}
-      />
-      <GithubFilterInput
-        name="authors"
-        label={i18n.t(($) => {
-          return $.workflows.automations.github.pullRequestAuthors;
-        })}
-        placeholder={i18n.t(($) => {
-          return $.workflows.automations.github.authorsPlaceholder;
-        })}
-        defaultValues={config?.filters.authors}
-        disabled={disabled}
-      />
-      <GithubFilterInput
-        name="pullRequestNumbers"
-        label={i18n.t(($) => {
-          return $.workflows.automations.github.pullRequestNumbers;
-        })}
-        placeholder={i18n.t(($) => {
-          return $.workflows.automations.github.pullRequestNumbersPlaceholder;
-        })}
-        defaultValues={config?.filters.pullRequestNumbers}
-        disabled={disabled}
-      />
-      <GithubFilterInput
-        name="labels"
-        label={i18n.t(($) => {
-          return $.workflows.automations.github.pullRequestLabels;
-        })}
-        placeholder={i18n.t(($) => {
-          return $.workflows.automations.github.pullRequestLabelsPlaceholder;
-        })}
-        defaultValues={config?.filters.labels}
-        disabled={disabled}
-      />
+      <GithubPullRequestFilterFields disabled={disabled} config={config} />
     </>
   );
 }
-
 function githubWebhookAutomationSpecificFields(
   eventType: GithubWebhookAutomationEventType,
   disabled: boolean,

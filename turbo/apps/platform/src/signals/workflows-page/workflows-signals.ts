@@ -14,6 +14,7 @@ import {
   type GoogleMeetTranscriptGeneratedEventConfig,
   type GithubDeploymentStatusCreatedEventConfig,
   type GithubIssueCommentCreatedEventConfig,
+  type GithubPullRequestAction,
   type GithubPullRequestEventConfig,
   type GithubPullRequestReviewSubmittedEventConfig,
   type GithubWorkflowJobCompletedEventConfig,
@@ -235,6 +236,10 @@ const internalEditingWorkflowAutomationId$ = state<string | null>(null);
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
   null,
 );
+const internalCreateGithubPullRequestAction$ =
+  state<GithubPullRequestAction>("closed");
+const internalEditingGithubPullRequestAction$ =
+  state<GithubPullRequestAction | null>(null);
 const internalWorkflowAutomationCreateDialog$ =
   state<WorkflowAutomationCreateDialog>(null);
 const internalCreatedWorkflowWebhookAutomation$ =
@@ -454,6 +459,8 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowAutomationCreateDialog$, null);
   set(internalCreatedWorkflowWebhookAutomation$, null);
+  set(internalCreateGithubPullRequestAction$, "closed");
+  set(internalEditingGithubPullRequestAction$, null);
   set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
   set(internalEditingGmailMatchConditions$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
@@ -492,6 +499,7 @@ export const editingWorkflowAutomationId$ = computed((get) => {
 export const setEditingWorkflowAutomationId$ = command(
   ({ set }, automationId: string | null) => {
     set(internalEditingWorkflowAutomationId$, automationId);
+    set(internalEditingGithubPullRequestAction$, null);
     if (!automationId) {
       set(internalEditingGmailMatchConditions$, {});
     }
@@ -530,6 +538,9 @@ export const setWorkflowAutomationCreateDialog$ = command(
     }
     if (dialog === "scheduled") {
       set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
+    }
+    if (dialog === "github-pull-request") {
+      set(internalCreateGithubPullRequestAction$, "closed");
     }
     if (dialog === "gmail") {
       set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
@@ -591,6 +602,26 @@ export const setCreateStrapiIntegrationId$ = command(
 export const setCreateNotionPageContentUpdatedScope$ = command(
   ({ set }, scope: NotionPageContentUpdatedScopeMode) => {
     set(internalCreateNotionPageContentUpdatedScope$, scope);
+  },
+);
+
+export const createGithubPullRequestAction$ = computed((get) => {
+  return get(internalCreateGithubPullRequestAction$);
+});
+
+export const setCreateGithubPullRequestAction$ = command(
+  ({ set }, action: GithubPullRequestAction) => {
+    set(internalCreateGithubPullRequestAction$, action);
+  },
+);
+
+export const editingGithubPullRequestAction$ = computed((get) => {
+  return get(internalEditingGithubPullRequestAction$);
+});
+
+export const setEditingGithubPullRequestAction$ = command(
+  ({ set }, action: GithubPullRequestAction) => {
+    set(internalEditingGithubPullRequestAction$, action);
   },
 );
 

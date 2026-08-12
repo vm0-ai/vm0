@@ -802,15 +802,14 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     );
     expect(ignored.body).toBe("OK");
 
-    const invalidIssuesBody = JSON.stringify({ action: "opened" });
-    const invalidIssues = await api.requestGithubWebhook(
-      invalidIssuesBody,
-      api.signedGithubWebhookHeaders(invalidIssuesBody, "issues"),
-      [400],
+    // The issues event has no consumer anymore, so it is ignored unparsed.
+    const ignoredIssuesBody = JSON.stringify({ action: "opened" });
+    const ignoredIssues = await api.requestGithubWebhook(
+      ignoredIssuesBody,
+      api.signedGithubWebhookHeaders(ignoredIssuesBody, "issues"),
+      [200],
     );
-    expect(invalidIssues.body).toStrictEqual({
-      error: "Invalid payload structure",
-    });
+    expect(ignoredIssues.body).toBe("OK");
 
     const invalidPullRequestBody = JSON.stringify({ action: "opened" });
     const invalidPullRequest = await api.requestGithubWebhook(
@@ -873,7 +872,17 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
     const synchronizedPullRequestBody = JSON.stringify({
       action: "synchronize",
-      pull_request: issue,
+      pull_request: {
+        number: 123,
+        title: "BDD pull request",
+        html_url: "https://github.com/vm0-ai/vm0/pull/123",
+        draft: false,
+        merged: false,
+        user,
+        base: { ref: "main" },
+        head: { ref: "feat/bdd", sha: "abc123" },
+        labels: [],
+      },
       repository,
       installation,
       sender: user,
