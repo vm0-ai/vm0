@@ -21,6 +21,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  holdElementAnimations,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
@@ -28,6 +29,7 @@ import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const AGENT_PHONE_HANDLE = "+15555550123";
 
 afterEach(async () => {
   document.documentElement.lang = DEFAULT_LOCALE;
@@ -135,6 +137,54 @@ function setupWorksPage(
       [FeatureSwitchKey.StrapiIntegration]: options.strapiEnabled ?? false,
     },
   });
+}
+
+async function openAgentPhoneVerification(): Promise<{
+  dialog: HTMLElement;
+  phoneInput: HTMLElement;
+  verificationStatus: HTMLElement;
+}> {
+  context.mocks.data.agentPhoneIntegration({
+    linked: false,
+    agentPhoneNumber: "+19039853128",
+    configured: true,
+  });
+  setupWorksPage();
+
+  await waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscription("agentphone:changed"),
+    ).toBeTruthy();
+  });
+  click(await screen.findByLabelText("Connect phone"));
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Connect phone",
+  });
+  const phoneInput = within(dialog).getByLabelText("Phone number");
+  await fill(phoneInput, AGENT_PHONE_HANDLE);
+  click(within(dialog).getByText("Send verification"));
+
+  const verificationStatus = await within(dialog).findByRole("status");
+  expect(verificationStatus).toHaveTextContent(AGENT_PHONE_HANDLE);
+  return { dialog, phoneInput, verificationStatus };
+}
+
+function publishAgentPhoneLinked(): void {
+  context.mocks.data.agentPhoneIntegration({
+    linked: true,
+    phoneHandle: AGENT_PHONE_HANDLE,
+    agentPhoneNumber: "+19039853128",
+    configured: true,
+  });
+  context.mocks.ably.trigger("agentphone:changed");
+}
+
+async function disconnectAndReopenAgentPhone(): Promise<HTMLElement> {
+  click(await screen.findByLabelText("Phone options"));
+  click(await screen.findByLabelText("Disconnect"));
+  click(await screen.findByLabelText("Connect phone"));
+  return screen.findByRole("dialog", { name: "Connect phone" });
 }
 
 describe("works page", () => {
@@ -289,6 +339,68 @@ describe("works page", () => {
         screen.getByTestId("github-connected-indicator"),
       ).toHaveTextContent("Connected (@octocat)");
     });
+  });
+
+  it("keeps AgentPhone verification visible when success closes the dialog", async () => {
+    const { dialog, phoneInput, verificationStatus } =
+      await openAgentPhoneVerification();
+    const finishCloseAnimation = holdElementAnimations(dialog);
+
+    publishAgentPhoneLinked();
+
+    await expect(
+      screen.findByTestId("agentphone-connected-indicator"),
+    ).resolves.toHaveTextContent(AGENT_PHONE_HANDLE);
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toBeVisible();
+    expect(phoneInput).toHaveValue(AGENT_PHONE_HANDLE);
+    expect(verificationStatus).toBeVisible();
+
+    finishCloseAnimation();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Connect phone" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedDialog = await disconnectAndReopenAgentPhone();
+    expect(within(reopenedDialog).getByLabelText("Phone number")).toHaveValue(
+      "",
+    );
+    expect(within(reopenedDialog).queryByRole("status")).toBeNull();
+  });
+
+  it("cleans AgentPhone verification when success arrives after close", async () => {
+    const { dialog, phoneInput, verificationStatus } =
+      await openAgentPhoneVerification();
+    const finishCloseAnimation = holdElementAnimations(dialog);
+
+    click(within(dialog).getByText("Cancel"));
+
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toBeVisible();
+    expect(phoneInput).toHaveValue(AGENT_PHONE_HANDLE);
+    expect(verificationStatus).toBeVisible();
+
+    finishCloseAnimation();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Connect phone" }),
+      ).not.toBeInTheDocument();
+    });
+
+    publishAgentPhoneLinked();
+    await expect(
+      screen.findByTestId("agentphone-connected-indicator"),
+    ).resolves.toHaveTextContent(AGENT_PHONE_HANDLE);
+
+    const reopenedDialog = await disconnectAndReopenAgentPhone();
+    expect(within(reopenedDialog).getByLabelText("Phone number")).toHaveValue(
+      "",
+    );
+    expect(within(reopenedDialog).queryByRole("status")).toBeNull();
   });
 
   it("opens Telegram settings from the integrations list", async () => {
