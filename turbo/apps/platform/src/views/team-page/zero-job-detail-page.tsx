@@ -254,8 +254,6 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
   );
 }
 
-const TAB_TRIGGER_CLASS = "gap-1.5 text-sm data-active:bg-background px-3";
-
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
@@ -312,15 +310,15 @@ function AgentTabNav({
         </Select>
       </div>
       {/* Desktop: tab list */}
-      <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
-        <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
+      <TabsList className="hidden sm:inline-flex">
+        <TabsTrigger value="authorization">
           <Shield size={14} />
           {t(($) => {
             return $.detail.tabs.authorization;
           })}
         </TabsTrigger>
         {showProfileAndInstructions && (
-          <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="profile">
             <UserCircle size={14} />
             {t(($) => {
               return $.detail.tabs.profile;
@@ -328,7 +326,7 @@ function AgentTabNav({
           </TabsTrigger>
         )}
         {showProfileAndInstructions && (
-          <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
+          <TabsTrigger value="instructions">
             <FileText size={14} />
             {t(($) => {
               return $.detail.tabs.instructions;

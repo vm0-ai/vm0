@@ -14,19 +14,12 @@ test("create a new agent and verify it appears in the list", async ({
     timeout: 20_000,
   });
 
-  const privateTab = page.getByRole("tab", { name: "Private", exact: true });
-  if (await privateTab.isVisible()) {
-    await privateTab.click();
-    await page
-      .getByRole("button", { name: /^(New agent|Create agent)$/ })
-      .first()
-      .click();
-  } else {
-    const privateSection = page.locator("section").filter({
-      has: page.getByRole("heading", { name: "Private", exact: true }),
-    });
-    await privateSection.getByRole("button", { name: "Create" }).click();
-  }
+  // Visibility is a segment control, so the option is a radio, not a tab.
+  await page.getByRole("radio", { name: "Private", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^(New agent|Create agent)$/ })
+    .first()
+    .click();
   await expect(page.getByRole("dialog")).toBeVisible();
 
   // Fill name and submit

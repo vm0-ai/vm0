@@ -312,6 +312,7 @@ type TextContentRole =
   | "menuitem"
   | "menuitemcheckbox"
   | "menuitemradio"
+  | "radio"
   | "tab"
   | "cell"
   | "columnheader"
@@ -324,6 +325,10 @@ const ROLE_SELECTORS: Record<TextContentRole, string> = {
   menuitem: '[role="menuitem"]',
   menuitemcheckbox: '[role="menuitemcheckbox"]',
   menuitemradio: '[role="menuitemradio"]',
+  // Base UI's Radio puts the role on the visible element and renders a
+  // separate 1x1 input for form submission, so the role selector alone is
+  // the visible control.
+  radio: '[role="radio"]',
   tab: '[role="tab"]',
   cell: 'td, [role="cell"]',
   // Plain <th> inside <thead> has implicit role="columnheader"; a <th

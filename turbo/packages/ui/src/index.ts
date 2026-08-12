@@ -74,6 +74,12 @@ export {
   SelectScrollDownButton,
 } from "./components/ui/select";
 export {
+  SegmentControl,
+  SegmentControlItem,
+  type SegmentControlProps,
+  type SegmentControlItemProps,
+} from "./components/ui/segment-control";
+export {
   Sheet,
   SheetPortal,
   SheetOverlay,

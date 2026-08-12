@@ -76,6 +76,16 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
+function segmentByText(text: string): HTMLElement {
+  const segment = queryAllByRoleFast("radio").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!segment) {
+    throw new Error(`${text} segment not found`);
+  }
+  return segment;
+}
+
 function newAgentButton(label = "New agent"): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
@@ -90,11 +100,11 @@ async function openCreateDialog(
   tabName: "Public" | "Private",
 ): Promise<HTMLElement> {
   await waitFor(() => {
-    expect(tabByText(tabName)).toBeInTheDocument();
+    expect(segmentByText(tabName)).toBeInTheDocument();
   });
-  click(tabByText(tabName));
+  click(segmentByText(tabName));
   await waitFor(() => {
-    expect(tabByText(tabName)).toHaveAttribute("aria-selected", "true");
+    expect(segmentByText(tabName)).toHaveAttribute("aria-checked", "true");
   });
   click(newAgentButton());
   return await screen.findByRole("dialog");
@@ -190,7 +200,7 @@ describe("zero jobs page", () => {
     expect(screen.queryByText("Writes content based on research")).toBeNull();
     expect(newAgentButton()).toBeInTheDocument();
 
-    click(tabByText("Private"));
+    click(segmentByText("Private"));
     await waitFor(() => {
       expect(
         screen.getByText("a0000000-0000-4000-a000-000000000102"),
@@ -328,7 +338,7 @@ describe("zero jobs page", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(dialog).not.toBeInTheDocument();
 
-    click(tabByText("Public"));
+    click(segmentByText("Public"));
     await waitFor(() => {
       expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
     });

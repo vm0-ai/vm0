@@ -42,14 +42,14 @@ function renderPreferencesPage(): void {
   detachedSetupPage({ context, path: "/settings" });
 }
 
-function getButtonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function getSegmentByText(text: string): HTMLElement {
+  const segment = queryAllByRoleFast("radio").find((candidate) => {
     return candidate.textContent?.trim() === text;
   });
-  if (!button) {
-    throw new Error(`Button not found: ${text}`);
+  if (!segment) {
+    throw new Error(`Segment not found: ${text}`);
   }
-  return button;
+  return segment;
 }
 
 describe("preferences page", () => {
@@ -62,11 +62,11 @@ describe("preferences page", () => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
 
-    const darkButton = getButtonByText("Dark");
-    click(darkButton);
+    const darkSegment = getSegmentByText("Dark");
+    click(darkSegment);
 
     await waitFor(() => {
-      expect(darkButton).toHaveAttribute("aria-pressed", "true");
+      expect(darkSegment).toHaveAttribute("aria-checked", "true");
       expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     });
 
@@ -106,14 +106,14 @@ describe("preferences page", () => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
     });
 
-    const cmdEnterButton = queryAllByRoleFast("button").find((btn) => {
+    const cmdEnterSegment = queryAllByRoleFast("radio").find((segment) => {
       return (
-        btn.textContent?.includes("Enter") &&
-        btn.textContent?.includes("\u2318")
+        segment.textContent?.includes("Enter") &&
+        segment.textContent?.includes("\u2318")
       );
     });
-    expect(cmdEnterButton).toBeInTheDocument();
-    click(cmdEnterButton as HTMLElement);
+    expect(cmdEnterSegment).toBeInTheDocument();
+    click(cmdEnterSegment as HTMLElement);
 
     click(screen.getByText("Time Zone"));
 
@@ -210,7 +210,7 @@ describe("preferences page", () => {
       expect(screen.getByText("Seu esquema de cores preferido")).toBeVisible();
     });
 
-    click(getButtonByText("⌘ Enter"));
+    click(getSegmentByText("⌘ Enter"));
     click(screen.getByText("Fuso horário"));
 
     await waitFor(() => {
