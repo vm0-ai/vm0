@@ -15663,9 +15663,10 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
         ],
       },
     });
-    const unauthorizedReconcile = await api.reconcileBillingCron(false);
+    const unauthorizedReconcile =
+      await api.requestBillingReconciliationCronWithoutAuth();
     expect(unauthorizedReconcile.status).toBe(401);
-    await api.reconcileBillingCron(true);
+    await api.reconcileBillingOrganizations([billingActorOrgId(actor)]);
 
     const status = await billing.readBillingStatus(actor);
     expect(status.tier).toBe("pro");
@@ -15692,7 +15693,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       metadata: {},
       items: { data: [] },
     });
-    await api.reconcileBillingCron(true);
+    await api.reconcileBillingOrganizations([billingActorOrgId(actor)]);
     const skipped = await billing.readBillingStatus(actor);
     expect(skipped.tier).toBe("pro");
   });
@@ -15721,7 +15722,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
         ],
       },
     });
-    await api.reconcileBillingCron(true);
+    await api.reconcileBillingOrganizations([billingActorOrgId(actor)]);
     const synced = await billing.readBillingStatus(actor);
     expect(synced.tier).toBe("pro");
     await expect(
@@ -15755,7 +15756,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       },
     });
     await failSubscription(granted);
-    await api.reconcileBillingCron(true);
+    await api.reconcileBillingOrganizations([billingActorOrgId(actor)]);
 
     const downgraded = await billing.readBillingStatus(actor);
     expect(downgraded.tier).not.toBe("pro");
@@ -15797,7 +15798,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       metadata: {},
       items: { data: [] },
     });
-    await api.reconcileBillingCron(true);
+    await api.reconcileBillingOrganizations([billingActorOrgId(actor)]);
 
     const cleared = await billing.readBillingStatus(actor);
     expect(cleared.tier).not.toBe("pro");
