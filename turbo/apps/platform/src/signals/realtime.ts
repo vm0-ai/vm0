@@ -41,7 +41,27 @@ const notifyRealtimeDegraded$ = command(({ get, set }) => {
   );
 });
 
-const internalUserChannel$ = state<RealtimeChannel | null>(null);
+type ChannelCallback = (message: InboundMessage) => void;
+
+interface StableRealtimeChannel {
+  readonly subscribe: (
+    topic: string | null,
+    callback: ChannelCallback,
+  ) => Promise<void>;
+  readonly unsubscribe: (
+    topic: string | null,
+    callback: ChannelCallback,
+  ) => void;
+  readonly replace: (channel: RealtimeChannel) => Promise<void>;
+}
+
+interface RealtimeSession {
+  readonly ably: Realtime;
+  readonly channel: StableRealtimeChannel;
+  readonly close: () => void;
+}
+
+const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 
 const subscriberPokeTarget$ = state(new EventTarget());
 const SUBSCRIBER_POKE_EVENT = "poke";
@@ -49,7 +69,9 @@ const SUBSCRIBER_POKE_EVENT = "poke";
 interface PendingAblySubscription {
   topic: string;
   signal: AbortSignal;
-  channelDeferred: ReturnType<typeof createDeferredPromise<RealtimeChannel>>;
+  channelDeferred: ReturnType<
+    typeof createDeferredPromise<StableRealtimeChannel>
+  >;
 }
 
 const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
@@ -60,14 +82,14 @@ interface RealtimeSubscribeOptions {
 }
 
 interface RealtimeLoopArgs {
-  readonly channel: RealtimeChannel;
+  readonly channel: StableRealtimeChannel;
   readonly topic: string;
   readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
 }
 
 interface RealtimePayloadLoopArgs {
-  readonly channel: RealtimeChannel;
+  readonly channel: StableRealtimeChannel;
   readonly topic: string | null;
   readonly passMessage?: boolean;
   readonly loopCommand$: Command<
@@ -133,10 +155,8 @@ async function waitForTransientRetry(
   signal.throwIfAborted();
 }
 
-type ChannelCallback = (message: InboundMessage) => void;
-
 interface SubscribeChannelArgs {
-  readonly channel: RealtimeChannel;
+  readonly channel: StableRealtimeChannel;
   readonly topic: string | null;
   readonly callback: ChannelCallback;
   readonly poke: () => void;
@@ -159,11 +179,7 @@ async function subscribeChannel(
 
   const unsubscribeChannel = () => {
     signal.removeEventListener("abort", unsubscribeChannel);
-    if (topic === null) {
-      channel.unsubscribe(callback);
-    } else {
-      channel.unsubscribe(topic, callback);
-    }
+    channel.unsubscribe(topic, callback);
   };
   const release = () => {
     subscriberPokeTarget.removeEventListener(SUBSCRIBER_POKE_EVENT, poke);
@@ -175,12 +191,7 @@ async function subscribeChannel(
   });
   signal.addEventListener("abort", unsubscribeChannel, { once: true });
 
-  await onRejection(
-    topic === null
-      ? channel.subscribe(callback)
-      : channel.subscribe(topic, callback),
-    release,
-  );
+  await onRejection(channel.subscribe(topic, callback), release);
   signal.throwIfAborted();
   await withCleanup(run(), release);
   signal.throwIfAborted();
@@ -441,15 +452,154 @@ const runWithChannelPayload$ = command(
   },
 );
 
-/**
- * Initialize the Ably realtime client and subscribe to the user's channel.
- * Call once during app bootstrap, after Clerk auth is ready.
- */
-export const setupRealtime$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+interface ActiveChannelSubscription {
+  readonly topic: string | null;
+  readonly callback: ChannelCallback;
+  readonly channels: Set<RealtimeChannel>;
+}
+
+async function subscribeToRealtimeChannel(
+  channel: RealtimeChannel,
+  subscription: ActiveChannelSubscription,
+): Promise<void> {
+  if (subscription.topic === null) {
+    await channel.subscribe(subscription.callback);
+    return;
+  }
+  await channel.subscribe(subscription.topic, subscription.callback);
+}
+
+function unsubscribeFromRealtimeChannel(
+  channel: RealtimeChannel,
+  subscription: ActiveChannelSubscription,
+): void {
+  if (subscription.topic === null) {
+    channel.unsubscribe(subscription.callback);
+    return;
+  }
+  channel.unsubscribe(subscription.topic, subscription.callback);
+}
+
+function createStableRealtimeChannel(
+  initialChannel: RealtimeChannel,
+): StableRealtimeChannel {
+  const subscriptions = new Map<ChannelCallback, ActiveChannelSubscription>();
+  let currentChannel = initialChannel;
+  let replacement: Promise<void> | null = null;
+
+  const attach = async (
+    channel: RealtimeChannel,
+    subscription: ActiveChannelSubscription,
+  ): Promise<void> => {
+    if (subscription.channels.has(channel)) {
+      return;
+    }
+    await onRejection(subscribeToRealtimeChannel(channel, subscription), () => {
+      unsubscribeFromRealtimeChannel(channel, subscription);
+    });
+    if (subscriptions.get(subscription.callback) !== subscription) {
+      unsubscribeFromRealtimeChannel(channel, subscription);
+      return;
+    }
+    subscription.channels.add(channel);
+  };
+
+  return {
+    subscribe: async (topic, callback) => {
+      const subscription: ActiveChannelSubscription = {
+        topic,
+        callback,
+        channels: new Set(),
+      };
+      subscriptions.set(callback, subscription);
+
+      while (subscriptions.get(callback) === subscription) {
+        const activeReplacement = replacement;
+        if (activeReplacement) {
+          await activeReplacement;
+          continue;
+        }
+
+        const channel = currentChannel;
+        await attach(channel, subscription);
+        if (
+          subscriptions.get(callback) === subscription &&
+          channel === currentChannel &&
+          replacement === null
+        ) {
+          return;
+        }
+      }
+    },
+    unsubscribe: (_topic, callback) => {
+      const subscription = subscriptions.get(callback);
+      if (!subscription) {
+        return;
+      }
+      subscriptions.delete(callback);
+      for (const channel of subscription.channels) {
+        unsubscribeFromRealtimeChannel(channel, subscription);
+      }
+      subscription.channels.clear();
+    },
+    replace: async (channel) => {
+      const activeReplacement = replacement;
+      if (activeReplacement) {
+        await activeReplacement;
+      }
+
+      const activeSubscriptions = [...subscriptions.values()];
+      const replacePromise = (async () => {
+        const results = await Promise.allSettled(
+          activeSubscriptions.map(async (subscription) => {
+            await attach(channel, subscription);
+          }),
+        );
+        const failure = results.find((result) => {
+          return result.status === "rejected";
+        });
+        if (failure?.status === "rejected") {
+          for (const subscription of activeSubscriptions) {
+            if (subscription.channels.delete(channel)) {
+              unsubscribeFromRealtimeChannel(channel, subscription);
+            }
+          }
+          throw failure.reason;
+        }
+
+        currentChannel = channel;
+        for (const subscription of subscriptions.values()) {
+          for (const attachedChannel of subscription.channels) {
+            if (attachedChannel !== channel) {
+              unsubscribeFromRealtimeChannel(attachedChannel, subscription);
+              subscription.channels.delete(attachedChannel);
+            }
+          }
+        }
+      })();
+      replacement = replacePromise;
+      await withCleanup(replacePromise, () => {
+        if (replacement === replacePromise) {
+          replacement = null;
+        }
+      });
+    },
+  };
+}
+
+interface ConnectedRealtimeClient {
+  readonly ably: Realtime;
+  readonly channel: RealtimeChannel;
+  readonly close: () => void;
+}
+
+const connectRealtimeClient$ = command(
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<ConnectedRealtimeClient> => {
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
-
     const ably = new Realtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
       // every invocation must fetch a freshly-signed request.
@@ -458,8 +608,87 @@ export const setupRealtime$ = command(
       disconnectedRetryTimeout: 5000,
       suspendedRetryTimeout: 15_000,
     });
-    const subscriberPokeTarget = get(subscriberPokeTarget$);
+    let closed = false;
+    const close = (): void => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      signal.removeEventListener("abort", close);
+      ably.close();
+    };
+    signal.addEventListener("abort", close, { once: true });
 
+    const deferred = createDeferredPromise(signal);
+    ably.connection.once("connected", () => {
+      if (!deferred.settled()) {
+        deferred.resolve(true);
+      }
+    });
+    ably.connection.once("failed", (stateChange) => {
+      if (!deferred.settled()) {
+        deferred.reject(
+          new Error(
+            `Ably connection failed: ${stateChange?.reason?.message ?? "unknown"}`,
+          ),
+        );
+      }
+    });
+
+    await onRejection(deferred.promise, close);
+    signal.throwIfAborted();
+
+    // Register after the initial connection so only reconnects request a
+    // foreground catch-up.
+    ably.connection.on("connected", () => {
+      L.debug("reconnected, requesting foreground catch-up");
+      set(requestForegroundCatchUp$);
+    });
+
+    const channelName = `user:${ably.auth.clientId}`;
+    return {
+      ably,
+      channel: ably.channels.get(channelName),
+      close,
+    };
+  },
+);
+
+const foregroundRealtimeCatchUp$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const session = get(internalRealtimeSession$);
+    const subscriberPokeTarget = get(subscriberPokeTarget$);
+    if (!session) {
+      return;
+    }
+
+    if (session.ably.connection.state === "failed") {
+      L.debug("foreground catch-up rebuilding failed realtime connection");
+      const connected = await set(connectRealtimeClient$, signal);
+      signal.throwIfAborted();
+      await onRejection(session.channel.replace(connected.channel), () => {
+        connected.close();
+      });
+      signal.throwIfAborted();
+      set(internalRealtimeSession$, {
+        ably: connected.ably,
+        channel: session.channel,
+        close: connected.close,
+      });
+      session.close();
+    }
+
+    L.debug("foreground catch-up ready, poking subscribers");
+    subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+  },
+);
+
+/**
+ * Initialize the Ably realtime client and subscribe to the user's channel.
+ * Call once during app bootstrap, after Clerk auth is ready.
+ */
+export const setupRealtime$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
     const rejectPendingSubscriptions = (reason?: unknown) => {
       const pendingSubscriptions = get(pendingAblySubscriptions$);
       if (pendingSubscriptions.length === 0) {
@@ -473,52 +702,27 @@ export const setupRealtime$ = command(
       set(pendingAblySubscriptions$, []);
     };
 
-    signal.addEventListener("abort", () => {
-      ably.close();
-      set(internalUserChannel$, null);
-      rejectPendingSubscriptions(signal.reason);
-    });
-
-    const deferred = createDeferredPromise(signal);
-
-    ably.connection.once("connected", () => {
-      if (!deferred.settled()) {
-        deferred.resolve(true);
-      }
-    });
-
-    ably.connection.once("failed", (stateChange) => {
-      const error = new Error(
-        `Ably connection failed: ${stateChange?.reason?.message ?? "unknown"}`,
-      );
-      if (!deferred.settled()) {
-        deferred.reject(error);
-      }
-      rejectPendingSubscriptions(error);
-    });
-
-    await deferred.promise;
-    signal.throwIfAborted();
-
-    // Register after the initial connection so only reconnects request a
-    // foreground catch-up.
-    ably.connection.on("connected", () => {
-      L.debug("reconnected, requesting foreground catch-up");
-      set(requestForegroundCatchUp$);
-    });
-
-    set(
-      subscribeForegroundCatchUp$,
+    signal.addEventListener(
+      "abort",
       () => {
-        L.debug("foreground catch-up ready, poking subscribers");
-        subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+        set(internalRealtimeSession$, null);
+        rejectPendingSubscriptions(signal.reason);
       },
-      signal,
+      { once: true },
     );
 
-    const channelName = `user:${ably.auth.clientId}`;
-    const channel = ably.channels.get(channelName);
-    set(internalUserChannel$, channel);
+    const connected = await onRejection(
+      set(connectRealtimeClient$, signal),
+      rejectPendingSubscriptions,
+    );
+    signal.throwIfAborted();
+    const channel = createStableRealtimeChannel(connected.channel);
+    set(internalRealtimeSession$, {
+      ably: connected.ably,
+      channel,
+      close: connected.close,
+    });
+    set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {
@@ -541,7 +745,9 @@ export const setupRealtime$ = command(
       set(pendingAblySubscriptions$, []);
     }
 
-    L.debug(`Realtime connected, subscribed to ${channelName}`);
+    L.debug(
+      `Realtime connected, subscribed to user:${connected.ably.auth.clientId}`,
+    );
   },
 );
 
@@ -550,15 +756,16 @@ const userChannel$ = command(
     { get, set },
     topic: string,
     signal: AbortSignal,
-  ): Promise<RealtimeChannel> => {
+  ): Promise<StableRealtimeChannel> => {
     signal.throwIfAborted();
 
-    const channel = get(internalUserChannel$);
-    if (channel) {
-      return channel;
+    const session = get(internalRealtimeSession$);
+    if (session) {
+      return session.channel;
     }
 
-    const channelDeferred = createDeferredPromise<RealtimeChannel>(signal);
+    const channelDeferred =
+      createDeferredPromise<StableRealtimeChannel>(signal);
     const pendingSubscription: PendingAblySubscription = {
       topic,
       signal,

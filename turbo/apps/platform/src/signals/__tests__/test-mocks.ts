@@ -9,6 +9,7 @@ import {
   rejectNextAblySubscribe,
   triggerAblyConnectionClosed,
   triggerAblyEvent,
+  triggerAblyFailure,
   triggerAblyReauth,
   triggerAblyReconnect,
 } from "../../mocks/ably.ts";
@@ -291,6 +292,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
     },
     ably: {
       trigger: triggerAblyEvent,
+      triggerFailure: triggerAblyFailure,
       triggerReconnect: triggerAblyReconnect,
       triggerReauth: triggerAblyReauth,
       triggerConnectionClosed: triggerAblyConnectionClosed,
