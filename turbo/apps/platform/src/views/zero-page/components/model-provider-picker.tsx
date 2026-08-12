@@ -442,6 +442,22 @@ function codexFastOptionValue(model: string): string {
   return `${CODEX_FAST_OPTION_PREFIX}${model}`;
 }
 
+function modelFirstSelectionFromInteraction(
+  raw: string,
+  currentSelection: ModelProviderSelection | null,
+  codexFastModeEnabled: boolean,
+): ModelProviderSelection | null | undefined {
+  if (codexFastModeEnabled && currentSelection?.codexServiceTier === "fast") {
+    if (raw === currentSelection.selectedModel) {
+      return undefined;
+    }
+    if (raw === codexFastOptionValue(currentSelection.selectedModel)) {
+      return { selectedModel: currentSelection.selectedModel };
+    }
+  }
+  return modelFirstSelectionFromRaw(raw, codexFastModeEnabled);
+}
+
 function isHiddenModelFirstSelectValue(value: string): boolean {
   return (
     value === INHERIT_SENTINEL || value.startsWith(CODEX_FAST_SELECTED_PREFIX)
@@ -553,8 +569,9 @@ function ModelFirstPolicyRow({
                   size={18}
                   fill={fastSelected ? "currentColor" : "none"}
                   className={cn(
-                    !fastSelected &&
-                      "group-hover/fast-option:fill-current group-data-[highlighted]/fast-option:fill-current",
+                    fastSelected
+                      ? "group-hover/fast-option:fill-none group-data-[highlighted]/fast-option:fill-none"
+                      : "group-hover/fast-option:fill-current group-data-[highlighted]/fast-option:fill-current",
                   )}
                   aria-hidden="true"
                 />
@@ -883,7 +900,14 @@ function SubscribedModelFirstModelPicker({
   };
 
   const handleRawValueChange = (raw: string) => {
-    const selection = modelFirstSelectionFromRaw(raw, codexFastModeEnabled);
+    const selection = modelFirstSelectionFromInteraction(
+      raw,
+      state.selection,
+      codexFastModeEnabled,
+    );
+    if (selection === undefined) {
+      return;
+    }
     if (selection) {
       const policy = state.policies.find((candidate) => {
         return candidate.model === selection.selectedModel;
@@ -1092,14 +1116,19 @@ function EnabledExplicitModelFirstModelPicker(
     fastLabel: props.fastLabel,
   });
   const handleRawValueChange = (raw: string) => {
+    const selection = modelFirstSelectionFromInteraction(
+      raw,
+      state.selection,
+      props.codexFastModeEnabled ?? false,
+    );
+    if (selection === undefined) {
+      return;
+    }
     detach(
       (async () => {
         const result = await resolveSelection(
           {
-            selection: modelFirstSelectionFromRaw(
-              raw,
-              props.codexFastModeEnabled ?? false,
-            ),
+            selection,
           },
           pageSignal,
         );
