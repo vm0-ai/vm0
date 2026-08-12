@@ -4115,7 +4115,6 @@ jobs:
           shard-index: ${{ matrix.index }}
           shard-total: ${{ matrix.total }}
           test-files-json: ${{ toJSON(matrix.files) }}
-          poll-interval-seconds: "8"
           cf-access-client-id: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           vercel-automation-bypass-secret: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}

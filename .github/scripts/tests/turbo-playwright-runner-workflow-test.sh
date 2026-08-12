@@ -480,7 +480,7 @@ expected_shard_inputs = {
   end
 end
 unless cloudflare_invocation.dig("with", "runtime") == "cloudflare" &&
-    cloudflare_invocation.dig("with", "poll-interval-seconds") == "8" &&
+    !cloudflare_invocation.fetch("with").key?("poll-interval-seconds") &&
     cloudflare_invocation.dig("with", "cf-access-client-id") ==
       "${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}" &&
     cloudflare_invocation.dig("with", "cf-access-client-secret") ==
