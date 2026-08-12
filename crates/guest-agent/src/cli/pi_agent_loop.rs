@@ -20,6 +20,7 @@ use crate::masker::SecretMasker;
 use crate::paths::{self, GuestPaths};
 use crate::pi_standby::PiStandbySignal;
 use guest_common::{log_info, log_warn};
+use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -365,7 +366,7 @@ async fn run_protocol(
             line = line_reader::read_bounded_utf8_line(
                 stdout,
                 partial_line,
-                super::STDOUT_MAX_LINE_BYTES,
+                ORDINARY_CLI_STDOUT_MAX_LINE_BYTES,
             ) => line.map_err(|error| {
                 AgentError::Execution(format!("invalid Pi standby stdout: {error:?}"))
             })?,

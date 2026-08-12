@@ -11,6 +11,7 @@ use super::messages::{
 use super::persistence::{InputEventContext, persist_input_events};
 use super::scenario::Scenario;
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
+use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::os::unix::net::UnixListener;
@@ -25,8 +26,6 @@ const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
-// Integration contract with guest-agent's Codex app-server stdout framing policy.
-const APP_SERVER_STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
 const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 10;
@@ -68,7 +67,7 @@ impl AppServerState {
         }
         if self.scenario == Scenario::OversizedStdout {
             let chunk = [b'x'; STDOUT_STREAM_CHUNK_BYTES];
-            for _ in 0..APP_SERVER_STDOUT_MAX_LINE_BYTES / STDOUT_STREAM_CHUNK_BYTES {
+            for _ in 0..CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES / STDOUT_STREAM_CHUNK_BYTES {
                 output.write_all(&chunk)?;
             }
             output.write_all(b"x\n")?;
