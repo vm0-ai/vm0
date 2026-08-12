@@ -162,6 +162,7 @@ describe("auth tokens", () => {
 
     expect(verifyCliToken(expiredToken)).toBeNull();
     expect(verifySandboxToken(composeJobToken)).toBeNull();
+    expect(verifyZeroToken(composeJobToken)).toBeNull();
     expect(verifyComposeJobToken(composeJobToken)).toStrictEqual({
       userId: "user_compose",
       jobId: "job_compose",
