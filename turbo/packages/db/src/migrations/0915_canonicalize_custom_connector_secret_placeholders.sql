@@ -153,6 +153,7 @@ BEGIN
           '{{secret}}',
           '{{secrets.secret}}'
         );
+        -- Match JavaScript string length: supplementary code points use two UTF-16 code units.
         SELECT coalesce(
           sum(
             CASE
