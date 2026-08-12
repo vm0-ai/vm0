@@ -20,7 +20,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "beta-multiline-secret-fragment\n",
         "-----END VM0 TEST KEY-----\n",
     );
-    let short_unicode_multiline_secret = "密钥\n令牌\n";
+    let short_unicode_multiline_secret = "密ab\n钥cd\n";
     let tail_only_secret = [
         "tail-boundary-start",
         "dropped-tail-fragment-zero",
@@ -74,9 +74,9 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     stderr_payload.push_str("\n-----END VM0 TEST KEY-----");
     stderr_payload.push_str("\nafter-multiline-secret");
     stderr_payload.push_str("\nshort unicode multiline fragments begin");
-    stderr_payload.push_str("\n密钥");
+    stderr_payload.push_str("\n密ab");
     stderr_payload.push_str("\nnon-secret separator");
-    stderr_payload.push_str("\n令牌");
+    stderr_payload.push_str("\n钥cd");
     stderr_payload.push_str("\nshort unicode multiline fragments end");
 
     unsafe {
@@ -165,8 +165,8 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "retained-tail-fragment-one",
         "retained-tail-fragment-two",
         "retained-tail-fragment-three",
-        "密钥",
-        "令牌",
+        "密ab",
+        "钥cd",
     ] {
         assert!(
             !stderr.contains(leaked_fragment),
