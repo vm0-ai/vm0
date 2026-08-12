@@ -29,6 +29,13 @@ export const zeroAgentLoopCommand = new Command()
   .action(async (options: { standby: true; standbyTtlSeconds: number }) => {
     const io = new StdioPiAgentLoopIo(process.stdin, process.stdout);
     const executionEnv = createPiNodeExecutionEnv();
+    const abortController = new AbortController();
+    const abortOnSigterm = () => {
+      const error = new Error("Pi agent loop received SIGTERM");
+      error.name = "AbortError";
+      abortController.abort(error);
+    };
+    process.once("SIGTERM", abortOnSigterm);
     try {
       await runPiStandbyAgentLoop(
         {
@@ -37,7 +44,7 @@ export const zeroAgentLoopCommand = new Command()
           executionEnv,
           standbyTtlSeconds: options.standbyTtlSeconds,
         },
-        new AbortController().signal,
+        abortController.signal,
       );
     } catch (error) {
       await io.write({
@@ -46,6 +53,7 @@ export const zeroAgentLoopCommand = new Command()
       });
       process.exitCode = 1;
     } finally {
+      process.removeListener("SIGTERM", abortOnSigterm);
       io.close();
       await executionEnv.cleanup();
     }

@@ -11,7 +11,11 @@ import type {
   ExecutionEnv,
 } from "@earendil-works/pi-agent-core";
 
-import { createPiExecutionTools, type PiAgentTool } from "./tools";
+import {
+  createPiExecutionTools,
+  isPiToolTimeoutResult,
+  type PiAgentTool,
+} from "./tools";
 
 type PiAgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
@@ -73,6 +77,7 @@ function prepareToolCall(
   toolCall: AgentToolCall,
   signal: AbortSignal,
 ): ToolCallPreparation {
+  signal.throwIfAborted();
   const tool = tools.find((candidate) => {
     return candidate.name === toolCall.name;
   });
@@ -95,16 +100,10 @@ function prepareToolCall(
             arguments: preparedArguments as AgentToolCall["arguments"],
           };
     const args = validateToolArguments(tool, preparedToolCall);
-    if (signal.aborted) {
-      return {
-        kind: "immediate",
-        toolCall,
-        result: errorToolResult("Operation aborted"),
-        isError: true,
-      };
-    }
+    signal.throwIfAborted();
     return { kind: "prepared", toolCall, tool, args };
   } catch (error) {
+    signal.throwIfAborted();
     return {
       kind: "immediate",
       toolCall,
@@ -147,10 +146,16 @@ async function executePreparedToolCall(
     );
     acceptingUpdates = false;
     await Promise.all(updateEvents);
-    return { toolCall: prepared.toolCall, result, isError: false };
+    signal.throwIfAborted();
+    return {
+      toolCall: prepared.toolCall,
+      result,
+      isError: isPiToolTimeoutResult(result),
+    };
   } catch (error) {
     acceptingUpdates = false;
     await Promise.all(updateEvents);
+    signal.throwIfAborted();
     return {
       toolCall: prepared.toolCall,
       result: errorToolResult(

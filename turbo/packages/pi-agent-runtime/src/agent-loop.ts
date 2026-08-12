@@ -17,11 +17,45 @@ import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { vercelAIGatewayProvider } from "@earendil-works/pi-ai/providers/vercel-ai-gateway";
 import type { Api, Message, Model } from "@earendil-works/pi-ai";
 
-import { createPiExecutionTools, type PiAgentTool } from "./tools";
+import {
+  createPiExecutionTools,
+  isPiToolTimeoutResult,
+  type PiAgentTool,
+} from "./tools";
 import { executePiToolBatch } from "./tool-batch";
 import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
 
 type PiCatalogProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
+type PiAgentEventSink = (event: AgentEvent) => Promise<void> | void;
+
+function abortAwareEventSink(
+  onEvent: PiAgentEventSink,
+  signal: AbortSignal,
+): PiAgentEventSink {
+  return async (event: AgentEvent): Promise<void> => {
+    signal.throwIfAborted();
+    let abortListener: (() => void) | undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      const rejectWithReason = () => {
+        reject(signal.reason);
+      };
+      if (signal.aborted) {
+        rejectWithReason();
+      } else {
+        abortListener = rejectWithReason;
+        signal.addEventListener("abort", rejectWithReason, { once: true });
+      }
+    });
+    try {
+      await Promise.race([Promise.resolve(onEvent(event)), aborted]);
+      signal.throwIfAborted();
+    } finally {
+      if (abortListener) {
+        signal.removeEventListener("abort", abortListener);
+      }
+    }
+  };
+}
 
 function providerModels(provider: PiCatalogProvider) {
   switch (provider) {
@@ -268,12 +302,13 @@ export async function runPiAgentResume(
       `Pi provider ${args.model.provider} does not catalog model ${args.model.model}`,
     );
   }
+  const onEvent = abortAwareEventSink(args.onEvent, signal);
   const messages = [...args.messages];
   const toolResults = await executePiToolBatch(
     {
       messages,
       executionEnv: args.executionEnv,
-      onEvent: args.onEvent,
+      onEvent,
     },
     signal,
   );
@@ -291,11 +326,17 @@ export async function runPiAgentResume(
       model,
       apiKey: args.model.apiKey,
       timeoutMs: 120_000,
+      afterToolCall(context) {
+        const result: unknown = context.result;
+        return Promise.resolve(
+          isPiToolTimeoutResult(result) ? { isError: true } : undefined,
+        );
+      },
       convertToLlm(currentMessages) {
         return currentMessages.filter(isPiLlmMessage);
       },
     },
-    args.onEvent,
+    onEvent,
     signal,
     piAgentStream,
   );
