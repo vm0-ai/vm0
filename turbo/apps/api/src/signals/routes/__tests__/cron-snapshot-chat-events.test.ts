@@ -367,6 +367,7 @@ describe("cron snapshot chat events", () => {
     await projectChatEventSearch();
     const rebuilt = await runSnapshotCron();
     expect(rebuilt.success).toBeTruthy();
+    expect(rebuilt.unreadableParents).toBeGreaterThanOrEqual(1);
     expect(putsForThread(threadId)).toHaveLength(2);
     const rebuiltHead = await readChatEventSnapshotHead(context, threadId);
     expect(rebuiltHead.object_key).not.toBe(headPut.key);

@@ -43,6 +43,7 @@ type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 interface ChatEventSnapshotStats {
   readonly snapshots: number;
   readonly archivedEvents: number;
+  readonly unreadableParents: number;
   readonly retiredSnapshotReferencesDeleted: number;
   readonly r2ObjectsScanned: number;
   readonly r2ObjectsMeasured: number;
@@ -328,39 +329,51 @@ async function publishSnapshotHead(
 }
 
 /**
- * Returns the head object's decompressed body when it can seed the next
- * generation, and null when the thread has to be rebuilt from PostgreSQL.
+ * The head object's decompressed body when it can seed the next generation.
  *
- * A retired-version head is rejected so the migration path still rewrites it
- * from canonical rows. A missing or undecodable object is also rejected: the
- * rebuild is the recovery path, so a damaged archive repairs itself on the
- * next pass instead of failing the thread forever.
+ * `absent` is the expected shape for a first archive and for a retired-version
+ * head, which the migration path must rewrite from canonical rows.
+ * `unreadable` means the head row points at an object that could not be
+ * fetched or decoded. Rebuilding is the recovery path, so a damaged archive
+ * repairs itself on the next pass instead of wedging the thread forever, but
+ * the pass reports the count so a storage outage or a systematic decode
+ * failure does not degrade every thread back to a full rebuild silently.
  */
-async function readReusableParentArchive(
+type ParentArchive =
+  | { readonly kind: "reusable"; readonly body: Buffer }
+  | { readonly kind: "absent" }
+  | { readonly kind: "unreadable" };
+
+async function readParentArchive(
   get: ComputedGetter,
   bucket: string,
   candidate: SnapshotCandidate,
   signal: AbortSignal,
-): Promise<Buffer | null> {
+): Promise<ParentArchive> {
   if (
     candidate.headObjectKey === null ||
     candidate.headLastSeqId === null ||
     candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION
   ) {
-    return null;
+    return { kind: "absent" };
   }
   const downloaded = await settle(
     get(downloadS3Buffer(bucket, candidate.headObjectKey)),
     signal,
   );
   if (!downloaded.ok) {
-    return null;
+    return { kind: "unreadable" };
   }
   const decompressed = await settle(gunzipAsync(downloaded.value), signal);
   if (!decompressed.ok) {
-    return null;
+    return { kind: "unreadable" };
   }
-  return decompressed.value;
+  return { kind: "reusable", body: decompressed.value };
+}
+
+interface ArchivedThread {
+  readonly archivedEvents: number | null;
+  readonly unreadableParent: boolean;
 }
 
 async function archiveThread(
@@ -369,24 +382,21 @@ async function archiveThread(
   bucket: string,
   candidate: SnapshotCandidate,
   signal: AbortSignal,
-): Promise<number | null> {
-  const parent = await readReusableParentArchive(
-    get,
-    bucket,
-    candidate,
-    signal,
-  );
+): Promise<ArchivedThread> {
+  const parent = await readParentArchive(get, bucket, candidate, signal);
   signal.throwIfAborted();
+  const unreadableParent = parent.kind === "unreadable";
   // The head object carries the prefix, so a generation only reads the rows
   // past it. A thread without a reusable head falls back to the full canonical
   // history.
-  const fromSeqId = parent === null ? 0 : (candidate.headLastSeqId ?? 0);
+  const fromSeqId =
+    parent.kind === "reusable" ? (candidate.headLastSeqId ?? 0) : 0;
   const archive = await readCanonicalEvents(db, candidate, fromSeqId);
   signal.throwIfAborted();
   if (archive.count === 0) {
-    if (parent !== null) {
+    if (parent.kind === "reusable") {
       // The indexed tail was already archived by a concurrent pass.
-      return null;
+      return { archivedEvents: null, unreadableParent };
     }
     throw new Error(
       `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
@@ -395,15 +405,15 @@ async function archiveThread(
   // A full rebuild must start at the thread's first event. Publishing a
   // prefix-less body would advance the head to a truncated archive, and the
   // exact-parent CAS cannot detect that on its own.
-  if (parent === null && archive.firstSeqId !== 1) {
+  if (parent.kind !== "reusable" && archive.firstSeqId !== 1) {
     throw new Error(
       `chat event snapshot rebuild for ${candidate.chatThreadId} started at seq ${String(archive.firstSeqId)} instead of the thread's first event`,
     );
   }
   const compressed = await gzipAsync(
-    parent === null
-      ? Buffer.concat(archive.lines)
-      : Buffer.concat([parent, ...archive.lines]),
+    parent.kind === "reusable"
+      ? Buffer.concat([parent.body, ...archive.lines])
+      : Buffer.concat(archive.lines),
   );
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
@@ -431,9 +441,12 @@ async function archiveThread(
     ) {
       throw published.error;
     }
-    return null;
+    return { archivedEvents: null, unreadableParent };
   }
-  return published.value ? archive.count : null;
+  return {
+    archivedEvents: published.value ? archive.count : null,
+    unreadableParent,
+  };
 }
 
 async function chatEventSnapshotConvergence(
@@ -775,12 +788,16 @@ export const snapshotChatEvents$ = command(
 
     let snapshots = 0;
     let archivedEvents = 0;
+    let unreadableParents = 0;
     for (const candidate of candidates) {
       const archived = await archiveThread(get, db, bucket, candidate, signal);
       signal.throwIfAborted();
-      if (archived !== null) {
+      if (archived.unreadableParent) {
+        unreadableParents += 1;
+      }
+      if (archived.archivedEvents !== null) {
         snapshots += 1;
-        archivedEvents += archived;
+        archivedEvents += archived.archivedEvents;
       }
     }
     const retiredSnapshots = await set(
@@ -804,6 +821,7 @@ export const snapshotChatEvents$ = command(
     return {
       snapshots,
       archivedEvents,
+      unreadableParents,
       retiredSnapshotReferencesDeleted: retiredSnapshots.referencesDeleted,
       r2ObjectsScanned: r2Gc.scanned,
       r2ObjectsMeasured: r2Gc.measured,
