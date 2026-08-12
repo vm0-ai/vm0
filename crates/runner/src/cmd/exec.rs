@@ -76,6 +76,17 @@ pub struct ExecArgs {
 /// as [`ExitCode::FAILURE`]. Other sandbox-control errors are propagated as
 /// [`RunnerError::Config`].
 pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
+    let mut stdout = std::io::stdout();
+    let mut stderr = std::io::stderr();
+    run_exec_with_writers(args, control, &mut stdout, &mut stderr).await
+}
+
+async fn run_exec_with_writers(
+    args: ExecArgs,
+    control: &dyn SandboxControl,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> RunnerResult<ExitCode> {
     let target = if let Some(ref sid) = args.sandbox {
         SandboxControlTarget::sandbox(sid)
     } else if let Some(ref rid) = args.run {
@@ -103,16 +114,13 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
         .await
     {
         Ok(result) => {
-            let _ = std::io::stdout().lock().write_all(&result.stdout);
-
-            let err = std::io::stderr();
-            let mut err = err.lock();
-            write_remote_exec_stderr(&mut err, &result);
+            let _ = stdout.write_all(&result.stdout);
+            write_remote_exec_stderr(stderr, &result);
 
             Ok(remote_exec_exit_code(result.termination))
         }
         Err(SandboxControlError::Remote(msg)) => {
-            eprintln!("error: {msg}");
+            let _ = writeln!(stderr, "error: {msg}");
             Ok(ExitCode::FAILURE)
         }
         Err(e) => Err(RunnerError::Config(e.to_string())),
@@ -272,11 +280,21 @@ mod tests {
     async fn remote_error_prints_message_and_returns_failure() {
         let control = MockSandboxControl::new("/tmp");
         control.push_exec_remote_result(Err(SandboxControlError::Remote("command failed".into())));
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
 
-        let result = run_exec(make_args("test-id", "fail"), &control)
-            .await
-            .unwrap();
+        let result = run_exec_with_writers(
+            make_args("test-id", "fail"),
+            &control,
+            &mut stdout,
+            &mut stderr,
+        )
+        .await
+        .unwrap();
+
         assert_eq!(result, ExitCode::FAILURE);
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"error: command failed\n");
     }
 
     #[tokio::test]
