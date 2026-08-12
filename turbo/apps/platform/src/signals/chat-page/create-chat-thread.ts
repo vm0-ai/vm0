@@ -144,6 +144,7 @@ import {
   createArtifactCardSignalsRegistry,
   type ArtifactCardSignalsRegistry,
 } from "./artifact-card-signals.ts";
+import { createAttachmentResourceUrlResolver } from "../attachment-resource-url.ts";
 import {
   createAgentReferenceSignalsRegistry,
   type AgentReferenceSignalsRegistry,
@@ -1838,8 +1839,10 @@ function createPagedEventResources(
     threadId,
     browserLifecycleOptimisticEvents,
   );
+  const resolveAttachmentResourceUrl = createAttachmentResourceUrlResolver();
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     previewImageUrlsByUrl$,
+    resolveAttachmentResourceUrl,
   );
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();

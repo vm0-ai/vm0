@@ -3,7 +3,7 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "../views/zero-page/zero-attachment-url.ts";
-import { attachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
+import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
 
 type AttachmentDownload = {
   readonly filename: string;
@@ -20,7 +20,7 @@ export const downloadAttachment$ = command(
     attachment: AttachmentDownload,
     signal: AbortSignal,
   ): Promise<void> => {
-    const resolveResourceUrl = get(attachmentResourceUrlResolver$);
+    const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
     const resourceUrl = await get(
       resolveResourceUrl(publicAttachmentUrl(attachment.url)),
     );

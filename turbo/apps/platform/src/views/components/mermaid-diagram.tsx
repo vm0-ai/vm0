@@ -1,10 +1,10 @@
+import { CopyButton } from "@vm0/ui";
 import { useLoadable, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { MermaidDiagramSignals } from "../../signals/mermaid-diagram.ts";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { CodeCopyButton } from "./code-copy-button.tsx";
 
 /**
  * Renders a ```mermaid fenced block as a diagram from its signals.
@@ -30,7 +30,13 @@ export function MermaidDiagramView({
     return (
       <pre>
         <code className="language-mermaid">{signals.code}</code>
-        <CodeCopyButton code={signals.code} />
+        <CopyButton
+          type="button"
+          text={signals.code}
+          showTooltip={false}
+          className="copied"
+          data-code={signals.code}
+        />
       </pre>
     );
   }
