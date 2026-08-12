@@ -1160,7 +1160,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("keeps the user image preview frame stable while the image loads", async () => {
+  it("resolves the user image preview loading state", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -1188,18 +1188,9 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Chat image preview link not found");
     }
-    const spacer = preview.querySelector('span[aria-hidden="true"]');
-    expect(preview).toHaveClass(
-      "relative",
-      "inline-flex",
-      "aspect-[10/9]",
-      "w-[50px]",
-    );
-    expect(spacer).toHaveClass("block", "h-full", "w-full");
     expect(
       within(preview).getByTestId("chat-image-preview-loading"),
-    ).toHaveClass("absolute", "inset-0");
-    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+    ).toBeInTheDocument();
 
     fireEvent.load(image);
 
@@ -1208,8 +1199,6 @@ describe("zero attachment chips", () => {
         within(preview).queryByTestId("chat-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
-    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
-    expect(image).not.toHaveClass("opacity-0");
   });
 
   it("renders a canonical Slack input with the standard attachment UI", async () => {
@@ -2977,19 +2966,10 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Markdown image preview button not found");
     }
-    const spacer = preview.querySelector('span[aria-hidden="true"]');
-    expect(preview).toHaveClass(
-      "relative",
-      "inline-flex",
-      "aspect-[10/9]",
-      "w-[200px]",
-    );
-    expect(spacer).toHaveClass("block", "h-full", "w-full");
+    expect(image).toHaveAttribute("src", imageUrl);
     expect(
       within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("absolute", "inset-0");
-    expect(image).toHaveAttribute("src", imageUrl);
-    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+    ).toBeInTheDocument();
 
     fireEvent.load(image);
 
@@ -2998,8 +2978,6 @@ describe("zero attachment chips", () => {
         within(preview).queryByTestId("markdown-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
-    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
-    expect(image).not.toHaveClass("opacity-0");
     click(preview);
 
     const lightbox = await screen.findByTestId("attachment-lightbox");

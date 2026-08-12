@@ -6,6 +6,7 @@ const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
+const imageLayoutThreadId = "b0000000-0000-4000-a000-000000000736";
 const responsiveFollowupPrompts = [
   "Draft launch copy",
   "Create a detailed presentation outline with speaker notes",
@@ -25,6 +26,22 @@ interface ConnectorCatalogStatusResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function deferred(): { readonly promise: Promise<void>; resolve(): void } {
+  let resolvePromise: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve: () => {
+      if (!resolvePromise) {
+        throw new Error("Deferred promise resolver is unavailable");
+      }
+      resolvePromise();
+    },
+  };
 }
 
 function isSuccessfulAgentDraftClear(response: Response): boolean {
@@ -478,6 +495,141 @@ async function mockModelChangeThread(
   });
 }
 
+interface DelayedImageRoutes {
+  readonly assistantImageRequested: Promise<void>;
+  readonly assistantImageUrl: string;
+  readonly releaseImages: () => void;
+  readonly userImageRequested: Promise<void>;
+  readonly userImageUrl: string;
+}
+
+async function setupDelayedImageRoutes(
+  page: Page,
+): Promise<DelayedImageRoutes> {
+  const userImageUrl = new URL("/playwright/delayed-user-image.svg", appUrl)
+    .href;
+  const assistantImageUrl = new URL(
+    "/playwright/delayed-assistant-image.svg",
+    appUrl,
+  ).href;
+  const userImageRequested = deferred();
+  const assistantImageRequested = deferred();
+  const releaseImages = deferred();
+  const imageMarkup = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+      <rect width="1200" height="900" fill="#2563eb" />
+    </svg>
+  `;
+  const routeImage = async (
+    url: string,
+    requested: { resolve(): void },
+  ): Promise<void> => {
+    await page.route(url, async (route) => {
+      requested.resolve();
+      await releaseImages.promise;
+      await route.fulfill({ body: imageMarkup, contentType: "image/svg+xml" });
+    });
+  };
+  await routeImage(userImageUrl, userImageRequested);
+  await routeImage(assistantImageUrl, assistantImageRequested);
+  await page.route("**/api/okou/web/file-url?*", async (route) => {
+    const fileId = new URL(route.request().url()).searchParams.get("file_id");
+    if (fileId !== "playwright-delayed-user-image") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({ json: { url: userImageUrl } });
+  });
+  return {
+    assistantImageRequested: assistantImageRequested.promise,
+    assistantImageUrl,
+    releaseImages: releaseImages.resolve,
+    userImageRequested: userImageRequested.promise,
+    userImageUrl,
+  };
+}
+
+async function mockDelayedImageLayoutThread(
+  page: Page,
+  agentId: string,
+  routes: DelayedImageRoutes,
+): Promise<void> {
+  await page.route(
+    (url) =>
+      url.pathname ===
+      `/api/okou/chat-threads/${imageLayoutThreadId}/artifacts`,
+    async (route) => {
+      await route.fulfill({ json: { runs: [] } });
+    },
+  );
+  const runId = "run-delayed-image-layout";
+  await mockChatThread(page, {
+    agentId,
+    createdAt: "2026-08-12T09:00:03Z",
+    selectedModel: null,
+    threadId: imageLayoutThreadId,
+    title: "Delayed image preview layout",
+    events: [
+      {
+        id: "msg-delayed-user-image",
+        threadId: imageLayoutThreadId,
+        eventType: "input.prompt",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "playwright-delayed-user-image",
+              filenameSnapshot: "delayed-user-image.svg",
+              contentType: "image/svg+xml",
+            },
+            { type: "text", text: "User image follower" },
+          ],
+        },
+        runId,
+        seqId: 1,
+        createdAt: "2026-08-12T09:00:00Z",
+      },
+      {
+        id: "msg-delayed-assistant-image",
+        threadId: imageLayoutThreadId,
+        eventType: "output.message",
+        content: `![delayed-assistant-image.svg](${routes.assistantImageUrl})\n\nAssistant image follower`,
+        runId,
+        seqId: 2,
+        createdAt: "2026-08-12T09:00:01Z",
+      },
+      {
+        id: "msg-delayed-image-completed",
+        threadId: imageLayoutThreadId,
+        eventType: "run.completed",
+        content: null,
+        runId,
+        runLifecycleEvent: "completed",
+        seqId: 3,
+        createdAt: "2026-08-12T09:00:03Z",
+      },
+    ],
+  });
+}
+
+function delayedImagePreview(
+  page: Page,
+  role: "assistant" | "user",
+  alt: string,
+  followerText: string,
+) {
+  const image = page.getByAltText(alt);
+  const preview = image.locator("..");
+  return {
+    follower: page.getByText(followerText, { exact: true }),
+    image,
+    message: page.locator(`[data-role="${role}"]`).filter({ has: preview }),
+    preview,
+  };
+}
+
 async function expectRightAlignedDivider(label: Locator): Promise<void> {
   await expect(label).toBeVisible();
   const row = label.locator("..");
@@ -517,6 +669,124 @@ async function expectInside(inner: Locator, outer: Locator): Promise<void> {
   expect(innerBox.y + innerBox.height).toBeLessThanOrEqual(
     outerBox.y + outerBox.height + tolerance,
   );
+}
+
+interface ImagePreviewGeometry {
+  readonly image: {
+    readonly height: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly messageHeight: number;
+  readonly preview: {
+    readonly height: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly previewOffsetTop: number;
+  readonly followerOffsetTop: number;
+  readonly border: {
+    readonly bottom: number;
+    readonly left: number;
+    readonly right: number;
+    readonly top: number;
+  };
+}
+
+async function imagePreviewGeometry({
+  follower,
+  image,
+  message,
+  preview,
+}: {
+  readonly follower: Locator;
+  readonly image: Locator;
+  readonly message: Locator;
+  readonly preview: Locator;
+}): Promise<ImagePreviewGeometry> {
+  const [followerBox, imageBox, messageBox, previewBox, border] =
+    await Promise.all([
+      follower.boundingBox(),
+      image.boundingBox(),
+      message.boundingBox(),
+      preview.boundingBox(),
+      preview.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          bottom: Number.parseFloat(style.borderBottomWidth),
+          left: Number.parseFloat(style.borderLeftWidth),
+          right: Number.parseFloat(style.borderRightWidth),
+          top: Number.parseFloat(style.borderTopWidth),
+        };
+      }),
+    ]);
+  if (!followerBox || !imageBox || !messageBox || !previewBox) {
+    throw new Error("Image preview geometry unavailable");
+  }
+  return {
+    image: imageBox,
+    messageHeight: messageBox.height,
+    preview: previewBox,
+    previewOffsetTop: previewBox.y - messageBox.y,
+    followerOffsetTop: followerBox.y - messageBox.y,
+    border,
+  };
+}
+
+function expectStableImagePreviewGeometry(
+  before: ImagePreviewGeometry,
+  after: ImagePreviewGeometry,
+): void {
+  const tolerance = 0.5;
+  expect(Math.abs(after.preview.height - before.preview.height)).toBeLessThan(
+    tolerance,
+  );
+  expect(Math.abs(after.messageHeight - before.messageHeight)).toBeLessThan(
+    tolerance,
+  );
+  expect(
+    Math.abs(after.previewOffsetTop - before.previewOffsetTop),
+  ).toBeLessThan(tolerance);
+  expect(
+    Math.abs(after.followerOffsetTop - before.followerOffsetTop),
+  ).toBeLessThan(tolerance);
+}
+
+function expectImageInsidePreviewBorder(geometry: ImagePreviewGeometry): void {
+  const tolerance = 0.5;
+  const previewRight = geometry.preview.x + geometry.preview.width;
+  const previewBottom = geometry.preview.y + geometry.preview.height;
+  expect(Math.min(...Object.values(geometry.border))).toBeGreaterThan(0);
+  expect(geometry.image.x).toBeGreaterThanOrEqual(
+    geometry.preview.x + geometry.border.left - tolerance,
+  );
+  expect(geometry.image.y).toBeGreaterThanOrEqual(
+    geometry.preview.y + geometry.border.top - tolerance,
+  );
+  expect(geometry.image.x + geometry.image.width).toBeLessThanOrEqual(
+    previewRight - geometry.border.right + tolerance,
+  );
+  expect(geometry.image.y + geometry.image.height).toBeLessThanOrEqual(
+    previewBottom - geometry.border.bottom + tolerance,
+  );
+}
+
+async function expectPreviewFocusVisible(preview: Locator): Promise<void> {
+  await preview.press("Tab");
+  await preview.focus();
+  const focus = await preview.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      focusVisible: element.matches(":focus-visible"),
+      outlineStyle: style.outlineStyle,
+      outlineWidth: Number.parseFloat(style.outlineWidth),
+    };
+  });
+  expect(focus.focusVisible).toBe(true);
+  expect(focus.outlineStyle).not.toBe("none");
+  expect(focus.outlineWidth).toBeGreaterThan(0);
 }
 
 async function cardEdgeAppearance(locator: Locator) {
@@ -642,6 +912,77 @@ test("model change labels follow the divider at the right edge", async ({
   await expectRightAlignedDivider(
     page.getByText("Next run will use Claude Opus 4.8", { exact: true }),
   );
+});
+
+test("image preview frames stay fixed while delayed images load", async ({
+  page,
+}) => {
+  await disableChatEventSnapshotRead(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  const agentId = new URL(page.url()).pathname.match(
+    /^\/agents\/([^/]+)\/chat\/?$/,
+  )?.[1];
+  if (!agentId) {
+    throw new Error("Could not resolve the active agent from the chat URL");
+  }
+  const routes = await setupDelayedImageRoutes(page);
+  await mockDelayedImageLayoutThread(page, agentId, routes);
+
+  const initialEventsLoaded = page.waitForResponse((response) => {
+    return isInitialChatThreadEventsResponse(response, imageLayoutThreadId);
+  });
+  await page.goto(new URL(`/chats/${imageLayoutThreadId}`, appUrl).href, {
+    waitUntil: "domcontentloaded",
+  });
+  await initialEventsLoaded;
+
+  const user = delayedImagePreview(
+    page,
+    "user",
+    "delayed-user-image.svg",
+    "User image follower",
+  );
+  const assistant = delayedImagePreview(
+    page,
+    "assistant",
+    "delayed-assistant-image.svg",
+    "Assistant image follower",
+  );
+
+  await expect(user.preview).toBeVisible();
+  await expect(assistant.preview).toBeVisible();
+  await expect(user.follower).toBeVisible();
+  await expect(assistant.follower).toBeVisible();
+  await Promise.all([
+    routes.userImageRequested,
+    routes.assistantImageRequested,
+  ]);
+  const userBefore = await imagePreviewGeometry(user);
+  const assistantBefore = await imagePreviewGeometry(assistant);
+
+  routes.releaseImages();
+  await expect
+    .poll(async () => {
+      return Promise.all([
+        user.image.evaluate((element) => {
+          return element instanceof HTMLImageElement && element.naturalWidth;
+        }),
+        assistant.image.evaluate((element) => {
+          return element instanceof HTMLImageElement && element.naturalWidth;
+        }),
+      ]);
+    })
+    .toEqual([1200, 1200]);
+
+  const userAfter = await imagePreviewGeometry(user);
+  const assistantAfter = await imagePreviewGeometry(assistant);
+  expectStableImagePreviewGeometry(userBefore, userAfter);
+  expectStableImagePreviewGeometry(assistantBefore, assistantAfter);
+  expectImageInsidePreviewBorder(userAfter);
+  expectImageInsidePreviewBorder(assistantAfter);
+  await expectPreviewFocusVisible(user.preview);
+  await expectPreviewFocusVisible(assistant.preview);
 });
 
 // The card rail only renders on coarse-pointer text-entry devices, so this
