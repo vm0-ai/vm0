@@ -167,8 +167,7 @@ function encodeArchiveLine(line: ChatEventRowV4): Buffer {
 /**
  * One canonical archived chat event, one NDJSON line. Fields are listed
  * explicitly so a chat_events schema change cannot silently alter the durable
- * wire shape. Physically retained rollout columns remain outside the v4
- * object until a later migration-order-safe contraction.
+ * wire shape.
  */
 export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRowV4 {
   return chatEventRowV4Schema.parse({
@@ -646,13 +645,5 @@ export const snapshotChatEvents$ = command(
       r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
       ...convergence,
     };
-  },
-);
-
-export const verifyChatEventSnapshotConvergence$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    const convergence = await chatEventSnapshotConvergence(set(writeDb$));
-    signal.throwIfAborted();
-    return convergence;
   },
 );
