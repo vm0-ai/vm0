@@ -1,6 +1,7 @@
 import {
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   rename,
   rm,
@@ -30,6 +31,11 @@ interface RawChatHistorySyncResult {
   readonly directory: string;
   readonly files: readonly string[];
 }
+
+type LocalHistoryState =
+  | { readonly kind: "empty" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "valid"; readonly latestSeqId: number };
 
 function managedHistoryFile(name: string): ManagedHistoryFile | null {
   const snapshot = SNAPSHOT_FILE_PATTERN.exec(name);
@@ -68,6 +74,54 @@ async function listManagedHistoryFiles(
     });
 }
 
+async function localHistoryState(args: {
+  readonly directory: string;
+  readonly threadId: string;
+  readonly files: readonly ManagedHistoryFile[];
+}): Promise<LocalHistoryState> {
+  if (args.files.length === 0) {
+    return { kind: "empty" };
+  }
+
+  const snapshots = args.files.filter((file) => {
+    return file.kind === "snapshot";
+  });
+  if (snapshots.length > 1) {
+    return { kind: "invalid" };
+  }
+  const events = args.files.filter((file) => {
+    return file.kind === "event";
+  });
+  let expectedSeqId = (snapshots[0]?.seqId ?? THREAD_START_SEQ_ID) + 1;
+  for (const event of events) {
+    if (event.seqId !== expectedSeqId) {
+      return { kind: "invalid" };
+    }
+    try {
+      const text = await readFile(join(args.directory, event.name), "utf8");
+      if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
+        return { kind: "invalid" };
+      }
+      const row = chatEventRowV4Schema.parse(JSON.parse(text.slice(0, -1)));
+      if (row.chatThreadId !== args.threadId || row.seqId !== event.seqId) {
+        return { kind: "invalid" };
+      }
+    } catch {
+      return { kind: "invalid" };
+    }
+    expectedSeqId += 1;
+  }
+
+  const latestEvent = events.at(-1);
+  if (latestEvent) {
+    return { kind: "valid", latestSeqId: latestEvent.seqId };
+  }
+  const snapshot = snapshots[0];
+  return snapshot
+    ? { kind: "valid", latestSeqId: snapshot.seqId }
+    : { kind: "invalid" };
+}
+
 async function downloadSnapshot(url: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) {
@@ -100,15 +154,31 @@ async function syncRows(args: {
     if (page.kind === "expired") {
       return "expired";
     }
-    await Promise.all(
-      page.rows.map((row) => {
-        return writeFile(
-          join(args.directory, `event-SEQ_ID_${row.seqId}.json`),
-          `${JSON.stringify(row)}\n`,
-          "utf8",
-        );
-      }),
+    for (const [index, row] of page.rows.entries()) {
+      if (row.seqId !== sinceSeqId + index + 1) {
+        throw new Error("Chat event rows must have contiguous sequence IDs");
+      }
+    }
+    const stagedDirectory = await mkdtemp(
+      join(args.directory, ".okou-chat-history-page-"),
     );
+    try {
+      await Promise.all(
+        page.rows.map((row) => {
+          return writeFile(
+            join(stagedDirectory, `event-SEQ_ID_${row.seqId}.json`),
+            `${JSON.stringify(row)}\n`,
+            "utf8",
+          );
+        }),
+      );
+      for (const row of page.rows) {
+        const name = `event-SEQ_ID_${row.seqId}.json`;
+        await rename(join(stagedDirectory, name), join(args.directory, name));
+      }
+    } finally {
+      await rm(stagedDirectory, { recursive: true, force: true });
+    }
     const lastRow = page.rows.at(-1);
     if (lastRow !== undefined) {
       sinceSeqId = lastRow.seqId;
@@ -127,11 +197,12 @@ async function replaceManagedHistoryFiles(args: {
     listManagedHistoryFiles(args.targetDirectory),
     listManagedHistoryFiles(args.stagedDirectory),
   ]);
-  await Promise.all(
-    existing.map((file) => {
-      return rm(join(args.targetDirectory, file.name));
-    }),
-  );
+  // Removing the newest rows first and installing the new generation oldest
+  // first leaves either a valid prefix or an invalid generation that the next
+  // invocation rebuilds; no interrupted operation can commit a sparse cursor.
+  for (const file of [...existing].reverse()) {
+    await rm(join(args.targetDirectory, file.name));
+  }
   for (const file of staged) {
     await rename(
       join(args.stagedDirectory, file.name),
@@ -190,16 +261,13 @@ export async function syncRawChatHistory(args: {
   const threadDirectory = join(args.outputDirectory, args.threadId);
   await mkdir(threadDirectory, { recursive: true });
   const existing = await listManagedHistoryFiles(threadDirectory);
-  const latestSeqId =
-    existing.length === 0
-      ? undefined
-      : Math.max(
-          ...existing.map((file) => {
-            return file.seqId;
-          }),
-        );
+  const state = await localHistoryState({
+    directory: threadDirectory,
+    threadId: args.threadId,
+    files: existing,
+  });
 
-  if (latestSeqId === undefined) {
+  if (state.kind !== "valid") {
     await rebuildRawChatHistory({
       threadId: args.threadId,
       outputDirectory: args.outputDirectory,
@@ -209,7 +277,7 @@ export async function syncRawChatHistory(args: {
     const result = await syncRows({
       threadId: args.threadId,
       directory: threadDirectory,
-      sinceSeqId: latestSeqId,
+      sinceSeqId: state.latestSeqId,
     });
     if (result === "expired") {
       await rebuildRawChatHistory({

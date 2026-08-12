@@ -744,6 +744,67 @@ describe("okou chat messages command", () => {
     );
   });
 
+  it("rebuilds a sparse local generation before advancing its cursor", async () => {
+    const outputDirectory = await createOutputDirectory();
+    const threadDirectory = join(outputDirectory, THREAD_ID);
+    await mkdir(threadDirectory, { recursive: true });
+    await writeFile(
+      join(threadDirectory, "snapshot-to-2.ndjson"),
+      snapshotNdjson([rawEventRow(1), rawEventRow(2)]),
+      "utf8",
+    );
+    await writeFile(
+      join(threadDirectory, "event-SEQ_ID_4.json"),
+      `${JSON.stringify(rawEventRow(4))}\n`,
+      "utf8",
+    );
+    await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
+    const freshSnapshot = snapshotNdjson([rawEventRow(10)]);
+    const cursors: string[] = [];
+    server.use(
+      http.get(FEATURE_SWITCHES_URL, () => {
+        return HttpResponse.json(featureSwitches(true));
+      }),
+      http.get(EVENTS_URL, () => {
+        throw new Error("Projected events endpoint must not be called");
+      }),
+      http.get(SNAPSHOT_URL, () => {
+        return HttpResponse.json({
+          url: SNAPSHOT_DOWNLOAD_URL,
+          expiresInSeconds: 900,
+          lastSeqId: 10,
+        });
+      }),
+      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
+        return new HttpResponse(freshSnapshot);
+      }),
+      http.get(ROWS_URL, ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
+        if (cursor === null) {
+          throw new Error("Expected a rows cursor");
+        }
+        cursors.push(cursor);
+        expect(cursor).toBe("10");
+        return HttpResponse.json({ rows: [rawEventRow(11)] });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync([
+      "node",
+      "cli",
+      "messages",
+      "--output-dir",
+      outputDirectory,
+    ]);
+
+    expect(cursors).toStrictEqual(["10"]);
+    expect((await readdir(threadDirectory)).sort()).toStrictEqual([
+      "event-SEQ_ID_11.json",
+      "notes.txt",
+      "snapshot-to-10.ndjson",
+    ]);
+  });
+
   it("rebuilds an expired local generation and removes its managed files", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
