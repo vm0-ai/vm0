@@ -3,7 +3,11 @@ import { Command } from "commander";
 import { foldPendingChatQueueEvents } from "@vm0/api-contracts/contracts/chat-events";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { listZeroChatEvents } from "../../../lib/api/domains/zero-chat";
+import {
+  isZeroChatEventSnapshotReadEnabled,
+  listZeroChatEvents,
+  listZeroQueuedChatEvents,
+} from "../../../lib/api/domains/zero-chat";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { resolveChatThreadId } from "./shared";
@@ -98,13 +102,44 @@ Examples:
   Print JSON:         okou chat queued --thread-id <thread-id> --json
 
 Notes:
-  - Lists the same unassociated user and automation events shown as queued by Platform
+  - With snapshot read enabled, lists authoritative queued event IDs and sequence IDs
+  - Otherwise lists the same unassociated user and automation events shown by Platform
   - Event IDs can be passed to okou chat cancel --event-id
   - Authenticates via ZERO_TOKEN (requires chat-event:read capability)`,
   )
   .action(
     withErrorHandler(async (options: QueuedOptions) => {
       const threadId = resolveChatThreadId(options.threadId);
+      if (await isZeroChatEventSnapshotReadEnabled()) {
+        const queued = await listZeroQueuedChatEvents({ threadId });
+        if (options.json) {
+          console.log(
+            JSON.stringify({ threadId, total: queued.length, queued }),
+          );
+          return;
+        }
+        if (queued.length === 0) {
+          console.log(chalk.dim("No queued chat events"));
+          return;
+        }
+
+        console.log(chalk.dim(["EVENT ID".padEnd(38), "SEQ ID"].join("  ")));
+        for (const event of queued) {
+          console.log(
+            [event.eventId.padEnd(38), String(event.seqId)].join("  "),
+          );
+        }
+        console.log();
+        console.log(chalk.dim("Sync and inspect raw chat history:"));
+        console.log(
+          `  okou chat messages --thread-id ${threadId} --output-dir threads`,
+        );
+        for (const event of queued) {
+          console.log(`  rg -n '"seqId":${event.seqId}' threads/${threadId}/`);
+        }
+        return;
+      }
+
       const allEvents = await loadAllChatEvents(threadId);
       const queued = foldPendingChatQueueEvents(allEvents).flatMap((event) => {
         const summary = summarizeQueuedEvent(event);

@@ -60,6 +60,7 @@ export interface WebChatSessionPromptContext {
   readonly generationTemplatePrompt: string;
   readonly computerUseHostDisplayName: string | null;
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+  readonly chatEventSnapshotReadEnabled: boolean;
 }
 
 function buildWebChatPrompt(): string {
@@ -74,15 +75,26 @@ function buildWebChatPrompt(): string {
  * only replayed when the CLI session cannot carry it, so this block is what
  * lets a run reach the rest of the conversation on demand instead.
  */
-function buildCurrentThreadContext(threadId: string): string {
+function buildCurrentThreadContext(
+  threadId: string,
+  chatEventSnapshotReadEnabled: boolean,
+): string {
+  const historyCommands = chatEventSnapshotReadEnabled
+    ? [
+        `- \`okou chat messages --thread-id ${threadId} --output-dir threads\` synchronizes the raw snapshot and hot events into \`threads/${threadId}/\` (chat-event:read)`,
+        `- \`rg -n '"seqId":<SEQ_ID>' threads/${threadId}/\` finds an event in the synchronized history`,
+      ]
+    : [
+        "- `okou chat messages` prints this thread's user and assistant messages, oldest first (chat-event:read)",
+        "- `okou chat messages --limit <n>` prints only the most recent n messages",
+      ];
   return [
     "# This Chat Thread",
     "",
     `- CHAT_THREAD_ID: ${threadId}`,
     "",
     "Reading this thread, each through ZERO_TOKEN:",
-    "- `okou chat messages` prints this thread's user and assistant messages, oldest first (chat-event:read)",
-    "- `okou chat messages --limit <n>` prints only the most recent n messages",
+    ...historyCommands,
     "- `okou logs <run-id> --all` prints the full event stream of one run in this thread (agent-run:read)",
   ].join("\n");
 }
@@ -99,7 +111,11 @@ function buildCurrentThreadContext(threadId: string): string {
  */
 export function buildAgentRunSourceContext(
   source: ChatAgentRunSourceAnnotation,
+  chatEventSnapshotReadEnabled = false,
 ): string {
+  const historyCommand = chatEventSnapshotReadEnabled
+    ? `- \`okou chat messages --thread-id ${source.threadId} --output-dir threads\` synchronizes the source thread's raw snapshot and hot events into \`threads/${source.threadId}/\`; use \`rg -n '"seqId":<SEQ_ID>' threads/${source.threadId}/\` to inspect an event (chat-event:read)`
+    : `- \`okou chat messages --thread-id ${source.threadId}\` prints the source thread's user and assistant messages (chat-event:read)`;
   return [
     "# This Run's Trigger",
     "",
@@ -113,7 +129,7 @@ export function buildAgentRunSourceContext(
     "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.",
     "",
     "Reading the source, each through ZERO_TOKEN:",
-    `- \`okou chat messages --thread-id ${source.threadId}\` prints the source thread's user and assistant messages (chat-event:read)`,
+    historyCommand,
     `- \`okou chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
     `- \`okou logs ${source.runId} --all\` prints the full event stream of the run that sent this message (agent-run:read)`,
     "",
@@ -138,9 +154,15 @@ export function buildWebChatAppendSystemPrompt(args: {
 }): string {
   return [
     buildWebChatPrompt(),
-    buildCurrentThreadContext(args.threadId),
+    buildCurrentThreadContext(
+      args.threadId,
+      args.context.chatEventSnapshotReadEnabled,
+    ),
     args.context.agentRunSource
-      ? buildAgentRunSourceContext(args.context.agentRunSource)
+      ? buildAgentRunSourceContext(
+          args.context.agentRunSource,
+          args.context.chatEventSnapshotReadEnabled,
+        )
       : "",
     args.priorContext,
     args.incompleteContext,

@@ -2738,6 +2738,7 @@ interface QueuedLaunchLoaderArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+  readonly chatEventSnapshotReadEnabled: boolean;
   readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
   readonly resolveSignedUrls: (keys: {
     readonly inputKey: string;
@@ -2762,7 +2763,12 @@ const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
     appendSystemPrompt: [
       buildWebChatPrompt(),
       ...(args.agentRunSource
-        ? [buildAgentRunSourceContext(args.agentRunSource)]
+        ? [
+            buildAgentRunSourceContext(
+              args.agentRunSource,
+              args.chatEventSnapshotReadEnabled,
+            ),
+          ]
         : []),
     ].join("\n\n"),
     delivery: {},
@@ -2801,6 +2807,7 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs & {
     readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
+    readonly chatEventSnapshotReadEnabled: boolean;
   },
   signal: AbortSignal,
 ): Promise<QueuedLaunchMaterial> {
@@ -2876,6 +2883,7 @@ async function resolveQueuedLaunchMaterial(
     userId: args.userId,
     userMessageProjection: args.userMessageProjection,
     agentRunSource: agentRunSourceAnnotation(args.queuedMessage.userMessage),
+    chatEventSnapshotReadEnabled: args.chatEventSnapshotReadEnabled,
     resolveSignedUrls: (keys) => {
       return args.resolveMorningBriefSignedUrls(keys, signal);
     },
@@ -3046,6 +3054,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
 async function loadQueuedRunMaterial(
   args: CreateQueuedChatRunInputArgs & {
     readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
+    readonly chatEventSnapshotReadEnabled: boolean;
   },
   signal: AbortSignal,
 ) {
@@ -3094,6 +3103,10 @@ async function buildCreateQueuedChatRunInput(
     {
       ...args,
       userMessageProjection,
+      chatEventSnapshotReadEnabled: isFeatureEnabled(
+        FeatureSwitchKey.ChatEventSnapshotRead,
+        featureSwitchContext,
+      ),
     },
     signal,
   );
