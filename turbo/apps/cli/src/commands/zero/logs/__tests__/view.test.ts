@@ -56,6 +56,14 @@ describe("okou logs view command", () => {
     mockConsoleError.mockClear();
   });
 
+  it("should expose only the list subcommand", () => {
+    expect(
+      zeroLogsCommand.commands.map((command) => {
+        return command.name();
+      }),
+    ).toStrictEqual(["list"]);
+  });
+
   it("should display agent events with timestamps", async () => {
     server.use(
       http.get(

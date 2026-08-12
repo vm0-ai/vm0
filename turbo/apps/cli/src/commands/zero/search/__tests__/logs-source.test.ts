@@ -1,186 +1,514 @@
 /**
- * Parity test for `okou search --source logs` vs `okou logs search`.
+ * Tests for okou search --source logs
  *
- * Entry point: parseAsync() on both commands
- * Mock (external): Web API via MSW (same stub for both)
- * Real (internal): all CLI code, event parsers, renderers
+ * Tests command-level behavior via parseAsync() following CLI testing principles:
+ * - Entry point: zeroSearchCommand.parseAsync()
+ * - Mock (external): Web API via MSW
+ * - Real (internal): All CLI code, event parsers, renderers
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { zeroSearchCommand } from "../index";
-import { searchCommand } from "../../logs/search";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 
-function stubResponse() {
-  return HttpResponse.json({
-    results: [
-      {
-        runId: "550e8400-e29b-41d4-a716-446655440001",
-        agentName: "my-agent",
-        matchedEvent: {
-          sequenceNumber: 3,
-          eventType: "assistant",
-          createdAt: "2024-01-15T10:30:00Z",
-          eventData: {
-            type: "assistant",
-            message: {
-              content: [{ type: "text", text: "Build failed: OOM killed" }],
-            },
-          },
-        },
-        contextBefore: [],
-        contextAfter: [],
+function makeEvent(
+  sequenceNumber: number,
+  text: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "assistant",
+    createdAt,
+    eventData: {
+      type: "assistant",
+      message: {
+        content: [{ type: "text", text }],
       },
-    ],
-    hasMore: false,
-  });
+    },
+  };
 }
 
-async function capture(
-  cmd: { parseAsync: (argv: string[]) => Promise<unknown> },
-  argv: string[],
-): Promise<string> {
-  const lines: string[] = [];
-  const spy = vi
-    .spyOn(console, "log")
-    .mockImplementation((...args: unknown[]) => {
-      lines.push(args.map(String).join(" "));
-    });
-  try {
-    await cmd.parseAsync(argv);
-  } finally {
-    spy.mockRestore();
-  }
-  return lines.join("\n");
+function makeCodexMessageEvent(
+  sequenceNumber: number,
+  text: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.completed",
+    createdAt,
+    eventData: {
+      type: "item.completed",
+      item: {
+        id: `item-${sequenceNumber}`,
+        type: "agent_message",
+        text,
+      },
+    },
+  };
 }
 
-describe("okou search --source logs parity with okou logs search", () => {
+function makeCodexCommandStartedEvent(
+  sequenceNumber: number,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.started",
+    createdAt,
+    eventData: {
+      type: "item.started",
+      item: {
+        id: "cmd-1",
+        type: "command_execution",
+        command: "npm test",
+      },
+    },
+  };
+}
+
+function makeCodexCommandCompletedEvent(
+  sequenceNumber: number,
+  createdAt = "2024-01-15T10:30:01Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.completed",
+    createdAt,
+    eventData: {
+      type: "item.completed",
+      item: {
+        id: "cmd-1",
+        type: "command_execution",
+        command: "npm test",
+        aggregated_output: "tests passed",
+        exit_code: 0,
+      },
+    },
+  };
+}
+
+async function parseLogsSearch(args: string[]): Promise<void> {
+  zeroSearchCommand.setOptionValue("source", []);
+  await zeroSearchCommand.parseAsync([
+    "node",
+    "cli",
+    ...args,
+    "--source",
+    "logs",
+  ]);
+}
+
+describe("okou search --source logs", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    mockExit.mockClear();
-    mockConsoleError.mockClear();
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
-    zeroSearchCommand.setOptionValue("source", []);
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
     mockExit.mockClear();
+    mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
   });
 
-  it("rejects whitespace-only queries", async () => {
-    await expect(
-      zeroSearchCommand.parseAsync(["node", "cli", "   ", "--source", "logs"]),
-    ).rejects.toThrow("process.exit called");
-
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("Query cannot be empty");
-  });
-
-  it("produces identical output for the same query and flags", async () => {
-    server.use(
-      http.get("http://localhost:3000/api/okou/logs/search", stubResponse),
+  it("should reject whitespace-only keywords", async () => {
+    await expect(parseLogsSearch(["   "])).rejects.toThrow(
+      "process.exit called",
     );
 
-    const viaSearch = await capture(zeroSearchCommand, [
-      "node",
-      "cli",
-      "OOM",
-      "--source",
-      "logs",
-      "--agent",
-      AGENT_ID,
-      "--limit",
-      "5",
-      "-C",
-      "1",
-    ]);
-
-    zeroSearchCommand.setOptionValue("source", []);
-
-    const viaLogsSearch = await capture(searchCommand, [
-      "node",
-      "cli",
-      "OOM",
-      "--agent",
-      AGENT_ID,
-      "--limit",
-      "5",
-      "-C",
-      "1",
-    ]);
-
-    expect(viaSearch).toBe(viaLogsSearch);
-    expect(viaSearch).toContain("OOM killed");
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Query cannot be empty");
   });
 
-  it("forwards filter flags to the API identically", async () => {
-    const captured: URL[] = [];
+  it("should render search results grouped by run", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
-        captured.push(new URL(request.url));
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "my-agent",
+              matchedEvent: makeEvent(3, "Build failed: OOM killed"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await parseLogsSearch(["OOM"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("550e8400-e29b-41d4-a716-446655440001");
+    expect(logCalls).toContain("my-agent");
+    expect(logCalls).toContain("OOM killed");
+  });
+
+  it("should tolerate invalid search result timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "my-agent",
+              matchedEvent: makeEvent(3, "Build failed", "not-a-timestamp"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await parseLogsSearch(["Build"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("invalid-date");
+    expect(logCalls).toContain("Build failed");
+  });
+
+  it("should render codex search result events with the result framework", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexMessageEvent(3, "Codex found the issue"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await parseLogsSearch(["Codex"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("codex-agent");
+    expect(logCalls).toContain("Codex found the issue");
+  });
+
+  it("should tolerate unsupported search result framework values", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "future-agent",
+              framework: "future-framework",
+              matchedEvent: makeEvent(3, "Legacy parser fallback output"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await parseLogsSearch(["fallback"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("future-agent");
+    expect(logCalls).toContain("Legacy parser fallback output");
+  });
+
+  it("should group paired codex tool events in search context", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexCommandCompletedEvent(4),
+              contextBefore: [makeCodexCommandStartedEvent(3)],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await parseLogsSearch(["tests"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("tests passed");
+    expect(logCalls.match(/Bash/g) ?? []).toHaveLength(1);
+  });
+
+  it("should handle no matches", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({ results: [], hasMore: false });
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
-      "node",
-      "cli",
-      "error",
-      "--source",
-      "logs",
+    await parseLogsSearch(["nonexistent"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("No matches found");
+    expect(logCalls).toContain("--since 30d");
+  });
+
+  it("should pass context options to API", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await parseLogsSearch(["error", "-C", "3"]);
+
+    expect(capturedUrl?.searchParams.get("keyword")).toBe("error");
+    expect(capturedUrl?.searchParams.get("before")).toBe("3");
+    expect(capturedUrl?.searchParams.get("after")).toBe("3");
+  });
+
+  it("should send epoch --since instead of the default search window", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await parseLogsSearch(["error", "--since", "1970-01-01T00:00:00Z"]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
+  });
+
+  it("should pass -A and -B independently", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await parseLogsSearch(["error", "-A", "5", "-B", "2"]);
+
+    expect(capturedUrl?.searchParams.get("before")).toBe("2");
+    expect(capturedUrl?.searchParams.get("after")).toBe("5");
+  });
+
+  it("should reject partial numeric context and limit values", async () => {
+    await expect(parseLogsSearch(["error", "-C", "2x"])).rejects.toThrow(
+      "process.exit called",
+    );
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(parseLogsSearch(["error", "--limit", "1abc"])).rejects.toThrow(
+      "process.exit called",
+    );
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
+
+    mockConsoleError.mockClear();
+
+    await expect(parseLogsSearch(["error", "-C", ""])).rejects.toThrow(
+      "process.exit called",
+    );
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(parseLogsSearch(["error", "--limit", ""])).rejects.toThrow(
+      "process.exit called",
+    );
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
+  });
+
+  it("should pass agentId and run filters", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await parseLogsSearch([
+      "deploy",
       "--agent",
       AGENT_ID,
       "--run",
       "550e8400-e29b-41d4-a716-446655440001",
-      "--since",
-      "1970-01-01T00:00:00Z",
-      "--limit",
-      "10",
-      "-A",
-      "2",
-      "-B",
-      "1",
     ]);
 
-    expect(captured).toHaveLength(1);
-    const url = captured[0]!;
-    expect(url.searchParams.get("keyword")).toBe("error");
-    expect(url.searchParams.get("agentId")).toBe(AGENT_ID);
-    expect(url.searchParams.get("runId")).toBe(
+    expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
+    expect(capturedUrl?.searchParams.get("runId")).toBe(
       "550e8400-e29b-41d4-a716-446655440001",
     );
-    expect(url.searchParams.get("limit")).toBe("10");
-    expect(url.searchParams.get("before")).toBe("1");
-    expect(url.searchParams.get("after")).toBe("2");
-    expect(url.searchParams.get("since")).toBe("0");
   });
 
-  it("rejects non-UUID --agent values", async () => {
+  it("should show hasMore hint when truncated", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "agent",
+              matchedEvent: makeEvent(1, "match"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: true,
+        });
+      }),
+    );
+
+    await parseLogsSearch(["match"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("--limit");
+  });
+
+  it("should render context events around matched event", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "test-agent",
+              matchedEvent: makeEvent(
+                5,
+                "Error: connection refused",
+                "2024-01-15T10:30:05Z",
+              ),
+              contextBefore: [
+                makeEvent(
+                  4,
+                  "Connecting to database...",
+                  "2024-01-15T10:30:04Z",
+                ),
+              ],
+              contextAfter: [
+                makeEvent(6, "Retrying connection...", "2024-01-15T10:30:06Z"),
+              ],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await parseLogsSearch(["connection", "-C", "1"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Connecting to database");
+    expect(logCalls).toContain("connection refused");
+    expect(logCalls).toContain("Retrying connection");
+  });
+
+  it("should reject non-UUID --run value", async () => {
     await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
+      parseLogsSearch(["error", "--run", "6af7eece"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("okou logs list");
+
+    mockConsoleError.mockClear();
+
+    await expect(parseLogsSearch(["error", "--run", ""])).rejects.toThrow(
+      "process.exit called",
+    );
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("okou logs list");
+  });
+
+  it("should reject non-UUID --agent value", async () => {
+    await expect(
+      parseLogsSearch(["error", "--agent", "agent-123"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+    expect(errorCalls).toContain("okou logs list");
+
+    mockConsoleError.mockClear();
+
+    await expect(parseLogsSearch(["error", "--agent", ""])).rejects.toThrow(
+      "process.exit called",
+    );
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+    expect(errorCalls).toContain("okou logs list");
+  });
+
+  it("should reject malformed UUID-like --run value", async () => {
+    await expect(
+      parseLogsSearch([
         "error",
-        "--source",
-        "logs",
-        "--agent",
-        "agent-123",
+        "--run",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("Invalid agent ID");
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("okou logs list");
+  });
+
+  it("should handle authentication error", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
+        return HttpResponse.json(
+          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    await expect(parseLogsSearch(["error"])).rejects.toThrow();
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Authentication failed");
   });
 });

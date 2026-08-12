@@ -12,7 +12,6 @@ import {
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 import { listCommand } from "./list";
-import { searchCommand } from "./search";
 import { isSupportedFramework } from "@vm0/core/frameworks";
 
 const PAGE_LIMIT = 100;
@@ -112,10 +111,9 @@ async function showAgentEvents(
 
 export const zeroLogsCommand = new Command()
   .name("logs")
-  .description("View and search agent run logs")
+  .description("View agent run logs")
   .argument("[runId]", "Run ID to view agent events for")
   .addCommand(listCommand)
-  .addCommand(searchCommand)
   .option(
     "--since <time>",
     "Show logs since timestamp (e.g., 5m, 2h, 1d, 2024-01-15T10:30:00Z)",
@@ -130,8 +128,7 @@ Examples:
   okou logs list
   okou logs <runId>
   okou logs <runId> --tail 10
-  okou logs <runId> --all
-  okou logs search "error"`,
+  okou logs <runId> --all`,
   )
   .action(
     withErrorHandler(

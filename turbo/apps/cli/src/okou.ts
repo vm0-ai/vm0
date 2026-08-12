@@ -212,7 +212,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "logs",
-    description: "View and search agent run logs",
+    description: "View agent run logs",
     load: async () => {
       return (await import("./commands/zero/logs")).zeroLogsCommand;
     },

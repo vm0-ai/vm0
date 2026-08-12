@@ -1,4 +1,3 @@
-import { Command } from "commander";
 import chalk from "chalk";
 import { searchZeroLogs } from "../../../lib/api/domains/zero-logs";
 import type {
@@ -9,7 +8,6 @@ import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { parseSearchQuery } from "../../../lib/utils/search-query";
@@ -25,13 +23,6 @@ export interface LogsSearchCliOptions {
   run?: string;
   since?: string;
   limit?: string;
-}
-
-interface LogsSearchCommandOptions extends Omit<
-  LogsSearchCliOptions,
-  "agentId"
-> {
-  agent?: string;
 }
 
 function supportedSearchFramework(
@@ -214,31 +205,3 @@ export async function runLogsSearch(
 
   renderResults(response);
 }
-
-export const searchCommand = new Command()
-  .name("search")
-  .description("Search agent events across runs")
-  .argument("<keyword>", "Search keyword")
-  .option("-A, --after-context <n>", "Show n events after each match")
-  .option("-B, --before-context <n>", "Show n events before each match")
-  .option("-C, --context <n>", "Show n events before and after each match")
-  .option("--agent <id>", "Filter by agent ID")
-  .option("--run <id>", "Filter by specific run ID")
-  .option("--since <time>", "Search logs since (default: 7d)")
-  .option("--limit <n>", "Maximum number of matches (default: 20)")
-  .addHelpText(
-    "after",
-    `
-Examples:
-  okou logs search "error"
-  okou logs search "timeout" --agent 123e4567-e89b-12d3-a456-426614174000 -C 2
-  okou logs search "failed" --since 30d --limit 50`,
-  )
-  .action(
-    withErrorHandler(
-      async (keyword: string, options: LogsSearchCommandOptions) => {
-        const { agent, ...searchOptions } = options;
-        await runLogsSearch(keyword, { ...searchOptions, agentId: agent });
-      },
-    ),
-  );
