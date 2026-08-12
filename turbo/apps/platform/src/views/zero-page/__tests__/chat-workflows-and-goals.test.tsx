@@ -1623,7 +1623,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       const presentationChip = screen.getByTitle(
         `Presentation · ${presentationTemplate.title}`,
       );
-      const videoChip = screen.getByTitle(`Video · ${videoTemplate.title}`);
+      // A sent video chip appends its parameters to the title when the video
+      // options switch is on, so match the prefix rather than the whole title.
+      const videoChip = screen.getByTitle((title) => {
+        return title.startsWith(`Video · ${videoTemplate.title}`);
+      });
       const illustrationChip = screen.getByTitle(
         `Illustration · ${illustrationTemplate.title}`,
       );
