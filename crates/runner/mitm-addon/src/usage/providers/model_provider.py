@@ -316,6 +316,47 @@ def report_model_provider_usage_source(
     )
 
 
+def log_ignored_model_provider_usage_source(
+    flow: http.HTTPFlow,
+    run_id: str,
+    message_id: str,
+    source_usage: dict,
+    *,
+    reason: str,
+) -> None:
+    """Log one intentionally ignored WebSocket response usage source."""
+    if not has_positive_model_provider_usage(source_usage):
+        return
+
+    url_projection = project_url_for_proxy_log(flow_metadata.original_url(flow.metadata))
+    log_proxy_entry(
+        flow_metadata.proxy_log_path(flow.metadata),
+        "info",
+        "Model provider usage source ignored",
+        type="model_usage_source",
+        disposition="ignored",
+        reason=reason,
+        run_id=run_id,
+        flow_id=flow.id,
+        source_id=f"{flow.id}:{message_id}",
+        method=flow.request.method,
+        url=url_projection,
+        transport="websocket",
+        buffer_mode="source",
+        firewall_name=flow_metadata.firewall_name(flow.metadata),
+        reported_model=_reported_model(flow, source_usage),
+        provider_response_id=message_id,
+        usage={
+            category: quantity
+            for category in MODEL_USAGE_CATEGORIES
+            if _is_positive_int(quantity := source_usage.get(category))
+        },
+        usage_events=[],
+        model_usage_observations=[],
+        **url_projection.truncation_fields(),
+    )
+
+
 def log_terminal_model_provider_usage_sources(
     flow: http.HTTPFlow,
     run_id: str,

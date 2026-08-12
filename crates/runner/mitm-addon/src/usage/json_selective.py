@@ -34,7 +34,7 @@ PathSegment = str | _PathMarker
 Path = tuple[PathSegment, ...]
 WildcardPath = tuple[str, ...]
 _ScalarPath = TypeVar("_ScalarPath", bound=Path)
-ScalarKind = Literal["string", "int"]
+ScalarKind = Literal["string", "int", "bool"]
 ScalarOverflowPolicy = Literal["error", "discard"]
 _JsonStringScanner = Callable[[str, int, bool], tuple[str, int]]
 # `scanstring` is the stdlib JSON string scanner, but typeshed does not expose it.
@@ -113,12 +113,12 @@ def json_nesting_within_limit(body: bytes, *, max_depth: int = _DEFAULT_MAX_DEPT
 class ScalarField:
     """Selected scalar field configuration.
 
-    ``kind`` must be ``"string"`` or ``"int"``. ``max_bytes`` is the capture
-    limit for the selected scalar token. ``overflow_policy`` defaults to
-    ``"error"``, which fails extraction with ``"string limit exceeded"`` or
-    ``"number limit exceeded"``. Selected strings may use ``"discard"`` to
-    stop retaining an oversized optional observation while continuing to
-    validate the document.
+    ``kind`` must be ``"string"``, ``"int"``, or ``"bool"``. ``max_bytes``
+    limits selected string and integer tokens; booleans use fixed JSON literals.
+    ``overflow_policy`` defaults to ``"error"``, which fails extraction with
+    ``"string limit exceeded"`` or ``"number limit exceeded"``. Selected
+    strings may use ``"discard"`` to stop retaining an oversized optional
+    observation while continuing to validate the document.
     """
 
     kind: ScalarKind
@@ -126,8 +126,8 @@ class ScalarField:
     overflow_policy: ScalarOverflowPolicy = "error"
 
     def __post_init__(self) -> None:
-        if self.kind not in ("string", "int"):
-            raise ValueError("scalar field kind must be 'string' or 'int'")
+        if self.kind not in ("string", "int", "bool"):
+            raise ValueError("scalar field kind must be 'string', 'int', or 'bool'")
         _validate_positive_int("scalar field max_bytes", self.max_bytes)
         if self.overflow_policy not in ("error", "discard"):
             raise ValueError("scalar field overflow_policy must be 'error' or 'discard'")
@@ -198,6 +198,8 @@ class _NumberState:
 @dataclass
 class _LiteralState:
     literal: bytes
+    path: Path
+    selected_value: bool | None = None
     offset: int = 0
 
 
@@ -214,7 +216,7 @@ class JsonSelectiveExtractor:
 
     The extractor observes five kinds of data while parsing:
 
-    - ``scalar_fields`` captures selected string or integer values.
+    - ``scalar_fields`` captures selected string, integer, or boolean values.
     - ``array_count_paths`` counts arrays at exact paths.
     - ``wildcard_array_count_paths`` counts arrays at wildcard paths with one
       ``"*"`` segment, recording counts by the concrete wildcard key.
@@ -578,13 +580,23 @@ class JsonSelectiveExtractor:
             )
             return self._consume_number(chunk, i)
         if b == ord("t"):
-            self._literal = _LiteralState(b"true")
+            field = self.scalar_fields.get(path)
+            self._literal = _LiteralState(
+                b"true",
+                path,
+                selected_value=True if field and field.kind == "bool" else None,
+            )
             return self._consume_literal(chunk, i)
         if b == ord("f"):
-            self._literal = _LiteralState(b"false")
+            field = self.scalar_fields.get(path)
+            self._literal = _LiteralState(
+                b"false",
+                path,
+                selected_value=False if field and field.kind == "bool" else None,
+            )
             return self._consume_literal(chunk, i)
         if b == ord("n"):
-            self._literal = _LiteralState(b"null")
+            self._literal = _LiteralState(b"null", path)
             return self._consume_literal(chunk, i)
         self._error = "expected json value"
         return i + 1
@@ -1028,6 +1040,9 @@ class JsonSelectiveExtractor:
             self._slow_work_bytes_remaining -= i - start
         if not self._error and state.offset == len(state.literal):
             self._literal = None
+            if state.selected_value is not None:
+                self._record_scalar_consistency(state.path, state.selected_value)
+                self.values[state.path] = state.selected_value
             self._value_complete()
         return i
 

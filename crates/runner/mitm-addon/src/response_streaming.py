@@ -4,8 +4,9 @@ Lifecycle:
 - ``mitm_addon.responseheaders()`` calls ``configure_response_stream()`` to
   install the streaming callback, exact byte accounting, optional capped body
   buffer, and incremental usage parsers.
-- ``mitm_addon.websocket_message()`` calls ``feed_model_websocket_usage()`` for
-  terminal server-side usage frames on model-provider WebSocket upgrades.
+- ``mitm_addon.websocket_message()`` calls ``observe_model_websocket_client_event()``
+  for client request intent and ``feed_model_websocket_usage()`` for server-side
+  usage frames on model-provider WebSocket upgrades.
 - ``mitm_addon.response()`` finalizes HTTP model and connector usage before
   reporting it.
 - ``mitm_addon.error()`` may finalize partial SSE or opted-in connector usage
@@ -18,6 +19,7 @@ Lifecycle:
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
 from mitmproxy import http
@@ -44,6 +46,7 @@ _HTTP_STATUS_NOT_MODIFIED = 304
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
+_MODEL_WEBSOCKET_PREWARM_STATE = "_model_websocket_prewarm_state"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_interruption"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
@@ -88,6 +91,13 @@ class CapturedResponseStreamBody(NamedTuple):
 class _ResponseUsageStreamSetup(NamedTuple):
     parser: _ResponseChunkParser | None
     needs_buffered_fallback: bool
+
+
+@dataclass(slots=True)
+class _OpenAIResponsesPrewarmState:
+    pending_response_created: bool = False
+    response_id: str | None = None
+    diagnostic_emitted: bool = False
 
 
 def model_usage_protocol(flow: http.HTTPFlow) -> ModelUsageProtocol:
@@ -135,6 +145,22 @@ def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
 def release_model_websocket_usage_state(flow: http.HTTPFlow) -> None:
     """Disable WebSocket usage extraction after a terminal websocket/error hook."""
     flow.metadata.pop(_MODEL_WEBSOCKET_USAGE_ENABLED, None)
+    flow.metadata.pop(_MODEL_WEBSOCKET_PREWARM_STATE, None)
+
+
+def observe_model_websocket_client_event(
+    flow: http.HTTPFlow,
+    event: usage.OpenAIResponsesClientEvent,
+) -> None:
+    """Track exact non-generating request intent on one WebSocket flow."""
+    state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
+    if not isinstance(state, _OpenAIResponsesPrewarmState):
+        return
+
+    state.pending_response_created = event.is_prewarm
+    if event.is_prewarm:
+        state.response_id = None
+        state.diagnostic_emitted = False
 
 
 def _make_response_decode_session(
@@ -244,6 +270,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     ):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+        flow.metadata[_MODEL_WEBSOCKET_PREWARM_STATE] = _OpenAIResponsesPrewarmState()
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return _ResponseUsageStreamSetup(None, False)
     if not _response_can_have_body(flow, response):
@@ -592,6 +619,17 @@ def feed_model_websocket_usage(
     """
     if not is_model_websocket_usage_enabled(flow):
         return
+    prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
+    if isinstance(prewarm_state, _OpenAIResponsesPrewarmState) and (
+        prewarm_state.pending_response_created
+    ):
+        lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
+        if lifecycle.event_type == "response.created":
+            prewarm_state.pending_response_created = False
+            prewarm_state.response_id = lifecycle.response_id
+        elif lifecycle.is_terminal:
+            prewarm_state.pending_response_created = False
+
     usage_result, inspection_error = usage.extract_openai_responses_usage_from_event(event)
     if inspection_error is not None:
         log_proxy_entry(
@@ -607,6 +645,25 @@ def feed_model_websocket_usage(
         return
     message_id = usage_result.get("message_id")
     if isinstance(message_id, str) and message_id:
+        if (
+            isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
+            and prewarm_state.response_id == message_id
+        ):
+            lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
+            if lifecycle.is_terminal and lifecycle.response_id == message_id:
+                if not prewarm_state.diagnostic_emitted and usage.has_positive_model_provider_usage(
+                    usage_result
+                ):
+                    usage.log_ignored_model_provider_usage_source(
+                        flow,
+                        flow_metadata.run_id(flow.metadata),
+                        message_id,
+                        usage_result,
+                        reason="responses_generate_false",
+                    )
+                    prewarm_state.diagnostic_emitted = True
+                return
+            prewarm_state.response_id = None
         usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
         if not isinstance(usage_sources, dict):
             usage_sources = {}
