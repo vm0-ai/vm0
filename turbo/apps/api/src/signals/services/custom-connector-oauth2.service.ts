@@ -41,7 +41,6 @@ import {
 } from "./crypto.utils";
 import { feishuOAuthAppCallbackUrl } from "./feishu-config";
 import {
-  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
   CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME,
   CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME,
@@ -49,7 +48,6 @@ import {
   normaliseCustomConnectorRow,
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
-  type StoredValueRow,
 } from "./zero-custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
@@ -939,10 +937,9 @@ type CustomConnectorOAuth2AccessTokenResolution =
 
 function storedConnectionAccessToken(
   connection: StoredConnection,
-): CustomConnectorOAuth2AccessTokenResolution {
-  if (connection.needsReconnect) {
-    return { kind: "reconnect-required" };
-  }
+):
+  | AvailableCustomConnectorOAuth2AccessToken
+  | { readonly kind: "unavailable" } {
   if (!connection.encryptedAccessToken) {
     return { kind: "unavailable" };
   }
@@ -959,33 +956,6 @@ export class CustomConnectorOAuth2TokenRefreshError extends Error {
     super("Custom connector OAuth 2.0 token refresh failed", { cause });
     this.name = "CustomConnectorOAuth2TokenRefreshError";
   }
-}
-
-function withoutRuntimeOAuthToken(
-  values: readonly StoredValueRow[],
-): readonly StoredValueRow[] {
-  return values.filter((value) => {
-    return !(
-      value.kind === "secret" &&
-      value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-    );
-  });
-}
-
-function withRuntimeOAuthToken(
-  values: readonly StoredValueRow[],
-  connectorId: string,
-  encryptedValue: string,
-): readonly StoredValueRow[] {
-  return [
-    ...withoutRuntimeOAuthToken(values),
-    {
-      connectorId,
-      kind: "secret",
-      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-      encryptedValue,
-    },
-  ];
 }
 
 async function markCustomConnectorNeedsReconnect(
@@ -1028,10 +998,12 @@ async function resolveCustomConnectorOAuth2AccessToken(
     return { kind: "unavailable" };
   }
   const accessToken = storedConnectionAccessToken(connection);
-  if (accessToken.kind !== "available") {
-    return accessToken;
-  }
-  if (!args.forceRefresh && connectionAccessTokenIsCurrent(connection)) {
+  if (
+    !args.forceRefresh &&
+    !connection.needsReconnect &&
+    accessToken.kind === "available" &&
+    connectionAccessTokenIsCurrent(connection)
+  ) {
     return accessToken;
   }
   return await args.db.transaction(async (tx) => {
@@ -1048,19 +1020,16 @@ async function resolveCustomConnectorOAuth2AccessToken(
       return { kind: "unavailable" };
     }
     const lockedAccessToken = storedConnectionAccessToken(lockedConnection);
-    if (lockedAccessToken.kind !== "available") {
-      return lockedAccessToken;
-    }
+    const recoveredSinceInitialRead =
+      connection.needsReconnect ||
+      accessToken.kind !== "available" ||
+      (lockedAccessToken.kind === "available" &&
+        lockedAccessToken.encryptedAccessToken !==
+          accessToken.encryptedAccessToken);
     if (
-      args.forceRefresh &&
-      lockedAccessToken.encryptedAccessToken !==
-        accessToken.encryptedAccessToken &&
-      connectionAccessTokenIsCurrent(lockedConnection)
-    ) {
-      return lockedAccessToken;
-    }
-    if (
-      !args.forceRefresh &&
+      !lockedConnection.needsReconnect &&
+      lockedAccessToken.kind === "available" &&
+      (!args.forceRefresh || recoveredSinceInitialRead) &&
       connectionAccessTokenIsCurrent(lockedConnection)
     ) {
       return lockedAccessToken;
@@ -1130,33 +1099,6 @@ async function resolveCustomConnectorOAuth2AccessToken(
       status: "refreshed",
     };
   });
-}
-
-export async function refreshCustomConnectorOAuth2ValuesIfNeeded(
-  args: {
-    readonly db: Db;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connector: CustomConnectorRow;
-    readonly values: readonly StoredValueRow[];
-    readonly featureContext: FeatureSwitchContext;
-  },
-  signal: AbortSignal,
-): Promise<readonly StoredValueRow[]> {
-  if (args.connector.authMode !== "oauth") {
-    return args.values;
-  }
-  const accessToken = await resolveCustomConnectorOAuth2AccessToken(
-    args,
-    signal,
-  );
-  return accessToken.kind === "available"
-    ? withRuntimeOAuthToken(
-        args.values,
-        args.connector.id,
-        accessToken.encryptedAccessToken,
-      )
-    : withoutRuntimeOAuthToken(args.values);
 }
 
 async function loadLiveCustomConnector(args: {

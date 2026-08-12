@@ -58,10 +58,10 @@ import {
 } from "./custom-connector-credential-storage.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
-  customConnectorDefinitionHasUsableConnection,
+  customConnectorDefinitionHasConnectedConnection,
   loadCurrentCustomConnectorStoredValues,
   loadCurrentCustomConnectorValueMarkers,
-  loadUsableCustomConnectorConnections,
+  loadConnectedCustomConnectorConnections,
   type CustomConnectorCredentialAccess,
   type CustomConnectorCredentialValueMarker,
   type CustomConnectorStoredValue,
@@ -719,7 +719,7 @@ function effectivePermissionBundleRef(
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly CustomConnectorCredentialValueMarker[];
-  readonly usableConnection: boolean;
+  readonly connectedConnection: boolean;
 }): CustomConnectorResponse {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
     return (
@@ -740,12 +740,12 @@ export function serialiseCustomConnector(args: {
     args.row.authMode !== "manual" ||
     customConnectorManualAuthReferencesMemberField(args.row);
   const connected =
-    args.usableConnection &&
+    args.connectedConnection &&
     validManualAuth &&
     missingRequiredFields.length === 0;
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
-    ...(args.row.authMode === "oauth" && !args.usableConnection
+    ...(args.row.authMode === "oauth" && !args.connectedConnection
       ? ["oauth"]
       : []),
   ];
@@ -2443,12 +2443,12 @@ export function getCustomConnectorResponse(args: {
     if (!connector) {
       return null;
     }
-    const [markers, usableConnections] = await Promise.all([
+    const [markers, connectedConnections] = await Promise.all([
       loadCurrentCustomConnectorValueMarkers(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
-      loadUsableCustomConnectorConnections(db, {
+      loadConnectedCustomConnectorConnections(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
@@ -2456,8 +2456,8 @@ export function getCustomConnectorResponse(args: {
     return serialiseCustomConnector({
       row: connector,
       valueMarkers: markers,
-      usableConnection: customConnectorDefinitionHasUsableConnection({
-        usableConnections,
+      connectedConnection: customConnectorDefinitionHasConnectedConnection({
+        connectedConnections,
         definition: connector,
       }),
     });
@@ -2733,7 +2733,7 @@ async function persistCustomConnectorValues(
   | {
       readonly connector: CustomConnectorRow;
       readonly runtimeRecovered: boolean;
-      readonly usableConnection: boolean;
+      readonly connectedConnection: boolean;
     }
   | BadRequestResponse
   | NotFoundResponse
@@ -2792,7 +2792,7 @@ async function persistCustomConnectorValues(
   return {
     connector: state.connector,
     runtimeRecovered: state.runtimeRecovered,
-    usableConnection: true,
+    connectedConnection: true,
   };
 }
 
@@ -2896,7 +2896,7 @@ export const setCustomConnectorValues$ = command(
     return serialiseCustomConnector({
       row: writeResult.connector,
       valueMarkers: markers,
-      usableConnection: writeResult.usableConnection,
+      connectedConnection: writeResult.connectedConnection,
     });
   },
 );
