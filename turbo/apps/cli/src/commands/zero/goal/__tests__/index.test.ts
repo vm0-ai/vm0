@@ -21,7 +21,12 @@ describe("okou goal command", () => {
 
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-okou-token");
+    vi.stubEnv("ZERO_TOKEN", undefined);
+    vi.stubEnv("ZERO_APP_URL", undefined);
+    vi.stubEnv("ZERO_AGENT_ID", undefined);
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", undefined);
   });
 
   afterEach(() => {
@@ -34,6 +39,9 @@ describe("okou goal command", () => {
   it("creates a goal and prints the JSON response", async () => {
     server.use(
       http.post("http://localhost:3000/api/okou/goal", async ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer test-okou-token",
+        );
         await expect(request.json()).resolves.toStrictEqual({
           objective: "ship goal workflows",
         });
@@ -43,7 +51,7 @@ describe("okou goal command", () => {
 
     await zeroGoalCommand.parseAsync([
       "node",
-      "cli",
+      "okou",
       "create",
       "--objective",
       "ship goal workflows",
@@ -71,7 +79,7 @@ describe("okou goal command", () => {
 
     await zeroGoalCommand.parseAsync([
       "node",
-      "cli",
+      "okou",
       "edit",
       "--objective",
       "ship goal workflows v2",
@@ -89,7 +97,7 @@ describe("okou goal command", () => {
       }),
     );
 
-    await zeroGoalCommand.parseAsync(["node", "cli", "get"]);
+    await zeroGoalCommand.parseAsync(["node", "okou", "get"]);
 
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
       ACTIVE_GOAL,
@@ -114,7 +122,7 @@ describe("okou goal command", () => {
         }),
       );
 
-      await zeroGoalCommand.parseAsync(["node", "cli", command]);
+      await zeroGoalCommand.parseAsync(["node", "okou", command]);
 
       expect(
         JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0])),
@@ -129,7 +137,7 @@ describe("okou goal command", () => {
       }),
     );
 
-    await zeroGoalCommand.parseAsync(["node", "cli", "clear"]);
+    await zeroGoalCommand.parseAsync(["node", "okou", "clear"]);
 
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
       { cleared: true },

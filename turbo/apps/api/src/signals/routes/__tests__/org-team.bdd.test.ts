@@ -889,24 +889,24 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
 
     const created = await runs.createRun(admin, {
       agentId: agent.agentId,
-      prompt: "exercise org reads with the run zero token",
+      prompt: "exercise org reads with the run Okou token",
       modelProvider: "anthropic-api-key",
     });
     await runs.heartbeatRunner(runnerGroup);
     const poll = await runs.pollRunner(runnerGroup);
     expect(poll.body.job?.runId).toBe(created.runId);
     const claim = await runs.claimRunnerJob(created.runId);
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
       throw new Error(
-        "Expected claim.environment.ZERO_TOKEN to carry the run-scoped zero token",
+        "Expected claim.environment.OKOU_TOKEN to carry the run-scoped Okou token",
       );
     }
-    expect(zeroToken).toMatch(/^vm0_sandbox_/);
+    expect(okouToken).toMatch(/^vm0_sandbox_/);
 
     const orgSlug = slug("bdd-r5-token");
     api.mockClerkOrg(admin, { slug: orgSlug, name: "BDD Token Org" });
-    const orgRead = await api.requestReadOrgWithBearer(zeroToken, [200]);
+    const orgRead = await api.requestReadOrgWithBearer(okouToken, [200]);
     expect(orgRead.body).toMatchObject({
       id: admin.orgId,
       role: "admin",
@@ -915,7 +915,7 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
     // Member listing is deliberately not an agent surface (#25011): the route
     // declares no capability, so a sandbox token is rejected like the writes.
     const membersRejected = await api.requestListMembersWithBearer(
-      zeroToken,
+      okouToken,
       [403],
     );
     expect(membersRejected.body).toStrictEqual({
@@ -928,7 +928,7 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
     // Representative sandbox-token write rejections (the remaining org
     // routes share the same authRoute statement).
     const updateRejected = await api.requestUpdateOrgWithBearer(
-      zeroToken,
+      okouToken,
       { name: "Token Rename" },
       [403],
     );
@@ -939,7 +939,7 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
       },
     });
     const logoRejected = await api.requestUploadOrgLogo(
-      { bearerToken: zeroToken },
+      { bearerToken: okouToken },
       logoForm(pngLogoFile()),
       [403],
     );
