@@ -13,10 +13,13 @@ also use that namespace. The API registration and runtime-schema layers still
 publish the same handlers and schemas through `/api/zero/**` for older clients,
 pinned CLI artifacts, installed Desktop builds, and stored callback URLs.
 
-OAuth start requests use the canonical Okou namespace, while provider-facing
-Slack, Teams, Feishu, and GitHub `redirect_uri` values deliberately remain on
-the Zero alias until the corresponding third-party allowlists are migrated in
-a separately verified rollout. Both callback paths reach the same handler.
+OAuth start requests use the canonical Okou namespace. Canonical Slack and
+Teams starts also send canonical callback URLs after their centrally managed
+provider allowlists were expanded; requests through the Zero compatibility
+alias keep sending the legacy callback URL. Current Feishu Platform flows use
+the neutral app callback, and current GitHub connector flows use the neutral
+connector callback. Their legacy branded callbacks remain available for old
+flows. Both branded callback paths reach the same provider handler.
 
 Current API and Desktop consumers prefer `OKOU_*` variables and retain their
 `ZERO_*` fallback readers. The current private CLI source reads only canonical
@@ -68,6 +71,37 @@ while the released writer stop makes new contexts canonical-only. Production
 verification must inspect names and token scope without exposing values;
 declining Zero request volume alone is not proof that all legacy contexts have
 drained.
+
+## Provider callback inventory
+
+Issue #26720 classifies supported provider callbacks by ownership and storage
+boundary. Production is the only centrally allowlisted environment. Preview
+URLs are job-scoped and are not automatically added to production provider
+applications; development and focused integration tests use provider-boundary
+mocks. “Present” below records configuration or durable-state presence only,
+not callback values, request data, or user content.
+
+| Provider surface                                                         | Classification and route class                                                                                       | Owner                                                            | Presence and migration action                                                                                                                                                                                           |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Slack OAuth install and user connect                                     | Generated callback plus provider-console redirect allowlist; branded callback                                        | VM0 provider operations                                          | Cutover gate: verify the production allowlist contains canonical and legacy entries before merge. Canonical starts emit `/api/okou/slack/oauth/callback`; compatibility starts keep `/api/zero/slack/oauth/callback`.   |
+| Slack events, interactivity, and commands                                | Provider-console stored registrations; branded callbacks                                                             | VM0 provider operations                                          | Existing registrations are present and are not mutated. Both namespace acceptors remain because stored Zero registrations are still active.                                                                             |
+| Microsoft Teams user OAuth                                               | Generated callback plus Microsoft Entra web redirect allowlist; branded callback                                     | VM0 provider operations                                          | Cutover gate: verify the production allowlist contains canonical and legacy entries before merge. Canonical starts emit `/api/okou/teams/oauth/callback`; compatibility starts keep `/api/zero/teams/oauth/callback`.   |
+| Microsoft Teams bot messaging                                            | Provider-console stored registration; branded callback                                                               | VM0 provider operations                                          | Existing registration is retained without mutation; both `/api/okou/teams/bot` and its Zero alias remain accepted.                                                                                                      |
+| Feishu user OAuth                                                        | Generated redirect plus per-installation provider-console allowlist                                                  | Installing organization administrator                            | Current Platform registration uses the neutral `/connectors/feishu/callback`. The legacy branded API redirect remains on the Zero alias for old clients and user-owned allowlists; no stored registration is rewritten. |
+| Feishu events                                                            | Generated operator-setup URL plus per-installation stored registration; branded callback                             | Installing organization administrator                            | New setup output is already canonical at `/api/okou/feishu/events/:installationId`. Existing provider registrations are retained and both namespace acceptors remain.                                                   |
+| GitHub App user authorization                                            | Generated callback plus provider-console allowlist and ephemeral stored OAuth state                                  | VM0 provider operations                                          | Current flows use the neutral `/api/connectors/github/callback`; the stored redirect is consumed unchanged. The legacy branded callback remains on its Zero alias for old in-flight flows.                              |
+| GitHub App setup and webhooks                                            | Provider-console setup URL and stored webhook registration; neutral callbacks                                        | VM0 provider operations                                          | Present on `/api/github/app/setup/callback` and `/api/webhooks/github`; no branded producer exists to migrate.                                                                                                          |
+| Telegram bots                                                            | Code-managed `setWebhook` registration plus durable installation record; neutral callback                            | Installing organization administrator                            | Present on `/api/telegram/webhook/:telegramBotId`; registrations and rollback behavior are unchanged.                                                                                                                   |
+| Strapi                                                                   | Generated operator-setup URL plus provider-side stored registration; branded callback                                | Installing organization administrator                            | New setup output is already canonical at `/api/okou/strapi/events/:integrationId`; existing registrations and the Zero acceptor are retained.                                                                           |
+| Google Workspace, Notion, Stripe, Clerk, email, and generation providers | Provider-console registration, provider subscription, or per-job generated URL; neutral `/api/webhooks/**` callbacks | VM0 provider operations or the owning workflow                   | Present and unbranded; no protocol producer migration is required.                                                                                                                                                      |
+| Built-in and custom connector OAuth                                      | Generated callback plus durable OAuth state; neutral API or app callback                                             | Connector catalog owner or installing organization administrator | Redirect state is persisted and consumed verbatim. Existing states are not rewritten; no Zero callback producer is used by current flows.                                                                               |
+| Workflow and run callbacks                                               | Durable callback records; neutral, internal, or user-configured destination                                          | Workflow or run owner                                            | Durable records are present and deliberately excluded from this producer migration. Historical URLs and delivery records remain unchanged.                                                                              |
+
+Low-frequency safety does not rely on a short absence of requests. The rollout
+keeps provider allowlist entries, stored registrations, durable callback
+records, neutral routes, and both branded acceptors in place. A rollback can
+therefore restore the previous producer while those records remain valid and
+without a database or provider-registration rewrite.
 
 ## Rollback
 

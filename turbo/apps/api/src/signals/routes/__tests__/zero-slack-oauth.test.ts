@@ -144,6 +144,16 @@ describe("Slack OAuth API routes", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
+    it("uses the canonical callback for canonical install requests", async () => {
+      const response = await appRequest("/api/okou/slack/oauth/install");
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${WEB_ORIGIN}/api/okou/slack/oauth/callback`,
+      );
+    });
+
     it("includes platform state and truncates prompt by codepoint", async () => {
       const prompt = "\u{1F600}".repeat(600);
       const response = await appRequest(
@@ -333,6 +343,22 @@ describe("Slack OAuth API routes", () => {
       });
     });
 
+    it("uses the canonical callback for canonical connect requests", async () => {
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+
+      const response = await appRequest(
+        `/api/okou/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}`,
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${WEB_ORIGIN}/api/okou/slack/oauth/callback`,
+      );
+    });
+
     it("uses the web rewrite origin for connect callback URLs", async () => {
       const fixture = await track(
         store.set(seedSlackConnectOrg$, {}, context.signal),
@@ -483,6 +509,24 @@ describe("Slack OAuth API routes", () => {
   });
 
   describe("GET /api/zero/slack/oauth/callback", () => {
+    it("uses the canonical callback for canonical token exchanges", async () => {
+      context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
+        ok: false,
+        error: "invalid_code",
+      });
+
+      const response = await appRequest(
+        "/api/okou/slack/oauth/callback?code=valid-code",
+      );
+
+      expect(response.status).toBe(307);
+      expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirect_uri: `${WEB_ORIGIN}/api/okou/slack/oauth/callback`,
+        }),
+      );
+    });
+
     it("creates a platform installation and connection for an admin install", async () => {
       const fixture = await track(
         store.set(

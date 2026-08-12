@@ -62,6 +62,7 @@ function idToken(payload: Readonly<Record<string, unknown>>): string {
 
 function callbackPath(args: {
   readonly code?: string;
+  readonly namespace?: "okou" | "zero";
   readonly state: Readonly<Record<string, unknown>>;
 }): string {
   const params = new URLSearchParams();
@@ -69,7 +70,7 @@ function callbackPath(args: {
     params.set("code", args.code);
   }
   params.set("state", JSON.stringify(args.state));
-  return `/api/zero/teams/oauth/callback?${params.toString()}`;
+  return `/api/${args.namespace ?? "zero"}/teams/oauth/callback?${params.toString()}`;
 }
 
 function teamsInstallUrl(tenantId: string): string {
@@ -183,6 +184,18 @@ describe("Teams OAuth API routes", () => {
     expect(state).toStrictEqual({ orgId: "org_1", vm0UserId: "user_1" });
   });
 
+  it("uses the canonical callback for canonical connect requests", async () => {
+    const response = await appRequest(
+      "/api/okou/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+    );
+
+    expect(response.status).toBe(307);
+    const redirectUrl = new URL(response.headers.get("location")!);
+    expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+      `${API_ORIGIN}/api/okou/teams/oauth/callback`,
+    );
+  });
+
   it("keeps API-host connect requests on the API callback origin", async () => {
     const response = await appRequest(
       "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
@@ -261,6 +274,31 @@ describe("Teams OAuth API routes", () => {
       connectUrl: null,
       tenantId: fixture.teamsTenantId,
     });
+  });
+
+  it("uses the canonical callback for canonical token exchanges", async () => {
+    const fixture = await uninstalledTeamsFixture(track);
+    await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mockMicrosoftOAuth({
+      tenantId: fixture.teamsTenantId,
+      aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
+      expectedRedirectUri: `${API_ORIGIN}/api/okou/teams/oauth/callback`,
+    });
+
+    const response = await appRequest(
+      callbackPath({
+        code: "valid-code",
+        namespace: "okou",
+        state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
+      }),
+      { origin: API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      teamsInstallUrl(fixture.teamsTenantId),
+    );
   });
 
   it("connects and binds an unbound Teams installation using Microsoft OAuth", async () => {

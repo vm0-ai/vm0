@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import { brandedApiNamespace } from "@vm0/api-contracts/contracts/api-namespaces";
 import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
@@ -127,8 +128,11 @@ function parseOAuthState(state: string | undefined): OAuthState {
   };
 }
 
-function callbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/slack/oauth/callback`;
+/** Keep legacy starts and in-flight callbacks paired with their allowlisted URI. */
+function callbackRedirectUri(request: Request, origin: string): string {
+  const namespace =
+    brandedApiNamespace(new URL(request.url).pathname) ?? "okou";
+  return `${origin}/api/${namespace}/slack/oauth/callback`;
 }
 
 function slackCredentials(): {
@@ -180,7 +184,10 @@ const installOauth$ = computed((get) => {
   const authUrl = new URL(SLACK_OAUTH_URL);
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("scope", SLACK_BOT_SCOPES.join(","));
-  authUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
+  authUrl.searchParams.set(
+    "redirect_uri",
+    callbackRedirectUri(request, origin),
+  );
   if (state) {
     authUrl.searchParams.set("state", state);
   }
@@ -237,7 +244,10 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   const authUrl = new URL(SLACK_OAUTH_URL);
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("user_scope", "identity.basic");
-  authUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
+  authUrl.searchParams.set(
+    "redirect_uri",
+    callbackRedirectUri(request, origin),
+  );
   authUrl.searchParams.set("state", JSON.stringify(stateObj));
   authUrl.searchParams.set("team", installation.slackWorkspaceId);
 
@@ -364,7 +374,7 @@ const handleInstallCallback$ = command(
         readonly clientId: string;
         readonly clientSecret: string;
       };
-      readonly callbackOrigin: string;
+      readonly redirectUri: string;
     },
     signal: AbortSignal,
   ): Promise<Response> => {
@@ -373,7 +383,7 @@ const handleInstallCallback$ = command(
         args.credentials.clientId,
         args.credentials.clientSecret,
         args.code,
-        callbackRedirectUri(args.callbackOrigin),
+        args.redirectUri,
       ),
       (error) => {
         L.error("Slack OAuth exchange failed", { error });
@@ -497,7 +507,7 @@ const handleConnectCallback$ = command(
         readonly clientId: string;
         readonly clientSecret: string;
       };
-      readonly callbackOrigin: string;
+      readonly redirectUri: string;
     },
     signal: AbortSignal,
   ): Promise<Response> => {
@@ -510,7 +520,7 @@ const handleConnectCallback$ = command(
         args.credentials.clientId,
         args.credentials.clientSecret,
         args.code,
-        callbackRedirectUri(args.callbackOrigin),
+        args.redirectUri,
       ),
       (error) => {
         L.error("Slack OAuth exchange failed (connect flow)", { error });
@@ -607,6 +617,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     return redirectResponse(canonicalRedirectUrl);
   }
   const origin = getOAuthWebOrigin(request);
+  const redirectUri = callbackRedirectUri(request, origin);
   const credentials = slackCredentials();
   if (!credentials) {
     return jsonErrorResponse("Slack integration is not configured", 503);
@@ -630,7 +641,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
         code: query.code,
         state,
         credentials,
-        callbackOrigin: origin,
+        redirectUri,
       },
       signal,
     );
@@ -642,7 +653,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
       code: query.code,
       state,
       credentials,
-      callbackOrigin: origin,
+      redirectUri,
     },
     signal,
   );

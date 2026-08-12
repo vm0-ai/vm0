@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { brandedApiNamespace } from "@vm0/api-contracts/contracts/api-namespaces";
 import { zeroTeamsOauthContract } from "@vm0/api-contracts/contracts/zero-teams-oauth";
 import { z } from "zod";
 
@@ -138,8 +139,11 @@ function parseOAuthState(state: string | undefined): OAuthState {
   };
 }
 
-function callbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/teams/oauth/callback`;
+/** Keep legacy starts and in-flight callbacks paired with their allowlisted URI. */
+function callbackRedirectUri(request: Request, origin: string): string {
+  const namespace =
+    brandedApiNamespace(new URL(request.url).pathname) ?? "okou";
+  return `${origin}/api/${namespace}/teams/oauth/callback`;
 }
 
 function microsoftCredentials(): {
@@ -312,7 +316,10 @@ const connectOauth$ = command(({ get }) => {
 
   const authUrl = new URL(MICROSOFT_AUTHORIZATION_URL);
   authUrl.searchParams.set("client_id", credentials.clientId);
-  authUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
+  authUrl.searchParams.set(
+    "redirect_uri",
+    callbackRedirectUri(request, origin),
+  );
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("scope", MICROSOFT_TEAMS_CONNECT_SCOPES.join(" "));
   authUrl.searchParams.set("state", JSON.stringify(stateObj));
@@ -356,7 +363,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
         clientId: credentials.clientId,
         clientSecret: credentials.clientSecret,
         code: query.code,
-        redirectUri: callbackRedirectUri(origin),
+        redirectUri: callbackRedirectUri(request, origin),
       },
       signal,
     ),
