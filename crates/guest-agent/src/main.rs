@@ -41,8 +41,7 @@ fn checkpoint_failure_reason(error: &AgentError) -> Option<FailureReason> {
         .then_some(FailureReason::SessionHistoryLimit)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     if let Some(exit_code) = helper_exit_code_from_args() {
         std::process::exit(exit_code);
     }
@@ -54,7 +53,20 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let exit_code = run(runtime).await;
+    let async_runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            log_error!(
+                LOG_TAG,
+                "Fatal: failed to initialize async runtime: {error}"
+            );
+            std::process::exit(1);
+        }
+    };
+    let exit_code = async_runtime.block_on(run(runtime));
     std::process::exit(exit_code);
 }
 
@@ -474,7 +486,8 @@ async fn execute(
         masker,
         heartbeat_monitor,
         http.clone(),
-        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref()),
+        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref())
+            .with_workload_containment(runtime.workload_containment.as_ref()),
         config,
         runtime_paths,
         start,
@@ -597,6 +610,31 @@ async fn execute(
             )
         }
     };
+    if let Some(workload_containment) = runtime.workload_containment.as_ref() {
+        match workload_containment.resource_diagnostics() {
+            Ok(diagnostics) => {
+                if let Some(pressure) = diagnostics.pressure {
+                    log_info!(LOG_TAG, "{pressure}");
+                }
+                if let Some(hard_limit) = diagnostics.hard_limit {
+                    log_warn!(LOG_TAG, "{hard_limit}");
+                    if exit_code != 0 {
+                        error_message = if error_message.is_empty() {
+                            hard_limit
+                        } else {
+                            format!("{error_message}; {hard_limit}")
+                        };
+                    }
+                }
+            }
+            Err(error) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to read workload resource diagnostics: {error}"
+                );
+            }
+        }
+    }
     let cli_elapsed = cli_start.elapsed();
     record_sandbox_op(
         "cli_execution",
@@ -1064,6 +1102,7 @@ mod tests {
             config,
             paths: paths::GuestPaths::from_runtime_dir(test_runtime_dir()),
             http,
+            workload_containment: None,
         }
     }
 
@@ -1183,6 +1222,7 @@ mod tests {
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
+            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_FD_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {

@@ -13,13 +13,28 @@ use guest_contracts::exec_terminal::{
     EXEC_PROCESS_CONTAINMENT_KILL_EMPTY_TIMEOUT, EXEC_PROCESS_CONTAINMENT_REMOVE_TIMEOUT,
     EXEC_PROCESS_CONTAINMENT_TERM_GRACE,
 };
-use guest_contracts::process_containment::{EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX};
+use guest_contracts::process_containment::{
+    CONTROL_CGROUP_NAME, CONTROL_CPU_WEIGHT, EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX,
+    MATERIAL_CPU_THROTTLED_USEC, REQUIRED_CGROUP_CONTROLLERS, REQUIRED_CGROUP_SUBTREE_CONTROL,
+    WORKLOAD_CGROUP_NAME, WorkloadResourcePolicy,
+};
 
 use crate::log::log;
 
 const CGROUP_EVENTS_FILE: &str = "cgroup.events";
 const CGROUP_KILL_FILE: &str = "cgroup.kill";
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
+const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
+const CPU_MAX_FILE: &str = "cpu.max";
+const CPU_STAT_FILE: &str = "cpu.stat";
+const CPU_WEIGHT_FILE: &str = "cpu.weight";
+const MEMORY_EVENTS_FILE: &str = "memory.events";
+const MEMORY_HIGH_FILE: &str = "memory.high";
+const MEMORY_MAX_FILE: &str = "memory.max";
+const MEMORY_MIN_FILE: &str = "memory.min";
+const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
+const PIDS_EVENTS_FILE: &str = "pids.events";
+const PIDS_MAX_FILE: &str = "pids.max";
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 static NEXT_CGROUP_ID: AtomicU64 = AtomicU64::new(1);
@@ -50,8 +65,28 @@ enum ContainmentBackend {
 struct CgroupGuard {
     group_name: String,
     group_path: PathBuf,
-    placement: OwnedFd,
+    outer_placement: OwnedFd,
+    workload_placement: Option<OwnedFd>,
     create_elapsed: Duration,
+}
+
+pub(crate) struct PreparedProcessContainmentCommand {
+    outer_placement: Option<OwnedFd>,
+    inherited_workload_placement: Option<OwnedFd>,
+}
+
+impl PreparedProcessContainmentCommand {
+    pub(crate) fn inherited_workload_fd(&self) -> Option<RawFd> {
+        self.inherited_workload_placement
+            .as_ref()
+            .map(AsRawFd::as_raw_fd)
+    }
+
+    pub(crate) fn configure_command(self, command: &mut Command) {
+        if let Some(outer_placement) = self.outer_placement {
+            install_child_placement(command, outer_placement, self.inherited_workload_placement);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -82,6 +117,7 @@ impl ExecProcessContainment {
     pub(crate) fn create(
         sequence: u32,
         mode: ProcessContainmentMode,
+        trusted_control: bool,
     ) -> Result<Self, ProcessContainmentError> {
         if use_test_noop_backend(mode) {
             return Ok(Self {
@@ -89,20 +125,25 @@ impl ExecProcessContainment {
             });
         }
 
-        CgroupGuard::create(sequence).map(|guard| Self {
+        CgroupGuard::create(sequence, trusted_control).map(|guard| Self {
             backend: ContainmentBackend::Cgroup(guard),
         })
     }
 
-    pub(crate) fn configure_command(
+    pub(crate) fn prepare_command(
         &self,
-        command: &mut Command,
-    ) -> Result<(), ProcessContainmentError> {
+    ) -> Result<PreparedProcessContainmentCommand, ProcessContainmentError> {
         match &self.backend {
-            ContainmentBackend::Cgroup(guard) => guard.configure_command(command),
-            ContainmentBackend::TestNoop => Ok(()),
+            ContainmentBackend::Cgroup(guard) => guard.prepare_command(),
+            ContainmentBackend::TestNoop => Ok(PreparedProcessContainmentCommand {
+                outer_placement: None,
+                inherited_workload_placement: None,
+            }),
             #[cfg(test)]
-            ContainmentBackend::TestDirectory(_) => Ok(()),
+            ContainmentBackend::TestDirectory(_) => Ok(PreparedProcessContainmentCommand {
+                outer_placement: None,
+                inherited_workload_placement: None,
+            }),
         }
     }
 
@@ -166,11 +207,22 @@ fn verify_exec_process_containment_empty_in(
 }
 
 impl CgroupGuard {
-    fn create(sequence: u32) -> Result<Self, ProcessContainmentError> {
-        Self::create_in(Path::new(EXEC_CGROUP_BASE_PATH), sequence)
+    fn create(sequence: u32, trusted_control: bool) -> Result<Self, ProcessContainmentError> {
+        let policy = workload_resource_policy()?;
+        Self::create_in(
+            Path::new(EXEC_CGROUP_BASE_PATH),
+            sequence,
+            trusted_control,
+            policy,
+        )
     }
 
-    fn create_in(base_path: &Path, sequence: u32) -> Result<Self, ProcessContainmentError> {
+    fn create_in(
+        base_path: &Path,
+        sequence: u32,
+        trusted_control: bool,
+        policy: WorkloadResourcePolicy,
+    ) -> Result<Self, ProcessContainmentError> {
         let started = Instant::now();
         let id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
         let group_name = format!(
@@ -180,14 +232,44 @@ impl CgroupGuard {
         let group_path = base_path.join(&group_name);
         fs::create_dir(&group_path)
             .map_err(|error| ProcessContainmentError::new("create cgroup", error))?;
-        let placement = match OpenOptions::new()
-            .write(true)
-            .open(group_path.join(CGROUP_PROCS_FILE))
-        {
-            Ok(placement) => placement,
-            Err(source) => {
-                let original = ProcessContainmentError::new("open cgroup.procs", source);
-                if let Err(rollback) = remove_empty_cgroup(&group_path) {
+
+        let setup: Result<(OwnedFd, Option<OwnedFd>), ProcessContainmentError> = (|| {
+            enable_required_controllers(&group_path)?;
+            let control_path = group_path.join(CONTROL_CGROUP_NAME);
+            let workload_path = group_path.join(WORKLOAD_CGROUP_NAME);
+            fs::create_dir(&control_path)
+                .map_err(|error| ProcessContainmentError::new("create control cgroup", error))?;
+            fs::create_dir(&workload_path)
+                .map_err(|error| ProcessContainmentError::new("create workload cgroup", error))?;
+            configure_resource_policy(
+                &group_path,
+                &control_path,
+                &workload_path,
+                trusted_control,
+                policy,
+            )?;
+
+            let outer_path = if trusted_control {
+                &control_path
+            } else {
+                &workload_path
+            };
+            let outer_placement = open_placement(outer_path, "open outer cgroup.procs")?;
+            let workload_placement = if trusted_control {
+                Some(open_placement(
+                    &workload_path,
+                    "open workload cgroup.procs",
+                )?)
+            } else {
+                None
+            };
+            Ok((outer_placement, workload_placement))
+        })();
+
+        let (outer_placement, workload_placement) = match setup {
+            Ok(placements) => placements,
+            Err(original) => {
+                if let Err(rollback) = remove_cgroup_hierarchy(&group_path) {
                     log(
                         "ERROR",
                         &format!(
@@ -203,18 +285,29 @@ impl CgroupGuard {
         Ok(Self {
             group_name,
             group_path,
-            placement: placement.into(),
+            outer_placement,
+            workload_placement,
             create_elapsed: started.elapsed(),
         })
     }
 
-    fn configure_command(&self, command: &mut Command) -> Result<(), ProcessContainmentError> {
-        let placement = self
-            .placement
+    fn prepare_command(
+        &self,
+    ) -> Result<PreparedProcessContainmentCommand, ProcessContainmentError> {
+        let outer_placement = self
+            .outer_placement
             .try_clone()
-            .map_err(|error| ProcessContainmentError::new("clone cgroup.procs", error))?;
-        install_child_placement(command, placement);
-        Ok(())
+            .map_err(|error| ProcessContainmentError::new("clone outer cgroup.procs", error))?;
+        let inherited_workload_placement = self
+            .workload_placement
+            .as_ref()
+            .map(OwnedFd::try_clone)
+            .transpose()
+            .map_err(|error| ProcessContainmentError::new("clone workload cgroup.procs", error))?;
+        Ok(PreparedProcessContainmentCommand {
+            outer_placement: Some(outer_placement),
+            inherited_workload_placement,
+        })
     }
 
     fn cleanup(self, mode: ProcessContainmentCleanupMode) -> Result<(), ProcessContainmentError> {
@@ -222,10 +315,14 @@ impl CgroupGuard {
         let CgroupGuard {
             group_name,
             group_path,
-            placement,
+            outer_placement,
+            workload_placement,
             create_elapsed,
         } = self;
-        drop(placement);
+        drop(outer_placement);
+        drop(workload_placement);
+
+        log_resource_events(&group_name, &group_path.join(WORKLOAD_CGROUP_NAME));
 
         let result = cleanup_cgroup(&group_path, mode);
         match result {
@@ -265,6 +362,214 @@ impl CgroupGuard {
     }
 }
 
+fn workload_resource_policy() -> Result<WorkloadResourcePolicy, ProcessContainmentError> {
+    WorkloadResourcePolicy::for_current_guest_capacity().map_err(|message| {
+        ProcessContainmentError::new("derive workload resource policy", io::Error::other(message))
+    })
+}
+
+fn enable_required_controllers(group_path: &Path) -> Result<(), ProcessContainmentError> {
+    fs::write(
+        group_path.join(CGROUP_SUBTREE_CONTROL_FILE),
+        REQUIRED_CGROUP_SUBTREE_CONTROL.as_bytes(),
+    )
+    .map_err(|error| ProcessContainmentError::new("enable cgroup controllers", error))?;
+    let enabled = fs::read_to_string(group_path.join(CGROUP_SUBTREE_CONTROL_FILE))
+        .map_err(|error| ProcessContainmentError::new("read cgroup controllers", error))?;
+    let enabled = enabled
+        .split_ascii_whitespace()
+        .map(|controller| controller.trim_start_matches('+'))
+        .collect::<HashSet<_>>();
+    if REQUIRED_CGROUP_CONTROLLERS
+        .into_iter()
+        .all(|controller| enabled.contains(controller))
+    {
+        return Ok(());
+    }
+    Err(ProcessContainmentError::new(
+        "verify cgroup controllers",
+        io::Error::other("operation cgroup is missing a required controller"),
+    ))
+}
+
+fn configure_resource_policy(
+    group_path: &Path,
+    control_path: &Path,
+    workload_path: &Path,
+    trusted_control: bool,
+    policy: WorkloadResourcePolicy,
+) -> Result<(), ProcessContainmentError> {
+    write_cgroup_value(
+        workload_path,
+        CPU_MAX_FILE,
+        &format!("{} {}", policy.cpu_quota_us, policy.cpu_period_us),
+        "configure workload cpu.max",
+    )?;
+    write_cgroup_value(
+        workload_path,
+        MEMORY_HIGH_FILE,
+        &policy.memory_high_bytes.to_string(),
+        "configure workload memory.high",
+    )?;
+    write_cgroup_value(
+        workload_path,
+        MEMORY_MAX_FILE,
+        &policy.memory_max_bytes.to_string(),
+        "configure workload memory.max",
+    )?;
+    write_cgroup_value(
+        workload_path,
+        MEMORY_OOM_GROUP_FILE,
+        "1",
+        "configure workload memory.oom.group",
+    )?;
+    write_cgroup_value(
+        workload_path,
+        PIDS_MAX_FILE,
+        &policy.pids_max.to_string(),
+        "configure workload pids.max",
+    )?;
+
+    if trusted_control {
+        let weight = CONTROL_CPU_WEIGHT.to_string();
+        write_cgroup_value(
+            group_path,
+            CPU_WEIGHT_FILE,
+            &weight,
+            "prioritize controlled operation CPU",
+        )?;
+        write_cgroup_value(
+            control_path,
+            CPU_WEIGHT_FILE,
+            &weight,
+            "prioritize Guest Agent CPU",
+        )?;
+        write_cgroup_value(
+            group_path,
+            MEMORY_MIN_FILE,
+            &policy.control_memory_min_bytes.to_string(),
+            "protect controlled operation memory",
+        )?;
+        write_cgroup_value(
+            control_path,
+            MEMORY_MIN_FILE,
+            &policy.control_memory_min_bytes.to_string(),
+            "protect Guest Agent memory",
+        )?;
+    }
+    Ok(())
+}
+
+fn write_cgroup_value(
+    group_path: &Path,
+    filename: &str,
+    value: &str,
+    stage: &'static str,
+) -> Result<(), ProcessContainmentError> {
+    fs::write(group_path.join(filename), value.as_bytes())
+        .map_err(|error| ProcessContainmentError::new(stage, error))
+}
+
+fn open_placement(
+    group_path: &Path,
+    stage: &'static str,
+) -> Result<OwnedFd, ProcessContainmentError> {
+    OpenOptions::new()
+        .write(true)
+        .open(group_path.join(CGROUP_PROCS_FILE))
+        .map(Into::into)
+        .map_err(|error| ProcessContainmentError::new(stage, error))
+}
+
+#[derive(Debug, Default)]
+struct ResourceEvents {
+    cpu_nr_throttled: u64,
+    cpu_throttled_usec: u64,
+    memory_high: u64,
+    memory_max: u64,
+    memory_oom: u64,
+    memory_oom_kill: u64,
+    memory_oom_group_kill: u64,
+    pids_max: u64,
+}
+
+fn log_resource_events(group_name: &str, workload_path: &Path) {
+    let events = match read_resource_events(workload_path) {
+        Ok(events) => events,
+        Err(error) => {
+            log(
+                "WARN",
+                &format!(
+                    "exec workload resource diagnostics unavailable group={group_name} error={error}"
+                ),
+            );
+            return;
+        }
+    };
+    if events.memory_max > 0
+        || events.memory_oom > 0
+        || events.memory_oom_kill > 0
+        || events.memory_oom_group_kill > 0
+        || events.pids_max > 0
+    {
+        log(
+            "WARN",
+            &format!(
+                "exec workload hard resource limit reached group={group_name} memory_max={} memory_oom={} memory_oom_kill={} memory_oom_group_kill={} pids_max={}",
+                events.memory_max,
+                events.memory_oom,
+                events.memory_oom_kill,
+                events.memory_oom_group_kill,
+                events.pids_max
+            ),
+        );
+    }
+    if events.cpu_throttled_usec >= MATERIAL_CPU_THROTTLED_USEC || events.memory_high > 0 {
+        log(
+            "INFO",
+            &format!(
+                "exec workload resource pressure observed group={group_name} cpu_nr_throttled={} cpu_throttled_usec={} memory_high={}",
+                events.cpu_nr_throttled, events.cpu_throttled_usec, events.memory_high
+            ),
+        );
+    }
+}
+
+fn read_resource_events(workload_path: &Path) -> io::Result<ResourceEvents> {
+    let cpu = read_key_value_file(&workload_path.join(CPU_STAT_FILE))?;
+    let memory = read_key_value_file(&workload_path.join(MEMORY_EVENTS_FILE))?;
+    let pids = read_key_value_file(&workload_path.join(PIDS_EVENTS_FILE))?;
+    Ok(ResourceEvents {
+        cpu_nr_throttled: value_or_zero(&cpu, "nr_throttled"),
+        cpu_throttled_usec: value_or_zero(&cpu, "throttled_usec"),
+        memory_high: value_or_zero(&memory, "high"),
+        memory_max: value_or_zero(&memory, "max"),
+        memory_oom: value_or_zero(&memory, "oom"),
+        memory_oom_kill: value_or_zero(&memory, "oom_kill"),
+        memory_oom_group_kill: value_or_zero(&memory, "oom_group_kill"),
+        pids_max: value_or_zero(&pids, "max"),
+    })
+}
+
+fn read_key_value_file(path: &Path) -> io::Result<std::collections::HashMap<String, u64>> {
+    fs::read_to_string(path)?
+        .lines()
+        .map(|line| {
+            let (key, value) = line.split_once(' ').ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "invalid cgroup event line")
+            })?;
+            let value = value
+                .parse::<u64>()
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            Ok((key.to_string(), value))
+        })
+        .collect()
+}
+
+fn value_or_zero(values: &std::collections::HashMap<String, u64>, key: &str) -> u64 {
+    values.get(key).copied().unwrap_or(0)
+}
+
 #[derive(Debug)]
 struct CleanupReport {
     descendants_observed: bool,
@@ -294,17 +599,22 @@ fn cleanup_cgroup(
     let mut graceful_errors = 0;
 
     if descendants_observed && mode == ProcessContainmentCleanupMode::Graceful {
-        match read_member_pids(group_path) {
-            Ok(pids) => {
-                initial_members = pids.len();
-                graceful_errors = signal_term(group_path, &pids);
-            }
-            Err(error) => {
-                graceful_errors = 1;
-                log(
-                    "WARN",
-                    &format!("exec process containment graceful enumeration failed error={error}"),
-                );
+        for leaf_path in cgroup_leaf_paths(group_path) {
+            match read_member_pids(&leaf_path) {
+                Ok(pids) => {
+                    initial_members += pids.len();
+                    graceful_errors += signal_term(&leaf_path, &pids);
+                }
+                Err(error) => {
+                    graceful_errors += 1;
+                    log(
+                        "WARN",
+                        &format!(
+                            "exec process containment graceful enumeration failed leaf={} error={error}",
+                            leaf_path.display()
+                        ),
+                    );
+                }
             }
         }
 
@@ -349,7 +659,7 @@ fn cleanup_cgroup(
         }
     }
 
-    remove_empty_cgroup(group_path)?;
+    remove_cgroup_hierarchy(group_path)?;
     Ok(CleanupReport {
         descendants_observed,
         cgroup_kill_used,
@@ -358,13 +668,46 @@ fn cleanup_cgroup(
     })
 }
 
-fn install_child_placement(command: &mut Command, placement: OwnedFd) {
-    // SAFETY: the closure performs only a raw write to an already-open file
-    // descriptor. `write` and reading errno are async-signal-safe between
-    // `fork` and `exec`.
+fn install_child_placement(
+    command: &mut Command,
+    placement: OwnedFd,
+    inherited_workload_placement: Option<OwnedFd>,
+) {
+    // SAFETY: the closure performs only raw writes and fcntl calls on already
+    // open descriptors. These operations are async-signal-safe between fork
+    // and exec.
     unsafe {
-        command.pre_exec(move || write_self_to_cgroup(placement.as_raw_fd()));
+        command.pre_exec(move || {
+            write_self_to_cgroup(placement.as_raw_fd())?;
+            if let Some(workload_placement) = inherited_workload_placement.as_ref() {
+                deny_unprivileged_process_inspection()?;
+                clear_close_on_exec(workload_placement.as_raw_fd())?;
+            }
+            Ok(())
+        });
     }
+}
+
+fn deny_unprivileged_process_inspection() -> io::Result<()> {
+    // SAFETY: PR_SET_DUMPABLE changes only the calling child between fork and
+    // exec and does not access shared userspace state.
+    if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn clear_close_on_exec(fd: RawFd) -> io::Result<()> {
+    // SAFETY: `fd` is an owned descriptor retained by the pre-exec closure.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: clearing FD_CLOEXEC changes only this valid descriptor's flags.
+    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 fn write_self_to_cgroup(fd: RawFd) -> io::Result<()> {
@@ -522,6 +865,8 @@ fn wait_until_empty(group_path: &Path, timeout: Duration) -> Result<bool, Proces
 }
 
 fn remove_empty_cgroup(group_path: &Path) -> Result<(), ProcessContainmentError> {
+    #[cfg(test)]
+    remove_test_cgroup_interface_files(group_path);
     let deadline = Instant::now() + EXEC_PROCESS_CONTAINMENT_REMOVE_TIMEOUT;
     loop {
         match fs::remove_dir(group_path) {
@@ -539,6 +884,40 @@ fn remove_empty_cgroup(group_path: &Path) -> Result<(), ProcessContainmentError>
             }
         }
     }
+}
+
+#[cfg(test)]
+fn remove_test_cgroup_interface_files(group_path: &Path) {
+    for filename in [
+        CGROUP_SUBTREE_CONTROL_FILE,
+        CPU_MAX_FILE,
+        CPU_WEIGHT_FILE,
+        MEMORY_HIGH_FILE,
+        MEMORY_MAX_FILE,
+        MEMORY_MIN_FILE,
+        MEMORY_OOM_GROUP_FILE,
+        PIDS_MAX_FILE,
+    ] {
+        let _ = fs::remove_file(group_path.join(filename));
+    }
+}
+
+fn cgroup_leaf_paths(group_path: &Path) -> [PathBuf; 2] {
+    [
+        group_path.join(CONTROL_CGROUP_NAME),
+        group_path.join(WORKLOAD_CGROUP_NAME),
+    ]
+}
+
+fn remove_cgroup_hierarchy(group_path: &Path) -> Result<(), ProcessContainmentError> {
+    for leaf_path in cgroup_leaf_paths(group_path) {
+        match remove_empty_cgroup(&leaf_path) {
+            Ok(()) => {}
+            Err(error) if error.source.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    remove_empty_cgroup(group_path)
 }
 
 #[cfg(test)]
@@ -627,7 +1006,7 @@ mod tests {
         let child_fd: OwnedFd = placement.try_clone().unwrap().into();
         let mut command = Command::new("/bin/true");
         command.stdout(Stdio::null()).stderr(Stdio::null());
-        install_child_placement(&mut command, child_fd);
+        install_child_placement(&mut command, child_fd, None);
 
         let status = command.status().unwrap();
 
@@ -642,12 +1021,15 @@ mod tests {
     fn partial_creation_failure_removes_operation_cgroup() {
         let base = tempfile::tempdir().unwrap();
 
-        let result = CgroupGuard::create_in(base.path(), 17);
+        let policy =
+            WorkloadResourcePolicy::for_guest_capacity(2, u64::from(4096_u32) * 1024 * 1024)
+                .unwrap();
+        let result = CgroupGuard::create_in(base.path(), 17, false, policy);
         let Err(error) = result else {
             panic!("placement-file open unexpectedly succeeded");
         };
 
-        assert_eq!(error.stage, "open cgroup.procs");
+        assert_eq!(error.stage, "open outer cgroup.procs");
         assert_eq!(error.source.kind(), io::ErrorKind::NotFound);
         assert!(fs::read_dir(base.path()).unwrap().next().is_none());
     }

@@ -522,6 +522,46 @@ async fn load_rejects_zero_memory_mb_in_profile() {
 }
 
 #[tokio::test]
+async fn load_rejects_vcpu_below_workload_containment_minimum() {
+    let fixture = ConfigFixture::without_image_artifacts().await;
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            vcpu: MIN_PROFILE_VCPU - 1,
+            ..default_profile_config()
+        },
+        "",
+    );
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("below workload-containment minimum"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn load_rejects_memory_below_workload_containment_minimum() {
+    let fixture = ConfigFixture::without_image_artifacts().await;
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            memory_mb: MIN_PROFILE_MEMORY_MB - 1,
+            ..default_profile_config()
+        },
+        "",
+    );
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("below workload-containment minimum"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
 async fn load_rejects_zero_rootfs_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
     let yaml = fixture.yaml_with_profile(

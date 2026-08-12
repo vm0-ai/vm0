@@ -16,12 +16,19 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH};
+use guest_contracts::process_containment::{
+    CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH, REQUIRED_CGROUP_CONTROLLERS,
+    REQUIRED_CGROUP_SUBTREE_CONTROL,
+};
 
+const CGROUP_CONTROLLERS_FILE: &str = "cgroup.controllers";
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const CGROUP_EVENTS_FILE: &str = "cgroup.events";
 const CGROUP_KILL_FILE: &str = "cgroup.kill";
 const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
+const CPU_WEIGHT_FILE: &str = "cpu.weight";
+const MEMORY_MIN_FILE: &str = "memory.min";
+const PIDS_MAX_FILE: &str = "pids.max";
 
 /// Initialize guest boot filesystems, exec process containment, and environment.
 ///
@@ -152,11 +159,9 @@ impl std::error::Error for InitError {}
 /// Mount cgroup v2 and validate the canonical exec process-containment base.
 ///
 /// Cgroup v2 is mounted at `CGROUP_V2_MOUNT_PATH`. The exec base at
-/// `EXEC_CGROUP_BASE_PATH` must expose `cgroup.procs`, `cgroup.events`,
-/// `cgroup.kill`, and `cgroup.subtree_control` as files, with no resource
-/// controllers enabled for its subtree. `vsock-guest` depends on this invariant
-/// for per-exec process cleanup and for validating quiescence before sandbox
-/// reuse.
+/// `EXEC_CGROUP_BASE_PATH` must be empty and distribute the `cpu`, `memory`,
+/// and `pids` controllers. `vsock-guest` creates an empty operation parent and
+/// two controlled leaves beneath it for each exec operation.
 fn initialize_process_containment() -> Result<(), InitError> {
     create_dir_all(Path::new(CGROUP_V2_MOUNT_PATH))?;
     mount(
@@ -171,11 +176,60 @@ fn initialize_process_containment() -> Result<(), InitError> {
         source,
     })?;
 
+    let mount = Path::new(CGROUP_V2_MOUNT_PATH);
+    enable_required_controllers(mount)?;
+
     let base = Path::new(EXEC_CGROUP_BASE_PATH);
     create_dir_all(base)?;
+    enable_required_controllers(base)?;
     verify_process_containment_base(base)?;
     eprintln!("[guest-init] Exec process containment initialized");
     Ok(())
+}
+
+fn enable_required_controllers(cgroup: &Path) -> Result<(), InitError> {
+    let controllers_path = cgroup.join(CGROUP_CONTROLLERS_FILE);
+    let controllers =
+        fs::read_to_string(&controllers_path).map_err(|source| InitError::Filesystem {
+            operation: "read",
+            path: controllers_path.display().to_string(),
+            source,
+        })?;
+    verify_required_controllers(&controllers, "available")?;
+
+    let subtree_control_path = cgroup.join(CGROUP_SUBTREE_CONTROL_FILE);
+    fs::write(
+        &subtree_control_path,
+        REQUIRED_CGROUP_SUBTREE_CONTROL.as_bytes(),
+    )
+    .map_err(|source| InitError::Filesystem {
+        operation: "enable required controllers in",
+        path: subtree_control_path.display().to_string(),
+        source,
+    })?;
+
+    let enabled =
+        fs::read_to_string(&subtree_control_path).map_err(|source| InitError::Filesystem {
+            operation: "read",
+            path: subtree_control_path.display().to_string(),
+            source,
+        })?;
+    verify_required_controllers(&enabled, "enabled")
+}
+
+fn verify_required_controllers(content: &str, state: &str) -> Result<(), InitError> {
+    let controllers = content.split_ascii_whitespace().collect::<Vec<_>>();
+    let missing = REQUIRED_CGROUP_CONTROLLERS
+        .into_iter()
+        .filter(|required| !controllers.contains(required))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(InitError::InvalidProcessContainment(format!(
+        "required cgroup controllers are not {state}: {}",
+        missing.join(",")
+    )))
 }
 
 fn create_dir_all(path: &Path) -> Result<(), InitError> {
@@ -188,10 +242,14 @@ fn create_dir_all(path: &Path) -> Result<(), InitError> {
 
 fn verify_process_containment_base(base: &Path) -> Result<(), InitError> {
     for filename in [
+        CGROUP_CONTROLLERS_FILE,
         CGROUP_PROCS_FILE,
         CGROUP_EVENTS_FILE,
         CGROUP_KILL_FILE,
         CGROUP_SUBTREE_CONTROL_FILE,
+        CPU_WEIGHT_FILE,
+        MEMORY_MIN_FILE,
+        PIDS_MAX_FILE,
     ] {
         let path = base.join(filename);
         let metadata = fs::metadata(&path).map_err(|source| InitError::Filesystem {
@@ -207,16 +265,26 @@ fn verify_process_containment_base(base: &Path) -> Result<(), InitError> {
         }
     }
 
-    let subtree_control_path = base.join(CGROUP_SUBTREE_CONTROL_FILE);
     let subtree_control =
-        fs::read_to_string(&subtree_control_path).map_err(|source| InitError::Filesystem {
-            operation: "read",
-            path: subtree_control_path.display().to_string(),
-            source,
+        fs::read_to_string(base.join(CGROUP_SUBTREE_CONTROL_FILE)).map_err(|source| {
+            InitError::Filesystem {
+                operation: "read",
+                path: base.join(CGROUP_SUBTREE_CONTROL_FILE).display().to_string(),
+                source,
+            }
         })?;
-    if !subtree_control.trim().is_empty() {
+    verify_required_controllers(&subtree_control, "enabled")?;
+
+    let direct_processes = fs::read_to_string(base.join(CGROUP_PROCS_FILE)).map_err(|source| {
+        InitError::Filesystem {
+            operation: "read",
+            path: base.join(CGROUP_PROCS_FILE).display().to_string(),
+            source,
+        }
+    })?;
+    if !direct_processes.trim().is_empty() {
         return Err(InitError::InvalidProcessContainment(
-            "resource controllers are enabled for the exec subtree".into(),
+            "exec cgroup base contains direct processes".into(),
         ));
     }
     Ok(())
@@ -267,10 +335,14 @@ mod tests {
     fn write_cgroup_core_files(base: &Path, subtree_control: &str) {
         fs::create_dir_all(base).unwrap();
         for (filename, content) in [
+            (CGROUP_CONTROLLERS_FILE, "cpu memory pids\n"),
             (CGROUP_PROCS_FILE, ""),
             (CGROUP_EVENTS_FILE, "populated 0\nfrozen 0\n"),
             (CGROUP_KILL_FILE, ""),
             (CGROUP_SUBTREE_CONTROL_FILE, subtree_control),
+            (CPU_WEIGHT_FILE, "100\n"),
+            (MEMORY_MIN_FILE, "0\n"),
+            (PIDS_MAX_FILE, "max\n"),
         ] {
             fs::write(base.join(filename), content).unwrap();
         }
@@ -359,20 +431,31 @@ mod tests {
     }
 
     #[test]
-    fn process_containment_base_rejects_enabled_controllers() {
+    fn process_containment_base_rejects_missing_controller() {
         let dir = tempfile::tempdir().unwrap();
-        write_cgroup_core_files(dir.path(), "+memory\n");
+        write_cgroup_core_files(dir.path(), "cpu memory\n");
 
         let error = verify_process_containment_base(dir.path()).unwrap_err();
 
-        assert!(error.to_string().contains("resource controllers"));
+        assert!(error.to_string().contains("pids"));
     }
 
     #[test]
-    fn process_containment_base_accepts_controller_free_core_files() {
+    fn process_containment_base_accepts_required_controllers() {
         let dir = tempfile::tempdir().unwrap();
-        write_cgroup_core_files(dir.path(), "\n");
+        write_cgroup_core_files(dir.path(), "cpu memory pids\n");
 
         verify_process_containment_base(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn process_containment_base_rejects_direct_processes() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cgroup_core_files(dir.path(), "cpu memory pids\n");
+        fs::write(dir.path().join(CGROUP_PROCS_FILE), "123\n").unwrap();
+
+        let error = verify_process_containment_base(dir.path()).unwrap_err();
+
+        assert!(error.to_string().contains("direct processes"));
     }
 }

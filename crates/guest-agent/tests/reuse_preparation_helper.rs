@@ -258,7 +258,7 @@ fn prepare_for_reuse_rejects_stale_operation_cgroup() -> TestResult {
 fn prepare_for_reuse_rejects_missing_current_operation_cgroup() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
-    std::fs::remove_dir(containment.base.join("exec-current"))?;
+    std::fs::remove_dir_all(containment.base.join("exec-current"))?;
 
     let output = run_helper_with_containment(&request, &containment)?;
 
@@ -304,7 +304,8 @@ fn prepare_for_reuse_rejects_current_process_outside_exec_base() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
 
-    let output = run_helper_with_current_group(&request, &containment, "/outside/exec-current")?;
+    let output =
+        run_helper_with_current_group(&request, &containment, "/outside/exec-current/workload")?;
 
     assert_eq!(
         output.status.code(),
@@ -314,15 +315,96 @@ fn prepare_for_reuse_rejects_current_process_outside_exec_base() -> TestResult {
 }
 
 #[test]
-fn prepare_for_reuse_rejects_enabled_controllers() -> TestResult {
+fn prepare_for_reuse_rejects_missing_controller() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(
         containment.base.join("cgroup.subtree_control"),
-        b"+memory\n",
+        b"cpu memory\n",
     )?;
 
     let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_direct_processes_in_operation_parent() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(containment.base.join("exec-current/cgroup.procs"), b"42\n")?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_populated_control_leaf() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(
+        containment.base.join("exec-current/control/cgroup.events"),
+        b"populated 1\n",
+    )?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_nested_workload_cgroup() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::create_dir(containment.base.join("exec-current/workload/unexpected"))?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_workload_policy_mismatch() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(
+        containment.base.join("exec-current/workload/cpu.max"),
+        b"max 100000\n",
+    )?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_helper_in_control_leaf() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+
+    let output =
+        run_helper_with_current_group(&request, &containment, "/vm0-exec/exec-current/control")?;
 
     assert_eq!(
         output.status.code(),
@@ -343,14 +425,59 @@ impl ContainmentFixture {
         let root = directory.path().join("cgroup");
         let base = root.join("vm0-exec");
         std::fs::create_dir_all(&base)?;
-        std::fs::create_dir(base.join("exec-current"))?;
         for (filename, content) in [
+            ("cgroup.controllers", "cpu memory pids\n"),
             ("cgroup.procs", ""),
             ("cgroup.events", "populated 1\nfrozen 0\n"),
             ("cgroup.kill", ""),
-            ("cgroup.subtree_control", ""),
+            ("cgroup.subtree_control", "cpu memory pids\n"),
         ] {
             std::fs::write(base.join(filename), content)?;
+        }
+        let operation = base.join("exec-current");
+        std::fs::create_dir(&operation)?;
+        for (filename, content) in [
+            ("cgroup.controllers", "cpu memory pids\n"),
+            ("cgroup.procs", ""),
+            ("cgroup.events", "populated 1\nfrozen 0\n"),
+            ("cgroup.kill", ""),
+            ("cgroup.subtree_control", "cpu memory pids\n"),
+        ] {
+            std::fs::write(operation.join(filename), content)?;
+        }
+        for (leaf, populated) in [("control", "0"), ("workload", "1")] {
+            let leaf = operation.join(leaf);
+            std::fs::create_dir(&leaf)?;
+            for (filename, content) in [
+                ("cgroup.procs", ""),
+                (
+                    "cgroup.events",
+                    if populated == "1" {
+                        "populated 1\nfrozen 0\n"
+                    } else {
+                        "populated 0\nfrozen 0\n"
+                    },
+                ),
+                ("cgroup.kill", ""),
+                ("cgroup.subtree_control", ""),
+            ] {
+                std::fs::write(leaf.join(filename), content)?;
+            }
+        }
+        let policy = guest_contracts::process_containment::WorkloadResourcePolicy::for_current_guest_capacity()
+            .map_err(std::io::Error::other)?;
+        let workload = operation.join("workload");
+        for (filename, value) in [
+            (
+                "cpu.max",
+                format!("{} {}", policy.cpu_quota_us, policy.cpu_period_us),
+            ),
+            ("memory.high", policy.memory_high_bytes.to_string()),
+            ("memory.max", policy.memory_max_bytes.to_string()),
+            ("memory.oom.group", "1".to_string()),
+            ("pids.max", policy.pids_max.to_string()),
+        ] {
+            std::fs::write(workload.join(filename), value)?;
         }
         Ok(Self {
             _directory: directory,
@@ -382,7 +509,7 @@ fn run_helper_with_containment(
     request: &ReusePreparationRequest,
     containment: &ContainmentFixture,
 ) -> Result<Output, Box<dyn std::error::Error>> {
-    run_helper_with_current_group(request, containment, "/vm0-exec/exec-current")
+    run_helper_with_current_group(request, containment, "/vm0-exec/exec-current/workload")
 }
 
 fn run_helper_with_current_group(
@@ -418,7 +545,7 @@ fn run_helper_with_bind_mount(
         .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
         .env(
             "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
-            "/vm0-exec/exec-current",
+            "/vm0-exec/exec-current/workload",
         )
         .env("VM0_MOUNT_SOURCE", mount_source)
         .env("VM0_MOUNT_TARGET", mount_target)

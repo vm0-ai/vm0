@@ -89,6 +89,36 @@ rm -rf "$marker"
 mkdir -p "$marker"
 touch "$marker/vm-reuse-marker"
 
+base=/sys/fs/cgroup/vm0-exec
+relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
+case "$relative" in
+  /vm0-exec/exec-*/workload) ;;
+  *) echo "agent CLI is outside workload cgroup: $relative" >&2; exit 1 ;;
+esac
+operation=${relative%/workload}
+parent="/sys/fs/cgroup$operation"
+test -d "$parent/control"
+test -d "$parent/workload"
+for controller in cpu memory pids; do
+  grep -qw "$controller" "$base/cgroup.subtree_control"
+  grep -qw "$controller" "$parent/cgroup.subtree_control"
+done
+grep -Eq '^[0-9]+ [0-9]+$' "$parent/workload/cpu.max"
+grep -Eq '^[0-9]+$' "$parent/workload/memory.high"
+grep -Eq '^[0-9]+$' "$parent/workload/memory.max"
+grep -Eq '^[0-9]+$' "$parent/workload/pids.max"
+test -z "${VM0_WORKLOAD_CGROUP_PROCS_FD:-}"
+control_pid=$(head -n 1 "$parent/control/cgroup.procs")
+test -n "$control_pid"
+if ls "/proc/$control_pid/fd" >/dev/null 2>&1; then
+  echo "workload can inspect Guest Agent descriptors" >&2
+  exit 1
+fi
+if printf 0 > "$parent/control/cgroup.procs" 2>/dev/null; then
+  echo "workload can move itself into the control cgroup" >&2
+  exit 1
+fi
+
 setsid python3 -c 'import os, pathlib, signal, time; p=pathlib.Path("/tmp/vm0-process-containment/user.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); signal.signal(signal.SIGTERM, signal.SIG_IGN); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >"$marker/user.launch.log" 2>&1 &
 user_launcher_pid=$!
 setsid sudo -n python3 -c 'import os, pathlib, time; p=pathlib.Path("/tmp/vm0-process-containment/root.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >"$marker/root.launch.log" 2>&1 &
@@ -219,12 +249,22 @@ for identity in "$marker/user.identity" "$marker/root.identity"; do
 done
 
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
-own_group=${relative##*/}
+case "$relative" in
+  /vm0-exec/exec-*/workload) ;;
+  *) echo "unexpected current cgroup: $relative" >&2; exit 1 ;;
+esac
+operation=${relative%/workload}
+own_group=${operation##*/}
 test -n "$own_group"
 test -d "$base/$own_group"
+test -d "$base/$own_group/control"
+test -d "$base/$own_group/workload"
 test -z "$(find "$base" -mindepth 1 -maxdepth 1 -type d ! -name "$own_group" -print -quit)"
 grep -q '^populated 1$' "$base/cgroup.events"
-test -z "$(cat "$base/cgroup.subtree_control")"
+for controller in cpu memory pids; do
+  grep -qw "$controller" "$base/cgroup.subtree_control"
+  grep -qw "$controller" "$base/$own_group/cgroup.subtree_control"
+done
 echo containment-turn-2
 PROMPT
 )

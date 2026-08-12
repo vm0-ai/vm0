@@ -6,7 +6,26 @@
 
 mod common;
 
+use std::process::Command;
 use std::time::Duration;
+
+#[test]
+fn process_control_endpoint_without_workload_capability_fails_closed() {
+    let output = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+        .env(process_control_ipc::BOOTSTRAP_ENV, "missing-capability")
+        .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_FD_ENV)
+        .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL")
+        .output()
+        .expect("spawn guest-agent");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_FD_ENV),
+        "stderr: {stderr}"
+    );
+    assert!(stderr.contains("is required with"), "stderr: {stderr}");
+}
 
 #[tokio::test]
 async fn process_control_endpoint_is_not_inherited_by_cli_child()
@@ -25,6 +44,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child()
             process_control_ipc::BOOTSTRAP_ENV,
             "stale-process-control-endpoint",
         );
+        std::env::set_var("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");
     }
 
     let runtime = common::guest_runtime_from_process_env()?;

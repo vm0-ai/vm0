@@ -55,6 +55,8 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsE
 
 use shell_quote::quote_shell_arg;
 
+use guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_FD_ENV;
+
 use crate::process_containment::{ExecProcessContainment, ProcessContainmentCleanupMode};
 
 /// Maximum length for command preview in logs
@@ -568,19 +570,30 @@ pub(crate) fn spawn_shell_command_with_pipes(
     process_containment: ExecProcessContainment,
 ) -> io::Result<SpawnedShellCommand> {
     let spawn_result = (|| -> io::Result<(Child, Option<EnvScriptGuard>)> {
+        let prepared_containment = process_containment.prepare_command().map_err(|error| {
+            io::Error::other(format!("process containment setup failed: {error}"))
+        })?;
+        let inherited_workload_fd = prepared_containment
+            .inherited_workload_fd()
+            .map(|fd| fd.to_string());
+        let mut env_with_workload_placement;
+        let effective_env = if let Some(fd) = inherited_workload_fd.as_deref() {
+            env_with_workload_placement = Vec::with_capacity(env.len() + 1);
+            env_with_workload_placement.extend_from_slice(env);
+            env_with_workload_placement.push((WORKLOAD_CGROUP_PROCS_FD_ENV, fd));
+            env_with_workload_placement.as_slice()
+        } else {
+            env
+        };
         let PreparedShellCommand {
             mut command,
             env_script,
-        } = build_shell_command_with_env(command, env, sudo)?;
+        } = build_shell_command_with_env(command, effective_env, sudo)?;
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         if pipe_stdin {
             command.stdin(Stdio::piped());
         }
-        process_containment
-            .configure_command(&mut command)
-            .map_err(|error| {
-                io::Error::other(format!("process containment setup failed: {error}"))
-            })?;
+        prepared_containment.configure_command(&mut command);
         let child = crate::process::spawn_in_own_process_group(&mut command)?;
         Ok((child, env_script))
     })();

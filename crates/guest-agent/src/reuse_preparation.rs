@@ -7,10 +7,11 @@
 //! Preparation proceeds in this order:
 //!
 //! 1. Validate the current runtime directory and the optional retained runtime directory.
-//! 2. Prove that the helper is contained in the sole live supervised-exec operation. The canonical
-//!    cgroup v2 base must provide the required capability files, have no enabled subtree
-//!    controllers or direct processes, contain no stale operation leaves, and be populated by the
-//!    helper's current leaf.
+//! 2. Prove that the helper is in the `workload` leaf of the sole live
+//!    supervised-exec operation. The canonical cgroup v2 base and empty
+//!    operation parent must distribute the required controllers, expose the
+//!    exact `control`/`workload` shape, contain no stale operation, and be
+//!    recursively populated only by the helper's workload leaf.
 //! 3. Open the runtime parent and every protected runtime directory, require them to share a mount,
 //!    and record their identities before deletion.
 //! 4. Measure rootfs capacity, recursively remove every unprotected direct child of the runtime
@@ -34,7 +35,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX,
+    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX,
+    REQUIRED_CGROUP_CONTROLLERS, WORKLOAD_CGROUP_NAME, WorkloadResourcePolicy,
 };
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
@@ -46,9 +48,15 @@ use crate::nofollow_fs::{Dir, FileIdentity};
 
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
 const CGROUP_EVENTS_FILE: &str = "cgroup.events";
+const CGROUP_CONTROLLERS_FILE: &str = "cgroup.controllers";
 const CGROUP_KILL_FILE: &str = "cgroup.kill";
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
+const CPU_MAX_FILE: &str = "cpu.max";
+const MEMORY_HIGH_FILE: &str = "memory.high";
+const MEMORY_MAX_FILE: &str = "memory.max";
+const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
+const PIDS_MAX_FILE: &str = "pids.max";
 #[cfg(debug_assertions)]
 const TEST_CONTAINMENT_ROOT_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_ROOT";
 #[cfg(debug_assertions)]
@@ -238,7 +246,7 @@ struct ProcessContainmentPaths {
 
 fn verify_process_containment() -> io::Result<()> {
     let paths = process_containment_paths();
-    let current_group = current_process_cgroup_name()?;
+    let current_operation = current_process_cgroup_name()?;
     if paths.require_cgroup2_filesystem && !is_cgroup2_filesystem(&paths.mount)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -260,6 +268,7 @@ fn verify_process_containment() -> io::Result<()> {
         ));
     }
     for filename in [
+        CGROUP_CONTROLLERS_FILE,
         CGROUP_PROCS_FILE,
         CGROUP_EVENTS_FILE,
         CGROUP_KILL_FILE,
@@ -273,13 +282,10 @@ fn verify_process_containment() -> io::Result<()> {
         }
     }
 
-    let subtree_control = std::fs::read_to_string(paths.base.join(CGROUP_SUBTREE_CONTROL_FILE))?;
-    if !subtree_control.trim().is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "resource controllers are enabled for the exec cgroup",
-        ));
-    }
+    verify_required_controllers(
+        &std::fs::read_to_string(paths.base.join(CGROUP_SUBTREE_CONTROL_FILE))?,
+        "exec cgroup base",
+    )?;
 
     let base_procs = std::fs::read_to_string(paths.base.join(CGROUP_PROCS_FILE))?;
     if !base_procs.trim().is_empty() {
@@ -292,7 +298,7 @@ fn verify_process_containment() -> io::Result<()> {
     for entry in std::fs::read_dir(&paths.base)? {
         let entry = entry?;
         let file_type = entry.file_type()?;
-        if entry.file_name() == current_group {
+        if entry.file_name() == current_operation {
             if !file_type.is_dir() {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -311,6 +317,78 @@ fn verify_process_containment() -> io::Result<()> {
         ));
     }
 
+    let operation_path = paths.base.join(&current_operation);
+    for filename in [
+        CGROUP_CONTROLLERS_FILE,
+        CGROUP_PROCS_FILE,
+        CGROUP_EVENTS_FILE,
+        CGROUP_KILL_FILE,
+        CGROUP_SUBTREE_CONTROL_FILE,
+    ] {
+        if !std::fs::metadata(operation_path.join(filename))?.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("operation cgroup core file is invalid: {filename}"),
+            ));
+        }
+    }
+    verify_required_controllers(
+        &std::fs::read_to_string(operation_path.join(CGROUP_SUBTREE_CONTROL_FILE))?,
+        "operation cgroup",
+    )?;
+    if !std::fs::read_to_string(operation_path.join(CGROUP_PROCS_FILE))?
+        .trim()
+        .is_empty()
+    {
+        return Err(io::Error::other(
+            "operation cgroup contains direct processes",
+        ));
+    }
+
+    let control_path = operation_path.join(CONTROL_CGROUP_NAME);
+    let workload_path = operation_path.join(WORKLOAD_CGROUP_NAME);
+    let mut leaf_names = std::fs::read_dir(&operation_path)?
+        .filter_map(|entry| match entry {
+            Ok(entry) => match entry.file_type() {
+                Ok(file_type) if file_type.is_dir() => Some(Ok(entry.file_name())),
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            },
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+    leaf_names.sort();
+    let mut expected_leaf_names = vec![
+        OsString::from(CONTROL_CGROUP_NAME),
+        OsString::from(WORKLOAD_CGROUP_NAME),
+    ];
+    expected_leaf_names.sort();
+    if leaf_names != expected_leaf_names {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "operation cgroup does not contain exactly control and workload leaves",
+        ));
+    }
+    verify_leaf_core_files(&control_path)?;
+    verify_leaf_core_files(&workload_path)?;
+    verify_workload_policy(&workload_path)?;
+    if parse_populated(&std::fs::read_to_string(
+        control_path.join(CGROUP_EVENTS_FILE),
+    )?) != Some(false)
+    {
+        return Err(io::Error::other(
+            "reuse helper operation control leaf is populated",
+        ));
+    }
+    if parse_populated(&std::fs::read_to_string(
+        workload_path.join(CGROUP_EVENTS_FILE),
+    )?) != Some(true)
+    {
+        return Err(io::Error::other(
+            "reuse helper is not contained in its workload leaf",
+        ));
+    }
+
     let events = std::fs::read_to_string(paths.base.join(CGROUP_EVENTS_FILE))?;
     match parse_populated(&events) {
         Some(true) => Ok(()),
@@ -322,6 +400,88 @@ fn verify_process_containment() -> io::Result<()> {
             "cgroup.events is missing valid populated state",
         )),
     }
+}
+
+fn verify_required_controllers(content: &str, location: &str) -> io::Result<()> {
+    let controllers = content.split_ascii_whitespace().collect::<Vec<_>>();
+    let missing = REQUIRED_CGROUP_CONTROLLERS
+        .into_iter()
+        .filter(|controller| !controllers.contains(controller))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!(
+            "{location} is missing required controllers: {}",
+            missing.join(",")
+        ),
+    ))
+}
+
+fn verify_leaf_core_files(leaf_path: &Path) -> io::Result<()> {
+    let metadata = std::fs::symlink_metadata(leaf_path)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "operation cgroup leaf is not a directory",
+        ));
+    }
+    for filename in [
+        CGROUP_PROCS_FILE,
+        CGROUP_EVENTS_FILE,
+        CGROUP_KILL_FILE,
+        CGROUP_SUBTREE_CONTROL_FILE,
+    ] {
+        if !std::fs::metadata(leaf_path.join(filename))?.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("operation cgroup leaf file is invalid: {filename}"),
+            ));
+        }
+    }
+    if !std::fs::read_to_string(leaf_path.join(CGROUP_SUBTREE_CONTROL_FILE))?
+        .trim()
+        .is_empty()
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "operation cgroup leaf distributes controllers",
+        ));
+    }
+    for entry in std::fs::read_dir(leaf_path)? {
+        if entry?.file_type()?.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "operation cgroup leaf contains a nested cgroup",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn verify_workload_policy(workload_path: &Path) -> io::Result<()> {
+    let policy = WorkloadResourcePolicy::for_current_guest_capacity().map_err(io::Error::other)?;
+    for (filename, expected) in [
+        (
+            CPU_MAX_FILE,
+            format!("{} {}", policy.cpu_quota_us, policy.cpu_period_us),
+        ),
+        (MEMORY_HIGH_FILE, policy.memory_high_bytes.to_string()),
+        (MEMORY_MAX_FILE, policy.memory_max_bytes.to_string()),
+        (MEMORY_OOM_GROUP_FILE, "1".to_string()),
+        (PIDS_MAX_FILE, policy.pids_max.to_string()),
+    ] {
+        let actual = std::fs::read_to_string(workload_path.join(filename))?;
+        if actual.trim() != expected {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("workload cgroup policy mismatch for {filename}"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn current_process_cgroup_name() -> io::Result<OsString> {
@@ -360,18 +520,19 @@ fn current_group_name_from_path(cgroup_path: &Path) -> io::Result<OsString> {
         )
     })?;
     let mut components = group_path.components();
-    let group = match (components.next(), components.next()) {
-        (Some(Component::Normal(group)), None)
+    let group = match (components.next(), components.next(), components.next()) {
+        (Some(Component::Normal(group)), Some(Component::Normal(leaf)), None)
             if group
                 .as_bytes()
-                .starts_with(EXEC_CGROUP_NAME_PREFIX.as_bytes()) =>
+                .starts_with(EXEC_CGROUP_NAME_PREFIX.as_bytes())
+                && leaf == WORKLOAD_CGROUP_NAME =>
         {
             group.to_os_string()
         }
         _ => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "current process is not in an exec operation leaf",
+                "current process is not in an exec operation workload leaf",
             ));
         }
     };

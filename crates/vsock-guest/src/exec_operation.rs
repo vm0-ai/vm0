@@ -958,16 +958,19 @@ fn run_exec_operation_worker<S>(
     } else {
         env_refs.as_slice()
     };
-    let process_containment =
-        match ExecProcessContainment::create(request.seq, request.process_containment_mode) {
-            Ok(process_containment) => process_containment,
-            Err(error) => {
-                completion.start_failed(&format!(
-                    "Failed to initialize exec process containment: {error}"
-                ));
-                return;
-            }
-        };
+    let process_containment = match ExecProcessContainment::create(
+        request.seq,
+        request.process_containment_mode,
+        request.exec_control_bootstrap_endpoint.is_some(),
+    ) {
+        Ok(process_containment) => process_containment,
+        Err(error) => {
+            completion.start_failed(&format!(
+                "Failed to initialize exec process containment: {error}"
+            ));
+            return;
+        }
+    };
     let spawned = match spawn_shell_command_with_pipes(
         &request.command,
         effective_env,
