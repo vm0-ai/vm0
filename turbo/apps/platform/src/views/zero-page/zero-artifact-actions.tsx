@@ -1,8 +1,4 @@
-import type {
-  ComponentPropsWithRef,
-  MouseEvent,
-  ReactElement,
-} from "react";
+import type { ComponentPropsWithRef, MouseEvent, ReactElement } from "react";
 import { Download, Loader2, Share2 } from "lucide-react";
 import {
   cn,
