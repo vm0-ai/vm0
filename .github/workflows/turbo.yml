@@ -3565,7 +3565,8 @@ jobs:
 
           RUNNER_START_SUCCEEDED=1
 
-  # Generate one file-balanced shard layout, then run it once per API runtime.
+  # Generate one file-balanced shard per API runtime. The standard runner test
+  # organization uses limited-free-1 and therefore has one concurrency slot.
   cli-e2e-03-runner-shards:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -3589,7 +3590,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base_matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner)"
+          base_matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner 1)"
           matrix="$(jq -c '
             .include as $shards |
             ($shards | length) as $total |
@@ -3601,19 +3602,21 @@ jobs:
           ' <<<"$base_matrix")"
           jq -e '
             .include | type == "array" and
-            length > 0 and length <= 24 and
+            length > 0 and length <= 2 and
             (map(select(.runtime == "cloudflare")) | length) ==
               (map(select(.runtime == "vercel")) | length) and
             all(.[];
               (.runtime == "cloudflare" or .runtime == "vercel") and
-              (.total | type == "number" and . > 0 and . <= 12) and
+              (.total | type == "number" and . == 1) and
               (.files | type == "array" and length > 0)
             )
           ' <<<"$matrix" >/dev/null
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
-  # Prepare isolated identities and API credentials for each runtime, then fan
-  # both lanes across the same non-empty file-balanced shards.
+  # Prepare isolated identities and API credentials for each runtime after the
+  # browser-level Playwright load has drained. Both API runtimes still run in
+  # parallel, while each direct-Postgres runtime gets one heavy E2E phase at a
+  # time before the runner tests start.
   cli-e2e-03-runner-prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -3624,7 +3627,13 @@ jobs:
     concurrency:
       group: cli-e2e-03-runner-prepare-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-api-vercel, deploy-app, deploy-stripe-listener]
+    needs:
+      - prepare
+      - deploy-api
+      - deploy-api-vercel
+      - deploy-app
+      - deploy-stripe-listener
+      - cli-e2e-02-playwright
     if: |
       always() &&
       needs.prepare.outputs.job-ref != '' &&
@@ -3633,7 +3642,8 @@ jobs:
       needs.deploy-api.result == 'success' &&
       needs.deploy-api-vercel.result == 'success' &&
       needs.deploy-app.result == 'success' &&
-      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success') &&
+      needs.cli-e2e-02-playwright.result == 'success'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -3752,8 +3762,8 @@ jobs:
             )
           fi
 
-          # Fresh Clerk organizations bootstrap onto limited-free-1, so the
-          # deterministic runner policy must stay within that plan's catalog.
+          # The standard runner organization stays on limited-free-1, so the
+          # deterministic policy must stay within that plan's catalog.
           payload="$(jq -nc '{
             policies: [
               {model: "deepseek-v4-flash", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},

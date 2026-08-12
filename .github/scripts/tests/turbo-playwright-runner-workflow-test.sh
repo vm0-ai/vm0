@@ -164,12 +164,12 @@ end
 raise "missing runner E2E shard generation" unless shard_generation_step
 shard_generation_script = shard_generation_step.fetch("run")
 unless shard_generation_step["id"] == "shards" &&
-    shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner") &&
+    shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner 1") &&
     shard_generation_script.include?('["cloudflare", "vercel"][] as $runtime') &&
-    shard_generation_script.include?('length > 0 and length <= 24') &&
-    shard_generation_script.include?('.total | type == "number" and . > 0 and . <= 12') &&
+    shard_generation_script.include?('length > 0 and length <= 2') &&
+    shard_generation_script.include?('.total | type == "number" and . == 1') &&
     shard_generation_script.include?('echo "matrix=$matrix" >> "$GITHUB_OUTPUT"')
-  raise "runner E2E shard generation must balance files across both runtimes"
+  raise "runner E2E shard generation must respect both runtime concurrency limits"
 end
 
 token_step = account_prepare.fetch("steps").find do |step|

@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 
-const MAX_SHARDS = 12;
+const DEFAULT_MAX_SHARDS = 12;
 
 interface WeightedTestFile {
   readonly path: string;
@@ -16,9 +16,23 @@ interface RunnerShard {
 
 async function main(): Promise<void> {
   const testDirectory = resolve(process.argv[2] ?? "tests/03-runner");
+  const maxShards = parseMaxShards(process.argv[3]);
   const files = await discoverTestFiles(testDirectory);
-  const matrix = buildMatrix(files);
+  const matrix = buildMatrix(files, maxShards);
   process.stdout.write(`${JSON.stringify(matrix)}\n`);
+}
+
+function parseMaxShards(value: string | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_MAX_SHARDS;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `Runner E2E max shards must be a positive integer: ${value}`,
+    );
+  }
+  return parsed;
 }
 
 async function discoverTestFiles(
@@ -49,10 +63,13 @@ async function discoverTestFiles(
   );
 }
 
-function buildMatrix(files: readonly WeightedTestFile[]): {
+function buildMatrix(
+  files: readonly WeightedTestFile[],
+  maxShards: number,
+): {
   readonly include: readonly RunnerShard[];
 } {
-  const shardCount = Math.min(MAX_SHARDS, files.length);
+  const shardCount = Math.min(maxShards, files.length);
   const shards: RunnerShard[] = Array.from(
     { length: shardCount },
     (_, index) => ({ files: [], index: index + 1, weight: 0 }),

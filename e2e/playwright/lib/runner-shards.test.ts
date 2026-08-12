@@ -59,6 +59,38 @@ test("discovers and deterministically balances non-empty runner shards", async (
   }
 });
 
+test("honors an explicit runner shard concurrency limit", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "runner-shards-limit-test-"));
+  const testDirectory = join(testRoot, "03-runner");
+  await mkdir(testDirectory);
+  try {
+    for (let index = 1; index <= 15; index += 1) {
+      const path = join(testDirectory, `runner-${index}.bats`);
+      const testCount = index === 1 ? 5 : index <= 4 ? 2 : 1;
+      const tests = Array.from(
+        { length: testCount },
+        (_, testIndex) => `@test "case ${testIndex + 1}" {\n  true\n}`,
+      ).join("\n\n");
+      await writeFile(path, `#!/usr/bin/env bats\n\n${tests}\n`, "utf8");
+    }
+
+    const matrix = await runShardPlanner(testDirectory, 1);
+
+    assert.equal(matrix.include.length, 1);
+    assert.deepEqual(
+      matrix.include.map((shard) => shard.index),
+      [1],
+    );
+    assert.deepEqual(
+      matrix.include.map((shard) => shard.weight),
+      [22],
+    );
+    assert.equal(matrix.include.flatMap((shard) => shard.files).length, 15);
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
 test("rejects a runner test directory without executable BATS files", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "runner-shards-empty-test-"));
   try {
@@ -81,10 +113,17 @@ test("rejects a runner test directory without executable BATS files", async () =
 
 async function runShardPlanner(
   testDirectory: string,
+  maxShards?: number,
 ): Promise<RunnerShardMatrix> {
   const { stdout } = await execFileAsync(
     process.execPath,
-    ["--import", "tsx", "playwright/runner-shards.ts", testDirectory],
+    [
+      "--import",
+      "tsx",
+      "playwright/runner-shards.ts",
+      testDirectory,
+      ...(maxShards === undefined ? [] : [String(maxShards)]),
+    ],
     { cwd: process.cwd() },
   );
   return parseMatrix(stdout);

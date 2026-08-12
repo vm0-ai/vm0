@@ -1,6 +1,8 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, installApiPreviewHeaders, test } from "../fixtures";
+import { apiPreviewHeaders } from "../lib/api-preview-auth";
 import { signInWithClerkTestingHelper } from "../lib/auth";
+import { issueCliToken } from "../lib/cli-token";
 import { completeExploreOnboarding } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
@@ -12,9 +14,14 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
   const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
 
-  await signInWithClerkTestingHelper(page, email, appUrl, {
-    activeOrganizationId: orgId,
-  });
+  const clerkSessionToken = await signInWithClerkTestingHelper(
+    page,
+    email,
+    appUrl,
+    {
+      activeOrganizationId: orgId,
+    },
+  );
 
   await completeExploreOnboarding(page, {
     appUrl,
@@ -26,6 +33,50 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
     waitUntil: "domcontentloaded",
   });
   expect(page.url()).toMatch(/\/agents\/.*\/chat/);
+
+  const previewHeaders = apiPreviewHeaders();
+  const cliToken = await issueCliToken({
+    apiPreviewHeaders: previewHeaders,
+    apiUrl,
+    clerkSessionToken,
+  });
+  const modelPoliciesResponse = await fetch(
+    `${apiUrl}/api/zero/model-policies`,
+    {
+      method: "PUT",
+      headers: {
+        ...previewHeaders,
+        Authorization: `Bearer ${cliToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        policies: [
+          {
+            model: "deepseek-v4-flash",
+            isDefault: true,
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+          },
+          {
+            model: "gpt-5.6-luna",
+            isDefault: false,
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+          },
+        ],
+      }),
+      redirect: "manual",
+    },
+  );
+  if (!modelPoliciesResponse.ok) {
+    await modelPoliciesResponse.body?.cancel();
+    throw new Error(
+      `Failed to configure Playwright model policies: ${modelPoliciesResponse.status}`,
+    );
+  }
+  await modelPoliciesResponse.body?.cancel();
 
   // Save storageState for feature tests (use absolute path to match playwright.config.ts)
   await page.context().storageState({ path: STORAGE_STATE });
