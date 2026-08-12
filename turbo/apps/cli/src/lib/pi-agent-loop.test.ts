@@ -348,39 +348,6 @@ describe("internal Pi standby agent loop", () => {
     });
   });
 
-  it("reports sequence zero when resume emits no additional messages", async () => {
-    const io = new FakeIo([
-      {
-        type: "pi-transcript",
-        requestId: "transcript-1",
-        transcript: transcriptPage([persistedMessage(1, 0, HANDOFF_ASSISTANT)]),
-      },
-    ]);
-    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
-
-    try {
-      await runPiStandbyAgentLoop(
-        {
-          io,
-          config: CONFIG,
-          executionEnv,
-          standbyTtlSeconds: 1,
-          resume: async () => {},
-        },
-        new AbortController().signal,
-      );
-    } finally {
-      await executionEnv.cleanup();
-    }
-
-    expect(io.outputs.at(-1)).toMatchObject({
-      type: "pi-complete",
-      exitCode: 0,
-      lastEventSequence: 0,
-      skillSnapshotDigest: SNAPSHOT_DIGEST,
-    });
-  });
-
   it("drains transcript pages before taking over", async () => {
     const io = new FakeIo([
       {

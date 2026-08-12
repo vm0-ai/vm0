@@ -143,7 +143,7 @@ function transcriptTail(
   }
   return {
     nextSequence: (lastRunSequence ?? -1) + 1,
-    lastAcknowledgedSequence: lastRunSequence,
+    lastAcknowledgedSequence: undefined,
   };
 }
 
