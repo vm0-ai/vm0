@@ -6,6 +6,10 @@ const DESKTOP_PRODUCT_ARTIFACT_NAMES = {
   zero: "Zero",
   okou: "Okou",
 };
+const DESKTOP_PRODUCT_RELEASE_NAMES = {
+  zero: "Zero Computer Use",
+  okou: "Okou",
+};
 
 function parseArgs(argv) {
   const args = new Map();
@@ -107,7 +111,7 @@ manifest.releases[version] = {
   version,
   name:
     currentRelease.name ??
-    `${DESKTOP_PRODUCT_ARTIFACT_NAMES[product]} Computer Use ${version}`,
+    `${DESKTOP_PRODUCT_RELEASE_NAMES[product]} ${version}`,
   notes: currentRelease.notes ?? "",
   pubDate,
   platforms,

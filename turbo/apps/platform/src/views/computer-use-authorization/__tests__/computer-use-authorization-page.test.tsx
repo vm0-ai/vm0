@@ -306,7 +306,7 @@ describe("computer use authorization page", () => {
 
     await expect(
       screen.findByText(
-        "Open Okou Computer Use on your Mac and refresh this page when it comes online.",
+        "Open Okou on your Mac and refresh this page when it comes online.",
       ),
     ).resolves.toBeInTheDocument();
     const downloadLink = await waitFor(() => {

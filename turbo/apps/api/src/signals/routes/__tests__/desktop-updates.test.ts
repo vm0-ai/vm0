@@ -16,8 +16,10 @@ const TEST_APP_ROUTES = Object.freeze([...desktopUpdateRoutes]);
 const context = testContext();
 const DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
-const OKOU_DESKTOP_UPDATE_MANIFEST_URL =
+const LEGACY_OKOU_DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-updates/okou-desktop-update-manifest.json";
+const OKOU_DESKTOP_UPDATE_MANIFEST_URL =
+  "https://github.com/vm0-ai/vm0/releases/download/ai-okou-desktop-updates/ai-okou-desktop-update-manifest.json";
 
 interface DesktopUpdateRelease {
   readonly version: string;
@@ -90,7 +92,10 @@ function darwinArm64Release(
 ) {
   return {
     version,
-    name: `${productName} Computer Use ${version}`,
+    name:
+      productName === "Okou"
+        ? `Okou ${version}`
+        : `Zero Computer Use ${version}`,
     notes: `Release ${version}`,
     pubDate: "2026-06-08T00:00:00.000Z",
     platforms: {
@@ -260,7 +265,7 @@ describe("desktop update routes", () => {
     const response = await accept(
       client().productFeed({
         params: {
-          product: "okou",
+          product: "ai-okou-desktop",
           channel: "stable",
           platform: "darwin",
           arch: "arm64",
@@ -275,7 +280,7 @@ describe("desktop update routes", () => {
         {
           version: "1.2.3",
           updateTo: {
-            name: "Okou Computer Use 1.2.3",
+            name: "Okou 1.2.3",
             version: "1.2.3",
             pub_date: "2026-06-08T00:00:00.000Z",
             url: zipUrl,
@@ -286,7 +291,7 @@ describe("desktop update routes", () => {
     });
   });
 
-  it("redirects Okou product routes to Okou release assets", async () => {
+  it("redirects the final Okou line to final-identity release assets", async () => {
     const zipUrl =
       "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
     mockDesktopUpdateManifest(
@@ -297,6 +302,36 @@ describe("desktop update routes", () => {
         product: "okou",
       },
       OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+    );
+
+    const releaseResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/release",
+    );
+    expect(releaseResponse.status).toBe(302);
+    expect(releaseResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v1.2.3",
+    );
+
+    const dmgResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/dmg",
+    );
+    expect(dmgResponse.status).toBe(302);
+    expect(dmgResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.dmg",
+    );
+  });
+
+  it("keeps branded Okou routes on the pre-adoption line before cutover", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
+    mockDesktopUpdateManifest(
+      {
+        ...stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", zipUrl, "Okou"),
+        }),
+        product: "okou",
+      },
+      LEGACY_OKOU_DESKTOP_UPDATE_MANIFEST_URL,
     );
 
     const releaseResponse = await appRequest(
@@ -332,7 +367,7 @@ describe("desktop update routes", () => {
     );
   });
 
-  it("does not serve a Zero artifact from the Okou feed", async () => {
+  it("does not serve a Zero artifact from the final Okou feed", async () => {
     mockDesktopUpdateManifest(
       {
         ...stableManifest("1.2.3", {
@@ -349,7 +384,7 @@ describe("desktop update routes", () => {
     const response = await accept(
       client().productFeed({
         params: {
-          product: "okou",
+          product: "ai-okou-desktop",
           channel: "stable",
           platform: "darwin",
           arch: "arm64",
