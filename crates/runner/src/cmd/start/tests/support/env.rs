@@ -246,8 +246,6 @@ fn build_mock_run_config_with_runtime(
             )),
             active_runs: active_runs.clone(),
             reuse_state_notify: Arc::clone(&reuse_state_notify),
-            immediate_successor_intents:
-                crate::immediate_successor_intent::ImmediateSuccessorIntents::default(),
         },
         provider: ProviderState {
             provider,

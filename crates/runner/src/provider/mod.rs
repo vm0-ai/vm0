@@ -86,7 +86,7 @@ pub(crate) struct RunnerProcessIdentity {
 }
 
 impl RunnerProcessIdentity {
-    pub(crate) fn targets(self, runner_id: &str, heartbeat_generation: u64) -> bool {
+    fn targets(self, runner_id: &str, heartbeat_generation: u64) -> bool {
         runner_id
             .parse::<Uuid>()
             .is_ok_and(|runner_id| runner_id == self.runner_id)
@@ -551,7 +551,6 @@ impl JobCandidate {
 /// Job claim result with the context and auth required for terminal completion.
 pub struct ClaimedJob {
     context: ExecutionContext,
-    history_generation_run_id: Option<RunId>,
     completion_auth: CompletionAuth,
     active_input_source: Option<ActiveInputSource>,
 }
@@ -602,7 +601,6 @@ impl ClaimedJob {
             CompletionAuth::sandbox_token(context.run_id, context.sandbox_token.clone());
         Ok(Self {
             context,
-            history_generation_run_id: None,
             completion_auth,
             active_input_source,
         })
@@ -624,7 +622,6 @@ impl ClaimedJob {
         Self::validate_run_id(expected_run_id, &context)?;
         Ok(Self {
             context,
-            history_generation_run_id: None,
             completion_auth: CompletionAuth::local(),
             active_input_source,
         })
@@ -638,18 +635,6 @@ impl ClaimedJob {
 
     pub(crate) fn context(&self) -> &ExecutionContext {
         &self.context
-    }
-
-    pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
-        self.history_generation_run_id
-    }
-
-    pub(crate) fn with_history_generation_run_id(
-        mut self,
-        history_generation_run_id: Option<RunId>,
-    ) -> Self {
-        self.history_generation_run_id = history_generation_run_id;
-        self
     }
 
     #[cfg(test)]

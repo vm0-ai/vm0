@@ -197,9 +197,9 @@ async function claimChatRun(
 ) {
   await flushWaitUntilForTest();
   const claim = await runs.claimRunnerJob(runId);
-  const zeroToken = claim.environment?.ZERO_TOKEN;
-  if (!zeroToken) {
-    throw new Error("Expected the runner claim to include ZERO_TOKEN");
+  const okouToken = claim.environment?.OKOU_TOKEN;
+  if (!okouToken) {
+    throw new Error("Expected the runner claim to include OKOU_TOKEN");
   }
   const browserToken = runs.zeroTokenForRunWithCapabilities(actor, runId, [
     "browser:read",

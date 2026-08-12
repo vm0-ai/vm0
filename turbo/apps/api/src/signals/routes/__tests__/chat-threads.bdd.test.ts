@@ -239,11 +239,11 @@ async function claimChatRun(
   };
 }
 
-/** Sandbox-scoped zero token issued to the run, exposed via the claim env. */
-function zeroTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.ZERO_TOKEN;
+/** Sandbox-scoped Okou token issued to the run, exposed via the claim env. */
+function okouTokenFromClaim(claim: RunnerClaim): string {
+  const token = claim.environment?.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -3200,7 +3200,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       runnerGroup,
       run.runId,
     );
-    const runBearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+    const runBearer = `Bearer ${okouTokenFromClaim(claim)}`;
 
     const unauthenticated = await chat.requestListThreadArtifacts(
       null,
@@ -3388,7 +3388,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       prompt: "first artifact run",
     });
     const claim1 = await claimChatRun(runnerGroup, run1.runId);
-    const bearer1 = `Bearer ${zeroTokenFromClaim(claim1.claim)}`;
+    const bearer1 = `Bearer ${okouTokenFromClaim(claim1.claim)}`;
     const ownId = randomUUID();
     const sharedId = randomUUID();
     objectStore.addObject({
@@ -3417,7 +3417,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       prompt: "second artifact run",
     });
     const claim2 = await claimChatRun(runnerGroup, run2.runId);
-    const bearer2 = `Bearer ${zeroTokenFromClaim(claim2.claim)}`;
+    const bearer2 = `Bearer ${okouTokenFromClaim(claim2.claim)}`;
     await chat.completeUploadWithBearer(bearer2, { id: sharedId }, [200]);
 
     let artifacts = await chat.listThreadArtifacts(actor, run1.threadId);

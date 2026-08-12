@@ -8,6 +8,7 @@ import {
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 
@@ -21,9 +22,9 @@ import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
 import { zeroVoiceIoQuotaRoutes } from "../zero-voice-io-quota";
 import { seedUserBehaviorCount } from "../../../test-fixtures/user-behavior-count";
 import {
-  deleteUsagePricingRows,
-  ensureUsagePricingRow,
+  createUsagePricingFixture,
   seedOrgMetadata,
+  type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
@@ -43,6 +44,13 @@ const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 const BYTEPLUS_ASR_FLASH_URL =
   "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
 const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
+const SPEECH_PRICING_ROW = {
+  kind: "audio",
+  provider: VOICE_IO_TTS_MODEL,
+  category: "output_audio_seconds",
+  unitPrice: 5,
+  unitSize: 1,
+} as const;
 const SPEECH_CONTENT_TYPE = "audio/wav";
 const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
 const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
@@ -61,7 +69,9 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function createVoiceIoTestApp() {
+function createVoiceIoTestApp(
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+) {
   return createAppWithRoutes({
     signal: context.signal,
     routes: [
@@ -70,6 +80,7 @@ function createVoiceIoTestApp() {
       ...zeroVoiceIoSttRoutes,
       ...zeroBillingStatusRoutes,
     ],
+    usagePricingResolution,
   });
 }
 
@@ -225,37 +236,24 @@ function zeroToken(args: {
   });
 }
 
-async function ensureSpeechPricing(): Promise<{
-  readonly pricing: SpeechPricing;
-}> {
-  const result = await ensureUsagePricingRow({
-    kind: "audio",
-    provider: VOICE_IO_TTS_MODEL,
-    category: "output_audio_seconds",
-    unitPrice: 5,
-    unitSize: 1,
+async function createSpeechPricingResolution(
+  state: "configured" | "missing",
+): Promise<UsagePricingFixture["resolution"]> {
+  const fixture = await createUsagePricingFixture(
+    state === "configured"
+      ? { configured: [SPEECH_PRICING_ROW] }
+      : { missing: [SPEECH_PRICING_ROW] },
+  );
+  onTestFinished(async () => {
+    await fixture.cleanup();
   });
-  return {
-    pricing: {
-      unitPrice: result.pricing.unitPrice,
-      unitSize: result.pricing.unitSize,
-    },
-  };
-}
-
-async function deleteSpeechPricing(): Promise<void> {
-  await deleteUsagePricingRows({
-    kind: "audio",
-    provider: VOICE_IO_TTS_MODEL,
-    categories: ["output_audio_seconds"],
-  });
+  return fixture.resolution;
 }
 
 // Isolation comes from random org/user IDs; no teardown is needed.
 async function seedVoiceFixture(options: {
   readonly credits?: number;
   readonly tier?: OrgTier;
-  readonly withPricing?: boolean;
 }): Promise<VoiceFixture> {
   const fixture = {
     orgId: `org_${randomUUID()}`,
@@ -272,10 +270,6 @@ async function seedVoiceFixture(options: {
     { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
     context.signal,
   );
-
-  if (options.withPricing) {
-    await ensureSpeechPricing();
-  }
 
   return fixture;
 }
@@ -1099,7 +1093,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("rejects unsupported /speech voices before OpenAI", async () => {
-    const fixture = await seedVoiceFixture({ withPricing: true });
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
     server.use(
@@ -1124,7 +1118,9 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("blocks /speech before OpenAI when credits are insufficient", async () => {
-    const fixture = await seedVoiceFixture({ credits: 0, withPricing: true });
+    const fixture = await seedVoiceFixture({ credits: 0 });
+    const usagePricingResolution =
+      await createSpeechPricingResolution("configured");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
     server.use(
@@ -1134,7 +1130,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createVoiceIoTestApp();
+    const app = createVoiceIoTestApp(usagePricingResolution);
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
@@ -1153,6 +1149,8 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("blocks /speech before OpenAI when pricing is missing", async () => {
     const fixture = await seedVoiceFixture({ credits: 1000 });
+    const usagePricingResolution =
+      await createSpeechPricingResolution("missing");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
     server.use(
@@ -1162,15 +1160,12 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    await deleteSpeechPricing();
-    const app = createVoiceIoTestApp();
+    const app = createVoiceIoTestApp(usagePricingResolution);
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ text: "hello" }),
     });
-    await ensureSpeechPricing();
-
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
@@ -1182,8 +1177,9 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("generates /speech WAV files for run-scoped zero tokens", async () => {
-    const fixture = await seedVoiceFixture({ withPricing: true });
-    const { pricing } = await ensureSpeechPricing();
+    const fixture = await seedVoiceFixture({});
+    const usagePricingResolution =
+      await createSpeechPricingResolution("configured");
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1217,7 +1213,7 @@ describe("POST /api/zero/voice-io/*", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVoiceIoTestApp();
+    const app = createVoiceIoTestApp(usagePricingResolution);
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1234,7 +1230,7 @@ describe("POST /api/zero/voice-io/*", () => {
       contentType: SPEECH_CONTENT_TYPE,
       size: wav.byteLength,
       durationSeconds: 2,
-      creditsCharged: expectedCredits(2, pricing),
+      creditsCharged: expectedCredits(2, SPEECH_PRICING_ROW),
       model: VOICE_IO_TTS_MODEL,
       voice: "marin",
     });
@@ -1283,13 +1279,14 @@ describe("POST /api/zero/voice-io/*", () => {
     // the response body above and the exact org balance drop, observed on the
     // product billing surface.
     await expect(orgCredits(fixture)).resolves.toBe(
-      10_000 - expectedCredits(2, pricing),
+      10_000 - expectedCredits(2, SPEECH_PRICING_ROW),
     );
   });
 
   it("uses actual /speech WAV data bytes when the data chunk size is oversized", async () => {
-    const fixture = await seedVoiceFixture({ withPricing: true });
-    const { pricing } = await ensureSpeechPricing();
+    const fixture = await seedVoiceFixture({});
+    const usagePricingResolution =
+      await createSpeechPricingResolution("configured");
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1320,7 +1317,7 @@ describe("POST /api/zero/voice-io/*", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVoiceIoTestApp();
+    const app = createVoiceIoTestApp(usagePricingResolution);
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1332,7 +1329,7 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(body).toMatchObject({
       size: wav.byteLength,
       durationSeconds: 10,
-      creditsCharged: expectedCredits(10, pricing),
+      creditsCharged: expectedCredits(10, SPEECH_PRICING_ROW),
       model: VOICE_IO_TTS_MODEL,
       voice: "nova",
     });
@@ -1340,15 +1337,16 @@ describe("POST /api/zero/voice-io/*", () => {
     // 10 seconds metered from the actual data bytes (not the oversized chunk
     // declaration) — pinned by the response body above and the balance drop.
     await expect(orgCredits(fixture)).resolves.toBe(
-      10_000 - expectedCredits(10, pricing),
+      10_000 - expectedCredits(10, SPEECH_PRICING_ROW),
     );
   });
 
   it("returns 500 from /speech without persisted output when OpenAI fails", async () => {
     const fixture = await seedVoiceFixture({
       credits: 1000,
-      withPricing: true,
     });
+    const usagePricingResolution =
+      await createSpeechPricingResolution("configured");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
       http.post(OPENAI_AUDIO_SPEECH_URL, () => {
@@ -1359,7 +1357,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createVoiceIoTestApp();
+    const app = createVoiceIoTestApp(usagePricingResolution);
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),

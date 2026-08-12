@@ -26,8 +26,8 @@ function buildZeroAgentComposeContent(
   agentName: string,
 ): Record<string, unknown> {
   const environment: Record<string, string> = {
-    ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
-    ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
+    OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+    OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
   };
 
   const agentDef: Record<string, unknown> = {
