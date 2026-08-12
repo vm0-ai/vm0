@@ -78,6 +78,7 @@ const productionConfig: DesktopConfig = {
   webUrl: new URL("https://www.vm0.ai"),
   environment: "production",
   identity: {
+    product: "zero",
     displayName: "Zero Computer Use",
     bundleId: "ai.vm0.desktop",
     authProtocolName: "Zero Computer Use",
@@ -206,14 +207,44 @@ describe("desktop auto-updates", () => {
     expect(mocks.updateElectronApp).not.toHaveBeenCalled();
   });
 
+  it("selects the isolated Okou update feed for an Okou identity", () => {
+    const okouConfig: DesktopConfig = {
+      ...productionConfig,
+      identity: {
+        product: "okou",
+        displayName: "Okou Computer Use",
+        bundleId: "ai.okou.computer-use",
+        authProtocolName: "Okou Desktop Auth",
+        authScheme: "ai.okou.computer-use",
+      },
+    };
+
+    expect(
+      installDesktopAutoUpdates({
+        config: okouConfig,
+        apiBaseUrl: "https://api.okou.ai",
+        getComputerUseHostState: () => OFFLINE_COMPUTER_USE_HOST_STATE,
+        prepareForQuitAndInstall: vi.fn(async () => {}),
+      }),
+    ).toBe(true);
+    expect(mocks.updateElectronApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        updateSource: expect.objectContaining({
+          baseUrl:
+            "https://api.okou.ai/api/desktop/updates/okou/stable/darwin/arm64",
+        }),
+      }),
+    );
+  });
+
   it("checks for updates on request", () => {
-    expect(checkForDesktopUpdates()).toBe(true);
+    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(true);
 
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
   });
 
   it("shows when requested update checks find no update", async () => {
-    expect(checkForDesktopUpdates()).toBe(true);
+    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(true);
 
     emitAutoUpdaterEvent("update-not-available");
     await flushDownloadedUpdateCallback();
@@ -235,7 +266,7 @@ describe("desktop auto-updates", () => {
       throw error;
     });
 
-    expect(checkForDesktopUpdates()).toBe(false);
+    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(false);
     await flushDownloadedUpdateCallback();
 
     expect(consoleError).toHaveBeenCalledWith(
