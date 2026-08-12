@@ -96,7 +96,8 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
     assert!(
         requests
             .iter()
-            .all(|request| !request.body.contains("[vm0:"))
+            .all(|request| !request.body.contains("[vm0:")
+                && !request.body.contains("\"delivery_notice\""))
     );
     assert_eq!(
         delivered

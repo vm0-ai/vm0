@@ -501,12 +501,7 @@ fn fallback_item(item: &Map<String, Value>) -> Value {
                 }]),
             );
         }
-        _ => {
-            output.insert(
-                "delivery_notice".to_string(),
-                Value::String(DELIVERY_NOTICE.to_string()),
-            );
-        }
+        _ => {}
     }
     Value::Object(output)
 }
