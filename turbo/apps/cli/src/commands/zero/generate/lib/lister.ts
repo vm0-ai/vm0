@@ -9,6 +9,7 @@ import {
   currentTokenCanReadBilling,
 } from "../../shared/billing-capabilities";
 import { planUpgradeUrl } from "../../shared/billing-links";
+import { getOkouAgentId } from "../../../../lib/okou-env";
 
 type ConnectorGenerationType =
   | "audio"
@@ -628,7 +629,7 @@ export async function runLister(
   options: ListerOptions = {},
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
-  const agentId = process.env.ZERO_AGENT_ID;
+  const agentId = getOkouAgentId();
   const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
     await Promise.all([
       listZeroConnectorCatalogStatus(),

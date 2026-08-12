@@ -373,7 +373,7 @@ export const zeroMapsGeocode$ = command(
     args: AuthedMapsArgs<ZeroMapsGeocodeRequest>,
     signal: AbortSignal,
   ) => {
-    const apiKey = env("ZERO_MAPS_GOOGLE_MAPS_TOKEN");
+    const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Maps Google Maps provider is not configured",
@@ -425,7 +425,7 @@ export const zeroMapsReverseGeocode$ = command(
     args: AuthedMapsArgs<ZeroMapsReverseGeocodeRequest>,
     signal: AbortSignal,
   ) => {
-    const apiKey = env("ZERO_MAPS_GOOGLE_MAPS_TOKEN");
+    const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Maps Google Maps provider is not configured",
@@ -476,7 +476,7 @@ export const zeroMapsDirections$ = command(
     args: AuthedMapsArgs<ZeroMapsDirectionsRequest>,
     signal: AbortSignal,
   ) => {
-    const apiKey = env("ZERO_MAPS_GOOGLE_MAPS_TOKEN");
+    const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Maps Google Maps provider is not configured",
@@ -539,7 +539,7 @@ export const zeroMapsPlacesSearch$ = command(
     args: AuthedMapsArgs<ZeroMapsPlacesSearchRequest>,
     signal: AbortSignal,
   ) => {
-    const apiKey = env("ZERO_MAPS_GOOGLE_MAPS_TOKEN");
+    const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Maps Google Maps provider is not configured",
@@ -614,7 +614,7 @@ export const zeroMapsPlacesDetails$ = command(
     args: AuthedMapsArgs<ZeroMapsPlacesDetailsRequest>,
     signal: AbortSignal,
   ) => {
-    const apiKey = env("ZERO_MAPS_GOOGLE_MAPS_TOKEN");
+    const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Maps Google Maps provider is not configured",

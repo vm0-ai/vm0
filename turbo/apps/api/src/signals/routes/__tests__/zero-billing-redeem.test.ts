@@ -117,6 +117,43 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
     });
   });
 
+  it("prefers OKOU campaign configuration over the Zero fallback", async () => {
+    mockEnv(
+      "OKOU_ONE_TIME_CAMPAIGN",
+      JSON.stringify({
+        [CAMPAIGN]: { priceId: PRICE_ID, couponId: COUPON_ID },
+      }),
+    );
+    mockEnv(
+      "ZERO_ONE_TIME_CAMPAIGN",
+      JSON.stringify({
+        [CAMPAIGN]: {
+          priceId: "price_ignored_zero_campaign",
+          couponId: "ignored-zero-coupon",
+        },
+      }),
+    );
+    const fixture = redeemFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      id: "cs_okou_campaign",
+      url: checkoutUrl("cs_okou_campaign"),
+    });
+
+    const response = await accept(postRedeem(), [200]);
+
+    expect(response.body).toStrictEqual({
+      status: "ready",
+      checkoutUrl: checkoutUrl("cs_okou_campaign"),
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [{ price: PRICE_ID, quantity: 1 }],
+        discounts: [{ coupon: COUPON_ID }],
+      }),
+    );
+  });
+
   it("returns campaign_misconfigured when the campaign is missing from env config", async () => {
     mockEnv("ZERO_ONE_TIME_CAMPAIGN", JSON.stringify({}));
     const fixture = redeemFixture();

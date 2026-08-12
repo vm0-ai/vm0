@@ -13,6 +13,7 @@ import {
 } from "../../lib/api/domains/zero-agents";
 import { getZeroOrg } from "../../lib/api/domains/zero-orgs";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../lib/okou-env";
 import { policyIcon } from "../../lib/utils/format-utils";
 import {
   loadConnectorPermissionInfos,
@@ -26,7 +27,7 @@ import {
  * okou agent context where ZERO_AGENT_ID is the canonical sandbox indicator.
  */
 function isInsideSandbox(): boolean {
-  return !!process.env.ZERO_AGENT_ID;
+  return !!getOkouAgentId();
 }
 
 function formatConnectorIdentity(connector: {
@@ -102,7 +103,7 @@ async function printWorkspace(): Promise<void> {
 }
 
 async function showSandboxInfo(showPermissions: boolean): Promise<void> {
-  const agentId = process.env.ZERO_AGENT_ID;
+  const agentId = getOkouAgentId();
   const payload = decodeZeroTokenPayload();
 
   console.log(`Agent ID:   ${agentId}`);

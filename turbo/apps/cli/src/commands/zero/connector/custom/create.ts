@@ -7,6 +7,7 @@ import { Command } from "commander";
 import { createZeroCustomConnector } from "../../../../lib/api/domains/zero-connectors";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../../lib/okou-env";
 import {
   connectorActionUrl,
   printCallbackActionUrlExample,
@@ -45,7 +46,7 @@ async function printCreateResult(
   console.log(chalk.dim(`  Authentication: ${connector.authMode ?? "manual"}`));
   console.log(chalk.dim("  Status:         awaiting connection"));
   console.log();
-  const agentId = process.env.ZERO_AGENT_ID?.trim() || undefined;
+  const agentId = getOkouAgentId()?.trim() || undefined;
   const origin = await getPlatformOrigin();
   const url = connectorActionUrl({
     origin,

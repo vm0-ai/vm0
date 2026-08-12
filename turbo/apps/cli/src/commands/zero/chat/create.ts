@@ -7,6 +7,7 @@ import {
 } from "../../../lib/api/domains/zero-chat";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../../lib/okou-env";
 import { printChatUsageError } from "./shared";
 
 interface CreateOptions {
@@ -28,7 +29,7 @@ async function resolveAgentId(
     return agentId;
   }
 
-  const currentThreadId = process.env.ZERO_CHAT_THREAD_ID?.trim();
+  const currentThreadId = getOkouChatThreadId()?.trim();
   if (!currentThreadId) {
     printChatUsageError(
       "ZERO_CHAT_THREAD_ID is not set",

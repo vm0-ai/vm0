@@ -14,6 +14,7 @@ import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-polic
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatModelProviderRoute } from "../../../lib/domain/model-policy-display";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../../lib/okou-env";
 
 interface ModelOptions {
   readonly help?: boolean;
@@ -21,7 +22,7 @@ interface ModelOptions {
 }
 
 function getCurrentChatThreadId(): string | undefined {
-  return process.env.ZERO_CHAT_THREAD_ID?.trim() || undefined;
+  return getOkouChatThreadId()?.trim() || undefined;
 }
 
 function printUsageError(message: string, hint: string): never {

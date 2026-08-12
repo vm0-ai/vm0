@@ -6434,6 +6434,7 @@ function preparedRunnerJobBody(
       args.orgId,
       args.featureSwitchContext.overrides,
       {
+        scope: "zero",
         ...(args.zeroTokenComputerUseHostId
           ? { computerUseHostId: args.zeroTokenComputerUseHostId }
           : {}),

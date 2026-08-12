@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { renameZeroChatThread } from "../../../lib/api/domains/zero-chat";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../../lib/okou-env";
 
 interface RenameOptions {
   readonly json?: boolean;
@@ -11,7 +12,7 @@ interface RenameOptions {
 }
 
 function getCurrentChatThreadId(): string | undefined {
-  return process.env.ZERO_CHAT_THREAD_ID?.trim() || undefined;
+  return getOkouChatThreadId()?.trim() || undefined;
 }
 
 function printUsageError(message: string, hint: string): never {
