@@ -146,7 +146,7 @@ pub fn send_workload_placement(stream: &UnixStream, placement: BorrowedFd<'_>) -
     message.msg_iov = &mut iov;
     message.msg_iovlen = 1;
     message.msg_control = ancillary.as_mut_ptr().cast();
-    message.msg_controllen = control_len;
+    message.msg_controllen = ancillary_length(control_len)?;
 
     // SAFETY: message owns a suitably aligned ancillary buffer large enough
     // for one cmsghdr plus one RawFd payload.
@@ -161,7 +161,7 @@ pub fn send_workload_placement(stream: &UnixStream, placement: BorrowedFd<'_>) -
     unsafe {
         (*header).cmsg_level = libc::SOL_SOCKET;
         (*header).cmsg_type = libc::SCM_RIGHTS;
-        (*header).cmsg_len = cmsg_len_for_one_fd();
+        (*header).cmsg_len = ancillary_length(cmsg_len_for_one_fd())?;
         std::ptr::write_unaligned(
             libc::CMSG_DATA(header).cast::<libc::c_int>(),
             placement.as_raw_fd(),
@@ -213,7 +213,7 @@ pub fn receive_workload_placement(stream: &UnixStream) -> io::Result<OwnedFd> {
     message.msg_iov = &mut iov;
     message.msg_iovlen = 1;
     message.msg_control = ancillary.as_mut_ptr().cast();
-    message.msg_controllen = std::mem::size_of_val(&ancillary);
+    message.msg_controllen = ancillary_length(std::mem::size_of_val(&ancillary))?;
 
     let received = loop {
         // SAFETY: message references writable marker, iovec, and ancillary
@@ -273,12 +273,12 @@ fn received_rights_descriptors(message: &libc::msghdr) -> Vec<libc::c_int> {
         // SAFETY: header is a valid ancillary header returned by the CMSG
         // traversal helpers.
         let current = unsafe { &*header };
+        let current_len = ancillary_length_usize(current.cmsg_len);
         if current.cmsg_level == libc::SOL_SOCKET
             && current.cmsg_type == libc::SCM_RIGHTS
-            && current.cmsg_len >= cmsg_len_for_one_fd()
+            && current_len >= cmsg_len_for_one_fd()
         {
-            let payload_bytes = current
-                .cmsg_len
+            let payload_bytes = current_len
                 .saturating_sub(cmsg_len_for_one_fd() - std::mem::size_of::<libc::c_int>());
             let count = payload_bytes / std::mem::size_of::<libc::c_int>();
             // SAFETY: CMSG_DATA points at `count` complete RawFd values inside
@@ -301,6 +301,31 @@ fn close_raw_descriptors(descriptors: &[libc::c_int]) {
         // the malformed-bootstrap path.
         unsafe { libc::close(*descriptor) };
     }
+}
+
+#[cfg(target_env = "musl")]
+fn ancillary_length(length: usize) -> io::Result<libc::socklen_t> {
+    libc::socklen_t::try_from(length).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "workload placement ancillary length is out of range",
+        )
+    })
+}
+
+#[cfg(not(target_env = "musl"))]
+fn ancillary_length(length: usize) -> io::Result<usize> {
+    Ok(length)
+}
+
+#[cfg(target_env = "musl")]
+fn ancillary_length_usize(length: libc::socklen_t) -> usize {
+    length as usize
+}
+
+#[cfg(not(target_env = "musl"))]
+fn ancillary_length_usize(length: usize) -> usize {
+    length
 }
 
 /// Accept one stream from an operation-control listener before `timeout` elapses.
