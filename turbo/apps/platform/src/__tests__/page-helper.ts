@@ -109,6 +109,10 @@ export async function setupPage(options: {
   withoutRender?: boolean;
 }) {
   ensureTestLocalStorage();
+  // setupPage exercises the shared MSW fixture data even when a test does not
+  // customize a handler. Start the lazy mock lifecycle so abort resets any
+  // fixture mutations made by the application during this test.
+  void options.context.mocks;
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
