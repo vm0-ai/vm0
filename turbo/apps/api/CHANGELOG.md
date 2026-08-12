@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.429.1](https://github.com/vm0-ai/vm0/compare/api-v1.429.0...api-v1.429.1) (2026-08-12)
+
+
+### Refactoring
+
+* **chat:** remove canonical event rollout fallbacks ([#26344](https://github.com/vm0-ai/vm0/issues/26344)) ([1e4ba1e](https://github.com/vm0-ai/vm0/commit/1e4ba1e1bda5cc531916c47faedd969fd811f4a6))
+* remove expired deployment compatibility ([#26424](https://github.com/vm0-ai/vm0/issues/26424)) ([dad4358](https://github.com/vm0-ai/vm0/commit/dad4358adcb9fa179bad39d26fc6e0612234d7a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.1
+    * @vm0/core bumped to 8.546.3
+    * @vm0/db bumped to 1.194.4
+    * @vm0/pi-agent-runtime bumped to 1.3.49
+
 ## [1.429.0](https://github.com/vm0-ai/vm0/compare/api-v1.428.0...api-v1.429.0) (2026-08-11)
 
 
