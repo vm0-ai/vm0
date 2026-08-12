@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.733.0](https://github.com/vm0-ai/vm0/compare/app-v0.732.1...app-v0.733.0) (2026-08-12)
+
+
+### Features
+
+* **ui:** add segment control and unify segmented controls ([#26543](https://github.com/vm0-ai/vm0/issues/26543)) ([43c5a04](https://github.com/vm0-ai/vm0/commit/43c5a0448b3eaed505d55dd62d8d250b68ea11d4))
+
+
+### Refactoring
+
+* **platform:** mermaid blob urls, code-block invalid fences, real parse in tests ([#26419](https://github.com/vm0-ai/vm0/issues/26419)) ([d1835f0](https://github.com/vm0-ai/vm0/commit/d1835f0a5731a9561b56a5f09839f2ff82ee42be))
+
 ## [0.732.1](https://github.com/vm0-ai/vm0/compare/app-v0.732.0...app-v0.732.1) (2026-08-12)
 
 
