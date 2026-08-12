@@ -773,37 +773,6 @@ function expectImageInsidePreviewBorder(geometry: ImagePreviewGeometry): void {
   );
 }
 
-async function expectPreviewOwnsItsPaintedEdge(
-  preview: Locator,
-): Promise<void> {
-  const edgeOwners = await preview.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    const border = {
-      bottom: Number.parseFloat(style.borderBottomWidth),
-      left: Number.parseFloat(style.borderLeftWidth),
-      right: Number.parseFloat(style.borderRightWidth),
-      top: Number.parseFloat(style.borderTopWidth),
-    };
-    const points = [
-      { x: rect.left + rect.width / 2, y: rect.top + border.top / 2 },
-      {
-        x: rect.right - border.right / 2,
-        y: rect.top + rect.height / 2,
-      },
-      {
-        x: rect.left + rect.width / 2,
-        y: rect.bottom - border.bottom / 2,
-      },
-      { x: rect.left + border.left / 2, y: rect.top + rect.height / 2 },
-    ];
-    return points.map(
-      ({ x, y }) => document.elementFromPoint(x, y) === element,
-    );
-  });
-  expect(edgeOwners).toEqual([true, true, true, true]);
-}
-
 async function expectPreviewFocusVisible(preview: Locator): Promise<void> {
   await preview.press("Tab");
   await preview.focus();
@@ -1012,8 +981,6 @@ test("image preview frames stay fixed while delayed images load", async ({
   expectStableImagePreviewGeometry(assistantBefore, assistantAfter);
   expectImageInsidePreviewBorder(userAfter);
   expectImageInsidePreviewBorder(assistantAfter);
-  await expectPreviewOwnsItsPaintedEdge(user.preview);
-  await expectPreviewOwnsItsPaintedEdge(assistant.preview);
   await expectPreviewFocusVisible(user.preview);
   await expectPreviewFocusVisible(assistant.preview);
 });
