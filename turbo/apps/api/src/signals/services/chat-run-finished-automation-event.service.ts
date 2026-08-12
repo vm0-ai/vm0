@@ -127,7 +127,7 @@ function chatRunFinishedTriggerContext(args: {
     eventType: "chat-run-finished",
     trigger: `run ${args.event.runId} in watched chat thread ${args.event.chatThreadId} finished with status "${args.event.runStatus}".`,
     notes: [
-      "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `okou logs <runId>` returns the transcript.",
+      'Not included below: the finished run\'s full transcript, and its final output beyond the excerpt. `okou search "<runId>" --source agent-session` prints both local session-file locations for direct analysis.',
     ],
     event: {
       automationId: args.automationId,

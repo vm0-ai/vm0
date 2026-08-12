@@ -121,11 +121,3 @@ export interface AgentEvent {
   eventData: unknown;
   createdAt: string;
 }
-
-// Agent events response from /api/okou/runs/[id]/telemetry/agent
-export interface AgentEventsResponse {
-  events: AgentEvent[];
-  hasMore: boolean;
-  nextCursor?: string | null;
-  framework: string;
-}

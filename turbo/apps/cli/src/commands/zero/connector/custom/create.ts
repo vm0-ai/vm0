@@ -43,7 +43,7 @@ async function printCreateResult(
   );
   console.log(chalk.dim(`  ID:             ${connector.id}`));
   console.log(chalk.dim(`  Slug:           ${connector.slug}`));
-  console.log(chalk.dim(`  Authentication: ${connector.authMode ?? "manual"}`));
+  console.log(chalk.dim(`  Authentication: ${connector.authMode}`));
   console.log(chalk.dim("  Status:         awaiting connection"));
   console.log();
   const agentId = getOkouAgentId()?.trim() || undefined;

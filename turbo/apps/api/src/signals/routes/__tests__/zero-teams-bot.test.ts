@@ -2347,6 +2347,16 @@ describe("POST /api/zero/teams/bot", () => {
     expect(switchedModelClaim.appendSystemPrompt).toContain(
       "Your name is Teams switched agent.",
     );
+    expect(switchedModelClaim.appendSystemPrompt).toContain(
+      "# Microsoft Teams Run Context",
+    );
+    expect(switchedModelClaim.appendSystemPrompt).toContain(
+      `- AGENT_SESSION_COMMAND: okou search "${switchedAgentRunId}" --source agent-session`,
+    );
+    expect(switchedModelClaim.appendSystemPrompt).toContain(
+      "Use the AGENT_SESSION_COMMAND for a run",
+    );
+    expect(switchedModelClaim.appendSystemPrompt).not.toContain("LOG_COMMAND");
     expect(switchedModelClaim.modelUsageProvider).toBe("gpt-5.6-sol");
     await runsApi.requestCancelRun(actor, switchedModelRunId, [200]);
   });

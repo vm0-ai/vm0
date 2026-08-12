@@ -88,7 +88,7 @@ describe("chat lifecycle", () => {
     expect(screen.queryByText(machineReason)).not.toBeInTheDocument();
   });
 
-  it("opens run logs from assistant message actions", async () => {
+  it("opens run details from assistant message actions", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e9000000-0000-4000-a000-000000000002";
     const runId = "a0000000-0000-4000-a000-000000000001";
@@ -125,7 +125,6 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "zero" })).toBeInTheDocument();
-      expect(screen.getByText("Steps")).toBeInTheDocument();
     });
   });
 

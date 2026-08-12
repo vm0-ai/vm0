@@ -997,6 +997,26 @@ describe("Feishu integration", () => {
     );
   }
 
+  async function removeFeishuInstallation(
+    fixture: FeishuRunFixture,
+  ): Promise<void> {
+    mocks.clerk.session(
+      fixture.actor.userId,
+      fixture.actor.orgId,
+      fixture.actor.orgRole,
+    );
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  }
+
   async function startFeishuDmSession(fixture: FeishuRunFixture): Promise<{
     readonly firstMessageId: string;
     readonly mainSessionId: string;
@@ -4184,9 +4204,9 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("runs mentioned group tasks with thread history, dedupe, and session resume", async () => {
+  it("ignores unmentioned and app-authored group messages", async () => {
     const fixture = await setupFeishuRunFixture();
-    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    const { actor, appId, callbackUrl } = fixture;
     await connectFixtureUser(fixture);
     await postEvent(
       callbackUrl,
@@ -4217,7 +4237,13 @@ describe("Feishu integration", () => {
       }),
     ).toBeFalsy();
 
-    const groupThreadId = `omt_${randomUUID()}`;
+    await removeFeishuInstallation(fixture);
+  });
+
+  it("runs mentioned group tasks with thread history and dedupe", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
     const groupMessageId = `om_${randomUUID()}`;
     historyMessages = [
       {
@@ -4305,10 +4331,36 @@ describe("Feishu integration", () => {
       "Reply to",
     );
 
+    await removeFeishuInstallation(fixture);
+  });
+
+  it("attributes mentioned group replies to the triggering user", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const groupMessageId = `om_${randomUUID()}`;
+    const groupThreadId = `omt_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "establish group reply attribution", {
+        messageId: groupMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const initialGroupRun = await findRun(
+      actor,
+      "establish group reply attribution",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    await runsApi.claimRunnerJob(initialGroupRun.id);
+    await runsApi.requestCancelRun(actor, initialGroupRun.id, [200]);
+    await flushWaitUntilForTest();
+
     const secondOpenId = "ou_feishu_second_user";
     const secondActor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
-      orgId: actor.orgId,
+      orgId: fixture.actor.orgId,
       orgRole: "org:member",
     });
     await enableFeishuIntegration(secondActor, {
@@ -4348,6 +4400,33 @@ describe("Feishu integration", () => {
       `Reply to <at id=${secondOpenId}></at>`,
     );
 
+    await removeFeishuInstallation(fixture);
+  });
+
+  it("resumes mentioned group tasks in the same thread session", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const groupMessageId = `om_${randomUUID()}`;
+    const groupThreadId = `omt_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      groupMessage(appId, "handle this group task", {
+        messageId: groupMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const groupRun = await findRun(actor, "handle this group task");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
+    const groupCliSessionId = `bdd-feishu-group-cli-${groupRun.id}`;
+    await completeRunSession({
+      runId: groupRun.id,
+      sandboxToken: groupClaim.sandboxToken,
+      sessionId: groupCliSessionId,
+      history: `bdd feishu group history ${groupRun.id}`,
+    });
     await postEvent(
       callbackUrl,
       groupMessage(appId, "continue this group task", {
@@ -4363,15 +4442,7 @@ describe("Feishu integration", () => {
     expect(groupFollowUpClaim.resumeSession?.sessionId).toBe(groupCliSessionId);
     await runsApi.requestCancelRun(actor, groupFollowUp.id, [200]);
     await flushWaitUntilForTest();
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
-      zeroFeishuConnectContract,
-    );
-    await accept(
-      client.removeInstallation({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { installationId: fixture.installationId },
-      }),
-      [200],
-    );
+
+    await removeFeishuInstallation(fixture);
   });
 });

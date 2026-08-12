@@ -11,10 +11,7 @@ import {
   zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
-import {
-  zeroRunAgentEventsContract,
-  zeroRunsByIdContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroRunsByIdContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import {
   click,
@@ -570,16 +567,6 @@ describe("chat lifecycle", () => {
         artifact: { name: null, version: null },
       });
     });
-    context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
-        return respond(200, {
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        });
-      },
-    );
     context.mocks.api(zeroRunsByIdContract.getById, ({ respond }) => {
       return respond(200, {
         runId: "run-active",

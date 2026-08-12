@@ -665,6 +665,7 @@ function queryMatchingEvents(params: {
 
 function getSearchContextMap(params: {
   readonly dataset: string;
+  readonly sinceISO: string;
   readonly matches: readonly AxiomAgentEvent[];
   readonly before: number;
   readonly after: number;
@@ -682,6 +683,7 @@ function getSearchContextMap(params: {
     });
 
     const contextApl = `['${params.dataset}']
+| where _time > datetime("${params.sinceISO}")
 | where ${contextConditions.join("\n  or ")}
 | order by runId asc, sequenceNumber asc`;
 
@@ -860,6 +862,7 @@ export function zeroLogSearch(
     const contextMap = await get(
       getSearchContextMap({
         dataset,
+        sinceISO,
         matches,
         before,
         after,

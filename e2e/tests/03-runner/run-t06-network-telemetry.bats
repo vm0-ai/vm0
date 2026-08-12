@@ -117,7 +117,11 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" NETWORK_PROBES_DONE 30
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$RUN_ID" \
+        NETWORK_PROBES_DONE \
+        30
     echo "$output"
     assert_success
     assert_output --partial "RAW_TCP_PROBE_DONE"

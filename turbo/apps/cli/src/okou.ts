@@ -40,8 +40,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   upgrade: null,
   model: null,
   "model-provider": null,
-  logs: "agent-run:read",
-  search: "chat-event:read",
+  search: null,
   chat: [
     "chat-event:read",
     "chat-event:write",
@@ -56,7 +55,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   telegram: ["telegram:read", "telegram:write"],
   phone: ["phone:read", "phone:write"],
   whoami: null,
-  "developer-support": null,
   "computer-use": "computer-use:write",
   browser: ["browser:read", "browser:write"],
   intro: null,
@@ -211,15 +209,8 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
-    name: "logs",
-    description: "View and search agent run logs",
-    load: async () => {
-      return (await import("./commands/zero/logs")).zeroLogsCommand;
-    },
-  },
-  {
     name: "search",
-    description: "Search logs, chat, or get a recipe for external sources",
+    description: "Search chat or locate sources for direct analysis",
     load: async () => {
       return (await import("./commands/zero/search")).zeroSearchCommand;
     },
@@ -264,14 +255,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Manage the current thread goal",
     load: async () => {
       return (await import("./commands/zero/goal")).zeroGoalCommand;
-    },
-  },
-  {
-    name: "developer-support",
-    description: "Submit a diagnostic report to the dev team",
-    load: async () => {
-      return (await import("./commands/zero/developer-support"))
-        .zeroDeveloperSupportCommand;
     },
   },
   {

@@ -55,11 +55,7 @@ import {
   textToMessageDocument,
   type EditorDocumentSnapshot,
 } from "../zero-page/user-message-document-codec.ts";
-import {
-  forwardSubmissionPrompt,
-  withForwardedContent,
-  type ChatForwardContext,
-} from "./chat-forward.ts";
+import type { ChatForwardContext } from "./chat-forward.ts";
 import { withOptimisticAgentRunSource } from "./chat-event-signals.ts";
 
 export type NewChatThreadPane = "main" | "sidebar";
@@ -115,7 +111,7 @@ function userMessageForNewThread(
         attachments: prepared.attachments,
       })
     : textToMessageDocument(
-        request.forward ? request.prompt : prepared.prompt,
+        prepared.prompt,
         generationTemplate && request.generationTemplateTitleSnapshot
           ? {
               titleSnapshot: request.generationTemplateTitleSnapshot,
@@ -124,9 +120,6 @@ function userMessageForNewThread(
           : undefined,
         prepared.attachments,
       );
-  if (request.forward) {
-    return withForwardedContent(userMessage, request.forward);
-  }
   if (!userMessage) {
     throw new Error("Failed to serialize user message");
   }
@@ -499,13 +492,10 @@ const sendNewThreadMessage$ = command(
     if (!resolvedModelSelection) {
       return null;
     }
-    const submissionPrompt = request.forward
-      ? forwardSubmissionPrompt(request.forward, prompt)
-      : prompt;
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,
-      submissionPrompt,
+      prompt,
       {
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,

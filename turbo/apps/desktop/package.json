@@ -1,6 +1,6 @@
 {
   "name": "@vm0/desktop",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Computer Use desktop shell",

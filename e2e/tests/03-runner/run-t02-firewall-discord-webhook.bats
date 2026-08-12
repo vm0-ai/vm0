@@ -44,7 +44,7 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" DISCORD_REQUEST_SENT
+    run runner_e2e_wait_for_chat_text "$THREAD_ID" "$RUN_ID" DISCORD_REQUEST_SENT
     echo "$output"
     assert_success
     assert_output --partial \

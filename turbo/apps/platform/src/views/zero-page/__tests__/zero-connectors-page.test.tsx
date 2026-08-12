@@ -300,6 +300,7 @@ function customConnector(
       },
     ],
     queryInjections: [],
+    authMode: "manual",
     storageVersion: 1,
     connected: false,
     missingRequiredFields: ["secret"],
@@ -4148,7 +4149,7 @@ describe("connectors page", () => {
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode,
+          authMode: body.authMode ?? "manual",
           storageVersion: body.storageVersion ?? 1,
           connected: false,
           missingRequiredFields: ["secret"],
@@ -4171,7 +4172,7 @@ describe("connectors page", () => {
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode,
+          authMode: body.authMode ?? connector.authMode,
           storageVersion: body.storageVersion ?? connector.storageVersion,
         };
         return respond(200, connector);

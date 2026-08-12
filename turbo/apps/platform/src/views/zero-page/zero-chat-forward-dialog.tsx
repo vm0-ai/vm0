@@ -20,7 +20,7 @@ import type {
   ChatForwardSelection,
   ChatForwardTarget,
 } from "../../signals/chat-page/chat-forward.ts";
-import { createChatForwardComposerState } from "../../signals/chat-page/chat-forward-composer.ts";
+import { createChatForwardComposerState$ } from "../../signals/chat-page/chat-forward-composer.ts";
 import {
   defaultAgentId$,
   defaultAgentName$,
@@ -180,9 +180,7 @@ function createForwardContext(
   sourceThreadTitle: string,
 ): ChatForwardContext {
   return {
-    quote: selection.text,
-    runId: selection.runId,
-    threadId: selection.threadId,
+    ...selection,
     agentId: sourceAgentId,
     titleSnapshot: sourceThreadTitle,
   };
@@ -238,8 +236,9 @@ export function ChatForwardDialog({
   readonly onDismiss: () => void;
 }) {
   const { t } = useTranslation();
+  const createForwardComposerState = useSet(createChatForwardComposerState$);
   const target = composerState?.target ?? null;
-  const onTargetSelect = (nextTarget: ChatForwardTarget) => {
+  const handleTargetSelect = (nextTarget: ChatForwardTarget) => {
     const forward = createForwardContext(
       selection,
       sourceAgentId,
@@ -254,7 +253,7 @@ export function ChatForwardDialog({
       );
     };
     onComposerStateChange(
-      createChatForwardComposerState(nextTarget, forward, onOptimisticSend),
+      createForwardComposerState(nextTarget, forward, onOptimisticSend),
     );
   };
   return (
@@ -295,7 +294,7 @@ export function ChatForwardDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        <ForwardContent text={selection.text} />
+        {target ? null : <ForwardContent text={selection.quote} />}
         {target && composerState ? (
           <>
             <div className="flex items-center gap-2 px-5 pt-4 text-sm text-muted-foreground">
@@ -309,7 +308,7 @@ export function ChatForwardDialog({
             <ForwardComposer state={composerState} />
           </>
         ) : (
-          <ForwardTargetPicker onSelect={onTargetSelect} />
+          <ForwardTargetPicker onSelect={handleTargetSelect} />
         )}
       </DialogContent>
     </Dialog>

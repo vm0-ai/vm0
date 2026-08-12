@@ -12,10 +12,10 @@ import { createThreadComposerSignals } from "./create-chat-thread.ts";
 const ready$ = computed((): boolean => {
   return true;
 });
-const setReadyLifecycleRef$ = onRef<HTMLDivElement>(
-  command(
-    (_context, _element: HTMLDivElement, _signal: AbortSignal): void => {},
-  ),
+const setReadyLifecycleRef$ = command(
+  (_context, _element: HTMLDivElement | null): (() => void) | undefined => {
+    return undefined;
+  },
 );
 
 function createForwardThreadComposerState(
@@ -24,6 +24,12 @@ function createForwardThreadComposerState(
   onOptimisticSend: () => void,
 ): ChatForwardComposerState {
   const chatEvents = createChatEventSignals(target.id);
+  const composer = createThreadComposerSignals(
+    target.id,
+    target.agentId,
+    chatEvents,
+    { forward, onOptimisticSend },
+  );
   const internalReady$ = state(false);
   const threadReady$ = computed((get): boolean => {
     return get(internalReady$);
@@ -46,18 +52,13 @@ function createForwardThreadComposerState(
   );
   return {
     target,
-    composer: createThreadComposerSignals(
-      target.id,
-      target.agentId,
-      chatEvents,
-      { forward, onOptimisticSend },
-    ),
+    composer,
     ready$: threadReady$,
     setLifecycleRef$,
   };
 }
 
-export function createChatForwardComposerState(
+function createChatForwardComposerState(
   target: ChatForwardTarget,
   forward: ChatForwardContext,
   onOptimisticSend: () => void,
@@ -65,14 +66,32 @@ export function createChatForwardComposerState(
   if (target.kind === "thread") {
     return createForwardThreadComposerState(target, forward, onOptimisticSend);
   }
+  const composer = createForwardAgentComposerSignals(
+    target.id,
+    forward,
+    onOptimisticSend,
+  );
   return {
     target,
-    composer: createForwardAgentComposerSignals(
-      target.id,
-      forward,
-      onOptimisticSend,
-    ),
+    composer,
     ready$,
     setLifecycleRef$: setReadyLifecycleRef$,
   };
 }
+
+export const createChatForwardComposerState$ = command(
+  (
+    { set },
+    target: ChatForwardTarget,
+    forward: ChatForwardContext,
+    onOptimisticSend: () => void,
+  ): ChatForwardComposerState => {
+    const composerState = createChatForwardComposerState(
+      target,
+      forward,
+      onOptimisticSend,
+    );
+    set(composerState.composer.feedback.add$, forward);
+    return composerState;
+  },
+);

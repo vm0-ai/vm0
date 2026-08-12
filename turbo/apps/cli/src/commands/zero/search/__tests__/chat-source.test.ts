@@ -279,41 +279,6 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("Invalid agent ID");
   });
 
-  it("rejects --run flag for chat source with clear error", async () => {
-    await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--run",
-        "550e8400-e29b-41d4-a716-446655440001",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    let errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--run is not supported with --source chat");
-
-    mockConsoleError.mockClear();
-    zeroSearchCommand.setOptionValue("source", []);
-
-    await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--run",
-        "",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--run is not supported with --source chat");
-  });
-
   it("rejects --limit outside the 1..50 range", async () => {
     await expect(
       zeroSearchCommand.parseAsync([
