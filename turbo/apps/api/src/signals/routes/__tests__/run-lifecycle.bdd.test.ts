@@ -15669,9 +15669,6 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
         ],
       },
     });
-    const unauthorizedReconcile =
-      await api.requestBillingReconciliationCronWithoutAuth();
-    expect(unauthorizedReconcile.status).toBe(401);
     await api.reconcileBillingOrganizations([billingActorOrgId(actor)]);
 
     const status = await billing.readBillingStatus(actor);

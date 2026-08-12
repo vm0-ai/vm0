@@ -5,13 +5,18 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
+import {
+  createUsagePricingFixture,
+  seedUsagePricingRows,
+  type UsagePricingRow,
+} from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -45,6 +50,15 @@ const store = createStore();
 const DAY_MS = 86_400_000;
 const GOOGLE_GEOCODING_URL =
   "https://maps.googleapis.com/maps/api/geocode/json";
+const MAPS_GEOCODING_PRICING_ROWS = [
+  {
+    kind: "maps",
+    provider: "google-maps",
+    category: "geocoding",
+    unitPrice: 6,
+    unitSize: 1,
+  },
+] as const satisfies readonly UsagePricingRow[];
 const MODEL_TOKEN_CATEGORIES = {
   input: "tokens.input",
   output: "tokens.output",
@@ -926,15 +940,10 @@ describe("GET /api/zero/usage/record", () => {
   it("uses settlement time consistently for rows, totals, and breakdowns", async () => {
     const fixture = await entitledRecordActor();
     billing.configureMapsProvider();
-    await seedUsagePricingRows([
-      {
-        kind: "maps",
-        provider: "google-maps",
-        category: "geocoding",
-        unitPrice: 6,
-        unitSize: 1,
-      },
-    ]);
+    const pricing = await createUsagePricingFixture({
+      configured: MAPS_GEOCODING_PRICING_ROWS,
+    });
+    onTestFinished(pricing.cleanup);
     server.use(
       http.get(GOOGLE_GEOCODING_URL, () => {
         return HttpResponse.json({
@@ -960,9 +969,11 @@ describe("GET /api/zero/usage/record", () => {
       run.runId,
       ["maps:read"],
     );
-    const maps = setupApp({ context, routes: zeroMapsRoutes })(
-      zeroMapsContract,
-    );
+    const maps = setupApp({
+      context,
+      routes: zeroMapsRoutes,
+      usagePricingResolution: pricing.resolution,
+    })(zeroMapsContract);
     const geocode = await accept(
       maps.geocode({
         headers: { authorization: `Bearer ${mapsToken}` },

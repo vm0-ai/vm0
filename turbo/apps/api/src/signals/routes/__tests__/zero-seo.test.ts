@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroSeoContract } from "@vm0/api-contracts/contracts/zero-seo";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -11,8 +11,10 @@ import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
+  createUsagePricingFixture,
   seedOrgMetadata,
-  seedUsagePricingRows,
+  type UsagePricingFixture,
+  type UsagePricingRow,
 } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -32,7 +34,20 @@ const SEO_ROUTES = Object.freeze([
 ]);
 const DATAFORSEO_BASE_URL = "https://api.dataforseo.com";
 
-type OrgApiTestUser = ApiTestUser & { readonly orgId: string };
+type OrgApiTestUser = ApiTestUser & {
+  readonly orgId: string;
+  readonly usagePricingResolution: UsagePricingFixture["resolution"];
+};
+
+const SEO_PRICING_ROWS = [
+  {
+    kind: "seo",
+    provider: "dataforseo",
+    category: "provider_cost_usd_micros",
+    unitPrice: 1250,
+    unitSize: 1_000_000,
+  },
+] as const satisfies readonly UsagePricingRow[];
 
 function authenticate(actor: ApiTestUser) {
   createZeroRouteMocks(context).clerk.session(
@@ -43,20 +58,16 @@ function authenticate(actor: ApiTestUser) {
   return { authorization: "Bearer clerk-session" };
 }
 
-function client() {
-  return setupApp({ context, routes: SEO_ROUTES });
+function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
+  return setupApp({ context, routes: SEO_ROUTES, usagePricingResolution });
 }
 
-async function seedSeoPricing(): Promise<void> {
-  await seedUsagePricingRows([
-    {
-      kind: "seo",
-      provider: "dataforseo",
-      category: "provider_cost_usd_micros",
-      unitPrice: 1250,
-      unitSize: 1_000_000,
-    },
-  ]);
+async function seedSeoPricing(): Promise<UsagePricingFixture> {
+  const pricing = await createUsagePricingFixture({
+    configured: SEO_PRICING_ROWS,
+  });
+  onTestFinished(pricing.cleanup);
+  return pricing;
 }
 
 async function seedActor(): Promise<OrgApiTestUser> {
@@ -66,8 +77,8 @@ async function seedActor(): Promise<OrgApiTestUser> {
   }
   const orgActor = { ...actor, orgId: actor.orgId };
   await createRunsApi(context).grantProEntitlement(orgActor);
-  await seedSeoPricing();
-  return orgActor;
+  const pricing = await seedSeoPricing();
+  return { ...orgActor, usagePricingResolution: pricing.resolution };
 }
 
 async function seedUnfundedActor(): Promise<OrgApiTestUser> {
@@ -79,13 +90,13 @@ async function seedUnfundedActor(): Promise<OrgApiTestUser> {
   const onboarding = await createBddApi(context).completeOnboarding(orgActor);
   expect(onboarding.status).toBe(200);
   await seedOrgMetadata({ orgId: orgActor.orgId, tier: "pro", credits: 0 });
-  await seedSeoPricing();
-  return orgActor;
+  const pricing = await seedSeoPricing();
+  return { ...orgActor, usagePricingResolution: pricing.resolution };
 }
 
-async function credits(actor: ApiTestUser): Promise<number> {
+async function credits(actor: OrgApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client(actor.usagePricingResolution)(zeroBillingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],
@@ -152,7 +163,7 @@ describe("zero SEO routes", () => {
     });
 
     const response = await accept(
-      client()(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(zeroSeoContract).serp({
         headers: { authorization: `Bearer ${token}` },
         body: {
           query: "technical seo",
@@ -188,7 +199,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client()(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(zeroSeoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -230,7 +241,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client()(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(zeroSeoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -294,7 +305,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client()(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(zeroSeoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -336,7 +347,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client()(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(zeroSeoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -376,7 +387,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client()(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(zeroSeoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -432,7 +443,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client()(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(zeroSeoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "coffee shops",
@@ -502,7 +513,7 @@ describe("zero SEO routes", () => {
       ),
     );
     const headers = authenticate(actor);
-    const seoClient = client()(zeroSeoContract);
+    const seoClient = client(actor.usagePricingResolution)(zeroSeoContract);
 
     const serp = await accept(
       seoClient.serp({
@@ -626,7 +637,7 @@ describe("zero SEO routes", () => {
         },
       ),
     );
-    const seoClient = client()(zeroSeoContract);
+    const seoClient = client(actor.usagePricingResolution)(zeroSeoContract);
     const headers = authenticate(actor);
 
     const bing = await accept(

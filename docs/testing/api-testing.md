@@ -136,6 +136,43 @@ raise the gap during review.
 For the full reasoning, see
 [Testing External Behavior](./testing-external-behavior.md).
 
+## Shared Persistent State
+
+Teardown cannot establish correctness for shared persistent state. Another
+file or worker can observe, overwrite, or depend on that state before
+`afterEach` or `onTestFinished` runs, and a crashed test may not run teardown at
+all. A test must therefore be correct while other API tests execute
+concurrently, even if its cleanup has not happened yet.
+
+Give every test uniquely owned, explicitly addressable users, organizations,
+providers, storage identities, external entities, cache namespaces, and rows.
+When a production cron scans a global table, keep production behavior global
+but drive correctness through a test-only route whose request names the owned
+IDs. Production-global routes may be mounted only by the focused contract
+harness for fixed missing/wrong-auth assertions. Do not isolate tests with a
+global lock, test ordering, worker serialization, broad clock partitions,
+snapshot/restore of shared rows, or residue-tolerant assertions.
+
+Operator-managed usage-pricing identities and the fixed production staff
+organization are shared production data. Use `createUsagePricingFixture()` to
+map a logical canonical provider to a UUID-owned physical lookup row, and use a
+unique organization fixture for entitlement writes. Fixed production
+identities remain valid in read-only/hash/auth behavior. Raw pricing mutation
+helpers are only for providers already proven UUID-, run-, or fixture-owned.
+
+Cache assertions own their key or namespace. Set and advance mocked time inside
+the test that exercises the TTL; never stagger tests with a module- or
+describe-scoped counter to outlive another test's cache entry. Process-wide
+caches and overrides need an explicit request/test owner and scoped reset
+semantics, such as an `AbortSignal` or async-local boundary.
+
+Cleanup is still useful after ownership establishes correctness. It may remove
+rows and resources created by that test, and it should terminate or release
+test-owned handles, `AbortController`s/signals, MSW handlers, connections,
+sockets/streams, detached work, and temporary files. Such cleanup bounds
+residue and resource lifetime; it must not delete, overwrite, or restore
+pre-existing shared state to make an assertion pass.
+
 ## Commands
 
 Run route-focused tests from `turbo`:

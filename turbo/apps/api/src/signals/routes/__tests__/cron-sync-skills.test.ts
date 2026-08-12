@@ -16,13 +16,11 @@ import {
 } from "@vm0/core/github-url";
 import { getSkillStorageName } from "@vm0/core/storage-names";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
-import { cronSyncSkillsContract } from "@vm0/api-contracts/contracts/cron";
 import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
-import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
@@ -33,10 +31,8 @@ import {
   setOwnedSkillsCommitShaState,
   syncOwnedSkillsState,
 } from "./helpers/cron-sync-skills-state";
-import { cronSyncSkillsRoutes } from "../cron-sync-skills";
 
 const context = testContext();
-const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const STALE_PRESEEDED_COMMIT_SHA = "0".repeat(40);
 
@@ -215,16 +211,6 @@ async function seedCurrentSkillVersions(
       };
     }),
   });
-}
-
-function apiClient() {
-  return setupApp({ context, routes: cronSyncSkillsRoutes })(
-    cronSyncSkillsContract,
-  );
-}
-
-function cronHeaders(secret = CRON_SECRET) {
-  return { authorization: `Bearer ${secret}` };
 }
 
 function newCommitSha(): string {
@@ -459,29 +445,9 @@ async function findSystemStorageByName(name: string): Promise<{
 
 describe("GET /api/cron/sync-skills", () => {
   beforeEach(() => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockResolvedValue({});
-  });
-
-  it("rejects requests with an invalid cron secret", async () => {
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders("wrong-secret") }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("rejects requests with no authorization header", async () => {
-    const response = await accept(apiClient().sync({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
   });
 
   it("skips sync when the stored commit SHA is unchanged", async () => {

@@ -4,8 +4,9 @@
  * Usage pricing is operator-managed global configuration with no product API
  * (rows are written by ops tooling/migrations in production), so tests cannot
  * construct pricing state through any product endpoint. New route tests use
- * `createUsagePricingFixture` to own unique lookup providers. The raw helpers
- * remain while their existing callers migrate to the scoped model.
+ * `createUsagePricingFixture` to own unique lookup providers. Raw mutation
+ * helpers are reserved for rows whose provider is already proven UUID-, run-,
+ * or fixture-owned; they must never target canonical operator identities.
  */
 import { randomUUID } from "node:crypto";
 

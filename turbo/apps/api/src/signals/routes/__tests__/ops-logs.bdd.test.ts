@@ -6,16 +6,13 @@ import type {
   GenerationTemplateRequest,
   UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext, accept } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { modelStatsRoutes } from "../model-stats";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -277,30 +274,6 @@ async function waitForUserExportJobStatus(
 }
 
 describe("BILL-02: model usage aggregation and public rankings", () => {
-  it("rejects the model-stats aggregation cron without the cron secret", async () => {
-    const api = createOpsLogsApi(context);
-
-    const rejected = await api.requestAggregateModelStats("invalid", [401]);
-    expect(rejected.body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("rejects the obsolete model-stats rebuild window", async () => {
-    const aggregateApp = createAppWithRoutes({
-      signal: context.signal,
-      routes: modelStatsRoutes,
-    });
-    const rejected = await aggregateApp.request(
-      cronAggregateModelStatsContract.aggregate.path + "?hours=24",
-      {
-        headers: { authorization: "Bearer test-cron-secret" },
-      },
-    );
-
-    expect(rejected.status).toBe(400);
-  });
-
   it("incrementally projects owned observations into exact rankings", async () => {
     const api = createOpsLogsApi(context);
     const model = "fixture-model-" + randomUUID();

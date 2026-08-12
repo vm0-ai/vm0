@@ -1,17 +1,14 @@
-import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { createDeferredPromise } from "../../../utils";
-import { modelStatsContract, modelStatsRoutes } from "../../model-stats";
+import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { userExportRoutes } from "../../user-export";
 
 type AuthHeaders = { readonly authorization?: string };
-
-const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
 interface ClerkUserProfile {
   readonly id: string;
@@ -59,31 +56,11 @@ function authenticate(
 
 export function createOpsLogsApi(context: TestContext) {
   return {
-    async requestAggregateModelStats<TStatus extends 200 | 401>(
-      auth: "valid" | "invalid",
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context, routes: modelStatsRoutes })(
-          cronAggregateModelStatsContract,
-        ).aggregate({
-          headers: {
-            authorization:
-              auth === "valid" ? CRON_AUTHORIZATION : "Bearer wrong-secret",
-          },
-          query: {},
-        }),
-        statuses,
-      );
-    },
-
     async readModelRankings(period?: string) {
       return await accept(
-        setupApp({ context, routes: modelStatsRoutes })(
+        setupApp({ context, routes: modelStatsPublicRoutes })(
           modelStatsContract,
-        ).rankings({
-          query: { period },
-        }),
+        ).rankings({ query: { period } }),
         [200],
       );
     },

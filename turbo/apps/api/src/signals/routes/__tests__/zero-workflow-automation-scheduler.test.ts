@@ -28,13 +28,11 @@ import { chatEventAutomationPart } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
-import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
 import { zeroAgentsRoutes } from "../zero-agents";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { zeroWorkflowsRoutes } from "../zero-workflows";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...cronExecuteWorkflowAutomationsRoutes,
   ...testWorkflowAutomationExecutionRoutes,
   ...zeroAgentsRoutes,
   ...zeroWorkflowAutomationsRoutes,
@@ -52,9 +50,6 @@ const chatFilesApi = createChatFilesBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
 
 const WORKFLOW_NAME = "scheduler-workflow";
-const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
-  "/api/cron/execute-workflow-automations";
-const CRON_SECRET = "test-cron-secret";
 
 interface Scenario {
   readonly actor: ApiTestUser;
@@ -103,7 +98,6 @@ async function setup(
   options: { readonly timezone?: string } = {},
 ): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
-  mockEnv("CRON_SECRET", CRON_SECRET);
   const { actor } = await wf.setupWorkflowOrg({ timezone: options.timezone });
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
@@ -271,20 +265,6 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
 }
 
 describe("okou workflow automation scheduler", () => {
-  it("rejects unauthenticated production cron requests", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
-
-    const response = await createApp({
-      signal: context.signal,
-      routes: TEST_APP_ROUTES,
-    }).request(CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE);
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
-  });
-
   it("does not expose scoped workflow execution in production", async () => {
     mockEnv("ENV", "production");
 

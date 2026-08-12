@@ -25,7 +25,6 @@ import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zer
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   cronProcessUsageEventsContract,
-  cronReconcileBillingEntitlementsContract,
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import { testBillingReconciliationStateContract } from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
@@ -66,7 +65,6 @@ import {
 import { mockStripeClient } from "../../../external/stripe-client";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cronProcessUsageEventsRoutes } from "../../cron-process-usage-events";
-import { cronReconcileBillingEntitlementsRoutes } from "../../cron-reconcile-billing-entitlements";
 import { cronTelegramCleanupRoutes } from "../../cron-telegram-cleanup";
 import { runnersRoutes } from "../../runners";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
@@ -154,7 +152,6 @@ const OFFICIAL_RUNNER_AUTHORIZATION =
 const runRoutes = [
   ...cliAuthRoutes,
   ...cronProcessUsageEventsRoutes,
-  ...cronReconcileBillingEntitlementsRoutes,
   ...cronTelegramCleanupRoutes,
   ...runnersRoutes,
   ...webhooksStripeRoutes,
@@ -1266,15 +1263,6 @@ export function createRunsApi(context: TestContext) {
         processUsageEvents,
         telegramCleanup,
       };
-    },
-
-    async requestBillingReconciliationCronWithoutAuth() {
-      return await accept(
-        runApp(context)(cronReconcileBillingEntitlementsContract).reconcile({
-          headers: {},
-        }),
-        [401],
-      );
     },
 
     async reconcileBillingOrganizations(orgIds: readonly string[]) {

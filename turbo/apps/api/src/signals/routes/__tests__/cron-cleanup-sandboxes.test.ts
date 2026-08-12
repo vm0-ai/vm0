@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  cronCleanupSandboxesContract,
-  type CronCleanupSandboxesResponse,
-} from "@vm0/api-contracts/contracts/cron";
+import type { CronCleanupSandboxesResponse } from "@vm0/api-contracts/contracts/cron";
 import {
   triggerSourceSchema,
   type TriggerSource,
@@ -28,7 +25,6 @@ import {
   onTestFinished,
 } from "vitest";
 
-import { createApp } from "../../../app-factory";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -49,17 +45,10 @@ import {
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
 import { runnersRoutes } from "../runners";
-
-const TEST_APP_ROUTES = Object.freeze([
-  ...cronCleanupSandboxesRoutes,
-  ...runnersRoutes,
-]);
 
 const context = testContext();
 const webhooks = createWebhookCallbackApi(context);
-const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storage-bucket";
 const FIXED_NOW_MS = Date.parse("2000-01-01T00:10:00.000Z");
 const THREADLESS_FORWARD_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
@@ -113,26 +102,6 @@ interface RunOwnershipFixture {
 
 interface ChatThreadFixture {
   readonly threadId: string;
-}
-
-function apiClient() {
-  return setupApp({ context, routes: cronCleanupSandboxesRoutes })(
-    cronCleanupSandboxesContract,
-  );
-}
-
-function cronHeaders(secret = CRON_SECRET) {
-  return { authorization: `Bearer ${secret}` };
-}
-
-async function rawCronRequest(
-  headers: Record<string, string> = {},
-): Promise<Response> {
-  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
-  return await app.request("/api/cron/cleanup-sandboxes", {
-    method: "GET",
-    headers,
-  });
 }
 
 function minutesAgo(minutes: number): Date {
@@ -541,7 +510,6 @@ describe("sandbox cleanup", () => {
     registeredRunIds = [];
     registeredOrgIds = [];
     registeredExportJobIds = [];
-    mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
     mockNow(FIXED_NOW_MS);
     context.mocks.s3.send.mockReset();
@@ -550,27 +518,6 @@ describe("sandbox cleanup", () => {
 
   afterEach(() => {
     clearMockNow();
-  });
-
-  it("rejects requests with an invalid cron secret", async () => {
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders("wrong-secret") }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("rejects requests with a missing authorization header", async () => {
-    const response = await rawCronRequest();
-    const body = await response.json();
-
-    expect(response.status).toBe(401);
-    expect(body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
   });
 
   it("returns an empty cleanup result for an empty fixture scope", async () => {

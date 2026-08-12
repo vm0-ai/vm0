@@ -1,5 +1,5 @@
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
   ZERO_AIR_QUALITY_ATTRIBUTION,
@@ -12,8 +12,10 @@ import {
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import {
+  createUsagePricingFixture,
   seedOrgMetadata,
-  seedUsagePricingRows,
+  type UsagePricingFixture,
+  type UsagePricingRow,
 } from "../../../test-fixtures/system-config-seeds";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -42,58 +44,70 @@ function authenticate(actor: ApiTestUser): { readonly authorization: string } {
   return { authorization: "Bearer clerk-session" };
 }
 
-function client() {
-  return setupApp({ context, routes: zeroWeatherRoutes })(zeroWeatherContract);
+const WEATHER_PRICING_ROWS = [
+  {
+    kind: "weather",
+    provider: "google-weather",
+    category: "current",
+    unitPrice: 0,
+    unitSize: 1,
+  },
+  {
+    kind: "weather",
+    provider: "google-weather",
+    category: "forecast.hourly",
+    unitPrice: 0,
+    unitSize: 1,
+  },
+  {
+    kind: "weather",
+    provider: "google-weather",
+    category: "forecast.daily",
+    unitPrice: 0,
+    unitSize: 1,
+  },
+  {
+    kind: "weather",
+    provider: "google-weather",
+    category: "history.hourly",
+    unitPrice: 0,
+    unitSize: 1,
+  },
+  {
+    kind: "weather",
+    provider: "google-air-quality",
+    category: "current",
+    unitPrice: 0,
+    unitSize: 1,
+  },
+] as const satisfies readonly UsagePricingRow[];
+
+function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
+  return setupApp({
+    context,
+    routes: zeroWeatherRoutes,
+    usagePricingResolution,
+  })(zeroWeatherContract);
 }
 
 function configureProvider(): void {
   mockEnv("ZERO_WEATHER_GOOGLE_WEATHER_TOKEN", "test-google-weather-key");
 }
 
-async function prepareFreeWeatherActor(actor: ApiTestUser): Promise<void> {
+async function prepareFreeWeatherActor(
+  actor: ApiTestUser,
+): Promise<UsagePricingFixture> {
   if (!actor.orgId) {
     throw new Error("Zero Weather test actor must belong to an organization");
   }
   const completed = await createBddApi(context).completeOnboarding(actor);
   expect(completed.status).toBe(200);
   await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
-  await seedUsagePricingRows([
-    {
-      kind: "weather",
-      provider: "google-weather",
-      category: "current",
-      unitPrice: 0,
-      unitSize: 1,
-    },
-    {
-      kind: "weather",
-      provider: "google-weather",
-      category: "forecast.hourly",
-      unitPrice: 0,
-      unitSize: 1,
-    },
-    {
-      kind: "weather",
-      provider: "google-weather",
-      category: "forecast.daily",
-      unitPrice: 0,
-      unitSize: 1,
-    },
-    {
-      kind: "weather",
-      provider: "google-weather",
-      category: "history.hourly",
-      unitPrice: 0,
-      unitSize: 1,
-    },
-    {
-      kind: "weather",
-      provider: "google-air-quality",
-      category: "current",
-      unitPrice: 0,
-      unitSize: 1,
-    },
-  ]);
+  const pricing = await createUsagePricingFixture({
+    configured: WEATHER_PRICING_ROWS,
+  });
+  onTestFinished(pricing.cleanup);
+  return pricing;
 }
 
 function expectFreeWeatherResponse(
@@ -147,7 +161,7 @@ describe("okou weather route", () => {
 
   it("records current conditions at zero credits for an empty balance", async () => {
     const actor = createBddApi(context).user();
-    await prepareFreeWeatherActor(actor);
+    const pricing = await prepareFreeWeatherActor(actor);
     mockEnv(
       "OKOU_WEATHER_GOOGLE_WEATHER_TOKEN",
       "test-okou-google-weather-key",
@@ -165,7 +179,7 @@ describe("okou weather route", () => {
     );
 
     const response = await accept(
-      client().current({
+      client(pricing.resolution).current({
         headers: authenticate(actor),
         body: {
           lat: 39.9042,
@@ -194,7 +208,7 @@ describe("okou weather route", () => {
 
   it("forwards one hourly forecast page to Google Weather", async () => {
     const actor = createBddApi(context).user();
-    await prepareFreeWeatherActor(actor);
+    const pricing = await prepareFreeWeatherActor(actor);
     configureProvider();
     let providerUrl: URL | undefined;
     server.use(
@@ -208,7 +222,7 @@ describe("okou weather route", () => {
     );
 
     const response = await accept(
-      client().forecastHourly({
+      client(pricing.resolution).forecastHourly({
         headers: authenticate(actor),
         body: {
           lat: 37.7749,
@@ -231,7 +245,7 @@ describe("okou weather route", () => {
 
   it("forwards one daily forecast page to Google Weather", async () => {
     const actor = createBddApi(context).user();
-    await prepareFreeWeatherActor(actor);
+    const pricing = await prepareFreeWeatherActor(actor);
     configureProvider();
     let providerUrl: URL | undefined;
     server.use(
@@ -242,7 +256,7 @@ describe("okou weather route", () => {
     );
 
     const response = await accept(
-      client().forecastDaily({
+      client(pricing.resolution).forecastDaily({
         headers: authenticate(actor),
         body: {
           lat: 51.5072,
@@ -264,7 +278,7 @@ describe("okou weather route", () => {
 
   it("forwards one hourly history page to Google Weather", async () => {
     const actor = createBddApi(context).user();
-    await prepareFreeWeatherActor(actor);
+    const pricing = await prepareFreeWeatherActor(actor);
     configureProvider();
     let providerUrl: URL | undefined;
     server.use(
@@ -275,7 +289,7 @@ describe("okou weather route", () => {
     );
 
     const response = await accept(
-      client().historyHourly({
+      client(pricing.resolution).historyHourly({
         headers: authenticate(actor),
         body: {
           lat: 35.6762,
@@ -297,7 +311,7 @@ describe("okou weather route", () => {
 
   it("returns compact current air quality at zero credits", async () => {
     const actor = createBddApi(context).user();
-    await prepareFreeWeatherActor(actor);
+    const pricing = await prepareFreeWeatherActor(actor);
     configureProvider();
     let providerUrl: URL | undefined;
     let providerBody: unknown;
@@ -325,7 +339,7 @@ describe("okou weather route", () => {
     );
 
     const response = await accept(
-      client().airQualityCurrent({
+      client(pricing.resolution).airQualityCurrent({
         headers: authenticate(actor),
         body: {
           lat: 39.9042,
@@ -360,7 +374,7 @@ describe("okou weather route", () => {
 
   it("returns Google Air Quality errors without success billing metadata", async () => {
     const actor = createBddApi(context).user();
-    await prepareFreeWeatherActor(actor);
+    const pricing = await prepareFreeWeatherActor(actor);
     configureProvider();
     server.use(
       http.post(GOOGLE_AIR_QUALITY_CURRENT_URL, () => {
@@ -372,7 +386,7 @@ describe("okou weather route", () => {
     );
 
     const response = await accept(
-      client().airQualityCurrent({
+      client(pricing.resolution).airQualityCurrent({
         headers: authenticate(actor),
         body: { lat: 39.9042, lng: 116.4074 },
       }),
@@ -387,7 +401,7 @@ describe("okou weather route", () => {
 
   it("returns Google Weather errors without success billing metadata", async () => {
     const actor = createBddApi(context).user();
-    await prepareFreeWeatherActor(actor);
+    const pricing = await prepareFreeWeatherActor(actor);
     configureProvider();
     server.use(
       http.get(GOOGLE_WEATHER_CURRENT_URL, () => {
@@ -399,7 +413,7 @@ describe("okou weather route", () => {
     );
 
     const response = await accept(
-      client().current({
+      client(pricing.resolution).current({
         headers: authenticate(actor),
         body: { lat: 39.9042, lng: 116.4074, units: "metric" },
       }),

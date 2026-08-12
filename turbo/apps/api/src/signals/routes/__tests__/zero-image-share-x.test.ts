@@ -1,13 +1,15 @@
 import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import {
+  createUsagePricingFixture,
   seedOrgMetadata,
-  seedUsagePricingRows,
+  type UsagePricingFixture,
+  type UsagePricingRow,
 } from "../../../test-fixtures/system-config-seeds";
 import { seedConnectedXConnector } from "../../../test-fixtures/x-connector";
 import { createBddApi } from "./helpers/api-bdd";
@@ -23,6 +25,15 @@ const IMAGE_BYTES = [137, 80, 78, 71] as const;
 const MAX_X_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const X_MEDIA_UPLOAD_URL = "https://api.x.com/2/media/upload";
 const X_CREATE_POST_URL = "https://api.x.com/2/tweets";
+const X_IMAGE_SHARE_PRICING_ROWS = [
+  {
+    kind: "connector",
+    provider: "x",
+    category: "content.create",
+    unitPrice: 15,
+    unitSize: 1,
+  },
+] as const satisfies readonly UsagePricingRow[];
 
 class OversizedImageChunk extends Uint8Array {
   override get byteLength(): number {
@@ -45,10 +56,12 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function client() {
-  return setupApp({ context, routes: zeroImageShareXRoutes })(
-    zeroImageShareXContract,
-  );
+function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
+  return setupApp({
+    context,
+    routes: zeroImageShareXRoutes,
+    usagePricingResolution,
+  })(zeroImageShareXContract);
 }
 
 function mockXImageShareProvider(options?: {
@@ -118,19 +131,14 @@ describe("POST /api/zero/image-share/x", () => {
     const billing = createBillingMediaApi(context);
     const actor = await setupAuthenticatedXActor();
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1000 });
-    await seedUsagePricingRows([
-      {
-        kind: "connector",
-        provider: "x",
-        category: "content.create",
-        unitPrice: 15,
-        unitSize: 1,
-      },
-    ]);
+    const pricing = await createUsagePricingFixture({
+      configured: X_IMAGE_SHARE_PRICING_ROWS,
+    });
+    onTestFinished(pricing.cleanup);
     const provider = mockXImageShareProvider();
 
     const response = await accept(
-      client().post({
+      client(pricing.resolution).post({
         headers: authHeaders(),
         body: {
           caption: "Edited with Zero",
