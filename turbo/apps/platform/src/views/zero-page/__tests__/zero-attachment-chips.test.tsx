@@ -961,7 +961,7 @@ describe("zero attachment chips", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the user image preview frame stable while the image loads", async () => {
+  it("keeps the user image preview in one grid cell while it loads", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -989,18 +989,33 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Chat image preview link not found");
     }
-    const spacer = preview.querySelector('span[aria-hidden="true"]');
     expect(preview).toHaveClass(
-      "relative",
-      "inline-flex",
+      "inline-grid",
       "aspect-[10/9]",
       "w-[50px]",
+      "grid-cols-[minmax(0,1fr)]",
+      "grid-rows-[minmax(0,1fr)]",
+      "align-top",
     );
-    expect(spacer).toHaveClass("block", "h-full", "w-full");
+    expect(preview).not.toHaveClass("relative");
+    expect(preview).not.toHaveClass("inline-flex");
+    expect(
+      preview.querySelector(':scope > span[aria-hidden="true"]'),
+    ).toBeNull();
     expect(
       within(preview).getByTestId("chat-image-preview-loading"),
-    ).toHaveClass("absolute", "inset-0");
-    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+    ).toHaveClass("col-start-1", "row-start-1", "min-h-0", "min-w-0");
+    expect(
+      within(preview).getByTestId("chat-image-preview-loading"),
+    ).not.toHaveClass("absolute");
+    expect(image).toHaveClass(
+      "col-start-1",
+      "row-start-1",
+      "min-h-0",
+      "min-w-0",
+      "opacity-0",
+    );
+    expect(image).not.toHaveClass("absolute");
 
     fireEvent.load(image);
 
@@ -1009,7 +1024,6 @@ describe("zero attachment chips", () => {
         within(preview).queryByTestId("chat-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
-    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
     expect(image).not.toHaveClass("opacity-0");
   });
 
@@ -2778,19 +2792,34 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Markdown image preview button not found");
     }
-    const spacer = preview.querySelector('span[aria-hidden="true"]');
     expect(preview).toHaveClass(
-      "relative",
-      "inline-flex",
+      "inline-grid",
       "aspect-[10/9]",
       "w-[200px]",
+      "grid-cols-[minmax(0,1fr)]",
+      "grid-rows-[minmax(0,1fr)]",
+      "align-top",
     );
-    expect(spacer).toHaveClass("block", "h-full", "w-full");
+    expect(preview).not.toHaveClass("relative");
+    expect(preview).not.toHaveClass("inline-flex");
+    expect(
+      preview.querySelector(':scope > span[aria-hidden="true"]'),
+    ).toBeNull();
     expect(
       within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("absolute", "inset-0");
+    ).toHaveClass("col-start-1", "row-start-1", "min-h-0", "min-w-0");
+    expect(
+      within(preview).getByTestId("markdown-image-preview-loading"),
+    ).not.toHaveClass("absolute");
     expect(image).toHaveAttribute("src", imageUrl);
-    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+    expect(image).toHaveClass(
+      "col-start-1",
+      "row-start-1",
+      "min-h-0",
+      "min-w-0",
+      "opacity-0",
+    );
+    expect(image).not.toHaveClass("absolute");
 
     fireEvent.load(image);
 
@@ -2799,7 +2828,6 @@ describe("zero attachment chips", () => {
         within(preview).queryByTestId("markdown-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
-    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
     expect(image).not.toHaveClass("opacity-0");
     click(preview);
 

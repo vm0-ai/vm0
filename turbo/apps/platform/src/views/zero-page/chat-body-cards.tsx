@@ -149,18 +149,16 @@ export function ChatImagePreviewLink({
       href={resourceUrl ?? imageUrl}
       onClick={openPreview}
       className={cn(
-        "group/image-preview relative inline-flex self-start items-center justify-center overflow-hidden",
+        "group/image-preview inline-grid self-start grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] align-top overflow-hidden",
         linkClassName,
       )}
       aria-label={ariaLabel}
     >
-      {/* Preserve one flex item so the inline baseline cannot change on load. */}
-      <span aria-hidden="true" className="block h-full w-full" />
       {showPlaceholder && (
         <span
           data-testid="chat-image-preview-loading"
           className={cn(
-            "absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground",
+            "col-start-1 row-start-1 z-10 flex min-h-0 min-w-0 items-center justify-center bg-muted/70 text-muted-foreground",
             placeholderClassName,
           )}
         >
@@ -180,7 +178,7 @@ export function ChatImagePreviewLink({
           onLoad={markLoaded}
           onError={markFailed}
           className={cn(
-            "absolute inset-0",
+            "col-start-1 row-start-1 min-h-0 min-w-0",
             imageClassName,
             showPlaceholder && "opacity-0",
           )}

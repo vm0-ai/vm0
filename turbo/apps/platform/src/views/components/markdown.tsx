@@ -85,14 +85,12 @@ function MediaImage({
         )?.dataset.chatThreadContainerId;
         openImageLightbox(threadId ? { threadId, url: src } : src);
       }}
-      className="relative my-1 inline-flex aspect-[10/9] w-[200px] max-w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
+      className="my-1 inline-grid aspect-[10/9] w-[200px] max-w-full cursor-pointer grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] align-top overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
     >
-      {/* Preserve one flex item so the inline baseline cannot change on load. */}
-      <span aria-hidden="true" className="block h-full w-full" />
       {showPlaceholder && (
         <span
           data-testid="markdown-image-preview-loading"
-          className="absolute inset-0 flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground"
+          className="col-start-1 row-start-1 z-10 flex h-full w-full min-h-0 min-w-0 items-center justify-center bg-muted/70 text-muted-foreground"
         >
           {imageStatus === "loading" ? (
             <Loader2 size={18} className="animate-spin" />
@@ -108,7 +106,7 @@ function MediaImage({
         loading="lazy"
         onLoad={markLoaded}
         onError={markFailed}
-        className={`absolute inset-0 h-full w-full object-contain ${
+        className={`col-start-1 row-start-1 block h-full w-full min-h-0 min-w-0 object-contain ${
           showPlaceholder ? "opacity-0" : ""
         }`}
       />
