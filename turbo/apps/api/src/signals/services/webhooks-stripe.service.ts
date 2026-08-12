@@ -3330,7 +3330,12 @@ async function handleInvoicePaid(
 
   const usagePackResult = await handleUsagePackInvoicePaid(db, invoice);
   if (usagePackResult.handled) {
-    return usagePackResult.orgId;
+    const concurrencyResult = await handleConcurrencyInvoicePaid(
+      db,
+      getClerk,
+      invoice,
+    );
+    return concurrencyResult.drainOrgId ?? usagePackResult.orgId;
   }
 
   const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);

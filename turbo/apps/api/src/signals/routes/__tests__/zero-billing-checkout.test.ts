@@ -3202,6 +3202,25 @@ describe("usage pack allocation management", () => {
     };
   }
 
+  function managedConcurrencyInvoiceLine(args: {
+    readonly quantity: number;
+    readonly billingPeriod: { readonly start: number; readonly end: number };
+    readonly proration: boolean;
+  }) {
+    return {
+      id: `il_${randomUUID()}`,
+      amount: 10_000 * args.quantity,
+      subtotal: 10_000 * args.quantity,
+      quantity: args.quantity,
+      price: { id: TEST_PRICE_CONCURRENCY },
+      period: args.billingPeriod,
+      parent: {
+        type: "subscription_item_details" as const,
+        subscription_item_details: { proration: args.proration },
+      },
+    };
+  }
+
   function managedUsagePackUpgradeInvoice(
     fixture: ManagedUsagePackFixture,
     args: {
@@ -3852,6 +3871,157 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [] });
     mockOptionalEnv("STRIPE_SECRET_KEY", "sk_usage_pack_change");
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+  });
+
+  it("routes a concurrency-only invoice on the Plan subscription", async () => {
+    const actor = createOrgFixture();
+    const fixture = await seedManagedUsagePack(
+      [{ userId: actor.userId, usagePackUsd: 20 }],
+      "team",
+      actor,
+    );
+    const quantity = 10;
+    const invoiceId = `in_${randomUUID()}`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        fixture,
+        new Map([
+          [TEST_PRICE_USAGE_PACK_20, 1],
+          [TEST_PRICE_CONCURRENCY, quantity],
+        ]),
+      ),
+    );
+    const metadata = managedUsagePackMetadata(fixture);
+
+    await postManagedUsagePackEvent("invoice.paid", {
+      id: invoiceId,
+      customer: fixture.customerId,
+      metadata,
+      status: "paid",
+      parent: {
+        subscription_details: {
+          subscription: fixture.subscriptionId,
+          metadata,
+        },
+      },
+      lines: {
+        has_more: false,
+        data: [
+          managedConcurrencyInvoiceLine({
+            quantity,
+            billingPeriod: fixture.billingPeriod,
+            proration: true,
+          }),
+        ],
+      },
+    });
+
+    const status = await readBillingStatus(fixture);
+    expect(status.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({
+        id: fixture.subscriptionId,
+        quantity,
+        currentPeriodEnd: new Date(
+          fixture.billingPeriod.end * 1000,
+        ).toISOString(),
+      }),
+    ]);
+    const usagePackState = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(usagePackState.fulfillmentInvoiceIds).not.toContain(invoiceId);
+  });
+
+  it("idempotently processes usage pack and concurrency from one renewal invoice", async () => {
+    const actor = createOrgFixture();
+    const fixture = await seedManagedUsagePack(
+      [{ userId: actor.userId, usagePackUsd: 20 }],
+      "team",
+      actor,
+    );
+    const quantity = 6;
+    const renewalPeriod = {
+      start: fixture.billingPeriod.end,
+      end: fixture.billingPeriod.end + 30 * 86_400,
+    };
+    mockNow(new Date(renewalPeriod.start * 1000 + 1000));
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        fixture,
+        new Map([
+          [TEST_PRICE_USAGE_PACK_20, 1],
+          [TEST_PRICE_CONCURRENCY, quantity],
+        ]),
+        renewalPeriod,
+      ),
+    );
+    const invoiceId = `in_${randomUUID()}`;
+    const usagePackInvoice = managedUsagePackInvoice(fixture, {
+      invoiceId,
+      quantities: new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      billingPeriod: renewalPeriod,
+    });
+    const invoice = {
+      ...usagePackInvoice,
+      lines: {
+        ...usagePackInvoice.lines,
+        data: [
+          ...usagePackInvoice.lines.data,
+          managedConcurrencyInvoiceLine({
+            quantity,
+            billingPeriod: renewalPeriod,
+            proration: false,
+          }),
+        ],
+      },
+    };
+
+    await postManagedUsagePackEvent("invoice.paid", invoice);
+
+    const firstUsagePackState = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(firstUsagePackState.fulfillmentInvoiceIds).toContain(invoiceId);
+    expect(firstUsagePackState.allocations).toContainEqual(
+      expect.objectContaining({
+        userId: actor.userId,
+        status: "active",
+        currentPeriodStart: new Date(renewalPeriod.start * 1000).toISOString(),
+        currentPeriodEnd: new Date(renewalPeriod.end * 1000).toISOString(),
+      }),
+    );
+    const firstStatus = await readBillingStatus(fixture);
+    expect(firstStatus.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({
+        id: fixture.subscriptionId,
+        quantity,
+        currentPeriodEnd: new Date(renewalPeriod.end * 1000).toISOString(),
+      }),
+    ]);
+
+    await postManagedUsagePackEvent("invoice.paid", invoice);
+
+    const replayedUsagePackState = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(
+      replayedUsagePackState.fulfillmentInvoiceIds.filter((id) => {
+        return id === invoiceId;
+      }),
+    ).toHaveLength(1);
+    expect(replayedUsagePackState.grants).toStrictEqual(
+      firstUsagePackState.grants,
+    );
+    const replayedStatus = await readBillingStatus(fixture);
+    expect(replayedStatus.concurrencySubscriptions).toStrictEqual(
+      firstStatus.concurrencySubscriptions,
+    );
   });
 
   it("keeps invitation state safe before entitlement migrations", async () => {
