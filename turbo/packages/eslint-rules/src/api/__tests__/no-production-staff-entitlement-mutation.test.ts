@@ -103,6 +103,18 @@ ruleTester.run(
         `,
         errors: [{ messageId: "productionStaffMutation" }],
       },
+      {
+        name: "options-object wrapper propagation is rejected",
+        code: `
+          import { upsertOrgPlanEntitlementFixture } from "${fixtureModule}";
+          const STAFF_ORG_ID = "${staffOrgId}";
+          async function writeEntitlement(options) {
+            await upsertOrgPlanEntitlementFixture(options);
+          }
+          await writeEntitlement({ orgId: STAFF_ORG_ID });
+        `,
+        errors: [{ messageId: "productionStaffMutation" }],
+      },
     ],
   },
 );

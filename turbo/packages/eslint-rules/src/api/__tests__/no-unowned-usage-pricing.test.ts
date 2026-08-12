@@ -221,5 +221,30 @@ ruleTester.run("no-unowned-usage-pricing", noUnownedUsagePricing, {
       `,
       errors: [{ messageId: "unownedPricing" }],
     },
+    {
+      name: "mixed fixture-object wrapper calls are fail-closed",
+      code: `
+        import { createUsagePricingFixture, upsertUsagePricingRows } from "${fixtureModule}";
+        function identity(pricing) { return pricing; }
+        const fixture = await createUsagePricingFixture({ configured: [{ kind: "generation", provider: "google-maps", category: "maps", unitPrice: 1, unitSize: 1 }] });
+        const owned = identity(fixture.resolution[0]);
+        identity({ lookupProvider: "google-maps" });
+        await upsertUsagePricingRows([{ kind: "generation", provider: owned.lookupProvider, category: "maps", unitPrice: 1, unitSize: 1 }]);
+      `,
+      errors: [{ messageId: "unownedPricing" }],
+    },
+    {
+      name: "mixed run-object wrapper calls are fail-closed",
+      code: `
+        import { createDirectRunFixture } from "../../../test-fixtures/agent-runs";
+        import { seedUsagePricingRows } from "${fixtureModule}";
+        function identity(run) { return run; }
+        const fixture = await createDirectRunFixture();
+        const owned = identity(fixture);
+        identity({ runId: "google-maps" });
+        await seedUsagePricingRows([{ kind: "generation", provider: owned.runId, category: "maps", unitPrice: 1, unitSize: 1 }]);
+      `,
+      errors: [{ messageId: "unownedPricing" }],
+    },
   ],
 });

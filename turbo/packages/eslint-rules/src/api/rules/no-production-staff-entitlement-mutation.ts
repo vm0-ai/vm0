@@ -164,6 +164,45 @@ export const noProductionStaffEntitlementMutation = createRule({
       });
     }
 
+    function objectPropertyResolvesToStaff(
+      expression: TSESTree.Expression,
+      name: string,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      const property = expressionProperty(current, name, seen);
+      if (property) {
+        return isStaffOrgId(property, nextSeen);
+      }
+      if (current.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const definition = variableInScope(context.sourceCode, current)?.defs[0];
+      if (definition?.type !== "Parameter") {
+        return false;
+      }
+      const owner = enclosingFunction(current);
+      if (!owner) {
+        return false;
+      }
+      const index = parameterIndex(owner, current.name);
+      if (index < 0) {
+        return false;
+      }
+      return callsTo(owner).some((call) => {
+        const argument = call.arguments[index];
+        return Boolean(
+          argument &&
+          argument.type !== AST_NODE_TYPES.SpreadElement &&
+          objectPropertyResolvesToStaff(argument, name, nextSeen),
+        );
+      });
+    }
+
     function isStaffOrgId(
       expression: TSESTree.Expression,
       seen: ReadonlySet<TSESTree.Node> = new Set(),
@@ -312,8 +351,7 @@ export const noProductionStaffEntitlementMutation = createRule({
       }
       let mutatesStaff = false;
       if (kind === "upsert") {
-        const orgId = expressionProperty(first, "orgId", new Set());
-        mutatesStaff = orgId ? isStaffOrgId(orgId) : false;
+        mutatesStaff = objectPropertyResolvesToStaff(first, "orgId");
       } else if (kind === "delete") {
         mutatesStaff = isStaffOrgId(first);
       } else {

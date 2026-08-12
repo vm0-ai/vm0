@@ -67,9 +67,6 @@ const UNAUTHORIZED_HELPERS = new Set([
   "expectGlobalSweepMissingAuth",
   "expectGlobalSweepWrongAuth",
 ]);
-const REMOVED_INPUT_HELPER = "expectGlobalSweepRemovedInputRejected";
-const REMOVED_MODEL_STATS_WINDOW_PATH =
-  "/api/cron/aggregate-model-stats?hours=24";
 
 function normalizedFilename(filename: string): string {
   return filename.replaceAll("\\", "/");
@@ -146,13 +143,8 @@ function isApprovedHarnessReference(
     return false;
   }
   const path = staticString(pathArgument);
-  if (UNAUTHORIZED_HELPERS.has(helper.importedName)) {
-    return path === boundary.path;
-  }
   return (
-    helper.importedName === REMOVED_INPUT_HELPER &&
-    boundary.exportName === "modelStatsRoutes" &&
-    path === REMOVED_MODEL_STATS_WINDOW_PATH
+    UNAUTHORIZED_HELPERS.has(helper.importedName) && path === boundary.path
   );
 }
 

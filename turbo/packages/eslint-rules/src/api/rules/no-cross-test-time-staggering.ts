@@ -100,13 +100,23 @@ function declarationIsSuiteShared(
 }
 
 function isMutationReference(identifier: TSESTree.Identifier): boolean {
-  const parent = identifier.parent;
-  if (parent.type === AST_NODE_TYPES.UpdateExpression) {
+  let target: TSESTree.Node = identifier;
+  while (
+    target.parent.type === AST_NODE_TYPES.MemberExpression &&
+    target.parent.object === target
+  ) {
+    target = target.parent;
+  }
+  const parent = target.parent;
+  if (
+    parent.type === AST_NODE_TYPES.UpdateExpression &&
+    parent.argument === target
+  ) {
     return true;
   }
   return (
     parent.type === AST_NODE_TYPES.AssignmentExpression &&
-    parent.left === identifier
+    parent.left === target
   );
 }
 
@@ -152,7 +162,6 @@ export const noCrossTestTimeStaggering = createRule({
         !variable ||
         definition?.node.type !== AST_NODE_TYPES.VariableDeclarator ||
         definition.node.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
-        definition.node.parent.kind === "const" ||
         !declarationIsSuiteShared(definition.node, context.sourceCode)
       ) {
         return false;
@@ -289,10 +298,29 @@ export const noCrossTestTimeStaggering = createRule({
     function isTimeCall(node: TSESTree.CallExpression): boolean {
       if (node.callee.type === AST_NODE_TYPES.Identifier) {
         const imported = importReference(context.sourceCode, node.callee);
-        return Boolean(
+        if (
           imported &&
           imported.source.endsWith("/lib/time") &&
-          TIME_FUNCTIONS.has(imported.importedName),
+          TIME_FUNCTIONS.has(imported.importedName)
+        ) {
+          return true;
+        }
+        const definition = variableInScope(context.sourceCode, node.callee)
+          ?.defs[0];
+        return Boolean(
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init?.type === AST_NODE_TYPES.Identifier &&
+          (() => {
+            const source = importReference(
+              context.sourceCode,
+              definition.node.init,
+            );
+            return Boolean(
+              source &&
+              source.source.endsWith("/lib/time") &&
+              TIME_FUNCTIONS.has(source.importedName),
+            );
+          })(),
         );
       }
       return (

@@ -53,19 +53,6 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
       `,
     },
     {
-      name: "removed model-stats input uses a fixed no-auth rejection helper",
-      filename: harness,
-      code: `
-        import { modelStatsRoutes } from "../model-stats";
-        import { expectGlobalSweepRemovedInputRejected } from "./helpers/global-sweep-contract";
-        await expectGlobalSweepRemovedInputRejected(
-          context,
-          modelStatsRoutes,
-          "/api/cron/aggregate-model-stats?hours=24",
-        );
-      `,
-    },
-    {
       name: "automation correctness uses the scoped automation-id executor",
       filename: behaviorTest,
       code: `

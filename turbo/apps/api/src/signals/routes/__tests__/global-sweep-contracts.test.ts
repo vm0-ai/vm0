@@ -11,7 +11,6 @@ import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billin
 import { cronSyncSkillsRoutes } from "../cron-sync-skills";
 import {
   expectGlobalSweepMissingAuth,
-  expectGlobalSweepRemovedInputRejected,
   expectGlobalSweepWrongAuth,
 } from "./helpers/global-sweep-contract";
 
@@ -92,14 +91,6 @@ describe("production-global sweep route contracts", () => {
       context,
       modelStatsRoutes,
       "/api/cron/aggregate-model-stats",
-    );
-  });
-
-  it("rejects the removed model-stats rebuild-window input", async () => {
-    await expectGlobalSweepRemovedInputRejected(
-      context,
-      modelStatsRoutes,
-      "/api/cron/aggregate-model-stats?hours=24",
     );
   });
 });

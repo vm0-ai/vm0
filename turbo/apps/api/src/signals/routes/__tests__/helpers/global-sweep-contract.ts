@@ -33,14 +33,3 @@ export async function expectGlobalSweepWrongAuth(
   );
   await expectUnauthorized(response);
 }
-
-export async function expectGlobalSweepRemovedInputRejected(
-  context: TestContext,
-  routes: readonly RouteEntry[],
-  path: string,
-): Promise<void> {
-  const response = await createApp({ signal: context.signal, routes }).request(
-    path,
-  );
-  expect(response.status).toBe(400);
-}

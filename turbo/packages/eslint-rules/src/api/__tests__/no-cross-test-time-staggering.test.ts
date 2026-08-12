@@ -115,5 +115,36 @@ ruleTester.run("no-cross-test-time-staggering", noCrossTestTimeStaggering, {
       `,
       errors: [{ messageId: "sharedTime" }],
     },
+    {
+      name: "module-scoped mutable object member is rejected",
+      code: `
+        import { mockNow } from "../../../lib/time";
+        const clock = { index: 0 };
+        beforeEach(() => mockNow(1_000 + clock.index++ * 60_000));
+      `,
+      errors: [{ messageId: "sharedTime" }],
+    },
+    {
+      name: "describe-scoped mutable object member is rejected",
+      code: `
+        import { mockNow } from "../../../lib/time";
+        describe("cache", () => {
+          const clock = { index: 0 };
+          beforeEach(() => mockNow(1_000 + clock.index * 60_000));
+          afterEach(() => { clock.index += 1; });
+        });
+      `,
+      errors: [{ messageId: "sharedTime" }],
+    },
+    {
+      name: "local alias of mockNow remains rejected",
+      code: `
+        import { mockNow } from "../../../lib/time";
+        const setClock = mockNow;
+        let index = 0;
+        beforeEach(() => setClock(1_000 + index++ * 60_000));
+      `,
+      errors: [{ messageId: "sharedTime" }],
+    },
   ],
 });

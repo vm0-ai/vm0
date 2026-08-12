@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type CronCleanupSandboxesResponse } from "@vm0/api-contracts/contracts/cron";
+import type { CronCleanupSandboxesResponse } from "@vm0/api-contracts/contracts/cron";
 import {
   triggerSourceSchema,
   type TriggerSource,

@@ -418,14 +418,18 @@ export const noUnownedUsagePricing = createRule({
             return false;
           }
           const index = parameterIndex(owner, current.name);
-          return callsTo(owner).some((call) => {
-            const argument = call.arguments[index];
-            return Boolean(
-              argument &&
-              argument.type !== AST_NODE_TYPES.SpreadElement &&
-              isUsagePricingFixtureSource(argument, nextSeen),
-            );
-          });
+          const callSites = callsTo(owner);
+          return (
+            callSites.length > 0 &&
+            callSites.every((call) => {
+              const argument = call.arguments[index];
+              return Boolean(
+                argument &&
+                argument.type !== AST_NODE_TYPES.SpreadElement &&
+                isUsagePricingFixtureSource(argument, nextSeen),
+              );
+            })
+          );
         }
         return false;
       }
@@ -494,14 +498,18 @@ export const noUnownedUsagePricing = createRule({
             return false;
           }
           const index = parameterIndex(owner, current.name);
-          return callsTo(owner).some((call) => {
-            const argument = call.arguments[index];
-            return Boolean(
-              argument &&
-              argument.type !== AST_NODE_TYPES.SpreadElement &&
-              isRunFixtureSource(argument, nextSeen),
-            );
-          });
+          const callSites = callsTo(owner);
+          return (
+            callSites.length > 0 &&
+            callSites.every((call) => {
+              const argument = call.arguments[index];
+              return Boolean(
+                argument &&
+                argument.type !== AST_NODE_TYPES.SpreadElement &&
+                isRunFixtureSource(argument, nextSeen),
+              );
+            })
+          );
         }
         return false;
       }
