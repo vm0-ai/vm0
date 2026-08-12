@@ -3808,6 +3808,14 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+            : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+            headers+=(
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+            )
+          fi
 
           provider_payload=$(jq -nc \
             --arg secret "$OPENAI_API_KEY" \
@@ -3858,6 +3866,8 @@ jobs:
             >/dev/null
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
+          CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap real Claude account
         shell: bash
