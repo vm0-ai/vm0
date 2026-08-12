@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.71.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.70.0...guest-agent-v0.71.0) (2026-08-12)
+
+
+### Features
+
+* **protocol:** accept okou environment names and token scope ([#26505](https://github.com/vm0-ai/vm0/issues/26505)) ([6d4b0c7](https://github.com/vm0-ai/vm0/commit/6d4b0c7b08179e5d816af6d53208248bf79d3cd4))
+
 ## [0.70.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.69.1...guest-agent-v0.70.0) (2026-08-12)
 
 
