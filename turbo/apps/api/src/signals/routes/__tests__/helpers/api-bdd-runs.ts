@@ -28,6 +28,7 @@ import {
   cronReconcileBillingEntitlementsContract,
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
+import { testBillingReconciliationStateContract } from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
 import {
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
@@ -80,6 +81,7 @@ import {
   zeroRunFixtureContract,
   zeroRunFixtureRoutes,
 } from "../../test-zero-run-fixture";
+import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -148,7 +150,6 @@ interface ClerkOrganizationMembership {
 
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
 const runRoutes = [
   ...cliAuthRoutes,
@@ -218,10 +219,6 @@ function authenticate(
     },
   );
   return { authorization: "Bearer clerk-session" };
-}
-
-function cronHeaders(valid: boolean): AuthHeaders {
-  return valid ? { authorization: CRON_AUTHORIZATION } : {};
 }
 
 function runnerHeaders(valid: boolean): AuthHeaders {
@@ -1251,7 +1248,7 @@ export function createRunsApi(context: TestContext) {
     // This helper only checks auth rejection, so route handlers never scan the
     // shared test database.
     async requestSharedCronRoutesWithoutAuth() {
-      const headers = cronHeaders(false);
+      const headers: AuthHeaders = {};
       const processUsageEvents = await accept(
         runApp(context)(cronProcessUsageEventsContract).process({
           headers,
@@ -1271,16 +1268,25 @@ export function createRunsApi(context: TestContext) {
       };
     },
 
-    // Valid reconciliation coverage belongs in its owner file: the sweep
-    // retrieves every org needing reconciliation, and stale orgs created by the
-    // BILL-01 chains in run-lifecycle.bdd.test.ts must only be swept by that
-    // file's own Stripe mocks.
-    async reconcileBillingCron(validAuth: boolean) {
+    async requestBillingReconciliationCronWithoutAuth() {
       return await accept(
         runApp(context)(cronReconcileBillingEntitlementsContract).reconcile({
-          headers: cronHeaders(validAuth),
+          headers: {},
         }),
-        [200, 401],
+        [401],
+      );
+    },
+
+    async reconcileBillingOrganizations(orgIds: readonly string[]) {
+      const client = setupAppWithRoutes({
+        context,
+        routes: testBillingReconciliationStateRoutes,
+      })(testBillingReconciliationStateContract);
+      return await accept(
+        client.reconcile({
+          body: { orgIds: [...orgIds] },
+        }),
+        [200],
       );
     },
   };
