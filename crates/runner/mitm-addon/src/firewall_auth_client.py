@@ -63,7 +63,13 @@ class FirewallAuthDeadlineExceededError(Exception):
 
 
 class FirewallAuthApiError(Exception):
-    """Raised when /firewall/auth returns a structured error envelope."""
+    """Raised for general /firewall/auth errors recognized by the runner.
+
+    The recognized codes are ``FORBIDDEN``, ``TOKEN_REFRESH_FAILED``, and
+    ``TOKEN_ACCESS_RESOLUTION_FAILED``. A string-list ``connectors`` value is
+    preserved. The wire ``failureReason`` is preserved as ``failure_reason``
+    only for ``upstream_provider`` and ``reconnect_required``.
+    """
 
     def __init__(
         self,
@@ -731,6 +737,19 @@ def _parse_firewall_auth_success(
 
 
 def _raise_firewall_auth_http_error(response: _HttpResponse, url: str) -> None:
+    """Raise the mapped runner exception for a non-success auth response.
+
+    ``CONNECTOR_NOT_CONFIGURED`` and ``INSUFFICIENT_CREDITS`` map to their
+    specialized exceptions. Recognized general codes map to
+    ``FirewallAuthApiError``. Responses that match neither path, including
+    envelopes without a usable code and otherwise unknown codes, retain the
+    original ``urllib.error.HTTPError``.
+
+    Preserving a new endpoint error requires an intentional specialized branch
+    or ``_STRUCTURED_FIREWALL_AUTH_ERROR_CODES`` update plus focused client and
+    handling tests. Propagating a new ``failureReason`` also requires updating
+    ``_FIREWALL_AUTH_FAILURE_REASONS`` and those tests.
+    """
     error = urllib.error.HTTPError(
         url,
         response.status,
