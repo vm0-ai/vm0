@@ -14,6 +14,21 @@ type FunctionNode =
   | TSESTree.FunctionDeclaration
   | TSESTree.FunctionExpression;
 
+interface ObjectBinding {
+  readonly defaultValue: TSESTree.Expression | null;
+  readonly property: string | null;
+}
+
+interface ParameterBinding extends ObjectBinding {
+  readonly index: number;
+  readonly parameterDefault: TSESTree.Expression | null;
+}
+
+interface ParameterSource {
+  readonly binding: ParameterBinding;
+  readonly source: TSESTree.Expression;
+}
+
 interface GlobalSweepBoundary {
   readonly exportName: string;
   readonly moduleName: string;
@@ -79,6 +94,15 @@ const UNAUTHORIZED_HELPERS = new Set([
   "expectGlobalSweepWrongAuth",
 ]);
 const APP_FACTORIES = new Set(["createApp", "createAppWithRoutes", "setupApp"]);
+
+function isCanonicalAppFactoryModule(source: string): boolean {
+  const normalizedSource = source.replace(/\.(?:[cm]?[jt]s)$/u, "");
+  return (
+    normalizedSource.endsWith("/app-factory") ||
+    normalizedSource.endsWith("/app-factory-core") ||
+    normalizedSource.endsWith("/__tests__/test-helpers")
+  );
+}
 
 function normalizedFilename(filename: string): string {
   return filename.replaceAll("\\", "/");
@@ -282,39 +306,103 @@ export const noGlobalSweepTestRoutes = createRule({
       return null;
     }
 
-    function parameterIndex(node: FunctionNode, name: string): number {
-      return node.params.findIndex((rawParameter) => {
+    function objectBinding(
+      pattern: TSESTree.ObjectPattern,
+      name: string,
+    ): ObjectBinding | null {
+      for (const entry of pattern.properties) {
+        if (entry.type !== AST_NODE_TYPES.Property) {
+          continue;
+        }
+        if (
+          entry.value.type === AST_NODE_TYPES.Identifier &&
+          entry.value.name === name
+        ) {
+          return { defaultValue: null, property: propertyName(entry) };
+        }
+        if (
+          entry.value.type === AST_NODE_TYPES.AssignmentPattern &&
+          entry.value.left.type === AST_NODE_TYPES.Identifier &&
+          entry.value.left.name === name
+        ) {
+          return {
+            defaultValue: entry.value.right,
+            property: propertyName(entry),
+          };
+        }
+      }
+      return null;
+    }
+
+    function parameterBinding(
+      node: FunctionNode,
+      name: string,
+    ): ParameterBinding | null {
+      for (const [index, rawParameter] of node.params.entries()) {
         const parameter =
           rawParameter.type === AST_NODE_TYPES.AssignmentPattern
             ? rawParameter.left
             : rawParameter;
-        return (
+        const parameterDefault =
+          rawParameter.type === AST_NODE_TYPES.AssignmentPattern
+            ? rawParameter.right
+            : null;
+        if (
           parameter.type === AST_NODE_TYPES.Identifier &&
           parameter.name === name
-        );
-      });
+        ) {
+          return {
+            defaultValue: null,
+            index,
+            parameterDefault,
+            property: null,
+          };
+        }
+        if (parameter.type !== AST_NODE_TYPES.ObjectPattern) {
+          continue;
+        }
+        const binding = objectBinding(parameter, name);
+        if (binding) {
+          return { ...binding, index, parameterDefault };
+        }
+      }
+      return null;
     }
 
-    function argumentsForParameter(
+    function parameterSources(
       identifier: TSESTree.Identifier,
-    ): readonly TSESTree.Expression[] {
+    ): readonly ParameterSource[] {
       const owner = parameterOwner(identifier);
       if (!owner) {
         return [];
       }
-      const index = parameterIndex(owner, identifier.name);
-      if (index < 0) {
+      const binding = parameterBinding(owner, identifier.name);
+      if (!binding) {
         return [];
       }
       return calls.flatMap((call) => {
         if (localFunctionForCallee(call.callee) !== owner) {
           return [];
         }
-        const argument = call.arguments[index];
-        return argument && argument.type !== AST_NODE_TYPES.SpreadElement
-          ? [argument]
-          : [];
+        const argument = call.arguments[binding.index];
+        const source =
+          argument && argument.type !== AST_NODE_TYPES.SpreadElement
+            ? argument
+            : binding.parameterDefault;
+        return source ? [{ binding, source }] : [];
       });
+    }
+
+    function aggregateObjectBinding(
+      source: TSESTree.Expression,
+      defaultValue: TSESTree.Expression | null,
+      seen: ReadonlySet<TSESTree.Node>,
+    ): boolean {
+      const resolution = aggregateRoutesOption(source, seen);
+      if (resolution !== null) {
+        return resolution;
+      }
+      return Boolean(defaultValue && isAggregateRoutes(defaultValue, seen));
     }
 
     function isAggregateRoutes(
@@ -341,25 +429,24 @@ export const noGlobalSweepTestRoutes = createRule({
           definition.node.init &&
           definition.node.id.type === AST_NODE_TYPES.ObjectPattern
         ) {
-          const destructured = definition.node.id.properties.find((entry) => {
-            return (
-              entry.type === AST_NODE_TYPES.Property &&
-              entry.value.type === AST_NODE_TYPES.Identifier &&
-              entry.value.name === current.name
-            );
-          });
-          if (
-            destructured?.type === AST_NODE_TYPES.Property &&
-            propertyName(destructured) === "routes"
-          ) {
-            return (
-              aggregateRoutesOption(definition.node.init, nextSeen) === true
+          const binding = objectBinding(definition.node.id, current.name);
+          if (binding?.property === "routes") {
+            return aggregateObjectBinding(
+              definition.node.init,
+              binding.defaultValue,
+              nextSeen,
             );
           }
         }
         if (definition?.type === "Parameter") {
-          return argumentsForParameter(current).some((argument) => {
-            return isAggregateRoutes(argument, nextSeen);
+          return parameterSources(current).some(({ binding, source }) => {
+            if (binding.property === null) {
+              return isAggregateRoutes(source, nextSeen);
+            }
+            return (
+              binding.property === "routes" &&
+              aggregateObjectBinding(source, binding.defaultValue, nextSeen)
+            );
           });
         }
         return Boolean(
@@ -419,9 +506,11 @@ export const noGlobalSweepTestRoutes = createRule({
           return aggregateRoutesOption(definition.node.init, nextSeen);
         }
         if (definition?.type === "Parameter") {
-          const resolutions = argumentsForParameter(current).map((argument) => {
-            return aggregateRoutesOption(argument, nextSeen);
-          });
+          const resolutions = parameterSources(current)
+            .filter(({ binding }) => binding.property === null)
+            .map(({ source }) => {
+              return aggregateRoutesOption(source, nextSeen);
+            });
           if (resolutions.some((resolution) => resolution === true)) {
             return true;
           }
@@ -456,17 +545,50 @@ export const noGlobalSweepTestRoutes = createRule({
       return null;
     }
 
+    function isAppFactoryNamespace(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current) || current.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      const imported = importReference(context.sourceCode, current);
+      if (
+        imported?.importedName === "*" &&
+        isCanonicalAppFactoryModule(imported.source)
+      ) {
+        return true;
+      }
+      const definition = variableInScope(context.sourceCode, current)?.defs[0];
+      return Boolean(
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init &&
+        isAppFactoryNamespace(definition.node.init, nextSeen),
+      );
+    }
+
     function isAppFactory(
       expression: TSESTree.CallExpression["callee"],
       seen: ReadonlySet<TSESTree.Node> = new Set(),
     ): boolean {
-      if (
-        seen.has(expression) ||
-        expression.type !== AST_NODE_TYPES.Identifier
-      ) {
+      if (seen.has(expression)) {
         return false;
       }
       const nextSeen = new Set(seen).add(expression);
+      if (expression.type === AST_NODE_TYPES.MemberExpression) {
+        const name = memberName(expression);
+        return Boolean(
+          name &&
+          APP_FACTORIES.has(name) &&
+          expression.object.type !== AST_NODE_TYPES.Super &&
+          isAppFactoryNamespace(expression.object, nextSeen),
+        );
+      }
+      if (expression.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
       const imported = importReference(context.sourceCode, expression);
       if (
         (imported && APP_FACTORIES.has(imported.importedName)) ||
@@ -476,6 +598,20 @@ export const noGlobalSweepTestRoutes = createRule({
       }
       const definition = variableInScope(context.sourceCode, expression)
         ?.defs[0];
+      if (
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init &&
+        definition.node.id.type === AST_NODE_TYPES.ObjectPattern
+      ) {
+        const binding = objectBinding(definition.node.id, expression.name);
+        if (
+          binding?.property &&
+          APP_FACTORIES.has(binding.property) &&
+          isAppFactoryNamespace(definition.node.init, nextSeen)
+        ) {
+          return true;
+        }
+      }
       return Boolean(
         definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
         definition.node.init &&

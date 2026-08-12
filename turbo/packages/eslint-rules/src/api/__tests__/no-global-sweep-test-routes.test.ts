@@ -87,8 +87,117 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
         setupApp({ routes: modelStatsPublicRoutes });
       `,
     },
+    {
+      name: "aggregate route member projection may remain metadata only",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        const options = { routes: ROUTES };
+        expect(options.routes).toHaveLength(42);
+      `,
+    },
+    {
+      name: "aggregate route destructuring may remain metadata only",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        const options = { routes: ROUTES };
+        const { routes } = options;
+        expect(routes.map(({ route }) => route.method)).toContain("GET");
+      `,
+    },
+    {
+      name: "a later scoped route property overrides aggregate options",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { createApp } from "../../../app-factory";
+        import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+        const aggregateOptions = { signal, routes: ROUTES };
+        createApp({
+          ...aggregateOptions,
+          routes: testWorkflowAutomationExecutionRoutes,
+        });
+      `,
+    },
   ],
   invalid: [
+    {
+      name: "defaulted shorthand route destructuring remains rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { createApp } from "../../../app-factory";
+        import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+        const options = { routes: ROUTES };
+        const { routes = testWorkflowAutomationExecutionRoutes } = options;
+        createApp({ routes });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "defaulted renamed route destructuring remains rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { setupApp } from "../../../__tests__/test-helpers";
+        import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+        const options = { routes: ROUTES };
+        const { routes: mountedRoutes = testWorkflowAutomationExecutionRoutes } = options;
+        setupApp({ routes: mountedRoutes })(contract);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "destructured helper route parameters remain rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { createApp } from "../../../app-factory";
+        function mount({ routes }) {
+          return createApp({ routes });
+        }
+        mount({ routes: ROUTES });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "defaulted destructured helper parameters remain rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { createApp } from "../../../app-factory";
+        import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+        function mountWithDefault(
+          { routes } = { routes: testWorkflowAutomationExecutionRoutes },
+        ) {
+          return createApp({ routes });
+        }
+        mountWithDefault({ routes: ROUTES });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "canonical namespace app factory members remain rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        appFactory.createApp({ routes: ROUTES });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "canonical namespace app factory destructuring remains rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        const { createApp: mountFactory } = appFactory;
+        mountFactory({ routes: ROUTES });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
     {
       name: "aggregate routes cannot flow through a local member projection",
       filename: behaviorTest,
