@@ -81,7 +81,7 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     trigger:
       'run run_123 in watched chat thread thread_123 finished with status "completed".',
     notes: [
-      "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `okou logs <runId>` returns the transcript.",
+      'Not included below: the finished run\'s full transcript, and its final output beyond the excerpt. `okou search "<runId>" --source agent-session` prints both local session-file locations for direct analysis.',
     ],
     policy: eventPolicy,
   },

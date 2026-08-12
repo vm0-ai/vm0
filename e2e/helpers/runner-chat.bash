@@ -328,38 +328,6 @@ _wait_for_runner_chat_steer_consumed() {
     return 1
 }
 
-_wait_for_runner_codex_events() {
-    local run_id="$1"
-    local expected_output="${2:-}"
-    local timeout="${3:-30}"
-    local interval="${RUNNER_EVENT_POLL_INTERVAL_SECONDS:-2}"
-    local start=$SECONDS
-    local response=""
-
-    while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl "/api/okou/runs/$run_id/telemetry/agent?limit=100&order=asc" 2>&1)"; then
-            if jq -e --arg expectedOutput "$expected_output" '
-                [.events[]?.eventData |
-                    if type == "string" then . else tojson end
-                ] as $payloads |
-                .framework == "codex" and
-                any($payloads[]; contains("thread.started")) and
-                any($payloads[]; contains("turn.completed")) and
-                ($expectedOutput == "" or
-                    any($payloads[]; contains($expectedOutput)))
-            ' <<< "$response" >/dev/null; then
-                printf '%s\n' "$response"
-                return 0
-            fi
-        fi
-        sleep "$interval"
-    done
-
-    echo "# Timed out (${timeout}s) waiting for Codex events for run $run_id" >&2
-    echo "# Last event response: $response" >&2
-    return 1
-}
-
 runner_chat_steer() {
     local agent_id="$1"
     local initial_prompt="$2"
@@ -484,7 +452,7 @@ _runner_chat_execute() {
     local prompt="$2"
     local thread_id="$3"
     local selected_model="$4"
-    local send_response run_id resolved_thread_id run_response events_response
+    local send_response run_id resolved_thread_id run_response chat_output
 
     send_response="$(runner_chat_send \
         "$agent_id" \
@@ -503,27 +471,25 @@ _runner_chat_execute() {
         return 1
     fi
 
-    _wait_for_runner_chat_output \
+    chat_output="$(_wait_for_runner_chat_completion \
         "$resolved_thread_id" \
-        "$run_id" \
-        "$prompt" || return 1
-    events_response="$(_wait_for_runner_codex_events "$run_id" "$prompt")" || return 1
+        "$run_id")" || return 1
+    if [[ "$chat_output" != *"$prompt"* ]]; then
+        echo "# Completed chat output did not contain ${prompt@Q}: $chat_output" >&2
+        return 1
+    fi
 
     jq -cn \
         --arg runId "$run_id" \
         --arg threadId "$resolved_thread_id" \
         --arg sessionId "$(jq -er '.result.agentSessionId' <<< "$run_response")" \
-        --arg framework "$(jq -er '.framework' <<< "$events_response")" \
         '{
             runId: $runId,
             threadId: $threadId,
             sessionId: $sessionId,
-            framework: $framework,
             status: "completed"
         }'
-    jq -r '.events[].eventData |
-        if type == "string" then . else tojson end
-    ' <<< "$events_response"
+    printf '%s\n' "$chat_output"
 }
 
 runner_chat_start() {

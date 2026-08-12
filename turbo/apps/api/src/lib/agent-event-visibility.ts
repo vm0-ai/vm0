@@ -35,6 +35,7 @@ type QueryAxiomFn = <T>(
 ) => Promise<readonly T[]>;
 
 interface WaitOptions {
+  readonly sinceTime?: number;
   readonly timeoutMs?: number;
   readonly intervalMs?: number;
   readonly batchSize?: number;
@@ -110,9 +111,15 @@ function buildVisibilityQuery(
   runId: string,
   visibleThrough: number,
   batchSize: number,
+  sinceTime: number | undefined,
 ): string {
+  const timeFilter =
+    sinceTime === undefined
+      ? ""
+      : `| where _time >= datetime("${new Date(sinceTime).toISOString()}")\n`;
   return `['${dataset}']
 | where runId == "${escapeAplString(runId)}"
+${timeFilter}
 | where sequenceNumber > ${visibleThrough}
 | project sequenceNumber
 | order by sequenceNumber asc
@@ -153,7 +160,13 @@ async function waitForAgentEventPrefixVisible(
 
   while (nowFn() < deadline) {
     attempts++;
-    const apl = buildVisibilityQuery(dataset, runId, visibleThrough, batchSize);
+    const apl = buildVisibilityQuery(
+      dataset,
+      runId,
+      visibleThrough,
+      batchSize,
+      options.sinceTime,
+    );
 
     // A query failure here is virtually guaranteed to repeat against the
     // events query that follows (same Axiom service, same dataset). Bail

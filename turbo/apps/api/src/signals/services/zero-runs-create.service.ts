@@ -330,7 +330,7 @@ function buildAgentToolsPrompt(args: {
     `You have access to the Okou CLI. Run commands with: \`${okouCliCommand} <command>\``,
     "- Discover available commands: `okou --help`.",
     "- Capability questions: when the user asks what Okou can do, whether Okou can do a category of work, or compares Okou to another assistant, run `okou intro` first. Use its output to synthesize a concise answer in the user's language. Do not paste the intro verbatim.",
-    "- Search agent run logs, web chat messages, or external services via connectors: `okou search --help`.",
+    "- Locate local agent-session files, search web chat messages, or inspect external services via connectors: `okou search --help`.",
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
     "- Manage recurring workflow automations: `okou workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `okou scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
@@ -380,7 +380,6 @@ function buildAgentToolsPrompt(args: {
     "- Inspect yourself: `okou whoami` for identity and permissions, `okou agent view $OKOU_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `okou agent edit --help`.",
     "- Manage workflows with `okou workflow --help`. Create or update a durable workflow with `okou workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`; its `SKILL.md` is synthesized from the name, description, and instruction. `--dir <path>` uploads supplementary files only and must not contain a `SKILL.md` (it is rejected). Local changes or newly-created workflow folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs.",
-    "- Report issues to the dev team: `okou developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }
 

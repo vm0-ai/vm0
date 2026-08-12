@@ -95,7 +95,7 @@ function buildCurrentThreadContext(
     "",
     "Reading this thread, each through OKOU_TOKEN:",
     ...historyCommands,
-    "- `okou logs <run-id> --all` prints the full event stream of one run in this thread (agent-run:read)",
+    '- `okou search "<query>" --source agent-session` prints both the Claude Code and Codex session-file locations so you can analyze those files directly',
   ].join("\n");
 }
 
@@ -131,7 +131,7 @@ function buildAgentRunSourceContext(
     "Reading the source, each through OKOU_TOKEN:",
     historyCommand,
     `- \`okou chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
-    `- \`okou logs ${source.runId} --all\` prints the full event stream of the run that sent this message (agent-run:read)`,
+    `- \`okou search "${source.runId}" --source agent-session\` prints both the Claude Code and Codex session-file locations so you can analyze those files directly`,
     "",
     `This run's output is appended to this thread, where the user reads it. Nothing carries it back to the source run. \`okou chat send --thread-id ${source.threadId}\` posts a new message into the source thread, which starts a run there.`,
   ].join("\n");
@@ -233,7 +233,7 @@ function buildWebChatPriorRunsContext(
       `- RELATIVE_INDEX: ${relativeIndex}`,
       `- RUN_ID: ${run.runId}`,
       `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: okou logs ${run.runId} --all`,
+      `- AGENT_SESSION_COMMAND: okou search "${run.runId}" --source agent-session`,
       "",
       ...renderedEvents,
     ].join("\n");
@@ -246,7 +246,7 @@ function buildWebChatPriorRunsContext(
     "- Match the tone of the conversation -- casual messages deserve casual replies.",
     "- Only provide technical analysis when explicitly asked a technical question.",
     "- Keep responses proportional to the message length and complexity.",
-    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
+    "- Use the AGENT_SESSION_COMMAND for a run if you need more detailed agent session context.",
     "",
     blocks.join("\n\n"),
     "",

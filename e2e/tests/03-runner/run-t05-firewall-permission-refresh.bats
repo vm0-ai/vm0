@@ -121,7 +121,7 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" ALGOLIA_PERMISSION_ALLOWED
+    run runner_e2e_wait_for_chat_text "$THREAD_ID" "$RUN_ID" ALGOLIA_PERMISSION_ALLOWED
     echo "$output"
     assert_success
 

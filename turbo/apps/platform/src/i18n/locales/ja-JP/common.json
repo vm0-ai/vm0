@@ -3947,40 +3947,6 @@
       "teamDescription": "10 回の並列実行とより多くのクレジットでチームを拡張します。"
     }
   },
-  "reportError": {
-    "description": "この失敗した実行に関する診断情報を開発者チームに送信します。すぐに調査してフォローアップいたします。",
-    "disclosure": {
-      "agentConfiguration": "エージェントの構成",
-      "agentTelemetry": "エージェントのテレメトリと実行ログ",
-      "chatHistory": "チャット履歴とエージェント イベント",
-      "connectedServices": "接続されたサービス (認証情報なし)",
-      "networkLogs": "ネットワークリクエストログ",
-      "runContext": "実行コンテキストと環境",
-      "title": "何が送られるのか"
-    },
-    "documentTitle": "エラーを報告する",
-    "error": {
-      "loadFailed": "実行の詳細をロードできませんでした",
-      "notFailed": "この実行は失敗していないため、報告できません",
-      "title": "エラー",
-      "tryAgain": "もう一度試してください"
-    },
-    "fields": {
-      "description": "説明",
-      "descriptionPlaceholder": "何が起こったのでしょうか？何を期待していましたか？",
-      "title": "タイトル",
-      "titlePlaceholder": "問題の簡単な概要"
-    },
-    "loading": "実行の詳細をロードしています",
-    "send": "レポートの送信",
-    "sending": "送信中...",
-    "success": {
-      "description": "エラーレポートは開発者チームに送信されました。彼らは調査して追跡調査します。",
-      "reference": "参照: {{reference}}",
-      "title": "レポートを送信しました"
-    },
-    "title": "開発者にエラーを報告する"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "アカウントを追加",
