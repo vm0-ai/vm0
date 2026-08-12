@@ -165,7 +165,8 @@ export const agentSessions = pgTable(
  * Stores CLI agent conversation history for checkpoint resumption
  *
  * Session history storage strategy:
- * - New records use cliAgentSessionHistoryHash (R2 blob reference)
+ * - Resumable new records use cliAgentSessionHistoryHash (R2 blob reference)
+ * - Intentionally historyless checkpoints leave both history fields null
  * - Legacy records use cliAgentSessionHistory (TEXT field)
  * - Read logic: use the hash-backed path when present; use TEXT only for
  *   legacy rows that do not have a hash
