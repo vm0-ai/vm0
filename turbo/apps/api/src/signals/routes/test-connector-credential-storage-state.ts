@@ -5,8 +5,6 @@ import {
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -176,37 +174,6 @@ async function readCustomParent(
         .orderBy(asc(variables.name))
     : [];
   signal.throwIfAborted();
-  const legacyValueRows = await db
-    .select({
-      kind: orgCustomConnectorValues.kind,
-      key: orgCustomConnectorValues.key,
-      encryptedValue: orgCustomConnectorValues.encryptedValue,
-    })
-    .from(orgCustomConnectorValues)
-    .where(
-      and(
-        eq(orgCustomConnectorValues.orgId, body.org_id),
-        eq(orgCustomConnectorValues.userId, body.user_id),
-        eq(orgCustomConnectorValues.connectorId, body.custom_connector_id),
-      ),
-    )
-    .orderBy(
-      asc(orgCustomConnectorValues.kind),
-      asc(orgCustomConnectorValues.key),
-    );
-  signal.throwIfAborted();
-  const [legacySecret] = await db
-    .select({ encryptedValue: orgCustomConnectorSecrets.encryptedValue })
-    .from(orgCustomConnectorSecrets)
-    .where(
-      and(
-        eq(orgCustomConnectorSecrets.orgId, body.org_id),
-        eq(orgCustomConnectorSecrets.userId, body.user_id),
-        eq(orgCustomConnectorSecrets.connectorId, body.custom_connector_id),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
   return actionOk({
     connector: connector
       ? {
@@ -229,14 +196,6 @@ async function readCustomParent(
         value: row.value,
       };
     }),
-    legacy_custom_values: legacyValueRows.map((row) => {
-      return {
-        kind: row.kind,
-        key: row.key,
-        encrypted_value: row.encryptedValue,
-      };
-    }),
-    legacy_custom_secret_encrypted_value: legacySecret?.encryptedValue ?? null,
   });
 }
 
@@ -274,31 +233,6 @@ async function deleteCustomCredentialValues(
   body: ConnectorCredentialStorageAction<"delete-custom-credential-values">,
   signal: AbortSignal,
 ) {
-  if (body.storage === "legacy") {
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(orgCustomConnectorValues)
-        .where(
-          and(
-            eq(orgCustomConnectorValues.orgId, body.org_id),
-            eq(orgCustomConnectorValues.userId, body.user_id),
-            eq(orgCustomConnectorValues.connectorId, body.custom_connector_id),
-          ),
-        );
-      await tx
-        .delete(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.orgId, body.org_id),
-            eq(orgCustomConnectorSecrets.userId, body.user_id),
-            eq(orgCustomConnectorSecrets.connectorId, body.custom_connector_id),
-          ),
-        );
-    });
-    signal.throwIfAborted();
-    return actionOk();
-  }
-
   const [connector] = await db
     .select({ id: connectors.id })
     .from(connectors)

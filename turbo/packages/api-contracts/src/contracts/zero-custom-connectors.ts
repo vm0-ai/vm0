@@ -134,7 +134,6 @@ const customConnectorResponseBaseSchema = z.object({
   configuredFieldKeys: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
-  hasSecret: z.boolean(),
 });
 
 export const customConnectorHttpResponseSchema =
@@ -192,41 +191,6 @@ export function isHttpCustomConnectorResponse(
 
 export const customConnectorListResponseSchema = z.object({
   connectors: z.array(customConnectorResponseSchema),
-});
-
-export const customConnectorHttpClientResponseSchema =
-  customConnectorHttpResponseSchema.omit({ hasSecret: true });
-export type CustomConnectorHttpClientResponse = z.infer<
-  typeof customConnectorHttpClientResponseSchema
->;
-
-export const customConnectorMcpClientResponseSchema =
-  customConnectorMcpResponseSchema.omit({ hasSecret: true });
-export type CustomConnectorMcpClientResponse = z.infer<
-  typeof customConnectorMcpClientResponseSchema
->;
-
-const taggedCustomConnectorClientResponseSchema = z.discriminatedUnion("kind", [
-  customConnectorHttpClientResponseSchema,
-  customConnectorMcpClientResponseSchema,
-]);
-
-export const customConnectorClientResponseSchema = z.preprocess(
-  normalizeCustomConnectorResponseKind,
-  taggedCustomConnectorClientResponseSchema,
-);
-export type CustomConnectorClientResponse = z.infer<
-  typeof customConnectorClientResponseSchema
->;
-
-export function isHttpCustomConnectorClientResponse(
-  connector: CustomConnectorClientResponse,
-): connector is CustomConnectorHttpClientResponse {
-  return connector.kind === "http";
-}
-
-export const customConnectorClientListResponseSchema = z.object({
-  connectors: z.array(customConnectorClientResponseSchema),
 });
 
 const customConnectorDefinitionWriteBaseSchema = z.object({
@@ -299,10 +263,6 @@ export type UpdateCustomConnectorBody = z.infer<
   typeof updateCustomConnectorBodySchema
 >;
 
-export const setCustomConnectorSecretBodySchema = z.object({
-  value: z.string().min(1),
-});
-
 export const startCustomConnectorOAuth2BodySchema = z
   .object({
     agentId: z.string().uuid().optional(),
@@ -362,7 +322,7 @@ export type SaveCustomConnectorProposalResponse = z.infer<
 
 /**
  * Zero custom connectors contract for /api/zero/custom-connectors
- * GET: list all org custom connectors (with per-user hasSecret flag)
+ * GET: list all org custom connectors with per-user connection state
  * POST: create a new custom connector (admin only)
  */
 export const zeroCustomConnectorsContract = c.router({
@@ -461,46 +421,6 @@ export const zeroCustomConnectorByIdContract = c.router({
 });
 export type ZeroCustomConnectorByIdContract =
   typeof zeroCustomConnectorByIdContract;
-
-/**
- * Zero custom connector secret contract for /api/zero/custom-connectors/[id]/secret
- * PUT: set the calling user's secret for this connector
- * DELETE: disconnect the calling user's complete connector connection
- */
-export const zeroCustomConnectorSecretContract = c.router({
-  set: {
-    method: "PUT",
-    path: "/api/zero/custom-connectors/:id/secret",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
-    body: setCustomConnectorSecretBodySchema,
-    responses: {
-      204: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Set the calling user's secret for a custom connector",
-  },
-  disconnect: {
-    method: "DELETE",
-    path: "/api/zero/custom-connectors/:id/secret",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Disconnect the calling user's custom connector connection",
-  },
-});
-export type ZeroCustomConnectorSecretContract =
-  typeof zeroCustomConnectorSecretContract;
 
 export const zeroCustomConnectorConnectionContract = c.router({
   disconnect: {

@@ -23,10 +23,10 @@ import {
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
-  customConnectorClientListResponseSchema,
-  customConnectorClientResponseSchema,
+  customConnectorListResponseSchema,
+  customConnectorResponseSchema,
   type CreateCustomConnectorBody,
-  type CustomConnectorClientResponse,
+  type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -187,15 +187,14 @@ export async function connectZeroConnectorManualGrant(
 }
 
 export async function listZeroCustomConnectors(): Promise<
-  CustomConnectorClientResponse[]
+  CustomConnectorResponse[]
 > {
   const config = await getClientConfig();
   const client = initClient(zeroCustomConnectorsContract, config);
 
   const result = await client.list({ headers: {} });
   if (result.status === 200) {
-    return customConnectorClientListResponseSchema.parse(result.body)
-      .connectors;
+    return customConnectorListResponseSchema.parse(result.body).connectors;
   }
 
   handleError(result, "Failed to list custom connectors");
@@ -215,13 +214,13 @@ export async function listZeroRunMcpConnectors(): Promise<ZeroMcpConnector[]> {
 
 export async function createZeroCustomConnector(
   body: CreateCustomConnectorBody,
-): Promise<CustomConnectorClientResponse> {
+): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroCustomConnectorsContract, config);
 
   const result = await client.create({ body, headers: {} });
   if (result.status === 201) {
-    return customConnectorClientResponseSchema.parse(result.body);
+    return customConnectorResponseSchema.parse(result.body);
   }
 
   handleError(result, "Failed to create custom connector");
@@ -229,13 +228,13 @@ export async function createZeroCustomConnector(
 
 export async function getZeroCustomConnector(
   id: string,
-): Promise<CustomConnectorClientResponse | null> {
+): Promise<CustomConnectorResponse | null> {
   const config = await getClientConfig();
   const client = initClient(zeroCustomConnectorByIdContract, config);
 
   const result = await client.get({ params: { id }, headers: {} });
   if (result.status === 200) {
-    return customConnectorClientResponseSchema.parse(result.body);
+    return customConnectorResponseSchema.parse(result.body);
   }
   if (result.status === 404) {
     return null;
@@ -247,13 +246,13 @@ export async function getZeroCustomConnector(
 export async function updateZeroCustomConnector(
   id: string,
   body: UpdateCustomConnectorBody,
-): Promise<CustomConnectorClientResponse> {
+): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroCustomConnectorByIdContract, config);
 
   const result = await client.update({ params: { id }, body, headers: {} });
   if (result.status === 200) {
-    return customConnectorClientResponseSchema.parse(result.body);
+    return customConnectorResponseSchema.parse(result.body);
   }
 
   handleError(result, `Failed to update custom connector "${id}"`);

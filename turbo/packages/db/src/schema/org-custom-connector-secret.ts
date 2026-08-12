@@ -11,11 +11,9 @@ import {
 import { orgCustomConnectors } from "./org-custom-connector";
 
 /**
- * Per-user secret for an org custom connector.
- *
- * Encrypted with the API stored-secret encryption envelope. The row is keyed by
- * `(connectorId, userId)`: each user supplies their own secret; a missing row
- * means the user hasn't configured the connector yet.
+ * Legacy Custom connector secret storage retained for deployment compatibility
+ * until its physical cleanup migration. Application code must use
+ * connector-owned secrets instead.
  */
 export const orgCustomConnectorSecrets = pgTable(
   "org_custom_connector_secrets",

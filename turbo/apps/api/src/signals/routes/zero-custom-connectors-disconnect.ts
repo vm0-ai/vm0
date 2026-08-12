@@ -1,8 +1,5 @@
 import { command } from "ccstate";
-import {
-  zeroCustomConnectorConnectionContract,
-  zeroCustomConnectorSecretContract,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroCustomConnectorConnectionContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -42,10 +39,6 @@ const disconnectHandler$ = authRoute(
 export const zeroCustomConnectorDisconnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorConnectionContract.disconnect,
-    handler: disconnectHandler$,
-  },
-  {
-    route: zeroCustomConnectorSecretContract.disconnect,
     handler: disconnectHandler$,
   },
 ];

@@ -142,7 +142,7 @@ import {
 import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -266,7 +266,7 @@ interface ComposerConnectorReadState {
   readonly addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  readonly customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
+  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
@@ -347,7 +347,7 @@ type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
   readonly authorized: boolean;
 };
 
-type ComposerCustomConnectorItem = CustomConnectorClientResponse & {
+type ComposerCustomConnectorItem = CustomConnectorResponse & {
   readonly authorized: boolean;
 };
 
@@ -5938,7 +5938,7 @@ function ConnectorTriggerIcons({
 
 function matchesCustomConnectorSearch(
   search: string,
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
 ): boolean {
   const normalizedSearch = search.trim().toLowerCase();
   if (!normalizedSearch) {
@@ -5957,7 +5957,7 @@ function CustomConnectorCatalogCard({
   connector,
   onConnect,
 }: {
-  connector: CustomConnectorClientResponse;
+  connector: CustomConnectorResponse;
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
@@ -6029,12 +6029,12 @@ function AddConnectorsDialog({
 }: {
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
-  unconnectedCustom: CustomConnectorClientResponse[];
+  unconnectedCustom: CustomConnectorResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
-  onConnectCustom: (connector: CustomConnectorClientResponse) => void;
+  onConnectCustom: (connector: CustomConnectorResponse) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -7737,10 +7737,10 @@ interface ResolvedComposerConnectorCollections {
     PlatformConnectorCatalogStatusItem
   >;
   readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
-  readonly unconnectedCustomConnectors: CustomConnectorClientResponse[];
+  readonly unconnectedCustomConnectors: CustomConnectorResponse[];
   readonly agentConnectors: ComposerConnectorItem[];
   readonly agentCustomConnectors: ComposerCustomConnectorItem[];
-  readonly selectedCustomConnector: CustomConnectorClientResponse | undefined;
+  readonly selectedCustomConnector: CustomConnectorResponse | undefined;
 }
 
 function resolveComposerConnectorCollections({
@@ -7757,7 +7757,7 @@ function resolveComposerConnectorCollections({
   addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
+  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
   customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;

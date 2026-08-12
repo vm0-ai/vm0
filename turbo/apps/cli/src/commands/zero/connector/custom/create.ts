@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import chalk from "chalk";
 import { Command } from "commander";
 
@@ -29,7 +29,7 @@ function requireCustomConnectorWriteCapability(): void {
 }
 
 async function printCreateResult(
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
   json: boolean,
 ): Promise<void> {
   if (json) {
