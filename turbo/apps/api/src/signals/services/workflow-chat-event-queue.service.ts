@@ -367,6 +367,7 @@ export async function staleChatThreadQueueThreadIds(
   args: {
     readonly staleBefore: Date;
     readonly limit: number;
+    readonly chatThreadIds?: readonly string[];
   },
 ): Promise<readonly string[]> {
   return await staleChatEventQueueThreadIds(db, args);

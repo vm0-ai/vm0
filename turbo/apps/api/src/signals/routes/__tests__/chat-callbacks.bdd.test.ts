@@ -7,7 +7,7 @@ import {
   type ChatEvent,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
+import { testBrowserReconcileContract } from "@vm0/api-contracts/contracts/test-browser-reconcile";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
@@ -48,7 +48,7 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
-import { cronBrowserReconcileRoutes } from "../cron-browser-reconcile";
+import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
 import { zeroGoalsRoutes } from "../zero-goals";
 
 /**
@@ -85,8 +85,6 @@ const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_goal_drain_build_run_input",
   "api_dispatch_pre_create_zero_goal_drain_handoff_run",
 ] as const;
-const CANCELLATION_RECOVERY_CRON_SECRET =
-  "bdd-cancellation-recovery-cron-secret";
 const GOAL_CAPABILITIES = [
   "goal:read",
   "goal:agent-result:write",
@@ -523,9 +521,23 @@ async function expectCancellationRecoveryPending(
     .toBe(expected);
 }
 
-function cancellationRecoveryCronClient() {
-  return setupApp({ context, routes: cronBrowserReconcileRoutes })(
-    cronBrowserReconcileContract,
+function cancellationRecoveryReconcileClient() {
+  return setupApp({ context, routes: testBrowserReconcileRoutes })(
+    testBrowserReconcileContract,
+  );
+}
+
+async function reconcileCancellationRecoveryFixtures(
+  chatThreadId: string,
+  ...additionalChatThreadIds: string[]
+): Promise<void> {
+  await accept(
+    cancellationRecoveryReconcileClient().reconcile({
+      body: {
+        chat_thread_ids: [chatThreadId, ...additionalChatThreadIds],
+      },
+    }),
+    [200],
   );
 }
 
@@ -3025,7 +3037,6 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    mockEnv("CRON_SECRET", CANCELLATION_RECOVERY_CRON_SECRET);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const run = await startChatRun(actor, {
       agentId,
@@ -3054,14 +3065,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     ).toHaveLength(0);
 
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS - 1);
-    await accept(
-      cancellationRecoveryCronClient().reconcile({
-        headers: {
-          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
-        },
-      }),
-      [200],
-    );
+    await reconcileCancellationRecoveryFixtures(run.threadId);
     const beforeExpiry = await chat.listThreadEvents(actor, run.threadId);
     expect(
       userMessages(beforeExpiry.events).filter((event) => {
@@ -3074,14 +3078,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
 
     context.mocks.ably.publish.mockClear();
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
-    await accept(
-      cancellationRecoveryCronClient().reconcile({
-        headers: {
-          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
-        },
-      }),
-      [200],
-    );
+    await reconcileCancellationRecoveryFixtures(run.threadId);
     const replacementRunId = await waitForQueuedEventReplacement(
       actor,
       run.threadId,
@@ -3105,7 +3102,6 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    mockEnv("CRON_SECRET", CANCELLATION_RECOVERY_CRON_SECRET);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const poisonedRun = await startChatRun(actor, {
@@ -3132,13 +3128,9 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     await api.requestCancelRun(actor, healthyRun.runId, [200]);
     await flushWaitUntilForTest();
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
-    await accept(
-      cancellationRecoveryCronClient().reconcile({
-        headers: {
-          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
-        },
-      }),
-      [200],
+    await reconcileCancellationRecoveryFixtures(
+      poisonedRun.threadId,
+      healthyRun.threadId,
     );
 
     const replacementRunId = await waitForQueuedEventReplacement(
@@ -3979,7 +3971,6 @@ describe("CHAT-02: drain-time admission failure", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    mockEnv("CRON_SECRET", CANCELLATION_RECOVERY_CRON_SECRET);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const anchor = await startChatRun(actor, {
@@ -4082,14 +4073,7 @@ describe("CHAT-02: drain-time admission failure", () => {
       null,
     );
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
-    await accept(
-      cancellationRecoveryCronClient().reconcile({
-        headers: {
-          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
-        },
-      }),
-      [200],
-    );
+    await reconcileCancellationRecoveryFixtures(anchor.threadId);
     const retried = await chat.requestSendEvent(
       actor,
       {

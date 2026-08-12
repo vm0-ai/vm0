@@ -193,6 +193,7 @@ export async function expiredCancellationRecoveryThreads(
   args: {
     readonly expiredBefore: Date;
     readonly limit: number;
+    readonly chatThreadIds?: readonly string[];
   },
 ): Promise<readonly { chatThreadId: string; userId: string }[]> {
   const rows = await db
@@ -232,6 +233,9 @@ export async function expiredCancellationRecoveryThreads(
               ),
             ),
         ),
+        args.chatThreadIds === undefined
+          ? undefined
+          : inArray(chatEvents.chatThreadId, args.chatThreadIds),
       ),
     )
     .limit(args.limit);
