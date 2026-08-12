@@ -7,35 +7,235 @@ import {
 import { test } from "node:test";
 
 import {
+  cleanupClerkTestJobRef,
+  cleanupCurrentClerkTestGeneration,
+  cleanupStaleClerkTestResources,
   createOrganization,
   createUser,
+  currentClerkTestGeneration,
   deleteOrganizationById,
-  deleteStaleTestUsers,
   deleteUserByEmail,
+  generateTestEmail,
+  parseClerkTestEmail,
+  parseClerkTestOrganizationMetadata,
   runnerTestAccounts,
 } from "./clerk-api";
 
 interface ObservedRequest {
   readonly method: string;
   readonly url: string;
+  readonly body: unknown;
 }
 
 type ClerkServerHandler = (
-  request: IncomingMessage,
+  request: ObservedRequest,
   response: ServerResponse,
   requests: readonly ObservedRequest[],
 ) => void;
 
-test("does not replay user creation after a transient response", async () => {
+test("creates and parses generation-scoped test identities", () => {
+  withEnvironment(
+    {
+      JOB_REF: "pr-123",
+      GITHUB_RUN_ID: "31500000000",
+      GITHUB_RUN_ATTEMPT: "2",
+    },
+    () => {
+      assert.equal(currentClerkTestGeneration(), "31500000000-2");
+      assert.equal(
+        generateTestEmail("browser"),
+        "pr-123+clerk_test+31500000000-2+browser@vm0-e2e.ai",
+      );
+      assert.match(
+        generateTestEmail("playwright"),
+        /^pr-123\+clerk_test\+31500000000-2\+playwright-[0-9a-f]{8}@vm0-e2e\.ai$/,
+      );
+      assert.deepEqual(runnerTestAccounts(), {
+        runner: "pr-123+clerk_test+31500000000-2+runner@vm0-e2e.ai",
+        codex: "pr-123+clerk_test+31500000000-2+runner-real-codex@vm0-e2e.ai",
+        claude: "pr-123+clerk_test+31500000000-2+runner-real-claude@vm0-e2e.ai",
+      });
+    },
+  );
+
+  assert.deepEqual(
+    parseClerkTestEmail(
+      "staging+clerk_test+31500000000-1+paid-onboarding-0123abcd@vm0-e2e.ai",
+    ),
+    {
+      jobRef: "staging",
+      generation: "31500000000-1",
+      role: "paid-onboarding",
+    },
+  );
+  assert.equal(
+    parseClerkTestEmail("pr-123+clerk_test+31500000000-1+browser@example.com"),
+    null,
+  );
+  assert.equal(
+    parseClerkTestEmail("pr-123+clerk_test+browser@vm0-e2e.ai"),
+    null,
+  );
+  assert.equal(
+    parseClerkTestEmail(
+      "pr-123+clerk_test+31500000000-1+browser-deadbeef@vm0-e2e.ai",
+    ),
+    null,
+  );
+  assert.equal(
+    parseClerkTestOrganizationMetadata({
+      vm0CiTest: {
+        jobRef: "pr-123",
+        generation: "31500000000-1",
+        role: "playwright",
+        extra: true,
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseClerkTestOrganizationMetadata({
+      vm0CiTest: {
+        jobRef: "pr-123",
+        generation: "31500000000-1",
+        role: "admin",
+      },
+    }),
+    null,
+  );
+
+  withEnvironment(
+    {
+      JOB_REF: undefined,
+      GITHUB_RUN_ID: undefined,
+      GITHUB_RUN_ATTEMPT: undefined,
+    },
+    () => {
+      assert.equal(
+        generateTestEmail("browser"),
+        "local+clerk_test+local-1+browser@vm0-e2e.ai",
+      );
+    },
+  );
+});
+
+test("creates organizations with exact ownership metadata and retries membership update", async () => {
   await withClerkServer(
     (request, response, requests) => {
-      const postCount = countRequests(requests, "POST", "/v1/users");
-      if (request.method === "POST" && request.url === "/v1/users") {
-        if (postCount === 1) {
-          sendJson(response, 503, { errors: [] });
+      if (request.method === "POST" && request.url === "/v1/organizations") {
+        sendJson(response, 200, { id: "org_test" });
+        return;
+      }
+      if (
+        request.method === "PATCH" &&
+        request.url === "/v1/organizations/org_test/memberships/user_test"
+      ) {
+        const patchCount = countRequests(
+          requests,
+          "PATCH",
+          "/v1/organizations/org_test/memberships/user_test",
+        );
+        if (patchCount === 1) {
+          sendJson(response, 429, { errors: [] }, { "retry-after": "0" });
         } else {
-          sendJson(response, 200, { id: "user_replayed" });
+          sendJson(response, 200, { role: "org:admin" });
         }
+        return;
+      }
+      sendJson(response, 404, { errors: [] });
+    },
+    async (requests) => {
+      const organizationId = await createOrganization(
+        "E2E Test Org",
+        "user_test",
+        "playwright",
+      );
+
+      assert.equal(organizationId, "org_test");
+      const createRequest = requests.find(
+        (request) =>
+          request.method === "POST" && request.url === "/v1/organizations",
+      );
+      assert.deepEqual(createRequest?.body, {
+        name: "E2E Test Org",
+        created_by: "user_test",
+        private_metadata: {
+          vm0CiTest: {
+            jobRef: "test-job",
+            generation: "4000-2",
+            role: "playwright",
+          },
+        },
+      });
+      assert.deepEqual(
+        parseClerkTestOrganizationMetadata(
+          isRecord(createRequest?.body)
+            ? createRequest.body.private_metadata
+            : undefined,
+        ),
+        {
+          jobRef: "test-job",
+          generation: "4000-2",
+          role: "playwright",
+        },
+      );
+      assert.equal(
+        countRequests(
+          requests,
+          "PATCH",
+          "/v1/organizations/org_test/memberships/user_test",
+        ),
+        2,
+      );
+    },
+  );
+});
+
+test("removes a newly created organization when membership setup fails", async () => {
+  await withClerkServer(
+    (request, response) => {
+      if (request.method === "POST" && request.url === "/v1/organizations") {
+        sendJson(response, 200, { id: "org_partial" });
+        return;
+      }
+      if (
+        request.method === "PATCH" &&
+        request.url === "/v1/organizations/org_partial/memberships/user_test"
+      ) {
+        sendJson(response, 400, { errors: [] });
+        return;
+      }
+      if (
+        request.method === "DELETE" &&
+        request.url === "/v1/organizations/org_partial"
+      ) {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+      sendJson(response, 404, { errors: [] });
+    },
+    async (requests) => {
+      const error = await captureError(async () => {
+        await createOrganization("E2E Test Org", "user_test", "playwright");
+      });
+      assert.match(
+        error.message,
+        /update Clerk organization membership failed with HTTP 400 \(json\)/,
+      );
+      assert.equal(
+        countRequests(requests, "DELETE", "/v1/organizations/org_partial"),
+        1,
+      );
+    },
+  );
+});
+
+test("does not replay non-idempotent user creation", async () => {
+  await withClerkServer(
+    (request, response) => {
+      if (request.method === "POST" && request.url === "/v1/users") {
+        sendJson(response, 503, { errors: [] });
         return;
       }
       sendJson(response, 404, { errors: [] });
@@ -54,116 +254,266 @@ test("does not replay user creation after a transient response", async () => {
   );
 });
 
-test("retries an idempotent membership role update", async () => {
-  await withClerkServer(
-    (request, response, requests) => {
-      if (request.method === "POST" && request.url === "/v1/organizations") {
-        sendJson(response, 200, { id: "org_test" });
-        return;
-      }
-      if (
-        request.method === "PATCH" &&
-        request.url === "/v1/organizations/org_test/memberships/user_test"
-      ) {
-        const patchCount = countRequests(
-          requests,
-          "PATCH",
-          "/v1/organizations/org_test/memberships/user_test",
-        );
-        if (patchCount === 1) {
-          sendJson(response, 503, { errors: [] }, { "retry-after": "0" });
-        } else {
-          sendJson(response, 200, { role: "org:admin" });
-        }
-        return;
-      }
-      sendJson(response, 404, { errors: [] });
-    },
-    async (requests) => {
-      const organizationId = await createOrganization(
-        "E2E Test Org",
-        "user_test",
-      );
-
-      assert.equal(organizationId, "org_test");
-      assert.equal(
-        countRequests(
-          requests,
-          "PATCH",
-          "/v1/organizations/org_test/memberships/user_test",
-        ),
-        2,
-      );
-    },
+test("collects all pages before generation cleanup and isolates roles", async () => {
+  const currentPlaywrightEmail =
+    "test-job+clerk_test+4000-2+playwright-deadbeef@vm0-e2e.ai";
+  const currentPaidEmail =
+    "test-job+clerk_test+4000-2+paid-onboarding-0123abcd@vm0-e2e.ai";
+  const firstUserPage = Array.from({ length: 500 }, (_, index) =>
+    clerkUser(
+      index === 499 ? "user_playwright" : `foreign_user_${index}`,
+      index === 499 ? currentPlaywrightEmail : `person-${index}@example.com`,
+    ),
   );
-});
+  const firstOrganizationPage = Array.from({ length: 500 }, (_, index) =>
+    clerkOrganization(
+      index === 499 ? "org_playwright" : `foreign_org_${index}`,
+      index === 499
+        ? clerkOwner("test-job", "4000-2", "playwright")
+        : undefined,
+    ),
+  );
 
-test("creates runner accounts with the historical three email names", () => {
-  const previousJobRef = process.env.JOB_REF;
-  process.env.JOB_REF = "pr-123";
-  try {
-    assert.deepEqual(runnerTestAccounts(), {
-      runner: "pr-123+clerk_test+runner@vm0-e2e.ai",
-      codex: "pr-123+clerk_test+runner-real-codex@vm0-e2e.ai",
-      claude: "pr-123+clerk_test+runner-real-claude@vm0-e2e.ai",
-    });
-  } finally {
-    restoreEnvironmentVariable("JOB_REF", previousJobRef);
-  }
-});
-
-test("retries organization cleanup and accepts not found", async () => {
   await withClerkServer(
     (request, response, requests) => {
+      const url = new URL(request.url, "http://clerk.test");
+      if (request.method === "GET" && url.pathname === "/v1/users") {
+        const offset = url.searchParams.get("offset");
+        sendJson(
+          response,
+          200,
+          offset === "0"
+            ? firstUserPage
+            : [clerkUser("user_paid", currentPaidEmail)],
+        );
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/organizations") {
+        const offset = url.searchParams.get("offset");
+        sendJson(response, 200, {
+          data:
+            offset === "0"
+              ? firstOrganizationPage
+              : [
+                  clerkOrganization(
+                    "org_paid",
+                    clerkOwner("test-job", "4000-2", "paid-onboarding"),
+                  ),
+                ],
+          total_count: 501,
+        });
+        return;
+      }
       if (
         request.method === "DELETE" &&
-        request.url === "/v1/organizations/org_cleanup"
+        request.url === "/v1/organizations/org_playwright"
       ) {
-        const deleteCount = countRequests(
+        const attempt = countRequests(
           requests,
           "DELETE",
-          "/v1/organizations/org_cleanup",
+          "/v1/organizations/org_playwright",
         );
-        if (deleteCount === 1) {
+        if (attempt === 1) {
           sendJson(response, 503, { errors: [] }, { "retry-after": "0" });
         } else {
           sendJson(response, 404, { errors: [] });
         }
         return;
       }
+      if (
+        request.method === "DELETE" &&
+        request.url === "/v1/users/user_playwright"
+      ) {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+      sendJson(response, 500, { unexpected: request.url });
+    },
+    async (requests) => {
+      const result = await cleanupCurrentClerkTestGeneration(["playwright"]);
+
+      assert.deepEqual(result, {
+        scannedOrganizations: 501,
+        selectedOrganizations: 1,
+        deletedOrganizations: 0,
+        alreadyAbsentOrganizations: 1,
+        skippedOrganizations: 500,
+        scannedUsers: 501,
+        selectedUsers: 1,
+        deletedUsers: 1,
+        alreadyAbsentUsers: 0,
+        skippedUsers: 500,
+      });
+      assert.equal(
+        countRequests(requests, "DELETE", "/v1/organizations/org_playwright"),
+        2,
+      );
+      assert.equal(
+        countRequests(requests, "DELETE", "/v1/organizations/org_paid"),
+        0,
+      );
+      assert.equal(countRequests(requests, "DELETE", "/v1/users/user_paid"), 0);
+      const firstDeleteIndex = requests.findIndex(
+        (request) => request.method === "DELETE",
+      );
+      const lastCollectionIndex = requests
+        .map((request) => request.method)
+        .lastIndexOf("GET");
+      assert.ok(firstDeleteIndex > lastCollectionIndex);
+      const deletePaths = requests
+        .filter((request) => request.method === "DELETE")
+        .map((request) => request.url);
+      assert.deepEqual(deletePaths.slice(-2), [
+        "/v1/organizations/org_playwright",
+        "/v1/users/user_playwright",
+      ]);
+    },
+  );
+});
+
+test("job-ref cleanup rejects fuzzy lookalikes and deletes organizations first", async () => {
+  const targetEmail = "pr-123+clerk_test+4000-2+runner@vm0-e2e.ai";
+  await withClerkServer(
+    (request, response) => {
+      const url = new URL(request.url, "http://clerk.test");
+      if (request.method === "GET" && url.pathname === "/v1/users") {
+        sendJson(response, 200, [
+          clerkUser("user_target", targetEmail),
+          clerkUser(
+            "user_other_pr",
+            "pr-1234+clerk_test+4000-2+runner@vm0-e2e.ai",
+          ),
+          clerkUser(
+            "user_lookalike",
+            "pr-123+clerk_test+4000-2+runner@vm0-e2e.ai.example",
+          ),
+        ]);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/organizations") {
+        sendJson(response, 200, {
+          data: [
+            clerkOrganization(
+              "org_target",
+              clerkOwner("pr-123", "4000-2", "runner"),
+            ),
+            clerkOrganization(
+              "org_other_pr",
+              clerkOwner("pr-1234", "4000-2", "runner"),
+            ),
+            clerkOrganization("org_unmarked"),
+          ],
+          total_count: 3,
+        });
+        return;
+      }
+      if (request.method === "DELETE") {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
       sendJson(response, 404, { errors: [] });
     },
     async (requests) => {
-      await deleteOrganizationById("org_cleanup");
-      assert.equal(
-        countRequests(requests, "DELETE", "/v1/organizations/org_cleanup"),
-        2,
+      const result = await cleanupClerkTestJobRef("pr-123");
+      assert.equal(result.selectedOrganizations, 1);
+      assert.equal(result.selectedUsers, 1);
+      assert.deepEqual(
+        requests
+          .filter((request) => request.method === "DELETE")
+          .map((request) => request.url),
+        ["/v1/organizations/org_target", "/v1/users/user_target"],
       );
     },
   );
 });
 
-test("retries exact lookup failures and accepts delete not found", async () => {
+test("stale cleanup requires strict markers and supports dry-run", async () => {
+  const cutoff = new Date(10_000);
+  await withClerkServer(
+    (request, response) => {
+      const url = new URL(request.url, "http://clerk.test");
+      if (request.method === "GET" && url.pathname === "/v1/users") {
+        sendJson(response, 200, [
+          clerkUser(
+            "user_old",
+            "staging+clerk_test+3000-1+browser@vm0-e2e.ai",
+            1_000,
+          ),
+          clerkUser(
+            "user_new",
+            "staging+clerk_test+3000-1+playwright-deadbeef@vm0-e2e.ai",
+            20_000,
+          ),
+          clerkUser(
+            "user_legacy",
+            "staging+clerk_test+browser@vm0-e2e.ai",
+            1_000,
+          ),
+          clerkUser(
+            "user_at_cutoff",
+            "staging+clerk_test+3000-1+runner@vm0-e2e.ai",
+            10_000,
+          ),
+        ]);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/organizations") {
+        sendJson(response, 200, {
+          data: [
+            clerkOrganization(
+              "org_old",
+              clerkOwner("staging", "3000-1", "browser"),
+              1_000,
+            ),
+            clerkOrganization(
+              "org_new",
+              clerkOwner("staging", "3000-1", "playwright"),
+              20_000,
+            ),
+            clerkOrganization("org_unmarked", undefined, 1_000),
+            clerkOrganization(
+              "org_at_cutoff",
+              clerkOwner("staging", "3000-1", "runner"),
+              10_000,
+            ),
+          ],
+          total_count: 4,
+        });
+        return;
+      }
+      sendJson(response, 500, { unexpected: request.url });
+    },
+    async (requests) => {
+      const result = await cleanupStaleClerkTestResources(cutoff, {
+        dryRun: true,
+      });
+      assert.equal(result.selectedOrganizations, 1);
+      assert.equal(result.selectedUsers, 1);
+      assert.equal(result.deletedOrganizations, 0);
+      assert.equal(result.deletedUsers, 0);
+      assert.equal(
+        requests.filter((request) => request.method === "DELETE").length,
+        0,
+      );
+    },
+  );
+});
+
+test("retries exact deletion and surfaces permanent HTTP failures", async () => {
   const email = "cleanup@example.com";
   await withClerkServer(
     (request, response, requests) => {
-      if (request.method === "GET" && request.url?.startsWith("/v1/users?")) {
-        const getCount = countRequestsStartingWith(
-          requests,
-          "GET",
-          "/v1/users?",
-        );
-        if (getCount === 1) {
-          request.socket.destroy();
-        } else if (getCount === 2) {
-          sendJson(response, 429, { errors: [] }, { "retry-after": "0" });
+      if (request.method === "GET" && request.url.startsWith("/v1/users?")) {
+        const attempt = requests.filter(
+          (observed) =>
+            observed.method === "GET" && observed.url.startsWith("/v1/users?"),
+        ).length;
+        if (attempt === 1) {
+          requestSocketFailure(response);
         } else {
-          sendJson(response, 200, [
-            {
-              id: "user_cleanup",
-              email_addresses: [{ email_address: email }],
-            },
-          ]);
+          sendJson(response, 200, [clerkUser("user_cleanup", email)]);
         }
         return;
       }
@@ -171,24 +521,41 @@ test("retries exact lookup failures and accepts delete not found", async () => {
         request.method === "DELETE" &&
         request.url === "/v1/users/user_cleanup"
       ) {
-        sendJson(response, 404, { errors: [] });
+        sendJson(response, 400, { sensitive: "must-not-be-logged" });
         return;
       }
       sendJson(response, 404, { errors: [] });
     },
-    async (requests) => {
-      await deleteUserByEmail(email);
-
-      assert.equal(countRequestsStartingWith(requests, "GET", "/v1/users?"), 3);
-      assert.equal(
-        countRequests(requests, "DELETE", "/v1/users/user_cleanup"),
-        1,
+    async () => {
+      const error = await captureError(async () => {
+        await deleteUserByEmail(email);
+      });
+      assert.match(
+        error.message,
+        /delete Clerk test user failed with HTTP 400 \(json\)/,
       );
+      assert.doesNotMatch(error.message, /must-not-be-logged/);
+    },
+  );
+
+  await withClerkServer(
+    (request, response) => {
+      if (
+        request.method === "DELETE" &&
+        request.url === "/v1/organizations/org_missing"
+      ) {
+        sendJson(response, 404, { errors: [] });
+        return;
+      }
+      sendJson(response, 500, { unexpected: request.url });
+    },
+    async () => {
+      assert.equal(await deleteOrganizationById("org_missing"), false);
     },
   );
 });
 
-test("rejects non-JSON success without exposing its body", async () => {
+test("rejects non-JSON success and non-loopback test endpoints", async () => {
   const responseMarker = "sensitive-external-response-marker";
   await withClerkServer(
     (request, response) => {
@@ -202,97 +569,71 @@ test("rejects non-JSON success without exposing its body", async () => {
       const error = await captureError(async () => {
         await createUser("invalid-response@example.com");
       });
-
       assert.match(
         error.message,
         /create Clerk user returned invalid JSON: HTTP 200 \(html\)/,
       );
       assert.doesNotMatch(error.message, new RegExp(responseMarker));
-      assert.equal(error.cause, undefined);
     },
   );
-});
 
-test("keeps bulk stale-user deletion single-attempt and best-effort", async () => {
-  const responseMarker = "bulk-delete-response-marker";
-  await withClerkServer(
-    (request, response) => {
-      if (request.method === "GET" && request.url?.startsWith("/v1/users?")) {
-        sendJson(response, 200, [
-          {
-            id: "user_stale",
-            email_addresses: [
-              {
-                email_address: "test-job+clerk_test@e2e-browser-stale.example",
-              },
-            ],
-          },
-        ]);
-        return;
-      }
-      if (
-        request.method === "DELETE" &&
-        request.url === "/v1/users/user_stale"
-      ) {
-        sendText(response, 503, responseMarker, "text/html");
-        return;
-      }
-      sendJson(response, 404, { errors: [] });
+  await withEnvironmentAsync(
+    {
+      CLERK_API_TEST_BASE_URL: "https://example.com/v1",
+      CLERK_SECRET_KEY: "sk_test_fixture",
     },
-    async (requests) => {
-      const originalWarn = console.warn;
-      const warnings: string[] = [];
-      console.warn = (...values: unknown[]): void => {
-        warnings.push(values.map(String).join(" "));
-      };
-      try {
-        await deleteStaleTestUsers();
-      } finally {
-        console.warn = originalWarn;
-      }
-
+    async () => {
+      const error = await captureError(async () => {
+        await createUser("invalid-endpoint@example.com");
+      });
       assert.equal(
-        countRequests(requests, "DELETE", "/v1/users/user_stale"),
-        1,
+        error.message,
+        "CLERK_API_TEST_BASE_URL must use an HTTP 127.0.0.1 URL",
       );
-      assert.equal(warnings.length, 1);
-      assert.match(warnings[0] ?? "", /HTTP 503 \(html\)/);
-      assert.doesNotMatch(warnings[0] ?? "", new RegExp(responseMarker));
     },
   );
 });
 
-test("rejects a non-loopback Clerk test endpoint", async () => {
-  const previousBaseUrl = process.env.CLERK_API_TEST_BASE_URL;
-  const previousSecretKey = process.env.CLERK_SECRET_KEY;
-  process.env.CLERK_API_TEST_BASE_URL = "https://example.com/v1";
-  process.env.CLERK_SECRET_KEY = "sk_test_fixture";
-  try {
-    const error = await captureError(async () => {
-      await createUser("invalid-endpoint@example.com");
-    });
-    assert.equal(
-      error.message,
-      "CLERK_API_TEST_BASE_URL must use an HTTP 127.0.0.1 URL",
-    );
-  } finally {
-    restoreEnvironmentVariable("CLERK_API_TEST_BASE_URL", previousBaseUrl);
-    restoreEnvironmentVariable("CLERK_SECRET_KEY", previousSecretKey);
-  }
-});
+function clerkUser(id: string, email: string, createdAt?: number): object {
+  return {
+    id,
+    ...(createdAt === undefined ? {} : { created_at: createdAt }),
+    email_addresses: [{ email_address: email }],
+  };
+}
+
+function clerkOwner(jobRef: string, generation: string, role: string): object {
+  return { vm0CiTest: { jobRef, generation, role } };
+}
+
+function clerkOrganization(
+  id: string,
+  privateMetadata?: object,
+  createdAt?: number,
+): object {
+  return {
+    id,
+    ...(createdAt === undefined ? {} : { created_at: createdAt }),
+    ...(privateMetadata === undefined
+      ? {}
+      : { private_metadata: privateMetadata }),
+  };
+}
 
 async function withClerkServer(
   handler: ClerkServerHandler,
   run: (requests: readonly ObservedRequest[]) => Promise<void>,
 ): Promise<void> {
   const requests: ObservedRequest[] = [];
-  const server = createServer((request, response) => {
-    requests.push({
-      method: request.method ?? "",
-      url: request.url ?? "",
-    });
-    request.resume();
-    handler(request, response, requests);
+  const server = createServer((incomingRequest, response) => {
+    observeRequest(incomingRequest)
+      .then((request) => {
+        requests.push(request);
+        handler(request, response, requests);
+      })
+      .catch((error: unknown) => {
+        response.destroy(error instanceof Error ? error : undefined);
+      });
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -309,21 +650,40 @@ async function withClerkServer(
     throw new Error("Expected Clerk test server to listen on a TCP port");
   }
 
-  const previousBaseUrl = process.env.CLERK_API_TEST_BASE_URL;
-  const previousSecretKey = process.env.CLERK_SECRET_KEY;
-  const previousJobRef = process.env.JOB_REF;
-  process.env.CLERK_API_TEST_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
-  process.env.CLERK_SECRET_KEY = "sk_test_fixture";
-  process.env.JOB_REF = "test-job";
+  await withEnvironmentAsync(
+    {
+      CLERK_API_TEST_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+      CLERK_SECRET_KEY: "sk_test_fixture",
+      JOB_REF: "test-job",
+      GITHUB_RUN_ID: "4000",
+      GITHUB_RUN_ATTEMPT: "2",
+    },
+    async () => {
+      try {
+        await run(requests);
+      } finally {
+        await closeServer(server);
+      }
+    },
+  );
+}
 
-  try {
-    await run(requests);
-  } finally {
-    restoreEnvironmentVariable("CLERK_API_TEST_BASE_URL", previousBaseUrl);
-    restoreEnvironmentVariable("CLERK_SECRET_KEY", previousSecretKey);
-    restoreEnvironmentVariable("JOB_REF", previousJobRef);
-    await closeServer(server);
-  }
+async function observeRequest(
+  request: IncomingMessage,
+): Promise<ObservedRequest> {
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", resolve);
+    request.on("error", reject);
+  });
+  const bodyText = Buffer.concat(chunks).toString("utf8");
+  const body: unknown = bodyText ? JSON.parse(bodyText) : undefined;
+  return {
+    method: request.method ?? "",
+    url: request.url ?? "",
+    body,
+  };
 }
 
 async function closeServer(
@@ -340,14 +700,54 @@ async function closeServer(
   });
 }
 
-function restoreEnvironmentVariable(
-  name: string,
-  previousValue: string | undefined,
+function withEnvironment(
+  values: Readonly<Record<string, string | undefined>>,
+  action: () => void,
 ): void {
-  if (previousValue === undefined) {
-    delete process.env[name];
-  } else {
-    process.env[name] = previousValue;
+  const previousValues = applyEnvironment(values);
+  try {
+    action();
+  } finally {
+    restoreEnvironment(previousValues);
+  }
+}
+
+async function withEnvironmentAsync(
+  values: Readonly<Record<string, string | undefined>>,
+  action: () => Promise<void>,
+): Promise<void> {
+  const previousValues = applyEnvironment(values);
+  try {
+    await action();
+  } finally {
+    restoreEnvironment(previousValues);
+  }
+}
+
+function applyEnvironment(
+  values: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string | undefined>> {
+  const previousValues: Record<string, string | undefined> = {};
+  for (const [name, value] of Object.entries(values)) {
+    previousValues[name] = process.env[name];
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
+  return previousValues;
+}
+
+function restoreEnvironment(
+  previousValues: Readonly<Record<string, string | undefined>>,
+): void {
+  for (const [name, value] of Object.entries(previousValues)) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
   }
 }
 
@@ -361,16 +761,6 @@ function countRequests(
   ).length;
 }
 
-function countRequestsStartingWith(
-  requests: readonly ObservedRequest[],
-  method: string,
-  urlPrefix: string,
-): number {
-  return requests.filter(
-    (request) => request.method === method && request.url.startsWith(urlPrefix),
-  ).length;
-}
-
 async function captureError(action: () => Promise<void>): Promise<Error> {
   let caught: unknown;
   try {
@@ -380,6 +770,10 @@ async function captureError(action: () => Promise<void>): Promise<Error> {
   }
   assert.ok(caught instanceof Error);
   return caught;
+}
+
+function requestSocketFailure(response: ServerResponse): void {
+  response.destroy();
 }
 
 function sendJson(
@@ -403,4 +797,8 @@ function sendText(
 ): void {
   response.writeHead(status, { "content-type": contentType });
   response.end(body);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

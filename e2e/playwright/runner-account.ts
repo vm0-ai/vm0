@@ -1,13 +1,19 @@
 import { appendFile } from "node:fs/promises";
 
 import {
+  cleanupCurrentClerkTestGeneration,
   createOrganization,
   createUser,
-  deleteOrganizationById,
-  deleteUserByEmail,
   runnerTestAccounts,
+  type ClerkTestRole,
   type RunnerTestAccounts,
 } from "./lib/clerk-api";
+
+const RUNNER_TEST_ROLES = [
+  "runner",
+  "runner-real-codex",
+  "runner-real-claude",
+] as const satisfies readonly ClerkTestRole[];
 
 async function main(): Promise<void> {
   const command = process.argv[2];
@@ -21,7 +27,7 @@ async function main(): Promise<void> {
   if (command === "prepare") {
     await prepareRunnerAccounts(accounts, jobRef);
   } else {
-    await cleanupRunnerAccounts(accounts);
+    await cleanupRunnerAccounts();
   }
 }
 
@@ -29,70 +35,55 @@ async function prepareRunnerAccounts(
   runnerAccounts: RunnerTestAccounts,
   jobRef: string,
 ): Promise<void> {
-  await deleteRunnerUsers(runnerAccounts);
+  try {
+    const runnerUserId = await createUser(runnerAccounts.runner);
+    const runnerOrganizationId = await createOrganization(
+      `e2e-runner-${jobRef}`,
+      runnerUserId,
+      "runner",
+    );
+    const codexUserId = await createUser(runnerAccounts.codex);
+    const codexOrganizationId = await createOrganization(
+      `e2e-runner-real-codex-${jobRef}`,
+      codexUserId,
+      "runner-real-codex",
+    );
+    const claudeUserId = await createUser(runnerAccounts.claude);
+    const claudeOrganizationId = await createOrganization(
+      `e2e-runner-real-claude-${jobRef}`,
+      claudeUserId,
+      "runner-real-claude",
+    );
 
-  const runnerUserId = await createUser(runnerAccounts.runner);
-  const runnerOrganizationId = await createOrganization(
-    `e2e-runner-${jobRef}`,
-    runnerUserId,
-  );
-  const codexUserId = await createUser(runnerAccounts.codex);
-  const codexOrganizationId = await createOrganization(
-    `e2e-runner-real-codex-${jobRef}`,
-    codexUserId,
-  );
-  const claudeUserId = await createUser(runnerAccounts.claude);
-  const claudeOrganizationId = await createOrganization(
-    `e2e-runner-real-claude-${jobRef}`,
-    claudeUserId,
-  );
+    await appendFile(
+      requiredEnvironmentVariable("GITHUB_OUTPUT"),
+      [
+        `runner-organization-id=${runnerOrganizationId}`,
+        `codex-organization-id=${codexOrganizationId}`,
+        `claude-organization-id=${claudeOrganizationId}`,
+        `runner-email=${runnerAccounts.runner}`,
+        `codex-email=${runnerAccounts.codex}`,
+        `claude-email=${runnerAccounts.claude}`,
+        "",
+      ].join("\n"),
+      "utf8",
+    );
 
-  await appendFile(
-    requiredEnvironmentVariable("GITHUB_OUTPUT"),
-    [
-      `runner-organization-id=${runnerOrganizationId}`,
-      `codex-organization-id=${codexOrganizationId}`,
-      `claude-organization-id=${claudeOrganizationId}`,
-      `runner-email=${runnerAccounts.runner}`,
-      `codex-email=${runnerAccounts.codex}`,
-      `claude-email=${runnerAccounts.claude}`,
-      "",
-    ].join("\n"),
-    "utf8",
-  );
-
-  console.log("Prepared runner E2E accounts", {
-    runnerOrganizationId,
-    codexOrganizationId,
-    claudeOrganizationId,
-    ...runnerAccounts,
-  });
+    console.log("Prepared runner E2E accounts", {
+      runnerOrganizationId,
+      codexOrganizationId,
+      claudeOrganizationId,
+      ...runnerAccounts,
+    });
+  } catch (cause) {
+    await cleanupRunnerAccounts();
+    throw cause;
+  }
 }
 
-async function cleanupRunnerAccounts(
-  runnerAccounts: RunnerTestAccounts,
-): Promise<void> {
-  const organizationIds = [
-    process.env.E2E_RUNNER_ORGANIZATION_ID,
-    process.env.E2E_RUNNER_CODEX_ORGANIZATION_ID,
-    process.env.E2E_RUNNER_CLAUDE_ORGANIZATION_ID,
-  ];
-  for (const organizationId of organizationIds) {
-    if (organizationId) {
-      await deleteOrganizationById(organizationId);
-    }
-  }
-
-  await deleteRunnerUsers(runnerAccounts);
-  console.log("Cleaned up runner E2E accounts");
-}
-
-async function deleteRunnerUsers(
-  runnerAccounts: RunnerTestAccounts,
-): Promise<void> {
-  for (const email of Object.values(runnerAccounts)) {
-    await deleteUserByEmail(email);
-  }
+async function cleanupRunnerAccounts(): Promise<void> {
+  const result = await cleanupCurrentClerkTestGeneration(RUNNER_TEST_ROLES);
+  console.log("Cleaned up runner E2E accounts", result);
 }
 
 function requiredEnvironmentVariable(name: string): string {

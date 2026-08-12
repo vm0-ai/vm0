@@ -26,6 +26,7 @@ setup_file() {
   export BROWSER_SESSION_PREFIX
   export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-up"
   browser_setup
+  delete_e2e_account_if_exists
 
   # Generate a password for sign-up
   SIGNUP_PASSWORD="$(generate_password)"
@@ -41,7 +42,10 @@ setup_file() {
 }
 
 teardown_file() {
-  browser_teardown
+  local status=0
+  browser_teardown || status=$?
+  delete_e2e_account_if_exists || status=$?
+  return "$status"
 }
 
 auth_url() {
