@@ -478,7 +478,7 @@ function ModelFirstPolicyRowContent({
       )}
       {restricted && <ProBadge />}
       {showSelectedIndicator && (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-foreground">
+        <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center text-foreground">
           {selected && <Check size={15} />}
         </span>
       )}
@@ -516,7 +516,7 @@ function ModelFirstPolicyRow({
     return (
       <div
         className={cn(
-          "flex overflow-hidden rounded-lg transition-colors hover:bg-state-hover has-[[data-highlighted]]:bg-state-hover",
+          "relative flex overflow-hidden rounded-lg transition-colors hover:bg-state-hover has-[[data-highlighted]]:bg-state-hover",
           selected &&
             "bg-state-selected hover:bg-state-selected-hover has-[[data-highlighted]]:bg-state-selected-hover",
         )}
@@ -525,8 +525,8 @@ function ModelFirstPolicyRow({
           value={policy.model}
           aria-label={modelLabel}
           className={cn(
-            "min-w-0 flex-1 rounded-r-none hover:bg-transparent data-highlighted:bg-transparent",
-            fastSelected && "pr-2",
+            "min-w-0 flex-1 rounded-lg hover:bg-transparent data-highlighted:bg-transparent",
+            selected ? "pr-16" : "pr-8",
           )}
         >
           <ModelFirstPolicyRowContent
@@ -543,7 +543,8 @@ function ModelFirstPolicyRow({
                 value={codexFastOptionValue(policy.model)}
                 aria-label={`${modelLabel} ${fastLabel}`}
                 className={cn(
-                  "group/fast-option w-10 shrink-0 justify-center rounded-l-none px-0 text-muted-foreground hover:bg-transparent data-highlighted:bg-transparent",
+                  "group/fast-option absolute inset-y-0 right-0 w-8 justify-center rounded-lg px-0 text-muted-foreground hover:bg-transparent data-highlighted:bg-transparent",
+                  selected && "right-8",
                   fastSelected &&
                     "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
                 )}
