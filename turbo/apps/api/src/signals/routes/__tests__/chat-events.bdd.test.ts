@@ -23,6 +23,13 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+  clientVersionWithTag,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
 import {
@@ -150,6 +157,34 @@ const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
+// This pins the strict feedback shape shipped by the previous App build. Its
+// reader rejects unknown keys, so this schema must consume the projected wire
+// part rather than the current additive contract.
+const previousAppFeedbackPartSchema = z
+  .object({
+    type: z.literal("feedback"),
+    quote: z.string().min(1),
+    note: z
+      .array(
+        z
+          .object({
+            type: z.literal("text"),
+            text: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1),
+    source: z
+      .object({
+        type: z.literal("mail"),
+        id: z.string().min(1),
+        status: z.enum(["draft", "sent"]),
+        sentId: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
 An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
@@ -629,11 +664,11 @@ function expectApiDispatchTimingEventsNotToLeak(
   }
 }
 
-/** Sandbox-scoped zero token issued to the run, exposed via the claim env. */
-function zeroTokenFromClaim(claim: RunnerClaim): string {
-  const token = claimEnvironment(claim).ZERO_TOKEN;
+/** Sandbox-scoped Okou token issued to the run, exposed via the claim env. */
+function okouTokenFromClaim(claim: RunnerClaim): string {
+  const token = claimEnvironment(claim).OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -3366,7 +3401,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
       setupApp({ context, routes: zeroMailRoutes })(zeroMailContract).linkDraft(
         {
           headers: {
-            authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+            authorization: `Bearer ${okouTokenFromClaim(claim)}`,
           },
           body: {
             threadId: run.threadId,
@@ -6875,6 +6910,8 @@ describe("CHAT-02: generation templates and attachments", () => {
           type: "feedback",
           quote: "First quote",
           note: [{ type: "text", text: "Clarify this point" }],
+          eventId: "assistant-event-first-quote",
+          range: { start: 0, end: 11 },
           source: {
             type: "mail",
             id: mailDraftId,
@@ -6947,6 +6984,72 @@ describe("CHAT-02: generation templates and attachments", () => {
           { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
+    });
+
+    const previousAppPage = await accept(
+      chatThreadEventsClient().list({
+        headers: sessionHeaders(actor),
+        extraHeaders: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.734.0",
+        },
+        params: { threadId: sent.threadId },
+        query: { limit: 50 },
+      }),
+      [200],
+    );
+    const previousAppMessage = previousAppPage.body.events.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === sent.runId;
+    });
+    if (previousAppMessage?.eventType !== "input.prompt") {
+      throw new Error("Expected the previous App input event projection");
+    }
+    const previousAppFeedback = previousAppMessage.userMessage.parts.find(
+      (part) => {
+        return part.type === "feedback" && part.quote === "First quote";
+      },
+    );
+    expect(
+      previousAppFeedbackPartSchema.parse(previousAppFeedback),
+    ).toStrictEqual({
+      type: "feedback",
+      quote: "First quote",
+      note: [{ type: "text", text: "Clarify this point" }],
+      source: {
+        type: "mail",
+        id: mailDraftId,
+        status: "draft",
+      },
+    });
+
+    const taggedAppPage = await accept(
+      chatThreadEventsClient().list({
+        headers: sessionHeaders(actor),
+        extraHeaders: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: clientVersionWithTag(
+            "0.734.0",
+            CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
+          ),
+        },
+        params: { threadId: sent.threadId },
+        query: { limit: 50 },
+      }),
+      [200],
+    );
+    const taggedAppMessage = taggedAppPage.body.events.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === sent.runId;
+    });
+    if (taggedAppMessage?.eventType !== "input.prompt") {
+      throw new Error("Expected the tagged App input event");
+    }
+    expect(
+      taggedAppMessage.userMessage.parts.find((part) => {
+        return part.type === "feedback" && part.quote === "First quote";
+      }),
+    ).toMatchObject({
+      eventId: "assistant-event-first-quote",
+      range: { start: 0, end: 11 },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -7324,16 +7427,42 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      "okou resource pull template:black-slabs --dir ./generated/resources",
+      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(websitePrompt).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
-    );
+    expect(websitePrompt).toContain("resolve-images.mjs");
+    expect(websitePrompt).not.toContain("use `seedream4` by default");
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
+
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.LatestWebsiteTemplates]: true },
+    );
+    const latestWebsite = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a campaign landing page with the latest template",
+      template: {
+        type: "website",
+        selection: { websiteTemplateId: websiteTemplate.id },
+      },
+    });
+    const latestWebsiteRun = await api.readRun(actor, latestWebsite.runId);
+    const latestWebsitePrompt = latestWebsiteRun.appendSystemPrompt ?? "";
+    expect(latestWebsitePrompt).toContain(
+      "okou resource pull template:black-slabs --dir ./generated/resources",
+    );
+    expect(latestWebsitePrompt).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(latestWebsitePrompt).not.toContain("resolve-images.mjs");
+    await cancelChatRun(actor, latestWebsite.runId);
   }, 90_000);
 
   it("uses R2 for archive-backed styles", async () => {
@@ -8069,7 +8198,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       prompt: "no computer use selected",
     });
     const plainClaim = await claimChatRun(runnerGroup, plain.runId);
-    const plainToken = zeroTokenFromClaim(plainClaim.claim);
+    const plainToken = okouTokenFromClaim(plainClaim.claim);
     const deniedCommand = await cu.requestCreateComputerUseWriteCommand(
       { bearer: plainToken },
       [403],
@@ -8119,7 +8248,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(grantedClaim.claim) },
+      { bearer: okouTokenFromClaim(grantedClaim.claim) },
       [200],
     );
     await cancelChatRun(actor, granted.runId, grantedClaim.sandboxHeaders);
@@ -8133,7 +8262,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const stickyClaim = await claimChatRun(runnerGroup, sticky.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(stickyClaim.claim) },
+      { bearer: okouTokenFromClaim(stickyClaim.claim) },
       [200],
     );
     await cancelChatRun(actor, sticky.runId, stickyClaim.sandboxHeaders);
@@ -8149,7 +8278,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const clearedClaim = await claimChatRun(runnerGroup, cleared.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(clearedClaim.claim) },
+      { bearer: okouTokenFromClaim(clearedClaim.claim) },
       [403],
     );
     await cancelChatRun(actor, cleared.runId, clearedClaim.sandboxHeaders);
@@ -8169,7 +8298,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(staleClaim.claim) },
+      { bearer: okouTokenFromClaim(staleClaim.claim) },
       [200],
     );
     await cancelChatRun(actor, staleGranted.runId);
@@ -8553,7 +8682,7 @@ describe("CHAT-02: shared user message queue", () => {
     });
     const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
       await claimChatRun(runnerGroup, source.runId);
-    const sourceToken = zeroTokenFromClaim(sourceClaim);
+    const sourceToken = okouTokenFromClaim(sourceClaim);
 
     const firstEventId = randomUUID();
     const firstSend = await requestSendEventWithBearer(
@@ -8787,7 +8916,7 @@ describe("CHAT-02: shared user message queue", () => {
     });
     const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
       await claimChatRun(runnerGroup, source.runId);
-    const sourceToken = zeroTokenFromClaim(sourceClaim);
+    const sourceToken = okouTokenFromClaim(sourceClaim);
 
     const rotatedAnchorPrompt = "prior Web round before an agent rotation";
     const rotatedAnchor = await sendChatRun(actor, {
@@ -9003,7 +9132,7 @@ describe("CHAT-02: shared user message queue", () => {
     await setRunAutonomyBudgetFixture(context, root.runId, 1);
 
     const delegated = await requestSendEventWithBearer(
-      zeroTokenFromClaim(rootClaim.claim),
+      okouTokenFromClaim(rootClaim.claim),
       {
         agentId,
         clientEventId: randomUUID(),
@@ -9028,7 +9157,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     const blockedEventId = randomUUID();
     const blocked = await requestSendEventWithBearer(
-      zeroTokenFromClaim(delegatedClaim.claim),
+      okouTokenFromClaim(delegatedClaim.claim),
       {
         agentId,
         clientEventId: blockedEventId,

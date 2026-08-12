@@ -20,13 +20,13 @@ legacy zero-host.test.ts and zero-maps.test.ts route tests:
 - Hosted-site/deployment/artifact DB-row asserts are replaced by the files GET
   and complete response bodies; maps org-credit row asserts are
   replaced by billing-status deltas.
-- The run-artifact chain uses the run's real zero token from the runner claim
-  (`claim.environment.ZERO_TOKEN`) instead of seeding runs and rewriting
+- The run-artifact chain uses the run's real Okou token from the runner claim
+  (`claim.environment.OKOU_TOKEN`) instead of seeding runs and rewriting
   deployment rows.
 - Maps gates (NOT_CONFIGURED / 402 / invalid location) stay owned by
   billing-usage-media.bdd.test.ts BILL-02; the slug-suffix reuse and
   missing-index validations stay owned by chat-files.bdd.test.ts FILE-01.
-- "zero token without maps:read -> 403" is dropped: every production zero
+- "run token without maps:read -> 403" is dropped: every production Okou
   token carries maps:read unconditionally (generateZeroToken), so the case is
   not API-constructible.
 */
@@ -835,21 +835,21 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
     expect(poll.body.job?.runId).toBe(created.runId);
     const claim = await runs.claimRunnerJob(created.runId);
 
-    // The default zero-agent compose maps ZERO_TOKEN from the run secrets, so
-    // the claimed execution context exposes the real run-scoped zero token.
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
+    // The default agent compose maps OKOU_TOKEN from the run secrets, so the
+    // claimed execution context exposes the real run-scoped Okou token.
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
       throw new Error(
-        "Expected claim.environment.ZERO_TOKEN to carry the run-scoped zero token",
+        "Expected claim.environment.OKOU_TOKEN to carry the run-scoped Okou token",
       );
     }
-    expect(zeroToken).toMatch(/^vm0_sandbox_/);
-    expect(claim.secretValues ?? []).toContain(zeroToken);
+    expect(okouToken).toMatch(/^vm0_sandbox_/);
+    expect(claim.secretValues ?? []).toContain(okouToken);
 
     const before = await billing.readBillingStatus(actor);
 
     const geocode = await api.requestMapsGeocodeWithBearer(
-      zeroToken,
+      okouToken,
       { address: "1 Infinite Loop, Cupertino" },
       [200],
     );
@@ -860,7 +860,7 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
     });
     expect(geocodeRequests).toHaveLength(1);
 
-    const bearer = { bearerToken: zeroToken };
+    const bearer = { bearerToken: okouToken };
     const site = `bdd-run-artifact-${randomUUID().slice(0, 8)}`;
     const prepared = await api.prepareHostedSite(bearer, {
       site,

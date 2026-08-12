@@ -1061,14 +1061,15 @@
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} restants",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} crédits",
         "remainingAria": "Allocation d'utilisation {{label}} restante",
         "resets": "Réinitialise {{date}}",
         "resetsRaw": "Réinitialise {{value}}",
         "title": "Allocation d'utilisation",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "Recharge automatique activée",
       "breakdown": {
         "currentPlanDescription": "Crédits du forfait mensuel, réinitialisés à chaque cycle de facturation",
         "freeDescription": "Crédits de démarrage, à utiliser jusqu'à épuisement",
@@ -1086,10 +1087,18 @@
       "creditsRemaining_many": "{{value}} crédits restants",
       "creditsRemaining_other": "{{value}} crédits restants",
       "expires": "Expire le {{date}}",
+      "grantsTable": {
+        "added": "Ajouté",
+        "amount": "Montant",
+        "expires": "Expire",
+        "left": "Restant",
+        "source": "Source"
+      },
       "left": "{{value}} restant",
       "member": "Membre",
       "neverExpires": "N'expire jamais",
       "orgCredits": "Crédits de l’organisation",
+      "seeUsageRecords": "Voir où sont passés ces crédits",
       "unavailable": "Solde de crédits indisponible.",
       "upgradeDescription": "Le plan Pro inclut des crédits mensuels et débloque des options de crédit supplémentaires.",
       "upgradeTitle": "Passez au Pro pour obtenir plus de crédits",
@@ -4094,7 +4103,7 @@
           "title": "Préférences"
         },
         "usage": {
-          "balanceDescription": "Le solde de crédits et l'utilisation de votre équipe.",
+          "balanceDescription": "Ce qu'il reste à dépenser à votre équipe.",
           "balanceTitle": "Solde de crédits",
           "usageDescription": "Votre utilisation des crédits dans les conversations, automatisations et canaux.",
           "usageTitle": "Utilisation des crédits"

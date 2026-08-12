@@ -17,10 +17,12 @@ import {
   findWebsiteTemplateResource,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
+  type WebsiteTemplateArchiveVersion,
 } from "@vm0/core/resource-registry";
 
 import { getRegistryResourceDownload } from "../../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 
@@ -44,6 +46,7 @@ function candidateIds(id: string): readonly string[] {
 
 export function findRegistryResourceForPull(
   id: string,
+  websiteTemplateArchiveVersion: WebsiteTemplateArchiveVersion = "latest",
 ): PullableRegistryEntry | undefined {
   for (const candidate of candidateIds(id)) {
     const entry =
@@ -54,7 +57,7 @@ export function findRegistryResourceForPull(
       findImageStyle(candidate) ??
       findVideoTemplate(candidate) ??
       findPresentationRunbookResource(candidate) ??
-      findWebsiteTemplateResource(candidate);
+      findWebsiteTemplateResource(candidate, websiteTemplateArchiveVersion);
     if (entry) {
       return entry;
     }
@@ -107,7 +110,10 @@ export const zeroResourceCommand = new Command()
       )
       .action(
         withErrorHandler(async (id: string, options: PullOptions) => {
-          const entry = findRegistryResourceForPull(id);
+          const entry = findRegistryResourceForPull(
+            id,
+            websiteTemplateArchiveVersionFromEnvironment(),
+          );
           if (!entry) {
             throw new Error(`Unknown registry resource: ${id}`);
           }

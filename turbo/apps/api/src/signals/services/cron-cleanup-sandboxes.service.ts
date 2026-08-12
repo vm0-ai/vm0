@@ -62,6 +62,7 @@ type CleanupSandboxesScope =
   | { readonly kind: "global" }
   | {
       readonly kind: "fixtures";
+      readonly chatThreadIds: readonly string[];
       readonly runIds: readonly string[];
       readonly orgIds: readonly string[];
       readonly exportJobIds: readonly string[];
@@ -475,6 +476,23 @@ const cleanupGlobalIngress$ = command(
   },
 );
 
+const cleanupFixtureChatThreadQueues$ = command(
+  async (
+    { set },
+    chatThreadIds: readonly string[],
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      drainStaleChatThreadQueues$,
+      {
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        chatThreadIds,
+      },
+      signal,
+    );
+  },
+);
+
 export const cleanupSandboxes$ = command(
   async (
     { set },
@@ -554,8 +572,10 @@ export const cleanupSandboxes$ = command(
     signal.throwIfAborted();
     if (scope.kind === "global") {
       await set(cleanupGlobalIngress$, signal);
-      signal.throwIfAborted();
+    } else {
+      await set(cleanupFixtureChatThreadQueues$, scope.chatThreadIds, signal);
     }
+    signal.throwIfAborted();
     const queuedTerminalRuns = [
       ...expiredQueueResult.timedOutRuns,
       ...queuedOrphanResult.timedOutRuns,

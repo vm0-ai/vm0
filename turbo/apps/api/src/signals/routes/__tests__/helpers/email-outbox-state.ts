@@ -16,6 +16,11 @@ interface SeedEmailOutboxItemOptions {
   readonly createdAt: Date;
 }
 
+interface FindEmailOutboxItemsOptions {
+  readonly toAddress: string;
+  readonly subject: string;
+}
+
 function stateClient(context: TestContext) {
   return setupAppWithRoutes({
     context,
@@ -32,6 +37,20 @@ async function postAction(
 }
 
 export function createEmailOutboxStateApi(context: TestContext) {
+  async function findItems(
+    options: FindEmailOutboxItemsOptions,
+  ): Promise<readonly TestEmailOutboxStateItem[]> {
+    const response = await postAction(context, {
+      action: "find-item",
+      to_address: options.toAddress,
+      subject: options.subject,
+    });
+    if (response.action !== "find-item") {
+      throw new Error("Expected the email outbox find response");
+    }
+    return response.items;
+  }
+
   return {
     async seedItem(
       options: SeedEmailOutboxItemOptions,
@@ -49,23 +68,18 @@ export function createEmailOutboxStateApi(context: TestContext) {
       return response.item;
     },
 
-    async findItem(options: {
-      readonly toAddress: string;
-      readonly subject: string;
-    }): Promise<TestEmailOutboxStateItem> {
-      const response = await postAction(context, {
-        action: "find-item",
-        to_address: options.toAddress,
-        subject: options.subject,
-      });
-      if (response.action !== "find-item" || response.items.length !== 1) {
+    findItems,
+
+    async findItem(
+      options: FindEmailOutboxItemsOptions,
+    ): Promise<TestEmailOutboxStateItem> {
+      const items = await findItems(options);
+      if (items.length !== 1) {
         throw new Error(
-          `Expected one email outbox item, found ${
-            response.action === "find-item" ? response.items.length : 0
-          }`,
+          `Expected one email outbox item, found ${items.length}`,
         );
       }
-      const item = response.items[0];
+      const item = items[0];
       if (!item) {
         throw new Error("Expected the uniquely matched email outbox item");
       }

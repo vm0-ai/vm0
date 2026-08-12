@@ -785,11 +785,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     });
     expect(chatEventDisplayText(claimedEvent)).toBe(displayPrompt);
     const claim = await runsApi.claimRunnerJob(runId);
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error("Expected the automation event run to expose ZERO_TOKEN");
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the automation event run to expose OKOU_TOKEN");
     }
-    expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
+    expect(verifyZeroToken(okouToken)?.capabilities).toContain(
       "goal:user-control:write",
     );
     expect(claim.prompt).toBe(displayPrompt);

@@ -16,8 +16,6 @@ const TEST_APP_ROUTES = Object.freeze([...desktopUpdateRoutes]);
 const context = testContext();
 const DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
-const LEGACY_OKOU_DESKTOP_UPDATE_MANIFEST_URL =
-  "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-updates/okou-desktop-update-manifest.json";
 const OKOU_DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/ai-okou-desktop-updates/ai-okou-desktop-update-manifest.json";
 
@@ -321,7 +319,7 @@ describe("desktop update routes", () => {
     );
   });
 
-  it("keeps branded Okou routes on the pre-adoption line before cutover", async () => {
+  it("serves branded Okou routes from the final identity line after cutover", async () => {
     const zipUrl =
       "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
     mockDesktopUpdateManifest(
@@ -331,15 +329,7 @@ describe("desktop update routes", () => {
         }),
         product: "okou",
       },
-      LEGACY_OKOU_DESKTOP_UPDATE_MANIFEST_URL,
-    );
-
-    const releaseResponse = await appRequest(
-      "http://api.test/api/desktop/updates/okou/stable/darwin/arm64/release",
-    );
-    expect(releaseResponse.status).toBe(302);
-    expect(releaseResponse.headers.get("Location")).toBe(
-      "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v1.2.3",
+      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
     );
 
     const brandedReleaseResponse = await appRequest(
@@ -350,14 +340,6 @@ describe("desktop update routes", () => {
       "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v1.2.3",
     );
 
-    const dmgResponse = await appRequest(
-      "http://api.test/api/desktop/updates/okou/stable/darwin/arm64/dmg",
-    );
-    expect(dmgResponse.status).toBe(302);
-    expect(dmgResponse.headers.get("Location")).toBe(
-      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.dmg",
-    );
-
     const brandedDmgResponse = await appRequest(
       "http://api.test/api/okou/desktop/updates/stable/darwin/arm64/dmg",
     );
@@ -365,6 +347,18 @@ describe("desktop update routes", () => {
     expect(brandedDmgResponse.headers.get("Location")).toBe(
       "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.dmg",
     );
+  });
+
+  it("returns not found for the retired pre-adoption Okou update line", async () => {
+    for (const path of [
+      "/api/desktop/updates/okou/stable/darwin/arm64/release",
+      "/api/desktop/updates/okou/stable/darwin/arm64/dmg",
+      "/api/desktop/updates/okou/stable/darwin/arm64/RELEASES.json",
+    ]) {
+      const response = await appRequest(`http://api.test${path}`);
+
+      expect(response.status).toBe(404);
+    }
   });
 
   it("does not serve a Zero artifact from the final Okou feed", async () => {

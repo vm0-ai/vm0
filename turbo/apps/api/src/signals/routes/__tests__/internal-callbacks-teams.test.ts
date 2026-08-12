@@ -39,6 +39,7 @@ import {
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
   teamsConnectFixture,
+  teamsFixtureExternalId,
   teamsMessageActivityForTest,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
@@ -114,7 +115,7 @@ function teamsPostedActivityFromUnknown(value: unknown): TeamsPostedActivity {
 }
 
 function teamsApiMocks(args: {
-  readonly serviceUrl: string;
+  readonly fixture: TeamsConnectFixture;
   readonly activityStatus?: number;
   readonly activityError?: string;
 }): {
@@ -125,7 +126,7 @@ function teamsApiMocks(args: {
   const tokenRequests: URLSearchParams[] = [];
   const postedActivities: TeamsPostedActivity[] = [];
   const reactionRequests: TeamsReactionRequest[] = [];
-  const serviceBaseUrl = teamsServiceBaseUrl(args.serviceUrl);
+  const serviceBaseUrl = teamsServiceBaseUrl(args.fixture.serviceUrl);
 
   server.use(
     http.post(BOT_FRAMEWORK_TOKEN_URL, async ({ request }) => {
@@ -159,7 +160,10 @@ function teamsApiMocks(args: {
           });
         }
         return HttpResponse.json({
-          id: `teams-activity-${postedActivities.length}`,
+          id: teamsFixtureExternalId(
+            args.fixture,
+            `teams-activity-${postedActivities.length}`,
+          ),
         });
       },
     ),
@@ -175,7 +179,10 @@ function teamsApiMocks(args: {
           });
         }
         return HttpResponse.json({
-          id: `teams-activity-${postedActivities.length}`,
+          id: teamsFixtureExternalId(
+            args.fixture,
+            `teams-activity-${postedActivities.length}`,
+          ),
         });
       },
     ),
@@ -239,14 +246,16 @@ function teamsApiMocks(args: {
       "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages/:messageId",
       ({ params }) => {
         const messageId =
-          typeof params.messageId === "string" ? params.messageId : "root";
+          typeof params.messageId === "string"
+            ? params.messageId
+            : args.fixture.teamsThreadId;
         return HttpResponse.json({
           id: messageId,
           createdDateTime: "2026-06-30T09:00:00.000Z",
           messageType: "message",
           from: {
             user: {
-              id: "29:user-1",
+              id: args.fixture.teamsUserId,
               displayName: "Ada Lovelace",
             },
           },
@@ -342,7 +351,8 @@ async function connectTeamsFixture(
         tenantId: fixture.teamsTenantId,
         teamsUserId: fixture.teamsUserId,
         teamsUserDisplayName: options.displayName ?? "Ada Lovelace",
-        teamsUserPrincipalName: options.principalName ?? "ada@example.com",
+        teamsUserPrincipalName:
+          options.principalName ?? fixture.teamsUserPrincipalName,
         teamId: fixture.teamsTeamId,
         teamName: fixture.teamsTeamName,
         serviceUrl: fixture.serviceUrl,
@@ -390,7 +400,7 @@ async function setupConnectedTeamsActor(
       },
     );
   }
-  const setupTeamsApi = teamsApiMocks({ serviceUrl: fixture.serviceUrl });
+  const setupTeamsApi = teamsApiMocks({ fixture });
   await installTeamsForTest(context.signal, fixture);
   await flushWaitUntilForTest();
   await connectTeamsFixture(fixture);
@@ -423,7 +433,8 @@ async function dispatchTeamsRun(args: {
         id: args.fixture.teamsUserId,
         name: args.senderName ?? "Ada Lovelace",
         aadObjectId: args.fixture.teamsAadObjectId,
-        userPrincipalName: args.senderPrincipalName ?? "ada@example.com",
+        userPrincipalName:
+          args.senderPrincipalName ?? args.fixture.teamsUserPrincipalName,
       },
     }),
   });
@@ -462,7 +473,7 @@ async function postTeamsPersonalMessage(args: {
           id: args.fixture.teamsTenantId,
           name: args.fixture.teamsTenantName,
         },
-        teamsAppId: BOT_APP_ID,
+        teamsAppId: args.fixture.teamsAppId,
       },
       text: args.text,
       entities: [],
@@ -512,7 +523,7 @@ async function switchTeamsAgent(args: {
           id: args.fixture.teamsTenantId,
           name: args.fixture.teamsTenantName,
         },
-        teamsAppId: BOT_APP_ID,
+        teamsAppId: args.fixture.teamsAppId,
       },
       text: "",
       entities: [],
@@ -629,10 +640,18 @@ afterEach(async () => {
 describe("Teams chat callbacks", () => {
   it("claims Teams launch material from context", async () => {
     const teams = await setupConnectedTeamsActor();
-    teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    teamsApiMocks({ fixture: teams.fixture });
+    const firstActivityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-queue-params-first",
+    );
+    const queuedActivityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-queue-params-second",
+    );
     const firstRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-queue-params-first",
+      activityId: firstActivityId,
       text: "hold the Teams queue",
     });
     const firstClaim = await claimTeamsRun({
@@ -643,7 +662,7 @@ describe("Teams chat callbacks", () => {
     const queuedPrompt = `claim Teams launch context ${teams.fixture.teamsTenantId}`;
     await postTeamsPersonalMessage({
       fixture: teams.fixture,
-      activityId: "activity-queue-params-second",
+      activityId: queuedActivityId,
       text: queuedPrompt,
     });
     const queuedParams = await findPendingChatEventByPromptFixture({
@@ -665,7 +684,7 @@ describe("Teams chat callbacks", () => {
       teamsChannelId: null,
       teamsConversationId: `a:personal-${teams.fixture.teamsUserId}`,
       teamsConversationType: "personal",
-      teamsActivityId: "activity-queue-params-second",
+      teamsActivityId: queuedActivityId,
       teamsThreadContext: "",
       teamsMessageText: queuedPrompt,
       teamsMessageFiles: [],
@@ -673,10 +692,10 @@ describe("Teams chat callbacks", () => {
       teamsTeamName: null,
       teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-5`,
       teamsServiceUrl: teams.fixture.serviceUrl,
-      teamsAppId: BOT_APP_ID,
+      teamsAppId: teams.fixture.teamsAppId,
       teamsSenderUserId: teams.fixture.teamsUserId,
       teamsSenderDisplayName: "Ada Lovelace",
-      teamsSenderPrincipalName: "ada@example.com",
+      teamsSenderPrincipalName: teams.fixture.teamsUserPrincipalName,
       teamsConnectionId: expect.any(String),
     });
     await completeSandboxRun({
@@ -700,7 +719,7 @@ describe("Teams chat callbacks", () => {
       "You are currently running inside: Microsoft Teams",
     );
     expect(queuedClaim.appendSystemPrompt).toContain(
-      "Thread ID: activity-queue-params-second",
+      `Thread ID: ${queuedActivityId}`,
     );
 
     await completeSandboxRun({
@@ -712,12 +731,14 @@ describe("Teams chat callbacks", () => {
 
   it("delivers queued Teams admission failures with launch material", async () => {
     const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({
-      serviceUrl: teams.fixture.serviceUrl,
-    });
+    const teamsApi = teamsApiMocks({ fixture: teams.fixture });
+    const firstActivityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-admission-first",
+    );
     const firstRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-admission-first",
+      activityId: firstActivityId,
       text: "hold the Teams admission queue",
     });
     const firstClaim = await claimTeamsRun({
@@ -726,7 +747,10 @@ describe("Teams chat callbacks", () => {
     });
 
     const queuedPrompt = `reject this queued Teams message ${teams.fixture.teamsTenantId}`;
-    const queuedActivityId = "activity-admission-queued";
+    const queuedActivityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-admission-queued",
+    );
     await postTeamsPersonalMessage({
       fixture: teams.fixture,
       activityId: queuedActivityId,
@@ -782,10 +806,18 @@ describe("Teams chat callbacks", () => {
 
   it("uses installation bot identity when the activity omits it", async () => {
     const teams = await setupConnectedTeamsActor();
-    teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    teamsApiMocks({ fixture: teams.fixture });
+    const firstActivityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-bot-fallback-first",
+    );
+    const queuedActivityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-bot-fallback-second",
+    );
     const firstRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-bot-fallback-first",
+      activityId: firstActivityId,
       text: "hold the Teams bot fallback queue",
     });
     const firstClaim = await claimTeamsRun({
@@ -796,7 +828,7 @@ describe("Teams chat callbacks", () => {
     const queuedPrompt = `claim without an activity recipient ${teams.fixture.teamsTenantId}`;
     await postTeamsPersonalMessage({
       fixture: teams.fixture,
-      activityId: "activity-bot-fallback-second",
+      activityId: queuedActivityId,
       text: queuedPrompt,
       omitRecipient: true,
     });
@@ -818,17 +850,22 @@ describe("Teams chat callbacks", () => {
       runId: queuedRunId,
     });
     expect(queuedClaim.prompt).toBe(queuedPrompt);
-    expect(queuedClaim.appendSystemPrompt).toContain("Bot ID: 28:bot-1");
+    expect(queuedClaim.appendSystemPrompt).toContain(
+      `Bot ID: ${teams.fixture.teamsBotId}`,
+    );
     expect(queuedClaim.appendSystemPrompt).toContain("Bot name: Zero");
     await runsApi.requestCancelRun(teams.actor, queuedRunId, [200]);
   });
 
   it("keeps personal message sessions scoped to the selected agent", async () => {
     const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const teamsApi = teamsApiMocks({ fixture: teams.fixture });
     const defaultRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-default-agent",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-default-agent",
+      ),
       text: "remember this DM context",
     });
     const defaultClaim = await claimTeamsRun({
@@ -849,12 +886,18 @@ describe("Teams chat callbacks", () => {
     });
     await switchTeamsAgent({
       fixture: teams.fixture,
-      activityId: "activity-personal-switch-alternate",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-switch-alternate",
+      ),
       agentId: alternateAgent.agentId,
     });
     const alternateRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-alternate-agent",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-alternate-agent",
+      ),
       text: "use an alternate Teams DM agent",
     });
     const alternateClaim = await claimTeamsRun({
@@ -870,13 +913,19 @@ describe("Teams chat callbacks", () => {
     });
     await switchTeamsAgent({
       fixture: teams.fixture,
-      activityId: "activity-personal-switch-default",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-switch-default",
+      ),
       agentId: teams.defaultAgentId,
     });
 
     const returnToDefaultRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-default-agent-return",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-default-agent-return",
+      ),
       text: "return to the default Teams DM agent",
     });
     const returnToDefaultClaim = await claimTeamsRun({
@@ -890,8 +939,11 @@ describe("Teams chat callbacks", () => {
 
   it("forks personal message threads without replacing the main session", async () => {
     const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
-    const rootActivityId = "activity-personal-main";
+    const teamsApi = teamsApiMocks({ fixture: teams.fixture });
+    const rootActivityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-personal-main",
+    );
     const mainRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
       activityId: rootActivityId,
@@ -911,7 +963,10 @@ describe("Teams chat callbacks", () => {
 
     const threadRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-thread-first",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-thread-first",
+      ),
       threadId: rootActivityId,
       text: "open a personal message thread",
     });
@@ -929,7 +984,10 @@ describe("Teams chat callbacks", () => {
 
     const threadFollowUpRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-thread-follow-up",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-thread-follow-up",
+      ),
       threadId: rootActivityId,
       text: "continue the personal message thread",
     });
@@ -947,7 +1005,10 @@ describe("Teams chat callbacks", () => {
 
     const returnToMainRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-main-return",
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-personal-main-return",
+      ),
       text: "return to the main DM",
     });
     const returnToMainClaim = await claimTeamsRun({
@@ -959,13 +1020,18 @@ describe("Teams chat callbacks", () => {
 
   it("posts completed run replies and persists canonical Teams thread sessions", async () => {
     const teams = await setupConnectedTeamsActor({ zeroDebug: true });
-    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const teamsApi = teamsApiMocks({ fixture: teams.fixture });
     mockOptionalEnv("OPENROUTER_API_KEY", "teams-summary-key");
     const summaryRequests = mockOpenRouterSummary("Teams completed summary");
+    const activityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-completed-1",
+    );
+    const threadId = teamsFixtureExternalId(teams.fixture, "root-completed");
     const runId = await dispatchTeamsRun({
       fixture: teams.fixture,
-      activityId: "activity-completed-1",
-      threadId: "root-completed",
+      activityId,
+      threadId,
       text: "finish the task",
     });
     mocks.clerk.session(teams.fixture.userId, teams.fixture.orgId, "org:admin");
@@ -1007,7 +1073,7 @@ describe("Teams chat callbacks", () => {
               kind: "teams",
               href:
                 "https://teams.microsoft.com/l/message/" +
-                "19%3Achannel%40thread.tacv2/activity-completed-1" +
+                `${encodeURIComponent(teams.fixture.teamsChannelId)}/${activityId}` +
                 `?tenantId=${encodeURIComponent(teams.fixture.teamsTenantId)}`,
             },
           ],
@@ -1046,7 +1112,7 @@ describe("Teams chat callbacks", () => {
     expect(teamsApi.postedActivities[0]).toMatchObject({
       type: "message",
       textFormat: "markdown",
-      replyToId: "activity-completed-1",
+      replyToId: activityId,
       channelData: {
         tenant: { id: teams.fixture.teamsTenantId },
       },
@@ -1061,8 +1127,8 @@ describe("Teams chat callbacks", () => {
     expect(teamsApi.reactionRequests).toStrictEqual([
       {
         method: "DELETE",
-        conversationId: "19:thread@thread.tacv2",
-        activityId: "activity-completed-1",
+        conversationId: teams.fixture.teamsConversationId,
+        activityId,
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
@@ -1102,7 +1168,13 @@ describe("Teams chat callbacks", () => {
           teamsTenantId: teams.fixture.teamsTenantId,
           teamsTenantName: teams.fixture.teamsTenantName,
           teamsTeamId: teams.fixture.teamsTeamId,
+          teamsTeamAadGroupId: teams.fixture.teamsTeamAadGroupId,
           teamsTeamName: teams.fixture.teamsTeamName,
+          teamsChannelId: teams.fixture.teamsChannelId,
+          teamsConversationId: teams.fixture.teamsConversationId,
+          teamsThreadId: threadId,
+          teamsAppId: teams.fixture.teamsAppId,
+          teamsBotId: teams.fixture.teamsBotId,
           serviceUrl: teams.fixture.serviceUrl,
         }),
       ),
@@ -1114,20 +1186,21 @@ describe("Teams chat callbacks", () => {
     });
     const tokenRequestCountBeforeConnect = teamsApi.tokenRequests.length;
     const postedActivityCountBeforeConnect = teamsApi.postedActivities.length;
+    const secondPrincipalName = secondFixture.teamsUserPrincipalName;
     await connectTeamsFixture(secondFixture, {
       displayName: "Grace Hopper",
-      principalName: "grace@example.com",
+      principalName: secondPrincipalName,
     });
     await flushWaitUntilForTest();
     teamsApi.tokenRequests.splice(tokenRequestCountBeforeConnect);
     teamsApi.postedActivities.splice(postedActivityCountBeforeConnect);
     const secondRunId = await dispatchTeamsRun({
       fixture: secondFixture,
-      activityId: "activity-completed-2",
-      threadId: "root-completed",
+      activityId: teamsFixtureExternalId(secondFixture, "activity-completed-2"),
+      threadId,
       text: "finish the follow-up",
       senderName: "Grace Hopper",
-      senderPrincipalName: "grace@example.com",
+      senderPrincipalName: secondPrincipalName,
     });
     const secondClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
@@ -1150,19 +1223,27 @@ describe("Teams chat callbacks", () => {
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
       runnerGroup: teams.runnerGroup,
-      threadId: "root-completed",
-      activityId: "activity-completed-follow-up",
+      threadId,
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-completed-follow-up",
+      ),
     });
     expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
   });
 
   it("posts readable failed run replies without persisting a thread session", async () => {
     const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const teamsApi = teamsApiMocks({ fixture: teams.fixture });
+    const activityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-failed-1",
+    );
+    const threadId = teamsFixtureExternalId(teams.fixture, "root-failed");
     const runId = await dispatchTeamsRun({
       fixture: teams.fixture,
-      activityId: "activity-failed-1",
-      threadId: "root-failed",
+      activityId,
+      threadId,
       text: "fail this task",
     });
     const claim = await claimTeamsRun({
@@ -1185,8 +1266,8 @@ describe("Teams chat callbacks", () => {
     expect(teamsApi.reactionRequests).toStrictEqual([
       {
         method: "DELETE",
-        conversationId: "19:thread@thread.tacv2",
-        activityId: "activity-failed-1",
+        conversationId: teams.fixture.teamsConversationId,
+        activityId,
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
@@ -1194,19 +1275,30 @@ describe("Teams chat callbacks", () => {
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
       runnerGroup: teams.runnerGroup,
-      threadId: "root-failed",
-      activityId: "activity-failed-follow-up",
+      threadId,
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-failed-follow-up",
+      ),
     });
     expect(followUpClaim.resumeSession).toBeNull();
   });
 
   it("does not post replies when the Teams installation is missing", async () => {
     const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const teamsApi = teamsApiMocks({ fixture: teams.fixture });
+    const activityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-missing-install-1",
+    );
+    const threadId = teamsFixtureExternalId(
+      teams.fixture,
+      "root-missing-install",
+    );
     const runId = await dispatchTeamsRun({
       fixture: teams.fixture,
-      activityId: "activity-missing-install-1",
-      threadId: "root-missing-install",
+      activityId,
+      threadId,
       text: "complete after uninstall",
     });
     const claim = await claimTeamsRun({
@@ -1234,8 +1326,11 @@ describe("Teams chat callbacks", () => {
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
       runnerGroup: teams.runnerGroup,
-      threadId: "root-missing-install",
-      activityId: "activity-missing-install-follow-up",
+      threadId,
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-missing-install-follow-up",
+      ),
     });
     expect(followUpClaim.resumeSession).toBeNull();
   });
@@ -1243,14 +1338,22 @@ describe("Teams chat callbacks", () => {
   it("keeps the canonical thread session when the Teams API rejects the reply", async () => {
     const teams = await setupConnectedTeamsActor();
     const teamsApi = teamsApiMocks({
-      serviceUrl: teams.fixture.serviceUrl,
+      fixture: teams.fixture,
       activityStatus: 500,
       activityError: "upstream exploded",
     });
+    const activityId = teamsFixtureExternalId(
+      teams.fixture,
+      "activity-teams-api-error-1",
+    );
+    const threadId = teamsFixtureExternalId(
+      teams.fixture,
+      "root-teams-api-error",
+    );
     const runId = await dispatchTeamsRun({
       fixture: teams.fixture,
-      activityId: "activity-teams-api-error-1",
-      threadId: "root-teams-api-error",
+      activityId,
+      threadId,
       text: "complete while Teams is down",
     });
     const claim = await claimTeamsRun({
@@ -1273,8 +1376,8 @@ describe("Teams chat callbacks", () => {
     expect(teamsApi.reactionRequests).toStrictEqual([
       {
         method: "DELETE",
-        conversationId: "19:thread@thread.tacv2",
-        activityId: "activity-teams-api-error-1",
+        conversationId: teams.fixture.teamsConversationId,
+        activityId,
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
@@ -1282,8 +1385,11 @@ describe("Teams chat callbacks", () => {
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
       runnerGroup: teams.runnerGroup,
-      threadId: "root-teams-api-error",
-      activityId: "activity-teams-api-error-follow-up",
+      threadId,
+      activityId: teamsFixtureExternalId(
+        teams.fixture,
+        "activity-teams-api-error-follow-up",
+      ),
     });
     expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
   });

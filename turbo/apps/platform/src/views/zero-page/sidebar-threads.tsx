@@ -75,13 +75,13 @@ import {
   setChatThreadOnlyUnread$,
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
+  closeRenameChatThreadDialog$,
   pendingDeleteThreadId$,
   renameDialogAgentId$,
+  renameDialogOpen$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
   renameDialogInput$,
-  setRenameDialogAgentId$,
-  setRenameDialogThreadId$,
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
@@ -407,21 +407,19 @@ function ChatThreadItem({
 
 function ChatThreadRenameDialog() {
   const { t } = useTranslation();
+  const renameDialogOpen = useGet(renameDialogOpen$);
   const renameDialogThreadId = useGet(renameDialogThreadId$);
   const renameDialogAgentId = useGet(renameDialogAgentId$);
   const renameDialogInput = useGet(renameDialogInput$);
+  const closeRenameChatThreadDialog = useSet(closeRenameChatThreadDialog$);
   const setRenameDialogInput = useSet(setRenameDialogInput$);
-  const setRenameDialogAgentId = useSet(setRenameDialogAgentId$);
-  const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
   const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
 
   function closeRenameDialog() {
     const threadId = renameDialogThreadId;
-    setRenameDialogThreadId(null);
-    setRenameDialogAgentId(null);
-    setRenameDialogInput("");
+    closeRenameChatThreadDialog();
     if (threadId) {
       queueMicrotask(() => {
         focusChatThreadContainer(threadId);
@@ -447,7 +445,7 @@ function ChatThreadRenameDialog() {
 
   return (
     <Dialog
-      open={renameDialogThreadId !== null}
+      open={renameDialogOpen}
       onOpenChange={(open) => {
         if (!open) {
           closeRenameDialog();

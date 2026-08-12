@@ -399,10 +399,6 @@ function InviteDialog() {
       onOpenChange={(v) => {
         if (!sending) {
           setOpen(v);
-          if (!v) {
-            setRole(orgRoleSchema.parse("member"));
-            setUsagePackUsd(20);
-          }
         }
       }}
     >

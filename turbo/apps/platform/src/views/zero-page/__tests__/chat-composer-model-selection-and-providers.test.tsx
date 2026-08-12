@@ -134,6 +134,20 @@ function fastModeIcon(option: HTMLElement): SVGElement {
   return icon;
 }
 
+function mockBuiltInFastModel(): void {
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000911",
+      model: "gpt-5.6-sol",
+      modelLabel: "GPT 5.6 Sol",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+    }),
+  ]);
+  mockAgent();
+}
+
 describe("chat composer models", () => {
   it("keeps model resources cached across Clerk profile events", async () => {
     const policy = buildModelPolicy({
@@ -584,46 +598,10 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps a new Fast thread Fast when its optimistic state reconciles", async () => {
+  it("shows Fast details only while the Fast option is hovered", async () => {
     const user = userEvent.setup({ delay: null });
-    let sentBody:
-      | {
-          model?: string;
-          runOptions?: { codexServiceTier?: "fast" };
-        }
-      | undefined;
-    let createdBody:
-      | {
-          clientThreadId?: string;
-          eventId?: string;
-          model?: string;
-          serviceTier?: ChatThreadServiceTier | null;
-        }
-      | undefined;
-    let modelSelectionUpdateCount = 0;
 
-    context.mocks.data.orgModelPolicies([
-      buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000911",
-        model: "gpt-5.6-sol",
-        modelLabel: "GPT 5.6 Sol",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-      }),
-    ]);
-    mockAgent();
-    mockChatLifecycle(context, {
-      onThreadCreate: (body) => {
-        createdBody = body;
-      },
-      onModelSelectionUpdate: () => {
-        modelSelectionUpdateCount++;
-      },
-      onRunCreate: (body) => {
-        sentBody = body;
-      },
-    });
+    mockBuiltInFastModel();
 
     detachedSetupPage({
       context,
@@ -632,7 +610,7 @@ describe("chat composer models", () => {
     });
 
     await user.click(await findComposerModel("GPT 5.6 Sol"));
-    let fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    const fastModeOption = await findFastModeOption("GPT 5.6 Sol");
     expect(fastModeIcon(fastModeOption)).toHaveAttribute("fill", "none");
     await user.hover(fastModeOption);
     fireEvent.mouseMove(fastModeOption);
@@ -658,6 +636,23 @@ describe("chat composer models", () => {
     expect(
       screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows active Fast state and preserves exact model row selection", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    mockBuiltInFastModel();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    let fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    await user.click(fastModeOption);
+    await expectComposerModel("GPT 5.6 Sol Fast");
 
     await user.click(await findComposerModel("GPT 5.6 Sol Fast"));
     fastModeOption = await findFastModeOption("GPT 5.6 Sol");
@@ -702,6 +697,48 @@ describe("chat composer models", () => {
     fastModeOption = await findFastModeOption("GPT 5.6 Sol");
     expect(fastModeIcon(fastModeOption)).toHaveAttribute("fill", "none");
     await user.click(fastModeOption);
+    await expectComposerModel("GPT 5.6 Sol Fast");
+  });
+
+  it("keeps a new Fast thread Fast when its optimistic state reconciles", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentBody:
+      | {
+          model?: string;
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+    let createdBody:
+      | {
+          clientThreadId?: string;
+          eventId?: string;
+          model?: string;
+          serviceTier?: ChatThreadServiceTier | null;
+        }
+      | undefined;
+    let modelSelectionUpdateCount = 0;
+
+    mockBuiltInFastModel();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdBody = body;
+      },
+      onModelSelectionUpdate: () => {
+        modelSelectionUpdateCount++;
+      },
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    await user.click(await findFastModeOption("GPT 5.6 Sol"));
     await expectComposerModel("GPT 5.6 Sol Fast");
 
     await sendMessageInUI(

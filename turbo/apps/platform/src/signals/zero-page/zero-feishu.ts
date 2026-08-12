@@ -174,7 +174,6 @@ export const openFeishuDialog$ = command(
     },
   ) => {
     const { step, installationId, ...formDefaults } = initial;
-    set(internalDialogOpen$, true);
     set(internalDialogExisting$, installationId !== undefined);
     set(internalDialogInstallationId$, installationId ?? null);
     set(internalSetupStep$, step);
@@ -184,14 +183,18 @@ export const openFeishuDialog$ = command(
       verificationToken: "",
       encryptKey: "",
     });
+    set(internalDialogOpen$, true);
   },
 );
 
 export const closeFeishuDialog$ = command(({ set }) => {
   set(internalDialogOpen$, false);
-  set(internalDialogExisting$, false);
-  set(internalDialogInstallationId$, null);
-  set(internalSetupStep$, "create");
+});
+
+export const completeFeishuDialogClose$ = command(({ get, set }) => {
+  if (get(internalDialogOpen$)) {
+    return;
+  }
   set(internalSetupForm$, (previous) => {
     return {
       ...previous,

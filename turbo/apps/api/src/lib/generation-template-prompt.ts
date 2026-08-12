@@ -105,6 +105,9 @@ function generationTemplateTypeLabel(
 
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
+  options: {
+    readonly latestWebsiteTemplatesEnabled?: boolean;
+  } = {},
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
@@ -120,7 +123,10 @@ export function buildGenerationTemplatePrompt(
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "website") {
-    return buildWebsiteGenerationTemplatePrompt(generationTemplate);
+    return buildWebsiteGenerationTemplatePrompt(
+      generationTemplate,
+      options.latestWebsiteTemplatesEnabled === true,
+    );
   }
 
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
@@ -142,13 +148,16 @@ function stripGenerationTemplateContext(prompt: string): string {
 
 export function buildGenerationTemplatesPrompt(
   generationTemplates: readonly GenerationTemplateInput[],
+  options: {
+    readonly latestWebsiteTemplatesEnabled?: boolean;
+  } = {},
 ): GenerationTemplatePromptResult {
   if (generationTemplates.length === 0) {
     return { status: "resolved", prompt: "" };
   }
   const details: string[] = [];
   for (const [index, generationTemplate] of generationTemplates.entries()) {
-    const built = buildGenerationTemplatePrompt(generationTemplate);
+    const built = buildGenerationTemplatePrompt(generationTemplate, options);
     if (built.status === "invalid") {
       return built;
     }
@@ -241,6 +250,7 @@ function buildPresentationRunbookPrompt(
 
 function buildWebsiteGenerationTemplatePrompt(
   generationTemplate: WebsiteGenerationTemplateInput,
+  latestWebsiteTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const item = findWebsiteTemplateItem(
     generationTemplate.selection.websiteTemplateId,
@@ -249,17 +259,25 @@ function buildWebsiteGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  const pkg = findWebsiteTemplatePackage(item.templateId);
+  const packageId = latestWebsiteTemplatesEnabled
+    ? item.templateId
+    : `${item.templateId}-v2`;
+  const pkg = findWebsiteTemplatePackage(packageId);
   if (!pkg) {
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  return buildWebsiteTemplatePackagePrompt(item, pkg);
+  return buildWebsiteTemplatePackagePrompt(
+    item,
+    pkg,
+    latestWebsiteTemplatesEnabled,
+  );
 }
 
 function buildWebsiteTemplatePackagePrompt(
   item: WebsiteTemplateItem,
   pkg: WebsiteTemplatePackage,
+  latestWebsiteTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const packageDir = `./generated/resources/${pkg.slug}`;
 
@@ -273,11 +291,18 @@ function buildWebsiteTemplatePackagePrompt(
       `- Template description: ${pkg.description}`,
       `- Template package id: ${pkg.templateId}`,
       `- Package resource: ${pkg.resourceId}`,
+      `- Template archive SHA-256: ${pkg.source.archive.sha256}`,
       "",
       "When you produce a website from the user's request:",
       `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
-      "- When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
+      ...(latestWebsiteTemplatesEnabled
+        ? [
+            "- When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
+          ]
+        : [
+            `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
+          ]),
       `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
       "- Host the finished static website: okou host <output-dir> --site <slug>",

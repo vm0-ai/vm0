@@ -2,10 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { HttpResponse, http } from "msw";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  cronDrainEmailOutboxContract,
-  cronExecuteMorningBriefsContract,
-} from "@vm0/api-contracts/contracts/cron";
+import { cronExecuteMorningBriefsContract } from "@vm0/api-contracts/contracts/cron";
+import type { TestEmailOutboxStateItem } from "@vm0/api-contracts/contracts/test-email-outbox-state";
 import {
   chatThreadEventsContract,
   chatThreadsContract,
@@ -33,6 +31,7 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createEmailOutboxStateApi } from "./helpers/email-outbox-state";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
@@ -51,7 +50,6 @@ import {
   setMorningBriefTriggeredAtFixture,
 } from "../../../test-fixtures/morning-brief";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { cronDrainEmailOutboxRoutes } from "../cron-drain-email-outbox";
 import { cronExecuteMorningBriefsRoutes } from "../cron-execute-morning-briefs";
 import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsubscribe";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
@@ -60,7 +58,6 @@ import { zeroMorningBriefRoutes } from "../zero-morning-brief";
 import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...cronDrainEmailOutboxRoutes,
   ...cronExecuteMorningBriefsRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
   ...zeroChatThreadRoutes,
@@ -86,6 +83,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const connectors = createConnectorBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const outbox = createEmailOutboxStateApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const callbackStore = createStore();
 const CRON_SECRET = "test-morning-brief-cron-secret";
@@ -103,14 +101,18 @@ const BRIEF_DATE = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
   timeZone: TIMEZONE,
 }).format(SEVEN_LOCAL);
-const BRIEF_DATE_LABEL = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  timeZone: TIMEZONE,
-}).format(SEVEN_LOCAL);
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function morningBriefSubject(timestampMs: number = SEVEN_LOCAL): string {
+  const dateLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: TIMEZONE,
+  }).format(timestampMs);
+  return `Morning Briefing - ${dateLabel}`;
+}
 
 function mockTimedMorningBriefSignedUrls(): void {
   context.mocks.s3.getSignedUrl.mockImplementation(
@@ -225,12 +227,6 @@ function actorHeaders() {
 function morningBriefCronClient() {
   return setupApp({ context, routes: cronExecuteMorningBriefsRoutes })(
     cronExecuteMorningBriefsContract,
-  );
-}
-
-function drainOutboxClient() {
-  return setupApp({ context, routes: cronDrainEmailOutboxRoutes })(
-    cronDrainEmailOutboxContract,
   );
 }
 
@@ -685,8 +681,27 @@ async function primeMorningBriefThread(scenario: Scenario): Promise<void> {
   await completeMorningBriefRun(scenario, previous.body.runId, 1);
 }
 
-async function drainOutbox(): Promise<void> {
-  await accept(drainOutboxClient().drain({ headers: cronHeaders() }), [200]);
+async function morningBriefOutboxItems(
+  scenario: Scenario,
+  timestampMs: number = SEVEN_LOCAL,
+): Promise<readonly TestEmailOutboxStateItem[]> {
+  return await outbox.findItems({
+    toAddress: scenario.actor.email,
+    subject: morningBriefSubject(timestampMs),
+  });
+}
+
+async function drainMorningBriefOutbox(
+  scenario: Scenario,
+  timestampMs: number = SEVEN_LOCAL,
+): Promise<void> {
+  const item = await outbox.findItem({
+    toAddress: scenario.actor.email,
+    subject: morningBriefSubject(timestampMs),
+  });
+  const sendsBeforeDrain = context.mocks.resend.send.mock.calls.length;
+  await expect(outbox.drainItems([item.id])).resolves.toBe(1);
+  expect(context.mocks.resend.send).toHaveBeenCalledTimes(sendsBeforeDrain + 1);
 }
 
 function sentMorningBriefEmails(): readonly {
@@ -852,7 +867,7 @@ describe("cron execute morning briefs", () => {
       runId,
       0,
     );
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
 
     expect(appendSystemPrompt).toContain("Begin exactly with `Good morning.`");
 
@@ -876,7 +891,7 @@ describe("cron execute morning briefs", () => {
       throw new Error("Expected a morning brief email");
     }
     expect(email.from).toBe("Zero <zero@vm0.bot>");
-    expect(email.subject).toBe(`Morning Briefing - ${BRIEF_DATE_LABEL}`);
+    expect(email.subject).toBe(morningBriefSubject());
     // Generic preheader only; specifics stay inside the body.
     expect(email.html).toContain(
       "Your schedule, action items, and updates for today.",
@@ -934,7 +949,9 @@ describe("cron execute morning briefs", () => {
     // The next day nothing fires for the unsubscribed member.
     mockNow(AFTER_SEVEN_LOCAL + DAY_MS);
     await executeMorningBriefsCron();
-    await drainOutbox();
+    await expect(
+      morningBriefOutboxItems(scenario, AFTER_SEVEN_LOCAL + DAY_MS),
+    ).resolves.toHaveLength(0);
     expect(sentMorningBriefEmails()).toHaveLength(1);
     clearMockNow();
   });
@@ -981,7 +998,7 @@ describe("cron execute morning briefs", () => {
       }),
     );
     await completeMorningBriefRun(scenario, runId, 0);
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
 
     const emails = sentMorningBriefEmails();
     expect(emails).toHaveLength(1);
@@ -1135,7 +1152,7 @@ describe("cron execute morning briefs", () => {
 
     mockUploadedBriefOutput(VALID_OUTPUT);
     await completeMorningBriefRun(scenario, triggeredRunId, 0, null);
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
     expect(sentMorningBriefEmails()).toHaveLength(1);
 
     // Repeat triggers on the same local date return the admitted delivery
@@ -1149,7 +1166,7 @@ describe("cron execute morning briefs", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    await drainOutbox();
+    await expect(morningBriefOutboxItems(scenario)).resolves.toHaveLength(1);
     expect(second.body).toStrictEqual({
       runId: triggeredRunId,
       briefDate: BRIEF_DATE,
@@ -1663,7 +1680,7 @@ describe("cron execute morning briefs", () => {
 
     mockUploadedBriefOutput(VALID_OUTPUT);
     await completeMorningBriefRun(scenario, briefRunId, 0);
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
 
     let userRunId: string | null = null;
     await expect
@@ -1713,7 +1730,7 @@ describe("cron execute morning briefs", () => {
     const { runId } = await findMorningBriefThread(scenario);
     mockUploadedBriefOutput('{"version": 999, "nonsense": true}');
     await completeMorningBriefRun(scenario, runId, 0);
-    await drainOutbox();
+    await expect(morningBriefOutboxItems(scenario)).resolves.toHaveLength(0);
 
     expect(sentMorningBriefEmails()).toHaveLength(0);
     clearMockNow();

@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatEventsContract,
+  chatFeedbackLocationEventsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -14,6 +17,12 @@ const context = testContext();
 function client() {
   return setupApp({ context, routes: zeroChatEventsRoutes })(
     chatEventsContract,
+  );
+}
+
+function feedbackLocationClient() {
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatFeedbackLocationEventsContract,
   );
 }
 
@@ -41,6 +50,51 @@ describe("POST /api/zero/chat/events authorization", () => {
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: prompt }],
+          },
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: chat-event:write",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("protects the versioned feedback-location write route", async () => {
+    const seconds = Math.floor(now() / 1000);
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+    const prompt = "Send located feedback from the App";
+
+    const response = await accept(
+      feedbackLocationClient().send({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: randomUUID(),
+          prompt,
+          hasTextContent: true,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "feedback",
+                quote: "located feedback",
+                note: [{ type: "text", text: "Clarify this." }],
+                eventId: "assistant-event-1",
+                range: { start: 5, end: 21 },
+              },
+            ],
           },
         },
       }),

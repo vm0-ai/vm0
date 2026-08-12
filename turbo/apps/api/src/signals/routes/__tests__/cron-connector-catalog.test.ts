@@ -860,7 +860,7 @@ function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
 
 function buildBundledSkill(
   connectorSlug: string,
-  versionId = "a".repeat(64),
+  versionId = createHash("sha256").update(randomUUID()).digest("hex"),
   metadata: {
     readonly size: number;
     readonly archiveSize: number;
@@ -870,7 +870,7 @@ function buildBundledSkill(
     archiveSize: 321,
     fileCount: 1,
   },
-  storageName = `connector-skill@${connectorSlug}`,
+  storageName = `connector-skill@${connectorSlug}-${randomUUID().replaceAll("-", "")}`,
 ): JsonRecord {
   const prefix = `__system__/volume/${storageName}/${versionId}`;
   return {
@@ -884,10 +884,33 @@ function buildBundledSkill(
   };
 }
 
-interface BundledSkillFixture {
-  readonly descriptor: JsonRecord;
+interface OwnedVolumeStorageFixture {
+  readonly storageId: string;
   readonly storageName: string;
   readonly s3Prefix: string;
+}
+
+function createOwnedVolumeStorageFixture(
+  storageName: string,
+  s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`,
+): OwnedVolumeStorageFixture {
+  return {
+    storageId: randomUUID(),
+    storageName,
+    s3Prefix,
+  };
+}
+
+function createBundledSkillStorageFixture(
+  connectorSlug: string,
+): OwnedVolumeStorageFixture {
+  return createOwnedVolumeStorageFixture(
+    `connector-skill@${connectorSlug}-${randomUUID().replaceAll("-", "")}`,
+  );
+}
+
+interface BundledSkillFixture extends OwnedVolumeStorageFixture {
+  readonly descriptor: JsonRecord;
   readonly versionId: string;
   readonly contentSize: number;
   readonly archiveSize: number;
@@ -897,14 +920,13 @@ interface BundledSkillFixture {
 
 function buildBundledSkillFixture(
   connectorSlug: string,
-  versionId = "a".repeat(64),
-  storageName = `connector-skill@${connectorSlug}`,
+  versionId = createHash("sha256").update(randomUUID()).digest("hex"),
+  storage = createBundledSkillStorageFixture(connectorSlug),
 ): BundledSkillFixture {
   const contentSize = Buffer.byteLength(`# ${connectorSlug}\n`);
   const archiveSize = 321;
   const fileCount = 1;
-  const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
-  const versionPrefix = `${s3Prefix}/${versionId}`;
+  const versionPrefix = `${storage.s3Prefix}/${versionId}`;
   const manifestKey = `${versionPrefix}/manifest.json`;
   const archiveKey = `${versionPrefix}/archive.tar.gz`;
   return {
@@ -916,10 +938,9 @@ function buildBundledSkillFixture(
         archiveSize,
         fileCount,
       },
-      storageName,
+      storage.storageName,
     ),
-    storageName,
-    s3Prefix,
+    ...storage,
     versionId,
     contentSize,
     archiveSize,
@@ -1415,37 +1436,79 @@ async function readVolumeStorageState(args: {
   return response.body.storage_state ?? null;
 }
 
-async function restoreVolumeStorageState(args: {
+async function readOwnedVolumeStorageState(
+  storageId: string,
+): Promise<VolumeStorageState | null> {
+  const response = await systemStorageStateAction({
+    action: "read-owned-storage-state",
+    storage_id: storageId,
+  });
+  return response.body.storage_state ?? null;
+}
+
+interface OwnedVolumeStorageClaim extends OwnedVolumeStorageFixture {
   readonly orgId: string;
-  readonly storageName: string;
-  readonly previous: VolumeStorageState | null;
-}): Promise<void> {
+}
+
+async function claimOwnedVolumeStorages(
+  claims: readonly OwnedVolumeStorageClaim[],
+): Promise<void> {
   await systemStorageStateAction({
-    action: "restore-storage-state",
-    org_id: args.orgId,
-    user_id: VOLUME_ORG_USER_ID,
-    storage_name: args.storageName,
-    previous: args.previous,
+    action: "claim-owned-storages",
+    storages: claims.map((claim) => {
+      return {
+        storage_id: claim.storageId,
+        org_id: claim.orgId,
+        user_id: VOLUME_ORG_USER_ID,
+        storage_name: claim.storageName,
+        s3_prefix: claim.s3Prefix,
+      };
+    }),
   });
 }
 
-async function seedVolumeStorageVersion(args: {
-  readonly orgId: string;
-  readonly storageName: string;
+async function claimOwnedVolumeStorage(
+  claim: OwnedVolumeStorageClaim,
+): Promise<void> {
+  await claimOwnedVolumeStorages([claim]);
+}
+
+async function cleanupOwnedVolumeStorages(
+  storageIds: readonly string[],
+): Promise<void> {
+  await systemStorageStateAction({
+    action: "cleanup-owned-storages",
+    storage_ids: [...storageIds],
+  });
+}
+
+async function seedOwnedVolumeStorageVersion(args: {
+  readonly storageId: string;
   readonly versionId: string;
-  readonly s3Prefix: string;
   readonly s3Key: string;
 }): Promise<void> {
   await systemStorageStateAction({
-    action: "seed-storage-version",
+    action: "seed-owned-storage-version",
+    storage_id: args.storageId,
+    version_id: args.versionId,
+    s3_key: args.s3Key,
+    archive_size: 321,
+  });
+}
+
+async function readVolumeStorageVersion(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+  readonly versionId: string;
+}) {
+  const response = await systemStorageStateAction({
+    action: "read-storage-version",
     org_id: args.orgId,
     user_id: VOLUME_ORG_USER_ID,
     storage_name: args.storageName,
     version_id: args.versionId,
-    s3_prefix: args.s3Prefix,
-    s3_key: args.s3Key,
-    archive_size: 321,
   });
+  return response.body.storage_version ?? null;
 }
 
 async function syncCatalog() {
@@ -3030,7 +3093,7 @@ describe("connector catalog valid lifecycle", () => {
   });
 
   it("loads 17 exact connector skill versions in one bounded storage preload", async () => {
-    const fixtureSuffix = randomUUID().slice(0, 8);
+    const fixtureSuffix = randomUUID().replaceAll("-", "");
     const skills = Array.from({ length: 17 }, (_, index) => {
       const sequence = String(index + 1).padStart(2, "0");
       const connectorSlug = `batch-skill-${fixtureSuffix}-${sequence}`;
@@ -3048,15 +3111,11 @@ describe("connector catalog valid lifecycle", () => {
       };
     });
     configureSource();
-    const previousSystemStates: (VolumeStorageState | null)[] = [];
-    for (const skill of skills) {
-      previousSystemStates.push(
-        await readVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.skill.storageName,
-        }),
-      );
-    }
+    await claimOwnedVolumeStorages(
+      skills.map((skill) => {
+        return { orgId: SYSTEM_ORG_ID, ...skill.skill };
+      }),
+    );
 
     const firstSkill = skills[0];
     if (!firstSkill) {
@@ -3142,18 +3201,18 @@ describe("connector catalog valid lifecycle", () => {
       for (const runId of activeRunIds) {
         await runs.requestCancelRun(actor, runId, [200, 404]);
       }
-      for (const [index, skill] of skills.entries()) {
+      for (const skill of skills) {
         await systemStorageStateAction({
           action: "cleanup",
           object_key_prefix: skill.skill.s3Prefix,
         });
-        await restoreVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.skill.storageName,
-          previous: previousSystemStates[index] ?? null,
-        });
         await createConnectorCleanup(actor, skill.connectorSlug)();
       }
+      await cleanupOwnedVolumeStorages(
+        skills.map((skill) => {
+          return skill.skill.storageId;
+        }),
+      );
       await bdd.deleteAgent(actor, agent.agentId);
     });
 
@@ -3222,11 +3281,9 @@ describe("connector catalog valid lifecycle", () => {
     activeRunIds.delete(headRun.run.runId);
 
     for (const skill of skills) {
-      await seedVolumeStorageVersion({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.skill.storageName,
+      await seedOwnedVolumeStorageVersion({
+        storageId: skill.skill.storageId,
         versionId: skill.newerVersionId,
-        s3Prefix: skill.skill.s3Prefix,
         s3Key: `${skill.skill.s3Prefix}/${skill.newerVersionId}`,
       });
     }
@@ -3253,10 +3310,7 @@ describe("connector catalog valid lifecycle", () => {
     const skill = buildBundledSkillFixture(connectorSlug, selectedVersionId);
     const { storageName, s3Prefix: canonicalPrefix } = skill;
     configureSource();
-    const previousSystemState = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
-    });
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
     const release = buildRelease({
       version: "2026-07-15.external-exact-skill",
       connectorSlug,
@@ -3274,10 +3328,10 @@ describe("connector catalog valid lifecycle", () => {
       throw new Error("Expected an organization-scoped test actor");
     }
     const runtimeOrgId = actor.orgId;
-    const previousRuntimeState = await readVolumeStorageState({
-      orgId: runtimeOrgId,
+    const runtimeStorage = createOwnedVolumeStorageFixture(
       storageName,
-    });
+      canonicalPrefix,
+    );
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -3299,16 +3353,10 @@ describe("connector catalog valid lifecycle", () => {
         action: "cleanup",
         object_key_prefix: canonicalPrefix,
       });
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName,
-        previous: previousSystemState,
-      });
-      await restoreVolumeStorageState({
-        orgId: runtimeOrgId,
-        storageName,
-        previous: previousRuntimeState,
-      });
+      await cleanupOwnedVolumeStorages([
+        skill.storageId,
+        runtimeStorage.storageId,
+      ]);
       await cleanupConnector();
       await bdd.deleteAgent(actor, agent.agentId);
     });
@@ -3335,11 +3383,9 @@ describe("connector catalog valid lifecycle", () => {
       });
     };
 
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
       versionId: newerVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/${newerVersionId}`,
     });
 
@@ -3375,49 +3421,47 @@ describe("connector catalog valid lifecycle", () => {
     await runs.requestCancelRun(actor, run.runId, [200]);
     successfulRunId = undefined;
 
-    await restoreVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
-      previous: previousSystemState,
-    });
-    await seedVolumeStorageVersion({
+    await cleanupOwnedVolumeStorages([skill.storageId]);
+    await claimOwnedVolumeStorage({
       orgId: runtimeOrgId,
-      storageName,
+      ...runtimeStorage,
+    });
+    await seedOwnedVolumeStorageVersion({
+      storageId: runtimeStorage.storageId,
       versionId: selectedVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/${selectedVersionId}`,
     });
     await expectRegistrationFailure();
-    await restoreVolumeStorageState({
-      orgId: runtimeOrgId,
-      storageName,
-      previous: previousRuntimeState,
-    });
+    await cleanupOwnedVolumeStorages([runtimeStorage.storageId]);
 
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
       versionId: otherVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/${otherVersionId}`,
     });
     await expectRegistrationFailure();
 
     const wrongPrefix = `${SYSTEM_ORG_ID}/volume/wrong-${storageName}`;
-    await seedVolumeStorageVersion({
+    await cleanupOwnedVolumeStorages([skill.storageId]);
+    await claimOwnedVolumeStorage({
       orgId: SYSTEM_ORG_ID,
+      storageId: skill.storageId,
       storageName,
-      versionId: selectedVersionId,
       s3Prefix: wrongPrefix,
+    });
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
+      versionId: selectedVersionId,
       s3Key: `${wrongPrefix}/${selectedVersionId}`,
     });
     await expectRegistrationFailure();
 
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
+    await cleanupOwnedVolumeStorages([skill.storageId]);
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
       versionId: selectedVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/wrong-${selectedVersionId}`,
     });
     await expectRegistrationFailure();
@@ -4557,22 +4601,16 @@ describe("connector catalog valid lifecycle", () => {
 
   it("accepts a complete bundled skill descriptor", async () => {
     configureSource();
-    const resolvedStorageName = `connector-skill@resolved-${randomUUID().slice(0, 8)}`;
+    const resolvedStorageName = `connector-skill@resolved-${randomUUID().replaceAll("-", "")}`;
+    const storage = createOwnedVolumeStorageFixture(resolvedStorageName);
     const skill = buildBundledSkillFixture(
       "external-test",
       createHash("sha256").update(randomUUID()).digest("hex"),
-      resolvedStorageName,
+      storage,
     );
-    const previous = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: skill.storageName,
-    });
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
     onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-        previous,
-      });
+      await cleanupOwnedVolumeStorages([skill.storageId]);
     });
     const release = buildRelease({
       version: "2026-07-15.bundled-skill",
@@ -4589,10 +4627,7 @@ describe("connector catalog valid lifecycle", () => {
       active: { catalogVersion: release.version },
     });
     await expect(
-      readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-      }),
+      readOwnedVolumeStorageState(skill.storageId),
     ).resolves.toStrictEqual({
       s3_prefix: skill.s3Prefix,
       size: skill.contentSize,
@@ -4635,17 +4670,6 @@ describe("connector catalog valid lifecycle", () => {
           .update(`${testCase.label}:${randomUUID()}`)
           .digest("hex"),
       );
-      const previous = await readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-      });
-      onTestFinished(async () => {
-        await restoreVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.storageName,
-          previous,
-        });
-      });
       const release = buildRelease({
         version: `2026-07-22.skill-${testCase.label}-${randomUUID().slice(0, 8)}`,
         connectorSlug,
@@ -4680,24 +4704,20 @@ describe("connector catalog valid lifecycle", () => {
   it("reuses immutable skill versions without regressing HEAD", async () => {
     configureSource();
     const connectorSlug = `skill-cache-${randomUUID().slice(0, 8)}`;
+    const storage = createBundledSkillStorageFixture(connectorSlug);
     const firstSkill = buildBundledSkillFixture(
       connectorSlug,
       createHash("sha256").update(`first:${randomUUID()}`).digest("hex"),
+      storage,
     );
     const secondSkill = buildBundledSkillFixture(
       connectorSlug,
       createHash("sha256").update(`second:${randomUUID()}`).digest("hex"),
+      storage,
     );
-    const previous = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: firstSkill.storageName,
-    });
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...storage });
     onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: firstSkill.storageName,
-        previous,
-      });
+      await cleanupOwnedVolumeStorages([storage.storageId]);
     });
     const firstRelease = buildRelease({
       version: `2026-07-22.skill-cache-first-${randomUUID().slice(0, 8)}`,
@@ -4745,10 +4765,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(requestedKeys).not.toContain(firstSkill.manifestKey);
     expect(requestedKeys).not.toContain(firstSkill.archiveKey);
     await expect(
-      readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: firstSkill.storageName,
-      }),
+      readOwnedVolumeStorageState(storage.storageId),
     ).resolves.toMatchObject({
       head_version_id: secondSkill.versionId,
     });
@@ -4767,35 +4784,27 @@ describe("connector catalog valid lifecycle", () => {
       conflictingConnectorSlug,
       createHash("sha256").update(`conflict:${randomUUID()}`).digest("hex"),
     );
-    const previousFirst = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: firstSkill.storageName,
-    });
-    const previousConflicting = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: conflictingSkill.storageName,
-    });
-    onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: firstSkill.storageName,
-        previous: previousFirst,
-      });
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: conflictingSkill.storageName,
-        previous: previousConflicting,
-      });
-    });
     const wrongPrefix = `${SYSTEM_ORG_ID}/volume/wrong-${conflictingSkill.storageName}`;
+    await claimOwnedVolumeStorages([
+      { orgId: SYSTEM_ORG_ID, ...firstSkill },
+      {
+        orgId: SYSTEM_ORG_ID,
+        ...conflictingSkill,
+        s3Prefix: wrongPrefix,
+      },
+    ]);
+    onTestFinished(async () => {
+      await cleanupOwnedVolumeStorages([
+        firstSkill.storageId,
+        conflictingSkill.storageId,
+      ]);
+    });
     const existingVersionId = createHash("sha256")
       .update(`existing:${randomUUID()}`)
       .digest("hex");
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName: conflictingSkill.storageName,
+    await seedOwnedVolumeStorageVersion({
+      storageId: conflictingSkill.storageId,
       versionId: existingVersionId,
-      s3Prefix: wrongPrefix,
       s3Key: `${wrongPrefix}/${existingVersionId}`,
     });
     const conflictingIconBytes = Buffer.from(
@@ -4851,16 +4860,22 @@ describe("connector catalog valid lifecycle", () => {
       lastAttempt: { failureCode: "invalid-reference" },
     });
     await expect(
-      readVolumeStorageState({
+      readOwnedVolumeStorageState(firstSkill.storageId),
+    ).resolves.toStrictEqual({
+      s3_prefix: firstSkill.s3Prefix,
+      size: 0,
+      file_count: 0,
+      head_version_id: null,
+    });
+    await expect(
+      readVolumeStorageVersion({
         orgId: SYSTEM_ORG_ID,
         storageName: firstSkill.storageName,
+        versionId: firstSkill.versionId,
       }),
     ).resolves.toBeNull();
     await expect(
-      readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: conflictingSkill.storageName,
-      }),
+      readOwnedVolumeStorageState(conflictingSkill.storageId),
     ).resolves.toStrictEqual({
       s3_prefix: wrongPrefix,
       size: 1,
@@ -4868,10 +4883,10 @@ describe("connector catalog valid lifecycle", () => {
       head_version_id: existingVersionId,
     });
 
-    await restoreVolumeStorageState({
+    await cleanupOwnedVolumeStorages([conflictingSkill.storageId]);
+    await claimOwnedVolumeStorage({
       orgId: SYSTEM_ORG_ID,
-      storageName: conflictingSkill.storageName,
-      previous: previousConflicting,
+      ...conflictingSkill,
     });
     serveObjects(objects);
     expect((await syncCatalog()).body).toMatchObject({
@@ -4880,10 +4895,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     for (const skill of [firstSkill, conflictingSkill]) {
       await expect(
-        readVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.storageName,
-        }),
+        readOwnedVolumeStorageState(skill.storageId),
       ).resolves.toMatchObject({
         s3_prefix: skill.s3Prefix,
         head_version_id: skill.versionId,
@@ -4898,33 +4910,22 @@ describe("connector catalog valid lifecycle", () => {
       connectorSlug,
       createHash("sha256").update(`shared:${randomUUID()}`).digest("hex"),
     );
-    const ownerStorageName = `connector-skill@owner-${randomUUID().slice(0, 8)}`;
+    const ownerStorageName = `connector-skill@owner-${randomUUID().replaceAll("-", "")}`;
     const ownerPrefix = `${SYSTEM_ORG_ID}/volume/${ownerStorageName}`;
-    const previousOwner = await readVolumeStorageState({
+    const ownerStorage = createOwnedVolumeStorageFixture(
+      ownerStorageName,
+      ownerPrefix,
+    );
+    await claimOwnedVolumeStorage({
       orgId: SYSTEM_ORG_ID,
-      storageName: ownerStorageName,
-    });
-    const previousCandidate = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: skill.storageName,
+      ...ownerStorage,
     });
     onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: ownerStorageName,
-        previous: previousOwner,
-      });
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-        previous: previousCandidate,
-      });
+      await cleanupOwnedVolumeStorages([ownerStorage.storageId]);
     });
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName: ownerStorageName,
+    await seedOwnedVolumeStorageVersion({
+      storageId: ownerStorage.storageId,
       versionId: skill.versionId,
-      s3Prefix: ownerPrefix,
       s3Key: `${ownerPrefix}/${skill.versionId}`,
     });
     const release = buildRelease({
@@ -6474,7 +6475,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const skill = buildBundledSkill("wrong");
             skill.storageVersionPrefix =
-              "__system__/volume/connector-skill@other/" + "a".repeat(64);
+              `__system__/volume/connector-skill@other-${randomUUID().replaceAll("-", "")}/` +
+              createHash("sha256").update(randomUUID()).digest("hex");
             connector.skill = skill;
           },
         });

@@ -231,6 +231,15 @@ export const openEditModelProviderConnection$ = command(
 );
 
 export const closeModelProviderConnection$ = command(({ set }) => {
+  set(internalConnectionDraft$, (draft) => {
+    return { ...draft, open: false };
+  });
+});
+
+export const completeModelProviderConnectionClose$ = command(({ get, set }) => {
+  if (get(internalConnectionDraft$).open) {
+    return;
+  }
   set(resetConnectionDialogSignal$);
 });
 

@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
 
@@ -51,7 +52,7 @@ describe("okou generate website command", () => {
     expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain(
-      "https://static.vm0.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
+      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
     );
     expect(stdout).not.toContain("Sources:");
     expect(stdout).not.toContain("vm0-ai/vm0-skills");
@@ -80,14 +81,34 @@ describe("okou generate website command", () => {
     expect(stdout).toContain(
       "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
     );
-    expect(stdout).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
-    );
+    expect(stdout).toContain("Built-in Website template release: previous");
+    expect(stdout).not.toContain("use `seedream4` by default");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
     expect(stdout).toContain(
       "okou host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
+    );
+  });
+
+  it("should expose the latest independent registry inside the rollout", async () => {
+    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "observability launch site",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "https://static.vm0.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
+    );
+    expect(stdout).toContain("Built-in Website template release: latest");
+    expect(stdout).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
     );
   });
 
@@ -156,6 +177,28 @@ describe("okou generate website command", () => {
     );
     expect(stdout).toContain(
       "Selected template package: okou resource pull template:dot-matrix --dir ./generated/resources",
+    );
+    expect(stdout).toContain(
+      "Selected template archive SHA-256: f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
+    );
+  });
+
+  it("should pin the latest built-in package inside the rollout", async () => {
+    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "Kinetic onchain brand studio",
+      "--template",
+      "dot-matrix",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template archive SHA-256: cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
     );
   });
 

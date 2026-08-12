@@ -375,7 +375,7 @@ describe("zero sidebar account menu", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Credit usage" }),
+        screen.getByRole("heading", { name: "Credit balance" }),
       ).toBeInTheDocument();
       expect(screen.getByTestId("usage-pack-credit-card")).toBeInTheDocument();
     });
@@ -456,8 +456,8 @@ describe("zero sidebar account menu", () => {
       expect(
         screen.getByRole("heading", { name: "Credit balance" }),
       ).toBeInTheDocument();
-      expect(screen.getByText("Pro credits")).toBeInTheDocument();
-      expect(screen.getByText("Launch bonus")).toBeInTheDocument();
+      expect(screen.getByTestId("credit-balance-info")).toBeInTheDocument();
+      expect(screen.getByText("12,500")).toBeInTheDocument();
     });
   });
 

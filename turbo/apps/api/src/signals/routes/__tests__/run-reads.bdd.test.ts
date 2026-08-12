@@ -3689,19 +3689,19 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       error: "bdd failure",
     });
 
-    // A claimed run's real zero token reads the log surfaces by capability.
+    // A claimed run's real Okou token reads the log surfaces by capability.
     const tokenRun = await api.createRun(actor, {
       agentId: agentOne.agentId,
       prompt: "zero token run",
       modelProvider: "anthropic-api-key",
     });
     const tokenClaim = await api.claimRunnerJob(tokenRun.runId);
-    const zeroToken = tokenClaim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error("Expected the claimed run to expose a ZERO_TOKEN");
+    const okouToken = tokenClaim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the claimed run to expose an OKOU_TOKEN");
     }
     const tokenList = await reads.requestListLogsAs(
-      `Bearer ${zeroToken}`,
+      `Bearer ${okouToken}`,
       {},
       [200],
     );
@@ -3712,7 +3712,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       }),
     ).toContain(webRun.runId);
     const tokenDetail = await reads.requestReadLogByIdAs(
-      `Bearer ${zeroToken}`,
+      `Bearer ${okouToken}`,
       webRun.runId,
       [200],
     );
@@ -3810,8 +3810,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     const sharedRun = await api.createDirectRun(actor, {
       agentComposeId: currentCompose.composeId,
       prompt: "shared compose version log",
-      vars: { ZERO_AGENT_ID: currentCompose.composeId },
-      secrets: { ZERO_TOKEN: "bdd-zero-token" },
+      vars: { OKOU_AGENT_ID: currentCompose.composeId },
+      secrets: { OKOU_TOKEN: "bdd-okou-token" },
     });
 
     const listed = await reads.requestListLogs(actor, {}, [200]);

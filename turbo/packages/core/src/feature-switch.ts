@@ -328,6 +328,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable owner-scoped presentation template imports and catalog APIs.",
     enabled: false,
   },
+  [FeatureSwitchKey.LatestWebsiteTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the latest built-in Website template archives, independent registry, and seedream4 default instead of the pre-cutover release.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:

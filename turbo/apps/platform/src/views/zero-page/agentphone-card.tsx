@@ -40,8 +40,8 @@ import {
   agentPhonePhoneFormNormalized$,
   agentPhoneShowPhoneError$,
   agentPhoneVerificationPhone$,
+  completeAgentPhoneConnectDialogClose$,
   disconnectAgentPhone$,
-  resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
   setAgentPhonePhoneForm$,
   setAgentPhoneShowPhoneError$,
@@ -232,9 +232,9 @@ function AgentPhoneConnectDialog() {
   const showPhoneError = useLastResolved(agentPhoneShowPhoneError$) ?? false;
   const setPhoneForm = useSet(setAgentPhonePhoneForm$);
   const setOpen = useSet(setAgentPhoneConnectDialogOpen$);
+  const completeClose = useSet(completeAgentPhoneConnectDialogClose$);
   const setVerificationPhone = useSet(setAgentPhoneVerificationPhone$);
   const setShowPhoneError = useSet(setAgentPhoneShowPhoneError$);
-  const resetConnectUi = useSet(resetAgentPhoneConnectUi$);
   const pageSignal = useGet(pageSignal$);
   const [startLoadable, startLink] = useLoadableSet(startAgentPhoneLink$);
   const status = useLastResolved(agentPhoneLinkStatus$);
@@ -246,9 +246,6 @@ function AgentPhoneConnectDialog() {
   const close = (nextOpen: boolean) => {
     if (!nextOpen && starting) {
       return;
-    }
-    if (!nextOpen && !connecting) {
-      resetConnectUi();
     }
     setOpen(nextOpen);
   };
@@ -271,7 +268,15 @@ function AgentPhoneConnectDialog() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={close}>
+    <Dialog
+      open={open}
+      onOpenChange={close}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
+        }
+      }}
+    >
       <DialogContent>
         <AgentPhoneConnectIntro />
         <form className="grid gap-3" onSubmit={submit}>

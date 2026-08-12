@@ -1061,14 +1061,15 @@
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} restantes",
         "minute": "{{value}}min",
-        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Saldo restante da franquia de uso de {{label}}",
         "resets": "Reinicia em {{date}}",
         "resetsRaw": "Reinicia em {{value}}",
         "title": "Franquia de uso",
         "week": "{{value}} sem."
       },
+      "autoRechargeOn": "Recarga automática ativada",
       "breakdown": {
         "currentPlanDescription": "Créditos mensais do plano, reiniciados a cada ciclo de cobrança",
         "freeDescription": "Créditos iniciais, disponíveis até acabarem",
@@ -1086,10 +1087,18 @@
       "creditsRemaining_many": "{{value}} créditos restantes",
       "creditsRemaining_other": "{{value}} créditos restantes",
       "expires": "Expira em {{date}}",
+      "grantsTable": {
+        "added": "Adicionado",
+        "amount": "Valor",
+        "expires": "Expira",
+        "left": "Restante",
+        "source": "Origem"
+      },
       "left": "{{value}} restantes",
       "member": "Membro",
       "neverExpires": "Nunca expira",
       "orgCredits": "Créditos da organização",
+      "seeUsageRecords": "Ver onde estes créditos foram usados",
       "unavailable": "Saldo de créditos indisponível.",
       "upgradeDescription": "O Pro inclui créditos mensais e libera outras opções de créditos.",
       "upgradeTitle": "Faça upgrade para o Pro e obtenha mais créditos",
@@ -4094,7 +4103,7 @@
           "title": "Preferência"
         },
         "usage": {
-          "balanceDescription": "O saldo e o uso de créditos da sua equipe.",
+          "balanceDescription": "O que resta para a sua equipe gastar.",
           "balanceTitle": "Saldo de créditos",
           "usageDescription": "Seu uso de créditos em conversas, automações e canais.",
           "usageTitle": "Uso de créditos"

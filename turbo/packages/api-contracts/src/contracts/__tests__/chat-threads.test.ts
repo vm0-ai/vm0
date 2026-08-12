@@ -388,6 +388,55 @@ describe("chat thread generation template contract", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts feedback event ranges without requiring them on legacy data", () => {
+    const legacyFeedback = {
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "Original reply",
+          note: [{ type: "text", text: "Clarify this" }],
+        },
+      ],
+    };
+    const locatedFeedback = {
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "reply",
+          note: [{ type: "text", text: "Clarify this" }],
+          eventId: "assistant-event-1",
+          range: { start: 9, end: 14 },
+        },
+      ],
+    };
+
+    expect(userMessageDocumentSchema.safeParse(legacyFeedback)).toMatchObject({
+      success: true,
+    });
+    expect(userMessageDocumentSchema.safeParse(locatedFeedback)).toMatchObject({
+      success: true,
+    });
+    expect(
+      userMessageDocumentSchema.safeParse({
+        ...locatedFeedback,
+        parts: [{ ...locatedFeedback.parts[0], range: undefined }],
+      }),
+    ).toMatchObject({ success: false });
+    expect(
+      userMessageDocumentSchema.safeParse({
+        ...locatedFeedback,
+        parts: [
+          {
+            ...locatedFeedback.parts[0],
+            range: { start: 14, end: 14 },
+          },
+        ],
+      }),
+    ).toMatchObject({ success: false });
+  });
+
   it("accepts presentation template selections", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "presentation",

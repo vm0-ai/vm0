@@ -31,10 +31,6 @@ use super::{RunnerPreferenceContext, parse_runner_preference};
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
-use crate::immediate_successor_intent::{
-    IMMEDIATE_SUCCESSOR_INTENT_EVENT_NAME, ImmediateSuccessorIntentNotification,
-    ImmediateSuccessorIntents, ImmediateSuccessorReceiveOutcome,
-};
 use crate::pi_standby::{PiStandbyNotifications, PiStandbySignal};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
@@ -443,9 +439,6 @@ pub(super) struct AblySupervisorConfig {
     pub(super) connector_runtime_sync: ConnectorRuntimeSyncHandle,
     pub(super) active_input_notifications: ActiveInputNotifications,
     pub(super) pi_standby_notifications: PiStandbyNotifications,
-    pub(super) immediate_successor_intents: ImmediateSuccessorIntents,
-    pub(super) runner_id: String,
-    pub(super) heartbeat_generation: u64,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -459,9 +452,6 @@ struct SupervisorTaskConfig {
     connector_runtime_sync: ConnectorRuntimeSyncHandle,
     active_input_notifications: ActiveInputNotifications,
     pi_standby_notifications: PiStandbyNotifications,
-    immediate_successor_intents: ImmediateSuccessorIntents,
-    runner_id: String,
-    heartbeat_generation: u64,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -480,9 +470,6 @@ impl AblySupervisor {
             connector_runtime_sync: config.connector_runtime_sync,
             active_input_notifications: config.active_input_notifications,
             pi_standby_notifications: config.pi_standby_notifications,
-            immediate_successor_intents: config.immediate_successor_intents,
-            runner_id: config.runner_id,
-            heartbeat_generation: config.heartbeat_generation,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -561,15 +548,6 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
-                        if msg.name.as_deref() == Some(IMMEDIATE_SUCCESSOR_INTENT_EVENT_NAME) {
-                            handle_immediate_successor_intent_notification(
-                                &msg,
-                                &config.immediate_successor_intents,
-                                &config.runner_id,
-                                config.heartbeat_generation,
-                            );
-                            continue;
-                        }
                         if let Some((run_id, signal)) = parse_pi_standby_notification(&msg) {
                             config.pi_standby_notifications.notify(run_id, signal);
                             continue;
@@ -648,44 +626,6 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
     if let Some(handle) = ably_retry.handle.take() {
         handle.abort();
         let _ = handle.await;
-    }
-}
-
-fn handle_immediate_successor_intent_notification(
-    msg: &ably_subscriber::Message,
-    registry: &ImmediateSuccessorIntents,
-    runner_id: &str,
-    heartbeat_generation: u64,
-) {
-    let notification =
-        match serde_json::from_value::<ImmediateSuccessorIntentNotification>(msg.data.clone()) {
-            Ok(notification) => notification,
-            Err(error) => {
-                warn!(error = %error, "ably: malformed immediate successor intent");
-                return;
-            }
-        };
-    let predecessor_run_id = notification.predecessor_run_id;
-    let event_class = notification.event_class.as_str();
-    let outcome = registry.receive(notification, runner_id, heartbeat_generation);
-    match outcome {
-        ImmediateSuccessorReceiveOutcome::Overflow => {
-            warn!(
-                %predecessor_run_id,
-                event_class,
-                outcome = outcome.as_str(),
-                "ably: immediate successor intent registry full"
-            );
-        }
-        ImmediateSuccessorReceiveOutcome::WrongTarget => {}
-        _ => {
-            info!(
-                %predecessor_run_id,
-                event_class,
-                outcome = outcome.as_str(),
-                "ably: immediate successor intent observed"
-            );
-        }
     }
 }
 
@@ -1210,7 +1150,6 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::immediate_successor_intent::ImmediateSuccessorObservationState;
     use crate::provider::{RunnerPreference, RunnerPreferenceTier};
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
@@ -1255,89 +1194,6 @@ mod tests {
 
     fn default_profiles() -> Vec<String> {
         vec![crate::profile::DEFAULT_PROFILE.to_string()]
-    }
-
-    #[test]
-    fn immediate_successor_notification_is_retained_for_exact_runner_generation() {
-        let registry = ImmediateSuccessorIntents::new(2);
-        let predecessor = RunId::new_v4();
-        let intent_id = uuid::Uuid::new_v4();
-        let runner_id = "00000000-0000-4000-8000-000000000005";
-        let decided_at = chrono::Utc::now();
-        let message = make_message(
-            Some(IMMEDIATE_SUCCESSOR_INTENT_EVENT_NAME),
-            serde_json::json!({
-                "action": "arm",
-                "predecessorRunId": predecessor,
-                "intentId": intent_id,
-                "runnerIdentity": {
-                    "runnerId": runner_id,
-                    "heartbeatGeneration": 7
-                },
-                "eventClass": "prompt",
-                "decidedAt": decided_at.to_rfc3339(),
-                "expiresAt": (decided_at + chrono::Duration::seconds(1)).to_rfc3339()
-            }),
-        );
-
-        handle_immediate_successor_intent_notification(&message, &registry, runner_id, 7);
-
-        let snapshot = registry
-            .observe_claim(Some(predecessor), StdInstant::now())
-            .unwrap()
-            .snapshot();
-        assert_eq!(snapshot.state, ImmediateSuccessorObservationState::Armed);
-    }
-
-    #[test]
-    fn malformed_and_wrong_generation_immediate_successor_notifications_are_ignored() {
-        let registry = ImmediateSuccessorIntents::new(2);
-        let predecessor = RunId::new_v4();
-        let intent_id = uuid::Uuid::new_v4();
-        let runner_id = "00000000-0000-4000-8000-000000000005";
-        let decided_at = chrono::Utc::now();
-        let wrong_generation = make_message(
-            Some(IMMEDIATE_SUCCESSOR_INTENT_EVENT_NAME),
-            serde_json::json!({
-                "action": "arm",
-                "predecessorRunId": predecessor,
-                "intentId": intent_id,
-                "runnerIdentity": {
-                    "runnerId": runner_id,
-                    "heartbeatGeneration": 8
-                },
-                "eventClass": "goal",
-                "decidedAt": decided_at.to_rfc3339(),
-                "expiresAt": (decided_at + chrono::Duration::seconds(1)).to_rfc3339()
-            }),
-        );
-        handle_immediate_successor_intent_notification(&wrong_generation, &registry, runner_id, 7);
-        let malformed = make_message(
-            Some(IMMEDIATE_SUCCESSOR_INTENT_EVENT_NAME),
-            serde_json::json!({
-                "action": "arm",
-                "predecessorRunId": predecessor,
-                "intentId": intent_id,
-                "runnerIdentity": {
-                    "runnerId": runner_id,
-                    "heartbeatGeneration": 7
-                },
-                "eventClass": "automation",
-                "decidedAt": decided_at.to_rfc3339(),
-                "expiresAt": (decided_at + chrono::Duration::seconds(1)).to_rfc3339(),
-                "unexpected": true
-            }),
-        );
-        handle_immediate_successor_intent_notification(&malformed, &registry, runner_id, 7);
-
-        assert_eq!(
-            registry
-                .observe_claim(Some(predecessor), StdInstant::now())
-                .unwrap()
-                .snapshot()
-                .state,
-            ImmediateSuccessorObservationState::Missing
-        );
     }
 
     #[tokio::test(start_paused = true)]

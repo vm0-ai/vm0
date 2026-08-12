@@ -40,6 +40,7 @@ export const testCronCleanupSandboxesStateErrorSchema = z.object({
 });
 
 export const testCronCleanupSandboxesScopeSchema = z.object({
+  chatThreadIds: z.array(z.string().uuid()),
   runIds: z.array(z.string().uuid()),
   orgIds: z.array(z.string().min(1)),
   exportJobIds: z.array(z.string().uuid()),

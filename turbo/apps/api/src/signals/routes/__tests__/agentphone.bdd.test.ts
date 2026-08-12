@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { describe, expect, test as vitestTest } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -15,7 +15,6 @@ import {
   findAgentphoneChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
-import { withThreadlessRunCleanupTestLockFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import {
@@ -39,24 +38,6 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
-const PHONE_MEDIA_RUN_TOKEN_TEST =
-  "uploads and streams phone media with a real run-scoped zero token";
-
-function it(name: string, test: () => Promise<void>): void {
-  vitestTest(name, async () => {
-    if (name === PHONE_MEDIA_RUN_TOKEN_TEST) {
-      // This case intentionally creates a test-only direct run. Share the
-      // cleanup suite's lock so its global sweep cannot cancel that run.
-      await withThreadlessRunCleanupTestLockFixture({
-        signal: context.signal,
-        run: test,
-      });
-      return;
-    }
-    await test();
-  });
-}
-
 interface LinkedAgentPhoneActor {
   readonly actor: ApiTestUser;
   readonly phone: string;
@@ -100,7 +81,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   readonly sandboxToken: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
-  readonly zeroToken: string | undefined;
+  readonly okouToken: string | undefined;
 }> {
   const runs = createRunsApi(context);
   await runs.heartbeatRunner(runnerGroup);
@@ -121,7 +102,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
     sandboxToken: claim.sandboxToken,
     prompt: claim.prompt,
     appendSystemPrompt: claim.appendSystemPrompt ?? "",
-    zeroToken: claim.environment?.ZERO_TOKEN,
+    okouToken: claim.environment?.OKOU_TOKEN,
   };
 }
 
@@ -1195,7 +1176,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsBeforeCompletion);
   });
 
-  it(PHONE_MEDIA_RUN_TOKEN_TEST, async () => {
+  it("uploads and streams phone media with a real run-scoped zero token", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const integrations = createBddIntegrationApi(context);
@@ -1214,13 +1195,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error("Expected the claimed run to expose ZERO_TOKEN");
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the claimed run to expose OKOU_TOKEN");
     }
 
     const init = await ap.requestPhoneUploadInitWithToken(
-      zeroToken,
+      okouToken,
       { filename: "screen shot.png", contentType: "image/png", length: 123 },
       [200],
     );
@@ -1239,7 +1220,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       size: 456,
     });
     const completed = await ap.requestPhoneUploadCompleteWithToken(
-      zeroToken,
+      okouToken,
       {
         uploadId: init.body.uploadId,
         toNumber: phone,
@@ -1270,7 +1251,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       }),
     );
     const downloaded = await ap.downloadPhoneFileRaw(
-      zeroToken,
+      okouToken,
       completed.body.messageId,
     );
     expect(downloaded.status).toBe(200);

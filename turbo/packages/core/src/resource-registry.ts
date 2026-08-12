@@ -104,7 +104,9 @@ export const RESOURCE_REGISTRY_VERSION = "v1";
 function privateR2ArchiveSource(
   path: string,
   sha256: string,
-): ResourceSourceRef {
+): ResourceSourceRef & {
+  readonly archive: NonNullable<ResourceSourceRef["archive"]>;
+} {
   return {
     path,
     archive: {
@@ -3662,8 +3664,15 @@ export interface WebsiteTemplatePackage {
   readonly slug: WebsiteTemplateItem["slug"];
   readonly name: WebsiteTemplateItem["title"];
   readonly description: WebsiteTemplateItem["description"];
-  readonly source: ResourceSourceRef;
+  readonly source: ResourceSourceRef & {
+    readonly archive: NonNullable<ResourceSourceRef["archive"]>;
+  };
 }
+
+export type WebsiteTemplateArchiveVersion = "latest" | "previous";
+
+export const WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV =
+  "OKOU_WEBSITE_TEMPLATE_ARCHIVE_VERSION";
 
 // Archive digests for uploaded private R2 website template packages. Keep these
 // in sync with the private R2 version ids served by the API download route.
@@ -3711,6 +3720,60 @@ const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
       source: privateR2ArchiveSource(
         item.sourcePath,
         websiteTemplateArchiveSha256(item.slug),
+      ),
+    };
+  });
+
+// The disabled side of LatestWebsiteTemplates deliberately keeps the stable
+// Website package ids on their pre-cutover immutable R2 versions. Remove this
+// map with the switch only after the rollout and run-context drain in #26672;
+// historical R2 objects remain immutable and must not be deleted.
+const PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
+  "black-slabs":
+    "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
+  "blueprint-grid":
+    "97c2edd94467bc414f0d9fc27cafa048cb2a7aaba3df5159df519a2bb2b97a4e",
+  "coastal-hotel":
+    "9633475124da5728cbf99a7333b494f74842232faaf675bc7878a3ebcdf59bcb",
+  "dot-matrix":
+    "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
+  "frame-stack":
+    "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
+  "frosted-scatter":
+    "00e343ace0673ece5903a2b6abbad6bb960c17796e0cfa5cce0bcab7e6bcdd7b",
+  "gallery-wall":
+    "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
+  "glass-bloom":
+    "0c61488baa294fb13c58aa129e3ae99f0cd4ff9125459761a1b2c1390b860f93",
+  "serif-stack":
+    "cf5137a7b6788f4d7cb24bda358a8e1971c0e7ed026d50e6cf292f6bf0cd0c14",
+  "sticker-pop":
+    "2086113018279f28e23489cf7a0f3663c37a23210fb106c4ed48d8c19923f78f",
+  "warm-cards":
+    "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
+};
+
+function previousWebsiteTemplateArchiveSha256(slug: string): string {
+  const sha256 = PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_SHA256[slug];
+  if (!sha256) {
+    throw new Error(
+      `Missing previous website template archive sha256 for ${slug}`,
+    );
+  }
+  return sha256;
+}
+
+const PREVIOUS_WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
+  WEBSITE_TEMPLATE_ITEMS.map((item) => {
+    return {
+      templateId: item.templateId,
+      resourceId: item.resourceId,
+      slug: item.sourcePath,
+      name: item.title,
+      description: item.description,
+      source: privateR2ArchiveSource(
+        item.sourcePath,
+        previousWebsiteTemplateArchiveSha256(item.slug),
       ),
     };
   });
@@ -3785,11 +3848,19 @@ export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[]
 
 export function findWebsiteTemplatePackage(
   templateId: string,
+  archiveVersion: WebsiteTemplateArchiveVersion = "latest",
 ): WebsiteTemplatePackage | undefined {
-  const directPackage = [
-    ...WEBSITE_TEMPLATE_PACKAGES,
-    ...WEBSITE_TEMPLATE_V2_PACKAGES,
-  ].find((pkg) => {
+  const v2Package = WEBSITE_TEMPLATE_V2_PACKAGES.find((pkg) => {
+    return pkg.templateId === templateId || pkg.resourceId === templateId;
+  });
+  if (v2Package) {
+    return v2Package;
+  }
+  const packages =
+    archiveVersion === "latest"
+      ? WEBSITE_TEMPLATE_PACKAGES
+      : PREVIOUS_WEBSITE_TEMPLATE_PACKAGES;
+  const directPackage = packages.find((pkg) => {
     return pkg.templateId === templateId || pkg.resourceId === templateId;
   });
   if (directPackage) {
@@ -3797,13 +3868,14 @@ export function findWebsiteTemplatePackage(
   }
   const normalizedTemplateId =
     findWebsiteTemplateItem(templateId)?.templateId ?? templateId;
-  return WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
+  return packages.find((pkg) => {
     return pkg.templateId === normalizedTemplateId;
   });
 }
 
 export function findWebsiteTemplateResource(
   resourceId: string,
+  archiveVersion: WebsiteTemplateArchiveVersion = "latest",
 ): RegistryEntry | undefined {
   const directPackage = WEBSITE_TEMPLATE_V2_PACKAGES.find((pkg) => {
     return pkg.resourceId === resourceId;
@@ -3813,7 +3885,11 @@ export function findWebsiteTemplateResource(
   }
   const normalizedResourceId =
     findWebsiteTemplateItem(resourceId)?.resourceId ?? resourceId;
-  const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {
+  const packages =
+    archiveVersion === "latest"
+      ? WEBSITE_TEMPLATE_PACKAGES
+      : PREVIOUS_WEBSITE_TEMPLATE_PACKAGES;
+  const pkg = packages.find((entry) => {
     return entry.resourceId === normalizedResourceId;
   });
   if (!pkg) {

@@ -332,11 +332,14 @@ const handleZeroTeamsBot$ = command(
       );
     }
 
-    const auth = await verifyTeamsBotAuthorization({
-      authorization: get(authorization$),
-      serviceUrl,
-      channelId: readTeamsActivityChannelId(body),
-    });
+    const auth = await verifyTeamsBotAuthorization(
+      {
+        authorization: get(authorization$),
+        serviceUrl,
+        channelId: readTeamsActivityChannelId(body),
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
     if (!auth.ok) {

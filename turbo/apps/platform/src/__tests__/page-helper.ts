@@ -298,6 +298,25 @@ export function click(element: Element): void {
 }
 
 /**
+ * Keep a rendered element's CSS animation pending until the returned callback
+ * runs. happy-dom does not implement Web Animations, so Base UI otherwise
+ * completes exit transitions immediately instead of retaining visible content.
+ */
+export function holdElementAnimations(element: Element): () => void {
+  let finish = () => {};
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  Object.defineProperty(element, "getAnimations", {
+    configurable: true,
+    value: () => {
+      return [{ finished }];
+    },
+  });
+  return finish;
+}
+
+/**
  * Text-content ARIA roles — roles whose accessible name is derived from a
  * subtree text walk, so `*ByRole(role)` from @testing-library pays for an
  * O(documentSize) ARIA tree traversal even without `{ name }`. Profiling

@@ -899,7 +899,7 @@ export function AccountDropdown({
       (async () => {
         await resetCodexSubscriptionUsage(pageSignal);
         await reloadSubscriptions(subscriptionRowsCacheKey, pageSignal);
-        setResetDialog({ open: false, resetCredits: null });
+        setResetDialog({ ...resetDialog, open: false });
       })(),
       Reason.DomCallback,
     );
@@ -907,8 +907,8 @@ export function AccountDropdown({
 
   const handleCodexResetOpenChange = (open: boolean) => {
     setResetDialog({
+      ...resetDialog,
       open,
-      resetCredits: open ? resetDialog.resetCredits : null,
     });
   };
 

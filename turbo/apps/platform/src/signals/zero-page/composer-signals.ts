@@ -447,7 +447,7 @@ export function createComposerSignals(
   const agentId$ = computed((): string => {
     return options.agentId;
   });
-  const feedback = createComposerFeedbackModel(options.threadId);
+  const feedback = createComposerFeedbackModel();
   const temporaryModelNoticeEnabled$ = computed((get): boolean => {
     return (
       options.threadId === undefined &&

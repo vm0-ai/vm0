@@ -5,6 +5,7 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -62,6 +63,9 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   advanceTelegramAddSetupStep$,
   checkTelegramAddSetupStatus$,
+  closeTelegramAddDialogAfterRegistration$,
+  completeTelegramAddDialogClose$,
+  completeTelegramReinstallDialogClose$,
   copyTelegramValue$,
   disconnectTelegramAccount$,
   goBackTelegramAddSetupStep$,
@@ -87,6 +91,7 @@ import {
   telegramCopiedValue$,
   telegramFailedAvatarKeys$,
   telegramReinstallDialogBotId$,
+  telegramReinstallDialogOpen$,
   telegramReinstallingBotId$,
   telegramReinstallTokenForm$,
   telegramSavingBotId$,
@@ -940,10 +945,8 @@ interface AddTelegramBotDialogInnerProps {
   setBotToken: (value: string) => void;
   setAgentId: (value: string | null) => void;
   setOpen: (open: boolean) => void;
-  navigate: (
-    pathname: typeof ROUTES.telegramConnect,
-    options: { searchParams: URLSearchParams },
-  ) => void;
+  closeAfterRegistration: (botId: string) => void;
+  onCloseComplete: (botId: string) => void;
   registerBot: (
     input: { botToken: string; defaultAgentId?: string },
     signal: AbortSignal,
@@ -963,6 +966,7 @@ interface AddTelegramBotDialogFrameProps {
   agentId: string | undefined;
   selectedAgentLabel: string;
   onOpenChange: (open: boolean) => void;
+  onCloseComplete: (botId: string) => void;
   onAddBot: () => void;
   onCancel: () => void;
   onAgentChange: (value: string | null) => void;
@@ -980,13 +984,26 @@ function AddTelegramBotDialogFrame({
   agentId,
   selectedAgentLabel,
   onOpenChange,
+  onCloseComplete,
   onAddBot,
   onCancel,
   onAgentChange,
 }: AddTelegramBotDialogFrameProps) {
   const { t } = useTranslation();
+  const completeClose = useSet(completeTelegramAddDialogClose$);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          const registeredBotId = completeClose();
+          if (registeredBotId) {
+            onCloseComplete(registeredBotId);
+          }
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" size="sm" disabled={disabled}>
           <Plus size={16} />
@@ -1058,7 +1075,8 @@ function AddTelegramBotDialogInner({
   setBotToken,
   setAgentId,
   setOpen,
-  navigate,
+  closeAfterRegistration,
+  onCloseComplete,
   registerBot,
   adding,
 }: AddTelegramBotDialogInnerProps) {
@@ -1119,12 +1137,7 @@ function AddTelegramBotDialogInner({
   };
 
   const handleRegisteredBot = (bot: TelegramBotStatus) => {
-    setBotToken("");
-    setAgentId(null);
-    setOpen(false);
-    navigate(ROUTES.telegramConnect, {
-      searchParams: new URLSearchParams({ bot: bot.id }),
-    });
+    closeAfterRegistration(bot.id);
   };
 
   const handleAddBot = () => {
@@ -1177,6 +1190,7 @@ function AddTelegramBotDialogInner({
       agentId={agentId}
       selectedAgentLabel={selectedAgentLabel}
       onOpenChange={handleOpenChange}
+      onCloseComplete={onCloseComplete}
       onAddBot={handleAddBot}
       onCancel={handleCancel}
       onAgentChange={setAgentId}
@@ -1368,15 +1382,17 @@ function AddTelegramBotDialog({
   const setBotToken = useSet(setTelegramBotTokenForm$);
   const setAgentId = useSet(setTelegramBotAgentForm$);
   const setOpen = useSet(setTelegramAddDialogOpen$);
+  const closeAfterRegistration = useSet(
+    closeTelegramAddDialogAfterRegistration$,
+  );
   const navigate = useSet(detachedNavigateTo$);
   const [registerLoadable, registerBot] = useLoadableSet(registerTelegramBot$);
   const adding = registerLoadable.state === "loading";
 
-  const wrappedNavigate = (
-    pathname: typeof ROUTES.telegramConnect,
-    options: { searchParams: URLSearchParams },
-  ) => {
-    navigate(pathname, options);
+  const navigateToRegisteredBot = (botId: string) => {
+    navigate(ROUTES.telegramConnect, {
+      searchParams: new URLSearchParams({ bot: botId }),
+    });
   };
 
   return (
@@ -1392,7 +1408,8 @@ function AddTelegramBotDialog({
       setBotToken={setBotToken}
       setAgentId={setAgentId}
       setOpen={setOpen}
-      navigate={wrappedNavigate}
+      closeAfterRegistration={closeAfterRegistration}
+      onCloseComplete={navigateToRegisteredBot}
       registerBot={registerBot}
       adding={adding}
     />
@@ -1815,8 +1832,39 @@ function TelegramBotRow({
   );
 }
 
+function TelegramReinstallDialogRoot({
+  children,
+  open,
+  reinstalling,
+}: {
+  readonly children: ReactNode;
+  readonly open: boolean;
+  readonly reinstalling: boolean;
+}) {
+  const close = useSet(setTelegramReinstallDialogBotId$);
+  const completeClose = useSet(completeTelegramReinstallDialogClose$);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !reinstalling) {
+          close(null);
+        }
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
+        }
+      }}
+    >
+      {children}
+    </Dialog>
+  );
+}
+
 function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
   const { t } = useTranslation();
+  const open = useGet(telegramReinstallDialogOpen$);
   const token = useGet(telegramReinstallTokenForm$);
   const reinstallingBotId = useGet(telegramReinstallingBotId$);
   const setToken = useSet(setTelegramReinstallTokenForm$);
@@ -1833,14 +1881,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
       });
 
   return (
-    <Dialog
-      open={!!bot}
-      onOpenChange={(open) => {
-        if (!open && !reinstalling) {
-          setReinstallDialogBotId(null);
-        }
-      }}
-    >
+    <TelegramReinstallDialogRoot open={open} reinstalling={reinstalling}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -1942,7 +1983,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+    </TelegramReinstallDialogRoot>
   );
 }
 
