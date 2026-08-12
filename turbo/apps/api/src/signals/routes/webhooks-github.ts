@@ -14,7 +14,6 @@ import {
   gitHubDeploymentStatusEventSchema,
   gitHubInstallationEventSchema,
   gitHubIssueCommentEventSchema,
-  gitHubIssuesEventSchema,
   gitHubPullRequestReviewEventSchema,
   gitHubPullRequestEventSchema,
   gitHubWorkflowJobEventSchema,
@@ -22,7 +21,6 @@ import {
   handleGithubDeploymentStatusEvent$,
   handleGithubInstallationEvent$,
   handleGithubIssueCommentEvent$,
-  handleGithubIssuesEvent$,
   handleGithubPullRequestReviewEvent$,
   handleGithubPullRequestEvent$,
   handleGithubWorkflowJobEvent$,
@@ -130,38 +128,6 @@ interface GithubBackgroundWebhookArgs {
   readonly deliveryId: string;
   readonly apiStartTime: number;
 }
-
-const postGithubIssuesWebhook$ = command(
-  (
-    { set },
-    args: GithubBackgroundWebhookArgs,
-    signal: AbortSignal,
-  ): Response => {
-    const parsed = gitHubIssuesEventSchema.safeParse(args.payload);
-    if (!parsed.success) {
-      L.error("Invalid issues event payload", { error: parsed.error });
-      return jsonError("Invalid payload structure", 400);
-    }
-    waitUntil(
-      tapError(
-        set(
-          handleGithubIssuesEvent$,
-          {
-            payload: parsed.data,
-            deliveryId: args.deliveryId,
-            apiStartTime: args.apiStartTime,
-            backgroundScheduledAt: now(),
-          },
-          signal,
-        ),
-        (error) => {
-          L.error("Error handling issues event", { error });
-        },
-      ),
-    );
-    return new Response("OK", { status: 200 });
-  },
-);
 
 const postGithubPullRequestWebhook$ = command(
   (
@@ -374,10 +340,6 @@ const postGithubWebhook$ = command(
       deliveryId: headers.deliveryId,
       apiStartTime,
     };
-
-    if (headers.event === "issues") {
-      return await set(postGithubIssuesWebhook$, backgroundArgs, signal);
-    }
 
     if (headers.event === "pull_request") {
       return await set(postGithubPullRequestWebhook$, backgroundArgs, signal);

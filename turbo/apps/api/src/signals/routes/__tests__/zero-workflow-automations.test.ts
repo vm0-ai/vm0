@@ -3438,14 +3438,9 @@ describe("okou workflow automations", () => {
     });
   });
 
-  it("creates and updates GitHub label applied automations", async () => {
+  it("creates and updates GitHub pull request automations", async () => {
     const scenario = await setupFixture();
-    await gh.installGithubApp(scenario.actor, scenario.agentId, {
-      oauthCode: {
-        code: `wf-automations-${randomUUID().slice(0, 8)}`,
-        githubUserId: "101",
-      },
-    });
+    await gh.installGithubApp(scenario.actor, scenario.agentId);
     mocks.clerk.session(
       scenario.fixture.userId,
       scenario.fixture.orgId,
@@ -3458,14 +3453,17 @@ describe("okou workflow automations", () => {
         params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
-          eventType: "github-label-applied",
+          eventType: "github-pull-request",
           eventConfig: {
             provider: "github",
-            event: "label_applied",
-            labelName: "triage",
+            event: "pull_request",
+            repository: "vm0-ai/vm0",
+            action: "closed",
+            merged: true,
             filters: {
-              subject: "pull_requests",
-              actor: { type: "me" },
+              baseBranches: ["main"],
+              authors: ["pr-author"],
+              pullRequestNumbers: ["42"],
             },
           },
         },
@@ -3475,14 +3473,17 @@ describe("okou workflow automations", () => {
 
     expect(created.body).toMatchObject({
       kind: "event",
-      eventType: "github-label-applied",
+      eventType: "github-pull-request",
       eventConfig: {
         provider: "github",
-        event: "label_applied",
-        labelName: "triage",
+        event: "pull_request",
+        repository: "vm0-ai/vm0",
+        action: "closed",
+        merged: true,
         filters: {
-          subject: "pull_requests",
-          actor: { type: "me" },
+          baseBranches: ["main"],
+          authors: ["pr-author"],
+          pullRequestNumbers: ["42"],
         },
       },
       schedule: null,
@@ -3498,11 +3499,11 @@ describe("okou workflow automations", () => {
         body: {
           eventConfig: {
             provider: "github",
-            event: "label_applied",
-            labelName: "Escalated",
+            event: "pull_request",
+            repository: "vm0-ai/vm0",
+            action: "labeled",
             filters: {
-              subject: "issues",
-              actor: { type: "anyone" },
+              labels: ["ready-to-merge"],
             },
           },
         },
@@ -3513,19 +3514,35 @@ describe("okou workflow automations", () => {
     expect(updated.body.kind).toBe("event");
     if (
       updated.body.kind !== "event" ||
-      updated.body.eventType !== "github-label-applied"
+      updated.body.eventType !== "github-pull-request"
     ) {
-      throw new Error("Expected a GitHub label applied automation");
+      throw new Error("Expected a GitHub pull request automation");
     }
     expect(updated.body.eventConfig).toStrictEqual({
       provider: "github",
-      event: "label_applied",
-      labelName: "Escalated",
+      event: "pull_request",
+      repository: "vm0-ai/vm0",
+      action: "labeled",
       filters: {
-        subject: "issues",
-        actor: { type: "anyone" },
+        labels: ["ready-to-merge"],
       },
     });
+
+    const rejected = await automationsClient().update({
+      headers: authHeaders(),
+      params: { id: created.body.id },
+      body: {
+        eventConfig: {
+          provider: "github",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "opened",
+          merged: true,
+          filters: {},
+        },
+      },
+    });
+    expect(rejected.status).toBe(400);
   });
 
   it("creates and updates GitHub workflow run completed automations", async () => {
@@ -3612,11 +3629,8 @@ describe("okou workflow automations", () => {
     });
   });
 
-  it("rejects GitHub label applied automations with actor me when GitHub user is not connected", async () => {
+  it("rejects GitHub pull request automations when the GitHub App is not installed", async () => {
     const scenario = await setupFixture();
-    // Install without an OAuth code: the org gets an installation but the
-    // member has no linked GitHub user.
-    await gh.installGithubApp(scenario.actor, scenario.agentId);
     mocks.clerk.session(
       scenario.fixture.userId,
       scenario.fixture.orgId,
@@ -3629,15 +3643,13 @@ describe("okou workflow automations", () => {
         params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
-          eventType: "github-label-applied",
+          eventType: "github-pull-request",
           eventConfig: {
             provider: "github",
-            event: "label_applied",
-            labelName: "triage",
-            filters: {
-              subject: "both",
-              actor: { type: "me" },
-            },
+            event: "pull_request",
+            repository: "vm0-ai/vm0",
+            action: "closed",
+            filters: {},
           },
         },
       }),
@@ -3647,8 +3659,7 @@ describe("okou workflow automations", () => {
     expect(created.body).toStrictEqual({
       error: {
         code: "BAD_REQUEST",
-        message:
-          "Connect your GitHub account before using Triggered by me for GitHub label workflow automations",
+        message: "Install GitHub before creating GitHub webhook automations",
       },
     });
   });

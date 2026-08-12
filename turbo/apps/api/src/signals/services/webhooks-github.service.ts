@@ -13,11 +13,11 @@ import { z } from "zod";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { dispatchGithubLabelWorkflowAutomations$ } from "./github-label-automation-event.service";
 import {
   dispatchGithubWebhookAutomations$,
   type GithubDeploymentStatusEventPayload,
   type GithubIssueCommentEventPayload,
+  type GithubPullRequestEventPayload,
   type GithubPullRequestReviewEventPayload,
   type GithubWorkflowJobEventPayload,
 } from "./github-webhook-automation-event.service";
@@ -69,15 +69,6 @@ const gitHubRepositorySchema = z.object({
 
 const gitHubInstallationRefSchema = z.object({
   id: z.number(),
-});
-
-export const gitHubIssuesEventSchema = z.object({
-  action: z.string(),
-  issue: gitHubIssueSchema,
-  label: gitHubLabelSchema.optional(),
-  repository: gitHubRepositorySchema,
-  installation: gitHubInstallationRefSchema,
-  sender: gitHubUserSchema,
 });
 
 export const gitHubIssueCommentEventSchema = z.object({
@@ -175,14 +166,28 @@ export const gitHubDeploymentStatusEventSchema: z.ZodType<GithubDeploymentStatus
     sender: gitHubUserSchema,
   });
 
-export const gitHubPullRequestEventSchema = z.object({
-  action: z.string(),
-  pull_request: gitHubIssueSchema,
-  label: gitHubLabelSchema.optional(),
-  repository: gitHubRepositorySchema,
-  installation: gitHubInstallationRefSchema,
-  sender: gitHubUserSchema,
-});
+export const gitHubPullRequestEventSchema: z.ZodType<GithubPullRequestEventPayload> =
+  z.object({
+    action: z.string(),
+    pull_request: z.object({
+      number: z.number(),
+      title: z.string(),
+      html_url: z.string(),
+      draft: z.boolean(),
+      merged: z.boolean().nullable().default(null),
+      merged_at: z.string().nullable().default(null),
+      merge_commit_sha: z.string().nullable().default(null),
+      merged_by: gitHubUserSchema.nullable().default(null),
+      user: gitHubUserSchema,
+      base: z.object({ ref: z.string() }),
+      head: z.object({ ref: z.string(), sha: z.string() }),
+      labels: z.array(gitHubLabelSchema),
+    }),
+    label: gitHubLabelSchema.optional(),
+    repository: gitHubRepositorySchema,
+    installation: gitHubInstallationRefSchema,
+    sender: gitHubUserSchema,
+  });
 
 export const gitHubWorkflowRunEventSchema: z.ZodType<GithubWorkflowRunEventPayload> =
   z.object({
@@ -232,47 +237,14 @@ export const gitHubInstallationEventSchema = z.object({
     .optional(),
 });
 
-type GitHubIssuesEvent = z.infer<typeof gitHubIssuesEventSchema>;
 type GitHubIssueCommentEvent = z.infer<typeof gitHubIssueCommentEventSchema>;
-type GitHubPullRequestEvent = z.infer<typeof gitHubPullRequestEventSchema>;
 type GitHubInstallationEvent = z.infer<typeof gitHubInstallationEventSchema>;
-export const handleGithubIssuesEvent$ = command(
-  async (
-    { set },
-    args: {
-      readonly payload: GitHubIssuesEvent;
-      readonly deliveryId: string;
-      readonly apiStartTime: number;
-      readonly backgroundScheduledAt: number;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await set(
-      dispatchGithubLabelWorkflowAutomations$,
-      {
-        deliveryId: args.deliveryId,
-        payload: {
-          action: args.payload.action,
-          issue: args.payload.issue,
-          label: args.payload.label,
-          repository: args.payload.repository,
-          installation: args.payload.installation,
-          sender: args.payload.sender,
-        },
-        subjectKind: "issue",
-        apiStartTime: args.apiStartTime,
-        backgroundScheduledAt: args.backgroundScheduledAt,
-      },
-      signal,
-    );
-  },
-);
 
 export const handleGithubPullRequestEvent$ = command(
   async (
     { set },
     args: {
-      readonly payload: GitHubPullRequestEvent;
+      readonly payload: GithubPullRequestEventPayload;
       readonly deliveryId: string;
       readonly apiStartTime: number;
       readonly backgroundScheduledAt: number;
@@ -280,18 +252,14 @@ export const handleGithubPullRequestEvent$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     await set(
-      dispatchGithubLabelWorkflowAutomations$,
+      dispatchGithubWebhookAutomations$,
       {
         deliveryId: args.deliveryId,
-        payload: {
-          action: args.payload.action,
-          issue: args.payload.pull_request,
-          label: args.payload.label,
-          repository: args.payload.repository,
-          installation: args.payload.installation,
-          sender: args.payload.sender,
+        event: {
+          eventType: "github-pull-request",
+          webhookEvent: "pull_request",
+          payload: args.payload,
         },
-        subjectKind: "pull_request",
         apiStartTime: args.apiStartTime,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },

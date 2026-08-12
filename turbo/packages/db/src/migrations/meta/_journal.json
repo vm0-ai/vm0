@@ -736,6 +736,13 @@
       "when": 1786522769758,
       "tag": "0912_drop_legacy_custom_credential_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 913,
+      "version": "7",
+      "when": 1786530792898,
+      "tag": "0913_github_pull_request_automation_event_type",
+      "breakpoints": true
     }
   ]
 }
