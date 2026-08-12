@@ -1,6 +1,8 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
 
+import { createObjectUrlResource } from "./object-url-resource.ts";
+import { rootSignal$ } from "./root-signal.ts";
 import { theme$ } from "./theme.ts";
 
 /**
@@ -16,11 +18,10 @@ import { theme$ } from "./theme.ts";
  * depends only on the source and the theme, so the same fence in two threads
  * shares one entry.
  *
- * The image is a blob URL owned by the registry entry, so nothing revokes it
- * while the entry lives — which is forever, like the entry itself. A theme
- * switch recomputes `diagram$` and strands the previous blob until page
- * unload; that stranding is bounded by theme flips × diagrams and stays in
- * the tens of kilobytes.
+ * Each resolved theme has one blob URL owned by the application root. The
+ * light/dark cache is a hard two-entry bound, so switching themes reuses the
+ * prior rendering instead of stranding another blob. Root teardown revokes
+ * both URLs.
  */
 export interface MermaidDiagramImage {
   readonly url: string;
@@ -164,59 +165,73 @@ function svgFile(markup: string): File {
 export function createMermaidDiagramSignals(
   code: string,
 ): MermaidDiagramSignals {
-  const diagram$ = computed(async (get): Promise<MermaidDiagramImage> => {
+  const imagesByTheme = new Map<
+    "light" | "dark",
+    Promise<MermaidDiagramImage>
+  >();
+  const diagram$ = computed((get): Promise<MermaidDiagramImage> => {
     const theme = get(theme$);
-    const { default: mermaid } = await get(mermaidModule$);
-    mermaid.initialize({
-      startOnLoad: false,
-      // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
-      // disables click handlers declared inside diagram sources.
-      securityLevel: "strict",
-      // Without this mermaid injects its own error diagram into the document.
-      suppressErrorRendering: true,
-      theme: theme === "dark" ? "redux-dark" : "redux",
-      // Resolved to a concrete stack rather than passed as `var(...)`: the same
-      // SVG is also shown inside an <img> in the lightbox, where page-level CSS
-      // custom properties do not resolve.
-      fontFamily: getComputedStyle(document.documentElement)
-        .getPropertyValue("--font-family-sans")
-        .trim(),
-      // mermaid's defaults are sized for a standalone page: 16px labels and
-      // 50px rank spacing make a five-node flowchart taller than the message
-      // around it. These match the chat body text and cut roughly a third of
-      // the height.
-      themeVariables: { fontSize: "14px" },
-      flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
-    });
-
-    const markup = await renderDiagramSvg(
-      mermaid,
-      diagramRenderId(`${theme}:${code}`),
-      code,
-    );
-    if (markup === undefined) {
-      throw new Error("mermaid source failed to parse");
+    const existing = imagesByTheme.get(theme);
+    if (existing !== undefined) {
+      return existing;
     }
+    const mermaidModule = get(mermaidModule$);
+    const ownerSignal = get(rootSignal$);
+    const image = (async (): Promise<MermaidDiagramImage> => {
+      const { default: mermaid } = await mermaidModule;
+      mermaid.initialize({
+        startOnLoad: false,
+        // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
+        // disables click handlers declared inside diagram sources.
+        securityLevel: "strict",
+        // Without this mermaid injects its own error diagram into the document.
+        suppressErrorRendering: true,
+        theme: theme === "dark" ? "redux-dark" : "redux",
+        // Resolved to a concrete stack rather than passed as `var(...)`: the same
+        // SVG is also shown inside an <img> in the lightbox, where page-level CSS
+        // custom properties do not resolve.
+        fontFamily: getComputedStyle(document.documentElement)
+          .getPropertyValue("--font-family-sans")
+          .trim(),
+        // mermaid's defaults are sized for a standalone page: 16px labels and
+        // 50px rank spacing make a five-node flowchart taller than the message
+        // around it. These match the chat body text and cut roughly a third of
+        // the height.
+        themeVariables: { fontSize: "14px" },
+        flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
+      });
 
-    // Parsed in a detached element. The markup never reaches the document, so
-    // the only thing that ever shows it is an <img>, where a data URL SVG
-    // cannot run scripts or resolve page-level CSS custom properties.
-    const host = document.createElement("div");
-    host.innerHTML = markup;
-    const svg = host.querySelector("svg");
-    if (!svg) {
-      throw new Error("mermaid renderer produced no svg");
-    }
+      const markup = await renderDiagramSvg(
+        mermaid,
+        diagramRenderId(`${theme}:${code}`),
+        code,
+      );
+      if (markup === undefined) {
+        throw new Error("mermaid source failed to parse");
+      }
 
-    const serialized = sizeDiagramAndSerialize(svg);
-    const file = svgFile(serialized);
-    return {
-      // A blob URL keeps the multi-kilobyte SVG out of the `src` attribute:
-      // assigning a data: URL string of that size showed up in commit-phase
-      // profiles as a per-mount cost.
-      url: URL.createObjectURL(file),
-      file,
-    };
+      // Parsed in a detached element. The markup never reaches the document,
+      // so the only thing that ever shows it is an <img>, where a blob URL SVG
+      // cannot run scripts or resolve page-level CSS custom properties.
+      const host = document.createElement("div");
+      host.innerHTML = markup;
+      const svg = host.querySelector("svg");
+      if (!svg) {
+        throw new Error("mermaid renderer produced no svg");
+      }
+
+      const serialized = sizeDiagramAndSerialize(svg);
+      const file = svgFile(serialized);
+      const resource = createObjectUrlResource(file, ownerSignal);
+      return {
+        // A short blob URL keeps the multi-kilobyte SVG out of the `src`
+        // attribute, avoiding the measured per-mount string assignment cost.
+        url: resource.url,
+        file,
+      };
+    })();
+    imagesByTheme.set(theme, image);
+    return image;
   });
   return { code, diagram$ };
 }
