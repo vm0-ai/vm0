@@ -1418,7 +1418,7 @@
       "partsHeading_many": "Retour sur {{count}} parties de votre réponse :",
       "partsHeading_other": "Retour sur {{count}} parties de votre réponse :",
       "placeholder": "Que devrait-on changer à ce sujet ?",
-      "provide": "Fournir des retours",
+      "reference": "Référence",
       "remove": "Supprimer les retours",
       "sentEmailDescription": "un email envoyé (ID de l'email : {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID envoyé : {{sentId}}",

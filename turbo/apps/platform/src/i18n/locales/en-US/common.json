@@ -1390,7 +1390,7 @@
       "partsHeading_one": "Feedback on {{count}} part of your reply:",
       "partsHeading_other": "Feedback on {{count}} parts of your reply:",
       "placeholder": "What should change about this?",
-      "provide": "Provide feedback",
+      "reference": "Reference",
       "remove": "Remove feedback",
       "sentEmailDescription": "a sent email (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", sent ID: {{sentId}}",

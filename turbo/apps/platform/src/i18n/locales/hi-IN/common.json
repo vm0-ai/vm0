@@ -1390,7 +1390,7 @@
       "partsHeading_one": "{{count}} पर प्रतिक्रिया आपके उत्तर का हिस्सा:",
       "partsHeading_other": "आपके उत्तर के {{count}} भागों पर प्रतिक्रिया:",
       "placeholder": "इसमें क्या बदलाव होना चाहिए?",
-      "provide": "प्रतिक्रिया दें",
+      "reference": "संदर्भ",
       "remove": "प्रतिक्रिया हटाएँ",
       "sentEmailDescription": "भेजा गया ईमेल (मेल ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", भेजा गया ID: {{sentId}}",

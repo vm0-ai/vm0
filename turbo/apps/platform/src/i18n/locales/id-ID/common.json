@@ -1390,7 +1390,7 @@
       "partsHeading_one": "Masukan untuk {{count}} bagian balasan Anda:",
       "partsHeading_other": "Masukan untuk {{count}} bagian balasan Anda:",
       "placeholder": "Apa yang harus diubah dari ini?",
-      "provide": "Berikan masukan",
+      "reference": "Referensi",
       "remove": "Hapus masukan",
       "sentEmailDescription": "email yang telah dikirim (ID mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID terkirim: {{sentId}}",
