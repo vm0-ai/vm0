@@ -59,13 +59,6 @@ fn http_response(status: &str, body: &str) -> String {
     )
 }
 
-fn http_request_body(request: &str) -> &str {
-    request
-        .split_once("\r\n\r\n")
-        .expect("HTTP request should contain a header boundary")
-        .1
-}
-
 enum HttpServerAction {
     Respond(String),
     Disconnect,
@@ -234,110 +227,6 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_forwards_legacy_api_active_inputs_as_separate_messages() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let wait_gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        Arc::clone(&wait_gate),
-    ));
-    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
-    let ctx = minimal_context();
-    let run_id = ctx.run_id;
-    let active_input_path = format!("/api/runners/runs/{run_id}/active-inputs");
-    let claim_path = format!("{active_input_path}/claim");
-
-    let (api_url, mut request_rx, server) = spawn_http_server(vec![
-        http_response("404 Not Found", r#"{"error":"not found"}"#),
-        http_response("200 OK", r#"{"eventIds":["event-1","event-2"]}"#),
-        http_response("200 OK", r#"{"prompt":"first message"}"#),
-        http_response("200 OK", r#"{"eventIds":["event-2"]}"#),
-        http_response("200 OK", r#"{"prompt":"second message"}"#),
-    ])
-    .await;
-
-    let notifications = ActiveInputNotifications::new();
-    let source = ActiveInputSource::api(
-        ApiClient::new(
-            HttpClient::new(HttpClientConfig {
-                api_url,
-                vercel_bypass: None,
-                client_session_id: "active-input-boundary-test".to_string(),
-            })
-            .unwrap(),
-            "runner-token".to_string(),
-        ),
-        run_id,
-        "sandbox-token".to_string(),
-        notifications.subscribe(run_id),
-    );
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let mut telemetry = test_telemetry(&config, &ctx);
-    let run_task = tokio::spawn(async move {
-        run_in_sandbox(
-            &*sandbox,
-            &ctx,
-            &config,
-            RunStart {
-                restore_guest_state: false,
-                reuse_result: SandboxReuseResult::PoolMiss,
-                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
-                prev_storage: None,
-            },
-            &mut telemetry,
-            RunControls::new(cancel, Some(source)),
-        )
-        .await
-    });
-
-    assert!(
-        overrides
-            .wait_for_process_control_calls(2, RUN_IN_SANDBOX_TEST_TIMEOUT)
-            .await,
-        "pending API inputs should be forwarded without waiting for another notification"
-    );
-    wait_gate.notify_one();
-    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    assert!(result.failure.is_none());
-
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, server)
-        .await
-        .expect("active-input server should finish")
-        .unwrap();
-    let mut requests = Vec::new();
-    while let Some(request) = request_rx.recv().await {
-        requests.push(request);
-    }
-    assert_eq!(requests.len(), 5);
-    assert!(requests[0].starts_with(&format!("POST {active_input_path}/reserve ")));
-    assert!(requests[1].starts_with(&format!("GET {active_input_path} ")));
-    assert!(requests[2].starts_with(&format!("POST {claim_path} ")));
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(http_request_body(&requests[2])).unwrap(),
-        serde_json::json!({ "eventIds": ["event-1"] })
-    );
-    assert!(requests[3].starts_with(&format!("GET {active_input_path} ")));
-    assert!(requests[4].starts_with(&format!("POST {claim_path} ")));
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(http_request_body(&requests[4])).unwrap(),
-        serde_json::json!({ "eventIds": ["event-2"] })
-    );
-
-    let calls = overrides.process_control_calls();
-    assert_eq!(calls.len(), 2);
-    let payloads = calls
-        .iter()
-        .map(|call| serde_json::from_slice::<serde_json::Value>(&call.payload).unwrap())
-        .collect::<Vec<_>>();
-    assert_eq!(payloads[0]["text"], "first message");
-    assert_eq!(payloads[1]["text"], "second message");
-}
-
-#[tokio::test]
 async fn run_in_sandbox_retries_api_active_input_after_transient_read_failure() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -443,19 +332,15 @@ async fn run_in_sandbox_rechecks_api_active_input_without_notification() {
         http_response(
             "200 OK",
             &format!(
-                r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"fallback delivered"}}"#,
+                r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"recheck delivered"}}"#,
             ),
         ),
     ])
     .await;
 
     let notifications = ActiveInputNotifications::new();
-    let source = api_active_input_source(
-        api_url,
-        run_id,
-        &notifications,
-        "active-input-fallback-test",
-    );
+    let source =
+        api_active_input_source(api_url, run_id, &notifications, "active-input-recheck-test");
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
     let run_task = tokio::spawn(async move {
@@ -516,7 +401,7 @@ async fn run_in_sandbox_rechecks_api_active_input_without_notification() {
     assert_eq!(calls[0].message_id, DELIVERY_ID);
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&calls[0].payload).unwrap()["text"],
-        "fallback delivered"
+        "recheck delivered"
     );
 }
 
@@ -599,7 +484,7 @@ async fn run_in_sandbox_retries_local_active_input_with_same_id_after_uncertain_
 }
 
 #[tokio::test]
-async fn run_in_sandbox_falls_back_when_first_reserve_request_is_unavailable() {
+async fn run_in_sandbox_retries_reserve_when_first_request_is_not_found() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let wait_gate = Arc::new(tokio::sync::Notify::new());
@@ -609,13 +494,15 @@ async fn run_in_sandbox_falls_back_when_first_reserve_request_is_unavailable() {
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;
-    let active_input_path = format!("/api/runners/runs/{run_id}/active-inputs");
-    let reserve_path = format!("{active_input_path}/reserve");
-    let claim_path = format!("{active_input_path}/claim");
+    let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
     let (api_url, mut request_rx, server) = spawn_http_server(vec![
         http_response("404 Not Found", r#"{"error":"not found"}"#),
-        http_response("200 OK", &format!(r#"{{"eventIds":["{EVENT_ID}"]}}"#)),
-        http_response("200 OK", r#"{"prompt":"legacy delivered"}"#),
+        http_response(
+            "200 OK",
+            &format!(
+                r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"reserve delivered"}}"#,
+            ),
+        ),
     ])
     .await;
     let notifications = ActiveInputNotifications::new();
@@ -623,7 +510,7 @@ async fn run_in_sandbox_falls_back_when_first_reserve_request_is_unavailable() {
         api_url,
         run_id,
         &notifications,
-        "active-input-legacy-fallback-test",
+        "active-input-first-not-found-test",
     );
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
@@ -666,16 +553,18 @@ async fn run_in_sandbox_falls_back_when_first_reserve_request_is_unavailable() {
     while let Some(request) = request_rx.recv().await {
         requests.push(request);
     }
-    assert_eq!(requests.len(), 3);
-    assert!(requests[0].starts_with(&format!("POST {reserve_path} ")));
-    assert!(requests[1].starts_with(&format!("GET {active_input_path} ")));
-    assert!(requests[2].starts_with(&format!("POST {claim_path} ")));
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.starts_with(&format!("POST {reserve_path} ")))
+    );
     let calls = overrides.process_control_calls();
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].message_id, format!("active-input:{run_id}:1"));
+    assert_eq!(calls[0].message_id, DELIVERY_ID);
     let payload = serde_json::from_slice::<serde_json::Value>(&calls[0].payload).unwrap();
-    assert!(payload.get("deliveryId").is_none());
-    assert_eq!(payload["text"], "legacy delivered");
+    assert_eq!(payload["deliveryId"], DELIVERY_ID);
+    assert_eq!(payload["text"], "reserve delivered");
 }
 
 #[tokio::test]
@@ -758,7 +647,7 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_does_not_fall_back_after_ambiguous_reserve_failure() {
+async fn run_in_sandbox_keeps_using_reserve_after_ambiguous_failure() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let wait_gate = Arc::new(tokio::sync::Notify::new());
@@ -779,7 +668,7 @@ async fn run_in_sandbox_does_not_fall_back_after_ambiguous_reserve_failure() {
         api_url,
         run_id,
         &notifications,
-        "active-input-no-unsafe-fallback-test",
+        "active-input-reserve-only-test",
     );
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);

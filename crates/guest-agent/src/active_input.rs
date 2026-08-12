@@ -5,7 +5,7 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
@@ -23,17 +23,16 @@ const ACTIVE_INPUT_DELIVERY_ID_CAPACITY: usize =
 /// Accepted follow-up user input waiting for the CLI follow-up sink.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveInputFrame {
-    /// Deterministic vm0 frame UUID assigned to this active input.
+    /// Stable delivery ID used as the CLI frame UUID.
     pub uuid: String,
     /// Follow-up user text to deliver to the running CLI process.
     pub text: String,
-    delivery_id: Option<String>,
 }
 
 impl ActiveInputFrame {
-    /// Return the durable delivery identity when this is a new-protocol frame.
-    pub fn delivery_id(&self) -> Option<&str> {
-        self.delivery_id.as_deref()
+    /// Return the stable delivery identity.
+    pub fn delivery_id(&self) -> &str {
+        &self.uuid
     }
 }
 
@@ -79,7 +78,7 @@ enum PendingState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DurableDeliveryState {
+enum DeliveryState {
     Queued,
     Writing,
     Accepted,
@@ -107,9 +106,9 @@ struct PendingInput {
 }
 
 #[derive(Debug)]
-struct DurableDelivery {
+struct Delivery {
     text_digest: Option<[u8; 32]>,
-    state: DurableDeliveryState,
+    state: DeliveryState,
 }
 
 #[derive(Debug)]
@@ -117,10 +116,9 @@ struct ActiveInputState {
     lifecycle: Lifecycle,
     initial_prompt_replay_seen: bool,
     observed_result: bool,
-    next_input_sequence: u64,
     pending_uuid_order: VecDeque<String>,
     pending_by_uuid: HashMap<String, PendingInput>,
-    durable_by_id: HashMap<String, DurableDelivery>,
+    deliveries_by_id: HashMap<String, Delivery>,
     accepted_delivery_ids: Vec<String>,
 }
 
@@ -130,22 +128,15 @@ impl Default for ActiveInputState {
             lifecycle: Lifecycle::Open,
             initial_prompt_replay_seen: false,
             observed_result: false,
-            next_input_sequence: 0,
             pending_uuid_order: VecDeque::new(),
             pending_by_uuid: HashMap::new(),
-            durable_by_id: HashMap::new(),
+            deliveries_by_id: HashMap::new(),
             accepted_delivery_ids: Vec::new(),
         }
     }
 }
 
 impl ActiveInputState {
-    fn allocate_active_input_uuid(&mut self, run_id: &str) -> String {
-        let sequence = self.next_input_sequence;
-        self.next_input_sequence = self.next_input_sequence.saturating_add(1);
-        claude_active_input_uuid(run_id, sequence)
-    }
-
     fn insert_pending(&mut self, uuid: String, input: PendingInput) {
         self.pending_uuid_order.push_back(uuid.clone());
         self.pending_by_uuid.insert(uuid, input);
@@ -249,15 +240,19 @@ impl ActiveInputState {
 
 #[derive(Debug)]
 struct ActiveInputInner {
-    enabled: bool,
-    run_id: String,
+    mode: ActiveInputMode,
     initial_prompt_uuid: String,
     initial_prompt_text: String,
     tx: mpsc::Sender<ActiveInputFrame>,
     close_tx: watch::Sender<bool>,
-    durable_in_flight_tx: watch::Sender<bool>,
-    receipts: Option<ActiveInputReceiptRuntime>,
+    sink_in_flight_tx: watch::Sender<bool>,
     state: Mutex<ActiveInputState>,
+}
+
+#[derive(Debug)]
+enum ActiveInputMode {
+    Disabled,
+    Enabled(ActiveInputReceiptRuntime),
 }
 
 /// Cloneable control-plane side of active input for one guest-agent run.
@@ -298,21 +293,9 @@ pub struct ActiveInputRuntime {
 struct ActiveInputPayload {
     #[serde(rename = "type")]
     payload_type: String,
-    // Optional until #26060 switches every Runner sender to identified delivery.
-    #[serde(
-        default,
-        rename = "deliveryId",
-        deserialize_with = "deserialize_delivery_id"
-    )]
-    delivery_id: Option<String>,
+    #[serde(rename = "deliveryId")]
+    delivery_id: String,
     text: String,
-}
-
-fn deserialize_delivery_id<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    String::deserialize(deserializer).map(Some)
 }
 
 /// Derives the deterministic Claude user-frame UUID for the run's initial prompt.
@@ -326,14 +309,6 @@ pub fn claude_initial_prompt_uuid(run_id: &str) -> String {
     Uuid::new_v5(
         &Uuid::NAMESPACE_OID,
         format!("vm0:{run_id}:claude-initial-prompt").as_bytes(),
-    )
-    .to_string()
-}
-
-fn claude_active_input_uuid(run_id: &str, sequence: u64) -> String {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_OID,
-        format!("vm0:{run_id}:claude-active-input:{sequence}").as_bytes(),
     )
     .to_string()
 }
@@ -408,25 +383,18 @@ impl ActiveInputRuntime {
     /// The paired writer still exists so the CLI execution path can use the
     /// same ownership and shutdown flow as enabled runs, but no follow-up frames
     /// will be accepted from the process-control side.
-    pub fn new_disabled(run_id: &str) -> Self {
-        Self::new_with_initial_prompt(run_id, false, "")
+    pub fn new_disabled(run_id: &str, initial_prompt_text: &str) -> Self {
+        Self::new_internal(
+            run_id,
+            initial_prompt_text,
+            ActiveInputMode::Disabled,
+            Vec::new(),
+        )
     }
 
-    /// Creates the controller/writer pair for one guest-agent run.
-    ///
-    /// When `enabled` is `false`, control payloads are rejected while the writer
-    /// can still be closed through the normal CLI lifecycle. When `enabled` is
-    /// `true`, accepted active-input frames are queued for the single writer.
-    /// `initial_prompt_text` is retained for replay filtering when CLI stdout
-    /// emits a prompt-like user event without the expected initial-prompt UUID.
-    pub fn new_with_initial_prompt(run_id: &str, enabled: bool, initial_prompt_text: &str) -> Self {
-        Self::new_internal(run_id, enabled, initial_prompt_text, None, Vec::new())
-    }
-
-    /// Create an active-input runtime with durable acceptance receipts.
+    /// Create an active-input runtime with acceptance receipts.
     pub fn new_with_receipts(
         run_id: &str,
-        enabled: bool,
         initial_prompt_text: &str,
         receipt_journal_path: impl AsRef<Path>,
         http: HttpClient,
@@ -435,44 +403,52 @@ impl ActiveInputRuntime {
             ActiveInputReceiptRuntime::start(run_id, receipt_journal_path, http)?;
         Ok(Self::new_internal(
             run_id,
-            enabled,
             initial_prompt_text,
-            Some(receipts),
+            ActiveInputMode::Enabled(receipts),
             recovered_delivery_ids,
         ))
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_for_test(run_id: &str, initial_prompt_text: &str) -> Self {
+        let (receipts, recovered_delivery_ids) = ActiveInputReceiptRuntime::start_for_test(run_id)
+            .expect("test receipt runtime should start");
+        Self::new_internal(
+            run_id,
+            initial_prompt_text,
+            ActiveInputMode::Enabled(receipts),
+            recovered_delivery_ids,
+        )
+    }
+
     fn new_internal(
         run_id: &str,
-        enabled: bool,
         initial_prompt_text: &str,
-        receipts: Option<ActiveInputReceiptRuntime>,
+        mode: ActiveInputMode,
         recovered_delivery_ids: Vec<String>,
     ) -> Self {
         let (tx, rx) = mpsc::channel(ACTIVE_INPUT_QUEUE_CAPACITY);
         let (close_tx, close_rx) = watch::channel(false);
-        let (durable_in_flight_tx, _) = watch::channel(false);
+        let (sink_in_flight_tx, _) = watch::channel(false);
         let mut state = ActiveInputState::default();
         for delivery_id in recovered_delivery_ids {
-            state.durable_by_id.insert(
+            state.deliveries_by_id.insert(
                 delivery_id.clone(),
-                DurableDelivery {
+                Delivery {
                     text_digest: None,
-                    state: DurableDeliveryState::Accepted,
+                    state: DeliveryState::Accepted,
                 },
             );
             state.accepted_delivery_ids.push(delivery_id);
         }
         let controller = ActiveInputController {
             inner: Arc::new(ActiveInputInner {
-                enabled,
-                run_id: run_id.to_owned(),
+                mode,
                 initial_prompt_uuid: claude_initial_prompt_uuid(run_id),
                 initial_prompt_text: initial_prompt_text.to_owned(),
                 tx,
                 close_tx,
-                durable_in_flight_tx,
-                receipts,
+                sink_in_flight_tx,
                 state: Mutex::new(state),
             }),
         };
@@ -510,15 +486,15 @@ impl ActiveInputController {
     /// input instead of queueing frames. Enabled runs may still reject payloads
     /// later if active input has closed or the bounded backlog is full.
     pub fn is_enabled(&self) -> bool {
-        self.inner.enabled
+        matches!(self.inner.mode, ActiveInputMode::Enabled(_))
     }
 
     /// Validates and queues one process-control active-input payload.
     ///
-    /// `payload` must be a JSON object with the required string fields `type`
-    /// and `text`. `type` must equal `active-input`, and `text` must be non-empty.
-    /// A canonical UUID `deliveryId` opts into durable deduplication and
-    /// backend-acceptance receipts:
+    /// `payload` must be a JSON object with the required string fields `type`,
+    /// `deliveryId`, and `text`. `type` must equal `active-input`, `deliveryId`
+    /// must be a canonical UUID, and `text` must be non-empty. The delivery ID
+    /// provides durable deduplication and backend-acceptance receipts:
     ///
     /// ```json
     /// {"type":"active-input","deliveryId":"b1e2ad6d-930a-4d51-aa40-7952d54f978b","text":"follow-up prompt"}
@@ -532,11 +508,11 @@ impl ActiveInputController {
     /// backpressure from validation rejection. Callers should branch on the
     /// outcome variant rather than treating diagnostic text as a stable protocol.
     pub fn handle_control_payload(&self, payload: &[u8]) -> ActiveInputControlOutcome {
-        if !self.inner.enabled {
+        let ActiveInputMode::Enabled(_) = &self.inner.mode else {
             return ActiveInputControlOutcome::Rejected {
                 diagnostic: "active input is not supported for this agent",
             };
-        }
+        };
         let payload = match serde_json::from_slice::<ActiveInputPayload>(payload) {
             Ok(payload) => payload,
             Err(_) => {
@@ -557,50 +533,39 @@ impl ActiveInputController {
         }
 
         let text = payload.text;
-        let delivery = match payload.delivery_id {
-            Some(delivery_id) => {
-                let Ok(parsed) = Uuid::parse_str(&delivery_id) else {
-                    return ActiveInputControlOutcome::Rejected {
-                        diagnostic: "active input delivery id is invalid",
-                    };
-                };
-                let canonical_delivery_id = parsed.hyphenated().to_string();
-                if canonical_delivery_id != delivery_id {
-                    return ActiveInputControlOutcome::Rejected {
-                        diagnostic: "active input delivery id is not canonical",
-                    };
-                }
-                if self.inner.receipts.is_none() {
-                    return ActiveInputControlOutcome::Rejected {
-                        diagnostic: "active input receipt persistence is unavailable",
-                    };
-                }
-                Some((canonical_delivery_id, active_input_text_digest(&text)))
-            }
-            None => None,
+        let delivery_id = payload.delivery_id;
+        let Ok(parsed) = Uuid::parse_str(&delivery_id) else {
+            return ActiveInputControlOutcome::Rejected {
+                diagnostic: "active input delivery id is invalid",
+            };
         };
+        let canonical_delivery_id = parsed.hyphenated().to_string();
+        if canonical_delivery_id != delivery_id {
+            return ActiveInputControlOutcome::Rejected {
+                diagnostic: "active input delivery id is not canonical",
+            };
+        }
+        let text_digest = active_input_text_digest(&text);
 
         let mut state = self
             .inner
             .state
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if let Some((delivery_id, text_digest)) = &delivery
-            && let Some(existing) = state.durable_by_id.get(delivery_id)
-        {
+        if let Some(existing) = state.deliveries_by_id.get(&delivery_id) {
             if existing
                 .text_digest
-                .is_some_and(|existing_digest| existing_digest != *text_digest)
+                .is_some_and(|existing_digest| existing_digest != text_digest)
             {
                 return ActiveInputControlOutcome::Rejected {
                     diagnostic: "active input delivery id was reused with different text",
                 };
             }
             return match existing.state {
-                DurableDeliveryState::Queued
-                | DurableDeliveryState::Writing
-                | DurableDeliveryState::Accepted => ActiveInputControlOutcome::Accepted,
-                DurableDeliveryState::Failed => ActiveInputControlOutcome::Rejected {
+                DeliveryState::Queued | DeliveryState::Writing | DeliveryState::Accepted => {
+                    ActiveInputControlOutcome::Accepted
+                }
+                DeliveryState::Failed => ActiveInputControlOutcome::Rejected {
                     diagnostic: "active input delivery previously failed",
                 },
             };
@@ -610,7 +575,7 @@ impl ActiveInputController {
                 diagnostic: "active input is closed",
             };
         }
-        if delivery.is_some() && state.durable_by_id.len() >= ACTIVE_INPUT_DELIVERY_ID_CAPACITY {
+        if state.deliveries_by_id.len() >= ACTIVE_INPUT_DELIVERY_ID_CAPACITY {
             return ActiveInputControlOutcome::QueueFull {
                 diagnostic: "active input delivery backlog is full",
             };
@@ -621,14 +586,10 @@ impl ActiveInputController {
             };
         }
 
-        let uuid = delivery.as_ref().map_or_else(
-            || state.allocate_active_input_uuid(&self.inner.run_id),
-            |value| value.0.clone(),
-        );
+        let uuid = delivery_id.clone();
         let frame = ActiveInputFrame {
             uuid: uuid.clone(),
             text: text.clone(),
-            delivery_id: delivery.as_ref().map(|value| value.0.clone()),
         };
         state.insert_pending(
             uuid.clone(),
@@ -637,32 +598,26 @@ impl ActiveInputController {
                 text,
             },
         );
-        if let Some((delivery_id, text_digest)) = delivery {
-            state.durable_by_id.insert(
-                delivery_id,
-                DurableDelivery {
-                    text_digest: Some(text_digest),
-                    state: DurableDeliveryState::Queued,
-                },
-            );
-        }
+        state.deliveries_by_id.insert(
+            delivery_id,
+            Delivery {
+                text_digest: Some(text_digest),
+                state: DeliveryState::Queued,
+            },
+        );
 
         match self.inner.tx.try_send(frame) {
             Ok(()) => ActiveInputControlOutcome::Accepted,
             Err(mpsc::error::TrySendError::Full(frame)) => {
                 state.remove_pending_by_uuid(&frame.uuid);
-                if let Some(delivery_id) = frame.delivery_id() {
-                    state.durable_by_id.remove(delivery_id);
-                }
+                state.deliveries_by_id.remove(frame.delivery_id());
                 ActiveInputControlOutcome::QueueFull {
                     diagnostic: "active input queue is full",
                 }
             }
             Err(mpsc::error::TrySendError::Closed(frame)) => {
                 state.remove_pending_by_uuid(&frame.uuid);
-                if let Some(delivery_id) = frame.delivery_id() {
-                    state.durable_by_id.remove(delivery_id);
-                }
+                state.deliveries_by_id.remove(frame.delivery_id());
                 state.lifecycle = Lifecycle::Closed;
                 ActiveInputControlOutcome::Rejected {
                     diagnostic: "active input is closed",
@@ -671,47 +626,13 @@ impl ActiveInputController {
         }
     }
 
-    /// Marks a legacy writer-owned frame as delivered to its follow-up sink.
-    ///
-    /// Writers should call this only for frames without a durable delivery ID.
-    /// Delivery-identified frames must use the backend-acceptance methods so
-    /// their acceptance is persisted before replay cleanup. For legacy frames,
-    /// this mark lets replay filtering later match the CLI's echoed user event,
-    /// or finish cleanup if a uuidless replay was already observed. Unknown
-    /// UUIDs are ignored.
-    pub fn mark_written(&self, uuid: &str) {
-        self.inner
-            .state
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .mark_pending_written(uuid);
-    }
-
-    /// Mark a writer-owned frame delivered by a sink that will not emit a
-    /// replayed user event back through CLI stdout.
-    fn mark_written_without_replay(&self, uuid: &str) {
-        let mut state = self
-            .inner
-            .state
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        state.remove_pending_by_uuid(uuid);
-    }
-
     fn mark_backend_accepted(
         &self,
         frame: &ActiveInputFrame,
         expects_replay: bool,
     ) -> Result<(), AgentError> {
-        let Some(delivery_id) = frame.delivery_id() else {
-            if expects_replay {
-                self.mark_written(&frame.uuid);
-            } else {
-                self.mark_written_without_replay(&frame.uuid);
-            }
-            return Ok(());
-        };
-        let Some(receipts) = self.inner.receipts.as_ref() else {
+        let delivery_id = frame.delivery_id();
+        let ActiveInputMode::Enabled(receipts) = &self.inner.mode else {
             self.mark_backend_failed(frame);
             return Err(AgentError::Execution(
                 "active-input receipt persistence is unavailable".to_string(),
@@ -727,12 +648,12 @@ impl ActiveInputController {
             .state
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let delivery = state.durable_by_id.get_mut(delivery_id).ok_or_else(|| {
+        let delivery = state.deliveries_by_id.get_mut(delivery_id).ok_or_else(|| {
             AgentError::Execution(
                 "accepted active-input delivery is missing from live state".to_string(),
             )
         })?;
-        delivery.state = DurableDeliveryState::Accepted;
+        delivery.state = DeliveryState::Accepted;
         if !state
             .accepted_delivery_ids
             .iter()
@@ -746,25 +667,23 @@ impl ActiveInputController {
             state.remove_pending_by_uuid(&frame.uuid);
         }
         drop(state);
-        self.inner.durable_in_flight_tx.send_replace(false);
+        self.inner.sink_in_flight_tx.send_replace(false);
         Ok(())
     }
 
     fn mark_backend_failed(&self, frame: &ActiveInputFrame) {
-        let Some(delivery_id) = frame.delivery_id() else {
-            return;
-        };
+        let delivery_id = frame.delivery_id();
         let mut state = self
             .inner
             .state
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if let Some(delivery) = state.durable_by_id.get_mut(delivery_id) {
-            delivery.state = DurableDeliveryState::Failed;
+        if let Some(delivery) = state.deliveries_by_id.get_mut(delivery_id) {
+            delivery.state = DeliveryState::Failed;
         }
         state.remove_pending_by_uuid(&frame.uuid);
         drop(state);
-        self.inner.durable_in_flight_tx.send_replace(false);
+        self.inner.sink_in_flight_tx.send_replace(false);
     }
 
     /// Marks a writer-owned frame as actively being delivered.
@@ -785,37 +704,37 @@ impl ActiveInputController {
         {
             input.state = PendingState::Writing;
         }
-        let durable_writing = if let Some(delivery) = state.durable_by_id.get_mut(uuid) {
-            delivery.state = DurableDeliveryState::Writing;
+        let delivery_writing = if let Some(delivery) = state.deliveries_by_id.get_mut(uuid) {
+            delivery.state = DeliveryState::Writing;
             true
         } else {
             false
         };
         drop(state);
-        if durable_writing {
-            self.inner.durable_in_flight_tx.send_replace(true);
+        if delivery_writing {
+            self.inner.sink_in_flight_tx.send_replace(true);
         }
     }
 
-    /// Return whether any delivery-identified input participated in this run.
-    pub fn has_durable_activity(&self) -> bool {
+    /// Return whether any active input participated in this run.
+    pub fn has_activity(&self) -> bool {
         !self
             .inner
             .state
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .durable_by_id
+            .deliveries_by_id
             .is_empty()
     }
 
-    /// Return whether a delivery-identified sink operation is in flight.
-    pub fn durable_sink_in_flight(&self) -> bool {
-        *self.inner.durable_in_flight_tx.borrow()
+    /// Return whether an active-input sink operation is in flight.
+    pub fn sink_in_flight(&self) -> bool {
+        *self.inner.sink_in_flight_tx.borrow()
     }
 
-    /// Wait until the current delivery-identified sink operation settles.
-    pub async fn wait_for_durable_sink_idle(&self) -> Result<(), AgentError> {
-        let mut receiver = self.inner.durable_in_flight_tx.subscribe();
+    /// Wait until the current active-input sink operation settles.
+    pub async fn wait_for_sink_idle(&self) -> Result<(), AgentError> {
+        let mut receiver = self.inner.sink_in_flight_tx.subscribe();
         while *receiver.borrow() {
             receiver.changed().await.map_err(|_| {
                 AgentError::Execution(
@@ -828,8 +747,8 @@ impl ActiveInputController {
 
     /// Stop direct receipt delivery and return every backend-accepted ID.
     pub async fn finalize_receipts(&self) -> Result<Vec<String>, AgentError> {
-        let sink_in_flight = self.durable_sink_in_flight();
-        if let Some(receipts) = self.inner.receipts.as_ref() {
+        let sink_in_flight = self.sink_in_flight();
+        if let ActiveInputMode::Enabled(receipts) = &self.inner.mode {
             receipts.finalize().await;
         }
         if sink_in_flight {
@@ -855,7 +774,7 @@ impl ActiveInputController {
     ///
     /// This is a result-time idle check, not an unconditional terminal close.
     pub fn close_for_result_if_idle(&self) -> bool {
-        if !self.inner.enabled {
+        if !self.is_enabled() {
             return true;
         }
 
@@ -994,16 +913,6 @@ impl ActiveInputWriter {
         self.controller.is_enabled()
     }
 
-    /// Marks a legacy writer-owned frame as delivered.
-    ///
-    /// This delegates to [`ActiveInputController::mark_written`].
-    /// Delivery-identified frames must instead use
-    /// [`Self::mark_backend_accepted_with_replay`] or
-    /// [`Self::mark_backend_accepted_without_replay`].
-    pub fn mark_written(&self, uuid: &str) {
-        self.controller.mark_written(uuid);
-    }
-
     /// Persist backend acceptance for a sink whose user frame is replayed.
     pub fn mark_backend_accepted_with_replay(
         &self,
@@ -1020,22 +929,16 @@ impl ActiveInputWriter {
         self.controller.mark_backend_accepted(frame, false)
     }
 
-    /// Mark a delivery-identified sink operation as failed.
+    /// Mark an active-input sink operation as failed.
     pub fn mark_backend_failed(&self, frame: &ActiveInputFrame) {
         self.controller.mark_backend_failed(frame);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mark_written_without_replay(&self, uuid: &str) {
-        self.controller.mark_written_without_replay(uuid);
     }
 
     /// Marks a writer-owned frame as actively being delivered by this writer.
     ///
     /// This delegates to [`ActiveInputController::mark_writing`]. After the sink
     /// settles, pair it with the matching backend-acceptance method or
-    /// [`Self::mark_backend_failed`]. Legacy-only callers may use
-    /// [`Self::mark_written`] after successful delivery.
+    /// [`Self::mark_backend_failed`].
     pub fn mark_writing(&self, uuid: &str) {
         self.controller.mark_writing(uuid);
     }

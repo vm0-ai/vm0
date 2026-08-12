@@ -1840,66 +1840,6 @@ export async function holdChatEventQueueItemFixture(args: {
 }
 
 /**
- * Holds one existing ChatEvent row so thread deletion can pause after it
- * owns the parent thread lock. This timing-only boundary does not create or
- * mutate product data and cannot block messages outside the selected thread.
- */
-export async function holdChatEventFixture(args: {
-  readonly threadId: string;
-  readonly eventId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly release: () => void;
-  readonly done: Promise<void>;
-  readonly blockedWaiterCount: () => Promise<number>;
-}> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const done = db().transaction(async (tx) => {
-    const rows = await tx
-      .select({ id: chatEvents.id })
-      .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.threadId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!rows[0]) {
-      throw new Error("Expected the chat message row");
-    }
-    const pidRows = await executeRawRows(
-      tx,
-      sql`
-        SELECT pg_backend_pid() AS "pid"
-      `,
-      databasePidRowSchema,
-    );
-    const holderPid = pidRows[0]?.pid;
-    if (!holderPid) {
-      throw new Error("Expected the chat-message lock holder pid");
-    }
-    started.resolve(holderPid);
-    await released.promise;
-  });
-  const holderPid = await started.promise;
-
-  return {
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-    done,
-    blockedWaiterCount: async () => {
-      return await transitiveBlockedWaiterCount(holderPid);
-    },
-  };
-}
-
-/**
  * Inserts one event through the production sequence writer, then holds its
  * transaction open. No product endpoint can pause between INSERT and COMMIT,
  * so this fixture is the narrow timing boundary for sequence serialization.

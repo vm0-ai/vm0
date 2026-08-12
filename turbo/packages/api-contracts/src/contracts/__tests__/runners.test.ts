@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  activeInputDeliveryReserveResponseSchema,
   compatibleStoredExecutionContextSchema,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   connectorRuntimeSyncResultSchema,
@@ -31,6 +32,39 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+
+describe("active-input reservation contract", () => {
+  const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
+  const eventId = "223f8797-a456-4eea-98f7-f7ab88c43c00";
+  const secondEventId = "b5490696-d307-42f7-927c-9b5ca037cb46";
+
+  it("keeps the deployed eventIds array with exactly one source event", () => {
+    expect(
+      activeInputDeliveryReserveResponseSchema.parse({
+        outcome: "reserved",
+        deliveryId,
+        eventIds: [eventId],
+        prompt: "follow-up",
+      }),
+    ).toStrictEqual({
+      outcome: "reserved",
+      deliveryId,
+      eventIds: [eventId],
+      prompt: "follow-up",
+    });
+
+    for (const eventIds of [[], [eventId, secondEventId]]) {
+      expect(
+        activeInputDeliveryReserveResponseSchema.safeParse({
+          outcome: "reserved",
+          deliveryId,
+          eventIds,
+          prompt: "follow-up",
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
 
 describe("cancellation recovery timing contract", () => {
   it("keeps the API stale fallback beyond the runner recovery deadline", () => {
