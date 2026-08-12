@@ -196,7 +196,7 @@ const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
 const CLAIM_COOLDOWN_CAPACITY: usize = RUNNER_POLL_EXCLUDED_RUN_IDS_MAX as usize;
 const CLAIM_TRANSIENT_COOLDOWN: Duration = POLL_FAST;
 const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
-const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(3);
+const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(10);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum DiscoveryWakeup {
