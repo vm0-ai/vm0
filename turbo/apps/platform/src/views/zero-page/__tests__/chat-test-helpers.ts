@@ -920,7 +920,7 @@ export function mockChatLifecycle(
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
     const activeThreadIds = new Set<string>();
     if (
       optionActiveRunIds.length > 0 ||
@@ -928,16 +928,10 @@ export function mockChatLifecycle(
     ) {
       activeThreadIds.add(threadId);
     }
-    const threadIds = [...activeThreadIds].filter((id) => {
-      return UUID_PATTERN.test(id);
-    });
     return respond(200, {
-      agents: threadIds.length > 0 ? { [DEFAULT_AGENT_ID]: "active" } : {},
-      threads: Object.fromEntries(
-        threadIds.map((activeThreadId) => {
-          return [activeThreadId, "active" as const];
-        }),
-      ),
+      threadIds: [...activeThreadIds].filter((id) => {
+        return UUID_PATTERN.test(id);
+      }),
     });
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {

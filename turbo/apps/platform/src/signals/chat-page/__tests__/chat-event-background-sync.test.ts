@@ -5,6 +5,7 @@ import {
   chatThreadsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -109,6 +110,7 @@ async function setupAuthenticatedBackgroundSync(): Promise<void> {
       activeOrg: { id: ORG_ID, name: "Background Sync Org" },
       memberships: [{ id: ORG_ID }],
     },
+    featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
   });
 }
 

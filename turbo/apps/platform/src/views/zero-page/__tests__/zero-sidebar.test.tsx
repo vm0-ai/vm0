@@ -201,15 +201,8 @@ function mockChatThreadSnapshot(
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-    return respond(200, {
-      agents: {},
-      threads: Object.fromEntries(
-        activeThreadIds().map((threadId) => {
-          return [threadId, "active" as const];
-        }),
-      ),
-    });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, { threadIds: [...activeThreadIds()] });
   });
 }
 
@@ -456,9 +449,9 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
-  it("renders event-sourced sidebar threads while indicators are pending", async () => {
+  it("renders event-sourced sidebar threads while active run ids are pending", async () => {
     prepareDefaultAgent();
-    let indicatorRequests = 0;
+    let activeIdsRequests = 0;
 
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       return respond(200, {
@@ -484,8 +477,8 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.indicators, ({ never }) => {
-      indicatorRequests += 1;
+    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
+      activeIdsRequests += 1;
       return never();
     });
 
@@ -501,7 +494,7 @@ describe("zero sidebar", () => {
       expect(
         sidebar().querySelectorAll('[data-testid="sidebar-skeleton"]'),
       ).toHaveLength(0);
-      expect(indicatorRequests).toBe(1);
+      expect(activeIdsRequests).toBe(1);
     });
     expect(
       within(threadRowByTitle("Event-sourced conversation")).queryByLabelText(
@@ -2034,11 +2027,8 @@ describe("zero sidebar", () => {
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      return respond(200, {
-        agents: { [SUPPORT_AGENT_ID]: "unread" },
-        threads: {},
-      });
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, { agentIds: [SUPPORT_AGENT_ID] });
     });
 
     setupSidebarPage({
@@ -2309,16 +2299,9 @@ describe("zero sidebar", () => {
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
     let unreadAgentRequests = 0;
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
       unreadAgentRequests += 1;
-      return respond(200, {
-        agents: Object.fromEntries(
-          unreadAgentIds.map((agentId) => {
-            return [agentId, "unread" as const];
-          }),
-        ),
-        threads: {},
-      });
+      return respond(200, { agentIds: unreadAgentIds });
     });
 
     setupSidebarPage({
@@ -2436,15 +2419,8 @@ describe("zero sidebar", () => {
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
     const markedAgentIds: string[] = [];
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      return respond(200, {
-        agents: Object.fromEntries(
-          unreadAgentIds.map((agentId) => {
-            return [agentId, "unread" as const];
-          }),
-        ),
-        threads: {},
-      });
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, { agentIds: unreadAgentIds });
     });
     context.mocks.api(
       chatThreadMarkAgentReadContract.markAgentRead,
@@ -2491,15 +2467,8 @@ describe("zero sidebar", () => {
 
     let unreadAgentIds = [AGENT_ID, SUPPORT_AGENT_ID];
     const markedAgentIds: string[] = [];
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      return respond(200, {
-        agents: Object.fromEntries(
-          unreadAgentIds.map((agentId) => {
-            return [agentId, "unread" as const];
-          }),
-        ),
-        threads: {},
-      });
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, { agentIds: unreadAgentIds });
     });
     context.mocks.api(
       chatThreadMarkAgentReadContract.markAgentRead,
