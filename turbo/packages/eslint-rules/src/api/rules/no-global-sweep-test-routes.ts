@@ -33,6 +33,7 @@ type FactoryPropertyResolution =
   | "canonical"
   | "missing"
   | "noncanonical"
+  | "undefined"
   | "unknown";
 type FactoryValueKind = "factory" | "namespace";
 
@@ -395,9 +396,15 @@ export const noGlobalSweepTestRoutes = createRule({
           return [];
         }
         const argument = call.arguments[binding.index];
-        const source =
+        const explicitArgument =
           argument && argument.type !== AST_NODE_TYPES.SpreadElement
             ? argument
+            : null;
+        const source =
+          explicitArgument &&
+          (!binding.parameterDefault ||
+            !isStaticallyUndefined(explicitArgument))
+            ? explicitArgument
             : binding.parameterDefault;
         return source ? [{ binding, source }] : [];
       });
@@ -599,10 +606,10 @@ export const noGlobalSweepTestRoutes = createRule({
       if (resolutions.some((resolution) => resolution === "canonical")) {
         return "canonical";
       }
-      if (
-        resolutions.length > 0 &&
-        resolutions.every((resolution) => resolution === "missing")
-      ) {
+      if (resolutions.some((resolution) => resolution === "undefined")) {
+        return "undefined";
+      }
+      if (resolutions.some((resolution) => resolution === "missing")) {
         return "missing";
       }
       if (resolutions.some((resolution) => resolution === "unknown")) {
@@ -645,7 +652,10 @@ export const noGlobalSweepTestRoutes = createRule({
         kind,
         seen,
       );
-      if (resolution !== "missing" || !binding.defaultValue) {
+      if (
+        (resolution !== "missing" && resolution !== "undefined") ||
+        !binding.defaultValue
+      ) {
         return resolution;
       }
       return factoryPathResolution(
@@ -669,7 +679,7 @@ export const noGlobalSweepTestRoutes = createRule({
       const nextSeen = new Set(seen).add(current);
       if (path.length === 0) {
         if (isStaticallyUndefined(current)) {
-          return "missing";
+          return "undefined";
         }
         if (
           current.type === AST_NODE_TYPES.MemberExpression &&

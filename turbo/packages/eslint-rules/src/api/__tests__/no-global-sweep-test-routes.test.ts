@@ -299,6 +299,49 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
       errors: [{ messageId: "globalSweep" }],
     },
     {
+      name: "explicit undefined activates canonical plain parameter defaults",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount(build = appFactory.createApp) {
+          return build({ routes: ROUTES });
+        }
+        mount(undefined);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "explicit undefined activates canonical object parameter defaults",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount(
+          { createApp: build } = { createApp: appFactory.createApp },
+        ) {
+          return build({ routes: ROUTES });
+        }
+        mount(undefined);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "later undefined spreads activate canonical property defaults",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        const absent = { createApp: undefined };
+        const scopedFactory = (options) => options;
+        function mount({ createApp: build = appFactory.createApp }) {
+          return build({ routes: ROUTES });
+        }
+        mount({ createApp: scopedFactory, ...absent });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "aggregate routes cannot flow through a local member projection",
       filename: behaviorTest,
       code: `
