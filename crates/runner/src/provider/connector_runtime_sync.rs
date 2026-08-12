@@ -45,7 +45,8 @@ use super::api::{ApiClient, ConnectorRuntimeSyncOutcome};
 use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::proxy::{
-    ConnectorRuntimeRegistryUpdate, CustomConnectorRuntimeRegistryState, ProxyRegistryHandle,
+    ConnectorRuntimeFailCloseOutcome, ConnectorRuntimeRegistryUpdate,
+    CustomConnectorRuntimeRegistryState, ProxyRegistryHandle,
 };
 use crate::types::{
     ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeSyncState, ConnectorRuntimeTarget,
@@ -815,37 +816,35 @@ impl ConnectorRuntimeSyncCore {
             source_ip: active.source_ip,
             registry: active.registry,
         };
-        for target in active.connectors.into_keys() {
-            let result = match &target {
-                ConnectorRuntimeTarget::Builtin { connector_slug } => {
-                    snapshot
-                        .registry
-                        .fail_closed_network_policy_if_run_matches(
-                            &snapshot.source_ip,
-                            &run_id.to_string(),
-                            connector_slug,
-                        )
-                        .await
+        let targets = active.connectors.into_keys().collect::<Vec<_>>();
+        match snapshot
+            .registry
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                &snapshot.source_ip,
+                &run_id.to_string(),
+                &targets,
+            )
+            .await
+        {
+            Ok(Some(outcomes)) => {
+                for (target, outcome) in targets.iter().zip(outcomes) {
+                    if let ConnectorRuntimeFailCloseOutcome::Failed(error) = outcome {
+                        warn!(
+                            run_id = %run_id,
+                            target = %target.log_identity(),
+                            error = %error,
+                            "failed to close terminal run connector runtime target"
+                        );
+                    }
                 }
-                ConnectorRuntimeTarget::Custom {
-                    custom_connector_id,
-                } => {
-                    snapshot
-                        .registry
-                        .fail_closed_custom_connector_runtime_target_if_run_matches(
-                            &snapshot.source_ip,
-                            &run_id.to_string(),
-                            custom_connector_id,
-                        )
-                        .await
-                }
-            };
-            if let Err(error) = result {
+            }
+            Ok(None) => {}
+            Err(error) => {
                 warn!(
                     run_id = %run_id,
-                    target = %target.log_identity(),
+                    connector_count,
                     error = %error,
-                    "failed to close terminal run connector runtime target"
+                    "failed to close terminal run connector runtime targets"
                 );
             }
         }
@@ -3772,53 +3771,119 @@ mod tests {
                     },
                 }));
         });
-        let harness =
-            ConnectorRuntimeSyncHarness::new_with_connectors(&server, run_id, &["slack", "github"])
+        let (core, _requests) = core_without_worker(&server);
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let custom_firewall = custom_runtime_firewall(custom_connector_id);
+        let custom_firewall_name =
+            format!("custom_connector_{}", custom_connector_id.replace('-', ""));
+        let firewalls = vec![
+            FirewallEntry::Builtin {
+                name: "slack".to_string(),
+                base_url_vars: None,
+            },
+            FirewallEntry::Builtin {
+                name: "github".to_string(),
+                base_url_vars: None,
+            },
+            custom_firewall,
+        ];
+        let initial_policy = NetworkPolicy {
+            allow: vec!["chat:write".to_string()],
+            deny: vec!["files:write".to_string()],
+            ask: vec!["channels:read".to_string()],
+            unknown_policy: "allow".to_string(),
+        };
+        let policies = HashMap::from([
+            ("slack".to_string(), initial_policy.clone()),
+            ("github".to_string(), initial_policy.clone()),
+            (custom_firewall_name.clone(), initial_policy),
+        ]);
+        let registrations = vec![
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug: "slack".to_string(),
+                base_url_vars: None,
+            },
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug: "github".to_string(),
+                base_url_vars: None,
+            },
+            ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                base_url_vars: None,
+            },
+        ];
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry_with_targets(run_id, &firewalls, &policies, &registrations)
                 .await;
-        let github_target = harness
-            .handle
-            .core
+        core.register_run(ConnectorRuntimeSyncRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            targets: &registrations,
+            refreshes: None,
+        })
+        .await;
+        let github_target = core
             .current_sync_target(run_id, "github")
             .await
             .expect("active connector should have a refresh target");
         assert!(
-            harness
-                .handle
-                .core
-                .replace_sync_deadline_if_current(
-                    run_id,
-                    &github_target,
-                    Some(
-                        parse_sync_deadline("2999-01-01T00:00:00.000Z")
-                            .expect("valid refresh deadline should parse"),
-                    ),
+            core.replace_sync_deadline_if_current(
+                run_id,
+                &github_target,
+                Some(
+                    parse_sync_deadline("2999-01-01T00:00:00.000Z")
+                        .expect("valid refresh deadline should parse"),
                 )
-                .await,
+            )
+            .await,
             "active connector should accept refresh schedule"
         );
         let scheduled_task = {
-            let active_runs = harness.handle.core.inner.active_runs.lock().await;
+            let active_runs = core.inner.active_runs.lock().await;
             active_runs[&run_id].sync_tasks[&builtin_target("github")]
                 .handle
                 .abort_handle()
         };
+        let slack_target = core
+            .current_sync_target(run_id, "slack")
+            .await
+            .expect("active connector should have a refresh target");
 
-        let (_, events) = capture_sync_events(harness.sync_slack()).await;
+        let (continued, events) = capture_sync_events(
+            core.sync_connector_runtime_batch_now(run_id, std::slice::from_ref(&slack_target)),
+        )
+        .await;
 
+        assert!(!continued);
         sync_mock.assert_calls(1);
-        assert_fail_closed_policy(&harness.policy("slack").await);
-        assert_fail_closed_policy(&harness.policy("github").await);
-        assert!(
-            harness
-                .handle
-                .core
-                .inner
-                .active_runs
-                .lock()
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(&registry_path)
                 .await
-                .get(&run_id)
-                .is_none()
+                .expect("registry should remain readable"),
+        )
+        .expect("registry should remain valid JSON");
+        let network_policies = &registry_json["vms"]["10.200.0.2"]["networkPolicies"];
+        assert_fail_closed_policy(&network_policies["slack"]);
+        assert_fail_closed_policy(&network_policies["github"]);
+        assert_fail_closed_policy(&network_policies[&custom_firewall_name]);
+        assert!(!core.inner.active_runs.lock().await.contains_key(&run_id));
+        let batch_events = events
+            .iter()
+            .filter(|event| {
+                event.fields.get("message").is_some_and(|message| {
+                    message == "failed closed connector runtime targets in proxy registry"
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            batch_events.len(),
+            1,
+            "terminal reconciliation should persist one target batch"
         );
+        assert_connector_field(batch_events[0], "target_count", "3");
+        assert_connector_field(batch_events[0], "applied_count", "3");
+        assert_connector_field(batch_events[0], "failed_count", "0");
         assert!(
             events.iter().all(|event| {
                 event
@@ -3840,13 +3905,10 @@ mod tests {
         .await
         .expect("terminal reconciliation should stop scheduled sync tasks");
 
-        harness
-            .handle
-            .notify_connector_runtime_sync(run_id, builtin_target("slack"))
+        core.notify_connector_runtime_sync(run_id, builtin_target("slack"))
             .await;
         tokio::task::yield_now().await;
         sync_mock.assert_calls(1);
-        harness.shutdown().await;
     }
 
     #[tokio::test]

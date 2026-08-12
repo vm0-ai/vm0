@@ -5,6 +5,11 @@ import { bench, describe } from "vitest";
 
 import { parseMarkdownTree } from "../../../../lib/markdown/pipeline.ts";
 import {
+  chatEventTreeContent,
+  chatEventTreePlan,
+} from "../../../../signals/chat-page/chat-event-body-blocks.ts";
+import type { ChatEvent } from "../../../../signals/chat-page/chat-event-types.ts";
+import {
   createImageLoadSignals,
   embedImageLoadSignals,
 } from "../../../../signals/image-load.ts";
@@ -13,7 +18,7 @@ import {
   embedMermaidSignals,
 } from "../../../../signals/mermaid-diagram.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
-import { MarkdownEventBody } from "../../markdown.tsx";
+import { Markdown, MarkdownEventBody } from "../../markdown.tsx";
 
 // ---------------------------------------------------------------------------
 // Chat markdown pipeline benchmarks.
@@ -160,4 +165,96 @@ describe("thread switch parse volume", () => {
       prepareTree(source);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Tree cache behavior. `ensureEventTrees$` runs after every write that can
+// change the visible window — including scroll captures — so its unchanged
+// path must cost a content lookup per event. These benches mirror that loop
+// (minus card registries; this thread has no cards) over real ChatEvents.
+// ---------------------------------------------------------------------------
+
+const THREAD_ID = "bench-thread";
+
+function assistantEvent(index: number, content: string): ChatEvent {
+  return {
+    id: `event-${String(index)}`,
+    threadId: THREAD_ID,
+    eventType: "output.message",
+    content,
+    seqId: index + 1,
+    createdAt: "2026-08-12T00:00:00.000Z",
+  };
+}
+
+const THREAD_EVENTS: readonly ChatEvent[] = THREAD.map((content, index) => {
+  return assistantEvent(index, content);
+});
+
+interface CachedEventTree {
+  readonly content: string;
+  readonly tree: Root;
+}
+
+function ensurePass(
+  events: readonly ChatEvent[],
+  cache: ReadonlyMap<string, CachedEventTree>,
+): ReadonlyMap<string, CachedEventTree> {
+  let next: Map<string, CachedEventTree> | undefined;
+  for (const event of events) {
+    const content = chatEventTreeContent(event);
+    if (content === null || cache.get(event.id)?.content === content) {
+      continue;
+    }
+    const plan = chatEventTreePlan(event, THREAD_ID);
+    if (plan === null) {
+      continue;
+    }
+    const tree = parseMarkdownTree(plan.treeSource, {
+      mathEnabled: true,
+      mermaid: true,
+    });
+    embedMermaidSignals(tree, createMermaidDiagramSignals);
+    embedImageLoadSignals(tree, createImageLoadSignals);
+    next ??= new Map(cache);
+    next.set(event.id, { content: plan.content, tree });
+  }
+  return next ?? cache;
+}
+
+describe("ensure pass over the event tree cache", () => {
+  const warmCache = ensurePass(THREAD_EVENTS, new Map());
+  const streamingEvents: readonly ChatEvent[] = [
+    ...THREAD_EVENTS.slice(0, -1),
+    assistantEvent(
+      THREAD_EVENTS.length - 1,
+      `${REPORT_MESSAGE}\n\nOne more streamed paragraph.`,
+    ),
+  ];
+  bench(
+    `unchanged thread (${String(THREAD_EVENTS.length)} events, scroll capture path)`,
+    () => {
+      ensurePass(THREAD_EVENTS, warmCache);
+    },
+  );
+  bench("streaming delta (re-parses only the growing report message)", () => {
+    ensurePass(streamingEvents, warmCache);
+  });
+});
+
+// The 8 surfaces still on `Markdown({source})` parse inside render. Contrast
+// with "render from prepared tree" on the same report message to price the
+// pending migration.
+describe("standalone Markdown (parse-in-render surfaces)", () => {
+  bench(
+    `report message (${String(REPORT_MESSAGE.length)} chars, parses per render)`,
+    () => {
+      render(
+        <StoreProvider value={context.store}>
+          <Markdown source={REPORT_MESSAGE} mediaPreview />
+        </StoreProvider>,
+      );
+      cleanup();
+    },
+  );
 });

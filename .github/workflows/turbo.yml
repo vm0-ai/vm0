@@ -531,11 +531,11 @@ jobs:
     needs: [detect-turbo-ts-checks, prepare]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    # Run on every PR commit and on pushes to main (baseline). Skipped in the
+    # merge queue: benches only report numbers, they must not delay merges.
     if: |
       needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
-        startsWith(github.head_ref, 'perf/') ||
-        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        github.event_name == 'pull_request' ||
         (github.event_name == 'push' && github.ref == 'refs/heads/main')
       )
     container:
@@ -582,11 +582,11 @@ jobs:
     needs: [detect-turbo-ts-checks, prepare]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    # Run on every PR commit and on pushes to main (baseline). Skipped in the
+    # merge queue: benches only report numbers, they must not delay merges.
     if: |
       needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
-        startsWith(github.head_ref, 'perf/') ||
-        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        github.event_name == 'pull_request' ||
         (github.event_name == 'push' && github.ref == 'refs/heads/main')
       )
     container:
