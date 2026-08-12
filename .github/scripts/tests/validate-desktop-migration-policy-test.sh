@@ -11,15 +11,21 @@ expect_failure() {
   fi
 }
 
-bash "$VALIDATOR" off false ""
-bash "$VALIDATOR" soft false ""
-expect_failure invalid false ""
-expect_failure hard false ""
-expect_failure hard true ""
-expect_failure hard true "https://github.com/vm0-ai/vm0/issues/26370"
+bash "$VALIDATOR" off false "" refs/heads/main
+bash "$VALIDATOR" soft false "" refs/heads/main
+expect_failure soft false "" refs/heads/feature
+expect_failure invalid false "" refs/heads/main
+expect_failure hard false "" refs/heads/main
+expect_failure hard true "" refs/heads/main
+expect_failure \
+  hard \
+  true \
+  "https://github.com/vm0-ai/vm0/issues/26370" \
+  refs/heads/main
 bash "$VALIDATOR" \
   hard \
   true \
-  "https://github.com/vm0-ai/vm0/issues/26370#issuecomment-123456789"
+  "https://github.com/vm0-ai/vm0/issues/26370#issuecomment-123456789" \
+  refs/heads/main
 
 echo "validate-desktop-migration-policy-test: ok"

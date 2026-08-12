@@ -4,6 +4,12 @@ set -euo pipefail
 mode="${1:-}"
 confirmed_hard_stop="${2:-false}"
 approval_url="${3:-}"
+git_ref="${4:-}"
+
+if [[ "$git_ref" != "refs/heads/main" ]]; then
+  echo "Desktop migration policy publishing requires refs/heads/main" >&2
+  exit 1
+fi
 
 case "$mode" in
   off | soft)

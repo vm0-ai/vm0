@@ -40,13 +40,15 @@ jobs:
         env:
           APPROVAL_URL: ${{ inputs.hard_stop_approval_url }}
           CONFIRMED_HARD_STOP: ${{ inputs.confirmed_hard_stop }}
+          GIT_REF: ${{ github.ref }}
           MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
           bash .github/scripts/validate-desktop-migration-policy.sh \
             "$MODE" \
             "$CONFIRMED_HARD_STOP" \
-            "$APPROVAL_URL"
+            "$APPROVAL_URL" \
+            "$GIT_REF"
 
       - name: Publish policy asset
         env:

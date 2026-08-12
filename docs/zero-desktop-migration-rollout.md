@@ -46,6 +46,8 @@ gh workflow run desktop-migration-policy.yml \
   -f confirmed_hard_stop=false
 ```
 
+The workflow rejects dispatches from any ref other than `main`.
+
 Then wait for the workflow to succeed and verify the live API response:
 
 ```bash
