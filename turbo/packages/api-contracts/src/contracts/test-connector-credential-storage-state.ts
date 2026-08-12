@@ -54,6 +54,13 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       state: z.string(),
     }),
     z.object({
+      action: z.literal("delete-custom-credential-values"),
+      org_id: z.string(),
+      user_id: z.string(),
+      custom_connector_id: z.uuid(),
+      storage: z.enum(["legacy", "shared"]),
+    }),
+    z.object({
       action: z.literal("seed-owned-secret"),
       org_id: z.string(),
       user_id: z.string(),
