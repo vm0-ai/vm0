@@ -36,7 +36,7 @@ export interface UsagePricingFixture {
   readonly cleanup: () => Promise<void>;
 }
 
-export interface CreateUsagePricingFixtureOptions {
+interface CreateUsagePricingFixtureOptions {
   readonly configured?: readonly UsagePricingRow[];
   readonly missing?: readonly UsagePricingKey[];
 }
