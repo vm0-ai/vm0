@@ -12,7 +12,7 @@ const EVENT_ID = "00000000-0000-4000-8000-000000000030";
 const METADATA_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
 const SEND_URL = "http://localhost:3000/api/zero/chat/events";
 
-describe("zero chat cancel command", () => {
+describe("okou chat cancel command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

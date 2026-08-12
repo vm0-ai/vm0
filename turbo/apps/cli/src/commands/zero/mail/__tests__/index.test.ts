@@ -60,7 +60,7 @@ function mailCatalog() {
   ]);
 }
 
-describe("zero mail", () => {
+describe("okou mail", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {

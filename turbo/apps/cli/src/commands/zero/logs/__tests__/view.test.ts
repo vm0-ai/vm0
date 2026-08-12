@@ -1,5 +1,5 @@
 /**
- * Tests for zero logs view (parent command action)
+ * Tests for okou logs view (parent command action)
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: zeroLogsCommand.parseAsync()
@@ -36,7 +36,7 @@ function countOccurrences(text: string, pattern: string): number {
 
 const RUN_ID = "550e8400-e29b-41d4-a716-446655440001";
 
-describe("zero logs view command", () => {
+describe("okou logs view command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -415,7 +415,7 @@ describe("zero logs view command", () => {
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid run ID");
-    expect(errorCalls).toContain("zero logs list");
+    expect(errorCalls).toContain("okou logs list");
   });
 
   it("should reject malformed UUID-like run ID", async () => {
@@ -429,7 +429,7 @@ describe("zero logs view command", () => {
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid run ID");
-    expect(errorCalls).toContain("zero logs list");
+    expect(errorCalls).toContain("okou logs list");
   });
 
   it("should render codex framework events", async () => {

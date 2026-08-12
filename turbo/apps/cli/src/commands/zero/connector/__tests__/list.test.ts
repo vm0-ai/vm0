@@ -1,5 +1,5 @@
 /**
- * Tests for zero connector list command
+ * Tests for okou connector list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -115,7 +115,7 @@ function stubAvailableConnectors(connectorSlugs: string[]) {
   );
 }
 
-describe("zero connector list command", () => {
+describe("okou connector list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

@@ -9,7 +9,7 @@ const DEPLOYMENTS_URL =
   "http://localhost:3000/api/zero/host/sites/:site/deployments";
 const ALIAS_URL = "https://demo-site.sites.example.com";
 
-describe("zero host versions command", () => {
+describe("okou host versions command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {

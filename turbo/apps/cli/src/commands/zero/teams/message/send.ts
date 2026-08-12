@@ -49,11 +49,11 @@ export const sendCommand = new Command()
     "after",
     `
 Examples:
-  Simple message:        zero teams message send -c 19:thread@thread.tacv2 -t "Hello!"
-  DM a user:             zero teams message send -u 29:user-id -t "Hello!"
-  DM yourself:           zero teams message send -u me -t "Hello!"
-  Thread reply:          zero teams message send -c 19:thread@thread.tacv2 --thread root-activity -t "reply"
-  Adaptive Card:         zero teams message send -c 19:thread@thread.tacv2 --card '{"type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","text":"Hello","wrap":true}]}'
+  Simple message:        okou teams message send -c 19:thread@thread.tacv2 -t "Hello!"
+  DM a user:             okou teams message send -u 29:user-id -t "Hello!"
+  DM yourself:           okou teams message send -u me -t "Hello!"
+  Thread reply:          okou teams message send -c 19:thread@thread.tacv2 --thread root-activity -t "reply"
+  Adaptive Card:         okou teams message send -c 19:thread@thread.tacv2 --card '{"type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","text":"Hello","wrap":true}]}'
 
 Notes:
   - Either --conversation-id or --user is required; they are mutually exclusive
@@ -78,7 +78,7 @@ Notes:
             "Either --conversation-id or --user must be provided",
             {
               cause: new Error(
-                'Usage: zero teams message send -c CONVERSATION_ID -t "your message"\n       zero teams message send -u USER_ID -t "your message"',
+                'Usage: okou teams message send -c CONVERSATION_ID -t "your message"\n       okou teams message send -u USER_ID -t "your message"',
               ),
             },
           );
@@ -121,7 +121,7 @@ Notes:
             "Either --text, --card, or piped stdin must be provided",
             {
               cause: new Error(
-                'Usage: zero teams message send -c CONVERSATION_ID -t "your message"',
+                'Usage: okou teams message send -c CONVERSATION_ID -t "your message"',
               ),
             },
           );

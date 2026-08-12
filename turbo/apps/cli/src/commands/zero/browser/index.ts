@@ -78,7 +78,7 @@ function connectAgentBrowser(cdpUrl: string, sessionName: string): void {
 
 function reclaimNotice(browser: ZeroBrowserSession): string {
   return browser.idleExpiresAt
-    ? `Zero reclaims this browser at ${browser.idleExpiresAt} unless it is used or leased again`
+    ? `Okou reclaims this browser at ${browser.idleExpiresAt} unless it is used or leased again`
     : "This browser has no live window to reclaim";
 }
 
@@ -214,16 +214,16 @@ export const zeroBrowserCommand = new Command()
     "after",
     `
 Examples:
-  Open this thread's browser: zero browser use
-  Keep it alive:              zero browser lease
-  Create another browser:     zero browser new --name booking --country us
+  Open this thread's browser: okou browser use
+  Keep it alive:              okou browser lease
+  Create another browser:     okou browser new --name booking --country us
   Use the browser:            agent-browser --session zero-browser open https://example.com
-  Share live view:            zero browser view
+  Share live view:            okou browser view
 
 Notes:
   - The browser outlives this run; the user can keep working in it from the viewer link
-  - Zero reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes
-  - \`zero browser use\` restores a reclaimed browser's login profile and reopens saved tab URLs when possible
+  - Okou reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes
+  - \`okou browser use\` restores a reclaimed browser's login profile and reopens saved tab URLs when possible
   - Browser Use credentials and connection URLs are never printed
   - Each thread keeps an isolated login profile
   - Threads can run their browsers in parallel`,

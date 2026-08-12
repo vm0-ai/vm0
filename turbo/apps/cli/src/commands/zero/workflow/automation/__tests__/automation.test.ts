@@ -1,5 +1,5 @@
 /**
- * Tests for `zero workflow automation` commands
+ * Tests for `okou workflow automation` commands
  * (add / update / list / show / rm / enable / disable).
  *
  * Tests command-level behavior via parseAsync() following CLI testing
@@ -342,7 +342,7 @@ const stripeInvoicePaidAutomation = {
   },
 };
 
-describe("zero workflow automation commands", () => {
+describe("okou workflow automation commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -506,12 +506,12 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
       expect(logCalls).toContain("Thread priority:  enabled");
-      expect(logCalls).toContain("Manage with Zero CLI:");
-      expect(logCalls).toContain(`zero workflow edit ${WORKFLOW_ID}`);
+      expect(logCalls).toContain("Manage with Okou CLI:");
+      expect(logCalls).toContain(`okou workflow edit ${WORKFLOW_ID}`);
       expect(logCalls).toContain('--expr "<cron-expression>" -z <timezone>');
       expect(logCalls).toContain("Pause automation:");
       expect(logCalls).toContain(
-        `zero workflow automation disable \\\n      ${AUTOMATION_ID}`,
+        `okou workflow automation disable \\\n      ${AUTOMATION_ID}`,
       );
       expect(logCalls).toContain("About model selection:");
       expect(logCalls).toContain(
@@ -522,7 +522,7 @@ describe("zero workflow automation commands", () => {
       );
       expect(logCalls).toContain("Model commands:");
       expect(logCalls).toContain(`--thread ${THREAD_ID}`);
-      expect(logCalls).toContain("zero model list");
+      expect(logCalls).toContain("okou model list");
     });
 
     it.each(["metadata", "model-policy"] as const)(
@@ -629,7 +629,7 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain("all inbound messages");
       expect(logCalls).toContain("Edit automation:");
-      expect(logCalls).toContain("zero workflow automation update --help");
+      expect(logCalls).toContain("okou workflow automation update --help");
     });
 
     it("should add a Gmail new message automation with text match flags", async () => {
@@ -986,9 +986,9 @@ describe("zero workflow automation commands", () => {
       expect(output).toContain("Delivery:           failed");
       expect(output).toContain("Delivery at:");
       expect(output).toContain("delete and recreate");
-      expect(output).not.toContain("zero workflow automation update --help");
+      expect(output).not.toContain("okou workflow automation update --help");
       expect(output).toContain(
-        `zero workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
+        `okou workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
       );
       expect(output).not.toContain("--billing-reason");
       expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
@@ -1054,7 +1054,7 @@ describe("zero workflow automation commands", () => {
         "subscription_cycle, subscription_create",
       );
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        `zero workflow automation add ${WORKFLOW_ID} stripe-invoice-paid --billing-reason subscription_cycle,subscription_create`,
+        `okou workflow automation add ${WORKFLOW_ID} stripe-invoice-paid --billing-reason subscription_cycle,subscription_create`,
       );
     });
 
@@ -1809,10 +1809,10 @@ describe("zero workflow automation commands", () => {
       expect(helpOutput).toContain("google-meet-transcript-generated");
       expect(helpOutput).toContain("--form-url <url>");
       expect(helpOutput).toContain(
-        "zero workflow trigger add triage --agent <agent-id> google-forms-response-submitted",
+        "okou workflow trigger add triage --agent <agent-id> google-forms-response-submitted",
       );
       expect(helpOutput).toContain(
-        "zero workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated",
+        "okou workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated",
       );
     });
   });
@@ -1938,7 +1938,7 @@ describe("zero workflow automation commands", () => {
       );
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
-      expect(logCalls).not.toContain("Manage with Zero CLI:");
+      expect(logCalls).not.toContain("Manage with Okou CLI:");
     });
 
     it("should preserve a successful update when thread model lookup fails", async () => {
@@ -2326,7 +2326,7 @@ describe("zero workflow automation commands", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No automations");
-      expect(logCalls).toContain("zero workflow automation add");
+      expect(logCalls).toContain("okou workflow automation add");
     });
   });
 
@@ -2364,8 +2364,8 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(`Workflow:     ${workflowSummary.name}`);
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
       expect(logCalls).toContain("Resume automation:");
-      expect(logCalls).toContain("zero workflow automation enable");
-      expect(logCalls).toContain("zero workflow automation update --help");
+      expect(logCalls).toContain("okou workflow automation enable");
+      expect(logCalls).toContain("okou workflow automation update --help");
     });
 
     it("should display an automation owned by another user on a visible workflow", async () => {
@@ -2397,7 +2397,7 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("another-user");
       expect(logCalls).toContain("Gmail new message");
-      expect(logCalls).not.toContain("Manage with Zero CLI:");
+      expect(logCalls).not.toContain("Manage with Okou CLI:");
       expect(mockExit).not.toHaveBeenCalled();
     });
 
@@ -2468,13 +2468,13 @@ describe("zero workflow automation commands", () => {
           "Change billing reasons (delete and recreate)",
         );
         expect(output).toContain(
-          `zero workflow automation rm ${AUTOMATION_ID}`,
+          `okou workflow automation rm ${AUTOMATION_ID}`,
         );
         expect(output).toContain(
-          `zero workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
+          `okou workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
         );
         expect(output).not.toContain("--billing-reason");
-        expect(output).not.toContain("zero workflow automation update --help");
+        expect(output).not.toContain("okou workflow automation update --help");
         expect(output).not.toContain("private Stripe delivery failure details");
         const warningOutput = mockConsoleWarn.mock.calls.flat().join("\n");
         if (warning === "delivery_failed") {

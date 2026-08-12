@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow delete command
+ * Tests for okou workflow delete command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -56,7 +56,7 @@ function workflowSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("zero workflow delete command", () => {
+describe("okou workflow delete command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

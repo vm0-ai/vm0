@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow list command
+ * Tests for okou workflow list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -15,7 +15,7 @@ import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 
-describe("zero workflow list command", () => {
+describe("okou workflow list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

@@ -19,7 +19,7 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
-describe("zero maps command", () => {
+describe("okou maps command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

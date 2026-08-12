@@ -14,7 +14,7 @@ export function resolveChatThreadId(flagThreadId: string | undefined): string {
   if (!threadId) {
     printChatUsageError(
       "ZERO_CHAT_THREAD_ID is not set",
-      "Pass --thread-id <thread-id> or run inside a Zero web chat thread.",
+      "Pass --thread-id <thread-id> or run inside a web chat thread.",
     );
   }
   if (!isUuid(threadId)) {

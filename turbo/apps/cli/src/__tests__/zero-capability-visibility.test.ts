@@ -813,7 +813,7 @@ describe("registerZeroCommands", () => {
     const help = buildZeroHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
-    expect(help).toContain("zero credit");
+    expect(help).toContain("okou credit");
     expect(help).not.toContain("Buy credits?");
     expect(help).toContain("Upgrade plan?");
   });
@@ -1202,7 +1202,7 @@ describe("registerZeroCommands", () => {
   });
 });
 
-describe("zero generate command visibility", () => {
+describe("okou generate command visibility", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();

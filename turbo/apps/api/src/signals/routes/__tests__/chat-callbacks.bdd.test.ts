@@ -1308,11 +1308,11 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).not.toContain("Selected design system");
     // Runbook flow, not the retired multi-resource flow.
     expect(appended).toContain(
-      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+      `okou resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     expect(appended).toContain("--artifact-kind presentation-html");
     expect(appended).not.toContain(
-      "zero generate presentation --design-system",
+      "okou generate presentation --design-system",
     );
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",

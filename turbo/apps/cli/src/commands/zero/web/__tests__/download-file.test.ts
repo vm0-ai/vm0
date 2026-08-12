@@ -1,5 +1,5 @@
 /**
- * Tests for zero web download-file command
+ * Tests for okou web download-file command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -18,7 +18,7 @@ import chalk from "chalk";
 
 const DOWNLOAD_URL = "http://localhost:3000/api/zero/web/download-file";
 
-describe("zero web download-file command", () => {
+describe("okou web download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

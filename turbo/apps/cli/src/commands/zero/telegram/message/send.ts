@@ -24,13 +24,13 @@ export const sendCommand = new Command()
     "after",
     `
 Examples:
-  Simple message:      zero telegram message send --bot-id 123456789 -c -1001234567890 -t "Hello!"
-  Reply to message:    zero telegram message send --bot-id 123456789 -c -1001234567890 --reply-to-message-id 42 -t "reply"
-  Forum topic message: zero telegram message send --bot-id 123456789 -c -1001234567890 --message-thread-id 7 -t "topic update"
+  Simple message:      okou telegram message send --bot-id 123456789 -c -1001234567890 -t "Hello!"
+  Reply to message:    okou telegram message send --bot-id 123456789 -c -1001234567890 --reply-to-message-id 42 -t "reply"
+  Forum topic message: okou telegram message send --bot-id 123456789 -c -1001234567890 --message-thread-id 7 -t "topic update"
 
 Notes:
   - Message text can be provided with --text or piped on stdin
-  - Choose an explicit --bot-id. Run "zero telegram bot list" to inspect available bots.`,
+  - Choose an explicit --bot-id. Run "okou telegram bot list" to inspect available bots.`,
   )
   .action(
     withErrorHandler(
@@ -54,7 +54,7 @@ Notes:
         if (!text) {
           throw new Error("Either --text or piped stdin must be provided", {
             cause: new Error(
-              'Usage: zero telegram message send --bot-id BOT_ID -c CHAT_ID -t "your message"',
+              'Usage: okou telegram message send --bot-id BOT_ID -c CHAT_ID -t "your message"',
             ),
           });
         }

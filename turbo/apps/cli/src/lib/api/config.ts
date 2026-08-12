@@ -6,7 +6,7 @@ export async function getToken(): Promise<string | undefined> {
 
 /**
  * Get the active token for API requests.
- * Zero is agent-only, so ZERO_TOKEN is the sole authentication source.
+ * Okou is agent-only, so ZERO_TOKEN is the sole authentication source.
  */
 export async function getActiveToken(): Promise<string | undefined> {
   return getToken();

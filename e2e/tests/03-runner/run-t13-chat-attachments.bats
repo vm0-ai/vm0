@@ -40,15 +40,15 @@ teardown() {
     first_marker="ATTACHMENTS_OK_${TEST_ID}"
     first_prompt=$(cat <<'EOF'
 set -euo pipefail
-# Prove the candidate artifact supports canonical Okou and the old guest-agent
-# binary boundary before retaining zero for the existing attachment operations.
+# Prove the dual-entry artifact supports the canonical executable and the old
+# guest-agent binary boundary before using Okou for attachment operations.
 okou_help="$(npx --yes --package="${CLI_PKG_URL}" okou --help)"
-zero_help="$(npx --yes --package="${CLI_PKG_URL}" zero --help)"
+zero_help="$(npx --yes --package="${CLI_PKG_URL}" zero --help)" # okou-cutover-audit: compatibility-only
 test "$okou_help" = "$zero_help"
 grep -F 'Usage: okou' <<<"$okou_help"
-npx --yes --package="${CLI_PKG_URL}" zero __agent-loop --help | grep -F -- '--standby'
-npx --yes --package="${CLI_PKG_URL}" zero web download-file '__CONTENT_ID__' -o /tmp/runner-content.txt
-npx --yes --package="${CLI_PKG_URL}" zero web download-file '__EMPTY_ID__' -o /tmp/runner-empty.txt
+npx --yes --package="${CLI_PKG_URL}" zero __agent-loop --help | grep -F -- '--standby' # okou-cutover-audit: compatibility-only
+npx --yes --package="${CLI_PKG_URL}" okou web download-file '__CONTENT_ID__' -o /tmp/runner-content.txt
+npx --yes --package="${CLI_PKG_URL}" okou web download-file '__EMPTY_ID__' -o /tmp/runner-empty.txt
 grep -F '__CONTENT_MARKER__' /tmp/runner-content.txt
 test ! -s /tmp/runner-empty.txt
 printf '__FIRST_MARKER__\n'

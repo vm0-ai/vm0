@@ -20,7 +20,7 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
-describe("zero banking command", () => {
+describe("okou banking command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
