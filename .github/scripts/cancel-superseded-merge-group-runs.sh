@@ -133,9 +133,12 @@ printf '%s\n' "$superseded_runs"
 run_ids=()
 while IFS= read -r run_record; do
   run_id=${run_record%%$'\t'*}
+  # A regular cancellation is not an ownership handoff: GitHub may continue
+  # always()-guarded jobs after accepting it. Force-cancel the strictly
+  # selected old owner, then retain the terminal-state barrier below.
   if ! cancel_error=$(
     gh api --method POST \
-      "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel" 2>&1
+      "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/force-cancel" 2>&1
   ); then
     current_status=$(
       gh api --method GET \
@@ -144,7 +147,7 @@ while IFS= read -r run_record; do
     )
     if [ "$current_status" != "completed" ]; then
       # GitHub can wedge a run so that it keeps reporting an active status
-      # while refusing every cancel request with HTTP 409. A run only claims
+      # while refusing force cancellation with HTTP 409. A run only claims
       # the shared pr-N runner once it starts a job, so a wedged run whose
       # latest attempt started no job cannot be the writer this barrier
       # protects against, and it would never reach "completed" for the
