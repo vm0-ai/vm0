@@ -10,8 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "okou": "./dist/okou.js",
-    "zero": "./dist/okou.js"
+    "okou": "./dist/okou.js"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -21,7 +20,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/okou-cli\"; delete this.scripts; delete this.devDependencies; this.bin={okou:\"okou.js\",zero:\"okou.js\"}; this.files=[\"*.js\",\"*.js.map\"]'",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/okou-cli\"; delete this.scripts; delete this.devDependencies; this.bin={okou:\"okou.js\"}; this.files=[\"*.js\",\"*.js.map\"]'",
     "dev": "tsup --watch",
     "bench:startup": "pnpm build && ZERO_STARTUP_BENCH=1 vitest run src/__tests__/okou-startup.bench.test.ts",
     "test": "vitest run",

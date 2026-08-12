@@ -2215,10 +2215,8 @@ jobs:
           sudo cp -a "$package_root/package" "$cli_dir"
           sudo chmod +x "$cli_dir/okou.js"
           sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/okou"
-          sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/zero"
           okou --help
-          zero --help # okou-cutover-audit: compatibility-only
-          zero __agent-loop --help # okou-cutover-audit: compatibility-only
+          okou __agent-loop --help
       - name: Run Serial E2E Tests
         run: |
           echo "=== Running Serial E2E Tests ==="

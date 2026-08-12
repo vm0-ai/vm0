@@ -634,10 +634,7 @@ export { program };
 if (
   process.argv[1]?.endsWith("okou.js") ||
   process.argv[1]?.endsWith("okou.ts") ||
-  process.argv[1]?.endsWith("okou") ||
-  process.argv[1]?.endsWith("zero.js") ||
-  process.argv[1]?.endsWith("zero.ts") ||
-  process.argv[1]?.endsWith("zero")
+  process.argv[1]?.endsWith("okou")
 ) {
   await configureGlobalProxyFromEnv();
   const requestedCommand = await loadZeroCommand(getRequestedZeroCommandName());

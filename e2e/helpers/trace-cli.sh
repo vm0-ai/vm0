@@ -14,17 +14,7 @@
 DEFAULT_CLI_TIMEOUT=90
 CLI_TIMEOUT_HEADROOM=20
 
-if (( $# < 1 )); then
-  echo "Usage: $0 <okou|zero> [args...]" >&2
-  exit 1
-fi
-
-CLI_ENTRYPOINT="$1"
-shift
-if [[ "$CLI_ENTRYPOINT" != "okou" && "$CLI_ENTRYPOINT" != "zero" ]]; then
-  echo "Unsupported CLI entry point: $CLI_ENTRYPOINT" >&2
-  exit 1
-fi
+CLI_ENTRYPOINT="okou"
 
 default_cli_timeout() {
   local bats_timeout="${BATS_TEST_TIMEOUT:-}"

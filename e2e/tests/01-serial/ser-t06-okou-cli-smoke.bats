@@ -1,6 +1,5 @@
 #!/usr/bin/env bats
-# Smoke tests for the Okou CLI binary entry points.
-# Verifies canonical okou and the temporary zero alias use the same surface.
+# Smoke tests for the canonical Okou CLI binary entry point.
 
 load '../../helpers/setup'
 
@@ -20,45 +19,23 @@ load '../../helpers/setup'
     refute_output --partial "artifact"
 }
 
-@test "temporary alias help is identical to canonical okou help" {
-    run $OKOU_CLI --help
-    assert_success
-    local okou_output="$output"
-
-    run $ZERO_CLI --help
-    assert_success
-    [[ "$output" == "$okou_output" ]]
-}
-
-@test "okou and zero output the same version" {
+@test "okou outputs a semantic version" {
     run $OKOU_CLI --version
     assert_success
     assert_output --regexp '^[0-9]+\.[0-9]+\.[0-9]+'
-    local okou_version="$output"
-
-    run $ZERO_CLI --version
-    assert_success
-    [[ "$output" == "$okou_version" ]]
 }
 
-@test "temporary zero can load the internal agent loop" {
-    run $ZERO_CLI __agent-loop --help
+@test "okou can load the internal agent loop" {
+    run $OKOU_CLI __agent-loop --help
     assert_success
     assert_output --partial "--standby"
 }
 
-@test "okou and zero preserve error output and exit behavior" {
-    local command okou_status okou_output
+@test "okou preserves error output and exit behavior" {
+    local command
     for command in automation schedule; do
         run $OKOU_CLI "$command" list
         assert_failure
-        okou_status="$status"
-        okou_output="$output"
-
-        run $ZERO_CLI "$command" list
-        assert_failure
-        [[ "$status" == "$okou_status" ]]
-        [[ "$output" == "$okou_output" ]]
         assert_output --partial "unknown command '$command'"
     done
 }
