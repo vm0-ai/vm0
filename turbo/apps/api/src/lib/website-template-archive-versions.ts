@@ -45,6 +45,9 @@ const CURRENT_WEBSITE_TEMPLATE_ARCHIVE_VERSION_IDS = {
     "f587c890c6db593a4cd102cb863f2484868277200d5630b40712ee8b2ded3153",
 } as const satisfies Record<string, string>;
 
+// Pre-cutover commit-addressed CLI contexts can keep these digests through
+// their queue, claimed-run, and finalization lifetime. Remove this map after
+// that drain and the production rollback window close; tracked by #26519.
 const PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:black-slabs": {
     "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3":
