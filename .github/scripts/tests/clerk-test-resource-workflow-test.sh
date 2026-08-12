@@ -42,10 +42,10 @@ browser_cleanup = browser_steps.find { |step| step["name"] == "Cleanup browser E
 raise "missing browser E2E execution" unless browser_run
 raise "missing browser E2E account finalizer" unless browser_cleanup
 
-expected_browser_email = "${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai"
+expected_browser_email = "${{ format('{0}+clerk_test+{1}-{2}+browser@vm0-e2e.ai', matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref, github.run_id, github.run_attempt) }}"
 unless browser_run.dig("env", "E2E_ACCOUNT") == expected_browser_email &&
     browser_cleanup.dig("env", "E2E_ACCOUNT") == expected_browser_email
-  raise "browser account must be scoped to the current run and attempt"
+  raise "browser account must be scoped to the runtime, current run, and attempt"
 end
 unless browser_cleanup.fetch("if") == "always()" &&
     browser_cleanup.fetch("run").include?("delete_e2e_account_if_exists")
@@ -88,6 +88,9 @@ closed_pr_cleanup = cleanup.fetch("jobs").fetch("cleanup-clerk-test-resources")
 unless closed_pr_cleanup.dig("permissions", "contents") == "read"
   raise "closed-PR Clerk cleanup must use read-only repository permissions"
 end
+unless closed_pr_cleanup.dig("strategy", "matrix", "runtime") == %w[cloudflare vercel]
+  raise "closed-PR Clerk cleanup must cover both runtime namespaces"
+end
 closed_pr_checkout = closed_pr_cleanup.fetch("steps").find do |step|
   step.fetch("uses", "").start_with?("actions/checkout@")
 end
@@ -101,8 +104,8 @@ closed_pr_step = closed_pr_cleanup.fetch("steps").find do |step|
 end
 raise "missing closed-PR Clerk cleanup command" unless closed_pr_step
 unless closed_pr_step.fetch("run").end_with?("clerk-test-resources.ts cleanup-job-ref") &&
-    closed_pr_step.dig("env", "JOB_REF") == "pr-${{ github.event.pull_request.number }}"
-  raise "closed-PR cleanup must use the tested strict JOB_REF selector"
+    closed_pr_step.dig("env", "JOB_REF") == "${{ matrix.runtime == 'vercel' && format('pr-{0}-vercel', github.event.pull_request.number) || format('pr-{0}', github.event.pull_request.number) }}"
+  raise "closed-PR cleanup must use strict selectors for both runtime namespaces"
 end
 
 stale_jobs = stale.fetch("jobs")
