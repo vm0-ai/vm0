@@ -1,4 +1,8 @@
 import {
+  desktopZeroMigrationPolicySchema,
+  type DesktopZeroMigrationRolloutMode,
+} from "@vm0/api-contracts/contracts/desktop-updates";
+import {
   readDesktopPreferenceRecord,
   writeDesktopPreferenceRecord,
 } from "./desktop-preferences";
@@ -23,7 +27,11 @@ interface DesktopZeroMigrationControllerOptions {
   readonly drainAndStopZero: () => Promise<void>;
   readonly startZero: () => Promise<void>;
   readonly openDownload: (url: string) => Promise<void>;
+  readonly fetchPolicy: (signal: AbortSignal) => Promise<Response>;
+  readonly quitZero: () => void;
   readonly onChange?: () => void;
+  readonly onAttention?: () => void;
+  readonly logPolicyError?: (error: unknown) => void;
   readonly now?: () => number;
 }
 
@@ -57,6 +65,12 @@ function migrationErrorMessage(error: unknown): string {
     : "Unable to open the Okou download.";
 }
 
+function hardStopErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message
+    ? `Unable to stop Zero safely: ${error.message}`
+    : "Unable to stop Zero safely.";
+}
+
 export class DesktopZeroMigrationController {
   private readonly enabled: boolean;
   private readonly product: "zero" | "okou";
@@ -65,9 +79,17 @@ export class DesktopZeroMigrationController {
   private readonly drainAndStopZero: () => Promise<void>;
   private readonly startZero: () => Promise<void>;
   private readonly openDownload: (url: string) => Promise<void>;
+  private readonly fetchPolicy: (signal: AbortSignal) => Promise<Response>;
+  private readonly quitZeroApp: () => void;
   private readonly onChange: () => void;
+  private readonly onAttention: () => void;
+  private readonly logPolicyError: (error: unknown) => void;
   private readonly now: () => number;
   private waitingForCommand = false;
+  private hardStopWaiting = false;
+  private hardStopError: string | null = null;
+  private rolloutMode: DesktopZeroMigrationRolloutMode = "soft";
+  private policyRefresh: Promise<DesktopZeroMigrationRolloutMode> | null = null;
 
   constructor(options: DesktopZeroMigrationControllerOptions) {
     this.enabled = options.enabled;
@@ -77,13 +99,24 @@ export class DesktopZeroMigrationController {
     this.drainAndStopZero = options.drainAndStopZero;
     this.startZero = options.startZero;
     this.openDownload = options.openDownload;
+    this.fetchPolicy = options.fetchPolicy;
+    this.quitZeroApp = options.quitZero;
     this.onChange = options.onChange ?? (() => {});
+    this.onAttention = options.onAttention ?? (() => {});
+    this.logPolicyError = options.logPolicyError ?? (() => {});
     this.now = options.now ?? Date.now;
   }
 
   getState(): DesktopZeroMigrationState {
     if (!this.isEligible()) {
       return { mode: "hidden", nextReminderAt: null, errorMessage: null };
+    }
+    if (this.rolloutMode === "hard") {
+      return {
+        mode: this.hardStopWaiting ? "hard_stop_waiting" : "hard_stop",
+        nextReminderAt: null,
+        errorMessage: this.hardStopError,
+      };
     }
     const preferences = readZeroMigrationPreferences(this.preferencesPath);
     if (this.waitingForCommand) {
@@ -99,6 +132,9 @@ export class DesktopZeroMigrationController {
         nextReminderAt: null,
         errorMessage: preferences.lastError,
       };
+    }
+    if (this.rolloutMode === "off") {
+      return { mode: "hidden", nextReminderAt: null, errorMessage: null };
     }
     if (
       preferences.deferredUntil &&
@@ -120,8 +156,13 @@ export class DesktopZeroMigrationController {
   shouldSuppressAutoStart(): boolean {
     return (
       this.product === "zero" &&
-      readZeroMigrationPreferences(this.preferencesPath).startedAt !== null
+      (this.rolloutMode === "hard" ||
+        readZeroMigrationPreferences(this.preferencesPath).startedAt !== null)
     );
+  }
+
+  allowUserInitiatedStart(): boolean {
+    return this.rolloutMode !== "hard";
   }
 
   shouldOpenWindowOnLaunch(): boolean {
@@ -129,7 +170,7 @@ export class DesktopZeroMigrationController {
   }
 
   remindLater(): DesktopZeroMigrationState {
-    if (!this.isEligible()) {
+    if (!this.isEligible() || this.rolloutMode !== "soft") {
       return this.getState();
     }
     this.writePreferences({
@@ -144,7 +185,27 @@ export class DesktopZeroMigrationController {
   }
 
   async beginMigration(): Promise<DesktopZeroMigrationState> {
-    if (!this.isEligible() || this.waitingForCommand) {
+    if (
+      !this.isEligible() ||
+      this.rolloutMode === "off" ||
+      this.waitingForCommand ||
+      this.hardStopWaiting
+    ) {
+      return this.getState();
+    }
+    if (this.rolloutMode === "hard") {
+      this.hardStopWaiting = true;
+      this.hardStopError = null;
+      this.onChange();
+      try {
+        await this.drainAndStopZero();
+        await this.openDownload(ZERO_MIGRATION_BRIDGE_CONFIG.downloadUrl);
+      } catch (error) {
+        this.hardStopError = migrationErrorMessage(error);
+      } finally {
+        this.hardStopWaiting = false;
+        this.onChange();
+      }
       return this.getState();
     }
     const existing = readZeroMigrationPreferences(this.preferencesPath);
@@ -174,6 +235,9 @@ export class DesktopZeroMigrationController {
   }
 
   async resumeZero(): Promise<DesktopZeroMigrationState> {
+    if (this.rolloutMode === "hard") {
+      return this.getState();
+    }
     this.clearPreferences();
     this.onChange();
     await this.startZero();
@@ -186,6 +250,93 @@ export class DesktopZeroMigrationController {
     }
     this.clearPreferences();
     this.onChange();
+  }
+
+  quitZero(): DesktopZeroMigrationState {
+    if (this.isEligible() && this.rolloutMode === "hard") {
+      this.quitZeroApp();
+    }
+    return this.getState();
+  }
+
+  refreshPolicy(): Promise<DesktopZeroMigrationRolloutMode> {
+    if (!this.isEligible()) {
+      return Promise.resolve(this.rolloutMode);
+    }
+    this.policyRefresh ??= this.fetchAndApplyPolicy().finally(() => {
+      this.policyRefresh = null;
+    });
+    return this.policyRefresh;
+  }
+
+  private async fetchAndApplyPolicy(): Promise<DesktopZeroMigrationRolloutMode> {
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => {
+      abortController.abort();
+    }, ZERO_MIGRATION_BRIDGE_CONFIG.policyRequestTimeoutMs);
+    let mode: DesktopZeroMigrationRolloutMode = "soft";
+    try {
+      const response = await this.fetchPolicy(abortController.signal);
+      if (!response.ok) {
+        throw new Error(`Migration policy returned HTTP ${response.status}`);
+      }
+      const parsed = desktopZeroMigrationPolicySchema.safeParse(
+        await response.json(),
+      );
+      if (!parsed.success) {
+        throw new Error("Migration policy response is invalid");
+      }
+      mode = parsed.data.mode;
+    } catch (error) {
+      this.logPolicyError(error);
+    } finally {
+      clearTimeout(timeout);
+    }
+    await this.applyRolloutMode(mode);
+    return mode;
+  }
+
+  private async applyRolloutMode(
+    mode: DesktopZeroMigrationRolloutMode,
+  ): Promise<void> {
+    const previousMode = this.rolloutMode;
+    const shouldDrainHardStop =
+      previousMode !== "hard" || this.hardStopError !== null;
+    this.rolloutMode = mode;
+    this.hardStopError = null;
+
+    if (mode === "hard") {
+      if (!shouldDrainHardStop) {
+        return;
+      }
+      this.hardStopWaiting = true;
+      if (previousMode !== "hard") {
+        this.onAttention();
+      }
+      this.onChange();
+      try {
+        await this.drainAndStopZero();
+      } catch (error) {
+        this.hardStopError = hardStopErrorMessage(error);
+      } finally {
+        this.hardStopWaiting = false;
+        this.onChange();
+      }
+      return;
+    }
+
+    this.hardStopWaiting = false;
+    this.onChange();
+    if (
+      previousMode === "hard" &&
+      readZeroMigrationPreferences(this.preferencesPath).startedAt === null
+    ) {
+      try {
+        await this.startZero();
+      } catch (error) {
+        this.logPolicyError(error);
+      }
+    }
   }
 
   private isEligible(): boolean {

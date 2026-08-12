@@ -99,6 +99,7 @@ export interface DesktopZeroMigrationApi {
   readonly remindLater: () => Promise<DesktopZeroMigrationState>;
   readonly beginMigration: () => Promise<DesktopZeroMigrationState>;
   readonly resumeZero: () => Promise<DesktopZeroMigrationState>;
+  readonly quitZero: () => Promise<DesktopZeroMigrationState>;
   readonly subscribe: (callback: () => void) => () => void;
 }
 
