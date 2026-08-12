@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
+import {
+  cronCleanupSandboxesContract,
+  type CronCleanupSandboxesResponse,
+} from "@vm0/api-contracts/contracts/cron";
 import {
   triggerSourceSchema,
   type TriggerSource,
@@ -10,17 +13,19 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   runnersConnectorRuntimeSyncContract,
 } from "@vm0/api-contracts/contracts/runners";
-import type {
-  TestCronCleanupSandboxesStateActionBody,
-  TestCronCleanupSandboxesStateActionResponse,
+import {
+  testCronCleanupSandboxesStateContract,
+  type TestCronCleanupSandboxesStateActionBody,
+  type TestCronCleanupSandboxesStateActionResponse,
+  type TestCronCleanupSandboxesScope,
 } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   afterEach,
   beforeEach,
   describe,
   expect,
+  it,
   onTestFinished,
-  test as vitestTest,
 } from "vitest";
 
 import { createApp } from "../../../app-factory";
@@ -36,7 +41,6 @@ import {
   holdRunOutputProjectionLockFixture,
   insertPendingInlineDeliveryCallbackFixture,
   readRunCallbackFixture,
-  withThreadlessRunCleanupTestLockFixture,
 } from "../../../test-fixtures/run-deletion";
 import {
   deleteUsagePricingRows,
@@ -71,21 +75,9 @@ const CRON_CLEANUP_STATE_ROUTE =
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
-function it(name: string, test: () => Promise<void>, timeout?: number): void {
-  vitestTest(
-    name,
-    async () => {
-      await withThreadlessRunCleanupTestLockFixture({
-        signal: context.signal,
-        run: test,
-      });
-    },
-    timeout,
-  );
-}
-
 interface RunFixture {
   readonly runId: string;
+  readonly sandboxId: string;
   readonly sessionId: string;
   readonly composeId: string;
   readonly versionId: string;
@@ -179,6 +171,18 @@ async function postCronCleanupState(
     throw new Error(`cron cleanup state action failed with ${response.status}`);
   }
   return await readJson<TestCronCleanupSandboxesStateActionResponse>(response);
+}
+
+async function cleanupScopedSandboxes(
+  scope: TestCronCleanupSandboxesScope,
+): Promise<CronCleanupSandboxesResponse> {
+  const response = await accept(
+    setupApp({ context, routes: testCronCleanupSandboxesStateRoutes })(
+      testCronCleanupSandboxesStateContract,
+    ).cleanup({ body: scope }),
+    [200],
+  );
+  return response.body;
 }
 
 function stringField(body: Record<string, unknown>, key: string): string {
@@ -289,6 +293,7 @@ async function insertRunFixture(args?: {
   });
   return {
     runId: stringField(response, "run_id"),
+    sandboxId: stringField(response, "sandbox_id"),
     sessionId: stringField(response, "session_id"),
     composeId: stringField(response, "compose_id"),
     versionId: stringField(response, "version_id"),
@@ -410,28 +415,6 @@ async function findRun(runId: string): Promise<{
     : null;
 }
 
-interface ThreadlessCleanupError {
-  readonly runId: string;
-  readonly error: string;
-}
-
-/** Keeps sweep failures attributable to this test's own fixtures. */
-function ownCleanupErrors(
-  threadlessRuns: {
-    readonly errors: readonly ThreadlessCleanupError[];
-  },
-  fixtures: readonly RunFixture[],
-): readonly ThreadlessCleanupError[] {
-  const owned = new Set(
-    fixtures.map((fixture) => {
-      return fixture.runId;
-    }),
-  );
-  return threadlessRuns.errors.filter((entry) => {
-    return owned.has(entry.runId);
-  });
-}
-
 /** Returns this test's still-present runs in the fixture order. */
 async function findRemainingRunIds(
   fixtures: readonly RunFixture[],
@@ -506,9 +489,10 @@ async function findExportJob(jobId: string): Promise<{
     : null;
 }
 
-describe("GET /api/cron/cleanup-sandboxes", () => {
-  const trackRun = createFixtureTracker<RunFixture>(cleanupRunFixture);
-  const trackExportJob = createFixtureTracker<ExportJobFixture>(
+describe("sandbox cleanup", () => {
+  const trackRunForTeardown =
+    createFixtureTracker<RunFixture>(cleanupRunFixture);
+  const trackExportJobForTeardown = createFixtureTracker<ExportJobFixture>(
     cleanupExportJobFixture,
   );
   const trackRunOwnership = createFixtureTracker<RunOwnershipFixture>(
@@ -517,8 +501,45 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   const trackChatThread = createFixtureTracker<ChatThreadFixture>(
     cleanupChatThreadFixture,
   );
+  let registeredRunIds: string[] = [];
+  let registeredOrgIds: string[] = [];
+  let registeredExportJobIds: string[] = [];
+
+  async function trackRun(
+    fixturePromise: Promise<RunFixture>,
+  ): Promise<RunFixture> {
+    const fixture = await trackRunForTeardown(fixturePromise);
+    registeredRunIds.push(fixture.runId);
+    if (!registeredOrgIds.includes(fixture.orgId)) {
+      registeredOrgIds.push(fixture.orgId);
+    }
+    return fixture;
+  }
+
+  async function trackExportJob(
+    fixturePromise: Promise<ExportJobFixture>,
+  ): Promise<ExportJobFixture> {
+    const fixture = await trackExportJobForTeardown(fixturePromise);
+    registeredExportJobIds.push(fixture.id);
+    return fixture;
+  }
+
+  async function cleanupRegisteredFixtures(): Promise<{
+    readonly body: CronCleanupSandboxesResponse;
+  }> {
+    return {
+      body: await cleanupScopedSandboxes({
+        runIds: [...registeredRunIds],
+        orgIds: [...registeredOrgIds],
+        exportJobIds: [...registeredExportJobIds],
+      }),
+    };
+  }
 
   beforeEach(() => {
+    registeredRunIds = [];
+    registeredOrgIds = [];
+    registeredExportJobIds = [];
     mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
     mockNow(FIXED_NOW_MS);
@@ -551,11 +572,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
   });
 
-  it("returns the cleanup result shape for an authorized request", async () => {
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+  it("returns an empty cleanup result for an empty fixture scope", async () => {
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body).toStrictEqual({
       cleaned: 0,
@@ -564,12 +582,12 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       exportJobsCleaned: 0,
       exportJobsStuck: 0,
       threadlessRuns: {
-        discovered: expect.any(Number),
-        cancelled: expect.any(Number),
-        waiting: expect.any(Number),
-        deleted: expect.any(Number),
-        failed: expect.any(Number),
-        errors: expect.any(Array),
+        discovered: 0,
+        cancelled: 0,
+        waiting: 0,
+        deleted: 0,
+        failed: 0,
+        errors: [],
       },
     });
   });
@@ -587,8 +605,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    await accept(apiClient().cleanup({ headers: cronHeaders() }), [200]);
+    const response = await cleanupRegisteredFixtures();
 
+    expect(response.body.threadlessRuns.discovered).toBe(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "completed",
     });
@@ -608,15 +627,14 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    await accept(apiClient().cleanup({ headers: cronHeaders() }), [200]);
+    const response = await cleanupRegisteredFixtures();
 
+    expect(response.body.threadlessRuns.discovered).toBe(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "completed",
     });
   });
 
-  // Each source owns a separate lifecycle budget because the suite shares its
-  // cleanup lock with past-clock export tests running in another worker.
   describe.each(NON_TEST_TRIGGER_SOURCES)(
     "when the trigger source is %s",
     (triggerSource) => {
@@ -634,15 +652,16 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
           }),
         );
 
-        const response = await accept(
-          apiClient().cleanup({ headers: cronHeaders() }),
-          [200],
-        );
+        const response = await cleanupRegisteredFixtures();
 
-        expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(
-          1,
-        );
-        expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+        expect(response.body.threadlessRuns).toStrictEqual({
+          discovered: 1,
+          cancelled: 0,
+          waiting: 0,
+          deleted: 1,
+          failed: 0,
+          errors: [],
+        });
         await expect(findRun(fixture.runId)).resolves.toBeNull();
       });
     },
@@ -660,29 +679,15 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    const waitingResponse = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(
-      waitingResponse.body.threadlessRuns.discovered,
-    ).toBeGreaterThanOrEqual(1);
-    expect(waitingResponse.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(
-      1,
-    );
+    const waitingResponse = await cleanupRegisteredFixtures();
+    expect(waitingResponse.body.threadlessRuns.discovered).toBe(1);
+    expect(waitingResponse.body.threadlessRuns.waiting).toBe(1);
     await expect(findRun(fixture.runId)).resolves.not.toBeNull();
 
     mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
-    const deletedResponse = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(
-      deletedResponse.body.threadlessRuns.discovered,
-    ).toBeGreaterThanOrEqual(1);
-    expect(deletedResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
-      1,
-    );
+    const deletedResponse = await cleanupRegisteredFixtures();
+    expect(deletedResponse.body.threadlessRuns.discovered).toBe(1);
+    expect(deletedResponse.body.threadlessRuns.deleted).toBe(1);
     await expect(findRun(fixture.runId)).resolves.toBeNull();
   });
 
@@ -697,31 +702,17 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    const cancelledResponse = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(
-      cancelledResponse.body.threadlessRuns.discovered,
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      cancelledResponse.body.threadlessRuns.cancelled,
-    ).toBeGreaterThanOrEqual(1);
+    const cancelledResponse = await cleanupRegisteredFixtures();
+    expect(cancelledResponse.body.threadlessRuns.discovered).toBe(1);
+    expect(cancelledResponse.body.threadlessRuns.cancelled).toBe(1);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "cancelled",
     });
 
     mockNow(THREADLESS_TEST_NOW_MS + CANCELLATION_RECOVERY_STALE_AFTER_MS);
-    const deletedResponse = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(
-      deletedResponse.body.threadlessRuns.discovered,
-    ).toBeGreaterThanOrEqual(1);
-    expect(deletedResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
-      1,
-    );
+    const deletedResponse = await cleanupRegisteredFixtures();
+    expect(deletedResponse.body.threadlessRuns.discovered).toBe(1);
+    expect(deletedResponse.body.threadlessRuns.deleted).toBe(1);
     await expect(findRun(fixture.runId)).resolves.toBeNull();
   });
 
@@ -739,21 +730,15 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    const waiting = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(waiting.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
-    expect(waiting.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(1);
+    const waiting = await cleanupRegisteredFixtures();
+    expect(waiting.body.threadlessRuns.discovered).toBe(1);
+    expect(waiting.body.threadlessRuns.waiting).toBe(1);
     await expect(findRun(fixture.runId)).resolves.not.toBeNull();
 
     mockNow(THREADLESS_TEST_NOW_MS + 1);
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
-    expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    const response = await cleanupRegisteredFixtures();
+    expect(response.body.threadlessRuns.discovered).toBe(1);
+    expect(response.body.threadlessRuns.deleted).toBe(1);
     await expect(findRun(fixture.runId)).resolves.toBeNull();
   });
 
@@ -774,12 +759,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     await insertRunnerJobEntry(fixture, new Date(0));
 
-    const waiting = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(waiting.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
-    expect(waiting.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(1);
+    const waiting = await cleanupRegisteredFixtures();
+    expect(waiting.body.threadlessRuns.discovered).toBe(1);
+    expect(waiting.body.threadlessRuns.waiting).toBe(1);
     await expect(findRun(fixture.runId)).resolves.not.toBeNull();
     await expect(readRunCallbackFixture(callbackId)).resolves.toStrictEqual({
       status: "failed",
@@ -787,12 +769,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
 
-    const deleted = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(deleted.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
-    expect(deleted.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    const deleted = await cleanupRegisteredFixtures();
+    expect(deleted.body.threadlessRuns.discovered).toBe(1);
+    expect(deleted.body.threadlessRuns.deleted).toBe(1);
     await expect(findRun(fixture.runId)).resolves.toBeNull();
   });
 
@@ -827,13 +806,10 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
     const ownership = await trackRunOwnership(insertRunOwnership(fixture));
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
-    expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
-    expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    expect(response.body.threadlessRuns.discovered).toBe(1);
+    expect(response.body.threadlessRuns.deleted).toBe(1);
     const state = await findRunOwnership(ownership);
     expect(recordField(state, "uploaded_file")).toBeNull();
     expect(recordField(state, "file_artifact")).toBeNull();
@@ -884,31 +860,21 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    const firstResponse = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const firstResponse = await cleanupRegisteredFixtures();
 
-    // The sweep cohort is global while API test workers share one database, so
-    // a parallel file that strands its own threadless run can occupy part of
-    // this batch. The bound stays exact because these fixtures alone exceed it.
-    expect(firstResponse.body.threadlessRuns.discovered).toBe(
-      THREADLESS_SWEEP_LIMIT,
-    );
-    expect(
-      ownCleanupErrors(firstResponse.body.threadlessRuns, fixtures),
-    ).toStrictEqual([]);
+    expect(firstResponse.body.threadlessRuns).toStrictEqual({
+      discovered: THREADLESS_SWEEP_LIMIT,
+      cancelled: 0,
+      waiting: 0,
+      deleted: THREADLESS_SWEEP_LIMIT,
+      failed: 0,
+      errors: [],
+    });
     const remaining = await findRemainingRunIds(fixtures);
-    // Oldest first: the pass takes a prefix of these fixtures, and the bound
-    // leaves the newest ones for a later pass.
     expect(remaining).toStrictEqual(
-      fixtures.slice(fixtures.length - remaining.length).map((fixture) => {
+      fixtures.slice(THREADLESS_SWEEP_LIMIT).map((fixture) => {
         return fixture.runId;
       }),
-    );
-    expect(remaining.length).toBeGreaterThanOrEqual(1);
-    expect(firstResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
-      fixtures.length - remaining.length,
     );
     // What the bound left behind stays untouched and eligible for a next pass.
     await expect(
@@ -970,12 +936,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     await expect.poll(held.blockedWaiterCount).toBeGreaterThan(0);
 
-    const cleanup = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(cleanup.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
-    expect(cleanup.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    const cleanup = await cleanupRegisteredFixtures();
+    expect(cleanup.body.threadlessRuns.discovered).toBe(1);
+    expect(cleanup.body.threadlessRuns.deleted).toBe(1);
     held.release();
     await held.done;
     const eventResponse = await eventRequest;
@@ -1005,15 +968,15 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       held.release();
       await held.done;
     });
-    const cleanupRequest = apiClient().cleanup({ headers: cronHeaders() });
+    const cleanupRequest = cleanupRegisteredFixtures();
     await expect.poll(held.blockedWaiterCount).toBeGreaterThan(0);
 
     await trackChatThread(attachRunThread(fixture));
     held.release();
     await held.done;
-    const cleanup = await accept(cleanupRequest, [200]);
-    expect(cleanup.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
-    expect(cleanup.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(1);
+    const cleanup = await cleanupRequest;
+    expect(cleanup.body.threadlessRuns.discovered).toBe(1);
+    expect(cleanup.body.threadlessRuns.waiting).toBe(1);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "completed",
     });
@@ -1070,10 +1033,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     await insertRunnerJobEntry(fixture, farFuture());
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.results).toHaveLength(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
@@ -1094,10 +1054,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.results).toHaveLength(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
@@ -1112,19 +1069,18 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     await insertRunnerJobEntry(fixture, farFuture());
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(1);
-    expect(response.body.results).toContainEqual(
-      expect.objectContaining({
+    expect(response.body.errors).toBe(0);
+    expect(response.body.results).toStrictEqual([
+      {
         runId: fixture.runId,
+        sandboxId: fixture.sandboxId,
         status: "cleaned",
         reason: "Run timed out while pending (never started)",
-      }),
-    );
+      },
+    ]);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Run timed out while pending (never started)",
@@ -1154,19 +1110,18 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
     );
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(1);
-    expect(response.body.results).toContainEqual(
-      expect.objectContaining({
+    expect(response.body.errors).toBe(0);
+    expect(response.body.results).toStrictEqual([
+      {
         runId: fixture.runId,
+        sandboxId: fixture.sandboxId,
         status: "cleaned",
         reason: "Run timed out while pending (never started)",
-      }),
-    );
+      },
+    ]);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Run timed out while pending (never started)",
@@ -1184,10 +1139,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await insertRunnerJobEntry(expired, minutesAgo(1));
     await insertRunnerJobEntry(unexpired, farFuture());
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(0);
     await expect(findRunnerJob(expired.runId)).resolves.toBeNull();
@@ -1205,19 +1157,18 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(1);
-    expect(response.body.results).toContainEqual(
-      expect.objectContaining({
+    expect(response.body.errors).toBe(0);
+    expect(response.body.results).toStrictEqual([
+      {
         runId: fixture.runId,
+        sandboxId: fixture.sandboxId,
         status: "cleaned",
         reason: "Run timed out (no heartbeat)",
-      }),
-    );
+      },
+    ]);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Run timed out (no heartbeat)",
@@ -1229,10 +1180,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       insertRunFixture({ status: "completed", createdAt: minutesAgo(60) }),
     );
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.results).toHaveLength(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
@@ -1241,30 +1189,36 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
   });
 
-  it("cleans up multiple expired runs from different orgs", async () => {
+  it("cleans only registered expired runs and leaves an unrelated sentinel untouched", async () => {
     const firstFixture = await trackRun(
       insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
     );
     const secondFixture = await trackRun(
       insertRunFixture({ status: "pending", createdAt: minutesAgo(7) }),
     );
-
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
+    const sentinel = await trackRunForTeardown(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(8) }),
     );
 
+    const response = await cleanupRegisteredFixtures();
+
     expect(response.body.cleaned).toBe(2);
+    expect(response.body.errors).toBe(0);
+    expect(response.body.results).toHaveLength(2);
     expect(response.body.results).toStrictEqual(
       expect.arrayContaining([
-        expect.objectContaining({
+        {
           runId: firstFixture.runId,
+          sandboxId: firstFixture.sandboxId,
           status: "cleaned",
-        }),
-        expect.objectContaining({
+          reason: "Run timed out while pending (never started)",
+        },
+        {
           runId: secondFixture.runId,
+          sandboxId: secondFixture.sandboxId,
           status: "cleaned",
-        }),
+          reason: "Run timed out while pending (never started)",
+        },
       ]),
     );
     await expect(findRun(firstFixture.runId)).resolves.toMatchObject({
@@ -1274,6 +1228,10 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRun(secondFixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Run timed out while pending (never started)",
+    });
+    await expect(findRun(sentinel.runId)).resolves.toStrictEqual({
+      status: "pending",
+      error: null,
     });
   });
 
@@ -1287,10 +1245,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       }),
     );
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.results).toHaveLength(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
@@ -1305,20 +1260,18 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     await insertQueueEntry(fixture, minutesAgo(1));
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(1);
-    expect(response.body.results).toContainEqual(
-      expect.objectContaining({
+    expect(response.body.errors).toBe(0);
+    expect(response.body.results).toStrictEqual([
+      {
         runId: fixture.runId,
         sandboxId: null,
         status: "cleaned",
         reason: "Queued run expired (exceeded queue TTL)",
-      }),
-    );
+      },
+    ]);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Queued run expired (exceeded queue TTL)",
@@ -1332,20 +1285,18 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     const marker = await insertQueueMarker(fixture);
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(1);
-    expect(response.body.results).toContainEqual(
-      expect.objectContaining({
+    expect(response.body.errors).toBe(0);
+    expect(response.body.results).toStrictEqual([
+      {
         runId: fixture.runId,
         sandboxId: null,
         status: "cleaned",
         reason: "Queued run timed out before queue entry was persisted",
-      }),
-    );
+      },
+    ]);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Queued run timed out before queue entry was persisted",
@@ -1372,10 +1323,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       insertRunFixture({ status: "queued", createdAt: minutesAgo(1) }),
     );
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(0);
     expect(response.body.results).toHaveLength(0);
@@ -1392,10 +1340,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     await insertQueueEntry(fixture, minutesAgo(1));
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
@@ -1411,10 +1356,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     await insertQueueEntry(fixture, minutesAgo(-60));
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
@@ -1431,10 +1373,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       encryptedParams: "invalid-encrypted-payload",
     });
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await cleanupRegisteredFixtures();
 
     expect(response.body.cleaned).toBe(0);
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
@@ -1459,19 +1398,42 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         createdAt: minutesAgo(11),
       }),
     );
-
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
+    const sentinel = await trackExportJobForTeardown(
+      insertExportJob({
+        status: "completed",
+        createdAt: minutesAgo(30),
+        expiresAt: minutesAgo(1),
+        s3Key: "exports/sentinel.zip",
+      }),
     );
 
-    expect(response.body.exportJobsCleaned).toBe(1);
-    expect(response.body.exportJobsStuck).toBe(1);
+    const response = await cleanupRegisteredFixtures();
+
+    expect(response.body).toStrictEqual({
+      cleaned: 0,
+      errors: 0,
+      results: [],
+      exportJobsCleaned: 1,
+      exportJobsStuck: 1,
+      threadlessRuns: {
+        discovered: 0,
+        cancelled: 0,
+        waiting: 0,
+        deleted: 0,
+        failed: 0,
+        errors: [],
+      },
+    });
     await expect(findExportJob(expiredJob.id)).resolves.toBeNull();
     await expect(findExportJob(stuckJob.id)).resolves.toStrictEqual({
       status: "failed",
       error: "Export job timed out",
     });
+    await expect(findExportJob(sentinel.id)).resolves.toStrictEqual({
+      status: "completed",
+      error: null,
+    });
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(1);
     expect(context.mocks.s3.send).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({

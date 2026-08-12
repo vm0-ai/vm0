@@ -534,7 +534,11 @@ export const drainOrgQueueToCapacity$ = command(
 );
 
 export const cleanupExpiredQueueEntries$ = command(
-  async ({ set }, signal: AbortSignal): Promise<QueuedRunMaintenanceResult> => {
+  async (
+    { set },
+    runIds: readonly string[] | null,
+    signal: AbortSignal,
+  ): Promise<QueuedRunMaintenanceResult> => {
     const writeDb = set(writeDb$);
     const currentTime = nowDate();
 
@@ -542,7 +546,12 @@ export const cleanupExpiredQueueEntries$ = command(
       const expiredRunIds = tx
         .select({ runId: agentRunQueue.runId })
         .from(agentRunQueue)
-        .where(lt(agentRunQueue.expiresAt, currentTime));
+        .where(
+          and(
+            lt(agentRunQueue.expiresAt, currentTime),
+            runIds === null ? undefined : inArray(agentRunQueue.runId, runIds),
+          ),
+        );
 
       const candidates = await tx
         .select({
@@ -597,6 +606,7 @@ export const cleanupExpiredQueueEntries$ = command(
         .where(
           and(
             lt(agentRunQueue.expiresAt, currentTime),
+            runIds === null ? undefined : inArray(agentRunQueue.runId, runIds),
             or(isNull(agentRuns.id), ne(agentRuns.status, "queued")),
           ),
         );
@@ -638,6 +648,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
   async (
     { set },
     cutoff: Date,
+    runIds: readonly string[] | null,
     signal: AbortSignal,
   ): Promise<QueuedRunMaintenanceResult> => {
     const writeDb = set(writeDb$);
@@ -655,6 +666,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
           and(
             eq(agentRuns.status, "queued"),
             lt(agentRuns.createdAt, cutoff),
+            runIds === null ? undefined : inArray(agentRuns.id, runIds),
             notExists(
               tx
                 .select({ runId: agentRunQueue.runId })
@@ -722,13 +734,20 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
 );
 
 export const drainStaleQueues$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
+  async (
+    { set },
+    orgIds: readonly string[] | null,
+    signal: AbortSignal,
+  ): Promise<number> => {
     const writeDb = set(writeDb$);
     const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
 
     const orgsWithQueued = await writeDb
       .selectDistinct({ orgId: agentRunQueue.orgId })
-      .from(agentRunQueue);
+      .from(agentRunQueue)
+      .where(
+        orgIds === null ? undefined : inArray(agentRunQueue.orgId, orgIds),
+      );
     signal.throwIfAborted();
 
     let drained = 0;

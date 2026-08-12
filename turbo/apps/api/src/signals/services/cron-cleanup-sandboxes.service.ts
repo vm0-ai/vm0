@@ -58,6 +58,15 @@ interface CleanupSandboxesResult {
   readonly threadlessRuns: ThreadlessRunCleanupResult;
 }
 
+type CleanupSandboxesScope =
+  | { readonly kind: "global" }
+  | {
+      readonly kind: "fixtures";
+      readonly runIds: readonly string[];
+      readonly orgIds: readonly string[];
+      readonly exportJobIds: readonly string[];
+    };
+
 interface StaleRun {
   readonly id: string;
   readonly orgId: string;
@@ -109,6 +118,7 @@ const cleanupExportJobs$ = command(
   async (
     { get },
     db: Db,
+    exportJobIds: readonly string[] | null,
     signal: AbortSignal,
   ): Promise<{
     readonly exportJobsCleaned: number;
@@ -126,6 +136,9 @@ const cleanupExportJobs$ = command(
           eq(exportJobs.status, "completed"),
           isNotNull(exportJobs.expiresAt),
           lt(exportJobs.expiresAt, currentTime),
+          exportJobIds === null
+            ? undefined
+            : inArray(exportJobs.id, exportJobIds),
         ),
       );
     signal.throwIfAborted();
@@ -165,6 +178,9 @@ const cleanupExportJobs$ = command(
         and(
           inArray(exportJobs.status, ["pending", "running"]),
           lt(exportJobs.createdAt, stuckCutoffTime),
+          exportJobIds === null
+            ? undefined
+            : inArray(exportJobs.id, exportJobIds),
         ),
       );
     signal.throwIfAborted();
@@ -397,11 +413,17 @@ const cleanupExpiredRuns$ = command(
 
 async function cleanupExpiredRunnerJobs(
   db: Db,
+  runIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<number> {
   const { rowCount } = await db
     .delete(runnerJobQueue)
-    .where(lte(runnerJobQueue.expiresAt, sql`now()`));
+    .where(
+      and(
+        lte(runnerJobQueue.expiresAt, sql`now()`),
+        runIds === null ? undefined : inArray(runnerJobQueue.runId, runIds),
+      ),
+    );
   signal.throwIfAborted();
 
   const deletedCount = rowCount ?? 0;
@@ -430,9 +452,38 @@ function logQueueMaintenance(args: {
   L.debug("Queue maintenance completed", args);
 }
 
+const cleanupGlobalIngress$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(
+      drainStaleChatThreadQueues$,
+      { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
+      signal,
+    );
+    signal.throwIfAborted();
+    await tapError(set(drainStaleCanonicalSlackIngress$, signal), (error) => {
+      L.error("Failed to drain stale canonical Slack ingress", { error });
+    });
+    signal.throwIfAborted();
+    await tapError(set(drainStaleCanonicalFeishuIngress$, signal), (error) => {
+      L.error("Failed to drain stale canonical Feishu ingress", { error });
+    });
+    signal.throwIfAborted();
+    await tapError(set(retryPendingFeishuConnectWelcomes$, signal), (error) => {
+      L.error("Failed to retry Feishu connect welcomes", { error });
+    });
+    signal.throwIfAborted();
+  },
+);
+
 export const cleanupSandboxes$ = command(
-  async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
+  async (
+    { set },
+    scope: CleanupSandboxesScope,
+    signal: AbortSignal,
+  ): Promise<CleanupSandboxesResult> => {
     const db = set(writeDb$);
+    const runIds = scope.kind === "global" ? null : scope.runIds;
+    const orgIds = scope.kind === "global" ? null : scope.orgIds;
     const currentTime = now();
     const cutoffs = {
       running: new Date(currentTime - HEARTBEAT_TIMEOUT_MS),
@@ -462,7 +513,12 @@ export const cleanupSandboxes$ = command(
         agentComposes,
         eq(agentSessions.agentComposeId, agentComposes.id),
       )
-      .where(inArray(agentRuns.status, ["pending", "running"]));
+      .where(
+        and(
+          inArray(agentRuns.status, ["pending", "running"]),
+          runIds === null ? undefined : inArray(agentRuns.id, runIds),
+        ),
+      );
     signal.throwIfAborted();
 
     const expiredRuns = staleRuns.filter((run) => {
@@ -472,39 +528,34 @@ export const cleanupSandboxes$ = command(
     // Run before generic queue maintenance so an active threadless run always
     // takes the hard-cancel path and can never become terminal and be deleted
     // within the same maintenance pass.
-    const threadlessRuns = await set(cleanupThreadlessRuns$, signal);
+    const threadlessRuns = await set(cleanupThreadlessRuns$, runIds, signal);
     signal.throwIfAborted();
 
-    const expiredQueueResult = await set(cleanupExpiredQueueEntries$, signal);
+    const expiredQueueResult = await set(
+      cleanupExpiredQueueEntries$,
+      runIds,
+      signal,
+    );
     signal.throwIfAborted();
     const queuedOrphanResult = await set(
       cleanupQueuedRunLaunchOrphans$,
       cutoffs.pending,
+      runIds,
       signal,
     );
     signal.throwIfAborted();
-    const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(db, signal);
-    signal.throwIfAborted();
-    const drainedCount = await set(drainStaleQueues$, signal);
-    signal.throwIfAborted();
-    await set(
-      drainStaleChatThreadQueues$,
-      { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
+    const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(
+      db,
+      runIds,
       signal,
     );
     signal.throwIfAborted();
-    await tapError(set(drainStaleCanonicalSlackIngress$, signal), (error) => {
-      L.error("Failed to drain stale canonical Slack ingress", { error });
-    });
+    const drainedCount = await set(drainStaleQueues$, orgIds, signal);
     signal.throwIfAborted();
-    await tapError(set(drainStaleCanonicalFeishuIngress$, signal), (error) => {
-      L.error("Failed to drain stale canonical Feishu ingress", { error });
-    });
-    signal.throwIfAborted();
-    await tapError(set(retryPendingFeishuConnectWelcomes$, signal), (error) => {
-      L.error("Failed to retry Feishu connect welcomes", { error });
-    });
-    signal.throwIfAborted();
+    if (scope.kind === "global") {
+      await set(cleanupGlobalIngress$, signal);
+      signal.throwIfAborted();
+    }
     const queuedTerminalRuns = [
       ...expiredQueueResult.timedOutRuns,
       ...queuedOrphanResult.timedOutRuns,
@@ -544,6 +595,7 @@ export const cleanupSandboxes$ = command(
     const { exportJobsCleaned, exportJobsStuck } = await set(
       cleanupExportJobs$,
       db,
+      scope.kind === "global" ? null : scope.exportJobIds,
       signal,
     );
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { cleanupResponseSchema } from "./cron";
 
 const c = initContract();
 
@@ -38,6 +39,12 @@ export const testCronCleanupSandboxesStateErrorSchema = z.object({
   error: z.string(),
 });
 
+export const testCronCleanupSandboxesScopeSchema = z.object({
+  runIds: z.array(z.string().uuid()),
+  orgIds: z.array(z.string().min(1)),
+  exportJobIds: z.array(z.string().uuid()),
+});
+
 export const testCronCleanupSandboxesStateContract = c.router({
   action: {
     method: "POST",
@@ -50,6 +57,17 @@ export const testCronCleanupSandboxesStateContract = c.router({
     },
     summary: "Mutate or inspect cron cleanup sandboxes test state",
   },
+  cleanup: {
+    method: "POST",
+    path: "/api/test/cron-cleanup-sandboxes-state/cleanup",
+    body: testCronCleanupSandboxesScopeSchema,
+    responses: {
+      200: cleanupResponseSchema,
+      400: testCronCleanupSandboxesStateErrorSchema,
+      404: z.string(),
+    },
+    summary: "Clean up explicitly registered sandbox test resources",
+  },
 });
 
 export type TestCronCleanupSandboxesStateActionBody = z.infer<
@@ -57,6 +75,9 @@ export type TestCronCleanupSandboxesStateActionBody = z.infer<
 >;
 export type TestCronCleanupSandboxesStateActionResponse = z.infer<
   typeof testCronCleanupSandboxesStateActionResponseSchema
+>;
+export type TestCronCleanupSandboxesScope = z.infer<
+  typeof testCronCleanupSandboxesScopeSchema
 >;
 export type TestCronCleanupSandboxesStateContract =
   typeof testCronCleanupSandboxesStateContract;
