@@ -13,6 +13,16 @@ const THUMBNAIL_SIZE = {
   xl: "h-12 w-12",
 } as const;
 
+// Square thumbnails keep their corner radius at a constant quarter of the box,
+// so a 24px logo and a 40px one read as the same shape at different scales.
+// Same ratio the file-preview icon already uses (20px/5px, 40px/10px).
+const THUMBNAIL_RADIUS = {
+  sm: "rounded-[6px]",
+  md: "rounded-[8px]",
+  lg: "rounded-[10px]",
+  xl: "rounded-[12px]",
+} as const;
+
 const THUMBNAIL_INITIAL_TEXT = {
   sm: "text-[11px]",
   md: "text-xs",
@@ -77,8 +87,7 @@ export function WorkspaceLogo({
   imageUrl?: string | null;
   size?: ThumbnailSize;
 }) {
-  const radius = size === "sm" || size === "md" ? "rounded-md" : "rounded-xl";
-  const base = cn(THUMBNAIL_BASE, THUMBNAIL_SIZE[size], radius);
+  const base = cn(THUMBNAIL_BASE, THUMBNAIL_SIZE[size], THUMBNAIL_RADIUS[size]);
 
   if (imageUrl) {
     return (
