@@ -5,6 +5,30 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ACTION="${REPO_ROOT}/.github/actions/web-api-env/action.yml"
 EXPECTED_BUILD_COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --verify HEAD)"
 TEMP_DIRS=()
+MIGRATED_ZERO_OUTPUT_KEYS=(
+  ZERO_HOST_DOMAIN
+  ZERO_HOST_SCHEME
+  ZERO_MAPS_GOOGLE_MAPS_TOKEN
+  ZERO_WEATHER_GOOGLE_WEATHER_TOKEN
+  ZERO_SCRAPE_FIRECRAWL_TOKEN
+  ZERO_WEB_SEARCH_PERPLEXITY_TOKEN
+  ZERO_FINANCE_APIDOJO_TOKEN
+  ZERO_SEO_DATAFORSEO_LOGIN
+  ZERO_SEO_DATAFORSEO_PASSWORD
+  ZERO_BROWSER_USE_API_KEY
+  ZERO_PRICE_PRO
+  ZERO_PRICE_TEAM
+  ZERO_PRICE_USAGE_PACK_PLAN_PRO
+  ZERO_PRICE_USAGE_PACK_PLAN_TEAM
+  ZERO_PRICE_USAGE_PACK_20
+  ZERO_PRICE_USAGE_PACK_50
+  ZERO_PRICE_USAGE_PACK_100
+  ZERO_PRICE_USAGE_PACK_200
+  ZERO_PRICE_CUSTOM_CREDITS
+  ZERO_PRICE_CUSTOM_CREDIT_UNIT
+  ZERO_PRICE_CONCURRENCY
+  ZERO_ONE_TIME_CAMPAIGN
+)
 
 cleanup() {
   if [[ "${#TEMP_DIRS[@]}" -gt 0 ]]; then
@@ -44,6 +68,37 @@ assert_env_absent_value() {
   if grep -Fq "$unexpected" "$env_file"; then
     fail "did not expect rendered env to contain ${unexpected}"
   fi
+}
+
+assert_env_key_absent() {
+  local env_file="$1"
+  local key="$2"
+  if awk -F= -v key="$key" '$1 == key { found = 1 } END { exit !found }' "$env_file"; then
+    fail "did not expect ${key} in ${env_file}"
+  fi
+}
+
+assert_migrated_zero_outputs_absent() {
+  local env_file="$1"
+  local key
+  for key in "${MIGRATED_ZERO_OUTPUT_KEYS[@]}"; do
+    assert_env_key_absent "$env_file" "$key"
+  done
+}
+
+assert_no_fixture_secret_values() {
+  local output="$1"
+  local unexpected
+  for unexpected in \
+    "github-" \
+    "doppler-" \
+    "okou-google-weather-token" \
+    "okou-dataforseo-login" \
+    "okou-browser-use-api-key"; do
+    if [[ "$output" == *"$unexpected"* ]]; then
+      fail "render output exposed a fixture secret value"
+    fi
+  done
 }
 
 extract_action_script() {
@@ -136,6 +191,9 @@ run_action() {
   if [[ "$branded_config" == "both" ]]; then
     repo_vars_json="$(jq -c '. + {OKOU_HOST_DOMAIN: "okou-sites.test", OKOU_HOST_SCHEME: "http", OKOU_PRICE_PRO: "price_okou_pro", OKOU_ONE_TIME_CAMPAIGN: "okou-campaign"}' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c '. + {OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: "okou-google-weather-token", OKOU_SEO_DATAFORSEO_LOGIN: "okou-dataforseo-login", OKOU_BROWSER_USE_API_KEY: "okou-browser-use-api-key"}' <<< "$repo_secrets_json")"
+  elif [[ "$branded_config" == "empty" ]]; then
+    repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("ZERO_") | not))' <<< "$repo_vars_json")"
+    repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("ZERO_") | not))' <<< "$repo_secrets_json")"
   fi
 
   extract_action_script > "$action_script"
@@ -171,6 +229,8 @@ TEMP_DIRS+=("$success_dir")
 success_output="$(run_action "$(build_doppler_secrets_json)" "$success_dir")"
 success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${success_dir}/github-output")"
 assert_contains "$success_output" "Rendered"
+assert_no_fixture_secret_values "$success_output"
+assert_migrated_zero_outputs_absent "$success_env_file"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_ID "doppler-GH_OAUTH_CLIENT_ID"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_SECRET "doppler-GH_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" SLACK_OAUTH_CLIENT_ID "doppler-SLACK_OAUTH_CLIENT_ID"
@@ -184,21 +244,13 @@ assert_env_value "$success_env_file" MICROSOFT_TEAMS_BOT_APP_PASSWORD "github-te
 assert_env_value "$success_env_file" MICROSOFT_TEAMS_APP_TENANT_ID "github-teams-app-tenant-id"
 assert_env_value "$success_env_file" GOOGLE_ADS_DEVELOPER_TOKEN "github-google-ads-secret"
 assert_env_value "$success_env_file" OKOU_MAPS_GOOGLE_MAPS_TOKEN "github-google-maps-token"
-assert_env_value "$success_env_file" ZERO_MAPS_GOOGLE_MAPS_TOKEN "github-google-maps-token"
-assert_env_value "$success_env_file" ZERO_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
 assert_env_value "$success_env_file" OKOU_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
 assert_env_value "$success_env_file" OKOU_FINANCE_APIDOJO_TOKEN "github-apidojo-token"
-assert_env_value "$success_env_file" ZERO_FINANCE_APIDOJO_TOKEN "github-apidojo-token"
 assert_env_value "$success_env_file" OKOU_SEO_DATAFORSEO_LOGIN "github-dataforseo-login"
-assert_env_value "$success_env_file" ZERO_SEO_DATAFORSEO_LOGIN "github-dataforseo-login"
 assert_env_value "$success_env_file" OKOU_SEO_DATAFORSEO_PASSWORD "github-dataforseo-password"
-assert_env_value "$success_env_file" ZERO_SEO_DATAFORSEO_PASSWORD "github-dataforseo-password"
 assert_env_value "$success_env_file" OKOU_BROWSER_USE_API_KEY "github-browser-use-api-key"
-assert_env_value "$success_env_file" ZERO_BROWSER_USE_API_KEY "github-browser-use-api-key"
 assert_env_value "$success_env_file" OKOU_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
-assert_env_value "$success_env_file" ZERO_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
 assert_env_value "$success_env_file" OKOU_WEB_SEARCH_PERPLEXITY_TOKEN "github-perplexity-token"
-assert_env_value "$success_env_file" ZERO_WEB_SEARCH_PERPLEXITY_TOKEN "github-perplexity-token"
 assert_env_value "$success_env_file" STEAM_WEB_API_KEY "github-steam-web-api-key"
 assert_env_value "$success_env_file" FINICITY_APP_KEY "github-finicity-app-key"
 assert_env_value "$success_env_file" FINICITY_APP_SECRET "github-finicity-app-secret"
@@ -214,33 +266,21 @@ assert_env_value "$success_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
 assert_env_value "$success_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$success_env_file" "ONBOARDING_URL="
-assert_env_value "$success_env_file" ZERO_PRICE_PRO "price_test_pro"
 assert_env_value "$success_env_file" OKOU_PRICE_PRO "price_test_pro"
 assert_env_value "$success_env_file" OKOU_PRICE_TEAM "price_test_team"
-assert_env_value "$success_env_file" ZERO_PRICE_TEAM "price_test_team"
 assert_env_value "$success_env_file" OKOU_PRICE_USAGE_PACK_PLAN_PRO "price_test_usage_pack_plan_pro"
-assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_PLAN_PRO "price_test_usage_pack_plan_pro"
 assert_env_value "$success_env_file" OKOU_PRICE_USAGE_PACK_PLAN_TEAM "price_test_usage_pack_plan_team"
-assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_PLAN_TEAM "price_test_usage_pack_plan_team"
 assert_env_value "$success_env_file" OKOU_PRICE_USAGE_PACK_20 "price_test_usage_pack_20"
-assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_20 "price_test_usage_pack_20"
 assert_env_value "$success_env_file" OKOU_PRICE_USAGE_PACK_50 "price_test_usage_pack_50"
-assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_50 "price_test_usage_pack_50"
 assert_env_value "$success_env_file" OKOU_PRICE_USAGE_PACK_100 "price_test_usage_pack_100"
-assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_100 "price_test_usage_pack_100"
 assert_env_value "$success_env_file" OKOU_PRICE_USAGE_PACK_200 "price_test_usage_pack_200"
-assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_200 "price_test_usage_pack_200"
 assert_env_value "$success_env_file" ATOM_GRANT_PRICE "price_test_atom_grant"
 assert_env_value "$success_env_file" OKOU_PRICE_CUSTOM_CREDITS "price_test_custom_credits"
-assert_env_value "$success_env_file" ZERO_PRICE_CUSTOM_CREDITS "price_test_custom_credits"
 assert_env_value "$success_env_file" OKOU_PRICE_CUSTOM_CREDIT_UNIT "price_test_custom_credit_unit"
-assert_env_value "$success_env_file" ZERO_PRICE_CUSTOM_CREDIT_UNIT "price_test_custom_credit_unit"
 assert_env_value "$success_env_file" OKOU_PRICE_CONCURRENCY "price_test_concurrency"
-assert_env_value "$success_env_file" ZERO_PRICE_CONCURRENCY "price_test_concurrency"
 assert_env_value "$success_env_file" OKOU_HOST_DOMAIN "zero-sites.test"
-assert_env_value "$success_env_file" ZERO_HOST_DOMAIN "zero-sites.test"
+assert_env_value "$success_env_file" OKOU_HOST_SCHEME "https"
 assert_env_value "$success_env_file" OKOU_ONE_TIME_CAMPAIGN "zero-campaign"
-assert_env_value "$success_env_file" ZERO_ONE_TIME_CAMPAIGN "zero-campaign"
 assert_env_value "$success_env_file" GMAIL_PUBSUB_TOPIC_NAME "projects/github/topics/gmail"
 assert_env_value "$success_env_file" GMAIL_PUBSUB_PUSH_AUDIENCE "https://api.github.test/api/webhooks/gmail"
 assert_env_value "$success_env_file" GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL "gmail-push@github.test"
@@ -262,26 +302,36 @@ TEMP_DIRS+=("$precedence_dir")
 precedence_output="$(run_action "$(build_doppler_secrets_json)" "$precedence_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" both)"
 precedence_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${precedence_dir}/github-output")"
 assert_contains "$precedence_output" "Rendered"
+assert_no_fixture_secret_values "$precedence_output"
+assert_migrated_zero_outputs_absent "$precedence_env_file"
 assert_env_value "$precedence_env_file" OKOU_WEATHER_GOOGLE_WEATHER_TOKEN "okou-google-weather-token"
-assert_env_value "$precedence_env_file" ZERO_WEATHER_GOOGLE_WEATHER_TOKEN "okou-google-weather-token"
 assert_env_value "$precedence_env_file" OKOU_SEO_DATAFORSEO_LOGIN "okou-dataforseo-login"
-assert_env_value "$precedence_env_file" ZERO_SEO_DATAFORSEO_LOGIN "okou-dataforseo-login"
 assert_env_value "$precedence_env_file" OKOU_BROWSER_USE_API_KEY "okou-browser-use-api-key"
-assert_env_value "$precedence_env_file" ZERO_BROWSER_USE_API_KEY "okou-browser-use-api-key"
 assert_env_value "$precedence_env_file" OKOU_HOST_DOMAIN "okou-sites.test"
-assert_env_value "$precedence_env_file" ZERO_HOST_DOMAIN "okou-sites.test"
 assert_env_value "$precedence_env_file" OKOU_HOST_SCHEME "http"
-assert_env_value "$precedence_env_file" ZERO_HOST_SCHEME "http"
 assert_env_value "$precedence_env_file" OKOU_PRICE_PRO "price_okou_pro"
-assert_env_value "$precedence_env_file" ZERO_PRICE_PRO "price_okou_pro"
 assert_env_value "$precedence_env_file" OKOU_ONE_TIME_CAMPAIGN "okou-campaign"
-assert_env_value "$precedence_env_file" ZERO_ONE_TIME_CAMPAIGN "okou-campaign"
+
+empty_dir="$(mktemp -d)"
+TEMP_DIRS+=("$empty_dir")
+empty_output="$(run_action "$(build_doppler_secrets_json)" "$empty_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" empty)"
+empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_dir}/github-output")"
+assert_contains "$empty_output" "Rendered"
+assert_no_fixture_secret_values "$empty_output"
+assert_migrated_zero_outputs_absent "$empty_env_file"
+assert_env_value "$empty_env_file" OKOU_HOST_DOMAIN ""
+assert_env_value "$empty_env_file" OKOU_MAPS_GOOGLE_MAPS_TOKEN ""
+assert_env_value "$empty_env_file" OKOU_SEO_DATAFORSEO_LOGIN ""
+assert_env_value "$empty_env_file" OKOU_PRICE_PRO ""
+assert_env_value "$empty_env_file" OKOU_ONE_TIME_CAMPAIGN ""
 
 production_web_dir="$(mktemp -d)"
 TEMP_DIRS+=("$production_web_dir")
 production_web_output="$(run_action "$(build_doppler_secrets_json)" "$production_web_dir" web production)"
 production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_web_dir}/github-output")"
 assert_contains "$production_web_output" "Rendered"
+assert_no_fixture_secret_values "$production_web_output"
+assert_migrated_zero_outputs_absent "$production_web_env_file"
 assert_env_value "$production_web_env_file" POSTHOG_KEY "github-posthog-key"
 assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github.test"
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
@@ -290,19 +340,12 @@ assert_env_absent_value "$production_web_env_file" "VM0_MACHINE_SECRET_KEY="
 assert_env_absent_value "$production_web_env_file" "CLI_PKG_URL="
 assert_env_absent_value "$production_web_env_file" "JOGGAI_WEBHOOK_SECRET="
 assert_env_value "$production_web_env_file" OKOU_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
-assert_env_value "$production_web_env_file" ZERO_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
 assert_env_value "$production_web_env_file" OKOU_FINANCE_APIDOJO_TOKEN "github-apidojo-token"
-assert_env_value "$production_web_env_file" ZERO_FINANCE_APIDOJO_TOKEN "github-apidojo-token"
 assert_env_absent_value "$production_web_env_file" "OKOU_SEO_DATAFORSEO_LOGIN="
-assert_env_absent_value "$production_web_env_file" "ZERO_SEO_DATAFORSEO_LOGIN="
 assert_env_absent_value "$production_web_env_file" "OKOU_SEO_DATAFORSEO_PASSWORD="
-assert_env_absent_value "$production_web_env_file" "ZERO_SEO_DATAFORSEO_PASSWORD="
 assert_env_value "$production_web_env_file" OKOU_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
-assert_env_value "$production_web_env_file" ZERO_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
 assert_env_value "$production_web_env_file" OKOU_WEB_SEARCH_PERPLEXITY_TOKEN "github-perplexity-token"
-assert_env_value "$production_web_env_file" ZERO_WEB_SEARCH_PERPLEXITY_TOKEN "github-perplexity-token"
 assert_env_absent_value "$production_web_env_file" "OKOU_BROWSER_USE_API_KEY="
-assert_env_absent_value "$production_web_env_file" "ZERO_BROWSER_USE_API_KEY="
 assert_env_absent_value "$production_web_env_file" "github-cloudflare-browser-rendering-token"
 assert_env_absent_value "$production_web_env_file" "github-artifact-preview-waf-secret"
 
@@ -311,6 +354,8 @@ TEMP_DIRS+=("$production_api_dir")
 production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_dir" api production)"
 production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_dir}/github-output")"
 assert_contains "$production_api_output" "Rendered"
+assert_no_fixture_secret_values "$production_api_output"
+assert_migrated_zero_outputs_absent "$production_api_env_file"
 assert_env_value "$production_api_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
 assert_env_value "$production_api_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
@@ -322,19 +367,12 @@ assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_ID "github-t
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_PASSWORD "github-teams-bot-app-password"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_APP_TENANT_ID "github-teams-app-tenant-id"
 assert_env_value "$production_api_env_file" OKOU_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
-assert_env_value "$production_api_env_file" ZERO_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
 assert_env_value "$production_api_env_file" OKOU_FINANCE_APIDOJO_TOKEN "github-apidojo-token"
-assert_env_value "$production_api_env_file" ZERO_FINANCE_APIDOJO_TOKEN "github-apidojo-token"
 assert_env_value "$production_api_env_file" OKOU_SEO_DATAFORSEO_LOGIN "github-dataforseo-login"
-assert_env_value "$production_api_env_file" ZERO_SEO_DATAFORSEO_LOGIN "github-dataforseo-login"
 assert_env_value "$production_api_env_file" OKOU_SEO_DATAFORSEO_PASSWORD "github-dataforseo-password"
-assert_env_value "$production_api_env_file" ZERO_SEO_DATAFORSEO_PASSWORD "github-dataforseo-password"
 assert_env_value "$production_api_env_file" OKOU_BROWSER_USE_API_KEY "github-browser-use-api-key"
-assert_env_value "$production_api_env_file" ZERO_BROWSER_USE_API_KEY "github-browser-use-api-key"
 assert_env_value "$production_api_env_file" OKOU_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
-assert_env_value "$production_api_env_file" ZERO_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
 assert_env_value "$production_api_env_file" OKOU_WEB_SEARCH_PERPLEXITY_TOKEN "github-perplexity-token"
-assert_env_value "$production_api_env_file" ZERO_WEB_SEARCH_PERPLEXITY_TOKEN "github-perplexity-token"
 assert_env_absent_value "$production_api_env_file" "ONBOARDING_URL="
 assert_env_value "$production_api_env_file" CLOUDFLARE_BROWSER_RENDERING_API_TOKEN "github-cloudflare-browser-rendering-token"
 assert_env_value "$production_api_env_file" ARTIFACT_PREVIEW_WAF_SECRET "github-artifact-preview-waf-secret"
