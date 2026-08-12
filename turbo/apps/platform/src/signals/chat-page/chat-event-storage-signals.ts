@@ -183,12 +183,18 @@ function createSyncRemoteRowsCommand({
     // An expiry after that means the thread cannot be read at all, so the pass
     // fails loudly instead of rebuilding the same cursor forever.
     let cursorFromServer = false;
+    // A cold start can race with realtime subscription setup: an event may be
+    // inserted after the first tail response is assembled but before the
+    // subscription is live. Confirm the server-derived cursor once more after
+    // that first response so the event is not stranded in the gap.
+    let needsColdStartTailConfirmation = false;
     let sinceSeqId: number;
     const cachedLastSeqId = get(persistentEvents$).at(-1)?.seqId;
     if (cachedLastSeqId === undefined) {
       sinceSeqId = await loadColdStartCursor();
       signal.throwIfAborted();
       cursorFromServer = true;
+      needsColdStartTailConfirmation = true;
     } else {
       sinceSeqId = cachedLastSeqId;
     }
@@ -208,6 +214,7 @@ function createSyncRemoteRowsCommand({
         sinceSeqId = await loadColdStartCursor();
         signal.throwIfAborted();
         cursorFromServer = true;
+        needsColdStartTailConfirmation = true;
         continue;
       }
       await set(writeIndexedDbChatEventRows$, page.rows, signal);
@@ -218,7 +225,10 @@ function createSyncRemoteRowsCommand({
       if (lastRow !== undefined) {
         sinceSeqId = lastRow.seqId;
       }
-      shouldLoadNextPage = page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
+      const confirmColdStartTail = needsColdStartTailConfirmation;
+      needsColdStartTailConfirmation = false;
+      shouldLoadNextPage =
+        confirmColdStartTail || page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
     }
   });
 }

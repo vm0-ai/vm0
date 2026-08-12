@@ -170,7 +170,7 @@ describe("chat event snapshot read", () => {
         parts: [{ type: "text", text: "snapshot prompt" }],
       });
       expect(prompt).not.toHaveProperty("contextType");
-      expect(rowRequests).toStrictEqual([3]);
+      expect(rowRequests).toStrictEqual([3, 4]);
 
       await expect(
         appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
@@ -220,7 +220,7 @@ describe("chat event snapshot read", () => {
         { id: promptEventRow.id, seqId: 1 },
         { id: assistantEventRow.id, seqId: 2 },
       ]);
-      expect(rowRequests).toStrictEqual([0]);
+      expect(rowRequests).toStrictEqual([0, 2]);
       await expect(
         appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
       ).resolves.toStrictEqual(assistantEventRow);
