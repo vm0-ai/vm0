@@ -15,6 +15,7 @@ import {
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Db, ReadonlyDb } from "../external/db";
 
 export interface ChatThreadSessionRoute {
@@ -59,16 +60,12 @@ interface SessionRunRoute {
   readonly createdAt: Date;
 }
 
-function isHistorylessConversation(snapshot: {
-  readonly conversationId: string | null;
-  readonly cliAgentSessionHistory: string | null;
-  readonly cliAgentSessionHistoryHash: string | null;
-}): boolean {
-  return (
-    snapshot.conversationId !== null &&
-    snapshot.cliAgentSessionHistory === null &&
-    snapshot.cliAgentSessionHistoryHash === null
-  );
+function historylessConversationSql() {
+  return sql`(
+    ${conversations.id} IS NOT NULL
+    AND ${conversations.cliAgentSessionHistory} IS NULL
+    AND ${conversations.cliAgentSessionHistoryHash} IS NULL
+  )`.mapWith(pgBooleanDecoder);
 }
 
 function isKnownModelProvider(
@@ -148,8 +145,7 @@ async function latestHistoricalThreadSession(args: {
       modelProvider: zeroRuns.modelProvider,
       modelProviderId: zeroRuns.modelProviderId,
       cliAgentType: conversations.cliAgentType,
-      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+      historylessConversation: historylessConversationSql(),
       routeRunCreatedAt: agentRuns.createdAt,
     })
     .from(zeroRuns)
@@ -177,7 +173,7 @@ async function latestHistoricalThreadSession(args: {
   return {
     sessionId: row.sessionId,
     conversationId: row.conversationId,
-    historylessConversation: isHistorylessConversation(row),
+    historylessConversation: row.historylessConversation,
     route: {
       selectedModel: row.selectedModel,
       modelProvider: row.modelProvider,
@@ -325,8 +321,7 @@ export async function resolveChatThreadSession(args: {
       routeRunId: zeroRuns.id,
       routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
-      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+      historylessConversation: historylessConversationSql(),
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
     .from(chatThreads)
@@ -377,7 +372,7 @@ export async function resolveChatThreadSession(args: {
     const rotate = await shouldRotateResolvedSession({
       db: args.db,
       orgId: args.orgId,
-      historylessConversation: isHistorylessConversation(thread),
+      historylessConversation: thread.historylessConversation,
       previousRoute,
       nextRoute: args.route,
       previousRunCreatedAt:
