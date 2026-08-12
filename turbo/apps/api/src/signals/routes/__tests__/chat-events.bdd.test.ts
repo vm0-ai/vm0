@@ -351,7 +351,10 @@ function userMessageWithTemplate(
 }
 
 const openRouterBodySchema = z.object({
+  model: z.string(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
+  max_tokens: z.number().optional(),
+  reasoning: z.object({ effort: z.literal("none") }).optional(),
 });
 
 async function entitledChatActor(
@@ -6460,9 +6463,10 @@ describe("CHAT-02: initial thinking indicator", () => {
 
     let thinkingAuthorization: string | null = null;
     let thinkingPromptPayload = "";
+    let thinkingRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
     const titleResponse = "Launch Checklist";
     const thinkingResponse =
-      "Reviewing the launch request and recent context.\n\nOrganizing the checklist into practical sections before the main response starts.";
+      "Reviewing the launch request and recent context.\nIdentifying the checklist's major sections.\nChecking where owners and timing matter.\nPreparing a clear order for the response.";
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -6475,6 +6479,7 @@ describe("CHAT-02: initial thinking indicator", () => {
           }
           if (systemContent.includes("Write user-visible progress copy")) {
             thinkingAuthorization = request.headers.get("authorization");
+            thinkingRequestBody = payload;
             thinkingPromptPayload = payload.messages
               .map((message) => {
                 return message.content;
@@ -6525,13 +6530,82 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinking: thinkingResponse,
     });
     expect(thinkingAuthorization).toBe("Bearer thinking-key");
-    expect(thinkingPromptPayload).toContain("few short paragraphs");
+    expect(thinkingRequestBody).toMatchObject({
+      model: "google/gemini-3.1-flash-lite-preview",
+      max_tokens: 160,
+      reasoning: { effort: "none" },
+    });
+    expect(thinkingPromptPayload).toContain("one paragraph at a time");
+    expect(thinkingPromptPayload).toContain(
+      "about 20 Chinese characters or 7 English words",
+    );
+    expect(thinkingPromptPayload).toContain("around four short paragraphs");
+    expect(thinkingPromptPayload).toContain("Do not answer the user");
+    expect(thinkingPromptPayload).toContain("Do not reveal hidden reasoning");
     expect(thinkingPromptPayload).toContain(
       "Match the current user's language",
     );
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
     await flushWaitUntilForTest();
     expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
+
+    await cancelChatRun(actor, run.runId);
+  });
+
+  it("discards token-limited progress copy instead of persisting a truncated marker", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+
+    let thinkingRequests = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const payload = openRouterBodySchema.parse(await request.json());
+          const systemContent = payload.messages[0]?.content ?? "";
+          if (systemContent.includes("Write user-visible progress copy")) {
+            thinkingRequests += 1;
+            return HttpResponse.json({
+              choices: [
+                {
+                  finish_reason: "length",
+                  native_finish_reason: "MAX_TOKENS",
+                  message: {
+                    content: "Incomplete progress copy that must not persist",
+                  },
+                },
+              ],
+            });
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "Token Limit Title" },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Draft a concise migration update",
+    });
+    await flushWaitUntilForTest();
+
+    const page = await chat.listThreadEvents(actor, run.threadId);
+    expect(thinkingRequests).toBe(1);
+    expect(
+      assistantMessages(page.events).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.runEventId === "thinking:initial"
+        );
+      }),
+    ).toBeFalsy();
 
     await cancelChatRun(actor, run.runId);
   });
