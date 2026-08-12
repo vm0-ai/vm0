@@ -8,7 +8,9 @@ import {
 } from "ccstate";
 import {
   zeroMailContract,
+  type ZeroMailAttachment,
   type ZeroMailDraft,
+  type ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
 
 import { accept } from "../../lib/accept.ts";
@@ -34,9 +36,27 @@ export interface MailDraftDescriptor {
   readonly href: string;
 }
 
+interface MailAttachmentPartPreview {
+  readonly attachment: ZeroMailAttachment;
+  /** Object URL of the fetched part; null when the part no longer exists. */
+  readonly url: string | null;
+  readonly text$: TextPreviewComputed | undefined;
+}
+
+export interface MailInlineImagePreview {
+  readonly image: ZeroMailInlineImage;
+  /** Object URL of the fetched part; null when the part no longer exists. */
+  readonly url: string | null;
+}
+
+/**
+ * Fetched part previews joined onto the draft's own attachment and inline
+ * image lists. The part lookup happens here, so the sidebar walks these lists
+ * directly instead of resolving parts by id while rendering.
+ */
 export interface MailAttachmentPreviews {
-  readonly text: ReadonlyMap<string, TextPreviewComputed>;
-  readonly urls: ReadonlyMap<string, string | null>;
+  readonly attachments: readonly MailAttachmentPartPreview[];
+  readonly inlineImages: readonly MailInlineImagePreview[];
 }
 
 export interface MailDraftSignals extends MailDraftDescriptor {
@@ -155,7 +175,7 @@ function createAttachmentPreviews(
   const attachmentPreviews$ = computed(
     async (get): Promise<MailAttachmentPreviews> => {
       if (!get(attachmentScopeActive$)) {
-        return { text: new Map(), urls: new Map() };
+        return { attachments: [], inlineImages: [] };
       }
       const currentLoadVersion = ++loadVersion;
       const draftPromise = get(sidebarDraft$);
@@ -175,7 +195,7 @@ function createAttachmentPreviews(
       const draft = await draftPromise;
       signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
-        return { text: new Map(), urls: new Map() };
+        return { attachments: [], inlineImages: [] };
       }
       const attachments = draft?.version === 3 ? draft.attachments : [];
       const attachmentPartIds = new Set(
@@ -208,27 +228,39 @@ function createAttachmentPreviews(
       );
       signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
-        return { text: new Map(), urls: new Map() };
+        return { attachments: [], inlineImages: [] };
       }
       revokeAttachmentObjectUrls();
-      const textPreviews = new Map<string, TextPreviewComputed>();
-      const urls = new Map<string, string | null>();
+      const urlByPartId = new Map<string, string | null>();
+      const textByPartId = new Map<string, TextPreviewComputed>();
       for (const { partId, response } of responses) {
         if (response.status === 404) {
-          urls.set(partId, null);
+          urlByPartId.set(partId, null);
           continue;
         }
         const url = URL.createObjectURL(response.body);
         attachmentObjectUrls.set(partId, url);
-        urls.set(partId, url);
+        urlByPartId.set(partId, url);
         if (attachmentPartIds.has(partId)) {
-          textPreviews.set(
+          textByPartId.set(
             partId,
             createTextPreviewComputedFromBlob(response.body),
           );
         }
       }
-      return { text: textPreviews, urls };
+      return {
+        attachments: attachments.map((attachment) => {
+          const partId = attachment.partId;
+          return {
+            attachment,
+            url: partId ? (urlByPartId.get(partId) ?? null) : null,
+            text$: partId ? textByPartId.get(partId) : undefined,
+          };
+        }),
+        inlineImages: (draft?.inlineImages ?? []).map((image) => {
+          return { image, url: urlByPartId.get(image.partId) ?? null };
+        }),
+      };
     },
   );
   const setAttachmentScopeRef$ = onRef(
