@@ -116,10 +116,12 @@ function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
 }
 
-function isOpenAIOrAnthropicModel(model: SupportedRunModel): boolean {
+function isAddableManagedModel(model: SupportedRunModel): boolean {
   const providerType = getModelIconType(model);
   return (
-    providerType === "openai-api-key" || providerType === "anthropic-api-key"
+    providerType === "openai-api-key" ||
+    providerType === "anthropic-api-key" ||
+    providerType === "deepseek"
   );
 }
 
@@ -1745,10 +1747,7 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    return (
-      (isOpenAIOrAnthropicModel(model) || model === "deepseek-v4-flash") &&
-      !configuredModels.has(model)
-    );
+    return isAddableManagedModel(model) && !configuredModels.has(model);
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {

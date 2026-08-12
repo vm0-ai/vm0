@@ -23,6 +23,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
   // DeepSeek (native)
   "deepseek-v4-flash": "DeepSeek V4 Flash",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
   // MiniMax via shared gateways
   "minimax/minimax-m2.5": "MiniMax M2.5",
   // Minimax via OpenRouter

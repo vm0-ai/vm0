@@ -3651,98 +3651,102 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
-  it("runs Pi only in the sandbox and resumes its thread-scoped SQLite session", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Expected entitled chat actor to have an org");
-    }
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek",
-      secret: "selected-pi-sandbox-key",
-    });
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "deepseek-v4-flash",
-        isDefault: true,
-        defaultProviderType: "deepseek",
-        credentialScope: "org",
-        modelProviderId: providerId,
-      },
-    ]);
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
-    );
-    const emptyStorageArchive = gzipSync(Buffer.alloc(1024));
-    context.mocks.s3.send.mockResolvedValue({
-      Body: {
-        async *[Symbol.asyncIterator]() {
-          yield emptyStorageArchive;
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
+    "runs Pi for %s and resumes its thread-scoped SQLite session",
+    async (selectedModel) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = actor.orgId;
+      if (!orgId) {
+        throw new Error("Expected entitled chat actor to have an org");
+      }
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: "deepseek",
+        secret: "selected-pi-sandbox-key",
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: selectedModel,
+          isDefault: true,
+          defaultProviderType: "deepseek",
+          credentialScope: "org",
+          modelProviderId: providerId,
         },
-      },
-    });
-    const firstPrompt = "persist this turn in the native Pi session";
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: firstPrompt,
-      model: "deepseek-v4-flash",
-    });
-    const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    const firstContext = firstClaim.claim;
+      ]);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      const emptyStorageArchive = gzipSync(Buffer.alloc(1024));
+      context.mocks.s3.send.mockResolvedValue({
+        Body: {
+          async *[Symbol.asyncIterator]() {
+            yield emptyStorageArchive;
+          },
+        },
+      });
+      const firstPrompt = "persist this turn in the native Pi session";
+      const first = await sendChatRun(actor, {
+        agentId,
+        prompt: firstPrompt,
+        model: selectedModel,
+      });
+      const firstClaim = await claimChatRun(runnerGroup, first.runId);
+      const firstContext = firstClaim.claim;
 
-    expect(firstContext.cliAgentType).toBe("pi");
-    expect(firstContext.piSessionId).toBe(first.threadId);
-    expect(firstContext.prompt).toContain(firstPrompt);
-    expect(firstContext.piSystemPrompt).toContain("# Agent Identity");
-    expect(firstContext.piModelConfig).toStrictEqual({
-      provider: "deepseek",
-      baseUrl: "https://api.deepseek.com/",
-      model: "deepseek-v4-flash",
-      apiKeyEnv: "OPENAI_API_KEY",
-    });
-    expect(firstContext.resumeSession).toBeNull();
-    expect(firstContext).not.toHaveProperty("piExecutionMode");
-    expect(firstContext).not.toHaveProperty("runSkillSnapshot");
-    expect(claimEnvironment(firstContext).OPENAI_API_KEY).toBe(
-      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
-    );
+      expect(firstContext.cliAgentType).toBe("pi");
+      expect(firstContext.piSessionId).toBe(first.threadId);
+      expect(firstContext.prompt).toContain(firstPrompt);
+      expect(firstContext.piSystemPrompt).toContain("# Agent Identity");
+      expect(firstContext.piModelConfig).toStrictEqual({
+        provider: "deepseek",
+        baseUrl: "https://api.deepseek.com/",
+        model: selectedModel,
+        apiKeyEnv: "OPENAI_API_KEY",
+      });
+      expect(firstContext.resumeSession).toBeNull();
+      expect(firstContext).not.toHaveProperty("piExecutionMode");
+      expect(firstContext).not.toHaveProperty("runSkillSnapshot");
+      expect(claimEnvironment(firstContext).OPENAI_API_KEY).toBe(
+        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
+      );
 
-    const historyHash = createHash("sha256")
-      .update(`pi sqlite checkpoint ${first.runId}`)
-      .digest("hex");
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: first.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: first.threadId,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-      firstClaim.sandboxHeaders,
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0 },
-      firstClaim.sandboxHeaders,
-      [200],
-    );
+      const historyHash = createHash("sha256")
+        .update(`pi sqlite checkpoint ${first.runId}`)
+        .digest("hex");
+      await webhooks.requestAgentCheckpoint(
+        {
+          runId: first.runId,
+          cliAgentType: "pi",
+          cliAgentSessionId: first.threadId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+        firstClaim.sandboxHeaders,
+        [200],
+      );
+      await webhooks.requestAgentComplete(
+        { runId: first.runId, exitCode: 0 },
+        firstClaim.sandboxHeaders,
+        [200],
+      );
 
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "continue the same Pi session",
-    });
-    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+      const second = await sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue the same Pi session",
+      });
+      const secondClaim = await claimChatRun(runnerGroup, second.runId);
 
-    expect(secondClaim.claim.cliAgentType).toBe("pi");
-    expect(secondClaim.claim.piSessionId).toBe(first.threadId);
-    expect(secondClaim.claim.resumeSession).toMatchObject({
-      sessionId: first.threadId,
-      historyRef: { kind: "blob", hash: historyHash },
-    });
-    await cancelChatRun(actor, second.runId);
-  }, 90_000);
+      expect(secondClaim.claim.cliAgentType).toBe("pi");
+      expect(secondClaim.claim.piSessionId).toBe(first.threadId);
+      expect(secondClaim.claim.resumeSession).toMatchObject({
+        sessionId: first.threadId,
+        historyRef: { kind: "blob", hash: historyHash },
+      });
+      await cancelChatRun(actor, second.runId);
+    },
+    90_000,
+  );
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -3788,12 +3792,16 @@ describe("CHAT-02: model-first provider policies", () => {
       wireApi: "responses",
       supportsWebsockets: false,
       modelCatalog: {
-        models: [
+        models: expect.arrayContaining([
           expect.objectContaining({
             slug: "deepseek-v4-flash",
             default_reasoning_level: "high",
           }),
-        ],
+          expect.objectContaining({
+            slug: "deepseek-v4-pro",
+            default_reasoning_level: "high",
+          }),
+        ]),
       },
     });
 
@@ -3824,6 +3832,67 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
 
     await cancelChatRun(actor, followUp.runId);
+  });
+
+  it("reuses a Codex session across DeepSeek V4 model switches", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "deepseek-family-session-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "deepseek-v4-pro",
+        isDefault: false,
+        defaultProviderType: "deepseek",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start the DeepSeek V4 family session",
+      model: "deepseek-v4-flash",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    expect(firstClaim.claim.cliAgentType).toBe("codex");
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+    await flushWaitUntilForTest();
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue with DeepSeek V4 Pro",
+      model: "deepseek-v4-pro",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.cliAgentType).toBe("codex");
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    expect(claimEnvironment(secondClaim.claim).OPENAI_MODEL).toBe(
+      "deepseek-v4-pro",
+    );
+    expect(
+      secondClaim.claim.codexRuntimeConfig?.modelCatalog?.models,
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: "deepseek-v4-pro" }),
+      ]),
+    );
+    await cancelChatRun(actor, second.runId);
   });
 
   it("resolves an unchanged existing thread without waiting for its row lock", async () => {

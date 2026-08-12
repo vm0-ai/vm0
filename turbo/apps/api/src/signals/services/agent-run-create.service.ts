@@ -305,7 +305,6 @@ import {
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
-const PI_LOOP_MODEL = "deepseek-v4-flash" satisfies SupportedRunModel;
 type ArtifactMissingRootPolicy = NonNullable<
   StorageMountEntry["missingRootPolicy"]
 >;
@@ -7644,10 +7643,15 @@ function isPiSandboxEnabledForRun(
   createArgs: CreateAgentRunArgs,
   featureSwitchContext: FeatureSwitchContext,
 ): boolean {
+  const isPiLoopModel =
+    createArgs.selectedModelOverride ===
+      ("deepseek-v4-flash" satisfies SupportedRunModel) ||
+    createArgs.selectedModelOverride ===
+      ("deepseek-v4-pro" satisfies SupportedRunModel);
   return (
     createArgs.chatThreadId !== undefined &&
     isWebChatTriggerSource(createArgs.body.triggerSource) &&
-    createArgs.selectedModelOverride === PI_LOOP_MODEL &&
+    isPiLoopModel &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, featureSwitchContext)
   );
 }

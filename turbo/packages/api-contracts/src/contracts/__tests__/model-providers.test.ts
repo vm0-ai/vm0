@@ -95,6 +95,7 @@ describe("model-first canonical catalog", () => {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "deepseek-v4-flash",
+      "deepseek-v4-pro",
     ]);
   });
 
@@ -130,6 +131,9 @@ describe("model-first canonical catalog", () => {
       false,
     );
     expect(supportedRunModelSchema.safeParse("deepseek-v4-flash").success).toBe(
+      true,
+    );
+    expect(supportedRunModelSchema.safeParse("deepseek-v4-pro").success).toBe(
       true,
     );
     expect(supportedRunModelSchema.safeParse("MiniMax-M2.7").success).toBe(
@@ -176,6 +180,7 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("deepseek/deepseek-v4-flash")).toBe(
       false,
     );
+    expect(isLimitedFree1RestrictedRunModel("deepseek-v4-pro")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("claude-fable-5")).toBe(true);
@@ -224,6 +229,9 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("gpt-5.6-terra")).toBe("GPT 5.6 Terra");
     expect(getCanonicalModelDisplayName("gpt-5.6-luna")).toBe("GPT 5.6 Luna");
     expect(getCanonicalModelDisplayName("gpt-5.5")).toBe("GPT 5.5");
+    expect(getCanonicalModelDisplayName("deepseek-v4-pro")).toBe(
+      "DeepSeek V4 Pro",
+    );
     expect(getCanonicalModelDisplayName("kimi-k3")).toBe("kimi-k3");
     expect(getCanonicalModelDisplayName("glm-5.2")).toBe("glm-5.2");
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
@@ -265,6 +273,7 @@ describe("model-first canonical catalog", () => {
       "minimax/minimax-m2.7",
     );
     expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
+    expect(isSupportedRunModel("deepseek-v4-pro")).toBe(true);
   });
 
   it("removes retired identifiers from the selectable catalog", () => {
@@ -299,6 +308,7 @@ describe("model-first canonical catalog", () => {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "deepseek-v4-flash",
+      "deepseek-v4-pro",
     ]);
     expect(SUPPORTED_RUN_MODELS).toContain("gpt-5.5");
     expect(SUPPORTED_RUN_MODELS).toContain("claude-sonnet-4-6");
@@ -380,6 +390,10 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "deepseek",
     ]);
+    expect(getProvidersForModel("deepseek-v4-pro")).toEqual([
+      "vm0",
+      "deepseek",
+    ]);
     expect(getProvidersForModel("kimi-k3")).toEqual([]);
     expect(getProvidersForModel("glm-5.2")).toEqual([]);
     expect(getProvidersForModel("mimo-v2.5")).toEqual([]);
@@ -407,6 +421,9 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("gpt-5.5", "openai-api-key")).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.5", "anthropic-api-key")).toBe(
       false,
+    );
+    expect(isModelSupportedByProvider("deepseek-v4-pro", "deepseek")).toBe(
+      true,
     );
     expect(isModelSupportedByProvider("anthropic/claude-opus-4.8", "vm0")).toBe(
       true,
@@ -480,6 +497,8 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("vm0", "gpt-5.6-sol")).toBe("gpt-5.6-sol");
     expect(getVm0ConcreteProviderType("gpt-5.6-sol")).toBe("openai-api-key");
     expect(getVm0Vendor("gpt-5.6-sol")).toBe("openai");
+    expect(getVm0ConcreteProviderType("deepseek-v4-pro")).toBe("deepseek");
+    expect(getVm0Vendor("deepseek-v4-pro")).toBe("deepseek");
     expect(getProviderRuntimeModel("openrouter-api-key", "custom/model")).toBe(
       "custom/model",
     );
@@ -494,6 +513,7 @@ describe("model-first canonical catalog", () => {
     ]);
     expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("deepseek-v4-flash");
     expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("deepseek-v4-flash");
+    expect(DEFAULT_ORG_MODEL_POLICY_MODELS).not.toContain("deepseek-v4-pro");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
@@ -526,6 +546,7 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-8": "$$$",
         "claude-sonnet-5": "$$",
         "deepseek-v4-flash": "$",
+        "deepseek-v4-pro": "$",
       }),
     );
     expect(getVm0ModelPriceTier("claude-fable-5")).toBe("$$$$");
@@ -536,6 +557,7 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("claude-opus-4-8")).toBe("$$$");
     expect(getVm0ModelPriceTier("claude-sonnet-5")).toBe("$$");
     expect(getVm0ModelPriceTier("deepseek-v4-flash")).toBe("$");
+    expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
     expect(getVm0ModelPriceTier("claude-opus-4-7")).toBeUndefined();
     expect(getVm0ModelPriceTier("kimi-k3")).toBeUndefined();
     expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
@@ -749,7 +771,7 @@ describe("model image input support", () => {
     expect(getModelImageInputSupport(model)).toBe("supported");
   });
 
-  it.each(["deepseek-v4-flash"])(
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro"])(
     "marks %s as not image-input capable",
     (model) => {
       expect(modelSupportsImageInput(model)).toBe(false);
@@ -786,7 +808,10 @@ describe("deepseek Responses provider", () => {
     expect(getSelectableProviderTypes()).toContain("deepseek");
     expect(getFrameworkForType("deepseek")).toBe("codex");
     expect(getSecretNameForType("deepseek")).toBe("DEEPSEEK_API_KEY");
-    expect(getModels("deepseek")).toEqual(["deepseek-v4-flash"]);
+    expect(getModels("deepseek")).toEqual([
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
+    ]);
     expect(getDefaultModel("deepseek")).toBe("deepseek-v4-flash");
   });
 
@@ -811,6 +836,15 @@ describe("deepseek Responses provider", () => {
             default_service_tier: null,
             supports_reasoning_summaries: true,
             base_instructions: expect.stringContaining("You are Codex"),
+            model_messages: expect.objectContaining({
+              instructions_template: expect.stringContaining("You are Codex"),
+            }),
+          }),
+          expect.objectContaining({
+            slug: "deepseek-v4-pro",
+            display_name: "DeepSeek-V4-Pro",
+            default_reasoning_level: "high",
+            context_window: 1_048_576,
             model_messages: expect.objectContaining({
               instructions_template: expect.stringContaining("You are Codex"),
             }),
