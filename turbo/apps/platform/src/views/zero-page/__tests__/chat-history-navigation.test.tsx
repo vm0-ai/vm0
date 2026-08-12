@@ -433,6 +433,100 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText(prompt)).toHaveLength(1);
   });
 
+  it("keeps a steered message singular when its delivery replacement syncs", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000735";
+    const runId = "d0000000-0000-4000-a000-000000000752";
+    const prompt = "Steer accepted by the running agent";
+    const initialUser = {
+      id: "00000000-0000-4000-8000-000000000760",
+      threadId,
+      eventType: "input.prompt" as const,
+      content: null,
+      userMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: "Start the active run" }],
+      },
+      createdAt: "2026-06-09T10:00:00.000Z",
+      seqId: 1,
+      runId,
+    } satisfies ChatEvent;
+    const activeReply = {
+      id: "00000000-0000-4000-8000-000000000761",
+      threadId,
+      eventType: "output.message" as const,
+      content: "Still working",
+      createdAt: "2026-06-09T10:00:01.000Z",
+      seqId: 2,
+      runId,
+    } satisfies ChatEvent;
+    const pendingSteer = {
+      id: "00000000-0000-4000-8000-000000000762",
+      threadId,
+      eventType: "input.prompt" as const,
+      content: null,
+      userMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: prompt }],
+      },
+      createdAt: "2026-06-09T10:00:02.000Z",
+      seqId: 3,
+    } satisfies ChatEvent;
+    const deliveredSteer = {
+      id: "00000000-0000-4000-8000-000000000763",
+      threadId,
+      eventType: "input.prompt" as const,
+      content: null,
+      userMessage: pendingSteer.userMessage,
+      createdAt: "2026-06-09T10:00:03.000Z",
+      seqId: 4,
+      runId,
+      revokesEventId: pendingSteer.id,
+    } satisfies ChatEvent;
+    let exposeReplacement = false;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Durable steer projection",
+      activeRunIds: [runId],
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+      if (query.sinceSeqId === undefined) {
+        return respond(200, {
+          events: [initialUser, activeReply, pendingSteer].map(
+            chatEventResponse,
+          ),
+        });
+      }
+      if (query.sinceSeqId === pendingSteer.seqId) {
+        return respond(200, {
+          events: exposeReplacement ? [chatEventResponse(deliveredSteer)] : [],
+        });
+      }
+      if (query.sinceSeqId === deliveredSteer.seqId) {
+        return respond(200, { events: [] });
+      }
+      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(prompt)).toHaveLength(1);
+    });
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+
+    exposeReplacement = true;
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(prompt)).toHaveLength(1);
+    });
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+  });
+
   it("renders synced messages when IndexedDB is unavailable", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000732";
     const initialMessage = {

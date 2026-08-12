@@ -193,6 +193,7 @@ export interface StripeRefund {
 export interface StripeCreditNote {
   readonly id: string;
   readonly status: "issued" | "void";
+  readonly metadata?: Record<string, string> | null;
   readonly pre_payment_amount: number;
   readonly post_payment_amount: number;
   readonly refunds: readonly {
@@ -236,14 +237,10 @@ export interface StripeInvoiceLine {
   readonly taxes?:
     | readonly {
         readonly amount: number;
-        readonly tax_behavior?:
-          | "exclusive"
-          | "inclusive"
-          | "unspecified"
-          | null;
+        readonly tax_behavior: "exclusive" | "inclusive";
       }[]
     | null;
-  readonly period: { readonly start?: number; readonly end: number };
+  readonly period: { readonly start: number; readonly end: number };
   readonly parent: {
     readonly type: "subscription_item_details" | "invoice_item_details";
     readonly subscription_item_details?: {
@@ -284,7 +281,10 @@ export interface StripeInvoice {
     readonly paid_at?: number | null;
   } | null;
   readonly subtotal?: number | null;
-  readonly lines: { readonly data: readonly StripeInvoiceLine[] };
+  readonly lines: {
+    readonly data: readonly StripeInvoiceLine[];
+    readonly has_more: boolean;
+  };
   readonly parent: {
     readonly subscription_details: {
       readonly metadata?: Record<string, string> | null;
@@ -381,10 +381,12 @@ export interface StripeSubscriptionsApi {
     status?: StripeSubscriptionListStatus;
     price?: string;
     limit?: number;
+    starting_after?: string;
   }): Promise<StripeList<StripeSubscription>>;
   cancel(
     id: string,
     params?: { invoice_now?: boolean; prorate?: boolean },
+    options?: StripeRequestOptions,
   ): Promise<StripeSubscription>;
 }
 
@@ -433,7 +435,12 @@ export interface StripeInvoicesApi {
     customer?: string;
     status?: "draft" | "open" | "paid" | "uncollectible" | "void";
     limit?: number;
+    starting_after?: string;
   }): Promise<StripeList<StripeInvoice>>;
+  listLineItems(
+    id: string,
+    params?: { limit?: number; starting_after?: string },
+  ): Promise<StripeList<StripeInvoiceLine>>;
   create(params: {
     customer: string;
     auto_advance?: boolean;
@@ -539,6 +546,11 @@ export interface StripeRefundsApi {
 }
 
 export interface StripeCreditNotesApi {
+  list(params: {
+    invoice: string;
+    limit?: number;
+    starting_after?: string;
+  }): Promise<StripeList<StripeCreditNote>>;
   preview(params: StripeCreditNoteParams): Promise<StripeCreditNote>;
   create(
     params: StripeCreditNoteParams,

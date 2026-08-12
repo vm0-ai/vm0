@@ -875,10 +875,6 @@
       "selectMonth": "월 선택",
       "to": "종료"
     },
-    "manage": {
-      "description": "Stripe에서 구독, 결제 수단 및 청구서 관리.",
-      "title": "청구 관리"
-    },
     "paymentMethods": {
       "description": "Stripe에서 청구에 사용되는 결제 수단을 관리합니다.",
       "title": "결제 수단"
@@ -4423,6 +4419,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "사용량 패키지와 추가 기능을 포함한 모든 활성 구독이 즉시 취소됩니다. 사용하지 않은 선불 구독 기간은 비례 계산하여 환불됩니다. 일회성 구매 및 기타 비구독 구매는 환불되지 않습니다.",
           "button": "워크스페이스 삭제",
           "confirmDescription": "이 워크스페이스와 모든 데이터를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하려면 confirm을 입력하세요.",
           "description": "이 워크스페이스와 모든 데이터를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.",

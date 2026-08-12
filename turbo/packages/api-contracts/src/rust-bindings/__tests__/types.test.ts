@@ -20,6 +20,11 @@ import {
 
 const expectedBindings = [
   {
+    rustModulePath: ["runners", "runs", "active_inputs", "reserve"],
+    rustTypeName: "Response",
+    direction: "response",
+  },
+  {
     rustModulePath: ["runners", "runs", "active_inputs", "receipt"],
     rustTypeName: "Response",
     direction: "response",
@@ -217,6 +222,9 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain(
       "pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,",
     );
+    expect(firstRender).toMatch(
+      /#\[derive\(\n\s+Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,\n\s+\)\]\n\s+pub enum ResponseRejectedReason \{/,
+    );
     expect(firstRender).toContain(
       "/// Request body for creating a recoverable agent checkpoint.",
     );
@@ -355,6 +363,75 @@ describe("Rust type bindings", () => {
     expect(rendered).toContain("Delivered,");
     expect(rendered).toContain('#[serde(rename = "rejected")]');
     expect(rendered).toContain("Rejected,");
+  });
+
+  it("renders internally tagged unions with variant fields", () => {
+    const rendered = renderExampleRustTypes([
+      validBinding({
+        schema: z.discriminatedUnion("outcome", [
+          z.object({
+            outcome: z.literal("reserved"),
+            deliveryId: z.uuid(),
+            eventIds: z.array(z.uuid()),
+          }),
+          z.object({ outcome: z.literal("empty") }),
+          z.object({
+            outcome: z.literal("rejected"),
+            reason: z.enum(["too_large", "not_running"]),
+          }),
+        ]),
+        rustTypeName: "Response",
+        declarations: [
+          {
+            rustTypeName: "Response",
+            rustDoc: ["Reserve response."],
+            fields: {
+              deliveryId: ["Delivery identity."],
+              eventIds: ["Source events."],
+              reason: ["Rejection reason."],
+            },
+            variants: {
+              reserved: ["Reserved."],
+              empty: ["Empty."],
+              rejected: ["Rejected."],
+            },
+          },
+          enumDeclaration("ResponseRejectedReason", {
+            too_large: ["Too large."],
+            not_running: ["Not running."],
+          }),
+        ],
+      }),
+    ]);
+
+    expect(rendered).toContain(
+      '#[serde(tag = "outcome", rename_all_fields = "camelCase")]',
+    );
+    expect(rendered).toContain("Reserved {");
+    expect(rendered).toContain("delivery_id: String,");
+    expect(rendered).toContain("event_ids: Vec<String>,");
+    expect(rendered).toContain("Empty,");
+    expect(rendered).toContain("Rejected {");
+    expect(rendered).toContain("reason: ResponseRejectedReason,");
+  });
+
+  it("rejects tagged variants with an ambiguous const discriminator", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          schema: z.discriminatedUnion("outcome", [
+            z.object({
+              kind: z.literal("first"),
+              outcome: z.literal("reserved"),
+            }),
+            z.object({
+              kind: z.literal("second"),
+              outcome: z.literal("empty"),
+            }),
+          ]),
+        }),
+      ]);
+    }).toThrow("unsupported oneOf schema");
   });
 
   it("renders optional nullable fields without nested options", () => {

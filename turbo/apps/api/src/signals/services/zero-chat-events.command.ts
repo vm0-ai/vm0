@@ -37,7 +37,6 @@ import {
   badRequestMessage,
   conflict,
   insufficientCredits,
-  modelRetired,
   notFound,
 } from "../../lib/error";
 import { env } from "../../lib/env";
@@ -394,7 +393,6 @@ type NormalSendFailure =
   | ReturnType<typeof conflict>
   | ReturnType<typeof autonomyBudgetExhausted>
   | ReturnType<typeof insufficientCredits>
-  | ReturnType<typeof modelRetired>
   | ReturnType<typeof badRequestMessage>;
 
 interface CreatedChatEventResponse {

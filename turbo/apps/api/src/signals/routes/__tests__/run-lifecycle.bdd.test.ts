@@ -13,10 +13,7 @@ import {
   type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
-import {
-  type CreateCustomConnectorBody,
-  ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
@@ -111,16 +108,13 @@ import {
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
-  readRunModelSelectionFixture,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
-  setAgentModelSelectionAsPreviousApi,
   setCustomConnectorAuthTemplateFixture,
-  setRunModelSelectionAsPreviousApi,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
 import {
@@ -5412,93 +5406,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(emptied.body.concurrency.active).toBe(0);
   });
 
-  it("reconciles a retired persisted agent model before launch", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    await setAgentModelSelectionAsPreviousApi(
-      context,
-      agentId,
-      "claude-opus-4-7",
-    );
-
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "run with a retired persisted agent model",
-      modelProvider: "anthropic-api-key",
-    });
-    const stored = await readRunModelSelectionFixture(context, run.runId);
-
-    expect(stored).toStrictEqual({
-      model_provider: "anthropic-api-key",
-      selected_model: "claude-opus-4-8",
-    });
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
-
-  it("rejects an explicitly requested retired provider before launch", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-
-    const response = await api.requestCreateRun(
-      actor,
-      {
-        agentId,
-        prompt: "run with an explicitly retired Z.AI provider",
-        modelProvider: "zai-api-key",
-      },
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "MODEL_RETIRED",
-        message:
-          'Model "Z.AI" has been retired. Use "deepseek-v4-flash" instead.',
-      },
-    });
-  });
-
-  it("rejects a retired queued run instead of promoting it", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before retired queue item one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before retired queue item two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "retired queued run",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    await setRunModelSelectionAsPreviousApi(
-      context,
-      queued.runId,
-      "claude-opus-4-7",
-    );
-    await api.requestCancelRun(actor, first.runId, [200]);
-
-    const failed = await waitForRunStatus(api, actor, queued.runId, "failed");
-    expect(failed.error).toBe(
-      'MODEL_RETIRED: Model "claude-opus-4-7" has been retired. Use "claude-opus-4-8" instead.',
-    );
-    await expect(waitForRunQueueLength(api, actor, 0)).resolves.toBeDefined();
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-  });
-
   it("counts promoted queued runs by promotion heartbeat for admission", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -5559,188 +5466,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, second.runId, [200]);
   });
 
-  it("finishes promoted queued run notifications after request abort", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    const controller = new AbortController();
-    let queueChangedPublishes = 0;
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before abort promotion one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before abort promotion two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should still notify after abort",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        queueChangedPublishes++;
-        if (queueChangedPublishes === 2) {
-          const error = new Error("abort after queued promotion commit");
-          error.name = "AbortError";
-          controller.abort(error);
-        }
-      }
-      return Promise.resolve(undefined);
-    });
-
-    const cancelled = await api.requestCancelRunWithSignal(
-      actor,
-      first.runId,
-      controller.signal,
-    );
-    expect(cancelled.status).toBe(200);
-    const promoted = await waitForRunStatus(
-      api,
-      actor,
-      queued.runId,
-      "pending",
-    );
-    expect(promoted.status).toBe("pending");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === "job" &&
-              isRecord(payload) &&
-              payload.runId === queued.runId
-            );
-          },
-        );
-      })
-      .toBe(true);
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await api.requestCancelRun(actor, queued.runId, [200]);
-  });
-
-  it("drains queued runs after a cancel request aborts post-commit", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    const controller = new AbortController();
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before post-commit abort one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before post-commit abort two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should drain after cancel abort",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        const error = new Error("abort after cancel commit");
-        error.name = "AbortError";
-        controller.abort(error);
-      }
-      return Promise.resolve(undefined);
-    });
-
-    const cancelled = await api.requestCancelRunWithSignal(
-      actor,
-      first.runId,
-      controller.signal,
-    );
-    expect(cancelled.status).toBe(200);
-    const promoted = await waitForRunStatus(
-      api,
-      actor,
-      queued.runId,
-      "pending",
-    );
-    expect(promoted.status).toBe("pending");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === "job" &&
-              isRecord(payload) &&
-              payload.runId === queued.runId
-            );
-          },
-        );
-      })
-      .toBe(true);
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await api.requestCancelRun(actor, queued.runId, [200]);
-  });
-
-  it("drains queued runs when queue changed publish fails after cancellation", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before publish failure one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before publish failure two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should drain despite queue publish failure",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        return Promise.reject(new Error("queue changed publish failed"));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    await api.requestCancelRun(actor, first.runId, [200]);
-    const promoted = await waitForRunStatus(
-      api,
-      actor,
-      queued.runId,
-      "pending",
-    );
-    expect(promoted.status).toBe("pending");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === "job" &&
-              isRecord(payload) &&
-              payload.runId === queued.runId
-            );
-          },
-        );
-      })
-      .toBe(true);
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await api.requestCancelRun(actor, queued.runId, [200]);
-  });
-
   it("keeps a queued launch visible when enqueue telemetry fails", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -5784,43 +5509,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         op_type: "enqueue_zero_run",
         run_id: queued.runId,
       }),
-    );
-
-    await api.requestCancelRun(actor, queued.runId, [200]);
-    await api.requestCancelRun(actor, first.runId, [200]);
-    await api.requestCancelRun(actor, second.runId, [200]);
-  });
-
-  it("keeps a queued launch visible when queue changed publish fails", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before queue publish failure one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before queue publish failure two",
-      modelProvider: "anthropic-api-key",
-    });
-    context.mocks.ably.publish.mockRejectedValueOnce(
-      new Error("queue changed publish failed"),
-    );
-
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should survive queue publish failure",
-      modelProvider: "anthropic-api-key",
-    });
-
-    expect(queued.status).toBe("queued");
-    const stored = await api.readRun(actor, queued.runId);
-    expect(stored.status).toBe("queued");
-    const queue = await api.readRunQueue(actor);
-    expect(queue.body.queue).toContainEqual(
-      expect.objectContaining({ runId: queued.runId }),
     );
 
     await api.requestCancelRun(actor, queued.runId, [200]);
@@ -8808,9 +8496,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const disabledClaim = await api.claimRunnerJob(disabledRun.runId);
     const mcpInternalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
-    expect(disabledClaim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify([http.id]),
-    );
     expect(disabledClaim.connectorRuntimeTargets).not.toContainEqual(
       expect.objectContaining({
         kind: "custom",
@@ -8841,7 +8526,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           framework: "claude-code",
           environment: {
             ANTHROPIC_API_KEY: "bdd-inline-key",
-            [ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]: JSON.stringify([randomUUID()]),
           },
         },
       },
@@ -8856,9 +8540,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const claim = await api.claimRunnerJob(run.runId);
     const admittedIds = [http.id, mcp.id].sort();
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify(admittedIds),
-    );
     expect(
       claim.connectorRuntimeTargets
         .flatMap((target) => {
@@ -9018,9 +8699,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(
       availableCustomConnectorRuntime(removedGrantResult).baseUrlVars,
     ).toStrictEqual({});
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify(admittedIds),
-    );
 
     await connectors.deleteCustomConnector(actor, mcp.id);
     const [deletedResult] = await api.syncConnectorRuntime(run.runId, {
@@ -9105,9 +8783,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const expectedIds = [...createdIds].sort();
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify(expectedIds),
-    );
     expect(
       claim.connectorRuntimeTargets
         .flatMap((target) => {
@@ -9922,9 +9597,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify([mcp.id]),
-    );
     const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
     expect(inlineFirewallApis(claim.firewalls, internalName)[0]).toMatchObject({
       base: "https://mcp-oauth.example.test/oauth/mcp",
@@ -12524,19 +12196,6 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === `run:changed:${run.runId}` &&
-              isRecord(payload) &&
-              payload.status === "cancelled"
-            );
-          },
-        );
-      })
-      .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
       runId: run.runId,
       mode: "cooperative",
@@ -15220,10 +14879,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       );
     }
     expect(missing.body).toStrictEqual({ success: true, status: "failed" });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `run:changed:${run.runId}`,
-      { status: "failed" },
-    );
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("Checkpoint for run not found");

@@ -1,11 +1,10 @@
 import { command, computed } from "ccstate";
 import type { UserPreferenceChangedPayload } from "@vm0/api-contracts/contracts/realtime";
-import { getRetiredRunModelReplacement } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { badRequestMessage, modelRetired } from "../../lib/error";
+import { badRequestMessage } from "../../lib/error";
 import { publishUserPreferenceChangedForUserSafely } from "../external/realtime";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -14,8 +13,6 @@ import type { RouteEntry } from "../route-entry";
 import { listOrgModelPolicies$ } from "../services/zero-model-policy.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { isCodexFastServiceTierSupported } from "../services/zero-model-selection.service";
-import { writeDb$ } from "../external/db";
-import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
   updateUserModelPreference$,
   userModelPreference,
@@ -38,25 +35,6 @@ const updateUserModelPreferenceInner$ = command(
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
-    }
-
-    if (body.data.selectedModel !== null) {
-      const capabilities = await loadOrgPlanCapabilities(
-        set(writeDb$),
-        auth.orgId,
-      );
-      signal.throwIfAborted();
-      const replacement = getRetiredRunModelReplacement(
-        body.data.selectedModel,
-        {
-          restrictedVm0Models:
-            capabilities?.status === "active" &&
-            capabilities.restrictedVm0Models,
-        },
-      );
-      if (replacement) {
-        return modelRetired(body.data.selectedModel, replacement);
-      }
     }
 
     const policies =
@@ -110,9 +88,6 @@ const updateUserModelPreferenceInner$ = command(
       },
       signal,
     );
-    if ("status" in result) {
-      return result;
-    }
     signal.throwIfAborted();
     await publishUserPreferenceChangedForUserSafely(auth.userId, [
       "defaultModel",

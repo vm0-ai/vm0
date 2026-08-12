@@ -167,8 +167,8 @@ function encodeArchiveLine(line: ChatEventRowV4): Buffer {
 /**
  * One canonical archived chat event, one NDJSON line. Fields are listed
  * explicitly so a chat_events schema change cannot silently alter the durable
- * wire shape. The legacy payload leaves and pointer columns remain in
- * Postgres for rollback, but never enter a v4 object.
+ * wire shape. Physically retained rollout columns remain outside the v4
+ * object until a later migration-order-safe contraction.
  */
 export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRowV4 {
   return chatEventRowV4Schema.parse({
@@ -321,9 +321,8 @@ async function archiveThread(
 ): Promise<number | null> {
   const archive = await readCanonicalEvents(db, candidate);
   signal.throwIfAborted();
-  // Every generation is rebuilt from canonical Postgres rows. Retained v3 R2
-  // objects are immutable rollback/read-fallback inputs and are never
-  // transformed into a v4 object in place.
+  // Every generation is rebuilt from canonical Postgres rows. Existing R2
+  // objects are never read or transformed in place.
   const compressed = gzipSync(Buffer.concat(archive.lines));
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
@@ -561,7 +560,7 @@ async function collectR2SnapshotGarbage(
  * Each bounded pass picks both retired-version heads and threads whose search
  * watermark advanced. It rebuilds from Postgres through that watermark,
  * uploads content-addressed v4 bytes, and publishes with an exact parent CAS.
- * Existing v3 objects remain immutable. Repeated or interrupted ticks are
+ * Existing objects remain immutable. Repeated or interrupted ticks are
  * idempotent; a lost race can only leave a collectable orphan object.
  */
 export const snapshotChatEvents$ = command(

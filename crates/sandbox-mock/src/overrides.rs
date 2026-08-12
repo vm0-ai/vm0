@@ -159,8 +159,8 @@ pub(crate) struct ProcessOverrideState {
     pub(crate) process_control_calls: Mutex<Vec<ProcessControlCall>>,
     /// Wakes tests waiting for process-control calls to be recorded.
     pub(crate) process_control_notify: tokio::sync::Notify,
-    /// FIFO queue of process-control errors consumed by control handles.
-    pub(crate) process_control_errors: Mutex<VecDeque<(std::io::ErrorKind, String)>>,
+    /// FIFO queue of structured process-control outcomes consumed by control handles.
+    pub(crate) process_control_outcomes: Mutex<VecDeque<ProcessControlOutcome>>,
     /// Whether a successful process cancel releases the configured
     /// `wait_process` gate. Tests can disable this to exercise bounded wait
     /// timeout paths after cancel is sent.
@@ -190,7 +190,7 @@ impl Default for ProcessOverrideState {
             process_cancel_errors: Mutex::new(VecDeque::new()),
             process_control_calls: Mutex::new(Vec::new()),
             process_control_notify: tokio::sync::Notify::new(),
-            process_control_errors: Mutex::new(VecDeque::new()),
+            process_control_outcomes: Mutex::new(VecDeque::new()),
             process_cancel_releases_wait_gate: Mutex::new(true),
         }
     }
@@ -810,10 +810,19 @@ impl MockSandboxOverrides {
         kind: std::io::ErrorKind,
         message: impl Into<String>,
     ) {
+        self.push_process_control_outcome(ProcessControlOutcome::Failed {
+            kind: ProcessControlFailureKind::Operation,
+            write_state: ProcessControlWriteState::PossiblyWritten,
+            error: std::io::Error::new(kind, message.into()),
+        });
+    }
+
+    /// Queue a structured process-control outcome consumed by the next control handle.
+    pub fn push_process_control_outcome(&self, outcome: ProcessControlOutcome) {
         self.process
-            .process_control_errors
+            .process_control_outcomes
             .lock_ignoring_poison()
-            .push_back((kind, message.into()));
+            .push_back(outcome);
     }
 
     /// Configure whether successful process cancellation releases a configured

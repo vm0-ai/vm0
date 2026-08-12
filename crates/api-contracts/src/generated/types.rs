@@ -28,6 +28,58 @@ pub mod runners {
                     Rejected,
                 }
             }
+
+            /// DTOs for reserving or retrieving active-input delivery.
+            pub mod reserve {
+                /// Reason an active-input reservation was rejected.
+                #[derive(
+                    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+                )]
+                pub enum ResponseRejectedReason {
+                    /// The delivery-aware control payload exceeds the frame limit.
+                    #[serde(rename = "payload_too_large")]
+                    PayloadTooLarge,
+                    /// The target run is no longer running.
+                    #[serde(rename = "run_not_running")]
+                    RunNotRunning,
+                }
+
+                /// API outcome when reserving or retrieving active input.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(tag = "outcome", rename_all_fields = "camelCase")]
+                pub enum Response {
+                    /// A stable delivery batch is ready for Guest delivery.
+                    #[serde(rename = "reserved")]
+                    Reserved {
+                        /// Stable identity for the reserved delivery batch.
+                        delivery_id: String,
+                        /// Ordered source chat-event identities in the batch.
+                        event_ids: Vec<String>,
+                        /// Materialized prompt sent to the active Guest.
+                        prompt: String,
+                    },
+                    /// No pending active input is available.
+                    #[serde(rename = "empty")]
+                    Empty,
+                    /// The run is terminal and has no open delivery.
+                    #[serde(rename = "terminal")]
+                    Terminal,
+                    /// An open delivery remains held for a non-running run.
+                    #[serde(rename = "held")]
+                    Held {
+                        /// Stable identity for the reserved delivery batch.
+                        delivery_id: String,
+                        /// Ordered source chat-event identities in the batch.
+                        event_ids: Vec<String>,
+                    },
+                    /// Pending input cannot currently be reserved.
+                    #[serde(rename = "rejected")]
+                    Rejected {
+                        /// Reason the pending input could not be reserved.
+                        reason: ResponseRejectedReason,
+                    },
+                }
+            }
         }
     }
 

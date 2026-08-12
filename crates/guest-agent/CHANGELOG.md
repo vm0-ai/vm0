@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.69.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.68.0...guest-agent-v0.69.0) (2026-08-11)
+
+
+### Features
+
+* **runner:** enable durable active-input delivery ([#26392](https://github.com/vm0-ai/vm0/issues/26392)) ([6225b5e](https://github.com/vm0-ai/vm0/commit/6225b5e85da2833f011830d21498744893b2f625))
+
 ## [0.68.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.67.0...guest-agent-v0.68.0) (2026-08-11)
 
 

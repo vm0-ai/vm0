@@ -29,7 +29,6 @@ export const zeroMcpConnectorsContract = c.router({
       200: zeroMcpConnectorListResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
-      404: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "List MCP connectors authorized for the current Agent Run",

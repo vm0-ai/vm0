@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingPortalContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -22,7 +21,6 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroBillingPortalRoutes } from "../zero-billing-portal";
 
 const context = testContext();
@@ -206,11 +204,9 @@ describe("POST /api/zero/billing/portal", () => {
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: fixture.stripeCustomerId,
+      configuration: PORTAL_CONFIGURATION_ID,
       return_url: returnUrl,
     });
-    expect(
-      context.mocks.stripe.billingPortal.configurations.list,
-    ).not.toHaveBeenCalled();
   });
 
   it("opens the restricted payment method portal for an existing customer", async () => {
@@ -238,7 +234,7 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl, mode: "payment_methods" },
+        body: { returnUrl },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -281,7 +277,7 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl, mode: "payment_methods" },
+        body: { returnUrl },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -320,45 +316,6 @@ describe("POST /api/zero/billing/portal", () => {
       configuration: PORTAL_CONFIGURATION_ID,
       return_url: returnUrl,
     });
-  });
-
-  it("does not create a customer without a subscription when payment methods are disabled", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId, orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.PaymentMethodManagement]: false },
-    );
-    mockEnv("APP_URL", APP_ORIGIN);
-    mocks.clerk.session(userId, orgId, "org:admin");
-
-    const response = await accept(
-      setupApp({ context, routes: zeroBillingPortalRoutes })(
-        zeroBillingPortalContract,
-      ).create({
-        body: {
-          returnUrl: `${APP_ORIGIN}/settings/billing`,
-          mode: "payment_methods",
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Payment method management is not available",
-        code: "BAD_REQUEST",
-      },
-    });
-    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
-    expect(
-      context.mocks.stripe.billingPortal.configurations.list,
-    ).not.toHaveBeenCalled();
-    expect(
-      context.mocks.stripe.billingPortal.sessions.create,
-    ).not.toHaveBeenCalled();
   });
 
   it("repairs a managed portal configuration before creating a session", async () => {
@@ -401,7 +358,6 @@ describe("POST /api/zero/billing/portal", () => {
       ).create({
         body: {
           returnUrl: `${APP_ORIGIN}/settings/billing`,
-          mode: "payment_methods",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -464,7 +420,6 @@ describe("POST /api/zero/billing/portal", () => {
       ).create({
         body: {
           returnUrl: `${APP_ORIGIN}/settings/billing`,
-          mode: "payment_methods",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),

@@ -896,10 +896,6 @@
       "selectMonth": "Selecionar mês",
       "to": "Até"
     },
-    "manage": {
-      "description": "Assinatura, forma de pagamento e faturas no Stripe.",
-      "title": "Gerenciar cobrança"
-    },
     "paymentMethods": {
       "description": "Gerencie os métodos de pagamento usados para cobrança no Stripe.",
       "title": "Métodos de pagamento"
@@ -4475,6 +4471,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Todas as assinaturas ativas, incluindo pacotes de uso e complementos, serão canceladas imediatamente. O período de assinatura pré-pago não utilizado será reembolsado proporcionalmente. Compras avulsas e outras compras sem assinatura não serão reembolsadas.",
           "button": "Excluir espaço de trabalho",
           "confirmDescription": "Isso excluirá permanentemente este espaço de trabalho e todos os dados dele. Esta ação não pode ser desfeita. Digite confirm para continuar.",
           "description": "Exclua permanentemente este espaço de trabalho e todos os dados dele. Esta ação não pode ser desfeita.",

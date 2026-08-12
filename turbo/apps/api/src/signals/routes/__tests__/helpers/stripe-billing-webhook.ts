@@ -212,6 +212,7 @@ export async function postSubscriptionInvoicePaid(
           },
         },
         lines: {
+          has_more: false,
           data: [
             {
               id: `il_${randomUUID().slice(0, 8)}`,
@@ -259,7 +260,10 @@ export async function postCreditPurchaseInvoicePaid(
           ).toISOString(),
         },
         parent: null,
-        lines: { data: [] },
+        lines: {
+          has_more: false,
+          data: [],
+        },
       },
     },
   });
@@ -291,7 +295,10 @@ export async function postAutoRechargeInvoicePaid(
           creditsAmount: String(args.credits),
         },
         parent: null,
-        lines: { data: [] },
+        lines: {
+          has_more: false,
+          data: [],
+        },
       },
     },
   });
@@ -369,6 +376,7 @@ export async function postConcurrencyEntitlementsInvoicePaid(
           },
         },
         lines: {
+          has_more: false,
           data: args.lines.map((line) => {
             return {
               id: line.invoiceLineId ?? `il_conc_${randomUUID().slice(0, 8)}`,
@@ -466,6 +474,7 @@ export async function postUsageAllowanceInvoicePaid(
           },
         },
         lines: {
+          has_more: false,
           data: [
             {
               id: `il_usage_${randomUUID().slice(0, 8)}`,

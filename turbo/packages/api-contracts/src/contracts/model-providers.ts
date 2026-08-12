@@ -135,18 +135,9 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-5": "Claude Opus 5",
   "claude-opus-4-8": "Claude Opus 4.8",
-  "claude-opus-4-7": "Claude Opus 4.7",
-  "claude-opus-4-6": "Claude Opus 4.6",
   "claude-sonnet-5": "Claude Sonnet 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
-  "kimi-k3": "Kimi K3",
-  "kimi-k2.7-code": "Kimi K2.7 Code",
-  "MiniMax-M3": "MiniMax M3",
-  "glm-5.2": "GLM-5.2",
-  "glm-5.1": "GLM-5.1",
-  "mimo-v2.5": "MiMo-V2.5",
-  "hy3-preview": "Hy3 Preview",
   "gpt-5.6-sol": "GPT 5.6 Sol",
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",
@@ -221,8 +212,7 @@ interface Vm0ModelConfig {
   vendor: string;
   // Overrides the display-name when substituting `$model` in the concrete
   // provider's env bindings. Needed when the upstream API expects a
-  // different identifier than what we show to users (e.g. OpenRouter uses
-  // "z-ai/glm-5.1" while our UI shows "glm-5.1").
+  // different identifier than what we show to users.
   apiModel?: string;
 }
 
@@ -242,14 +232,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
-  "claude-opus-4-7": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
-  },
-  "claude-opus-4-6": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
-  },
   "claude-sonnet-5": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -257,36 +239,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "claude-sonnet-4-6": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
-  },
-  "glm-5.2": {
-    concreteType: "zai-api-key",
-    vendor: "zai",
-  },
-  "glm-5.1": {
-    concreteType: "zai-api-key",
-    vendor: "zai",
-  },
-  "mimo-v2.5": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "xiaomi/mimo-v2.5",
-  },
-  "hy3-preview": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "tencent/hy3-preview",
-  },
-  "kimi-k3": {
-    concreteType: "moonshot-api-key",
-    vendor: "moonshot",
-  },
-  "kimi-k2.7-code": {
-    concreteType: "moonshot-api-key",
-    vendor: "moonshot",
-  },
-  "MiniMax-M3": {
-    concreteType: "minimax-api-key",
-    vendor: "minimax",
   },
   "deepseek-v4-flash": {
     concreteType: "deepseek",
@@ -314,14 +266,8 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-fable-5": "claude-fable-5",
   "anthropic/claude-opus-5": "claude-opus-5",
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
-  "anthropic/claude-opus-4.7": "claude-opus-4-7",
-  "anthropic/claude-opus-4.6": "claude-opus-4-6",
   "anthropic/claude-sonnet-5": "claude-sonnet-5",
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-  "z-ai/glm-5.2": "glm-5.2",
-  "z-ai/glm-5.1": "glm-5.1",
-  "xiaomi/mimo-v2.5": "mimo-v2.5",
-  "tencent/hy3-preview": "hy3-preview",
 } as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
 
 const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
@@ -360,39 +306,19 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
-  "claude-opus-4-7",
-  "claude-opus-4-6",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
   "anthropic/claude-fable-5",
   "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
-  "anthropic/claude-opus-4.7",
-  "anthropic/claude-opus-4.6",
   "anthropic/claude-sonnet-5",
   "anthropic/claude-opus-4.5",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-sonnet-4.5",
-  "kimi-k3",
-  "kimi-k2.7-code",
-  "MiniMax-M3",
-  "mimo-v2.5",
-  "xiaomi/mimo-v2.5",
 ]);
 
 const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
-  "glm-5.2",
-  "glm-5.1",
-  "glm-5",
-  "glm-4.7",
-  "glm-4.5-air",
-  "z-ai/glm-5.2",
-  "z-ai/glm-5.1",
-  "zai/glm-5-turbo",
-  "hy3-preview",
-  "tencent/hy3-preview",
   "deepseek-v4-flash",
-  "MiniMax-M2.1",
   "minimax/minimax-m2.5",
 ]);
 
@@ -428,7 +354,7 @@ export function modelSupportsImageInput(
  * Return the VM0 managed models visible to callers.
  */
 export function getVm0VisibleModels(): string[] {
-  return [...ACTIVE_RUN_MODELS];
+  return [...SUPPORTED_RUN_MODELS];
 }
 
 /**
@@ -463,8 +389,6 @@ export const MODEL_PROVIDER_TYPES = {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
-      "claude-opus-4-7",
-      "claude-opus-4-6",
     ] as string[],
     defaultModel: "claude-sonnet-5",
   },
@@ -485,8 +409,6 @@ export const MODEL_PROVIDER_TYPES = {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
-      "claude-opus-4-7",
-      "claude-opus-4-6",
     ] as string[],
     defaultModel: "claude-sonnet-5",
   },
@@ -510,67 +432,12 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
-      "anthropic/claude-opus-4.7",
       "anthropic/claude-sonnet-5",
       "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-opus-4.6",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.5",
-      "z-ai/glm-5.2",
-      "z-ai/glm-5.1",
-      "xiaomi/mimo-v2.5",
-      "tencent/hy3-preview",
     ] as string[],
     defaultModel: "",
-  },
-  "moonshot-api-key": {
-    framework: "claude-code" as const,
-    secretName: "MOONSHOT_API_KEY",
-    label: "Moonshot (Kimi)",
-    secretLabel: "API key",
-    helpText:
-      "Get your API key at: https://platform.moonshot.ai/console/api-keys",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      // Moonshot rejects Anthropic document blocks; keep attachments as text.
-      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
-    } satisfies ModelProviderEnvBindings,
-    models: [
-      "kimi-k3",
-      "kimi-k2.7-code",
-      "kimi-k2-thinking-turbo",
-      "kimi-k2-thinking",
-    ] as string[],
-    defaultModel: "kimi-k2-thinking-turbo",
-  },
-  "minimax-api-key": {
-    framework: "claude-code" as const,
-    secretName: "MINIMAX_API_KEY",
-    label: "MiniMax",
-    secretLabel: "API key",
-    helpText:
-      "Get your API key at: https://platform.minimax.io/user-center/basic-information/interface-key",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      API_TIMEOUT_MS: "3000000",
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      // MiniMax does not document support for Anthropic document blocks.
-      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
-    } satisfies ModelProviderEnvBindings,
-    models: ["MiniMax-M3", "MiniMax-M2.1"] as string[],
-    defaultModel: "MiniMax-M2.1",
   },
   deepseek: {
     framework: "codex" as const,
@@ -585,31 +452,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: ["deepseek-v4-flash"] as string[],
     defaultModel: "deepseek-v4-flash",
-  },
-  "zai-api-key": {
-    framework: "claude-code" as const,
-    secretName: "ZAI_API_KEY",
-    label: "Z.AI (GLM)",
-    secretLabel: "API key",
-    helpText: "Get your API key at: https://z.ai/model-api",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      API_TIMEOUT_MS: "3000000",
-    } satisfies ModelProviderEnvBindings,
-    models: [
-      "glm-5.2",
-      "glm-5.1",
-      "glm-5",
-      "glm-4.7",
-      "glm-4.5-air",
-    ] as string[],
-    defaultModel: "",
   },
   "vercel-ai-gateway": {
     framework: "claude-code" as const,
@@ -631,14 +473,11 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
-      "anthropic/claude-opus-4.7",
-      "anthropic/claude-opus-4.6",
       "anthropic/claude-sonnet-5",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet-4.5",
       "minimax/minimax-m2.5",
-      "zai/glm-5-turbo",
     ] as string[],
     defaultModel: "anthropic/claude-sonnet-5",
   },
@@ -915,20 +754,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
-  "claude-opus-4-7": [
-    "vm0",
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
-  "claude-opus-4-6": [
-    "vm0",
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
   "claude-sonnet-5": [
     "vm0",
     "claude-code-oauth-token",
@@ -972,13 +797,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "vercel-ai-gateway-codex",
   ],
   "deepseek-v4-flash": ["vm0", "deepseek"],
-  "kimi-k3": ["vm0", "moonshot-api-key"],
-  "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
-  "MiniMax-M3": ["vm0", "minimax-api-key"],
-  "glm-5.2": ["vm0", "zai-api-key", "openrouter-api-key"],
-  "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
-  "mimo-v2.5": ["vm0", "openrouter-api-key"],
-  "hy3-preview": ["vm0", "openrouter-api-key"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
@@ -988,21 +806,13 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
-    "claude-opus-4-7": "anthropic/claude-opus-4.7",
-    "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
-    "glm-5.2": "z-ai/glm-5.2",
-    "glm-5.1": "z-ai/glm-5.1",
-    "mimo-v2.5": "xiaomi/mimo-v2.5",
-    "hy3-preview": "tencent/hy3-preview",
   },
   "vercel-ai-gateway": {
     "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
-    "claude-opus-4-7": "anthropic/claude-opus-4.7",
-    "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
@@ -1025,126 +835,12 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "anthropic/claude-fable-5": "claude-fable-5",
     "anthropic/claude-opus-5": "claude-opus-5",
     "anthropic/claude-opus-4.8": "claude-opus-4-8",
-    "anthropic/claude-opus-4.7": "claude-opus-4-7",
-    "anthropic/claude-opus-4.6": "claude-opus-4-6",
     "anthropic/claude-sonnet-5": "claude-sonnet-5",
     "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-    "z-ai/glm-5.2": "glm-5.2",
-    "z-ai/glm-5.1": "glm-5.1",
-    "xiaomi/mimo-v2.5": "mimo-v2.5",
-    "tencent/hy3-preview": "hy3-preview",
   };
 
 export function normalizeRunModelId(model: string): string {
   return CANONICAL_RUN_MODEL_ALIASES[model] ?? model;
-}
-
-/**
- * Canonical model IDs that remain readable for historical records but cannot
- * be selected for a new run. Keep this separate from SUPPORTED_RUN_MODELS:
- * the latter is also used by persisted API response schemas.
- *
- * Rollout compatibility: persisted DB/API records may expose these IDs for the
- * observed ~102-minute backend window, and already-open web/app clients may
- * send or decode them for ~2 days. Remove the retired IDs and retained provider
- * catalog entries with #26314 only after Stage 2 leaves no stale persisted
- * values and the client window closes (or a version floor forces refresh).
- */
-export const RETIRED_RUN_MODELS = [
-  "claude-opus-4-7",
-  "claude-opus-4-6",
-  "kimi-k3",
-  "kimi-k2.7-code",
-  "MiniMax-M3",
-  "glm-5.2",
-  "glm-5.1",
-  "mimo-v2.5",
-  "hy3-preview",
-] as const satisfies readonly SupportedRunModel[];
-
-export type RetiredRunModel = (typeof RETIRED_RUN_MODELS)[number];
-
-/**
- * Canonical models available for current policy and run selection. Historical
- * schemas continue to use SUPPORTED_RUN_MODELS until the client-skew cleanup.
- */
-export const ACTIVE_RUN_MODELS: readonly SupportedRunModel[] =
-  SUPPORTED_RUN_MODELS.filter((model) => {
-    return !isRetiredRunModel(model);
-  });
-
-const RETIRED_RUN_MODEL_REPLACEMENTS: Readonly<
-  Record<RetiredRunModel, SupportedRunModel>
-> = {
-  "claude-opus-4-7": "claude-opus-4-8",
-  "claude-opus-4-6": "claude-opus-4-8",
-  "kimi-k3": "deepseek-v4-flash",
-  "kimi-k2.7-code": "deepseek-v4-flash",
-  "MiniMax-M3": "deepseek-v4-flash",
-  "glm-5.2": "deepseek-v4-flash",
-  "glm-5.1": "deepseek-v4-flash",
-  "mimo-v2.5": "deepseek-v4-flash",
-  "hy3-preview": "deepseek-v4-flash",
-};
-
-export function getCanonicalRetiredRunModel(
-  model: string,
-): RetiredRunModel | null {
-  const trimmedModel = model.trim();
-  if (!trimmedModel) {
-    return null;
-  }
-  const normalizedModel = normalizeRunModelId(trimmedModel).toLowerCase();
-  for (const candidate of RETIRED_RUN_MODELS) {
-    if (candidate.toLowerCase() === normalizedModel) {
-      return candidate;
-    }
-  }
-
-  if (normalizedModel === "minimax/minimax-m3") {
-    return "MiniMax-M3";
-  }
-  if (
-    normalizedModel.startsWith("z-ai/") ||
-    normalizedModel.startsWith("zai/") ||
-    normalizedModel.startsWith("glm-")
-  ) {
-    return "glm-5.2";
-  }
-  return null;
-}
-
-export function isRetiredRunModel(
-  model: string | null | undefined,
-  modelProviderType?: string | null,
-): boolean {
-  if (modelProviderType === "zai-api-key") {
-    return true;
-  }
-  return (
-    typeof model === "string" && getCanonicalRetiredRunModel(model) !== null
-  );
-}
-
-export function getRetiredRunModelReplacement(
-  model: string | null | undefined,
-  options?: {
-    readonly restrictedVm0Models?: boolean;
-    readonly modelProviderType?: string | null;
-  },
-): SupportedRunModel | undefined {
-  const retiredModel =
-    options?.modelProviderType === "zai-api-key"
-      ? "glm-5.2"
-      : typeof model === "string"
-        ? getCanonicalRetiredRunModel(model)
-        : null;
-  if (!retiredModel) {
-    return undefined;
-  }
-  return options?.restrictedVm0Models
-    ? LIMITED_FREE1_DEFAULT_RUN_MODEL
-    : RETIRED_RUN_MODEL_REPLACEMENTS[retiredModel];
 }
 
 export function getProvidersForModel(model: string): ModelProviderType[] {

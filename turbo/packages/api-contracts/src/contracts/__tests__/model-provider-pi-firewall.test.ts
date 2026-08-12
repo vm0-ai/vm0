@@ -16,7 +16,6 @@ import {
 const PI_CAPABLE_PROVIDERS = [
   "deepseek",
   "openai-api-key",
-  "moonshot-api-key",
   "codex-oauth-token",
 ] as const;
 type PiCapableProvider = (typeof PI_CAPABLE_PROVIDERS)[number];

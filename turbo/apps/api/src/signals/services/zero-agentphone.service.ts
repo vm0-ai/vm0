@@ -1317,7 +1317,7 @@ const handleModelCommand$ = command(
       return;
     }
 
-    const updateResult = await set(
+    await set(
       updateUserModelPreference$,
       {
         orgId: args.orgId,
@@ -1327,15 +1327,6 @@ const handleModelCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if ("status" in updateResult) {
-      await sendAgentPhoneSlashCommandText(
-        args.event,
-        `Error: ${updateResult.body.error.message}`,
-        signal,
-      );
-      return;
-    }
-
     await sendAgentPhoneSlashCommandText(
       args.event,
       `Switched to ${option.label}.`,

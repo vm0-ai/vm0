@@ -13,21 +13,24 @@ teardown() {
     runner_e2e_teardown_test agora
 }
 
-@test "runner firewall injects Agora placeholders and resolves Basic header auth" {
+@test "runner firewall resolves Agora auth without exposing raw credentials" {
     run create_runner_agent "runner-firewall-agora-${TEST_ID}"
     echo "$output"
     assert_success
     AGENT_ID="$output"
 
-    local values
+    local customer_id="e2e-agora-customer-${TEST_ID}"
+    local customer_secret="e2e-agora-secret-${TEST_ID}"
+    local values public_surfaces
     values=$(jq -nc \
-        --arg customerId "e2e-agora-customer-${TEST_ID}" \
-        --arg customerSecret "e2e-agora-secret-${TEST_ID}" \
+        --arg customerId "$customer_id" \
+        --arg customerSecret "$customer_secret" \
         --arg appId "e2e-agora-app-${TEST_ID}" \
         '{customerId: $customerId, customerSecret: $customerSecret, appId: $appId}')
     run runner_e2e_connect_manual_connector agora api-token "$AGENT_ID" "$values"
     echo "$output"
     assert_success
+    public_surfaces="$output"$'\n'
 
     local prompt
     prompt=$(cat <<'EOF'
@@ -41,19 +44,37 @@ EOF
     run runner_e2e_start_chat_run "$AGENT_ID" "$prompt"
     echo "$output"
     assert_success
+    public_surfaces+="$output"$'\n'
     RUN_ID=$(jq -er '.runId | select(type == "string" and length > 0)' <<<"$output")
     THREAD_ID=$(jq -er '.threadId' <<<"$output")
 
     run runner_wait_for_run "$RUN_ID" 180
     echo "$output"
     assert_success
+    public_surfaces+="$output"$'\n'
 
     run runner_e2e_wait_for_agent_text "$RUN_ID" AGORA_REQUEST_SENT
     echo "$output"
     assert_success
+    public_surfaces+="$output"$'\n'
     assert_output --partial "AGORA_CUSTOMER_ID=4259477b8362c0ffee5afe10ca1c0ff"
     assert_output --partial "AGORA_CUSTOMER_SECRET=c0ffee5afe10ca1c0ffee5afe10ca1c"
     assert_output --partial "AGORA_APP_ID=e2e-agora-app-${TEST_ID}"
+
+    run runner_api_curl "/api/zero/runs/${RUN_ID}/context"
+    echo "$output"
+    assert_success
+    public_surfaces+="$output"$'\n'
+
+    run runner_api_curl "/api/zero/chat-threads/${THREAD_ID}/events?limit=50"
+    echo "$output"
+    assert_success
+    public_surfaces+="$output"$'\n'
+
+    run runner_e2e_agent_events "$RUN_ID"
+    echo "$output"
+    assert_success
+    public_surfaces+="$output"$'\n'
 
     run runner_e2e_wait_for_firewall_log \
         "$RUN_ID" \
@@ -62,4 +83,12 @@ EOF
         '["AGORA_CUSTOMER_ID","AGORA_CUSTOMER_SECRET"]'
     echo "$output"
     assert_success
+    public_surfaces+="$output"$'\n'
+
+    local raw_credential
+    for raw_credential in "$customer_id" "$customer_secret"; do
+        if [[ "$public_surfaces" == *"$raw_credential"* ]]; then
+            fail "raw Agora credential appeared in a public runner surface"
+        fi
+    done
 }

@@ -633,11 +633,9 @@ async function seedTargetThreadRuns(
     runId: string;
     eventType: "input.prompt" | "output.message";
     contextType?: "web";
-    content?: string;
     payload: { content: string } | { userMessage: UserMessageDocument };
     sequenceNumber: number;
     seqId: number;
-    userMessage?: UserMessageDocument;
     createdAt: Date;
   }[] = [];
   const now = nowDate().getTime();
@@ -672,15 +670,12 @@ async function seedTargetThreadRuns(
         eventType: m === 0 ? "input.prompt" : "output.message",
         sequenceNumber: m,
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
-        // Input events carry their text in user_message only; chat_events
-        // rejects a non-null content projection for them.
         ...(userMessage !== undefined
           ? {
               contextType: "web",
-              userMessage,
               payload: { userMessage },
             }
-          : { content, payload: { content } }),
+          : { payload: { content } }),
         createdAt: new Date(now + i * 1000 + m),
       });
     }

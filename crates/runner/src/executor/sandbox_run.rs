@@ -1320,6 +1320,7 @@ pub(super) async fn execute_reused_sandbox(
             );
             return ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
+                active_input_delivery_ids: Vec::new(),
                 sandbox_reuse_disposition: SandboxReuseDisposition::default(),
                 sandbox: Some(sandbox),
                 source_ip,
@@ -1484,6 +1485,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
 
     ExecuteOutcome {
         failure: agent_result.failure,
+        active_input_delivery_ids: agent_result.active_input_delivery_ids,
         sandbox_reuse_disposition: agent_result.sandbox_reuse_disposition,
         sandbox: Some(sandbox),
         source_ip,

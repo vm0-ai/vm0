@@ -102,7 +102,10 @@ function stripUsageProviderPrefix(value: string): string {
   return normalized;
 }
 
-function usageModelDisplayName(model: string): string {
+function usageModelDisplayName(
+  model: string,
+  preserveUnknownModelId: boolean,
+): string {
   const usageDisplayName = MODEL_DISPLAY_NAMES[model];
   if (usageDisplayName) {
     return usageDisplayName();
@@ -119,7 +122,9 @@ function usageModelDisplayName(model: string): string {
     return strippedDisplayName;
   }
 
-  return formatUsageDisplayName(strippedModel);
+  return preserveUnknownModelId
+    ? strippedModel
+    : formatUsageDisplayName(strippedModel);
 }
 
 function usageKindBase(kind: string): string {
@@ -142,7 +147,7 @@ export function getCreditUsageDisplayName(
 
   const normalizedProvider = provider.trim();
   if (baseKind === "model" || baseKind === "image" || baseKind === "video") {
-    return usageModelDisplayName(normalizedProvider);
+    return usageModelDisplayName(normalizedProvider, baseKind === "model");
   }
 
   return formatUsageDisplayName(normalizedProvider);

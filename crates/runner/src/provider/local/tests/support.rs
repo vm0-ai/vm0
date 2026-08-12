@@ -49,6 +49,7 @@ pub(super) fn complete_request(
         sandbox_id: None,
         sandbox_reuse_result: None,
         workspace_reuse_result: None,
+        active_input_delivery_ids: Vec::new(),
     }
 }
 

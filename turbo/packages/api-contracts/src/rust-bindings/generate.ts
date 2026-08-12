@@ -135,14 +135,15 @@ interface RustDeclaration {
   readonly lines: string[];
 }
 
-interface TaggedUnitUnion {
+interface TaggedUnion {
   readonly tag: string;
-  readonly values: readonly string[];
+  readonly variants: readonly TaggedUnionVariant[];
 }
 
-interface TaggedUnitVariant {
-  readonly tag: string;
+interface TaggedUnionVariant {
   readonly value: string;
+  readonly properties: JsonObject;
+  readonly required: readonly string[];
 }
 
 interface NormalizedTypeDeclarationDoc {
@@ -157,6 +158,9 @@ const rustModuleSegmentPattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const rustConstNamePattern = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 const rustTypeNamePattern = /^[A-Z][A-Za-z0-9]*$/;
 const routePathParamPattern = /^[A-Za-z][A-Za-z0-9_]*$/;
+// rustfmt expands this function-like attribute before the nominal 100-column
+// limit, so generated code must use the same effective width to remain stable.
+const rustfmtSingleLineDeriveMaxWidth = 96;
 const rustKeywords = new Set([
   "abstract",
   "as",
@@ -1144,9 +1148,9 @@ function rustTypeForSchema(
     return `Option<${rustTypeForSchema(nullable, typeName, context)}>`;
   }
 
-  const taggedUnitUnion = getTaggedUnitUnion(schema, context.label);
-  if (taggedUnitUnion !== null) {
-    return renderTaggedUnitEnum(taggedUnitUnion, typeName, context);
+  const taggedUnion = getTaggedUnion(schema, context.label);
+  if (taggedUnion !== null) {
+    return renderTaggedEnum(taggedUnion, typeName, context);
   }
 
   const enumValues = getStringArray(schema.enum);
@@ -1342,9 +1346,11 @@ function renderStructField(
   rustName: string,
   rustType: string,
   context: RenderTypeContext,
+  isPublic: boolean = true,
 ): string[] {
   const indent = "    ";
-  const singleLine = `${indent}pub ${rustName}: ${rustType},`;
+  const visibility = isPublic ? "pub " : "";
+  const singleLine = `${indent}${visibility}${rustName}: ${rustType},`;
   if (context.moduleIndentWidth + singleLine.length <= 100) {
     return [singleLine];
   }
@@ -1352,13 +1358,13 @@ function renderStructField(
   if (rustType.startsWith("Option<") && rustType.endsWith(">")) {
     const innerType = rustType.slice("Option<".length, -1);
     return [
-      `${indent}pub ${rustName}: Option<`,
+      `${indent}${visibility}${rustName}: Option<`,
       `${indent}    ${innerType},`,
       `${indent}>,`,
     ];
   }
 
-  return [`${indent}pub ${rustName}:`, `${indent}    ${rustType},`];
+  return [`${indent}${visibility}${rustName}:`, `${indent}    ${rustType},`];
 }
 
 function renderStringEnum(
@@ -1375,9 +1381,18 @@ function renderStringEnum(
   const declarationDoc = typeDeclarationDoc(context, typeName);
 
   const seenVariants = new Set<string>();
+  const derive =
+    "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]";
   const lines = [
     ...renderOuterRustDoc(declarationDoc.rustDoc, ""),
-    "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]",
+    ...(context.moduleIndentWidth + derive.length <=
+    rustfmtSingleLineDeriveMaxWidth
+      ? [derive]
+      : [
+          "#[derive(",
+          "    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,",
+          ")]",
+        ]),
     `pub enum ${typeName} {`,
   ];
 
@@ -1408,8 +1423,8 @@ function renderStringEnum(
   return typeName;
 }
 
-function renderTaggedUnitEnum(
-  union: TaggedUnitUnion,
+function renderTaggedEnum(
+  union: TaggedUnion,
   typeName: string,
   context: RenderTypeContext,
 ): string {
@@ -1420,19 +1435,30 @@ function renderTaggedUnitEnum(
   }
   context.declarationNames.add(typeName);
   const declarationDoc = typeDeclarationDoc(context, typeName);
+  const hasFields = union.variants.some((variant) => {
+    return Object.keys(variant.properties).length > 0;
+  });
 
   const seenVariants = new Set<string>();
   const lines = [
     ...renderOuterRustDoc(declarationDoc.rustDoc, ""),
-    "#[derive(",
-    "    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,",
-    ")]",
-    `#[serde(tag = ${rustStringLiteral(union.tag)})]`,
+    hasFields
+      ? "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
+      : "#[derive(",
+    ...(hasFields
+      ? []
+      : [
+          "    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,",
+          ")]",
+        ]),
+    hasFields
+      ? `#[serde(tag = ${rustStringLiteral(union.tag)}, rename_all_fields = "camelCase")]`
+      : `#[serde(tag = ${rustStringLiteral(union.tag)})]`,
     `pub enum ${typeName} {`,
   ];
 
-  for (const value of union.values) {
-    const variant = toRustVariantName(value);
+  for (const taggedVariant of union.variants) {
+    const variant = toRustVariantName(taggedVariant.value);
     if (seenVariants.has(variant)) {
       throw new Error(
         `${context.label}.${typeName} has duplicate Rust enum variant: ${variant}`,
@@ -1441,12 +1467,82 @@ function renderTaggedUnitEnum(
     seenVariants.add(variant);
     lines.push(
       ...renderOuterRustDoc(
-        typeVariantDoc(context, typeName, value, declarationDoc),
+        typeVariantDoc(context, typeName, taggedVariant.value, declarationDoc),
         "    ",
       ),
     );
-    lines.push(`    #[serde(rename = ${rustStringLiteral(value)})]`);
-    lines.push(`    ${variant},`);
+    lines.push(
+      `    #[serde(rename = ${rustStringLiteral(taggedVariant.value)})]`,
+    );
+    if (Object.keys(taggedVariant.properties).length === 0) {
+      lines.push(`    ${variant},`);
+      continue;
+    }
+
+    lines.push(`    ${variant} {`);
+    const required = new Set(taggedVariant.required);
+    const seenRustFields = new Map<string, string>();
+    for (const [wireName, rawPropertySchema] of Object.entries(
+      taggedVariant.properties,
+    )) {
+      if (!isJsonObject(rawPropertySchema)) {
+        throw new Error(
+          `${context.label}.${typeName}.${variant}.${wireName} is not an object schema`,
+        );
+      }
+      const rustName = toRustFieldName(wireName);
+      const previousWireName = seenRustFields.get(rustName);
+      if (previousWireName !== undefined) {
+        throw new Error(
+          `${context.label}.${typeName}.${variant} maps both ${previousWireName} and ${wireName} to Rust field ${rustName}`,
+        );
+      }
+      seenRustFields.set(rustName, wireName);
+
+      const optional = !required.has(wireName);
+      const override = context.fieldTypeOverrides[wireName];
+      const rawType =
+        override ??
+        rustTypeForSchema(
+          rawPropertySchema,
+          nestedTypeNameForField(
+            `${typeName}${variant}`,
+            wireName,
+            rawPropertySchema,
+          ),
+          context,
+        );
+      const rustType =
+        optional && !isOptionType(rawType) ? `Option<${rawType}>` : rawType;
+      lines.push(
+        ...renderOuterRustDoc(
+          typeFieldDoc(context, typeName, wireName, declarationDoc),
+          "        ",
+        ),
+      );
+      for (const attribute of serdeFieldAttributes({
+        wireName,
+        rustName,
+        optional,
+      })) {
+        lines.push(`        ${attribute}`);
+      }
+      const fieldLines = renderStructField(
+        rustName,
+        rustType,
+        {
+          ...context,
+          moduleIndentWidth: context.moduleIndentWidth + 4,
+        },
+        false,
+      );
+      lines.push(
+        ...fieldLines.map((line) => {
+          return `    ${line}`;
+        }),
+      );
+    }
+    lines.push("    },");
   }
 
   lines.push("}");
@@ -1693,10 +1789,7 @@ function getJsonSchemaType(schema: JsonObject, label: string): string {
   return schema.type;
 }
 
-function getTaggedUnitUnion(
-  schema: JsonObject,
-  label: string,
-): TaggedUnitUnion | null {
+function getTaggedUnion(schema: JsonObject, label: string): TaggedUnion | null {
   const oneOf = schema.oneOf;
   if (oneOf === undefined) {
     return null;
@@ -1706,7 +1799,7 @@ function getTaggedUnitUnion(
   }
 
   const variants = oneOf.map((entry) => {
-    return getTaggedUnitVariant(entry, label);
+    return getTaggedVariant(entry, label);
   });
   const first = variants[0];
   if (first === undefined) {
@@ -1721,16 +1814,20 @@ function getTaggedUnitUnion(
   }
   return {
     tag: first.tag,
-    values: variants.map((variant) => {
-      return variant.value;
+    variants: variants.map(({ value, properties, required }) => {
+      return {
+        value,
+        properties,
+        required,
+      };
     }),
   };
 }
 
-function getTaggedUnitVariant(
+function getTaggedVariant(
   entry: unknown,
   label: string,
-): TaggedUnitVariant {
+): TaggedUnionVariant & { readonly tag: string } {
   if (!isJsonObject(entry) || entry.type !== "object") {
     throw new Error(`${label} uses unsupported oneOf schema`);
   }
@@ -1739,27 +1836,44 @@ function getTaggedUnitVariant(
   const required = getStringArray(entry.required);
   if (
     propertyEntries === null ||
-    propertyEntries.length !== 1 ||
+    propertyEntries.length === 0 ||
     required === null ||
-    required.length !== 1 ||
     entry.additionalProperties !== false
   ) {
     throw new Error(`${label} uses unsupported oneOf schema`);
   }
-  const propertyEntry = propertyEntries[0];
-  if (propertyEntry === undefined) {
+  const tagEntries = propertyEntries.filter(([, rawSchema]) => {
+    return isJsonObject(rawSchema) && typeof rawSchema.const === "string";
+  });
+  if (tagEntries.length !== 1) {
     throw new Error(`${label} uses unsupported oneOf schema`);
   }
-  const [tag, rawTagSchema] = propertyEntry;
+  const tagEntry = tagEntries[0];
+  if (tagEntry === undefined) {
+    throw new Error(`${label} uses unsupported oneOf schema`);
+  }
+  const [tag, rawTagSchema] = tagEntry;
   if (
-    required[0] !== tag ||
+    !required.includes(tag) ||
     !isJsonObject(rawTagSchema) ||
     rawTagSchema.type !== "string" ||
     typeof rawTagSchema.const !== "string"
   ) {
     throw new Error(`${label} uses unsupported oneOf schema`);
   }
-  return { tag, value: rawTagSchema.const };
+  const variantProperties = Object.fromEntries(
+    propertyEntries.filter(([wireName]) => {
+      return wireName !== tag;
+    }),
+  );
+  return {
+    tag,
+    value: rawTagSchema.const,
+    properties: variantProperties,
+    required: required.filter((wireName) => {
+      return wireName !== tag;
+    }),
+  };
 }
 
 function getOptionalObject(value: unknown): JsonObject | null {

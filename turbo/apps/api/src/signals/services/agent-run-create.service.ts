@@ -18,7 +18,6 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -27,7 +26,6 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
-  getRetiredRunModelReplacement,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -38,9 +36,7 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
-  isModelSupportedByProvider,
   isSupportedRunModel,
-  isRetiredRunModel,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   type ModelProviderCodexRuntimeConfig,
@@ -164,7 +160,6 @@ import {
 } from "../../lib/db-structured-result";
 import {
   badRequestMessage,
-  modelRetired,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -172,10 +167,6 @@ import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypas
 import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
-import {
-  publishOrgSignal,
-  publishRunChangedForUserSafely,
-} from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
@@ -800,7 +791,6 @@ type ApiErrorResponse<Status extends number, Code extends string> = {
 type CreateRunRouteResult =
   | CreateRunSuccessResult
   | ApiErrorResponse<400, "BAD_REQUEST">
-  | ApiErrorResponse<400, "MODEL_RETIRED">
   | ApiErrorResponse<403, "FORBIDDEN">
   | ApiErrorResponse<404, "NOT_FOUND">
   | ApiErrorResponse<402, "INSUFFICIENT_CREDITS">
@@ -827,7 +817,6 @@ export interface CreateAgentRunArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
-  readonly reconcileRetiredPersistedModel?: boolean;
   readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
@@ -5859,13 +5848,6 @@ async function buildStoredExecutionContextDraft(args: {
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
-  const customConnectorIds = [
-    ...new Set(
-      connectorRuntimeTargets.flatMap((target) => {
-        return target.kind === "custom" ? [target.customConnectorId] : [];
-      }),
-    ),
-  ].sort();
   const environment = {
     ...expandEnvironment({
       content: args.resolved.content,
@@ -5878,7 +5860,6 @@ async function buildStoredExecutionContextDraft(args: {
     }),
     ...args.extraEnvironment,
     CLI_PKG_URL: env("CLI_PKG_URL"),
-    [ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]: JSON.stringify(customConnectorIds),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
@@ -6133,19 +6114,6 @@ export function recordThreadSessionBindingRetryTelemetry(
       error: result.error,
     });
   }
-}
-
-async function publishQueueChangedSafely(args: {
-  readonly orgId: string;
-  readonly runId: string;
-}): Promise<void> {
-  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
-    L.warn("Failed to publish queue changed signal after queued launch", {
-      orgId: args.orgId,
-      runId: args.runId,
-      error,
-    });
-  });
 }
 
 function buildStoredExecutionSecrets(args: {
@@ -7125,13 +7093,6 @@ async function commitFailedLaunch(args: {
     });
   }
 
-  await publishRunChangedForUserSafely(
-    args.createArgs.userId,
-    args.identity.runId,
-    {
-      status: "failed",
-    },
-  );
   if (args.createArgs.dispatchFailedCallbacks) {
     await tapError(
       args.createArgs.dispatchFailedCallbacks(
@@ -8297,7 +8258,7 @@ async function resolvePreparedRunModelProvider(
 ): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
   const { resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const result = await args.timing.measure(
+  return await args.timing.measure(
     "api_dispatch_prepare_context_resolve_model_provider",
     "nested",
     async () => {
@@ -8312,172 +8273,6 @@ async function resolvePreparedRunModelProvider(
         signal,
       );
     },
-  );
-  if (!isRouteError(result) || !shouldReconcileRetiredModel(args.createArgs)) {
-    return result;
-  }
-  const fallback = await resolveImplicitRetiredModelProvider(
-    args,
-    null,
-    signal,
-  );
-  return fallback ?? result;
-}
-
-function shouldReconcileRetiredModel(args: CreateAgentRunArgs): boolean {
-  return (
-    args.reconcileRetiredPersistedModel === true ||
-    (args.selectedModelOverride === undefined &&
-      args.modelProviderType === undefined)
-  );
-}
-
-function replacementRouteIsCompatible(
-  provider: ResolvedModelProviderEnvironment,
-  replacement: SupportedRunModel,
-): boolean {
-  return (
-    provider.selectedModel === replacement &&
-    (provider.type === "vm0" ||
-      provider.inlineFirewall === true ||
-      isModelSupportedByProvider(replacement, provider.type))
-  );
-}
-
-async function resolveReplacementOnCurrentRoute(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly bodyContext: PreparedRunBodyContext;
-  },
-  provider: ResolvedModelProviderEnvironment,
-  replacement: SupportedRunModel,
-): Promise<ResolvedModelProviderEnvironment | null> {
-  const resolved = await resolveModelProviderEnvironment(args.db, {
-    orgId: args.createArgs.orgId,
-    userId: args.createArgs.userId,
-    framework: modelProviderFramework(provider),
-    modelProviderId: provider.id ?? args.createArgs.modelProviderId,
-    modelProviderCredentialScope: args.createArgs.modelProviderCredentialScope,
-    modelProviderType: provider.type,
-    selectedModelOverride: replacement,
-    featureSwitchContext: args.bodyContext.featureSwitchContext,
-    resolvePiEdgeCredentials: false,
-  });
-  return resolved && replacementRouteIsCompatible(resolved, replacement)
-    ? resolved
-    : null;
-}
-
-/**
- * Rollout compatibility for runs whose model route was persisted by the
- * previous API during the observed ~102-minute DB/API exposure window. Remove
- * with #26314 after Stage 2 migrates every implicit selection, production
- * shows none remain, and the previous API is outside its rollback/drain window.
- */
-async function resolveImplicitRetiredModelProvider(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly bodyContext: PreparedRunBodyContext;
-  },
-  provider: ResolvedModelProviderEnvironment | null,
-  signal: AbortSignal,
-): Promise<ResolvedModelProviderEnvironment | null> {
-  if (!shouldReconcileRetiredModel(args.createArgs)) {
-    return provider;
-  }
-  const selectedModel =
-    provider?.selectedModel ?? args.createArgs.selectedModelOverride;
-  const providerType = provider?.type ?? args.createArgs.modelProviderType;
-  if (!isRetiredRunModel(selectedModel, providerType)) {
-    return provider;
-  }
-  const capabilities = await loadOrgPlanCapabilities(
-    args.db,
-    args.createArgs.orgId,
-  );
-  signal.throwIfAborted();
-  const replacement = getRetiredRunModelReplacement(selectedModel, {
-    restrictedVm0Models:
-      capabilities?.status === "active" && capabilities.restrictedVm0Models,
-    modelProviderType: providerType,
-  });
-  if (!replacement) {
-    return provider;
-  }
-  const preserved = provider
-    ? await resolveReplacementOnCurrentRoute(args, provider, replacement)
-    : null;
-  signal.throwIfAborted();
-  return (
-    preserved ??
-    (await vm0ModelProviderEnvironment(args.db, replacement)) ??
-    provider
-  );
-}
-
-async function retiredResolvedModelError(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-  },
-  modelProvider: ResolvedModelProviderEnvironment | null,
-  signal: AbortSignal,
-): Promise<ReturnType<typeof modelRetired> | undefined> {
-  const selectedModel =
-    modelProvider?.selectedModel ?? args.createArgs.selectedModelOverride;
-  const modelProviderType =
-    modelProvider?.type ?? args.createArgs.modelProviderType;
-  if (!isRetiredRunModel(selectedModel, modelProviderType)) {
-    return undefined;
-  }
-  const capabilities = await loadOrgPlanCapabilities(
-    args.db,
-    args.createArgs.orgId,
-  );
-  signal.throwIfAborted();
-  const replacement = getRetiredRunModelReplacement(selectedModel, {
-    restrictedVm0Models:
-      capabilities?.status === "active" && capabilities.restrictedVm0Models,
-    modelProviderType,
-  });
-  return replacement
-    ? modelRetired(selectedModel ?? "Z.AI", replacement)
-    : undefined;
-}
-
-async function resolveAdmittedPreparedRunModelProvider(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly timing: ApiDispatchTimingCollector;
-    readonly bodyContext: PreparedRunBodyContext;
-  },
-  signal: AbortSignal,
-): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
-  if (!shouldReconcileRetiredModel(args.createArgs)) {
-    const explicitRetiredModelError = await retiredResolvedModelError(
-      args,
-      null,
-      signal,
-    );
-    if (explicitRetiredModelError) {
-      return explicitRetiredModelError;
-    }
-  }
-  let modelProvider = await resolvePreparedRunModelProvider(args, signal);
-  if (isRouteError(modelProvider)) {
-    return modelProvider;
-  }
-  modelProvider = await resolveImplicitRetiredModelProvider(
-    args,
-    modelProvider,
-    signal,
-  );
-  return (
-    (await retiredResolvedModelError(args, modelProvider, signal)) ??
-    modelProvider
   );
 }
 
@@ -8500,10 +8295,7 @@ async function prepareRunRuntimeContext(
     args.connectorScope,
     connectorCatalogSnapshot,
   );
-  const modelProvider = await resolveAdmittedPreparedRunModelProvider(
-    args,
-    signal,
-  );
+  const modelProvider = await resolvePreparedRunModelProvider(args, signal);
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }
@@ -8834,12 +8626,12 @@ function prepareRunContext(
   );
 }
 
-async function committedAtomicLaunchResponse(args: {
+function committedAtomicLaunchResponse(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
   readonly launch: PreparedRunnerLaunch;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+}): Extract<CreateRunRouteResult, { readonly status: 201 }> {
   if (args.committed.threadSessionBinding) {
     recordThreadSessionBindingTelemetry({
       binding: args.committed.threadSessionBinding,
@@ -8853,10 +8645,6 @@ async function committedAtomicLaunchResponse(args: {
       timestamp: args.committed.telemetryTimestamp,
     });
     ingestRunContextSnapshot(args.committed.runContextSnapshot);
-    await publishQueueChangedSafely({
-      orgId: args.createArgs.orgId,
-      runId: args.committed.run.id,
-    });
     args.timing.flush({
       runId: args.committed.run.id,
       runnerGroup: args.committed.runnerJobPayload.runnerGroup,
@@ -8976,7 +8764,7 @@ function isQueuePayloadRequiredResult(
   );
 }
 
-async function finalizeAtomicLaunchCommit(
+function finalizeAtomicLaunchCommit(
   args: {
     readonly input: AtomicLaunchRunInput;
     readonly identity: LaunchRunIdentity;
@@ -8984,7 +8772,7 @@ async function finalizeAtomicLaunchCommit(
     readonly committed: AtomicLaunchCommitAttempt;
   },
   signal: AbortSignal,
-): Promise<QueueFirstAgentRunResult | QueuePayloadRequiredResult> {
+): QueueFirstAgentRunResult | QueuePayloadRequiredResult {
   if (isReturnableRouteError(args.committed, signal)) {
     return args.committed;
   }
@@ -9003,7 +8791,7 @@ async function finalizeAtomicLaunchCommit(
   if (args.committed.kind === "queue-payload-required") {
     return args.committed;
   }
-  return await committedAtomicLaunchResponse({
+  return committedAtomicLaunchResponse({
     createArgs: args.input.args,
     committed: args.committed,
     timing: args.input.timing,
@@ -9032,7 +8820,7 @@ async function completeQueuePayloadLaunch(
 
   if (!encryptedQueuedParams.ok) {
     const retried = await args.commitLaunch(undefined);
-    const finalizedRetry = await finalizeAtomicLaunchCommit(
+    const finalizedRetry = finalizeAtomicLaunchCommit(
       {
         input: args.input,
         identity: args.identity,
@@ -9057,7 +8845,7 @@ async function completeQueuePayloadLaunch(
   }
 
   const committed = await args.commitLaunch(encryptedQueuedParams.value);
-  const finalized = await finalizeAtomicLaunchCommit(
+  const finalized = finalizeAtomicLaunchCommit(
     {
       input: args.input,
       identity: args.identity,
@@ -9158,7 +8946,7 @@ function createAtomicLaunchRun(
     };
 
     const committed = await commitLaunch(undefined);
-    const finalized = await finalizeAtomicLaunchCommit(
+    const finalized = finalizeAtomicLaunchCommit(
       {
         input,
         identity,

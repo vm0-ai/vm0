@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.546.3](https://github.com/vm0-ai/vm0/compare/core-v8.546.2...core-v8.546.3) (2026-08-12)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#26424](https://github.com/vm0-ai/vm0/issues/26424)) ([dad4358](https://github.com/vm0-ai/vm0/commit/dad4358adcb9fa179bad39d26fc6e0612234d7a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.1
+
+## [8.546.2](https://github.com/vm0-ai/vm0/compare/core-v8.546.1...core-v8.546.2) (2026-08-11)
+
+
+### Refactoring
+
+* remove retired model rollout compatibility ([#26413](https://github.com/vm0-ai/vm0/issues/26413)) ([42dfddf](https://github.com/vm0-ai/vm0/commit/42dfddfd80d393d7794868c0469c8e843f09660f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.0
+
 ## [8.546.1](https://github.com/vm0-ai/vm0/compare/core-v8.546.0...core-v8.546.1) (2026-08-11)
 
 

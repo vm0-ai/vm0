@@ -1942,7 +1942,7 @@ const handleModelPickerSubmit$ = command(
         },
       });
     }
-    const updateResult = await set(
+    await set(
       updateUserModelPreference$,
       {
         orgId: ctx.orgId,
@@ -1951,14 +1951,6 @@ const handleModelPickerSubmit$ = command(
       },
       signal,
     );
-    if ("status" in updateResult) {
-      return jsonResponse({
-        response_action: "errors",
-        errors: {
-          [MODEL_PICKER_BLOCK_ID]: updateResult.body.error.message,
-        },
-      });
-    }
     const channelId = parseViewChannelId(payload.view?.private_metadata);
     if (channelId) {
       await postEphemeralMessage({

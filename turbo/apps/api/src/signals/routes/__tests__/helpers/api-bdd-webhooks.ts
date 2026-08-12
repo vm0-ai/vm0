@@ -347,7 +347,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     async requestClerkWebhook(
       body: string,
       headers: Record<string, string>,
-      statuses: readonly (200 | 401)[],
+      statuses: readonly (200 | 401 | 503)[],
     ) {
       return await accept(
         setupApp({ context, routes: webhooksClerkRoutes })(

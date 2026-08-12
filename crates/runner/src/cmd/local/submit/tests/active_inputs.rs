@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use super::super::{ActiveInputProducer, DelayedActiveInput, SubmitPlan, run_submit_with_home};
 use super::support::{submit_args_for_test, submit_queue_entry, write_queue_job_file};
-use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
+use crate::active_input::{
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, identified_active_input_payload_len,
+};
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::paths::HomePaths;
@@ -136,7 +138,7 @@ fn rejects_invalid_active_input_specs() {
 
 #[test]
 fn accepts_active_input_payload_at_serialized_limit() {
-    let payload_overhead = active_input_payload_len("").unwrap();
+    let payload_overhead = identified_active_input_payload_len("").unwrap();
     let exact_limit_text = "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - payload_overhead);
 
     let parsed = SubmitPlan::parse_active_inputs(
@@ -147,7 +149,7 @@ fn accepts_active_input_payload_at_serialized_limit() {
 
     assert_eq!(parsed.len(), 1);
     assert_eq!(
-        active_input_payload_len(&parsed[0].text).unwrap(),
+        identified_active_input_payload_len(&parsed[0].text).unwrap(),
         ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
     );
 }

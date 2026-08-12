@@ -34,6 +34,7 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
 const CRON_SECRET = "test-cron-secret";
+const NON_CURRENT_ARCHIVE_SCHEMA_VERSION = 1;
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
 
@@ -303,7 +304,7 @@ describe("cron snapshot chat events", () => {
     );
   }, 60_000);
 
-  it("rebuilds an idle retained v3 head and reports convergence", async () => {
+  it("rebuilds an idle non-v4 head and reports convergence", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Version-only snapshot agent",
@@ -320,13 +321,13 @@ describe("cron snapshot chat events", () => {
     if (firstPut === undefined) {
       throw new Error("Expected a first-generation snapshot object");
     }
-    const legacyObjectKey = `chat-events/${threadId}/retained-v3-${randomUUID()}.ndjson.gz`;
-    writeFakeChatEventObject(legacyObjectKey, firstPut.body);
+    const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
+    writeFakeChatEventObject(priorObjectKey, firstPut.body);
     await setChatEventSnapshotHeadVersion(
       context,
       threadId,
-      3,
-      legacyObjectKey,
+      NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+      priorObjectKey,
     );
 
     const incomplete = await verifySnapshotConvergence();
@@ -338,7 +339,10 @@ describe("cron snapshot chat events", () => {
       convergence: {
         nonV4SnapshotHeads: 1,
         snapshotHeadVersions: expect.arrayContaining([
-          { archiveSchemaVersion: 3, heads: 1 },
+          {
+            archiveSchemaVersion: NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+            heads: 1,
+          },
         ]),
       },
     });
@@ -400,7 +404,7 @@ describe("cron snapshot chat events", () => {
     expect(rebuiltHead.object_key).not.toBe(headPut.key);
   }, 60_000);
 
-  it("resumes a bounded v3 rebuild until every head converges", async () => {
+  it("resumes a bounded non-v4 rebuild until every head converges", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Resumable snapshot agent",
@@ -418,17 +422,17 @@ describe("cron snapshot chat events", () => {
 
     for (const threadId of threadIds) {
       const head = await readChatEventSnapshotHead(context, threadId);
-      const legacyObjectKey = `chat-events/${threadId}/retained-v3-${randomUUID()}.ndjson.gz`;
+      const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
       const body = readFakeChatEventObject(head.object_key);
       if (body === undefined) {
         throw new Error("Expected the v4 fixture object");
       }
-      writeFakeChatEventObject(legacyObjectKey, body);
+      writeFakeChatEventObject(priorObjectKey, body);
       await setChatEventSnapshotHeadVersion(
         context,
         threadId,
-        3,
-        legacyObjectKey,
+        NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+        priorObjectKey,
       );
     }
 

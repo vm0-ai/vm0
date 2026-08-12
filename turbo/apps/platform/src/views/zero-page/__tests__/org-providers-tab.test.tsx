@@ -691,45 +691,6 @@ describe("organization model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("hides retired policies while keeping recently active models", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000223",
-        "deepseek-v4-flash",
-        "DeepSeek V4 Flash",
-        true,
-      ),
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000224",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
-        false,
-      ),
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000225",
-        "gpt-5.5",
-        "GPT 5.5",
-        false,
-      ),
-    ]);
-    await openProvidersTab();
-
-    expect(
-      screen.queryByTestId("org-model-policy-row-kimi-k2.7-code"),
-    ).not.toBeInTheDocument();
-    await expect(
-      screen.findByTestId("org-model-policy-row-gpt-5.5"),
-    ).resolves.toBeInTheDocument();
-    click(buttonByText("Add model"));
-    const dialog = screen.getByRole("dialog", { name: "Add model" });
-    click(within(dialog).getByRole("combobox"));
-    expect(
-      screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("lets limited-free-1 workspaces add DeepSeek V4 Flash", async () => {
     mockAdminOrg();
     mockBillingCapabilities({

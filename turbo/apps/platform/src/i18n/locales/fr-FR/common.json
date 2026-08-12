@@ -896,10 +896,6 @@
       "selectMonth": "Sélectionner le mois",
       "to": "À"
     },
-    "manage": {
-      "description": "Abonnement, méthode de paiement et factures dans Stripe.",
-      "title": "Gérer la facturation"
-    },
     "paymentMethods": {
       "description": "Gérez les moyens de paiement utilisés pour la facturation dans Stripe.",
       "title": "Moyens de paiement"
@@ -4475,6 +4471,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Tous les abonnements actifs, y compris les forfaits d'utilisation et les modules complémentaires, seront résiliés immédiatement. La durée d'abonnement prépayée non utilisée sera remboursée au prorata. Les achats ponctuels et autres achats sans abonnement ne seront pas remboursés.",
           "button": "Supprimer l'espace de travail",
           "confirmDescription": "Cela supprimera définitivement cet espace de travail et toutes ses données. Cette action est irréversible. Tapez confirm pour continuer.",
           "description": "Supprimer définitivement cet espace de travail et toutes ses données. Cette action est irréversible.",

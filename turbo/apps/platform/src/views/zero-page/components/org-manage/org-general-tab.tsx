@@ -469,6 +469,12 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
                       })}
                     </DialogDescription>
                   </DialogHeader>
+                  <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px] text-foreground">
+                    {t(($) => {
+                      return $.settings.workspace.danger.delete
+                        .billingDescription;
+                    })}
+                  </p>
                   <Input
                     placeholder={WORKSPACE_DELETE_CONFIRMATION}
                     value={deleteConfirm}

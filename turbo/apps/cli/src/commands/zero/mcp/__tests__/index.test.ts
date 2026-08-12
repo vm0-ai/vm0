@@ -24,11 +24,8 @@ import {
 
 import { server } from "../../../../mocks/server";
 import {
-  mcpCustomConnector,
   runMcpConnector,
-  stubCustomConnectors,
   stubRunMcpConnectors,
-  stubRunMcpConnectorsUnavailable,
 } from "../../__tests__/helpers/custom-connectors";
 import { zeroMcpCommand } from "../index";
 
@@ -225,7 +222,6 @@ describe("zero mcp command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", JSON.stringify([CONNECTOR_ID]));
   });
 
   afterEach(() => {
@@ -241,7 +237,6 @@ describe("zero mcp command", () => {
 
   it("lists server-authorized MCP definitions with safe JSON fields", async () => {
     const secondId = "55555555-5555-4555-8555-555555555555";
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", "malformed legacy metadata");
     server.use(
       stubRunMcpConnectors([
         runMcpConnector({
@@ -280,72 +275,6 @@ describe("zero mcp command", () => {
     const output = outputText(consoleLog);
     expect(output).not.toContain("Authorization");
     expect(output).not.toContain("secrets.secret");
-  });
-
-  it("uses legacy metadata only when the discovery route is unavailable", async () => {
-    server.use(
-      stubRunMcpConnectorsUnavailable(),
-      stubCustomConnectors([mcpCustomConnector()]),
-    );
-
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
-
-    expect(outputText(consoleLog)).toContain("_acme-mcp");
-  });
-
-  it("rejects malformed legacy metadata before requesting connector definitions", async () => {
-    let apiCalls = 0;
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", "x".repeat(128 * 1024 + 1));
-    server.use(
-      stubRunMcpConnectorsUnavailable(),
-      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
-        apiCalls++;
-        return HttpResponse.json({ connectors: [] });
-      }),
-    );
-
-    await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list"]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(apiCalls).toBe(0);
-    expect(outputText(consoleError)).toContain("Start a new Agent Run");
-    expect(outputText(consoleError)).not.toContain("xxxx");
-  });
-
-  it("rejects duplicate run IDs without a broad fallback", async () => {
-    vi.stubEnv(
-      "ZERO_CUSTOM_CONNECTOR_IDS",
-      JSON.stringify([CONNECTOR_ID, CONNECTOR_ID.toUpperCase()]),
-    );
-    server.use(
-      stubRunMcpConnectorsUnavailable(),
-      stubCustomConnectors([mcpCustomConnector()]),
-    );
-
-    await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list"]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(outputText(consoleError)).toContain("Start a new Agent Run");
-    expect(outputText(consoleLog)).not.toContain("Acme MCP");
-  });
-
-  it("does not apply the 256-item runtime-sync batch as a membership limit", async () => {
-    const ids = Array.from({ length: 257 }, (_, index) => {
-      return `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
-    });
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", JSON.stringify(ids));
-    server.use(
-      stubRunMcpConnectorsUnavailable(),
-      stubCustomConnectors([
-        mcpCustomConnector({ id: ids[256], slug: "_after-batch" }),
-      ]),
-    );
-
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
-
-    expect(outputText(consoleLog)).toContain("_after-batch");
   });
 
   it("discovers modern tools page by page with exact intent and cleanup", async () => {
@@ -701,37 +630,15 @@ describe("zero mcp command", () => {
     expect(outputText(consoleError)).toContain("MCP server request failed");
   });
 
-  it("treats an empty legacy run set as an ordinary empty result", async () => {
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", "[]");
-    server.use(
-      stubRunMcpConnectorsUnavailable(),
-      stubCustomConnectors([mcpCustomConnector()]),
-    );
+  it("treats an empty discovery response as an ordinary empty result", async () => {
+    server.use(stubRunMcpConnectors([]));
 
     await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
 
     expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
   });
 
-  it("treats an empty discovery response as authoritative", async () => {
-    let legacyCalls = 0;
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", "malformed legacy metadata");
-    server.use(
-      stubRunMcpConnectors([]),
-      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
-        legacyCalls++;
-        return HttpResponse.json({ connectors: [mcpCustomConnector()] });
-      }),
-    );
-
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
-
-    expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
-    expect(legacyCalls).toBe(0);
-  });
-
-  it("does not fall back after a discovery server error", async () => {
-    let legacyCalls = 0;
+  it("reports a discovery server error", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/mcp-connectors", () => {
         return HttpResponse.json(
@@ -744,37 +651,25 @@ describe("zero mcp command", () => {
           { status: 500 },
         );
       }),
-      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
-        legacyCalls++;
-        return HttpResponse.json({ connectors: [mcpCustomConnector()] });
-      }),
     );
 
     await expect(
       zeroMcpCommand.parseAsync(["node", "zero", "list"]),
     ).rejects.toThrow("process.exit called");
 
-    expect(legacyCalls).toBe(0);
     expect(outputText(consoleError)).toContain("Discovery failed");
   });
 
-  it("rejects malformed discovery responses without falling back", async () => {
-    let legacyCalls = 0;
+  it("rejects malformed discovery responses", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/mcp-connectors", () => {
         return HttpResponse.json({ connectors: [{ id: CONNECTOR_ID }] });
       }),
-      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
-        legacyCalls++;
-        return HttpResponse.json({ connectors: [mcpCustomConnector()] });
-      }),
     );
 
     await expect(
       zeroMcpCommand.parseAsync(["node", "zero", "list"]),
     ).rejects.toThrow("process.exit called");
-
-    expect(legacyCalls).toBe(0);
   });
 
   it("rejects an unknown slug before opening an MCP connection", async () => {

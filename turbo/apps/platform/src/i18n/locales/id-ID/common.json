@@ -875,10 +875,6 @@
       "selectMonth": "Pilih bulan",
       "to": "Ke"
     },
-    "manage": {
-      "description": "Langganan, metode pembayaran, dan faktur di Stripe.",
-      "title": "Kelola penagihan"
-    },
     "paymentMethods": {
       "description": "Kelola metode pembayaran yang digunakan untuk penagihan di Stripe.",
       "title": "Metode pembayaran"
@@ -4423,6 +4419,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Semua langganan aktif, termasuk paket penggunaan dan add-on, akan segera dibatalkan. Waktu langganan prabayar yang belum digunakan akan dikembalikan secara prorata. Pembelian satu kali dan pembelian non-langganan lainnya tidak akan dikembalikan.",
           "button": "Hapus ruang kerja",
           "confirmDescription": "Ini akan menghapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan. Ketik confirm untuk melanjutkan.",
           "description": "Hapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan.",

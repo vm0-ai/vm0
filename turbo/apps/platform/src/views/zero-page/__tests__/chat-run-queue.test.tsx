@@ -1531,13 +1531,13 @@ describe("chat run queue", () => {
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
-        model: "glm-5.1",
-        modelLabel: "GLM-5.1",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
       }),
     ]);
     mockChatLifecycle(context, {
       threadId,
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
       chatEvents: [
         {
           id: "msg-active-attachment-user",
