@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.35.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.35.0...desktop-v0.35.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **desktop:** bypass teardown in packaged smoke ([#26704](https://github.com/vm0-ai/vm0/issues/26704)) ([d73834f](https://github.com/vm0-ai/vm0/commit/d73834f71b722d22306a93de243effe97910f9d1))
+* **desktop:** exit packaged smoke cleanly ([#26700](https://github.com/vm0-ai/vm0/issues/26700)) ([85e3bdc](https://github.com/vm0-ai/vm0/commit/85e3bdc8899c7a5fe89dc9bbffeb5aa45a666559))
+
 ## [0.35.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.34.0...desktop-v0.35.0) (2026-08-12)
 
 

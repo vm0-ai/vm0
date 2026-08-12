@@ -1432,8 +1432,7 @@ if (!hasSingleInstanceLock) {
           resolve();
         });
       });
-      app.exit(0);
-      return;
+      process.exit(0);
     }
   });
 

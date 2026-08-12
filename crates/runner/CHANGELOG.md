@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.165.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.1...runner-rs-v0.165.2) (2026-08-12)
+
+
+### Refactoring
+
+* **runner:** remove immediate successor observation ([#26690](https://github.com/vm0-ai/vm0/issues/26690)) ([b4c2791](https://github.com/vm0-ai/vm0/commit/b4c27913f4bf26cfd23c933cc47c6560d4da0bb8))
+
 ## [0.165.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.0...runner-rs-v0.165.1) (2026-08-12)
 
 
