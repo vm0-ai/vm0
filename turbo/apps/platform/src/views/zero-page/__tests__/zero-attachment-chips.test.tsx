@@ -278,9 +278,13 @@ async function setupBodyLinkPreviews(): Promise<void> {
   const { audio, video, image, markdown, csv, pdf, html, archive } =
     BODY_LINK_PREVIEWS;
   context.mocks.http.get(markdown, () => {
-    return new Response("# Release notes\n\nBody link rollout is ready.", {
-      headers: { "Content-Type": "text/markdown" },
-    });
+    return new Response(
+      "# Release notes\n\nBody link rollout is ready.\n\n" +
+        "```mermaid\nflowchart TD\n  A --> B\n```",
+      {
+        headers: { "Content-Type": "text/markdown" },
+      },
+    );
   });
   context.mocks.http.get(csv, () => {
     return new Response("metric,value\nactivation,87", {
@@ -2671,6 +2675,7 @@ describe("zero attachment chips", () => {
   });
 
   it("opens document previews parsed from chat message links", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     await setupBodyLinkPreviews();
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
@@ -2681,6 +2686,11 @@ describe("zero attachment chips", () => {
         screen.getByText("Body link rollout is ready."),
       ).toBeInTheDocument();
     });
+    const diagramUrl = (await screen.findByAltText("Diagram")).getAttribute(
+      "src",
+    );
+    expect(diagramUrl).toContain("blob:mock-download-");
+    expect(objectUrls.revokedUrls).not.toContain(diagramUrl);
 
     click(screen.getByLabelText("Close"));
 
@@ -2688,7 +2698,9 @@ describe("zero attachment chips", () => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
+      expect(objectUrls.revokedUrls).toContain(diagramUrl);
     });
+    expect(context.signal.aborted).toBeFalsy();
 
     click(screen.getByLabelText("Open csv preview for launch-metrics.csv"));
 

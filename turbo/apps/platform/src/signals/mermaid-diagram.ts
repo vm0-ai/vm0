@@ -1,14 +1,19 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
 
+import { createObjectUrlResource } from "./object-url-resource.ts";
+import { rootSignal$ } from "./root-signal.ts";
 import { theme$ } from "./theme.ts";
+import { settle } from "./utils.ts";
 
 /**
  * Mermaid diagrams render through a pull model. Each unique diagram source
  * owns one `MermaidDiagramSignals` in a module-scope registry; its `diagram$`
  * computed loads mermaid, lays the diagram out and resolves to an image the
- * view shows in an `<img>`. Reading the theme inside the computed makes a
- * theme switch re-render every diagram without any remounting.
+ * view shows in an `<img>` — or to `null` when the parser rejects the source,
+ * in which case the fence simply stays a code block. Reading the theme inside
+ * the computed makes a theme switch re-render every diagram without any
+ * remounting.
  *
  * The command that parses a tree registers each diagram and embeds the
  * returned signals on the marker node, so rendering receives the signals
@@ -16,8 +21,11 @@ import { theme$ } from "./theme.ts";
  * depends only on the source and the theme, so the same fence in two threads
  * shares one entry.
  *
- * The image is a `data:` URL, so there is nothing to revoke and no lifetime to
- * manage: entries live as long as the registry.
+ * Each resolved theme has one blob URL owned by the lifetime supplied to its
+ * signal factory. The chat registry supplies the application root; disposable
+ * preview trees supply their own surface lifetime. The light/dark cache is a
+ * hard two-entry bound, so switching themes reuses the prior rendering instead
+ * of stranding another blob.
  */
 export interface MermaidDiagramImage {
   readonly url: string;
@@ -26,7 +34,8 @@ export interface MermaidDiagramImage {
 
 export interface MermaidDiagramSignals {
   readonly code: string;
-  readonly diagram$: Computed<Promise<MermaidDiagramImage>>;
+  /** Resolves `null` when the source is not a valid mermaid diagram. */
+  readonly diagram$: Computed<Promise<MermaidDiagramImage | null>>;
 }
 
 // Declared here rather than in the parse pipeline: the pipeline emits only
@@ -100,6 +109,17 @@ async function renderDiagramSvg(
   return svg;
 }
 
+// `mermaid.initialize` mutates module-global configuration, so an
+// initialize+render pair must not interleave with another pair: a theme flip
+// mid-render would otherwise re-initialize mermaid and the in-flight render
+// would produce — and permanently cache — the other theme's SVG under its own
+// theme key. The queue holds the tail of one render chain; each render settles
+// the pair before it (a failed render must not break the chain) and becomes
+// the new tail.
+const mermaidRenderQueue$ = computed((): { tail: Promise<unknown> } => {
+  return { tail: Promise.resolve() };
+});
+
 /**
  * Intrinsic width of the serialized copy. Expanded preview surfaces fit an
  * image into their stage but never scale it above 100%, so a diagram serialized
@@ -153,63 +173,90 @@ function svgFile(markup: string): File {
 }
 
 /**
- * Pure factory for a diagram's signals. Preview trees whose content arrives
- * with the surface create signals per tree; the chat pipeline goes through
- * `registerMermaidDiagram$` instead so a streaming message keeps stable
- * signal identities for fences its growing body re-parses.
+ * Pure factory for a diagram's signals. `ownerSignal` must match the consumer
+ * surface: preview trees create signals per disposable tree, while the chat
+ * pipeline goes through `registerMermaidDiagram$` so a streaming message keeps
+ * stable signal identities for fences its growing body re-parses.
  */
 export function createMermaidDiagramSignals(
   code: string,
+  ownerSignal: AbortSignal,
 ): MermaidDiagramSignals {
-  const diagram$ = computed(async (get): Promise<MermaidDiagramImage> => {
+  const imagesByTheme = new Map<
+    "light" | "dark",
+    Promise<MermaidDiagramImage | null>
+  >();
+  const diagram$ = computed((get): Promise<MermaidDiagramImage | null> => {
     const theme = get(theme$);
-    const { default: mermaid } = await get(mermaidModule$);
-    mermaid.initialize({
-      startOnLoad: false,
-      // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
-      // disables click handlers declared inside diagram sources.
-      securityLevel: "strict",
-      // Without this mermaid injects its own error diagram into the document.
-      suppressErrorRendering: true,
-      theme: theme === "dark" ? "redux-dark" : "redux",
-      // Resolved to a concrete stack rather than passed as `var(...)`: the same
-      // SVG is also shown inside an <img> in the lightbox, where page-level CSS
-      // custom properties do not resolve.
-      fontFamily: getComputedStyle(document.documentElement)
-        .getPropertyValue("--font-family-sans")
-        .trim(),
-      // mermaid's defaults are sized for a standalone page: 16px labels and
-      // 50px rank spacing make a five-node flowchart taller than the message
-      // around it. These match the chat body text and cut roughly a third of
-      // the height.
-      themeVariables: { fontSize: "14px" },
-      flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
-    });
-
-    const markup = await renderDiagramSvg(
-      mermaid,
-      diagramRenderId(`${theme}:${code}`),
-      code,
-    );
-    if (markup === undefined) {
-      throw new Error("mermaid source failed to parse");
+    const existing = imagesByTheme.get(theme);
+    if (existing !== undefined) {
+      return existing;
     }
+    const mermaidModule = get(mermaidModule$);
+    const renderQueue = get(mermaidRenderQueue$);
+    const image = (async (): Promise<MermaidDiagramImage | null> => {
+      const { default: mermaid } = await mermaidModule;
+      // Read the tail and replace it in the same synchronous block, so two
+      // resuming renders cannot both chain onto the same predecessor.
+      const previousRender = renderQueue.tail;
+      const render = (async (): Promise<string | undefined> => {
+        await settle(previousRender);
+        mermaid.initialize({
+          startOnLoad: false,
+          // "strict" makes mermaid sanitize the generated SVG with DOMPurify
+          // and disables click handlers declared inside diagram sources.
+          securityLevel: "strict",
+          // Without this mermaid injects its own error diagram into the
+          // document.
+          suppressErrorRendering: true,
+          theme: theme === "dark" ? "redux-dark" : "redux",
+          // Resolved to a concrete stack rather than passed as `var(...)`: the
+          // same SVG is also shown inside an <img> in the lightbox, where
+          // page-level CSS custom properties do not resolve.
+          fontFamily: getComputedStyle(document.documentElement)
+            .getPropertyValue("--font-family-sans")
+            .trim(),
+          // mermaid's defaults are sized for a standalone page: 16px labels
+          // and 50px rank spacing make a five-node flowchart taller than the
+          // message around it. These match the chat body text and cut roughly
+          // a third of the height.
+          themeVariables: { fontSize: "14px" },
+          flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
+        });
+        return renderDiagramSvg(
+          mermaid,
+          diagramRenderId(`${theme}:${code}`),
+          code,
+        );
+      })();
+      renderQueue.tail = render;
+      const markup = await render;
+      if (markup === undefined) {
+        return null;
+      }
 
-    // Parsed in a detached element. The markup never reaches the document, so
-    // the only thing that ever shows it is an <img>, where a data URL SVG
-    // cannot run scripts or resolve page-level CSS custom properties.
-    const host = document.createElement("div");
-    host.innerHTML = markup;
-    const svg = host.querySelector("svg");
-    if (!svg) {
-      throw new Error("mermaid renderer produced no svg");
-    }
+      // Parsed in a detached element. The markup never reaches the document,
+      // so the only thing that ever shows it is an <img>, where a blob URL SVG
+      // cannot run scripts or resolve page-level CSS custom properties.
+      const host = document.createElement("div");
+      host.innerHTML = markup;
+      const svg = host.querySelector("svg");
+      if (!svg) {
+        throw new Error("mermaid renderer produced no svg");
+      }
 
-    const serialized = sizeDiagramAndSerialize(svg);
-    return {
-      url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`,
-      file: svgFile(serialized),
-    };
+      const serialized = sizeDiagramAndSerialize(svg);
+      const file = svgFile(serialized);
+      const resource = createObjectUrlResource(file, ownerSignal);
+      return {
+        // A short blob URL keeps the multi-kilobyte SVG out of the `src`
+        // attribute, avoiding the measured per-mount string assignment cost.
+        url: resource.url,
+        file,
+      };
+    })();
+    imagesByTheme.set(theme, image);
+    return image;
   });
   return { code, diagram$ };
 }
@@ -221,7 +268,7 @@ export const registerMermaidDiagram$ = command(
     if (existing !== undefined) {
       return existing;
     }
-    const signals = createMermaidDiagramSignals(code);
+    const signals = createMermaidDiagramSignals(code, get(rootSignal$));
     const next = new Map(current);
     next.set(code, signals);
     set(internalMermaidDiagramsByCode$, next);
