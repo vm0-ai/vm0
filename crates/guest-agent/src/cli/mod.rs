@@ -26,6 +26,7 @@ mod claude;
 pub mod codex_app_server;
 mod codex_app_server_backend;
 mod codex_app_server_events;
+mod codex_event_delivery;
 mod codex_runtime_config;
 mod codex_setup;
 mod codex_startup;
@@ -522,6 +523,7 @@ enum ParsedEventAction {
 }
 
 struct CliEventIngestor<'a> {
+    framework: env::Framework,
     seq: u32,
     api_start_time: String,
     last_read_event_at: Option<Instant>,
@@ -533,6 +535,7 @@ struct CliEventIngestor<'a> {
 impl<'a> CliEventIngestor<'a> {
     fn new(runtime: &CliRuntimeConfig<'_>, codex_startup: Option<&'a CodexStartupTiming>) -> Self {
         Self {
+            framework: runtime.framework,
             seq: 0,
             api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
@@ -628,7 +631,28 @@ impl<'a> CliEventIngestor<'a> {
         self.seq += 1;
         if should_send_events {
             let event = events::prepare_event_for_delivery(event, sequence, masker);
-            event_tx.try_send(sequence, event)?;
+            if self.framework == env::Framework::Codex {
+                let prepared = codex_event_delivery::prepare_for_delivery(
+                    event,
+                    event_tx.max_serialized_event_bytes(),
+                )?;
+                if let Some(reduction) = prepared.reduction {
+                    log_warn!(
+                        LOG_TAG,
+                        "Codex event reduced for delivery: seq={} event_type={} item_type={} original_bytes={} delivered_bytes={} fields={} fallback={}",
+                        sequence,
+                        reduction.event_type,
+                        reduction.item_type,
+                        reduction.original_bytes,
+                        reduction.delivered_bytes,
+                        reduction.fields.join(","),
+                        reduction.fallback
+                    );
+                }
+                event_tx.try_send_serialized(sequence, prepared.serialized)?;
+            } else {
+                event_tx.try_send(sequence, event)?;
+            }
         }
         Ok(())
     }
