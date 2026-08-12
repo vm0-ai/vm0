@@ -346,9 +346,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
-  it("builds website template v2 package guidance", () => {
+  it("builds website template package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
-    const resourceId = `${item.resourceId}-v2`;
+    const resourceId = item.resourceId;
 
     const result = buildGenerationTemplatePrompt({
       type: "website",
@@ -370,10 +370,8 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
-    expect(result.prompt).toContain(
-      `./generated/resources/${item.sourcePath}/resolve-images.mjs`,
-    );
-    expect(result.prompt).toContain("/api/presentation/images/resolve");
+    expect(result.prompt).not.toContain("resolve-images.mjs");
+    expect(result.prompt).not.toContain("/api/presentation/images/resolve");
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/render.mjs`,
     );
@@ -382,9 +380,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("okou generate website --template");
   });
 
-  it("selects every website template v2 package", () => {
+  it("selects every current website template package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
-      const resourceId = `${item.resourceId}-v2`;
+      const resourceId = item.resourceId;
       const result = buildGenerationTemplatePrompt({
         type: "website",
         selection: {
