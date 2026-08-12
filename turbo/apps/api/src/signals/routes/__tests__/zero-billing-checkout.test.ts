@@ -8132,7 +8132,13 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
             id: subscriptionItemId,
             price: {
               id: TEST_PRICE_CONCURRENCY,
-              recurring: { interval: "month", interval_count: 1 },
+              recurring: {
+                interval: "month",
+                interval_count: 1,
+                usage_type: "licensed",
+                trial_period_days: null,
+                meter: null,
+              },
             },
             quantity: 5,
             current_period_start: periodStartUnix,
@@ -8485,7 +8491,13 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
             id: subscriptionItemId,
             price: {
               id: TEST_PRICE_CONCURRENCY,
-              recurring: { interval: "month", interval_count: 1 },
+              recurring: {
+                interval: "month",
+                interval_count: 1,
+                usage_type: "licensed",
+                trial_period_days: null,
+                meter: null,
+              },
             },
             quantity: 5,
             current_period_start: periodStartUnix,

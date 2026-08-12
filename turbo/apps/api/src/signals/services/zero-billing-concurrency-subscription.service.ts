@@ -221,7 +221,10 @@ function concurrencyRecurringDuration(
   if (!recurring) {
     throw new Error("Concurrency subscription price is not recurring");
   }
-  return recurring;
+  return {
+    interval: recurring.interval,
+    interval_count: recurring.interval_count,
+  };
 }
 
 function scheduleFutureItems(
