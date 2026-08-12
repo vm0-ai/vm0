@@ -132,7 +132,9 @@ export async function setupPage(options: {
     [FeatureSwitchKey.ChatEventSnapshotRead]: false,
     ...options.featureSwitches,
   };
-  setMockFeatureSwitches(featureSwitchOverrides);
+  if (options.featureSwitches) {
+    setMockFeatureSwitches(featureSwitchOverrides);
+  }
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
     getAllFeatureStates({
