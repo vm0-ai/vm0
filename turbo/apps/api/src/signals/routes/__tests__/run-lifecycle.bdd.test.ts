@@ -16,6 +16,7 @@ import {
 import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
@@ -101,24 +102,22 @@ import {
 } from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
-  enableFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobConnectorPermissionBaseline,
   mutateRunnerJobSecretValueEnvironmentKeys,
   removeRunCanonicalStorageState,
-  readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
-  resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setCustomConnectorAuthTemplateFixture,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
@@ -5370,10 +5369,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const first = await api.createRun(actor, {
       agentId,
@@ -5425,7 +5421,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         },
       }),
     );
-    const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeClaim = kms.decryptCalls;
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
     expect(thirdClaim.prompt).toBe("queued run three");
@@ -5489,9 +5485,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         "api_to_claim_request",
       )[0],
     ).not.toHaveProperty("history_generation_run_id");
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeClaim);
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
@@ -7137,17 +7131,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "use overridden x connector secret",
       secrets: { X_TOKEN: "body-x-token" },
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
 
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
@@ -7242,16 +7233,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "use compose-overridden gitlab token",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
@@ -7545,17 +7533,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["x", "gitlab", "figma"]);
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use lazy connector auth credentials",
       modelProvider: "anthropic-api-key",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -7862,10 +7847,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
@@ -7891,7 +7873,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         UNUSED_TOKEN: "unused-secret-value",
       },
     });
-    const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeClaim = kms.decryptCalls;
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.FIRST_TOKEN).toBe("first-secret-value");
     expect(claim.environment?.SECOND_TOKEN).toBe("second-secret-value");
@@ -7900,9 +7882,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       "second-secret-value",
       "first-secret-value",
     ]);
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeClaim);
     expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
     const claimActionTypes = new Set(
       claimRouteTimingEventsForRun(run.runId).map((event) => {
@@ -7930,10 +7910,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-fallback-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
@@ -7962,8 +7939,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       missingRun.runId,
       "remove",
     );
-    const decryptCountBeforeMissingClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeMissingClaim = kms.decryptCalls;
 
     const missingClaim = await api.requestClaimRunnerJob(
       true,
@@ -7974,9 +7950,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(missingClaim.body.error.message).toBe(
       "Job missing execution context",
     );
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeMissingClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeMissingClaim);
     const failedMissingRun = await api.readRun(actor, missingRun.runId);
     expect(failedMissingRun.status).toBe("failed");
     expect(failedMissingRun.error).toBe(
@@ -7995,8 +7969,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       invalidRun.runId,
       "invalid",
     );
-    const decryptCountBeforeInvalidClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeInvalidClaim = kms.decryptCalls;
 
     const claim = await api.claimRunnerJob(invalidRun.runId);
 
@@ -8004,9 +7977,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       "first-fallback-secret",
       "second-fallback-secret",
     ]);
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeInvalidClaim + 1,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeInvalidClaim + 1);
     expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
     const materializationEvent = singleSandboxOperationEvent(
       claimRouteTimingEventsForRun(invalidRun.runId),
@@ -10135,17 +10106,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use the proposed custom connector",
       modelProvider: "anthropic-api-key",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
@@ -10220,7 +10188,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       tenant: "münich",
       scope: "initial-scope",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(1);
+    expect(kms.decryptCalls).toBe(1);
 
     context.mocks.ably.publish.mockClear();
     await connectors.setCustomConnectorValues(actor, saved.connector.id, [
@@ -12041,7 +12009,31 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(r2Claim.environment?.CLI_PKG_URL).toBe(
       "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     );
+    expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+      "previous",
+    );
     await api.requestCancelRun(actor, r2Run.runId, [200]);
+  });
+
+  it("pins the latest Website template release into opted-in run contexts", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.LatestWebsiteTemplates]: true,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the latest Website template release",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+      "latest",
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("projects immutable legacy compose templates only for new Okou contexts", async () => {
@@ -13329,10 +13321,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     // A plain compose carries inline environment values but no body, model
     // provider, or connector secrets, so no encrypted secrets map is stored
@@ -13354,15 +13343,12 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(run.status).toBe("pending");
 
-    const decryptCountBeforeNullClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeNullClaim = kms.decryptCalls;
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.secretValues).toBeNull();
     expect(claim.prompt).toBe("claim without stored secrets");
     expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeNullClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeNullClaim);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -13373,14 +13359,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       prompt: "claim without matching environment secrets",
       secrets: { UNUSED_TOKEN: "unused-secret-value" },
     });
-    const decryptCountBeforeEmptyClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeEmptyClaim = kms.decryptCalls;
     const emptyClaim = await api.claimRunnerJob(emptyRun.runId);
     expect(emptyClaim.secretValues).toStrictEqual([]);
     expect(emptyClaim).not.toHaveProperty("secretValueEnvironmentKeys");
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeEmptyClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeEmptyClaim);
     await api.requestCancelRun(actor, emptyRun.runId, [200]);
 
     // A compose pinned to a non-vm0 runner group fails dispatch at creation.

@@ -31,6 +31,7 @@ import {
   placeCaretAfterText,
   workflowSummary,
 } from "./chat-composer-test-helpers.ts";
+import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached by the time a
@@ -154,6 +155,29 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     expect(editor).toHaveClass("min-h-[68px]", "md:min-h-[96px]");
+  });
+
+  it("hides the placeholder for whitespace without enabling send", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    expect(screen.getByText(PLACEHOLDER)).toBeInTheDocument();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+
+    await user.click(editor);
+    await user.keyboard(" ");
+
+    await waitFor(() => {
+      expect(screen.queryByText(PLACEHOLDER)).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Send")).toBeDisabled();
   });
 
   it("selects from the slash workflow menu with a visual viewport offset", async () => {

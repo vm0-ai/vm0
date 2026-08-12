@@ -1,10 +1,12 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import {
   DecryptCommand,
   GenerateDataKeyCommand,
   KMSClient,
 } from "@aws-sdk/client-kms";
 
-import { singleton, testOverride } from "./singleton";
+import { singleton } from "./singleton";
 
 export interface SecretKmsGenerateDataKeyRequest {
   readonly keyId: string;
@@ -33,6 +35,10 @@ export interface SecretKmsClient {
     request: SecretKmsGenerateDataKeyRequest,
   ): Promise<SecretKmsDataKey>;
   decrypt(request: SecretKmsDecryptRequest): Promise<Uint8Array>;
+}
+
+interface ScopedSecretKmsClient {
+  client: SecretKmsClient;
 }
 
 const secretKmsClient = singleton((): SecretKmsClient => {
@@ -84,23 +90,29 @@ const secretKmsClient = singleton((): SecretKmsClient => {
   };
 });
 
-const {
-  get: getSecretKmsClientOverride,
-  set: setSecretKmsClientOverride,
-  clear: clearSecretKmsClientOverride,
-} = testOverride<SecretKmsClient | null>(() => {
-  return null;
+const scopedSecretKmsClient = singleton(() => {
+  return new AsyncLocalStorage<ScopedSecretKmsClient>();
 });
 
-export function getSecretKmsClient(): SecretKmsClient {
-  return getSecretKmsClientOverride() ?? secretKmsClient();
+function currentScopedSecretKmsClient(): ScopedSecretKmsClient | undefined {
+  return scopedSecretKmsClient.peek()?.getStore();
 }
 
-export function resetSecretKmsClientForTests(): void {
-  clearSecretKmsClientOverride();
-  secretKmsClient.reset();
+export function getSecretKmsClient(): SecretKmsClient {
+  return currentScopedSecretKmsClient()?.client ?? secretKmsClient();
 }
 
 export function setSecretKmsClientForTests(client: SecretKmsClient): void {
-  setSecretKmsClientOverride(client);
+  const scoped = currentScopedSecretKmsClient();
+  if (!scoped) {
+    throw new Error("Secret KMS test client requires an active test scope");
+  }
+  scoped.client = client;
+}
+
+export async function withSecretKmsClientForTest<T>(
+  client: SecretKmsClient,
+  work: () => Promise<T>,
+): Promise<T> {
+  return await scopedSecretKmsClient().run({ client }, work);
 }
