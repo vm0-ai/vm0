@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.431.0](https://github.com/vm0-ai/vm0/compare/api-v1.430.2...api-v1.431.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+
+### Refactoring
+
+* **api:** reclaim unsupported chat event snapshots ([#26486](https://github.com/vm0-ai/vm0/issues/26486)) ([dff483a](https://github.com/vm0-ai/vm0/commit/dff483a95f1b315b2b5dc33a4304b0683c847b5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+    * @vm0/core bumped to 8.547.0
+    * @vm0/db bumped to 1.195.0
+    * @vm0/pi-agent-runtime bumped to 1.3.51
+
 ## [1.430.2](https://github.com/vm0-ai/vm0/compare/api-v1.430.1...api-v1.430.2) (2026-08-12)
 
 
