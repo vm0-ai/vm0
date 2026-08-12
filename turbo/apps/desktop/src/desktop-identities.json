@@ -1,16 +1,40 @@
 {
-  "production": {
-    "product": "zero",
-    "displayName": "Zero Computer Use",
-    "bundleId": "ai.vm0.zero.desktop",
-    "authProtocolName": "Zero Desktop Auth",
-    "authScheme": "ai.vm0.zero.desktop"
+  "zero": {
+    "defaultPlatformUrl": "https://app.vm0.ai",
+    "production": {
+      "product": "zero",
+      "brandName": "Zero",
+      "displayName": "Zero Computer Use",
+      "bundleId": "ai.vm0.zero.desktop",
+      "authProtocolName": "Zero Desktop Auth",
+      "authScheme": "ai.vm0.zero.desktop"
+    },
+    "development": {
+      "product": "zero",
+      "brandName": "Zero",
+      "displayName": "Zero CU Dev",
+      "bundleId": "ai.vm0.zero.desktop.dev",
+      "authProtocolName": "Zero CU Dev Desktop Auth",
+      "authScheme": "ai.vm0.zero.desktop.dev"
+    }
   },
-  "development": {
-    "product": "zero",
-    "displayName": "Zero CU Dev",
-    "bundleId": "ai.vm0.zero.desktop.dev",
-    "authProtocolName": "Zero CU Dev Desktop Auth",
-    "authScheme": "ai.vm0.zero.desktop.dev"
+  "okou": {
+    "defaultPlatformUrl": "https://app.okou.ai",
+    "production": {
+      "product": "okou",
+      "brandName": "Okou",
+      "displayName": "Okou Computer Use",
+      "bundleId": "ai.okou.computer-use",
+      "authProtocolName": "Okou Computer Use Auth",
+      "authScheme": "ai.okou.computer-use"
+    },
+    "development": {
+      "product": "okou",
+      "brandName": "Okou",
+      "displayName": "Okou CU Dev",
+      "bundleId": "ai.okou.computer-use.dev",
+      "authProtocolName": "Okou CU Dev Auth",
+      "authScheme": "ai.okou.computer-use.dev"
+    }
   }
 }

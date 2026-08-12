@@ -96,16 +96,17 @@ async function reportDesktopBootstrapFailure(error: unknown): Promise<void> {
 
 async function showDegradedStartupDialog(
   autoUpdatesInstalled: boolean,
+  displayName: string,
 ): Promise<void> {
   await dialog.showMessageBox({
     type: "error",
     buttons: ["OK"],
     defaultId: 0,
     title: "Startup Error",
-    message: "Zero Computer Use hit an error during startup.",
+    message: `${displayName} hit an error during startup.`,
     detail: autoUpdatesInstalled
       ? "Keep the app running: a fixed update will be downloaded and installed automatically as soon as it is available."
-      : "Please reinstall the latest version of Zero Computer Use.",
+      : `Please reinstall the latest version of ${displayName}.`,
   });
 }
 
@@ -129,6 +130,9 @@ export function enterDegradedDesktopMode(options: {
       prepareForQuitAndInstall: async () => {},
     });
     await reportDesktopBootstrapFailure(options.error);
-    await showDegradedStartupDialog(autoUpdatesInstalled);
+    await showDegradedStartupDialog(
+      autoUpdatesInstalled,
+      options.config.identity.displayName,
+    );
   });
 }

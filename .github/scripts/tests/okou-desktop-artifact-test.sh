@@ -81,12 +81,56 @@ const forgeConfig = require(path.join(
   "turbo/apps/desktop/forge.config.js",
 ));
 
+if (forgeConfig.packagerConfig.name !== "Zero Computer Use") {
+  throw new Error("Default build must preserve the Zero display name");
+}
+if (forgeConfig.packagerConfig.appBundleId !== "ai.vm0.zero.desktop") {
+  throw new Error("Default build must preserve the Zero bundle ID");
+}
+
 forgeConfig.hooks
   .postPackage({}, { platform: "darwin", outputPaths: ["/missing"] })
   .catch((error) => {
     console.error(error);
     process.exit(1);
   });
+NODE
+
+VM0_DESKTOP_SKIP_SIGNING=true \
+VM0_DESKTOP_PRODUCT=okou \
+VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+node - "$repo_root" <<'NODE'
+const path = require("node:path");
+
+const repoRoot = process.argv[2];
+const forgeConfig = require(path.join(
+  repoRoot,
+  "turbo/apps/desktop/forge.config.js",
+));
+const { packagedAppPaths } = require(path.join(
+  repoRoot,
+  "turbo/apps/desktop/scripts/packaged-app-paths.js",
+));
+
+if (forgeConfig.packagerConfig.name !== "Okou Computer Use") {
+  throw new Error("Okou build must use the Okou display name");
+}
+if (forgeConfig.packagerConfig.appBundleId !== "ai.okou.computer-use") {
+  throw new Error("Okou build must use the Okou production bundle ID");
+}
+if (
+  forgeConfig.packagerConfig.protocols[0].schemes[0] !==
+  "ai.okou.computer-use"
+) {
+  throw new Error("Okou build must register the Okou auth scheme");
+}
+if (
+  !packagedAppPaths().appBundlePath.endsWith(
+    `Okou Computer Use-${process.platform}-${process.arch}/Okou Computer Use.app`,
+  )
+) {
+  throw new Error("Okou packaged app path must be product scoped");
+}
 NODE
 
 echo "okou Desktop artifact tests passed"

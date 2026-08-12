@@ -146,6 +146,7 @@ function computerUseState(
 
 function installController(getState: () => DesktopComputerUseState) {
   const controller = new DesktopTrayController({
+    brandName: "Zero",
     displayName: "Zero Computer Use",
     iconPath,
     disabledIconPath,

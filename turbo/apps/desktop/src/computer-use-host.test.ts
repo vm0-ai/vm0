@@ -1346,14 +1346,12 @@ describe("ComputerUseHostRuntime", () => {
     expect(runtime.getState()).toMatchObject({
       status: "error",
       hostId: null,
-      lastError:
-        "Computer Use is already active in another Zero Desktop session.",
+      lastError: "Computer Use is already active in another Desktop session.",
       errorLog: [
         {
           source: "heartbeat",
           hostId: null,
-          message:
-            "Computer Use is already active in another Zero Desktop session.",
+          message: "Computer Use is already active in another Desktop session.",
           status: "error",
         },
       ],
@@ -1400,7 +1398,7 @@ describe("ComputerUseHostRuntime", () => {
       status: "needs_organization",
       hostId: null,
       lastError:
-        "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.",
+        "Desktop is signed in but no workspace is active. Select a workspace and retry.",
     });
   });
 
@@ -1421,14 +1419,12 @@ describe("ComputerUseHostRuntime", () => {
     expect(runtime.getState()).toMatchObject({
       status: "error",
       hostId: null,
-      lastError:
-        "Computer Use is already active in another Zero Desktop session.",
+      lastError: "Computer Use is already active in another Desktop session.",
       errorLog: [
         {
           source: "start",
           hostId: null,
-          message:
-            "Computer Use is already active in another Zero Desktop session.",
+          message: "Computer Use is already active in another Desktop session.",
           status: "error",
         },
       ],

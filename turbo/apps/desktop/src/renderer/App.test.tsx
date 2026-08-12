@@ -420,10 +420,30 @@ afterEach(() => {
   delete window.vm0DesktopAuth;
   delete window.vm0DesktopComputerUse;
   delete window.vm0DesktopDeveloperTools;
+  delete window.vm0DesktopIdentity;
   vi.clearAllMocks();
 });
 
 describe("Desktop renderer bridge integration", () => {
+  it("shows Okou identity and fresh permission guidance", async () => {
+    window.vm0DesktopIdentity = {
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou Computer Use",
+    };
+    installDesktopBridges({
+      authState: { status: "signed_out", user: null, organization: null },
+      computerUseState: createComputerUseState({
+        permissions: { accessibility: false, screenRecording: false },
+      }),
+    });
+
+    renderDesktopApp();
+
+    expect(await screen.findByText("Okou Computer Use")).toBeTruthy();
+    expect(await screen.findByText("Sign in to Okou")).toBeTruthy();
+  });
+
   it("shows a Desktop bridge fallback when preload did not expose the computer use bridge", async () => {
     renderDesktopApp();
 

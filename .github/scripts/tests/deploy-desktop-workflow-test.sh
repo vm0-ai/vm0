@@ -18,6 +18,7 @@ ruby -e '
   release = YAML.safe_load(File.read(ARGV[1]), aliases: true).fetch("jobs")
 
   detector = desktop.fetch("detect-desktop-version")
+  build = desktop.fetch("build-macos")
   deploy = desktop.fetch("deploy-desktop")
   raise "deploy-desktop must depend on version detection" unless deploy.fetch("needs") == "detect-desktop-version"
   raise "deploy-desktop must not use a GitHub environment" if deploy.key?("environment")
@@ -26,6 +27,16 @@ ruby -e '
 
   detector_run = detector.fetch("steps").find { |step| step["id"] == "version" }.fetch("run")
   raise "version detector must compare Desktop package versions" unless detector_run.include?("resolve-desktop-version-change.sh")
+
+  okou_build = build.fetch("steps").find { |step| step["id"] == "build-okou-prod" }
+  raise "Desktop CI must build the Okou product" unless okou_build
+  raise "Okou CI build must select the Okou product" unless okou_build.fetch("env").fetch("VM0_DESKTOP_PRODUCT") == "okou"
+  raise "Okou CI build must use app.okou.ai" unless okou_build.fetch("env").fetch("VM0_DESKTOP_PLATFORM_URL") == "https://app.okou.ai"
+  raise "Okou CI build must package runtime product identity" unless okou_build.fetch("run").include?("product: process.env.VM0_DESKTOP_PRODUCT")
+
+  okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
+  raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.computer-use")
+  raise "Okou artifact must verify side-by-side installation" unless okou_verify.include?("Zero and Okou should remain installable side by side")
 
   artifact_step = deploy.fetch("steps").find { |step| step["id"] == "artifact" }
   raise "deploy-desktop must resolve the checked-out commit" unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
