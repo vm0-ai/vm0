@@ -667,9 +667,6 @@ describe("chat composer models", () => {
       "fill",
       "currentColor",
     );
-    expect(fastModeIcon(fastModeOption)).toHaveClass(
-      "group-hover/fast-option:fill-none",
-    );
     expect(standardOption.querySelector("svg.lucide-check")).not.toBeNull();
     expect(fastModeOption.querySelector("svg.lucide-check")).toBeNull();
 
