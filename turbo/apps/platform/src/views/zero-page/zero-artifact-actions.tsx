@@ -1,8 +1,7 @@
-import {
-  forwardRef,
-  type ComponentPropsWithoutRef,
-  type MouseEvent,
-  type ReactElement,
+import type {
+  ComponentPropsWithRef,
+  MouseEvent,
+  ReactElement,
 } from "react";
 import { Download, Loader2, Share2 } from "lucide-react";
 import {
@@ -554,18 +553,20 @@ type ArtifactDownloadMenuProps = {
   url: string;
 };
 
-const ArtifactDownloadTrigger = forwardRef<
-  HTMLButtonElement,
-  ComponentPropsWithoutRef<"button"> & {
-    ariaLabel: string;
-    downloadPending: boolean;
-    iconSize: number;
-    open: boolean;
-  }
->(function ArtifactDownloadTrigger(
-  { ariaLabel, className, downloadPending, iconSize, open, ...props },
+function ArtifactDownloadTrigger({
+  ariaLabel,
+  className,
+  downloadPending,
+  iconSize,
+  open,
   ref,
-) {
+  ...props
+}: ComponentPropsWithRef<"button"> & {
+  ariaLabel: string;
+  downloadPending: boolean;
+  iconSize: number;
+  open: boolean;
+}) {
   return (
     <button
       {...props}
@@ -590,7 +591,7 @@ const ArtifactDownloadTrigger = forwardRef<
       )}
     </button>
   );
-});
+}
 
 function setArtifactDownloadMenuOpen(params: {
   readonly closeMenu: () => void;
