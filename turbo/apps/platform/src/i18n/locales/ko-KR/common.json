@@ -3947,40 +3947,6 @@
       "teamDescription": "10개 병렬 실행과 더 많은 크레딧으로 팀을 확장하세요."
     }
   },
-  "reportError": {
-    "description": "이 실패한 실행에 대한 진단 정보를 개발팀에 전송하세요. 조사 후 연락드리겠습니다.",
-    "disclosure": {
-      "agentConfiguration": "에이전트 구성",
-      "agentTelemetry": "에이전트 원격 측정 및 실행 로그",
-      "chatHistory": "채팅 기록 및 에이전트 이벤트",
-      "connectedServices": "연결된 서비스(자격 증명 제외)",
-      "networkLogs": "네트워크 요청 로그",
-      "runContext": "실행 컨텍스트 및 환경",
-      "title": "전송되는 내용"
-    },
-    "documentTitle": "오류 신고",
-    "error": {
-      "loadFailed": "실행 세부 정보를 불러오지 못했습니다",
-      "notFailed": "이 실행은 실패하지 않아 신고할 수 없습니다",
-      "title": "오류",
-      "tryAgain": "다시 시도"
-    },
-    "fields": {
-      "description": "설명",
-      "descriptionPlaceholder": "무슨 일이 있었나요? 무엇을 기대했나요?",
-      "title": "제목",
-      "titlePlaceholder": "문제에 대한 간략한 요약"
-    },
-    "loading": "실행 세부 정보 불러오는 중",
-    "send": "보고서 보내기",
-    "sending": "전송 중...",
-    "success": {
-      "description": "오류 보고서가 개발팀에 전송되었습니다. 팀에서 조사 후 후속 조치를 진행합니다.",
-      "reference": "참조: {{reference}}",
-      "title": "보고서 전송 완료"
-    },
-    "title": "개발자에게 오류 보고"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "계정 추가",

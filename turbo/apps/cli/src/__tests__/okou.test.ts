@@ -27,7 +27,6 @@ describe("Okou CLI program", () => {
       "credit",
       "upgrade",
       "doctor",
-      "logs",
       "search",
       "chat",
       "resource",
@@ -41,7 +40,6 @@ describe("Okou CLI program", () => {
       "phone",
       "whoami",
       "intro",
-      "developer-support",
       "computer-use",
       "browser",
       "generate",
@@ -89,7 +87,7 @@ describe("Okou CLI program", () => {
     expect(publicCommandNames).not.toContain("__agent-loop");
   });
 
-  it("should have exactly 41 public commands", () => {
-    expect(publicCommandNames).toHaveLength(41);
+  it("should have exactly 39 public commands", () => {
+    expect(publicCommandNames).toHaveLength(39);
   });
 });

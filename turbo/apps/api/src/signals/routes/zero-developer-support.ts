@@ -79,6 +79,9 @@ const submitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { reference: result.reference } };
 });
 
+// Commit-addressed CLI compatibility for pre-deployment CLI_PKG_URL values.
+// Maximum drain: 15m queue TTL + 2h runner execution + 90s finalization + 10s
+// terminal grace (~2h17m). Remove under #26735 after that drain and rollback.
 export const zeroDeveloperSupportRoutes: readonly RouteEntry[] = [
   {
     route: zeroDeveloperSupportContract.submit,

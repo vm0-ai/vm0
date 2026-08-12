@@ -468,6 +468,8 @@ describe("POST /api/zero/developer-support", () => {
         return apl.includes("agent-run-events") && apl.includes("runId in");
       });
     expect(agentEventsQuery).toContain(run.runId);
+    expect(agentEventsQuery).toContain("| where _time >= datetime(");
+    expect(agentEventsQuery).toContain(" and _time <= datetime(");
   });
 
   it("includes the user prompt in chat-history.jsonl", async () => {

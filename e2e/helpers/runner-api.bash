@@ -324,11 +324,6 @@ runner_e2e_assert_no_usage_for_thread() {
         '{runId: $runId, threadId: $threadId, vm0UsageCredits: 0}'
 }
 
-runner_e2e_agent_events() {
-    local run_id="$1"
-    runner_e2e_collect_pages "/api/okou/runs/${run_id}/telemetry/agent" events
-}
-
 runner_e2e_network_logs() {
     local run_id="$1"
     runner_e2e_collect_pages "/api/okou/runs/${run_id}/network" networkLogs
@@ -378,23 +373,23 @@ runner_e2e_collect_pages() {
     return 1
 }
 
-runner_e2e_wait_for_agent_text() {
-    local run_id="$1"
-    local expected="$2"
-    local timeout_seconds="${3:-90}"
+runner_e2e_wait_for_chat_text() {
+    local thread_id="$1"
+    local run_id="$2"
+    local expected="$3"
+    local timeout_seconds="${4:-90}"
     local started_at=$SECONDS
-    local last_events='[]'
+    local last_events='{}'
     local matched_text=""
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if last_events=$(runner_e2e_agent_events "$run_id" 2>&1) &&
-            matched_text=$(jq -er --arg expected "$expected" '
+        if last_events=$(runner_api_curl \
+            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+            matched_text=$(jq -er --arg runId "$run_id" --arg expected "$expected" '
                 [
-                    .[]
-                    | select(.eventType == "item.completed")
-                    | .eventData.item
-                    | select(.type == "agent_message")
-                    | .text
+                    .events[]?
+                    | select(.eventType == "output.message" and .runId == $runId)
+                    | .content
                     | select(type == "string" and contains($expected))
                 ]
                 | last // empty
@@ -405,8 +400,8 @@ runner_e2e_wait_for_agent_text() {
         sleep 2
     done
 
-    echo "Timed out waiting for ${expected@Q} in agent telemetry for run ${run_id}" >&2
-    echo "Last agent telemetry: ${last_events}" >&2
+    echo "Timed out waiting for ${expected@Q} in chat output for run ${run_id}" >&2
+    echo "Last chat events: ${last_events}" >&2
     return 1
 }
 

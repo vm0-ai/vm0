@@ -807,6 +807,8 @@ describe("POST /api/zero/report-error", () => {
       });
     expect(agentEventsQuery).toContain(first.runId);
     expect(agentEventsQuery).toContain(second.runId);
+    expect(agentEventsQuery).toContain("| where _time >= datetime(");
+    expect(agentEventsQuery).toContain(" and _time <= datetime(");
   });
 
   it("succeeds when optional Axiom log queries fail", async () => {

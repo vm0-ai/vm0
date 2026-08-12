@@ -64,21 +64,6 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
     }),
   }),
   z.object({
-    template: z.literal("developer-support"),
-    props: z.object({
-      title: z.string(),
-      description: z.string(),
-      reference: z.string(),
-      userId: z.string(),
-      userEmail: z.string(),
-      orgId: z.string(),
-      orgName: z.string(),
-      runId: z.string(),
-      downloadUrl: z.string(),
-      expiresAt: z.string(),
-    }),
-  }),
-  z.object({
     template: z.literal("morning-brief"),
     props: z.object({
       dateLabel: z.string(),
@@ -226,15 +211,6 @@ function escapeHtml(value: string): string {
   return escaped;
 }
 
-function htmlParagraphs(value: string): string {
-  return value
-    .split("\n")
-    .map((line) => {
-      return `<p>${escapeHtml(line)}</p>`;
-    })
-    .join("");
-}
-
 type MorningBriefEmailTemplate = Extract<
   EmailTemplate,
   { readonly template: "morning-brief" }
@@ -294,23 +270,6 @@ function renderTemplate(template: EmailTemplate): string {
       )}.</p><p><a href="${escapeHtml(
         template.props.downloadUrl,
       )}">Download export</a></p>${unsubscribe}</main>`;
-    }
-    case "developer-support": {
-      return `<main><h1>${escapeHtml(template.props.title)}</h1>${htmlParagraphs(
-        template.props.description,
-      )}<p>Reference: ${escapeHtml(
-        template.props.reference,
-      )}</p><p>User: ${escapeHtml(template.props.userEmail)} (${escapeHtml(
-        template.props.userId,
-      )})</p><p>Org: ${escapeHtml(template.props.orgName)} (${escapeHtml(
-        template.props.orgId,
-      )})</p><p>Run: ${escapeHtml(
-        template.props.runId,
-      )}</p><p><a href="${escapeHtml(
-        template.props.downloadUrl,
-      )}">Download bundle</a></p><p>Expires ${escapeHtml(
-        template.props.expiresAt,
-      )}</p></main>`;
     }
     case "morning-brief": {
       return renderMorningBriefTemplate(template);

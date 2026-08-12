@@ -49,13 +49,17 @@ interface PagedTelemetryParams extends OwnedRunParams {
   readonly order: "asc" | "desc";
 }
 
+interface OwnedRun {
+  readonly createdAt: Date;
+}
+
 function verifyRunOwnership(
   params: OwnedRunParams,
-): Computed<Promise<boolean>> {
-  return computed(async (get): Promise<boolean> => {
+): Computed<Promise<OwnedRun | null>> {
+  return computed(async (get): Promise<OwnedRun | null> => {
     const db = get(db$);
     const [run] = await db
-      .select({ id: agentRuns.id })
+      .select({ createdAt: agentRuns.createdAt })
       .from(agentRuns)
       .where(
         and(
@@ -66,16 +70,20 @@ function verifyRunOwnership(
       )
       .limit(1);
 
-    return run !== undefined;
+    return run ?? null;
   });
+}
+
+function createdAtFilter(run: OwnedRun): string {
+  return `| where _time >= datetime("${run.createdAt.toISOString()}")`;
 }
 
 export function agentRunSystemLog(
   params: PagedTelemetryParams,
 ): Computed<Promise<SystemLogResponse | null>> {
   return computed(async (get): Promise<SystemLogResponse | null> => {
-    const owned = await get(verifyRunOwnership(params));
-    if (!owned) {
+    const run = await get(verifyRunOwnership(params));
+    if (!run) {
       return null;
     }
 
@@ -86,6 +94,7 @@ export function agentRunSystemLog(
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
+${createdAtFilter(run)}
 ${buildTimePaginationFilters(params)}
 ${buildTimePaginationOrder(params.order)}
 ${buildTimeCursorProjection()}
@@ -127,8 +136,8 @@ export function agentRunMetrics(
   params: PagedTelemetryParams,
 ): Computed<Promise<MetricsResponse | null>> {
   return computed(async (get): Promise<MetricsResponse | null> => {
-    const owned = await get(verifyRunOwnership(params));
-    if (!owned) {
+    const run = await get(verifyRunOwnership(params));
+    if (!run) {
       return null;
     }
 
@@ -139,6 +148,7 @@ export function agentRunMetrics(
     );
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
+${createdAtFilter(run)}
 ${buildTimePaginationFilters(params)}
 ${buildTimePaginationOrder(params.order)}
 ${buildTimeCursorProjection()}

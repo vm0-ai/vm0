@@ -53,7 +53,7 @@ EOF
     assert_success
     public_surfaces+="$output"$'\n'
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" AGORA_REQUEST_SENT
+    run runner_e2e_wait_for_chat_text "$THREAD_ID" "$RUN_ID" AGORA_REQUEST_SENT
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'
@@ -67,11 +67,6 @@ EOF
     public_surfaces+="$output"$'\n'
 
     run runner_api_curl "/api/okou/chat-threads/${THREAD_ID}/events?limit=50"
-    echo "$output"
-    assert_success
-    public_surfaces+="$output"$'\n'
-
-    run runner_e2e_agent_events "$RUN_ID"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'

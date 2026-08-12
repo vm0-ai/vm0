@@ -57,7 +57,10 @@ EOF
         '.result.agentSessionId | select(type == "string" and length > 0)' \
         <<<"$first_run_response")
 
-    run runner_e2e_wait_for_agent_text "$first_run_id" "$first_output_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$first_run_id" \
+        "$first_output_marker"
     echo "$output"
     assert_success
     assert_output --partial "$initial_instruction_marker"
@@ -104,7 +107,10 @@ EOF
         '.result.agentSessionId | select(type == "string" and length > 0)' \
         <<<"$continuation_run_response")
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" "$continuation_output_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$RUN_ID" \
+        "$continuation_output_marker"
     echo "$output"
     assert_success
     assert_output --partial "$updated_instruction_marker"

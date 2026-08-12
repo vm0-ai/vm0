@@ -1,10 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import {
-  CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatRunErrorForExternalSurface,
-  isActionableRunError,
   isClaudeCodeAuthenticationCredentialsError,
-  isGenericRunErrorForDisplay,
 } from "@vm0/api-contracts/contracts/errors";
 import {
   modelProviderCredentialScopeSchema,
@@ -14,14 +11,12 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
 import { getMemberRoleAndUpdateCache$ } from "./auth.service";
 
-const REPORT_ERROR_STREAK_THRESHOLD = 2;
-const CHAT_RUN_REPORTABLE_ERROR_MESSAGE = "An unexpected error occurred.";
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 const PRO_REQUIRED_MARKER = "pro_required";
 
@@ -41,10 +36,6 @@ interface FormatRunErrorLikeWebMessageParams {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope | null;
   readonly selectedModel?: string | null;
   readonly canManageOrgModelProviders?: boolean;
-}
-
-function buildReportableErrorMessage(runId: string): string {
-  return `${CHAT_RUN_REPORTABLE_ERROR_MESSAGE} [Report this issue](/runs/${encodeURIComponent(runId)}/report-error)`;
 }
 
 function buildModelProvidersUrl(): string {
@@ -103,41 +94,6 @@ function formatRunModelProviderCredentialScope(
   }
   const parsed = modelProviderCredentialScopeSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
-}
-
-function genericErrorStreakForRun(params: {
-  readonly chatThreadId: string;
-  readonly runId: string;
-  readonly currentErrorMessage: string;
-}): Computed<Promise<number>> {
-  return computed(async (get): Promise<number> => {
-    const rows = await get(db$)
-      .select({
-        runId: zeroRuns.id,
-        error: agentRuns.error,
-      })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(zeroRuns.chatThreadId, params.chatThreadId))
-      .orderBy(asc(agentRuns.createdAt), asc(agentRuns.id));
-
-    let streak = 0;
-    for (const row of rows) {
-      const errorMessage =
-        row.runId === params.runId ? params.currentErrorMessage : row.error;
-      if (!errorMessage?.trim() || isActionableRunError(errorMessage)) {
-        streak = 0;
-      } else {
-        streak += 1;
-      }
-
-      if (row.runId === params.runId) {
-        return streak;
-      }
-    }
-
-    return 1;
-  });
 }
 
 function runErrorProviderContext(
@@ -203,7 +159,7 @@ function formatRunErrorLikeWebMessage(
       params.selectedModel !== undefined
         ? params.selectedModel
         : providerContext?.selectedModel;
-    const displayErrorMessage = formatRunErrorForExternalSurface({
+    return formatRunErrorForExternalSurface({
       code: "INTERNAL_SERVER_ERROR",
       message: errorMessage,
       selectedModel,
@@ -217,27 +173,6 @@ function formatRunErrorLikeWebMessage(
         }),
       },
     });
-    if (
-      !isGenericRunErrorForDisplay(errorMessage) ||
-      displayErrorMessage !== CHAT_RUN_TRANSIENT_ERROR_MESSAGE
-    ) {
-      return displayErrorMessage;
-    }
-    if (!params.chatThreadId) {
-      return displayErrorMessage;
-    }
-
-    const streak = await get(
-      genericErrorStreakForRun({
-        chatThreadId: params.chatThreadId,
-        runId: params.runId,
-        currentErrorMessage: errorMessage,
-      }),
-    );
-
-    return streak >= REPORT_ERROR_STREAK_THRESHOLD
-      ? buildReportableErrorMessage(params.runId)
-      : displayErrorMessage;
   });
 }
 

@@ -140,6 +140,9 @@ export const zeroRunDetailRoutes: readonly RouteEntry[] = [
     route: zeroRunNetworkLogsContract.getNetworkLogs,
     handler: authRoute(runReadAuth, getNetworkLogsInner$),
   },
+  // App (~2 days) and commit-addressed CLI compatibility (15m queue TTL + 2h
+  // execution + 90s finalization + 10s terminal grace, ~2h17m). Remove these
+  // retired telemetry routes under #26735 after both drains and rollback.
   {
     route: zeroRunAgentEventsContract.getAgentEvents,
     handler: authRoute(runReadAuth, getAgentEventsInner$),

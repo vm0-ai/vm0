@@ -3997,40 +3997,6 @@
       "teamDescription": "Para equipes que executam o Zero em escala."
     }
   },
-  "reportError": {
-    "description": "Envie informações de diagnóstico desta execução com falha para a equipe de desenvolvimento. Investigaremos o caso e retornaremos em breve.",
-    "disclosure": {
-      "agentConfiguration": "Configuração do agente",
-      "agentTelemetry": "Telemetria do agente e logs da execução",
-      "chatHistory": "Histórico do chat e eventos do agente",
-      "connectedServices": "Serviços conectados (sem credenciais)",
-      "networkLogs": "Logs de requisições de rede",
-      "runContext": "Contexto e ambiente da execução",
-      "title": "O que será enviado"
-    },
-    "documentTitle": "Relatar erro",
-    "error": {
-      "loadFailed": "Não foi possível carregar os detalhes da execução",
-      "notFailed": "Esta execução não falhou e não pode ser relatada",
-      "title": "Erro",
-      "tryAgain": "Tentar novamente"
-    },
-    "fields": {
-      "description": "Descrição",
-      "descriptionPlaceholder": "O que aconteceu? O que você esperava?",
-      "title": "Título",
-      "titlePlaceholder": "Resumo breve do problema"
-    },
-    "loading": "Carregando detalhes da execução",
-    "send": "Enviar relatório",
-    "sending": "Enviando...",
-    "success": {
-      "description": "Seu relatório de erro foi enviado para a equipe de desenvolvimento. Ela investigará o caso e retornará.",
-      "reference": "Referência: {{reference}}",
-      "title": "Relatório enviado"
-    },
-    "title": "Relatar erro ao desenvolvedor"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "Adicionar conta",

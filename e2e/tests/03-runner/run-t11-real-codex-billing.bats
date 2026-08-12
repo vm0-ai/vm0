@@ -69,18 +69,6 @@ teardown() {
     echo "$output"
     assert_success
 
-    run _wait_for_runner_codex_events "$RUN_ID" "" 60
-    echo "$output"
-    assert_success
-    local agent_events="$output"
-    run jq -e '
-        .framework == "codex" and
-        any(.events[]?.eventData | tostring; contains("thread.started")) and
-        any(.events[]?.eventData | tostring; contains("turn.completed"))
-    ' <<<"$agent_events"
-    echo "$output"
-    assert_success
-
     # Preview deployments do not schedule the production usage cron. Once the
     # first run's asynchronous usage upload has arrived, cancelling a fresh
     # pending run exercises the public cancellation reconciliation for the same
