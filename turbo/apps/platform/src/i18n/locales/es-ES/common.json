@@ -4510,9 +4510,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Introduce una dirección de correo electrónico válida",
           "progress": "Enviando...",
+          "purchase": {
+            "description": "Revisa el cargo prorrateado a continuación. Al confirmar, se cobrará el método de pago guardado y se enviará la invitación.",
+            "error": "No se pudo comprar este paquete de miembro. Revisa los datos de facturación e inténtalo de nuevo.",
+            "invitee": "Persona invitada",
+            "title": "Revisar invitación"
+          },
           "roleLabel": "Rol",
           "send": "Enviar invitación",
-          "title": "Invitar a un miembro"
+          "title": "Invitar a un miembro",
+          "upgrade": {
+            "action": "Mejorar a Pro",
+            "description": "Las invitaciones a miembros están disponibles en el plan Pro. Mejora este espacio de trabajo para invitar a personas y administrar sus roles.",
+            "title": "Mejora para invitar a miembros"
+          }
         },
         "joined": "Se unió",
         "joinRequests": "Solicitudes de acceso",

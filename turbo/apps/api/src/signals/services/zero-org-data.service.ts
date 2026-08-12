@@ -6,6 +6,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { usagePackAllocations } from "@vm0/db/schema/usage-pack-subscription";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
@@ -16,6 +17,7 @@ import {
   type OrgMembersResponse,
   type OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
+import { usagePackUsdSchema } from "@vm0/api-contracts/contracts/zero-billing";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$, type ClerkUser } from "../external/clerk";
@@ -760,14 +762,53 @@ export function zeroOrgMembersList(
       };
     });
 
+    const pendingInvitationIds = invitations.map((invitation) => {
+      return invitation.id;
+    });
+    const pendingInvitationAllocations =
+      args.callerRole === "admin" && pendingInvitationIds.length > 0
+        ? await db
+            .select({
+              invitationId: usagePackAllocations.invitationId,
+              usagePackUsd: usagePackAllocations.usagePackUsd,
+            })
+            .from(usagePackAllocations)
+            .where(
+              and(
+                eq(usagePackAllocations.orgId, args.orgId),
+                inArray(
+                  usagePackAllocations.invitationId,
+                  pendingInvitationIds,
+                ),
+                inArray(usagePackAllocations.status, [
+                  "pending_invitation",
+                  "paid_pending_invitation",
+                ]),
+              ),
+            )
+        : [];
+    const usagePackByInvitationId = new Map(
+      pendingInvitationAllocations.flatMap((allocation) => {
+        return allocation.invitationId
+          ? [
+              [
+                allocation.invitationId,
+                usagePackUsdSchema.parse(allocation.usagePackUsd),
+              ] as const,
+            ]
+          : [];
+      }),
+    );
     const pendingInvitations =
       args.callerRole === "admin"
         ? invitations.map((inv) => {
+            const usagePackUsd = usagePackByInvitationId.get(inv.id);
             return {
               id: inv.id,
               email: inv.emailAddress,
               role: mapClerkOrgRole(inv.role),
               createdAt: new Date(inv.createdAt).toISOString(),
+              ...(usagePackUsd === undefined ? {} : { usagePackUsd }),
             };
           })
         : [];

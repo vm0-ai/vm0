@@ -4458,9 +4458,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Harap masukkan alamat email yang valid",
           "progress": "Mengirim...",
+          "purchase": {
+            "description": "Tinjau biaya prorata di bawah ini. Konfirmasi akan menagih metode pembayaran tersimpan dan mengirim undangan.",
+            "error": "Paket anggota ini tidak dapat dibeli. Periksa detail penagihan Anda dan coba lagi.",
+            "invitee": "Orang yang diundang",
+            "title": "Tinjau undangan"
+          },
           "roleLabel": "Peran",
           "send": "Kirim undangan",
-          "title": "Undang anggota"
+          "title": "Undang anggota",
+          "upgrade": {
+            "action": "Upgrade ke Pro",
+            "description": "Undangan anggota tersedia di paket Pro. Upgrade ruang kerja ini untuk mengundang orang dan mengelola peran mereka.",
+            "title": "Upgrade untuk mengundang anggota"
+          }
         },
         "joined": "Bergabung",
         "joinRequests": "Permintaan bergabung",

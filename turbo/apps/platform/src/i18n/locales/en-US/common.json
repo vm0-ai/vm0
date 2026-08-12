@@ -4459,9 +4459,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Please enter a valid email address",
           "progress": "Sending...",
+          "purchase": {
+            "description": "Review the prorated charge below. Confirming charges your saved payment method and sends the invitation.",
+            "error": "Could not purchase this member package. Review your billing details and try again.",
+            "invitee": "Invitee",
+            "title": "Review invitation"
+          },
           "roleLabel": "Role",
           "send": "Send invitation",
-          "title": "Invite member"
+          "title": "Invite member",
+          "upgrade": {
+            "action": "Upgrade to Pro",
+            "description": "Member invitations are available on the Pro plan. Upgrade this workspace to invite people and manage their roles.",
+            "title": "Upgrade to invite members"
+          }
         },
         "joined": "Joined",
         "joinRequests": "Join requests",
