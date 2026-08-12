@@ -406,7 +406,7 @@ const vercelPreview = await requestSharedPage({
 assert.equal(vercelPreview.response.status, 200);
 assert.equal(
   vercelPreview.observedUrl,
-  `${vercelPreviewOrigin}/api/zero/shared-threads/${sharedThreadId}/meta`,
+  `${vercelPreviewOrigin}/api/okou/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   vercelPreview.observedHeaders.get("x-vercel-protection-bypass"),

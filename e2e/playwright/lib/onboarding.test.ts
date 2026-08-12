@@ -7,7 +7,7 @@ import { ensureOnboardingBootstrap } from "./onboarding";
 test("waits for the authenticated onboarding bootstrap", async () => {
   const server = createServer((request, response) => {
     assert.equal(request.method, "GET");
-    assert.equal(request.url, "/api/zero/onboarding/status");
+    assert.equal(request.url, "/api/okou/onboarding/status");
     assert.equal(request.headers.authorization, "Bearer clerk-session-token");
     assert.equal(request.headers["cf-access-client-id"], "access-client-id");
     assert.equal(

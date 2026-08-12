@@ -967,7 +967,7 @@ test("send a message through the deployed runner", async ({ page }) => {
   const sendResponsePromise = page.waitForResponse((response) => {
     return (
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/zero/chat/events"
+      new URL(response.url()).pathname === "/api/okou/chat/events"
     );
   });
   await composer.getByRole("button", { name: "Send" }).click();

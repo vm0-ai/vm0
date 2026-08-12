@@ -25,7 +25,7 @@ export async function ensureOnboardingBootstrap(options: {
   readonly clerkSessionToken: string;
 }): Promise<void> {
   const response = await fetch(
-    new URL("/api/zero/onboarding/status", options.apiUrl),
+    new URL("/api/okou/onboarding/status", options.apiUrl),
     {
       headers: authHeadersForToken(
         options.clerkSessionToken,

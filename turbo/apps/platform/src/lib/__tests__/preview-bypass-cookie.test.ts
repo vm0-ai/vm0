@@ -91,10 +91,10 @@ describe("preview bypass cookie", () => {
       search: "?x-vercel-protection-bypass=preview-secret",
     };
     const apiUrl = new URL(
-      "https://pr-22085-vercel-api.vm6.ai/api/zero/status",
+      "https://pr-22085-vercel-api.vm6.ai/api/okou/status",
     );
     const workerLaneUrl = new URL(
-      "https://pr-22085-api.vm6.ai/api/zero/status",
+      "https://pr-22085-api.vm6.ai/api/okou/status",
     );
 
     appendPreviewBypassToUrl(apiUrl, location, "");
@@ -115,10 +115,10 @@ describe("preview bypass cookie", () => {
       search: "?x-vercel-protection-bypass=preview-secret",
     };
     const apiUrl = new URL(
-      "https://pr-22085-vercel-api.vm6.ai/api/zero/status",
+      "https://pr-22085-vercel-api.vm6.ai/api/okou/status",
     );
     const workerLaneUrl = new URL(
-      "https://pr-22085-api.vm6.ai/api/zero/status",
+      "https://pr-22085-api.vm6.ai/api/okou/status",
     );
 
     appendPreviewBypassToUrl(apiUrl, location, "");

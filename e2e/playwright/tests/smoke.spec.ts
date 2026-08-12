@@ -41,7 +41,7 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
     clerkSessionToken,
   });
   const modelPoliciesResponse = await fetch(
-    `${apiUrl}/api/zero/model-policies`,
+    `${apiUrl}/api/okou/model-policies`,
     {
       method: "PUT",
       headers: {
