@@ -1,3 +1,4 @@
+import { useRef, type RefObject } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { Check } from "lucide-react";
 import {
@@ -158,9 +159,11 @@ function videoModelSummary(
 
 function VideoModelPane({
   model,
+  selectedRef,
   onChange,
 }: {
   readonly model: VideoModel;
+  readonly selectedRef: RefObject<HTMLButtonElement | null>;
   readonly onChange: (next: VideoModel) => void;
 }) {
   const { t } = useTranslation();
@@ -175,6 +178,7 @@ function VideoModelPane({
         return (
           <button
             key={candidate}
+            ref={selected ? selectedRef : undefined}
             type="button"
             role="radio"
             aria-checked={selected}
@@ -325,6 +329,9 @@ export function VideoTemplateOptionsPopover({
   const value = useGet(signals.template.videoTemplateOptionsValue$);
   const pane = useGet(signals.template.videoTemplateOptionsPane$);
   const close = useSet(signals.template.closeVideoTemplateOptions$);
+  // Keyboard navigation starts from the model in use rather than the top of a
+  // list the user has already read once.
+  const selectedModelRef = useRef<HTMLButtonElement>(null);
 
   if (!anchor || !value || value.type !== "video") {
     return null;
@@ -377,6 +384,7 @@ export function VideoTemplateOptionsPopover({
           "rounded-xl p-2",
           pane === "model" ? "w-[15rem]" : "w-[17.5rem] px-3 py-2.5",
         )}
+        initialFocus={pane === "model" ? selectedModelRef : undefined}
         aria-label={t(($) => {
           return pane === "model"
             ? $.chat.templates.videoOptionsModel
@@ -386,6 +394,7 @@ export function VideoTemplateOptionsPopover({
         {pane === "model" ? (
           <VideoModelPane
             model={resolved.model}
+            selectedRef={selectedModelRef}
             onChange={(model) => {
               apply({ ...resolved, model });
               // Picking a model is one decision and it is done; its parameters
