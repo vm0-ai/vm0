@@ -18,16 +18,6 @@ from tests.firewall_rewrite_helpers import make_safety_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
 
-def _query_with_segment_count(
-    segment_count: int,
-    *,
-    separator: str,
-    raw_pair: str,
-) -> str:
-    assert segment_count > 0
-    return separator.join([raw_pair] * segment_count)
-
-
 class TestAuthBaseUrlRewriteSafety:
     """auth.base rewrite safety and fail-closed handler tests."""
 
@@ -184,7 +174,7 @@ class TestAuthBaseUrlRewriteSafety:
             pytest.param(1, False, id="over-limit"),
         ],
     )
-    async def test_request_target_size_boundary_fails_before_auth_resolution(
+    async def test_request_target_size_boundary(
         self,
         real_flow,
         mitm_ctx,
@@ -270,7 +260,7 @@ class TestAuthBaseUrlRewriteSafety:
             ),
         ],
     )
-    async def test_trusted_query_pair_boundary_fails_before_forwarding(
+    async def test_trusted_query_pair_boundary(
         self,
         real_flow,
         mitm_ctx,
@@ -280,11 +270,7 @@ class TestAuthBaseUrlRewriteSafety:
         raw_pair: str,
         accepted: bool,
     ):
-        client_query = _query_with_segment_count(
-            client_segments,
-            separator=separator,
-            raw_pair=raw_pair,
-        )
+        client_query = separator.join([raw_pair] * client_segments)
         request_path = f"/hook?{client_query}"
         flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
             real_flow,

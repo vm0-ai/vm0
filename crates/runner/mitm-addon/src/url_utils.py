@@ -41,6 +41,7 @@ _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
 _VALID_AUTH_BASE_SCHEME = "https"
 _DEFAULT_HTTPS_PORT = 443
+
 # This matches the runner's existing managed-query work scale while retaining
 # ample room for ordinary connector URLs. Count every segment that auth.base
 # materializes, including empty segments separated by either ``&`` or ``;``.
