@@ -111,7 +111,7 @@ function buildCurrentThreadContext(
  */
 function buildAgentRunSourceContext(
   source: ChatAgentRunSourceAnnotation,
-  chatEventSnapshotReadEnabled = false,
+  chatEventSnapshotReadEnabled: boolean,
 ): string {
   const historyCommand = chatEventSnapshotReadEnabled
     ? `- \`okou chat messages --thread-id ${source.threadId} --output-dir threads\` synchronizes the source thread's raw snapshot and hot events into \`threads/${source.threadId}/\`; use \`rg -n '"seqId":<SEQ_ID>' threads/${source.threadId}/\` to inspect an event (chat-event:read)`
