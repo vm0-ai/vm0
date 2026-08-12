@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.164.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.0...runner-rs-v0.164.1) (2026-08-12)
+
+
+### Documentation
+
+* **python:** clarify firewall auth error contract ([#26447](https://github.com/vm0-ai/vm0/issues/26447)) ([7e4536e](https://github.com/vm0-ai/vm0/commit/7e4536e33bb7f419568d3b69ef69de252c9ac83b))
+
+
+### Refactoring
+
+* **runner:** centralize setup directory trust walking ([#26452](https://github.com/vm0-ai/vm0/issues/26452)) ([8bad407](https://github.com/vm0-ai/vm0/commit/8bad407c14ff99234da695cef441bd34d5a9e41c))
+
 ## [0.164.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.6...runner-rs-v0.164.0) (2026-08-11)
 
 
