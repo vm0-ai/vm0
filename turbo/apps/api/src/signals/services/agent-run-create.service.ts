@@ -187,7 +187,6 @@ import {
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
 import {
-  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorManualAuthReferencesMemberField,
@@ -199,7 +198,6 @@ import {
   renderTemplateForRuntime,
   type StoredValueRow,
 } from "./zero-custom-connector.service";
-import { refreshCustomConnectorOAuth2ValuesIfNeeded } from "./custom-connector-oauth2.service";
 import {
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,
@@ -4230,22 +4228,10 @@ function customConnectorRuntimeSkill(
   };
 }
 
-function customConnectorRuntimeCredentialsAreComplete(
+function customConnectorRequiredMemberCredentialsAreComplete(
   row: CustomConnectorRuntimeDataRows[number],
 ): boolean {
-  const valueMarkers = new Set(
-    row.values.map((value) => {
-      return customConnectorValueMarkerKey(value);
-    }),
-  );
-  const oauthConnected = valueMarkers.has(
-    customConnectorValueMarkerKey({
-      kind: "secret",
-      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-    }),
-  );
   return (
-    (row.connector.authMode !== "oauth" || oauthConnected) &&
     customConnectorMissingRequiredFieldKeys({
       fields: row.connector.fields,
       markers: row.values,
@@ -4331,7 +4317,7 @@ async function buildCustomConnectorRuntimeRow(args: {
   };
   const skill = customConnectorRuntimeSkill(args.row);
   const missingRequiredStartedAt = now();
-  const missingRequired = !customConnectorRuntimeCredentialsAreComplete(
+  const missingRequired = !customConnectorRequiredMemberCredentialsAreComplete(
     args.row,
   );
   args.stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
@@ -4473,10 +4459,10 @@ async function buildNewRunCustomConnectorRuntimeContext(
     rows: args.rows.filter((row) => {
       return (
         row.credentialAccess.kind === "current" &&
-        row.credentialAccess.usable &&
+        row.credentialAccess.runtimeAvailable &&
         (row.connector.authMode !== "manual" ||
           customConnectorManualAuthReferencesMemberField(row.connector)) &&
-        customConnectorRuntimeCredentialsAreComplete(row)
+        customConnectorRequiredMemberCredentialsAreComplete(row)
       );
     }),
   });
@@ -4610,6 +4596,7 @@ async function loadCustomConnectorContext(
       skills: [],
     };
   }
+  signal.throwIfAborted();
   const newRunRows = rows.filter((row) => {
     return (
       row.connector.kind !== "mcp" ||
@@ -4619,33 +4606,13 @@ async function loadCustomConnectorContext(
       )
     );
   });
-  const refreshedRows: CustomConnectorRuntimeDataRows[number][] = [];
-  for (const row of newRunRows) {
-    refreshedRows.push({
-      connector: row.connector,
-      credentialAccess: row.credentialAccess,
-      values: await refreshCustomConnectorOAuth2ValuesIfNeeded(
-        {
-          db,
-          orgId: args.orgId,
-          userId: args.userId,
-          connector: row.connector,
-          values: row.values,
-          featureContext: args.featureSwitchContext,
-        },
-        signal,
-      ),
-    });
-    signal.throwIfAborted();
-  }
-
   return await measureApiDispatchTiming(
     timing,
     "api_dispatch_prepare_context_build_custom_connector_firewalls",
     "nested",
     async () => {
       return await buildNewRunCustomConnectorRuntimeContext({
-        rows: refreshedRows,
+        rows: newRunRows,
         featureSwitchContext: args.featureSwitchContext,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         grants: args.customConnectorGrants,
