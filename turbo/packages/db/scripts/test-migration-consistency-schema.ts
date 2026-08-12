@@ -1083,6 +1083,10 @@ async function expectDatabaseError(
 const CUSTOM_CREDENTIAL_STORAGE_PREVIOUS_MIGRATION = "0838_gifted_korath";
 const CUSTOM_CREDENTIAL_STORAGE_MIGRATION =
   "0840_backfill_custom_connector_credential_parents_v1";
+const CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_PREVIOUS_MIGRATION =
+  "0911_delete_legacy_custom_credentials_on_disconnect";
+const CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_MIGRATION =
+  "0912_drop_legacy_custom_credential_storage";
 
 const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
   "0872_curious_yellow_claw";
@@ -2205,6 +2209,324 @@ async function validateCustomCredentialStorageGenerationBackfill(): Promise<void
   }
 }
 
+async function validateCustomCredentialStorageContraction(): Promise<void> {
+  console.log("=== Validate Custom credential storage contraction ===\n");
+  const testDb = "migration_custom_credential_storage_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    connectorId: "00000000-0000-4000-8000-000000091201",
+    definitionId: "00000000-0000-4000-8000-000000091202",
+    orgId: "custom-credential-contraction-org",
+    userId: "custom-credential-contraction-user",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "org_custom_connectors" (
+            "id",
+            "org_id",
+            "slug",
+            "display_name",
+            "prefix_templates",
+            "fields",
+            "header_injections",
+            "query_injections",
+            "auth_mode",
+            "storage_version",
+            "created_by"
+          ) VALUES (
+            $1,
+            $2,
+            '_credential-contraction',
+            'Credential contraction',
+            '["https://credential-contraction.example.test/"]'::jsonb,
+            '[{"key":"api_key","label":"API key","kind":"secret","required":true},{"key":"region","label":"Region","kind":"variable","required":true}]'::jsonb,
+            '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.api_key}}"}]'::jsonb,
+            '[]'::jsonb,
+            'manual',
+            1,
+            $3
+          )
+        `,
+        [fixture.definitionId, fixture.orgId, fixture.userId],
+      );
+      await client.query(
+        `
+          INSERT INTO "connectors" (
+            "id",
+            "custom_connector_id",
+            "auth_method",
+            "storage_version",
+            "user_id",
+            "org_id"
+          ) VALUES ($1, $2, 'manual', 1, $3, $4)
+        `,
+        [
+          fixture.connectorId,
+          fixture.definitionId,
+          fixture.userId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_values" (
+            "connector_id",
+            "user_id",
+            "org_id",
+            "kind",
+            "key",
+            "encrypted_value"
+          ) VALUES
+            ($1, $2, $3, 'secret', 'api_key', 'legacy-secret-envelope'),
+            ($1, $2, $3, 'variable', 'region', 'legacy-variable-envelope')
+        `,
+        [fixture.definitionId, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_secrets" (
+            "connector_id",
+            "user_id",
+            "org_id",
+            "encrypted_value"
+          ) VALUES ($1, $2, $3, 'legacy-single-secret-envelope')
+        `,
+        [fixture.definitionId, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "secrets" (
+            "name",
+            "encrypted_value",
+            "type",
+            "connector_id",
+            "user_id",
+            "org_id"
+          ) VALUES (
+            'api_key',
+            'shared-secret-envelope',
+            'connector',
+            $1,
+            $2,
+            $3
+          )
+        `,
+        [fixture.connectorId, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "variables" (
+            "name",
+            "value",
+            "type",
+            "connector_id",
+            "user_id",
+            "org_id"
+          ) VALUES ('region', 'us-east-1', 'connector', $1, $2, $3)
+        `,
+        [fixture.connectorId, fixture.userId, fixture.orgId],
+      );
+
+      const assertPreContractionState = async (): Promise<void> => {
+        const state = await client.query<{
+          bridgeFunctionExists: boolean;
+          bridgeTriggerExists: boolean;
+          connectorCount: number;
+          legacySecretCount: number;
+          legacyValueCount: number;
+          sharedSecretCount: number;
+          sharedVariableCount: number;
+        }>(
+          `
+            SELECT
+              to_regprocedure(
+                'public.delete_legacy_custom_credentials_0911()'
+              ) IS NOT NULL AS "bridgeFunctionExists",
+              EXISTS (
+                SELECT 1
+                FROM "pg_trigger"
+                WHERE "tgrelid" = 'public.connectors'::regclass
+                  AND "tgname" = 'connectors_delete_legacy_custom_credentials_0911'
+                  AND NOT "tgisinternal"
+              ) AS "bridgeTriggerExists",
+              (
+                SELECT count(*)::int
+                FROM "connectors"
+                WHERE "id" = $1
+              ) AS "connectorCount",
+              (
+                SELECT count(*)::int
+                FROM "org_custom_connector_secrets"
+                WHERE "connector_id" = $2
+                  AND "org_id" = $3
+                  AND "user_id" = $4
+              ) AS "legacySecretCount",
+              (
+                SELECT count(*)::int
+                FROM "org_custom_connector_values"
+                WHERE "connector_id" = $2
+                  AND "org_id" = $3
+                  AND "user_id" = $4
+              ) AS "legacyValueCount",
+              (
+                SELECT count(*)::int
+                FROM "secrets"
+                WHERE "connector_id" = $1
+              ) AS "sharedSecretCount",
+              (
+                SELECT count(*)::int
+                FROM "variables"
+                WHERE "connector_id" = $1
+              ) AS "sharedVariableCount"
+          `,
+          [
+            fixture.connectorId,
+            fixture.definitionId,
+            fixture.orgId,
+            fixture.userId,
+          ],
+        );
+        assert.deepEqual(state.rows, [
+          {
+            bridgeFunctionExists: true,
+            bridgeTriggerExists: true,
+            connectorCount: 1,
+            legacySecretCount: 1,
+            legacyValueCount: 2,
+            sharedSecretCount: 1,
+            sharedVariableCount: 1,
+          },
+        ]);
+      };
+
+      await assertPreContractionState();
+      await client.query(`
+        CREATE FUNCTION "unexpected_legacy_custom_credential_reader_0912"()
+        RETURNS bigint
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+          legacy_count bigint;
+        BEGIN
+          SELECT count(*)
+          INTO legacy_count
+          FROM "org_custom_connector_values";
+          RETURN legacy_count;
+        END;
+        $$
+      `);
+      await assert.rejects(
+        applyMigrationsUpToTag(
+          client,
+          CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_MIGRATION,
+        ),
+        /Unexpected stored routines reference legacy Custom credential tables/u,
+      );
+      await assertPreContractionState();
+
+      await client.query(
+        `DROP FUNCTION "unexpected_legacy_custom_credential_reader_0912"()`,
+      );
+      await client.query(`
+        CREATE VIEW "unexpected_legacy_custom_credential_dependency_0912" AS
+        SELECT "id"
+        FROM "org_custom_connector_secrets"
+      `);
+      await assert.rejects(
+        applyMigrationsUpToTag(
+          client,
+          CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_MIGRATION,
+        ),
+        /cannot drop table org_custom_connector_secrets because other objects depend on it/u,
+      );
+      await assertPreContractionState();
+
+      await client.query(
+        `DROP VIEW "unexpected_legacy_custom_credential_dependency_0912"`,
+      );
+      await applyMigrationsUpToTag(
+        client,
+        CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_MIGRATION,
+      );
+
+      const finalState = await client.query<{
+        bridgeFunctionExists: boolean;
+        bridgeTriggerExists: boolean;
+        connectorCount: number;
+        legacySecretsTable: string | null;
+        legacyValuesTable: string | null;
+        sharedSecretCount: number;
+        sharedVariableCount: number;
+      }>(
+        `
+          SELECT
+            to_regclass(
+              'public.org_custom_connector_secrets'
+            )::text AS "legacySecretsTable",
+            to_regclass(
+              'public.org_custom_connector_values'
+            )::text AS "legacyValuesTable",
+            to_regprocedure(
+              'public.delete_legacy_custom_credentials_0911()'
+            ) IS NOT NULL AS "bridgeFunctionExists",
+            EXISTS (
+              SELECT 1
+              FROM "pg_trigger"
+              WHERE "tgname" = 'connectors_delete_legacy_custom_credentials_0911'
+                AND NOT "tgisinternal"
+            ) AS "bridgeTriggerExists",
+            (
+              SELECT count(*)::int
+              FROM "connectors"
+              WHERE "id" = $1
+            ) AS "connectorCount",
+            (
+              SELECT count(*)::int
+              FROM "secrets"
+              WHERE "connector_id" = $1
+            ) AS "sharedSecretCount",
+            (
+              SELECT count(*)::int
+              FROM "variables"
+              WHERE "connector_id" = $1
+            ) AS "sharedVariableCount"
+        `,
+        [fixture.connectorId],
+      );
+      assert.deepEqual(finalState.rows, [
+        {
+          bridgeFunctionExists: false,
+          bridgeTriggerExists: false,
+          connectorCount: 1,
+          legacySecretsTable: null,
+          legacyValuesTable: null,
+          sharedSecretCount: 1,
+          sharedVariableCount: 1,
+        },
+      ]);
+
+      console.log("   ✅ Untracked routine references abort atomically");
+      console.log("   ✅ Tracked dependencies abort without CASCADE");
+      console.log("   ✅ Legacy tables and bridge objects are removed");
+      console.log("   ✅ Shared connector credentials remain intact\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 type PermanentTrigger = {
   readonly definition: string;
   readonly schemaName: string;
@@ -2257,13 +2579,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     schemaName: "public",
     tableName: "chat_threads",
     triggerName: "chat_threads_normalize_computer_access",
-  },
-  {
-    definition:
-      "CREATE TRIGGER connectors_delete_legacy_custom_credentials_0911 AFTER DELETE ON public.connectors FOR EACH ROW EXECUTE FUNCTION delete_legacy_custom_credentials_0911()",
-    schemaName: "public",
-    tableName: "connectors",
-    triggerName: "connectors_delete_legacy_custom_credentials_0911",
   },
   {
     definition:
@@ -2383,13 +2698,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "7f12cb6026b4e6d6638aaa22e0a93514",
     functionName: "chat_threads_normalize_computer_access",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "541497190da201b22f7dc7c3679c9c06",
-    functionName: "delete_legacy_custom_credentials_0911",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -2562,211 +2870,6 @@ async function validatePermanentTriggerAndFunctionInventory(
 
     console.log("   ✅ Permanent trigger and function inventories match\n");
   } finally {
-    await client.end();
-  }
-}
-
-async function validateLegacyCustomCredentialDeleteBridge(
-  dbUrl: string,
-): Promise<void> {
-  console.log(
-    "=== Phase 2.5.2: Validate legacy Custom credential deletion bridge ===\n",
-  );
-  const client = new Client({ connectionString: dbUrl });
-  await client.connect();
-
-  const fixture = {
-    firstCustomConnectorId: "00000000-0000-4000-8000-000000262211",
-    secondCustomConnectorId: "00000000-0000-4000-8000-000000262212",
-    targetConnectionId: "00000000-0000-4000-8000-000000262213",
-    otherUserConnectionId: "00000000-0000-4000-8000-000000262214",
-    otherDefinitionConnectionId: "00000000-0000-4000-8000-000000262215",
-    builtinConnectionId: "00000000-0000-4000-8000-000000262216",
-    orgId: "legacy-custom-credential-delete-bridge-org",
-    targetUserId: "legacy-custom-credential-delete-bridge-target-user",
-    otherUserId: "legacy-custom-credential-delete-bridge-other-user",
-  } as const;
-
-  try {
-    await client.query("BEGIN");
-    await client.query(
-      `INSERT INTO "org_custom_connectors" (
-         "id", "org_id", "slug", "display_name", "prefix_templates",
-         "fields", "header_injections", "query_injections", "auth_mode",
-         "storage_version", "created_by"
-       )
-       VALUES
-         ($1, $3, '_delete-bridge-one', 'Delete bridge one',
-          '["https://delete-bridge-one.example.test/"]'::jsonb,
-          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
-          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
-          '[]'::jsonb, 'manual', 1, $4),
-         ($2, $3, '_delete-bridge-two', 'Delete bridge two',
-          '["https://delete-bridge-two.example.test/"]'::jsonb,
-          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
-          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
-          '[]'::jsonb, 'manual', 1, $4)`,
-      [
-        fixture.firstCustomConnectorId,
-        fixture.secondCustomConnectorId,
-        fixture.orgId,
-        fixture.targetUserId,
-      ],
-    );
-    await client.query(
-      `INSERT INTO "connectors" (
-         "id", "connector_slug", "custom_connector_id", "auth_method",
-         "storage_version", "user_id", "org_id"
-       )
-       VALUES
-         ($1, NULL, $5, 'manual', 1, $7, $9),
-         ($2, NULL, $5, 'manual', 1, $8, $9),
-         ($3, NULL, $6, 'manual', 1, $7, $9),
-         ($4, 'github', NULL, 'oauth', 1, $7, $9)`,
-      [
-        fixture.targetConnectionId,
-        fixture.otherUserConnectionId,
-        fixture.otherDefinitionConnectionId,
-        fixture.builtinConnectionId,
-        fixture.firstCustomConnectorId,
-        fixture.secondCustomConnectorId,
-        fixture.targetUserId,
-        fixture.otherUserId,
-        fixture.orgId,
-      ],
-    );
-    await client.query(
-      `INSERT INTO "org_custom_connector_values" (
-         "connector_id", "user_id", "org_id", "kind", "key",
-         "encrypted_value"
-       )
-       VALUES
-         ($1, $3, $5, 'secret', 'secret', 'encrypted-target-value'),
-         ($1, $4, $5, 'secret', 'secret', 'encrypted-other-user-value'),
-         ($2, $3, $5, 'secret', 'secret', 'encrypted-other-definition-value')`,
-      [
-        fixture.firstCustomConnectorId,
-        fixture.secondCustomConnectorId,
-        fixture.targetUserId,
-        fixture.otherUserId,
-        fixture.orgId,
-      ],
-    );
-    await client.query(
-      `INSERT INTO "org_custom_connector_secrets" (
-         "connector_id", "user_id", "org_id", "encrypted_value"
-       )
-       VALUES
-         ($1, $3, $5, 'encrypted-target-secret'),
-         ($1, $4, $5, 'encrypted-other-user-secret'),
-         ($2, $3, $5, 'encrypted-other-definition-secret')`,
-      [
-        fixture.firstCustomConnectorId,
-        fixture.secondCustomConnectorId,
-        fixture.targetUserId,
-        fixture.otherUserId,
-        fixture.orgId,
-      ],
-    );
-
-    await client.query(`DELETE FROM "connectors" WHERE "id" = $1`, [
-      fixture.targetConnectionId,
-    ]);
-    const afterTargetDelete = await client.query<{
-      legacySecrets: number;
-      legacyValues: number;
-      targetSecrets: number;
-      targetValues: number;
-    }>(`
-      SELECT
-        (
-          SELECT count(*)::int FROM "org_custom_connector_secrets"
-          WHERE "org_id" = '${fixture.orgId}'
-        )
-          AS "legacySecrets",
-        (
-          SELECT count(*)::int FROM "org_custom_connector_values"
-          WHERE "org_id" = '${fixture.orgId}'
-        )
-          AS "legacyValues",
-        (
-          SELECT count(*)::int FROM "org_custom_connector_secrets"
-          WHERE "connector_id" = '${fixture.firstCustomConnectorId}'
-            AND "org_id" = '${fixture.orgId}'
-            AND "user_id" = '${fixture.targetUserId}'
-        ) AS "targetSecrets",
-        (
-          SELECT count(*)::int FROM "org_custom_connector_values"
-          WHERE "connector_id" = '${fixture.firstCustomConnectorId}'
-            AND "org_id" = '${fixture.orgId}'
-            AND "user_id" = '${fixture.targetUserId}'
-        ) AS "targetValues"
-    `);
-    assert.deepEqual(afterTargetDelete.rows, [
-      {
-        legacySecrets: 2,
-        legacyValues: 2,
-        targetSecrets: 0,
-        targetValues: 0,
-      },
-    ]);
-
-    await client.query(`DELETE FROM "connectors" WHERE "id" = $1`, [
-      fixture.builtinConnectionId,
-    ]);
-    const afterBuiltinDelete = await client.query<{
-      legacySecrets: number;
-      legacyValues: number;
-    }>(`
-      SELECT
-        (
-          SELECT count(*)::int FROM "org_custom_connector_secrets"
-          WHERE "org_id" = '${fixture.orgId}'
-        )
-          AS "legacySecrets",
-        (
-          SELECT count(*)::int FROM "org_custom_connector_values"
-          WHERE "org_id" = '${fixture.orgId}'
-        )
-          AS "legacyValues"
-    `);
-    assert.deepEqual(afterBuiltinDelete.rows, [
-      { legacySecrets: 2, legacyValues: 2 },
-    ]);
-
-    await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
-      fixture.secondCustomConnectorId,
-    ]);
-    const afterDefinitionDelete = await client.query<{
-      customConnections: number;
-      legacySecrets: number;
-      legacyValues: number;
-    }>(`
-      SELECT
-        (
-          SELECT count(*)::int FROM "connectors"
-          WHERE "custom_connector_id" = '${fixture.secondCustomConnectorId}'
-        ) AS "customConnections",
-        (
-          SELECT count(*)::int FROM "org_custom_connector_secrets"
-          WHERE "org_id" = '${fixture.orgId}'
-        )
-          AS "legacySecrets",
-        (
-          SELECT count(*)::int FROM "org_custom_connector_values"
-          WHERE "org_id" = '${fixture.orgId}'
-        )
-          AS "legacyValues"
-    `);
-    assert.deepEqual(afterDefinitionDelete.rows, [
-      { customConnections: 0, legacySecrets: 1, legacyValues: 1 },
-    ]);
-
-    console.log("   ✅ Custom disconnect deletes only its legacy copies");
-    console.log("   ✅ Builtin disconnect leaves legacy Custom rows unchanged");
-    console.log("   ✅ Custom definition deletion still cascades cleanly\n");
-  } finally {
-    await client.query("ROLLBACK");
     await client.end();
   }
 }
@@ -9521,6 +9624,7 @@ async function main(): Promise<void> {
     await validateMcpCustomConnectorReaderPreparation();
     await validateCustomConnectorDefinitionContraction();
     await validateCustomCredentialStorageGenerationBackfill();
+    await validateCustomCredentialStorageContraction();
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
@@ -9549,7 +9653,6 @@ async function main(): Promise<void> {
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
-    await validateLegacyCustomCredentialDeleteBridge(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
@@ -9602,9 +9705,6 @@ async function main(): Promise<void> {
         "   ✅ Zero-run Codex tier readers survive the pre-expansion schema",
       );
       console.log("   ✅ Permanent trigger and function inventories match");
-      console.log(
-        "   ✅ Legacy Custom credential copies follow shared connection deletion",
-      );
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",
       );

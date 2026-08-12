@@ -109,8 +109,6 @@ import * as runOutputMaterializationSchema from "./schema/run-output-materializa
 import * as piThreadMessageSchema from "./schema/pi-thread-message";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
-import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
-import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as artifactSchema from "./schema/artifact";
 import * as sharedThreadSchema from "./schema/shared-thread";
@@ -241,8 +239,6 @@ export const schema = {
   ...piThreadMessageSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorOauthConfigSchema,
-  ...orgCustomConnectorSecretSchema,
-  ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
   ...artifactSchema,
   ...sharedThreadSchema,
