@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow create command
+ * Tests for okou workflow create command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -33,7 +33,7 @@ const mockWorkflow = {
   canPublish: true,
 };
 
-describe("zero workflow create command", () => {
+describe("okou workflow create command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

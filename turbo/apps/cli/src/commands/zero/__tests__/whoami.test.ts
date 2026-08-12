@@ -72,7 +72,7 @@ const defaultPermissionDetails = [
   }),
 ];
 
-describe("zero whoami command", () => {
+describe("okou whoami command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {

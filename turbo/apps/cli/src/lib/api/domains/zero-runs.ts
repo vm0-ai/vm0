@@ -28,5 +28,5 @@ export async function getZeroRunAgentEvents(
     },
   });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to get zero run events for "${id}"`);
+  handleError(result, `Failed to get run events for "${id}"`);
 }

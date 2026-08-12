@@ -27,7 +27,7 @@ export async function listZeroLogs(options?: {
     },
   });
   if (result.status === 200) return result.body;
-  handleError(result, "Failed to list zero logs");
+  handleError(result, "Failed to list okou logs");
 }
 
 export async function searchZeroLogs(options: {
@@ -53,5 +53,5 @@ export async function searchZeroLogs(options: {
     },
   });
   if (result.status === 200) return result.body;
-  handleError(result, "Failed to search zero logs");
+  handleError(result, "Failed to search okou logs");
 }

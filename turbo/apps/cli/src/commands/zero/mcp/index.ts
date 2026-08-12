@@ -182,10 +182,10 @@ export const zeroMcpCommand = new Command()
     "after",
     `
 Examples:
-  List authorized MCP connectors: zero mcp list
-  List connector tools:          zero mcp list-tools _acme-mcp --json
-  Call a tool:                   zero mcp call _acme-mcp search --input '{"query":"vm0"}' --json
-  Pipe tool input:               printf '{"query":"vm0"}' | zero mcp call _acme-mcp search
+  List authorized MCP connectors: okou mcp list
+  List connector tools:          okou mcp list-tools _acme-mcp --json
+  Call a tool:                   okou mcp call _acme-mcp search --input '{"query":"vm0"}' --json
+  Pipe tool input:               printf '{"query":"vm0"}' | okou mcp call _acme-mcp search
 
 Notes:
   - Available only inside an Agent Run and scoped to its Agent's current authorization

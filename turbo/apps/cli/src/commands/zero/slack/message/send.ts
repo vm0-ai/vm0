@@ -16,11 +16,11 @@ export const sendCommand = new Command()
     "after",
     `
 Examples:
-  Simple message:        zero slack message send -c C01234 -t "Hello!"
-  DM a user:             zero slack message send -u U0A8V9X98QJ -t "Hello!"
-  DM yourself:           zero slack message send -u me -t "Hello!"
-  Reply in thread:       zero slack message send -c C01234 --thread 1234567890.123456 -t "reply"
-  Rich blocks:           zero slack message send -c C01234 --blocks '[{"type":"section","text":{"type":"mrkdwn","text":"*Bold*"}}]'
+  Simple message:        okou slack message send -c C01234 -t "Hello!"
+  DM a user:             okou slack message send -u U0A8V9X98QJ -t "Hello!"
+  DM yourself:           okou slack message send -u me -t "Hello!"
+  Reply in thread:       okou slack message send -c C01234 --thread 1234567890.123456 -t "reply"
+  Rich blocks:           okou slack message send -c C01234 --blocks '[{"type":"section","text":{"type":"mrkdwn","text":"*Bold*"}}]'
 
 Notes:
   - Either --channel or --user is required; they are mutually exclusive
@@ -42,7 +42,7 @@ Notes:
         if (!channel && !user) {
           throw new Error("Either --channel or --user must be provided", {
             cause: new Error(
-              'Usage: zero slack message send -c CHANNEL_ID -t "your message"\n       zero slack message send -u USER_ID -t "your message"',
+              'Usage: okou slack message send -c CHANNEL_ID -t "your message"\n       okou slack message send -u USER_ID -t "your message"',
             ),
           });
         }
@@ -86,7 +86,7 @@ Notes:
         if (!text && !blocks) {
           throw new Error("Either --text or --blocks must be provided", {
             cause: new Error(
-              'Usage: zero slack message send -c CHANNEL_ID -t "your message"',
+              'Usage: okou slack message send -c CHANNEL_ID -t "your message"',
             ),
           });
         }

@@ -138,7 +138,7 @@ function toIndexEntry(
           path: entry.source.path,
           archive: entry.source.archive,
           pull: {
-            command: `zero resource pull ${entry.id} --dir ./generated/resources`,
+            command: `okou resource pull ${entry.id} --dir ./generated/resources`,
             resolvedPath: `./generated/resources/${entry.source.path}`,
           },
         }

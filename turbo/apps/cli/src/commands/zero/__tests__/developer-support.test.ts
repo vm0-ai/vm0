@@ -1,5 +1,5 @@
 /**
- * Tests for zero developer-support command
+ * Tests for okou developer-support command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -15,7 +15,7 @@ import chalk from "chalk";
 
 const ENDPOINT_URL = "http://localhost:3000/api/zero/developer-support";
 
-describe("zero developer-support command", () => {
+describe("okou developer-support command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

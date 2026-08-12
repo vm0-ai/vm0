@@ -168,7 +168,7 @@ async function seedScrapePricing(): Promise<void> {
   ]);
 }
 
-describe("zero scrape route", () => {
+describe("okou scrape route", () => {
   it("rejects zero tokens without scrape:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {

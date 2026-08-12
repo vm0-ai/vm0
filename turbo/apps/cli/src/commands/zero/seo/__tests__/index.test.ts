@@ -41,7 +41,7 @@ function dataForSeoResponse(operation: string, result: unknown) {
   };
 }
 
-describe("zero seo command", () => {
+describe("okou seo command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -250,7 +250,7 @@ describe("zero seo command", () => {
       return candidate.name() === "serp";
     });
     if (!command) {
-      throw new Error("Zero SEO serp command is missing");
+      throw new Error("Okou SEO serp command is missing");
     }
     let help = "";
     command.configureOutput({

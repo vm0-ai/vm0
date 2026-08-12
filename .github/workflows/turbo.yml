@@ -182,6 +182,9 @@ jobs:
       - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
 
+      - name: Audit Okou CLI cutover
+        run: .github/scripts/audit-okou-cli-cutover.sh
+
       - name: Detect changes
         id: detect
         env:
@@ -2199,8 +2202,8 @@ jobs:
           sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/okou"
           sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/zero"
           okou --help
-          zero --help
-          zero __agent-loop --help
+          zero --help # okou-cutover-audit: compatibility-only
+          zero __agent-loop --help # okou-cutover-audit: compatibility-only
       - name: Run Serial E2E Tests
         run: |
           echo "=== Running Serial E2E Tests ==="

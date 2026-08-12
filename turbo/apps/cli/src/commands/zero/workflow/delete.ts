@@ -22,9 +22,9 @@ export const deleteCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow delete tell-a-joke --agent <agent-id> -y
-  zero workflow delete <workflow-id>
-  zero workflow delete <workflow-id> -y
+  okou workflow delete tell-a-joke --agent <agent-id> -y
+  okou workflow delete <workflow-id>
+  okou workflow delete <workflow-id> -y
 
 Notes:
   - Use -y to skip confirmation in non-interactive mode`,

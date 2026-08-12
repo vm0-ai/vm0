@@ -731,7 +731,7 @@ export const prepareHostedSiteDeployment$ = command(
     if (await hasUnscopedHostedSiteConflict(writeDb, scopedArgs)) {
       return {
         status: "conflict",
-        message: `Hosted site slug "${args.body.site}" is owned outside this chat. Choose a different --site value and rerun the same zero host command.`,
+        message: `Hosted site slug "${args.body.site}" is owned outside this chat. Choose a different --site value and rerun the same okou host command.`,
       };
     }
     signal.throwIfAborted();

@@ -226,7 +226,7 @@ function stubResolvedDependencies(
   );
 }
 
-describe("zero connector check command", () => {
+describe("okou connector check command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -306,7 +306,7 @@ describe("zero connector check command", () => {
         "URL https://service.example.com/api/items matches the Server Only connector",
       );
       expect(getOutput()).toContain(
-        "zero connector check --url 'https://service.example.com/api/items' --connector 'server-only' --env-name 'SERVER_ONLY_TOKEN' --method 'POST'",
+        "okou connector check --url 'https://service.example.com/api/items' --connector 'server-only' --env-name 'SERVER_ONLY_TOKEN' --method 'POST'",
       );
       expect(getOutput()).not.toContain("access_token=secret");
       expect(getOutput()).not.toContain("#private");
@@ -370,7 +370,7 @@ describe("zero connector check command", () => {
         'Result: "contents:write" is in the deny list — denied.',
       );
       expect(getOutput()).toContain(
-        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+        "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD>",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
     });
@@ -395,7 +395,7 @@ describe("zero connector check command", () => {
       ]);
 
       expect(getOutput()).toContain(
-        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+        "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD>",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
       expect(getOutput()).not.toContain("automatically start the next round");
@@ -869,10 +869,10 @@ describe("zero connector check command", () => {
         expect(getOutput()).not.toContain("allow list: [");
         expect(getOutput()).not.toContain("deny list:  [");
         expect(getOutput()).not.toContain("ask list:   [");
-        const requestCommand = "zero connector permission-request";
+        const requestCommand = "okou connector permission-request";
         if (policy.outcome === "deny" || policy.outcome === "ask") {
           expect(getOutput()).toContain(
-            "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+            "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD>",
           );
           expect(getOutput()).not.toContain(requestCommand);
         } else {
@@ -915,7 +915,7 @@ describe("zero connector check command", () => {
       expect(getOutput()).toContain('"metadata:read" is in the ask list');
       expect(getOutput()).not.toContain("--permission contents:read");
       expect(getOutput()).toContain(
-        "zero connector permission-request 'github' --permission 'metadata:read' --url 'https://api.github.com/repos/vm0-ai/vm0' --method 'GET'",
+        "okou connector permission-request 'github' --permission 'metadata:read' --url 'https://api.github.com/repos/vm0-ai/vm0' --method 'GET'",
       );
     });
 
@@ -980,7 +980,7 @@ describe("zero connector check command", () => {
         expect(getOutput()).toContain(expected);
         if (expectsGuidance) {
           expect(getOutput()).toContain(
-            "zero connector permission-request 'github' --permission '__unknown__' --url 'https://api.github.com/not-a-known-endpoint' --method 'GET'",
+            "okou connector permission-request 'github' --permission '__unknown__' --url 'https://api.github.com/not-a-known-endpoint' --method 'GET'",
           );
         } else {
           expect(getOutput()).not.toContain("--permission __unknown__");

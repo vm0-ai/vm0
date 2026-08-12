@@ -1,5 +1,5 @@
 /**
- * Tests for zero teams upload-file command.
+ * Tests for okou teams upload-file command.
  */
 
 import { mkdirSync, rmSync, writeFileSync } from "fs";
@@ -16,7 +16,7 @@ const UPLOAD_COMPLETE_URL =
   "http://localhost:3000/api/zero/integrations/teams/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/teams-upload";
 
-describe("zero teams upload-file command", () => {
+describe("okou teams upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

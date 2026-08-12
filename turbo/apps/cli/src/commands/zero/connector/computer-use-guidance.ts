@@ -29,6 +29,6 @@ export function printComputerUsePermissionGuidance(): void {
     "Open Zero Desktop, make sure Computer Use is online, select the Computer Use host for this chat/thread, then start a new run. Existing run tokens cannot be upgraded in place.",
   );
   console.log(
-    "Run `zero whoami` to confirm whether the current ZERO_TOKEN includes computer-use:write.",
+    "Run `okou whoami` to confirm whether the current ZERO_TOKEN includes computer-use:write.",
   );
 }

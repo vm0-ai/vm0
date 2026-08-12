@@ -1,5 +1,5 @@
 /**
- * Tests for zero connector connect command
+ * Tests for okou connector connect command
  *
  * Tests command-level behavior via parseAsync():
  * - Entry point: command.parseAsync()
@@ -34,7 +34,7 @@ function connectorResponse(connectorSlug: string, authMethod = "api-token") {
   };
 }
 
-describe("zero connector connect command", () => {
+describe("okou connector connect command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -92,7 +92,7 @@ describe("zero connector connect command", () => {
     });
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Zendesk connected");
-    expect(output).toContain("zero connector status zendesk");
+    expect(output).toContain("okou connector status zendesk");
     expect(output).not.toContain("secret-token");
   });
 
@@ -205,7 +205,7 @@ describe("zero connector connect command", () => {
     expect(errorOutput).toContain(
       "At least one --value NAME=VALUE is required",
     );
-    expect(errorOutput).toContain("zero connector connect zendesk");
+    expect(errorOutput).toContain("okou connector connect zendesk");
   });
 
   it("fails before the request for malformed values", async () => {

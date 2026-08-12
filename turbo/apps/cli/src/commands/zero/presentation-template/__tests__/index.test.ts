@@ -40,7 +40,7 @@ function pngHeader(width: number, height: number): Buffer {
   return bytes;
 }
 
-describe("zero presentation-template command", () => {
+describe("okou presentation-template command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
     return undefined as never;
   });
@@ -135,7 +135,7 @@ describe("zero presentation-template command", () => {
     const sourcePath = join(tempDir, "source");
     await zeroPresentationTemplateCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "source",
       "--id",
       TEMPLATE_ID,
@@ -152,7 +152,7 @@ describe("zero presentation-template command", () => {
     writeFileSync(join(pagesDir, "page-1.png"), firstPage);
     await zeroPresentationTemplateCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "pages",
       "upload",
       "--id",
@@ -173,7 +173,7 @@ describe("zero presentation-template command", () => {
     writeFileSync(join(packageDir, "tokens.json"), '{"colors":{}}');
     await zeroPresentationTemplateCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "publish",
       "--id",
       TEMPLATE_ID,
@@ -190,7 +190,7 @@ describe("zero presentation-template command", () => {
 
     await zeroPresentationTemplateCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "fail",
       "--id",
       TEMPLATE_ID,

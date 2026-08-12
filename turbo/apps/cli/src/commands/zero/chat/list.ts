@@ -47,7 +47,7 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List web chat threads for an agent")
-  .option("--agent <id>", "Filter by Zero agent ID (defaults to ZERO_AGENT_ID)")
+  .option("--agent <id>", "Filter by agent ID (defaults to ZERO_AGENT_ID)")
   .option(
     "--limit <n>",
     `Maximum number of threads to print (default: ${DEFAULT_LIMIT}, max: ${MAX_LIMIT})`,
@@ -57,10 +57,10 @@ export const listCommand = new Command()
     "after",
     `
 Examples:
-  List this agent's chats:  zero chat list
-  List another agent:       zero chat list --agent <agent-id>
-  Limit the output:         zero chat list --limit 10
-  Print JSON:               zero chat list --json
+  List this agent's chats:  okou chat list
+  List another agent:       okou chat list --agent <agent-id>
+  Limit the output:         okou chat list --limit 10
+  Print JSON:               okou chat list --json
 
 Notes:
   - Defaults --agent to ZERO_AGENT_ID

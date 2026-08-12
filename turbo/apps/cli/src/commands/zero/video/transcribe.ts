@@ -54,10 +54,10 @@ export const transcribeCommand = new Command()
     "after",
     `
 Examples:
-  Transcribe from URL:      zero video transcribe --url "https://..."
-  Transcribe a web file:    zero video transcribe --file-id abc-123-def
-  Transcribe a local file:  zero video transcribe --file /tmp/video.mp4
-  Plain text only:          zero video transcribe --url "https://..." --no-timestamps
+  Transcribe from URL:      okou video transcribe --url "https://..."
+  Transcribe a web file:    okou video transcribe --file-id abc-123-def
+  Transcribe a local file:  okou video transcribe --file /tmp/video.mp4
+  Plain text only:          okou video transcribe --url "https://..." --no-timestamps
 
 Output:
   Structured Markdown printed to stdout:

@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent delete command
+ * Tests for okou agent delete command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -21,7 +21,7 @@ const mockAgent = {
   connectors: ["github"],
 };
 
-describe("zero agent delete command", () => {
+describe("okou agent delete command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

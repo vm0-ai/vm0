@@ -71,8 +71,8 @@ export const cancelCommand = new Command()
     "after",
     `
 Examples:
-  Cancel a run:      zero chat cancel --thread-id <thread-id> --run-id <run-id>
-  Cancel a message:  zero chat cancel --thread-id <thread-id> --event-id <event-id>
+  Cancel a run:      okou chat cancel --thread-id <thread-id> --run-id <run-id>
+  Cancel a message:  okou chat cancel --thread-id <thread-id> --event-id <event-id>
 
 Notes:
   - --run-id and --event-id are mutually exclusive

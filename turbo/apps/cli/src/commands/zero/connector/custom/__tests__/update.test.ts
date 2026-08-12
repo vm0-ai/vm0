@@ -107,7 +107,7 @@ function mcpResponse(definition: ReturnType<typeof manualMcpDefinition>) {
   };
 }
 
-describe("zero connector custom update", () => {
+describe("okou connector custom update", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   let tempDir: string;
 
@@ -146,7 +146,7 @@ describe("zero connector custom update", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "update",
       CONNECTOR_ID,
       "--file",
@@ -184,7 +184,7 @@ describe("zero connector custom update", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "update",
       CONNECTOR_ID,
       "--file",
@@ -221,7 +221,7 @@ describe("zero connector custom update", () => {
     try {
       await customConnectorCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "update",
         CONNECTOR_ID,
         "--file",

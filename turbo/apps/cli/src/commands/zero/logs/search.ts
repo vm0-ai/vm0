@@ -174,7 +174,7 @@ export async function runLogsSearch(
     console.error(
       chalk.red(`✗ Invalid agent ID "${options.agentId}" — expected a UUID`),
     );
-    console.error(chalk.dim("  Run: zero logs list    to find agent IDs"));
+    console.error(chalk.dim("  Run: okou logs list    to find agent IDs"));
     process.exit(1);
   }
 
@@ -182,7 +182,7 @@ export async function runLogsSearch(
     console.error(
       chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
     );
-    console.error(chalk.dim("  Run: zero logs list    to find run IDs"));
+    console.error(chalk.dim("  Run: okou logs list    to find run IDs"));
     process.exit(1);
   }
 
@@ -222,7 +222,7 @@ export const searchCommand = new Command()
   .option("-A, --after-context <n>", "Show n events after each match")
   .option("-B, --before-context <n>", "Show n events before each match")
   .option("-C, --context <n>", "Show n events before and after each match")
-  .option("--agent <id>", "Filter by Zero agent ID")
+  .option("--agent <id>", "Filter by agent ID")
   .option("--run <id>", "Filter by specific run ID")
   .option("--since <time>", "Search logs since (default: 7d)")
   .option("--limit <n>", "Maximum number of matches (default: 20)")
@@ -230,9 +230,9 @@ export const searchCommand = new Command()
     "after",
     `
 Examples:
-  zero logs search "error"
-  zero logs search "timeout" --agent 123e4567-e89b-12d3-a456-426614174000 -C 2
-  zero logs search "failed" --since 30d --limit 50`,
+  okou logs search "error"
+  okou logs search "timeout" --agent 123e4567-e89b-12d3-a456-426614174000 -C 2
+  okou logs search "failed" --since 30d --limit 50`,
   )
   .action(
     withErrorHandler(

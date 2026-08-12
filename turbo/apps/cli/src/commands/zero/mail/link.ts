@@ -13,7 +13,7 @@ function currentChatThreadId(): string {
   const threadId = process.env.ZERO_CHAT_THREAD_ID?.trim();
   if (!threadId) {
     throw new Error("ZERO_CHAT_THREAD_ID is not set", {
-      cause: new Error("Run this command from a Zero web chat thread"),
+      cause: new Error("Run this command from a web chat thread"),
     });
   }
   return threadId;
@@ -52,7 +52,7 @@ if (!callbackPromptAvailable) {
   callbackPromptOption.hideHelp();
 }
 const callbackPromptExample = callbackPromptAvailable
-  ? '  zero mail link r-test-draft --callback-prompt "Confirm the email was sent, then offer reply tracking"\n'
+  ? '  okou mail link r-test-draft --callback-prompt "Confirm the email was sent, then offer reply tracking"\n'
   : "";
 const callbackPromptNotes = callbackPromptAvailable
   ? "  - Use --callback-prompt only when this turn links exactly one draft and needs no other callback action\n  - Callback prompts are included in the URL; keep them concise and do not include secrets\n"
@@ -67,7 +67,7 @@ export const linkCommand = new Command()
     "after",
     `
 Examples:
-  zero mail link r-test-draft
+  okou mail link r-test-draft
 ${callbackPromptExample}
 Notes:
   - Outputs the review URL to return to the user

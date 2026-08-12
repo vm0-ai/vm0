@@ -44,7 +44,7 @@ export const chatThreads = pgTable(
      * ID of the scheduled agent run this thread was started from, if any.
      * When set, the first run created in this thread is seeded with a system
      * prompt that instructs the agent to fetch the original run's telemetry
-     * via `zero logs <id>` in its sandbox. Subsequent runs reuse the resulting
+     * via `okou logs <id>` in its sandbox. Subsequent runs reuse the resulting
      * session context, so the prompt is only applied once.
      */
     sourceScheduleRunId: uuid("source_schedule_run_id"),

@@ -6,7 +6,7 @@ import { listCommand } from "./list";
 import { deleteCommand } from "./delete";
 
 export const zeroAgentCommand = new Command("agent")
-  .description("View or manage zero agents")
+  .description("View or manage agents")
   .addCommand(createCommand)
   .addCommand(editCommand)
   .addCommand(viewCommand)
@@ -16,13 +16,13 @@ export const zeroAgentCommand = new Command("agent")
     "after",
     `
 Examples:
-  Your agent ID is in $ZERO_AGENT_ID (or run: zero whoami)
-  View your config:      zero agent view $ZERO_AGENT_ID --instructions
-  Update description:    zero agent edit $ZERO_AGENT_ID --description "new role"
-  Update tone:           zero agent edit $ZERO_AGENT_ID --sound friendly
-  Update instructions:   zero agent edit $ZERO_AGENT_ID --instructions-file <path>
-  Attach a workflow:     zero workflow attach <name> --agent $ZERO_AGENT_ID
+  Your agent ID is in $ZERO_AGENT_ID (or run: okou whoami)
+  View your config:      okou agent view $ZERO_AGENT_ID --instructions
+  Update description:    okou agent edit $ZERO_AGENT_ID --description "new role"
+  Update tone:           okou agent edit $ZERO_AGENT_ID --sound friendly
+  Update instructions:   okou agent edit $ZERO_AGENT_ID --instructions-file <path>
+  Attach a workflow:     okou workflow attach <name> --agent $ZERO_AGENT_ID
 
 Notes:
-  Manage workflows with 'zero workflow --help'`,
+  Manage workflows with 'okou workflow --help'`,
   );

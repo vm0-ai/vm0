@@ -2261,7 +2261,7 @@ function buildComputerUseSystemPrompt(displayName: string): string {
   return [
     "# Computer Use",
     `Computer Use is enabled for this run on ${displayName}.`,
-    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "Use Okou CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
     "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
   ].join("\n");
 }
@@ -2349,7 +2349,7 @@ function buildChatPriorRunsContext(
       `## Recent Run ${index + 1}`,
       `- RUN_ID: ${run.runId}`,
       `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: zero logs ${run.runId} --all`,
+      `- LOG_COMMAND: okou logs ${run.runId} --all`,
       "",
       transcript,
     ].join("\n");

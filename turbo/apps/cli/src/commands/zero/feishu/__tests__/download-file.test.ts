@@ -11,7 +11,7 @@ import { downloadFileCommand } from "../download-file";
 const DOWNLOAD_URL =
   "http://localhost:3000/api/zero/integrations/feishu/download-file";
 
-describe("zero feishu download-file command", () => {
+describe("okou feishu download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((): never => {
     throw new Error("process.exit called");
   });
@@ -60,7 +60,7 @@ describe("zero feishu download-file command", () => {
 
     await downloadFileCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "om_message",
       "file_key",
       "--type",
@@ -99,7 +99,7 @@ describe("zero feishu download-file command", () => {
     await expect(
       downloadFileCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "om_missing",
         "file_missing",
         "--type",

@@ -1,5 +1,5 @@
 /**
- * Tests for zero slack upload-file command
+ * Tests for okou slack upload-file command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -25,7 +25,7 @@ const UPLOAD_MATERIALIZE_URL =
 const SLACK_PRESIGNED_URL = "https://files.slack.com/upload/v1/test-presigned";
 const CANONICAL_PRESIGNED_URL = "https://r2.example.com/upload/canonical-asset";
 
-describe("zero slack upload-file command", () => {
+describe("okou slack upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

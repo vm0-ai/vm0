@@ -18,7 +18,7 @@ export function currentAgentId(): string {
   const agentId = process.env.ZERO_AGENT_ID?.trim();
   if (!agentId) {
     throw new Error("ZERO_AGENT_ID is not set", {
-      cause: new Error("Run this command from an active Zero agent run"),
+      cause: new Error("Run this command from an active agent run"),
     });
   }
   return agentId;

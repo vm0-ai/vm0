@@ -44,7 +44,7 @@ function stubBillingStatus(
   });
 }
 
-describe("zero doctor credit command", () => {
+describe("okou doctor credit command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
@@ -80,7 +80,7 @@ describe("zero doctor credit command", () => {
     expect(output()).toContain("Auto-recharge: enabled");
     expect(output()).toContain("Threshold: 5,000");
     expect(output()).toContain("Amount: 20,000");
-    expect(output()).toContain("`zero credit <credits>`");
+    expect(output()).toContain("`okou credit <credits>`");
   });
 
   it("does not request org members", async () => {
@@ -132,6 +132,6 @@ describe("zero doctor credit command", () => {
 
     expect(output()).toContain("Tier: free");
     expect(output()).toContain("upgrade to Pro");
-    expect(output()).toContain("`zero credit <credits>`");
+    expect(output()).toContain("`okou credit <credits>`");
   });
 });

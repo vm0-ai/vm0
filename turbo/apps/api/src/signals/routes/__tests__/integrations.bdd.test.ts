@@ -1747,7 +1747,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       `# Current Integration\nYou are currently running inside: Slack\nYour bot user ID: ${botUserId}\nChannel ID: ${channelId}\nChannel type: Channel\nThread ID: ${threadTs}`,
     );
     expect(canonicalInputRun.appendSystemPrompt).toContain(
-      "zero web download-file -h",
+      "okou web download-file -h",
     );
     expect(context.mocks.slack.chat.getPermalink).toHaveBeenCalledWith({
       channel: channelId,
