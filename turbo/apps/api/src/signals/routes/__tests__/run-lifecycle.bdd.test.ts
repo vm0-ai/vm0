@@ -150,6 +150,7 @@ function manualMcpRuntimeConnectorBody(args: {
   readonly displayName: string;
   readonly endpoint: string;
   readonly skillMarkdown?: string;
+  readonly slug?: string;
 }): McpCustomConnectorCreateBody {
   return {
     kind: "mcp",
@@ -175,6 +176,7 @@ function manualMcpRuntimeConnectorBody(args: {
     ...(args.skillMarkdown === undefined
       ? {}
       : { skillMarkdown: args.skillMarkdown }),
+    ...(args.slug === undefined ? {} : { slug: args.slug }),
   };
 }
 
@@ -183,9 +185,26 @@ function runnerPreference(job: RunnerJob | null | undefined) {
 }
 
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
+const MCP_CONNECTOR_PROMPT_HEADING = "# MCP Custom Connectors";
+const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
 ] as const;
+
+function mcpConnectorPromptSection(prompt: string): string | undefined {
+  const sectionStart = prompt.indexOf(MCP_CONNECTOR_PROMPT_HEADING);
+  if (sectionStart === -1) {
+    return undefined;
+  }
+  const nextSectionStart = prompt.indexOf(
+    "\n\n# ",
+    sectionStart + MCP_CONNECTOR_PROMPT_HEADING.length,
+  );
+  return prompt.slice(
+    sectionStart,
+    nextSectionStart === -1 ? undefined : nextSectionStart,
+  );
+}
 const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
   "CronCreate",
   "CronList",
@@ -8567,31 +8586,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         name: getCustomConnectorSkillStorageName(mcp.id),
       }),
     );
+    expect(
+      mcpConnectorPromptSection(disabledClaim.appendSystemPrompt ?? ""),
+    ).toBeUndefined();
     await api.requestCancelRun(actor, disabledRun.runId, [200]);
 
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
-    const composeName = `bdd-mcp-runtime-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
-      version: "1",
-      agents: {
-        [composeName]: {
-          framework: "claude-code",
-          environment: {
-            ANTHROPIC_API_KEY: "bdd-inline-key",
-          },
-        },
-      },
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the admitted MCP connector",
+      modelProvider: "anthropic-api-key",
     });
-    const run = await api.createDirectRun(
-      actor,
-      zeroBackedDirectRunBody({
-        agentId,
-        agentComposeVersionId: compose.versionId,
-        prompt: "use the admitted MCP connector",
-      }),
-    );
     const claim = await api.claimRunnerJob(run.runId);
     const admittedIds = [http.id, mcp.id].sort();
     expect(
@@ -8606,6 +8613,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       customConnectorId: mcp.id,
       baseUrlVars: {},
     });
+    const mcpPrompt = mcpConnectorPromptSection(claim.appendSystemPrompt ?? "");
+    expect(mcpPrompt).toContain(`- \`${mcp.slug}\``);
+    expect(mcpPrompt).toContain("okou mcp list --json");
+    expect(mcpPrompt).toContain("okou mcp list-tools <connector-slug> --json");
+    expect(mcpPrompt).toContain("okou mcp call <connector-slug> <tool-name>");
+    expect(mcpPrompt).not.toContain(http.slug);
+    expect(mcpPrompt).not.toContain(mcpDefinition.displayName);
+    expect(mcpPrompt).not.toContain(mcpDefinition.endpoint);
+    expect(mcpPrompt).not.toContain("Use the admitted MCP server.");
+    expect(mcpPrompt).not.toContain("mcp-runtime-token");
 
     const [mcpApi] = inlineFirewallApis(claim.firewalls, mcpInternalName);
     expect(mcpApi).toMatchObject({
@@ -8720,6 +8737,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "CONNECTOR_NOT_CONFIGURED",
     });
 
+    const disconnectedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not advertise a disconnected MCP connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const disconnectedClaim = await api.claimRunnerJob(disconnectedRun.runId);
+    expect(
+      mcpConnectorPromptSection(disconnectedClaim.appendSystemPrompt ?? ""),
+    ).toBeUndefined();
+    await api.requestCancelRun(actor, disconnectedRun.runId, [200]);
+
     const [mismatchedRoutingResult] = await api.syncConnectorRuntime(
       run.runId,
       {
@@ -8765,6 +8793,168 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("bounds admitted MCP awareness across frameworks and continuation", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const admittedSlugs = Array.from(
+      { length: MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT + 1 },
+      (_, index) => {
+        return `_mcp-awareness-${String(index).padStart(2, "0")}`;
+      },
+    );
+    const admittedConnectorIds: string[] = [];
+    for (const slug of [...admittedSlugs].reverse()) {
+      const connector = await connectors.createCustomConnector(
+        actor,
+        manualMcpRuntimeConnectorBody({
+          displayName: `Remote display ${slug}`,
+          endpoint: `https://${slug.slice(1)}.example.test/mcp`,
+          slug,
+        }),
+      );
+      await connectors.setCustomConnectorValues(actor, connector.id, [
+        { key: "secret", kind: "secret", value: `credential-${slug}` },
+      ]);
+      admittedConnectorIds.push(connector.id);
+    }
+
+    const incompleteSlug = "_mcp-awareness-incomplete";
+    const incomplete = await connectors.createCustomConnector(
+      actor,
+      manualMcpRuntimeConnectorBody({
+        displayName: "Incomplete MCP connector",
+        endpoint: "https://incomplete-mcp.example.test/mcp",
+        slug: incompleteSlug,
+      }),
+    );
+    const ungrantedSlug = "_mcp-awareness-ungranted";
+    const ungranted = await connectors.createCustomConnector(
+      actor,
+      manualMcpRuntimeConnectorBody({
+        displayName: "Ungranted MCP connector",
+        endpoint: "https://ungranted-mcp.example.test/mcp",
+        slug: ungrantedSlug,
+      }),
+    );
+    await connectors.setCustomConnectorValues(actor, ungranted.id, [
+      { key: "secret", kind: "secret", value: "ungranted-credential" },
+    ]);
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      ...admittedConnectorIds,
+      incomplete.id,
+    ]);
+
+    const claudeRun = await api.createRun(actor, {
+      agentId,
+      prompt: "inspect bounded MCP awareness",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claudeClaim = await api.claimRunnerJob(claudeRun.runId);
+    expect(claudeClaim.cliAgentType).toBe("claude-code");
+    expect(claudeClaim.appendSystemPrompt).toContain("# Agent Tools");
+    const claudeMcpPrompt = mcpConnectorPromptSection(
+      claudeClaim.appendSystemPrompt ?? "",
+    );
+    if (!claudeMcpPrompt) {
+      throw new Error("Expected Claude Code to receive MCP awareness");
+    }
+    const expectedListedSlugs = [...admittedSlugs]
+      .sort()
+      .slice(0, MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT);
+    expect(
+      claudeMcpPrompt.split("\n").filter((line) => {
+        return line.startsWith("- `");
+      }),
+    ).toStrictEqual(
+      expectedListedSlugs.map((slug) => {
+        return `- \`${slug}\``;
+      }),
+    );
+    expect(claudeMcpPrompt).not.toContain(
+      admittedSlugs[MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT],
+    );
+    expect(claudeMcpPrompt).toContain(
+      "1 additional admitted MCP connector was omitted from this prompt",
+    );
+    expect(claudeMcpPrompt).not.toContain(incompleteSlug);
+    expect(claudeMcpPrompt).not.toContain(ungrantedSlug);
+    expect(claudeMcpPrompt).not.toContain("Remote display");
+    expect(claudeMcpPrompt).not.toContain("example.test");
+    expect(claudeMcpPrompt).not.toContain("credential-");
+
+    const history = `bounded MCP awareness history ${claudeRun.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: claudeRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-mcp-awareness-${claudeRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${claudeClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: claudeRun.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${claudeClaim.sandboxToken}` },
+      [200],
+    );
+
+    const resumedRun = await api.createRun(actor, {
+      agentId,
+      sessionId: claudeRun.sessionId,
+      prompt: "continue with bounded MCP awareness",
+      modelProvider: "anthropic-api-key",
+    });
+    const resumedClaim = await api.claimRunnerJob(resumedRun.runId);
+    expect(resumedClaim.appendSystemPrompt).toContain("# Agent Tools");
+    expect(
+      mcpConnectorPromptSection(resumedClaim.appendSystemPrompt ?? ""),
+    ).toBe(claudeMcpPrompt);
+    await api.requestCancelRun(actor, resumedRun.runId, [200]);
+
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "mcp-awareness-codex-access",
+      refreshToken: "mcp-awareness-codex-refresh",
+      accountId: "mcp-awareness-codex-account",
+      idToken: "mcp-awareness-codex-id",
+      expiresIn: 3600,
+    });
+    const codexRun = await api.createRun(actor, {
+      agentId,
+      prompt: "inspect MCP awareness with Codex",
+      modelProvider: "codex-oauth-token",
+    });
+    const codexClaim = await api.claimRunnerJob(codexRun.runId);
+    expect(codexClaim.cliAgentType).toBe("codex");
+    expect(mcpConnectorPromptSection(codexClaim.appendSystemPrompt ?? "")).toBe(
+      claudeMcpPrompt,
+    );
+    await api.requestCancelRun(actor, codexRun.runId, [200]);
+
+    const genericDirectRun = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "do not advertise Zero MCP without a server-issued token",
+      }),
+    );
+    const genericDirectClaim = await api.claimRunnerJob(genericDirectRun.runId);
+    expect(
+      mcpConnectorPromptSection(genericDirectClaim.appendSystemPrompt ?? ""),
+    ).toBeUndefined();
+    await api.requestCancelRun(actor, genericDirectRun.runId, [200]);
   });
 
   it("hands off more than one runtime-sync batch without truncation", async () => {
