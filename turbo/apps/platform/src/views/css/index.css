@@ -88,6 +88,10 @@ body {
 
 #root {
   box-sizing: border-box;
+  /* Base UI appends top-level portals after #root and nests descendant portals
+     under their owning portal. Isolating the app lets that DOM order define
+     floating-layer priority without global z-index values on every primitive. */
+  isolation: isolate;
   position: fixed;
   top: 0;
   right: 0;
