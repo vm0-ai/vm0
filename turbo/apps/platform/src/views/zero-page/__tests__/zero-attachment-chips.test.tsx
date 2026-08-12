@@ -4,6 +4,7 @@ import {
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  act,
   createEvent,
   fireEvent,
   screen,
@@ -11,6 +12,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
 import { HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -959,6 +961,203 @@ describe("zero attachment chips", () => {
       preview!.compareDocumentPosition(textBubble!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("isolates one canonical attachment url between split-view threads", async () => {
+    const leftThreadId = "b0000000-0000-4000-a000-000000000053";
+    const rightThreadId = "b0000000-0000-4000-a000-000000000054";
+    const fileId = "attachment-owner-scoped-photo";
+    const ownerUrls = [
+      `https://r2.example.com/artifacts/${fileId}?sig=thread-owner-1`,
+      `https://r2.example.com/artifacts/${fileId}?sig=thread-owner-2`,
+    ] as const;
+    let nextOwnerUrl = 0;
+    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
+      const url = ownerUrls[Math.min(nextOwnerUrl, ownerUrls.length - 1)]!;
+      nextOwnerUrl += 1;
+      return HttpResponse.json({ url });
+    });
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: leftThreadId,
+      threadTitle: "Left attachment thread",
+    });
+    lifecycle.setThreadList([
+      {
+        id: leftThreadId,
+        title: "Left attachment thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: rightThreadId,
+        title: "Right attachment thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    context.mocks.api(
+      chatThreadEventsContract.list,
+      ({ params, query, respond }) => {
+        if (query.beforeSeqId !== undefined || query.sinceSeqId !== undefined) {
+          return respond(200, { events: [] });
+        }
+        if (
+          params.threadId !== leftThreadId &&
+          params.threadId !== rightThreadId
+        ) {
+          return respond(200, { events: [] });
+        }
+        return respond(200, {
+          events: [
+            {
+              id: `msg-${params.threadId}`,
+              threadId: params.threadId,
+              eventType: "input.prompt",
+              content: null,
+              userMessage: {
+                version: 1,
+                parts: [
+                  {
+                    type: "file",
+                    fileId,
+                    filenameSnapshot: "owner-scoped.png",
+                    contentType: "image/png",
+                  },
+                ],
+              },
+              runId: `run-${params.threadId}`,
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
+    });
+
+    const threadRegions = await waitFor(() => {
+      const regions = screen.getAllByLabelText("Chat thread");
+      expect(regions).toHaveLength(2);
+      return regions;
+    });
+    const previews = await Promise.all(
+      threadRegions.map((region) => {
+        return within(region).findByLabelText("Preview owner-scoped.png");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        previews
+          .map((preview) => {
+            return preview.getAttribute("href");
+          })
+          .sort(),
+      ).toStrictEqual([...ownerUrls].sort());
+    });
+  });
+
+  it("replaces direct attachment preview urls with the page owner", async () => {
+    const user = userEvent.setup({ delay: null });
+    const fileId = "attachment-page-owned-photo";
+    const pageUrls = {
+      first: `https://r2.example.com/artifacts/${fileId}?sig=page-owner-1`,
+      second: `https://r2.example.com/artifacts/${fileId}?sig=page-owner-2`,
+    } as const;
+    let pageOwner: keyof typeof pageUrls = "first";
+    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
+      return HttpResponse.json({ url: pageUrls[pageOwner] });
+    });
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsListContract.list, ({ respond }) => {
+      return respond(200, {
+        data: [],
+        pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-page-owned-photo",
+          role: "user",
+          content: "Review this image",
+          fileParts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: "page-owned.png",
+              contentType: "image/png",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const firstPreview = await screen.findByLabelText("Preview page-owned.png");
+    await waitFor(() => {
+      expect(firstPreview).toHaveAttribute("href", pageUrls.first);
+    });
+    click(firstPreview);
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "src",
+        pageUrls.first,
+      );
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    const agentsLink = await waitFor(() => {
+      const link = screen.getByText("Agents").closest("a");
+      if (!link) {
+        throw new Error("Expected the Agents navigation link");
+      }
+      return link;
+    });
+    await user.click(agentsLink);
+    await screen.findByRole("heading", { name: "Agents" });
+    pageOwner = "second";
+
+    act(() => {
+      window.history.back();
+    });
+
+    const secondPreview = await screen.findByLabelText(
+      "Preview page-owned.png",
+    );
+    await waitFor(() => {
+      expect(secondPreview).toHaveAttribute("href", pageUrls.second);
+    });
+    click(secondPreview);
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "src",
+        pageUrls.second,
+      );
+    });
   });
 
   it("keeps the user image preview frame stable while the image loads", async () => {

@@ -1,5 +1,5 @@
 import { useGet, useLastResolved } from "ccstate-react";
-import { attachmentResourceUrlResolver$ } from "../../signals/attachment-resource-url.ts";
+import { pageAttachmentResourceUrlResolver$ } from "../../signals/attachment-resource-url.ts";
 import { publicAttachmentUrl } from "./zero-attachment-url";
 
 /**
@@ -11,6 +11,6 @@ import { publicAttachmentUrl } from "./zero-attachment-url";
  * not need to know which form it holds.
  */
 export function useResolvedAttachmentUrl(url: string): string | null {
-  const resolveResourceUrl = useGet(attachmentResourceUrlResolver$);
+  const resolveResourceUrl = useGet(pageAttachmentResourceUrlResolver$);
   return useLastResolved(resolveResourceUrl(publicAttachmentUrl(url))) ?? null;
 }

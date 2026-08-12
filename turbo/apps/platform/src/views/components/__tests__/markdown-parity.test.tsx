@@ -69,6 +69,18 @@ const legacyRehypeRewriteHandler = (...args: RewriteArgs) => {
 
 const context = testContext();
 
+function htmlWithoutCopyControls(container: HTMLElement): string {
+  // Copy controls intentionally come from different component owners during
+  // the pipeline migration. Their behavior is covered by the Markdown and UI
+  // CopyButton tests; this guard compares the rendered Markdown content.
+  for (const control of container.querySelectorAll<HTMLElement>(
+    ".copied[data-code]",
+  )) {
+    control.remove();
+  }
+  return container.innerHTML;
+}
+
 /**
  * Temporary guard for the move off `react-markdown`: renders the same source
  * through the old `<MarkdownPreview />` configuration and through the new
@@ -110,7 +122,7 @@ function legacyHtml(source: string): string {
       />
     </StoreProvider>,
   );
-  return container.innerHTML;
+  return htmlWithoutCopyControls(container);
 }
 
 function currentHtml(source: string): string {
@@ -119,7 +131,7 @@ function currentHtml(source: string): string {
       <Markdown source={source} mediaPreview mathEnabled />
     </StoreProvider>,
   );
-  return container.innerHTML;
+  return htmlWithoutCopyControls(container);
 }
 
 const CASES: Readonly<Record<string, string>> = {
