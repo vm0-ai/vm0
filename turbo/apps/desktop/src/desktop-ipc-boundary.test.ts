@@ -292,6 +292,7 @@ describe("Desktop IPC boundary", () => {
       DESKTOP_ZERO_MIGRATION_CHANNELS.remindLater,
       DESKTOP_ZERO_MIGRATION_CHANNELS.beginMigration,
       DESKTOP_ZERO_MIGRATION_CHANNELS.resumeZero,
+      DESKTOP_ZERO_MIGRATION_CHANNELS.quitZero,
     ]) {
       await expect(invokeIpc(channel, blockedAppUrl)).rejects.toThrow(
         "Zero migration is unavailable on this page",
@@ -302,6 +303,7 @@ describe("Desktop IPC boundary", () => {
     expect(api.remindLater).not.toHaveBeenCalled();
     expect(api.beginMigration).not.toHaveBeenCalled();
     expect(api.resumeZero).not.toHaveBeenCalled();
+    expect(api.quitZero).not.toHaveBeenCalled();
   });
 
   it("notifies only live windows when computer use state changes", async () => {
@@ -491,6 +493,7 @@ function createDesktopZeroMigrationApi(): {
   readonly resumeZero: ReturnType<
     typeof vi.fn<() => Promise<DesktopZeroMigrationState>>
   >;
+  readonly quitZero: ReturnType<typeof vi.fn<() => DesktopZeroMigrationState>>;
 } {
   const state: DesktopZeroMigrationState = {
     mode: "soft_reminder",
@@ -502,6 +505,7 @@ function createDesktopZeroMigrationApi(): {
     remindLater: vi.fn(() => state),
     beginMigration: vi.fn(async () => state),
     resumeZero: vi.fn(async () => state),
+    quitZero: vi.fn(() => state),
   };
 }
 

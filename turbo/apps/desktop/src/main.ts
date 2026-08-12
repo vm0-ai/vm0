@@ -117,6 +117,7 @@ import {
 } from "./desktop-renderer-url";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 import { DesktopZeroMigrationController } from "./desktop-zero-migration";
+import { ZERO_MIGRATION_BRIDGE_CONFIG } from "./desktop-zero-migration-config";
 import {
   installDesktopZeroMigrationIpc,
   notifyDesktopZeroMigrationChanged,
@@ -158,6 +159,7 @@ let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
 let zeroMigrationController: DesktopZeroMigrationController | null = null;
+let zeroMigrationPolicyTimer: ReturnType<typeof setInterval> | null = null;
 
 const desktopIdentity: DesktopIdentityInfo = {
   product: config.identity.product,
@@ -534,6 +536,9 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
 async function startComputerUseRuntime(
   options: { readonly userInitiated?: boolean } = {},
 ): Promise<DesktopComputerUseState> {
+  if (zeroMigrationController?.allowUserInitiatedStart() === false) {
+    return getComputerUseBridgeState();
+  }
   if (zeroMigrationController?.shouldSuppressAutoStart()) {
     if (options.userInitiated !== true) {
       return getComputerUseBridgeState();
@@ -677,7 +682,25 @@ function installZeroMigration(): void {
     openDownload: async (url) => {
       await shell.openExternal(url);
     },
+    fetchPolicy: (signal) => {
+      const headers = new Headers();
+      addDesktopClientHeaders(headers);
+      return fetch(
+        new URL(ZERO_MIGRATION_BRIDGE_CONFIG.policyPath, desktopApiBaseUrl),
+        { headers, signal },
+      );
+    },
+    quitZero: () => {
+      quitConfirmation.allowQuitWithoutConfirmation();
+      app.quit();
+    },
     onChange: notifyDesktopZeroMigrationChanged,
+    onAttention: () => {
+      void createMainWindow();
+    },
+    logPolicyError: (error) => {
+      console.warn("Unable to refresh Zero migration policy", error);
+    },
   });
   const controller = zeroMigrationController;
   installDesktopZeroMigrationIpc(
@@ -686,9 +709,29 @@ function installZeroMigration(): void {
       remindLater: () => controller.remindLater(),
       beginMigration: () => controller.beginMigration(),
       resumeZero: () => controller.resumeZero(),
+      quitZero: () => controller.quitZero(),
     },
     { rendererUrl: localRendererUrl },
   );
+}
+
+function startZeroMigrationPolicyRefresh(): void {
+  const controller = zeroMigrationController;
+  if (!controller || zeroMigrationPolicyTimer) {
+    return;
+  }
+  zeroMigrationPolicyTimer = setInterval(() => {
+    void controller.refreshPolicy();
+  }, ZERO_MIGRATION_BRIDGE_CONFIG.policyRefreshIntervalMs);
+  zeroMigrationPolicyTimer.unref();
+}
+
+function stopZeroMigrationPolicyRefresh(): void {
+  if (!zeroMigrationPolicyTimer) {
+    return;
+  }
+  clearInterval(zeroMigrationPolicyTimer);
+  zeroMigrationPolicyTimer = null;
 }
 
 function refreshComputerUsePermissionsForState(): void {
@@ -1367,6 +1410,7 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
+    stopZeroMigrationPolicyRefresh();
     appIsQuitting = true;
     releaseKeepAwake();
     if (!computerUseController.quitStopRequired()) {
@@ -1390,9 +1434,11 @@ if (!hasSingleInstanceLock) {
     installComputerUse();
     installDesktopDeveloperTools();
     installZeroMigration();
-    refreshComputerUsePermissionsForState();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
+    await zeroMigrationController?.refreshPolicy();
+    startZeroMigrationPolicyRefresh();
+    refreshComputerUsePermissionsForState();
     developerTools.requestRefresh();
     installTray();
     queueDesktopAuthCallbackArgv(process.argv);
