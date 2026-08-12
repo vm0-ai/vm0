@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { getEventListeners } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -495,8 +496,10 @@ describe("Pi DeepSeek provider", () => {
     await writeFile(initialPath, "initial tool result\n");
     const env = new LaterBashExecutionEnv({ cwd: root });
     const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const controller = new AbortController();
     const requestBodies: unknown[] = [];
     const events: AgentEvent[] = [];
+    let firstEventAbortListener: unknown = null;
     server.use(
       http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
         const body: unknown = await request.json();
@@ -532,10 +535,15 @@ describe("Pi DeepSeek provider", () => {
           ],
           executionEnv: env,
           onEvent(event) {
+            if (events.length === 0) {
+              const listeners = getEventListeners(controller.signal, "abort");
+              expect(listeners).toHaveLength(1);
+              firstEventAbortListener = listeners[0];
+            }
             events.push(event);
           },
         },
-        new AbortController().signal,
+        controller.signal,
       );
 
       await waitForAbort(env.started);
@@ -576,6 +584,10 @@ describe("Pi DeepSeek provider", () => {
         content: [{ type: "text", text: "recovered after timeout" }],
       });
       expect(env.abortedCommands).toEqual(["never-finish"]);
+      expect(firstEventAbortListener).not.toBeNull();
+      expect(getEventListeners(controller.signal, "abort")).not.toContain(
+        firstEventAbortListener,
+      );
     } finally {
       timeoutSpy.mockRestore();
       await env.cleanup();
