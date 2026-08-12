@@ -29,7 +29,10 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  warmMermaidParser,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import {
   normalizeMockChatEvents,
@@ -37,6 +40,7 @@ import {
 } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
+warmMermaidParser();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";

@@ -3,6 +3,7 @@ import { StoreProvider } from "ccstate-react";
 import { describe, expect, it, vi } from "vitest";
 
 import { registerMermaidDiagram$ } from "../../../signals/mermaid-diagram.ts";
+import { setRootSignal$ } from "../../../signals/root-signal.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { Markdown } from "../markdown.tsx";
 
@@ -80,6 +81,9 @@ describe("parse-in-render markdown", () => {
   // on the source and the theme, so the same fence shares one entry wherever
   // it appears and different sources never collide.
   it("keys diagram registration by source", () => {
+    // The registry hands each new entry the application root as its blob-URL
+    // owner, so registration requires the root signal a page always sets up.
+    context.store.set(setRootSignal$, context.signal);
     const first = context.store.set(
       registerMermaidDiagram$,
       "graph TD; A-->B;",
