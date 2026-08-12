@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
-import { createDeferredPromise, settleIncludingAbort } from "../signals/utils";
+import { createDeferredPromise } from "../signals/utils";
 
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
@@ -27,58 +27,6 @@ interface HeldDatabaseBoundary {
   readonly release: () => void;
   readonly done: Promise<void>;
   readonly blockedWaiterCount: () => Promise<number>;
-}
-
-/** Serializes integration tests that invoke the global threadless-run sweep. */
-async function holdThreadlessRunCleanupTestLockFixture(args: {
-  readonly signal: AbortSignal;
-}): Promise<HeldDatabaseBoundary> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const done = db().transaction(async (tx) => {
-    const pidRows = await executeRawRows(
-      tx,
-      sql`SELECT pg_backend_pid() AS "pid"`,
-      databasePidRowSchema,
-    );
-    const pid = pidRows[0]?.pid;
-    if (!pid) {
-      throw new Error("Expected the cleanup test lock holder pid");
-    }
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended('threadless-run-cleanup-integration-test', 0))`,
-    );
-    started.resolve(pid);
-    await released.promise;
-  });
-  const pid = await started.promise;
-  return {
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-    done,
-    blockedWaiterCount: async () => {
-      return await directBlockedWaiterCount(pid);
-    },
-  };
-}
-
-export async function withThreadlessRunCleanupTestLockFixture<T>(args: {
-  readonly signal: AbortSignal;
-  readonly run: () => Promise<T>;
-}): Promise<T> {
-  const lock = await holdThreadlessRunCleanupTestLockFixture({
-    signal: args.signal,
-  });
-  const result = await settleIncludingAbort(args.run());
-  lock.release();
-  await lock.done;
-  if (!result.ok) {
-    throw result.error;
-  }
-  return result.value;
 }
 
 /** Deletes one run root without invoking a global maintenance sweep. */

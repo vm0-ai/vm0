@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { describe, expect, test as vitestTest } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -15,7 +15,6 @@ import {
   findAgentphoneChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
-import { withThreadlessRunCleanupTestLockFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import {
@@ -39,24 +38,6 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
-const PHONE_MEDIA_RUN_TOKEN_TEST =
-  "uploads and streams phone media with a real run-scoped zero token";
-
-function it(name: string, test: () => Promise<void>): void {
-  vitestTest(name, async () => {
-    if (name === PHONE_MEDIA_RUN_TOKEN_TEST) {
-      // This case intentionally creates a test-only direct run. Share the
-      // cleanup suite's lock so its global sweep cannot cancel that run.
-      await withThreadlessRunCleanupTestLockFixture({
-        signal: context.signal,
-        run: test,
-      });
-      return;
-    }
-    await test();
-  });
-}
-
 interface LinkedAgentPhoneActor {
   readonly actor: ApiTestUser;
   readonly phone: string;
@@ -1195,7 +1176,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsBeforeCompletion);
   });
 
-  it(PHONE_MEDIA_RUN_TOKEN_TEST, async () => {
+  it("uploads and streams phone media with a real run-scoped zero token", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const integrations = createBddIntegrationApi(context);
