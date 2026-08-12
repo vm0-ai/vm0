@@ -48,11 +48,11 @@ export const featureSwitch$ = computed((get) => {
 
 const feedbackLocationApiSupportedState$ = state(false);
 
-// A new App can briefly reach an API version whose strict request schema
-// predates feedback locations. Keep location writes disabled until the API
-// bootstrap response advertises support. Remove this negotiation after the
-// accepting API version is outside the production rollback window. Follow-up:
-// #26697.
+// A browser-resident new App can keep running against an old API for about two
+// days. Keep location writes disabled until bootstrap advertises support; the
+// versioned Send fallback covers a later API rollback. Remove both after the
+// accepting API is outside rollback and stale App clients have expired.
+// Follow-up: #26697.
 export const feedbackLocationApiSupported$ = computed((get): boolean => {
   return get(feedbackLocationApiSupportedState$);
 });

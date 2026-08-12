@@ -2,7 +2,9 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
+  chatFeedbackLocationEventsContract,
   chatThreadByIdContract,
+  type ChatEventSendBody,
   type UserMessageDocument,
   userMessageDocumentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -754,7 +756,7 @@ describe("chat inline feedback", () => {
     });
   });
 
-  it("keeps feedback writes readable by the previous API until capability negotiation", async () => {
+  it("falls back to the previous API shape after a post-bootstrap rollback", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000708";
     const assistantReply = "The rollout needs a named owner.";
@@ -763,12 +765,17 @@ describe("chat inline feedback", () => {
       start: assistantReply.indexOf(selectedQuote),
       end: assistantReply.indexOf(selectedQuote) + selectedQuote.length,
     };
+    const versionedRequests: ChatEventSendBody[] = [];
     const sentMessages: RunCreateCapture[] = [];
+    let capabilityReads = 0;
+    let apiRolledBack = false;
 
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      capabilityReads += 1;
       return respond(200, {
         switches: {},
         effectiveSwitches: {},
+        apiCapabilities: { feedbackLocationV1: true },
       });
     });
     mockChatLifecycle(context, {
@@ -787,22 +794,52 @@ describe("chat inline feedback", () => {
         sentMessages.push(body);
       },
     });
+    context.mocks.api(
+      chatFeedbackLocationEventsContract.send,
+      ({ body, respond }) => {
+        if (!apiRolledBack) {
+          throw new Error("Versioned feedback send preceded the API rollback");
+        }
+        versionedRequests.push(body);
+        return respond(404, {
+          error: {
+            code: "NOT_FOUND",
+            message: "Feedback location endpoint not found",
+          },
+        });
+      },
+    );
 
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
     });
 
-    selectTextForInlineFeedback(
-      await screen.findByText(assistantReply),
-      selectedRange,
-    );
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    await waitFor(() => {
+      expect(capabilityReads).toBeGreaterThan(0);
+    });
+    apiRolledBack = true;
+    selectTextForInlineFeedback(assistantReplyElement, selectedRange);
     await user.click(await screen.findByText("Provide feedback"));
     pastePlainText(await findFeedbackNote(), "Assign the owner.");
     await user.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
+      expect(versionedRequests).toHaveLength(1);
       expect(sentMessages).toHaveLength(1);
+    });
+    expect(versionedRequests[0]?.userMessage).toMatchObject({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: selectedQuote,
+          eventId: "msg-previous-api-feedback-assistant",
+          range: selectedRange,
+          note: [{ type: "text", text: "Assign the owner." }],
+        },
+      ],
     });
     expect(
       previousApiUserMessageDocumentSchema.parse(sentMessages[0]?.userMessage),
