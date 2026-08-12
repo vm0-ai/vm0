@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.430.1](https://github.com/vm0-ai/vm0/compare/api-v1.430.0...api-v1.430.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **connectors:** snapshot custom credential reads ([#26462](https://github.com/vm0-ai/vm0/issues/26462)) ([25b37e0](https://github.com/vm0-ai/vm0/commit/25b37e0832873cf0fdcd67c13a5f5516b6e76a9c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.194.7
+
 ## [1.430.0](https://github.com/vm0-ai/vm0/compare/api-v1.429.2...api-v1.430.0) (2026-08-12)
 
 
