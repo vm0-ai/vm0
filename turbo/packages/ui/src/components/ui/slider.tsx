@@ -5,9 +5,6 @@ import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 
 import { cn } from "../../lib/utils";
 
-/** Half the thumb, in px. Ticks share it so each mark lands under a stop. */
-const THUMB_RADIUS = 7;
-
 interface SliderProps extends Omit<
   SliderPrimitive.Root.Props<number>,
   "className" | "render"
@@ -64,18 +61,21 @@ const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
         {...props}
       >
         {ticks && (
-          <div
-            aria-hidden="true"
-            className="flex items-end justify-between"
-            style={{
-              paddingInline: `${String(THUMB_RADIUS)}px`,
-            }}
-          >
+          // Positioned the way the primitive positions its thumb —
+          // `insetInlineStart` at the value percentage with a half-width pull
+          // back. Laying the marks out with `justify-between` inside a padded
+          // row looked right but sat half a thumb off every real stop.
+          <div aria-hidden="true" className="relative h-1 w-full">
             {Array.from({ length: tickCount(min, max, step) }, (_, index) => {
               return (
                 <span
                   key={index}
-                  className="h-1 w-px rounded-full bg-gray-400"
+                  className="absolute bottom-0 h-1 w-px -translate-x-1/2 rounded-full bg-gray-400"
+                  style={{
+                    insetInlineStart: `${String(
+                      (index / (tickCount(min, max, step) - 1)) * 100,
+                    )}%`,
+                  }}
                 />
               );
             })}

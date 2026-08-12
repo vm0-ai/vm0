@@ -4931,6 +4931,10 @@ function TemplatePickerDialog({
   });
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
+  // Video generation is the expensive decision, so the model sits in the
+  // dialog's own header band rather than in the scrolling template area.
+  const showVideoModelPicker =
+    selectedCategory === "video" && hasVideoTab && videoOptionsEnabled;
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -5187,7 +5191,9 @@ function TemplatePickerDialog({
                 <div
                   className={cn(
                     "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                    showTemplatePickerSearch || showAvatarPickerToolbar
+                    showTemplatePickerSearch ||
+                      showAvatarPickerToolbar ||
+                      showVideoModelPicker
                       ? "flex"
                       : "hidden sm:flex",
                   )}
@@ -5200,6 +5206,12 @@ function TemplatePickerDialog({
                   ) : null}
                   {showAvatarPickerToolbar ? (
                     <AvatarTemplatePickerToolbar signals={signals} />
+                  ) : null}
+                  {showVideoModelPicker ? (
+                    <VideoModelPickerRow
+                      model={videoModel}
+                      onChange={setVideoModel}
+                    />
                   ) : null}
                 </div>
                 <TemplatePickerCategoryContent
@@ -5227,9 +5239,6 @@ function TemplatePickerDialog({
                   onSelectIllustration={handleSelectIllustration}
                   onIllustrationVariantChange={setIllustrationVariantIndex}
                   onSelectVideo={handleSelectVideo}
-                  videoModel={videoModel}
-                  videoOptionsEnabled={videoOptionsEnabled}
-                  onVideoModelChange={setVideoModel}
                   onSelectAvatar={handleSelectAvatar}
                   onWorkflowCategoryChange={setWorkflowCategoryFilter}
                   onSelectWorkflow={handleSelectWorkflow}
@@ -5267,9 +5276,6 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
-  videoModel,
-  videoOptionsEnabled,
-  onVideoModelChange,
   onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
@@ -5303,9 +5309,6 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
-  videoModel: VideoModel;
-  videoOptionsEnabled: boolean;
-  onVideoModelChange: (model: VideoModel) => void;
   onSelectAvatar: (
     avatar: ZeroAvatarVideoAvatar,
     voice: ZeroAvatarVideoVoice,
@@ -5397,12 +5400,6 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {videoOptionsEnabled && (
-          <VideoModelPickerRow
-            model={videoModel}
-            onChange={onVideoModelChange}
-          />
-        )}
         {videoItems.length > 0 ? (
           <VideoTemplateGrid
             items={videoItems}

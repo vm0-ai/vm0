@@ -114,9 +114,10 @@ function AspectRatioGlyph({ ratio }: { readonly ratio: string }) {
 
 /**
  * A value chip, following the segmented-control language TabsTrigger already
- * uses: hover carries the neutral state layer, and the selected value takes
- * the neutral-dark fill. Tints of the panel colour sat too close to it to
- * read; the dark fill is unambiguous in both themes.
+ * uses: hover carries the neutral state layer and the selected value carries
+ * the heavier one. The selected label and glyph go dark rather than brand —
+ * six orange cells in a grid compete with each other, and with the duration
+ * readout that is genuinely brand-coloured.
  */
 function OptionChip({
   label,
@@ -140,7 +141,7 @@ function OptionChip({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         glyph ? "flex flex-col items-center gap-1 py-1.5" : "h-7 px-2",
         selected
-          ? "bg-foreground font-medium text-background hover:bg-foreground-hover"
+          ? "bg-state-selected font-medium text-foreground hover:bg-state-selected-hover"
           : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
       )}
     >
@@ -302,71 +303,61 @@ export function VideoModelPickerRow({
   const { t } = useTranslation();
   const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[model];
   return (
-    <div className="flex items-center gap-3 pb-4">
-      <span className="text-sm font-medium text-foreground">
-        {t(($) => {
-          return $.chat.templates.videoOptionsModel;
-        })}
-      </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label={t(
-              ($) => {
-                return $.chat.templates.videoModelLabel;
-              },
-              { model: config.label },
-            )}
-            className={cn(
-              "flex h-9 items-center gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]",
-              "bg-input px-3 text-sm text-foreground outline-none transition-colors",
-              "hover:bg-input-hover focus-visible:ring-2 focus-visible:ring-ring",
-            )}
-          >
-            <span className="font-medium">{config.label}</span>
-            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          side="bottom"
-          sideOffset={6}
-          className="w-[17.5rem]"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.chat.templates.videoModelLabel;
+            },
+            { model: config.label },
+          )}
+          className={cn(
+            "flex h-9 items-center gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]",
+            "bg-input px-3 text-sm text-foreground outline-none transition-colors",
+            "hover:bg-input-hover focus-visible:ring-2 focus-visible:ring-ring",
+          )}
         >
-          {PUBLIC_VIDEO_MODELS.map((candidate) => {
-            const candidateConfig: VideoModelConfig =
-              VIDEO_MODEL_CONFIGS[candidate];
-            const selected = candidate === model;
-            return (
-              <DropdownMenuItem
-                key={candidate}
-                aria-label={candidateConfig.label}
-                className="pr-8"
-                onClick={() => {
-                  onChange(candidate);
-                }}
-              >
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate",
-                    selected && "font-medium text-primary",
-                  )}
-                >
-                  {candidateConfig.label}
-                </span>
-                {selected && (
-                  <Check
-                    className="absolute right-2 text-primary"
-                    aria-hidden
-                  />
+          <span className="font-medium">{config.label}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        side="bottom"
+        sideOffset={6}
+        className="w-[17.5rem]"
+      >
+        {PUBLIC_VIDEO_MODELS.map((candidate) => {
+          const candidateConfig: VideoModelConfig =
+            VIDEO_MODEL_CONFIGS[candidate];
+          const selected = candidate === model;
+          return (
+            <DropdownMenuItem
+              key={candidate}
+              aria-label={candidateConfig.label}
+              className="pr-8"
+              onClick={() => {
+                onChange(candidate);
+              }}
+            >
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate",
+                  selected && "font-medium text-primary",
                 )}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+              >
+                {candidateConfig.label}
+              </span>
+              {selected && (
+                <Check className="absolute right-2 text-primary" aria-hidden />
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
