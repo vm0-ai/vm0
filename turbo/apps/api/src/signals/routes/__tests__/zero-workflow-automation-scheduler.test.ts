@@ -270,7 +270,7 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
   await expectOk(response, "delete workflow");
 }
 
-describe("zero workflow automation scheduler", () => {
+describe("okou workflow automation scheduler", () => {
   it("rejects unauthenticated production cron requests", async () => {
     mockEnv("CRON_SECRET", CRON_SECRET);
 

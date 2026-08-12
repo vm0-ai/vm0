@@ -186,5 +186,5 @@ export const customConnectorCommand = new Command()
     "after",
     `
 To add a custom connector:
-  Run "zero connector custom create -h" and follow the definition-only creation workflow.`,
+  Run "okou connector custom create -h" and follow the definition-only creation workflow.`,
   );

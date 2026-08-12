@@ -86,7 +86,7 @@ async function printModelHelp(command: Command): Promise<void> {
   printSwitchableModels(result.policies);
   console.log();
   console.log("Use the model id in parentheses:");
-  console.log(chalk.cyan("  zero chat model [--thread <thread-id>] <model>"));
+  console.log(chalk.cyan("  okou chat model [--thread <thread-id>] <model>"));
 }
 
 async function printCurrentModelAndChoices(threadId: string): Promise<void> {
@@ -101,7 +101,7 @@ async function printCurrentModelAndChoices(threadId: string): Promise<void> {
   printSwitchableModels(result.policies);
   console.log();
   console.log("Switch models:");
-  console.log(chalk.cyan(`  zero chat model --thread ${threadId} <model>`));
+  console.log(chalk.cyan(`  okou chat model --thread ${threadId} <model>`));
 }
 
 async function switchModel(threadId: string, model: string): Promise<void> {
@@ -111,7 +111,7 @@ async function switchModel(threadId: string, model: string): Promise<void> {
   });
 
   if (!policy) {
-    printUsageError(`Unknown model: ${model}`, "Run: zero chat model --help");
+    printUsageError(`Unknown model: ${model}`, "Run: okou chat model --help");
   }
 
   if (policy.routeStatus !== "valid") {
@@ -120,7 +120,7 @@ async function switchModel(threadId: string, model: string): Promise<void> {
       : "";
     printUsageError(
       `Model is not switchable: ${model}${reason}`,
-      "Run: zero chat model --help",
+      "Run: okou chat model --help",
     );
   }
 
@@ -145,10 +145,10 @@ export const modelCommand = new Command()
     "after",
     `
 Examples:
-  Show this chat model:     zero chat model
-  Show another chat model:  zero chat model --thread <thread-id>
-  Switch this model:        zero chat model claude-sonnet-5
-  Switch another model:     zero chat model --thread <thread-id> claude-sonnet-5
+  Show this chat model:     okou chat model
+  Show another chat model:  okou chat model --thread <thread-id>
+  Switch this model:        okou chat model claude-sonnet-5
+  Switch another model:     okou chat model --thread <thread-id> claude-sonnet-5
 
 Notes:
   - Defaults --thread to ZERO_CHAT_THREAD_ID
@@ -166,7 +166,7 @@ Notes:
         if (!threadId) {
           printUsageError(
             "ZERO_CHAT_THREAD_ID is not set",
-            "Pass --thread <thread-id> or run inside a Zero web chat thread.",
+            "Pass --thread <thread-id> or run inside a web chat thread.",
           );
         }
         if (!isUuid(threadId)) {

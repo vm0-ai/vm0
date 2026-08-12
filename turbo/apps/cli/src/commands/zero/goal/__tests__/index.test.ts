@@ -10,7 +10,7 @@ const ACTIVE_GOAL = {
   status: "active",
 };
 
-describe("zero goal command", () => {
+describe("okou goal command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

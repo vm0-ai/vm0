@@ -150,7 +150,7 @@ const authDeviceSupport = createAuthDeviceSupportApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
@@ -3662,8 +3662,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain(
       "You are currently running inside: Web",
     );
-    expect(appendSystemPrompt).toContain("zero web upload-file -h");
-    expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
+    expect(appendSystemPrompt).toContain("okou web upload-file -h");
+    expect(appendSystemPrompt).toContain("okou mail link <gmail-draft-id>");
     expect(appendSystemPrompt).toContain(
       "GET /gmail/v1/users/me/settings/sendAs",
     );
@@ -3685,7 +3685,7 @@ describe("CHAT-02: model-first provider policies", () => {
       "confirm the send against Gmail before reporting it",
     );
     expect(appendSystemPrompt).toContain(
-      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+      "`okou workflow automation list <workflow>` shows one workflow's triggers",
     );
     expect(appendSystemPrompt).toContain(
       "Never send a reply automatically; the user always sends",
@@ -4815,7 +4815,7 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(appended).not.toContain("Assistant: opus answer");
     expect(appended).toContain("# This Chat Thread");
     expect(appended).toContain(`- CHAT_THREAD_ID: ${first.threadId}`);
-    expect(appended).toContain("`zero chat messages`");
+    expect(appended).toContain("`okou chat messages`");
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -7241,7 +7241,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(presentationPrompt).not.toContain("Selected design system");
     expect(presentationPrompt).toContain(
-      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+      `okou resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     if (template.colorSystemId) {
       const colorToken = template.colorSystemId
@@ -7254,7 +7254,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     expect(presentationPrompt).not.toContain(
-      "zero generate presentation --design-system",
+      "okou generate presentation --design-system",
     );
     expect(presentationPrompt).not.toContain("- Artifact type: presentation");
     await cancelChatRun(actor, presentation.runId);
@@ -7280,7 +7280,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(videoPrompt).toContain(
-      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+      `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
     expect(videoPrompt).not.toContain("Parameters the user set explicitly");
     await cancelChatRun(actor, video.runId);
@@ -7344,7 +7344,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(avatarPrompt).toContain("Aspect ratio: landscape");
     expect(avatarPrompt).not.toContain("--list-voices");
     expect(avatarPrompt).toContain(
-      `zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${avatarVoiceId} --aspect-ratio landscape`,
+      `okou generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${avatarVoiceId} --aspect-ratio landscape`,
     );
     expect(avatarPrompt).not.toContain("Do not inject this avatar name");
     expect(avatarPrompt).not.toContain("untrusted-avatar.jpg");
@@ -7369,7 +7369,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      "zero resource pull template:black-slabs-v2 --dir ./generated/resources",
+      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
@@ -7377,7 +7377,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/resolve-images.mjs`,
     );
-    expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
+    expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
   }, 90_000);
 
@@ -7429,7 +7429,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(firstPrompt).toContain("# Inline Templates");
     expect(firstPrompt).toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
+      `okou generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(firstPrompt).toContain("Follow the returned packet completely");
     expect(firstPrompt).toContain(
@@ -7493,7 +7493,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(thirdPrompt).toContain(
-      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+      `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
     expect(thirdPrompt).toContain("# Incomplete Rounds Context");
     expect(thirdPrompt).not.toContain("# Web Chat Run Context");
@@ -7509,7 +7509,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(freshPrompt).not.toContain("# Inline Templates");
     expect(freshPrompt).not.toContain(
-      "zero generate image --provider built-in --style",
+      "okou generate image --provider built-in --style",
     );
     expect(freshPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, fresh.runId);
@@ -7709,8 +7709,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     const created = await api.readRun(actor, run.runId);
     expect(created.prompt).toContain(`[Web file] ${filename} (image/png)`);
     expect(created.prompt).toContain(`[ID] ${fileId}`);
-    expect(created.appendSystemPrompt).toContain("zero web download-file -h");
-    expect(created.appendSystemPrompt).toContain("zero web upload-file -h");
+    expect(created.appendSystemPrompt).toContain("okou web download-file -h");
+    expect(created.appendSystemPrompt).toContain("okou web upload-file -h");
 
     const messages = await waitForThreadMessages(
       actor,
@@ -8545,10 +8545,10 @@ describe("CHAT-02: shared user message queue", () => {
       "SOURCE_THREAD_TITLE: New thread",
     );
     expect(firstTargetSystemPrompt).toContain(
-      `zero chat messages --thread-id ${source.threadId}`,
+      `okou chat messages --thread-id ${source.threadId}`,
     );
     expect(firstTargetSystemPrompt).toContain(
-      `zero logs ${source.runId} --all`,
+      `okou logs ${source.runId} --all`,
     );
     const sourceRun = await api.readRun(actor, source.runId);
     expect(sourceRun.appendSystemPrompt ?? "").not.toContain(

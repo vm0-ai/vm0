@@ -627,7 +627,7 @@ function stripeRecreateCommand(
     billingReasons && billingReasons.length > 0
       ? ` --billing-reason ${billingReasons.join(",")}`
       : "";
-  return `zero workflow automation add ${workflowId} stripe-invoice-paid${billingReasonOption}`;
+  return `okou workflow automation add ${workflowId} stripe-invoice-paid${billingReasonOption}`;
 }
 
 function automationUpdateGuidance(
@@ -641,7 +641,7 @@ function automationUpdateGuidance(
     return {
       label: "Change billing reasons (delete and recreate)",
       command: [
-        `zero workflow automation rm ${automation.id}`,
+        `okou workflow automation rm ${automation.id}`,
         stripeRecreateCommand(automation, workflowId),
       ],
     };
@@ -649,7 +649,7 @@ function automationUpdateGuidance(
   if (automation.kind !== "schedule") {
     return {
       label: "Edit automation",
-      command: ["zero workflow automation update --help"],
+      command: ["okou workflow automation update --help"],
     };
   }
 
@@ -658,7 +658,7 @@ function automationUpdateGuidance(
       return {
         label: "Change schedule",
         command: [
-          "zero workflow automation update \\",
+          "okou workflow automation update \\",
           `  ${automation.id} \\`,
           '  --expr "<cron-expression>" -z <timezone>',
         ],
@@ -667,7 +667,7 @@ function automationUpdateGuidance(
       return {
         label: "Change interval",
         command: [
-          "zero workflow automation update \\",
+          "okou workflow automation update \\",
           `  ${automation.id} \\`,
           "  --every <duration>",
         ],
@@ -676,7 +676,7 @@ function automationUpdateGuidance(
       return {
         label: "Change run time",
         command: [
-          "zero workflow automation update \\",
+          "okou workflow automation update \\",
           `  ${automation.id} \\`,
           '  --at "<iso-time>" -z <timezone>',
         ],
@@ -704,10 +704,10 @@ function printManagementCommands(
       };
 
   console.log("");
-  console.log(chalk.bold("Manage with Zero CLI:"));
+  console.log(chalk.bold("Manage with Okou CLI:"));
   console.log("  Edit workflow:");
   printCommand([
-    `zero workflow edit ${options.workflowId} \\`,
+    `okou workflow edit ${options.workflowId} \\`,
     "  --instruction-file <path>",
   ]);
   console.log("");
@@ -716,12 +716,12 @@ function printManagementCommands(
   console.log("");
   console.log(`  ${statusAction.label}:`);
   printCommand([
-    `zero workflow automation ${statusAction.command} \\`,
+    `okou workflow automation ${statusAction.command} \\`,
     `  ${automation.id}`,
   ]);
   console.log("");
   console.log("  More automation options:");
-  printCommand(["zero workflow automation --help"]);
+  printCommand(["okou workflow automation --help"]);
 
   if (!automation.chatThreadId || !options.threadModel) {
     return;
@@ -742,17 +742,17 @@ function printManagementCommands(
   console.log("");
   console.log(chalk.bold("Model commands:"));
   console.log("  Show:");
-  printCommand(["zero chat model \\", `  --thread ${automation.chatThreadId}`]);
+  printCommand(["okou chat model \\", `  --thread ${automation.chatThreadId}`]);
   console.log("");
   console.log("  Change:");
   printCommand([
-    "zero chat model \\",
+    "okou chat model \\",
     `  --thread ${automation.chatThreadId} \\`,
     "  <model-id>",
   ]);
   console.log("");
   console.log("  Options:");
-  printCommand(["zero model list"]);
+  printCommand(["okou model list"]);
 }
 
 export function printWorkflowAutomationThreadModel(

@@ -82,7 +82,7 @@ function formatDetailIdentity(connector: ZeroConnector | undefined): string {
 
 export const viewCommand = new Command()
   .name("view")
-  .description("View a zero agent")
+  .description("View an agent")
   .argument("<agent-id>", "Agent ID")
   .option("--instructions", "Also show instructions content")
   .option("--permissions", "Show full permission details for each connector")
@@ -90,10 +90,10 @@ export const viewCommand = new Command()
     "after",
     `
 Examples:
-  View basic info:         zero agent view <agent-id>
-  Include instructions:    zero agent view <agent-id> --instructions
-  Show permissions:        zero agent view <agent-id> --permissions
-  View yourself:           zero agent view $ZERO_AGENT_ID --instructions`,
+  View basic info:         okou agent view <agent-id>
+  Include instructions:    okou agent view <agent-id> --instructions
+  Show permissions:        okou agent view <agent-id> --permissions
+  View yourself:           okou agent view $ZERO_AGENT_ID --instructions`,
   )
   .action(
     withErrorHandler(

@@ -24,8 +24,8 @@ Available sources:
   chat   user/assistant text messages as shown in the web chat UI
   slack  returns a recipe for calling the Slack API directly; requires the Slack connector
 
-Usage: zero search <query> --source <logs|chat|slack> [flags]
-Run 'zero search --help' for all flags.`;
+Usage: okou search <query> --source <logs|chat|slack> [flags]
+Run 'okou search --help' for all flags.`;
 
 export function buildSlackRecipe(query: string): string {
   const encoded = encodeURIComponent(query);
@@ -36,10 +36,10 @@ following inside an agent sandbox that has $SLACK_TOKEN available:
     "https://slack.com/api/search.messages?query=${encoded}"
 
 If you don't have $SLACK_TOKEN, check the connector status:
-  zero connector status slack
+  okou connector status slack
 
 To verify the token and network policy end-to-end:
-  zero connector check --env-name SLACK_TOKEN
+  okou connector check --env-name SLACK_TOKEN
 
 Slack API docs: https://api.slack.com/methods/search.messages
 
@@ -156,7 +156,7 @@ async function runChatSource(
     console.error(
       chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
     );
-    console.error(chalk.dim("  Run: zero logs list    to find agent IDs"));
+    console.error(chalk.dim("  Run: okou logs list    to find agent IDs"));
     process.exit(1);
   }
 
@@ -206,7 +206,7 @@ export const zeroSearchCommand = new Command()
     collectSource,
     [] as string[],
   )
-  .option("--agent <id>", "Filter by Zero agent ID")
+  .option("--agent <id>", "Filter by agent ID")
   .option("--run <id>", "Filter by run ID")
   .option("--since <time>", "Time window (e.g., 7d, 2h)")
   .option("--limit <n>", "Maximum number of matches")

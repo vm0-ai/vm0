@@ -30,8 +30,8 @@ export const renameCommand = new Command()
     "after",
     `
 Examples:
-  Rename this chat:  zero chat rename "Launch plan"
-  Rename another:    zero chat rename --thread <thread-id> "Launch plan"
+  Rename this chat:  okou chat rename "Launch plan"
+  Rename another:    okou chat rename --thread <thread-id> "Launch plan"
 
 Notes:
   - Defaults --thread to ZERO_CHAT_THREAD_ID
@@ -43,7 +43,7 @@ Notes:
       if (!title) {
         printUsageError(
           "Title is required",
-          'Run: zero chat rename "New title"',
+          'Run: okou chat rename "New title"',
         );
       }
 
@@ -51,7 +51,7 @@ Notes:
       if (!threadId) {
         printUsageError(
           "ZERO_CHAT_THREAD_ID is not set",
-          "Pass --thread <thread-id> or run inside a Zero web chat thread.",
+          "Pass --thread <thread-id> or run inside a web chat thread.",
         );
       }
       if (!isUuid(threadId)) {

@@ -121,7 +121,7 @@ function expectFreeAirQualityResponse(body: ZeroAirQualityResponse): void {
   });
 }
 
-describe("zero weather route", () => {
+describe("okou weather route", () => {
   it("returns not configured before calling Google Weather", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;

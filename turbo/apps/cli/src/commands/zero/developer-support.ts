@@ -16,10 +16,10 @@ export const zeroDeveloperSupportCommand = new Command()
     `
 Examples:
   Step 1 — Get consent code:
-    zero developer-support --title "GitHub 403 error" --description "Connector connected but API returns 403"
+    okou developer-support --title "GitHub 403 error" --description "Connector connected but API returns 403"
 
   Step 2 — Submit with code:
-    zero developer-support --title "GitHub 403 error" --description "Connector connected but API returns 403" --consent-code A7X3
+    okou developer-support --title "GitHub 403 error" --description "Connector connected but API returns 403" --consent-code A7X3
 
 Notes:
   - The consent code must be provided by the user to confirm sharing their conversation

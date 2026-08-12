@@ -71,7 +71,7 @@ function event(options: {
   };
 }
 
-describe("zero chat list command", () => {
+describe("okou chat list command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

@@ -53,7 +53,7 @@ function stubBillingStatus() {
   });
 }
 
-describe("zero generate avatar-video command", () => {
+describe("okou generate avatar-video command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -86,15 +86,15 @@ describe("zero generate avatar-video command", () => {
 
     expect(helpOutput).toContain("Built-in workflow (vm0 credits):");
     expect(helpOutput).toContain(
-      "zero generate avatar-video --provider built-in --list-avatars",
+      "okou generate avatar-video --provider built-in --list-avatars",
     );
     expect(helpOutput).toContain(
-      "zero generate avatar-video --provider built-in --list-voices",
+      "okou generate avatar-video --provider built-in --list-voices",
     );
     expect(helpOutput).toContain("JoggAI connector workflow (BYOK):");
-    expect(helpOutput).toContain("zero connector status joggai");
+    expect(helpOutput).toContain("okou connector status joggai");
     expect(helpOutput).toContain(
-      "zero generate avatar-video --provider joggai",
+      "okou generate avatar-video --provider joggai",
     );
   });
 

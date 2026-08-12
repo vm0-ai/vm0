@@ -41,8 +41,8 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:    zero phone upload-file -f /tmp/report.pdf --to +15551234567
-  With a caption:   zero phone upload-file -f /tmp/photo.jpg --to +15551234567 --caption "Here it is"
+  Upload a file:    okou phone upload-file -f /tmp/report.pdf --to +15551234567
+  With a caption:   okou phone upload-file -f /tmp/photo.jpg --to +15551234567 --caption "Here it is"
 
 Output:
   Prints a JSON object to stdout on success:

@@ -205,10 +205,13 @@ jobs:
       - name: Install actionlint
         run: bash <(curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 
-      - name: Install Ansible
+      - name: Install workflow test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ansible-core
+          sudo apt-get install -y --no-install-recommends ansible-core ripgrep
+
+      - name: Audit Okou CLI cutover
+        run: .github/scripts/audit-okou-cli-cutover.sh
 
       - name: Run workflow script tests
         run: |
@@ -219,6 +222,7 @@ jobs:
           )
           bash -n "${script_files[@]}"
           shellcheck \
+            .github/scripts/audit-okou-cli-cutover.sh \
             .github/scripts/build-okou-desktop-artifact.sh \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
@@ -234,6 +238,7 @@ jobs:
             .github/scripts/smoke-okou-cli-artifact.sh \
             .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
+            .github/scripts/tests/audit-okou-cli-cutover-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/checkout-depth-test.sh \

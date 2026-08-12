@@ -101,7 +101,7 @@ Output:
 
 Notes:
   - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML presentation artifact and hosts it with zero host
+  - The agent authors the HTML presentation artifact and hosts it with okou host
 
 Templates (presentation):
 ${formatPresentationTemplateListing(templates)}`;
@@ -147,7 +147,7 @@ ${formatPresentationTemplateListing(templates)}`;
 
         console.log(
           [
-            "# Zero generate presentation",
+            "# Okou generate presentation",
             "",
             "This is a direct HTML presentation authoring packet for the current agent.",
             "Author the deck directly from the user's request and any supplied source material.",

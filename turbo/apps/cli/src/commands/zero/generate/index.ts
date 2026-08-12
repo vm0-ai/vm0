@@ -41,24 +41,24 @@ const documentCommand = createListerOnlyCommand({
 
 function buildGenerateHelpText(): string {
   const examples = [
-    '  Generate image:        zero generate image --raw-prompt "A watercolor fox"',
-    '  Generate deck:         zero generate presentation --prompt "A product roadmap"',
-    '  Generate report:       zero generate report --prompt "A Q2 usage report"',
-    '  Generate docs:         zero generate docs-design --prompt "A setup guide"',
-    '  Generate video:        zero generate video --prompt "A cinematic city shot"',
-    '  Generate avatar video: zero generate avatar-video --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Hello"',
-    '  Generate site:         zero generate website --prompt "A launch site"',
-    '  Generate sprite:       zero generate sprite --prompt "A slime monster idle loop"',
-    '  Generate speech:       zero generate voice --prompt "Hello"',
-    "  Show music choices:    zero generate music",
+    '  Generate image:        okou generate image --raw-prompt "A watercolor fox"',
+    '  Generate deck:         okou generate presentation --prompt "A product roadmap"',
+    '  Generate report:       okou generate report --prompt "A Q2 usage report"',
+    '  Generate docs:         okou generate docs-design --prompt "A setup guide"',
+    '  Generate video:        okou generate video --prompt "A cinematic city shot"',
+    '  Generate avatar video: okou generate avatar-video --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Hello"',
+    '  Generate site:         okou generate website --prompt "A launch site"',
+    '  Generate sprite:       okou generate sprite --prompt "A slime monster idle loop"',
+    '  Generate speech:       okou generate voice --prompt "Hello"',
+    "  Show music choices:    okou generate music",
     "",
-    "  Show image choices:    zero generate image",
-    "  Show report choices:   zero generate report",
-    "  Use a connector:       zero generate video --provider heygen",
-    "  Force built-in:        zero generate image --provider built-in --model gpt-image-1.5 --raw-prompt ...",
+    "  Show image choices:    okou generate image",
+    "  Show report choices:   okou generate report",
+    "  Use a connector:       okou generate video --provider heygen",
+    "  Force built-in:        okou generate image --provider built-in --model gpt-image-1.5 --raw-prompt ...",
   ];
 
-  return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "zero generate <type>" with no --prompt to list generation choices for that type.
+  return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "okou generate <type>" with no --prompt to list generation choices for that type.
   - Media and connector-backed generation types may expose --provider for vm0 or connector execution guidance.
   - HTML artifact types use registry-backed --design-system and --template selection.`;
 }

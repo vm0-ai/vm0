@@ -15,7 +15,7 @@ function metadataUrl(threadId: string): string {
   return `http://localhost:3000/api/zero/chat-threads/${threadId}/metadata`;
 }
 
-describe("zero chat create command", () => {
+describe("okou chat create command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -134,7 +134,7 @@ describe("zero chat create command", () => {
     expect(output).toContain("Priority: enabled");
     expect(output).toContain(`Agent:  ${OTHER_AGENT_ID}`);
     expect(output).toContain(
-      `zero chat send --thread-id ${NEW_THREAD_ID} --text "<message>"`,
+      `okou chat send --thread-id ${NEW_THREAD_ID} --text "<message>"`,
     );
   });
 

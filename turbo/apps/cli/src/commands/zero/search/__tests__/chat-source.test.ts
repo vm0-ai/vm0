@@ -1,5 +1,5 @@
 /**
- * Tests for `zero search --source chat`.
+ * Tests for `okou search --source chat`.
  *
  * Entry point: zeroSearchCommand.parseAsync()
  * Mock (external): Web API via MSW
@@ -28,7 +28,7 @@ function makeMessage(params: {
   };
 }
 
-describe("zero search --source chat", () => {
+describe("okou search --source chat", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

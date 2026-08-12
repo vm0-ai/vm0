@@ -29,7 +29,7 @@ describe("POST /api/zero/chat/events authorization", () => {
       iat: seconds,
       exp: seconds + 60,
     });
-    const prompt = "Send from Zero CLI";
+    const prompt = "Send from Okou CLI";
 
     const response = await accept(
       client().send({

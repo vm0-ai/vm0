@@ -2955,8 +2955,8 @@ describe("Feishu integration", () => {
     expect(fileId?.length).toBeLessThan(64);
     expect(claim.prompt).not.toContain(fileKey);
     expect(claim.prompt).toContain(`   [FILE_KEY] ${fileId}`);
-    expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
-    expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
+    expect(claim.appendSystemPrompt).toContain("okou feishu download-file -h");
+    expect(claim.appendSystemPrompt).toContain("okou feishu upload-file -h");
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
@@ -3252,10 +3252,10 @@ describe("Feishu integration", () => {
       "- SENDER: {id: ou_previous_user, name: Previous User}",
     );
     expect(claim.appendSystemPrompt).toContain(
-      "zero feishu message send --help",
+      "okou feishu message send --help",
     );
-    expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
-    expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
+    expect(claim.appendSystemPrompt).toContain("okou feishu download-file -h");
+    expect(claim.appendSystemPrompt).toContain("okou feishu upload-file -h");
 
     const cliAgentSessionId = `bdd-feishu-cli-${run.id}`;
     await completeRunSession({
@@ -4277,7 +4277,7 @@ describe("Feishu integration", () => {
     );
     expect(groupClaim.appendSystemPrompt).toContain("Chat ID: oc_feishu_group");
     expect(groupClaim.appendSystemPrompt).toContain(
-      "Group ID: oc_feishu_group (same as Chat ID; use it directly as the `--chat` value for `zero feishu message send`)",
+      "Group ID: oc_feishu_group (same as Chat ID; use it directly as the `--chat` value for `okou feishu message send`)",
     );
     expect(groupClaim.appendSystemPrompt).toContain(
       "# Recent Channel Messages",

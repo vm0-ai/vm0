@@ -81,9 +81,9 @@ function buildCurrentThreadContext(threadId: string): string {
     `- CHAT_THREAD_ID: ${threadId}`,
     "",
     "Reading this thread, each through ZERO_TOKEN:",
-    "- `zero chat messages` prints this thread's user and assistant messages, oldest first (chat-event:read)",
-    "- `zero chat messages --limit <n>` prints only the most recent n messages",
-    "- `zero logs <run-id> --all` prints the full event stream of one run in this thread (agent-run:read)",
+    "- `okou chat messages` prints this thread's user and assistant messages, oldest first (chat-event:read)",
+    "- `okou chat messages --limit <n>` prints only the most recent n messages",
+    "- `okou logs <run-id> --all` prints the full event stream of one run in this thread (agent-run:read)",
   ].join("\n");
 }
 
@@ -113,11 +113,11 @@ export function buildAgentRunSourceContext(
     "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.",
     "",
     "Reading the source, each through ZERO_TOKEN:",
-    `- \`zero chat messages --thread-id ${source.threadId}\` prints the source thread's user and assistant messages (chat-event:read)`,
-    `- \`zero chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
-    `- \`zero logs ${source.runId} --all\` prints the full event stream of the run that sent this message (agent-run:read)`,
+    `- \`okou chat messages --thread-id ${source.threadId}\` prints the source thread's user and assistant messages (chat-event:read)`,
+    `- \`okou chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
+    `- \`okou logs ${source.runId} --all\` prints the full event stream of the run that sent this message (agent-run:read)`,
     "",
-    `This run's output is appended to this thread, where the user reads it. Nothing carries it back to the source run. \`zero chat send --thread-id ${source.threadId}\` posts a new message into the source thread, which starts a run there.`,
+    `This run's output is appended to this thread, where the user reads it. Nothing carries it back to the source run. \`okou chat send --thread-id ${source.threadId}\` posts a new message into the source thread, which starts a run there.`,
   ].join("\n");
 }
 
@@ -125,7 +125,7 @@ function buildComputerUseSystemPrompt(displayName: string): string {
   return [
     "# Computer Use",
     `Computer Use is enabled for this run on ${displayName}.`,
-    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "Use Okou CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
     "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
   ].join("\n");
 }
@@ -211,7 +211,7 @@ function buildWebChatPriorRunsContext(
       `- RELATIVE_INDEX: ${relativeIndex}`,
       `- RUN_ID: ${run.runId}`,
       `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: zero logs ${run.runId} --all`,
+      `- LOG_COMMAND: okou logs ${run.runId} --all`,
       "",
       ...renderedEvents,
     ].join("\n");

@@ -1,5 +1,5 @@
 /**
- * Tests for zero chat messages command
+ * Tests for okou chat messages command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -148,7 +148,7 @@ function runCancelledEvent(args: { id: string; seqId: number }) {
   };
 }
 
-describe("zero chat messages command", () => {
+describe("okou chat messages command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -557,7 +557,7 @@ describe("zero chat messages command", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("No chat messages found");
-    expect(output).toContain(`zero chat send --thread-id ${THREAD_ID}`);
+    expect(output).toContain(`okou chat send --thread-id ${THREAD_ID}`);
   });
 
   it("requires a thread ID from the flag or the current web chat", async () => {

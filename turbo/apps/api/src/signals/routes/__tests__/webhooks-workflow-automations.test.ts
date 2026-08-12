@@ -179,7 +179,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const workflowClaim = await runsApi.claimRunnerJob(first.body.runId);
     const workflowPrompt = workflowClaim.appendSystemPrompt ?? "";
-    expect(workflowPrompt).toContain("zero slack message send --help");
+    expect(workflowPrompt).toContain("okou slack message send --help");
     expect(workflowPrompt).not.toContain(
       "normal replies are automatically sent to the originating thread",
     );

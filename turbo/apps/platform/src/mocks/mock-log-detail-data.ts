@@ -52,7 +52,7 @@ export const mockLogDetail: LogDetail = {
     "<@UMOCK_MENTION01> Take a look at the content of this image I sent you and draft a blog post outline",
     "[file]: IMG_8408.png (PNG)",
     "   Dimensions: 1206x2622",
-    "   Step 1 - Download: zero slack download-file FMOCK_FILE01 -o /tmp/FMOCK_FILE01.png",
+    "   Step 1 - Download: okou slack download-file FMOCK_FILE01 -o /tmp/FMOCK_FILE01.png",
     "   Step 2 - Read: open /tmp/FMOCK_FILE01.png with the appropriate tool",
     "",
     "---",
