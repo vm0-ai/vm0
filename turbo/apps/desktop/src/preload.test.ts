@@ -80,6 +80,7 @@ describe("Desktop preload bridge", () => {
       "vm0DesktopAuth",
       "vm0DesktopComputerUse",
       "vm0DesktopDeveloperTools",
+      "vm0DesktopIdentity",
     ]);
     expect(exposedApi<DesktopAuthApi>("vm0DesktopAuth")).toBeTruthy();
     expect(
@@ -88,6 +89,11 @@ describe("Desktop preload bridge", () => {
     expect(
       exposedApi<DesktopDeveloperToolsApi>("vm0DesktopDeveloperTools"),
     ).toBeTruthy();
+    expect(exposedApi("vm0DesktopIdentity")).toStrictEqual({
+      product: "zero",
+      brandName: "Zero",
+      displayName: "Zero Computer Use",
+    });
   });
 
   it("routes desktop auth API calls through IPC channels", async () => {

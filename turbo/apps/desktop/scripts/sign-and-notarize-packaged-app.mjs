@@ -12,6 +12,12 @@ const desktopDirectory = path.resolve(scriptDirectory, "..");
 const packageMetadata = JSON.parse(
   await readFile(path.join(desktopDirectory, "package.json"), "utf8"),
 );
+const desktopIdentities = JSON.parse(
+  await readFile(
+    path.join(desktopDirectory, "src", "desktop-identities.json"),
+    "utf8",
+  ),
+);
 
 function requiredEnvironmentVariable(name) {
   const value = process.env[name];
@@ -21,26 +27,48 @@ function requiredEnvironmentVariable(name) {
   return value;
 }
 
-function appPathFromArguments(argv) {
-  if (argv.length !== 2 || argv[0] !== "--app") {
+function optionsFromArguments(argv) {
+  const options = { product: "zero" };
+  for (let index = 0; index < argv.length; index += 1) {
+    const name = argv[index];
+    const value = argv[index + 1];
+    if (!value) {
+      throw new Error(`Missing value for ${name}`);
+    }
+    if (name === "--app") {
+      options.appPath = path.resolve(value);
+      index += 1;
+      continue;
+    }
+    if (name === "--product") {
+      options.product = value;
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${name}`);
+  }
+  if (!options.appPath || !desktopIdentities[options.product]) {
     throw new Error(
-      "Usage: sign-and-notarize-packaged-app.mjs --app <app-path>",
+      "Usage: sign-and-notarize-packaged-app.mjs --app <app-path> [--product zero|okou]",
     );
   }
-  return path.resolve(argv[1]);
+  return options;
 }
 
-const appPath = appPathFromArguments(process.argv.slice(2));
-const appStat = await stat(appPath);
+const options = optionsFromArguments(process.argv.slice(2));
+const expectedAppName = `${desktopIdentities[options.product].production.displayName}.app`;
+const appStat = await stat(options.appPath);
 if (
   !appStat.isDirectory() ||
-  path.basename(appPath) !== "Zero Computer Use.app"
+  path.basename(options.appPath) !== expectedAppName
 ) {
-  throw new Error(`Expected a Zero Computer Use.app directory: ${appPath}`);
+  throw new Error(
+    `Expected a ${expectedAppName} directory: ${options.appPath}`,
+  );
 }
 
 await sign({
-  app: appPath,
+  app: options.appPath,
   batchCodesignCalls: true,
   identity: requiredEnvironmentVariable("VM0_DESKTOP_SIGNING_IDENTITY"),
   identityValidation: true,
@@ -49,7 +77,7 @@ await sign({
 });
 
 await notarize({
-  appPath,
+  appPath: options.appPath,
   appleApiKey: requiredEnvironmentVariable("VM0_DESKTOP_NOTARIZE_API_KEY_PATH"),
   appleApiKeyId: requiredEnvironmentVariable("VM0_DESKTOP_NOTARIZE_API_KEY_ID"),
   appleApiIssuer: requiredEnvironmentVariable(

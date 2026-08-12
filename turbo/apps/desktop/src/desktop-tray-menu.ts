@@ -52,10 +52,15 @@ export interface DesktopTrayMenuActions {
 }
 
 interface DesktopTrayMenuState {
+  readonly brandName?: "Zero" | "Okou";
   readonly computerUse: DesktopComputerUseState;
   readonly auth: DesktopAuthState | null;
   readonly authLoading?: boolean;
   readonly authError: string | null;
+}
+
+function desktopBrandName(state: DesktopTrayMenuState): "Zero" | "Okou" {
+  return state.brandName ?? "Zero";
 }
 
 function separator(): DesktopTrayMenuItem {
@@ -135,7 +140,10 @@ function authActionForComputerUse(
     }
     return null;
   }
-  return { label: "Sign in to Zero", click: actions.openSignIn };
+  return {
+    label: `Sign in to ${desktopBrandName(state)}`,
+    click: actions.openSignIn,
+  };
 }
 
 function buildComputerUseSubmenu(
@@ -223,16 +231,16 @@ function buildPermissionItems(
 
 function authStatusLabel(state: DesktopTrayMenuState): string {
   if (isAuthLoading(state)) {
-    return "Signing in to Zero...";
+    return `Signing in to ${desktopBrandName(state)}...`;
   }
   if (state.authError) {
-    return "Sign in to Zero";
+    return `Sign in to ${desktopBrandName(state)}`;
   }
   if (!state.auth) {
-    return "Sign in to Zero";
+    return `Sign in to ${desktopBrandName(state)}`;
   }
   if (state.auth.status === "signed_out") {
-    return "Sign in to Zero";
+    return `Sign in to ${desktopBrandName(state)}`;
   }
   if (!state.auth.organization) {
     return "Select Workspace";
@@ -251,7 +259,10 @@ function buildAuthSubmenu(
   if (state.authError || !state.auth || state.auth.status === "signed_out") {
     return [
       disabledLabel("Not signed in"),
-      { label: "Sign in to Zero", click: actions.openSignIn },
+      {
+        label: `Sign in to ${desktopBrandName(state)}`,
+        click: actions.openSignIn,
+      },
       { label: "Refresh Account Status", click: actions.refreshStatus },
     ];
   }

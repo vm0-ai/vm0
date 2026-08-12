@@ -79,6 +79,7 @@ const productionConfig: DesktopConfig = {
   environment: "production",
   identity: {
     product: "zero",
+    brandName: "Zero",
     displayName: "Zero Computer Use",
     bundleId: "ai.vm0.desktop",
     authProtocolName: "Zero Computer Use",
@@ -212,6 +213,7 @@ describe("desktop auto-updates", () => {
       ...productionConfig,
       identity: {
         product: "okou",
+        brandName: "Okou",
         displayName: "Okou Computer Use",
         bundleId: "ai.okou.computer-use",
         authProtocolName: "Okou Desktop Auth",

@@ -261,8 +261,11 @@ async function createStyledDmg({
   }
 
   const appName = path.basename(appPath);
-  const tempDir = await mkdtemp(path.join(tmpdir(), "zero-desktop-dmg-"));
-  const rwDmgPath = path.join(tempDir, "Zero Computer Use.rw.dmg");
+  const tempDir = await mkdtemp(path.join(tmpdir(), "desktop-dmg-"));
+  const rwDmgPath = path.join(
+    tempDir,
+    `${path.basename(appPath, ".app")}.rw.dmg`,
+  );
   const mountPath = path.join(tempDir, "mount");
   const backgroundDir = path.join(mountPath, ".background");
   const backgroundPng = path.join(backgroundDir, "background.png");

@@ -68,6 +68,7 @@ function productionConfig(): DesktopConfig {
     environment: "production",
     identity: {
       product: "zero",
+      brandName: "Zero",
       displayName: "Zero Computer Use",
       bundleId: "ai.vm0.desktop",
       authProtocolName: "Zero Desktop",

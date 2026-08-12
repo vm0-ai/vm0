@@ -3,7 +3,9 @@ import type {
   DesktopAuthApi,
   DesktopComputerUseApi,
   DesktopDeveloperToolsApi,
+  DesktopIdentityInfo,
 } from "./desktop-bridge";
+import { resolveDesktopConfig } from "./config";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
@@ -157,9 +159,17 @@ const desktopDeveloperToolsApi: DesktopDeveloperToolsApi = {
   },
 };
 
+const identity = resolveDesktopConfig().identity;
+const desktopIdentity: DesktopIdentityInfo = {
+  product: identity.product,
+  brandName: identity.brandName,
+  displayName: identity.displayName,
+};
+
 contextBridge.exposeInMainWorld("vm0DesktopAuth", desktopAuthApi);
 contextBridge.exposeInMainWorld("vm0DesktopComputerUse", desktopComputerUseApi);
 contextBridge.exposeInMainWorld(
   "vm0DesktopDeveloperTools",
   desktopDeveloperToolsApi,
 );
+contextBridge.exposeInMainWorld("vm0DesktopIdentity", desktopIdentity);

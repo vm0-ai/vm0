@@ -1,26 +1,10 @@
 const path = require("node:path");
 
-const desktopIdentities = require("../src/desktop-identities.json");
+const { resolveDesktopBuildConfig } = require("./desktop-build-config");
 
-const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
-
-function platformHostname(rawUrl) {
-  if (!rawUrl || !rawUrl.trim()) {
-    return PRODUCTION_PLATFORM_HOSTNAME;
-  }
-  return new URL(rawUrl).hostname;
-}
-
-function desktopIdentityForPlatformUrl(rawUrl) {
-  if (platformHostname(rawUrl) === PRODUCTION_PLATFORM_HOSTNAME) {
-    return desktopIdentities.production;
-  }
-  return desktopIdentities.development;
-}
-
-function packagedAppPaths(platformUrl) {
+function packagedAppPaths(options = {}) {
   const appRoot = path.resolve(__dirname, "..");
-  const appName = desktopIdentityForPlatformUrl(platformUrl).displayName;
+  const appName = resolveDesktopBuildConfig(options).identity.displayName;
   const appBundlePath = path.join(
     appRoot,
     "out",

@@ -3,7 +3,7 @@
   "version": "0.30.6",
   "private": true,
   "productName": "Zero Computer Use",
-  "description": "Zero desktop shell",
+  "description": "Computer Use desktop shell",
   "main": "dist/bootstrap.js",
   "scripts": {
     "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:renderer",

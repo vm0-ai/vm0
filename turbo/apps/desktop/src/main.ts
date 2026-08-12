@@ -704,6 +704,7 @@ function installDesktopAuth(): void {
 
 function installTray(): void {
   desktopTray = installDesktopTray({
+    brandName: config.identity.brandName,
     displayName: config.identity.displayName,
     iconPath: trayIconPath(),
     disabledIconPath: trayIconDisabledPath(),
@@ -1195,7 +1196,9 @@ function registerDesktopAuthProtocol(): void {
 }
 
 if (process.platform !== "darwin") {
-  console.warn("Zero Desktop POC is macOS-first and only packages for darwin.");
+  console.warn(
+    "Computer Use Desktop is macOS-first and only packages for darwin.",
+  );
 }
 
 applyAppName();

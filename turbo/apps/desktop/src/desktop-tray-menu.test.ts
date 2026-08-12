@@ -154,6 +154,23 @@ describe("desktop tray menu", () => {
     vi.restoreAllMocks();
   });
 
+  it("uses Okou account copy for the Okou product", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        brandName: "Okou",
+        computerUse: computerUseState(),
+        auth: { status: "signed_out", user: null, organization: null },
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    expect(findItem(menu, "Sign in to Okou")).toBeDefined();
+    expect(
+      findItem(submenu(findItem(menu, "Sign in to Okou")), "Sign in to Okou"),
+    ).toBeDefined();
+  });
+
   it("shows the main window, status submenus, recent commands, and quit", () => {
     const menu = buildDesktopTrayMenuItems(
       {
