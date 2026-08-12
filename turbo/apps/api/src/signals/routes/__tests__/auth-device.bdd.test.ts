@@ -131,7 +131,7 @@ describe("AUTH-02: CLI device authorization", () => {
 });
 
 describe("AUTH-02: desktop auth handoff", () => {
-  it("requires a session, returns a safe callback URL, and consumes the handoff once", async () => {
+  it("requires a session, returns a safe legacy Zero callback URL, and consumes the handoff once", async () => {
     authDevice.mockDesktopSignInToken("ticket_desktop_bdd");
 
     const unauthenticated = await authDevice.requestDesktopHandoff(
@@ -188,6 +188,30 @@ describe("AUTH-02: desktop auth handoff", () => {
     const missingCode = await authDevice.requestDesktopConsume("", [400]);
     expectApiError(missingCode.body);
     expect(missingCode.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("creates and consumes an Okou desktop auth callback", async () => {
+    authDevice.mockDesktopSignInToken("ticket_okou_desktop_bdd");
+
+    const handoff = await authDevice.requestDesktopHandoff(
+      bdd.user(),
+      { callbackScheme: "ai.okou.computer-use" },
+      [200],
+    );
+    if (handoff.status !== 200) {
+      throw new Error(
+        `Expected Okou desktop handoff to succeed, got ${handoff.status}`,
+      );
+    }
+
+    const callbackUrl = new URL(handoff.body.callbackUrl);
+    expect(callbackUrl.protocol).toBe("ai.okou.computer-use:");
+    expect(callbackUrl.hostname).toBe("auth");
+    expect(callbackUrl.pathname).toBe("/callback");
+
+    const code = authDevice.callbackCode(handoff.body.callbackUrl);
+    const consumed = await authDevice.requestDesktopConsume(code, [200]);
+    expect(consumed.body).toStrictEqual({ token: "ticket_okou_desktop_bdd" });
   });
 
   it("tracks handoff status through consume and complete for the creating user only", async () => {

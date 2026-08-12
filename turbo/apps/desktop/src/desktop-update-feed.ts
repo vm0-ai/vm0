@@ -1,4 +1,8 @@
 import type { DesktopConfig } from "./config";
+import {
+  DESKTOP_PRODUCT_ZERO,
+  type DesktopProduct,
+} from "@vm0/api-contracts/contracts/client-headers";
 
 const DESKTOP_UPDATE_CHANNEL = "stable";
 const DESKTOP_UPDATE_PLATFORM = "darwin";
@@ -22,9 +26,14 @@ export function shouldInstallDesktopAutoUpdates(
   );
 }
 
-export function desktopUpdateFeedBaseUrl(apiBaseUrl: string): string {
+export function desktopUpdateFeedBaseUrl(
+  apiBaseUrl: string,
+  product: DesktopProduct,
+): string {
   const url = new URL(apiBaseUrl);
-  url.pathname = `/api/desktop/updates/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${DESKTOP_UPDATE_ARCH}`;
+  const productPath =
+    product === DESKTOP_PRODUCT_ZERO ? "" : `/${encodeURIComponent(product)}`;
+  url.pathname = `/api/desktop/updates${productPath}/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${DESKTOP_UPDATE_ARCH}`;
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");

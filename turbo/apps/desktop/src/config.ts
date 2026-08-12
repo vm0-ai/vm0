@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
 import desktopIdentities from "./desktop-identities.json";
 import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
 
@@ -10,14 +11,30 @@ export type DesktopEnvironment = "production" | "staging" | "development";
 type DesktopIdentityKind = "production" | "development";
 
 interface DesktopIdentity {
+  readonly product: DesktopProduct;
   readonly displayName: string;
   readonly bundleId: string;
   readonly authProtocolName: string;
   readonly authScheme: string;
 }
 
-const DESKTOP_IDENTITIES: Record<DesktopIdentityKind, DesktopIdentity> =
-  desktopIdentities;
+function desktopProduct(value: string): DesktopProduct {
+  if (value === "zero" || value === "okou") {
+    return value;
+  }
+  throw new Error(`Unsupported desktop product: ${value}`);
+}
+
+const DESKTOP_IDENTITIES = {
+  production: {
+    ...desktopIdentities.production,
+    product: desktopProduct(desktopIdentities.production.product),
+  },
+  development: {
+    ...desktopIdentities.development,
+    product: desktopProduct(desktopIdentities.development.product),
+  },
+} satisfies Record<DesktopIdentityKind, DesktopIdentity>;
 
 export interface DesktopConfig {
   readonly platformUrl: URL;

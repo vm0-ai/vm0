@@ -1,6 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+const DESKTOP_PRODUCTS = ["zero", "okou"];
+const DESKTOP_PRODUCT_ARTIFACT_NAMES = {
+  zero: "Zero",
+  okou: "Okou",
+};
+
 function parseArgs(argv) {
   const args = new Map();
   for (let index = 0; index < argv.length; index += 2) {
@@ -45,13 +51,36 @@ const args = parseArgs(process.argv.slice(2));
 const manifestPath = requiredArg(args, "manifest");
 const version = requiredArg(args, "version");
 const zipUrl = requiredArg(args, "zip-url");
+const product = args.get("product") ?? "zero";
 const channel = args.get("channel") ?? "stable";
 const platform = args.get("platform") ?? "darwin";
 const arch = args.get("arch") ?? "arm64";
 const pubDate = args.get("pub-date") ?? new Date().toISOString();
 
+if (!DESKTOP_PRODUCTS.includes(product)) {
+  throw new Error(`Unsupported desktop product: ${product}`);
+}
+
+const expectedZipAssetName = `${DESKTOP_PRODUCT_ARTIFACT_NAMES[product]}-${platform}-${arch}-${version}.zip`;
+const actualZipAssetName = decodeURIComponent(
+  new URL(zipUrl).pathname.split("/").at(-1) ?? "",
+);
+if (actualZipAssetName !== expectedZipAssetName) {
+  throw new Error(
+    `Desktop update asset must be ${expectedZipAssetName}, received ${actualZipAssetName}`,
+  );
+}
+
 const manifest = ensureRecord(readManifest(manifestPath));
+const existingProduct =
+  manifest.product ?? (existsSync(manifestPath) ? "zero" : product);
+if (existingProduct !== product) {
+  throw new Error(
+    `Desktop update manifest product mismatch: expected ${product}, received ${existingProduct}`,
+  );
+}
 manifest.schemaVersion = 1;
+manifest.product = product;
 manifest.channels = ensureRecord(manifest.channels);
 manifest.releases = ensureRecord(manifest.releases);
 
@@ -76,7 +105,9 @@ platforms[platform] = platformAssets;
 manifest.releases[version] = {
   ...currentRelease,
   version,
-  name: currentRelease.name ?? `Zero Computer Use ${version}`,
+  name:
+    currentRelease.name ??
+    `${DESKTOP_PRODUCT_ARTIFACT_NAMES[product]} Computer Use ${version}`,
   notes: currentRelease.notes ?? "",
   pubDate,
   platforms,

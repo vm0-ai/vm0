@@ -191,6 +191,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
+      product: "zero",
       displayName: "Zero Computer Use",
       bundleId: "ai.vm0.zero.desktop",
       authScheme: "ai.vm0.zero.desktop",
@@ -209,6 +210,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("staging");
     expect(config.webUrl.toString()).toBe("https://staging-www.omby.ai/");
     expect(config.identity).toMatchObject({
+      product: "zero",
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
@@ -231,6 +233,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://www.vm7.ai:8443/");
     expect(config.identity).toMatchObject({
+      product: "zero",
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
@@ -247,6 +250,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://pr-123-www.omby.ai/");
     expect(config.identity).toMatchObject({
+      product: "zero",
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
@@ -390,6 +394,17 @@ describe("desktop auth", () => {
     );
   });
 
+  it("builds the Okou system-browser desktop auth start URL", () => {
+    expect(
+      buildDesktopAuthStartUrl(
+        new URL("https://www.okou.ai"),
+        "ai.okou.computer-use",
+      ),
+    ).toBe(
+      "https://www.okou.ai/desktop-auth/start?callbackScheme=ai.okou.computer-use",
+    );
+  });
+
   it("deduplicates repeated desktop auth start attempts", () => {
     let now = 1_000;
     const gate = createDesktopAuthStartGate(() => now);
@@ -447,6 +462,18 @@ describe("desktop auth", () => {
       parseDesktopAuthCallback(
         `ai.vm0.zero.desktop.dev://auth/callback?code=${code}`,
         "ai.vm0.zero.desktop.dev",
+      ),
+    ).toStrictEqual({ code, handoffId: null });
+    expect(
+      parseDesktopAuthCallback(
+        `ai.okou.computer-use://auth/callback?code=${code}`,
+        "ai.okou.computer-use",
+      ),
+    ).toStrictEqual({ code, handoffId: null });
+    expect(
+      parseDesktopAuthCallback(
+        `ai.okou.computer-use.dev://auth/callback?code=${code}`,
+        "ai.okou.computer-use.dev",
       ),
     ).toStrictEqual({ code, handoffId: null });
     expect(
