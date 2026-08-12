@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.440.1](https://github.com/vm0-ai/vm0/compare/api-v1.440.0...api-v1.440.1) (2026-08-12)
+
+
+### Refactoring
+
+* remove chat event snapshot read feature switch ([#26745](https://github.com/vm0-ai/vm0/issues/26745)) ([1a3b9d9](https://github.com/vm0-ai/vm0/commit/1a3b9d96818bd4ec7ba6a5a85158d3a126eec790))
+* remove expired deployment compatibility ([#26748](https://github.com/vm0-ai/vm0/issues/26748)) ([95de782](https://github.com/vm0-ai/vm0/commit/95de782d593ebb23d7ee720d7c1d3d6f2650b95d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.1
+    * @vm0/core bumped to 8.552.1
+    * @vm0/db bumped to 1.197.4
+    * @vm0/pi-agent-runtime bumped to 1.4.1
+
 ## [1.440.0](https://github.com/vm0-ai/vm0/compare/api-v1.439.0...api-v1.440.0) (2026-08-12)
 
 
