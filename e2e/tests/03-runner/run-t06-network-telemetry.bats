@@ -41,11 +41,21 @@ def read_exact(connection, size):
     return bytes(data)
 
 
-try:
-    with socket.create_connection(("192.0.2.1", 4444), timeout=3) as connection:
-        connection.sendall(b"vm0-raw-tcp-probe")
-except OSError:
-    pass
+with socket.create_connection(("ssh.github.com", 443), timeout=5) as connection:
+    connection.settimeout(5)
+    banner = bytearray()
+    while b"\n" not in banner:
+        chunk = connection.recv(4096)
+        if not chunk:
+            raise RuntimeError("ssh.github.com:443 closed before the SSH banner")
+        banner.extend(chunk)
+    assert bytes(banner).startswith(b"SSH-2.0-")
+    connection.shutdown(socket.SHUT_WR)
+    try:
+        while connection.recv(4096):
+            pass
+    except ConnectionResetError:
+        pass
 print("RAW_TCP_PROBE_DONE")
 
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
@@ -87,12 +97,12 @@ print("REPLICATE_DIAGNOSTIC_DONE")
 PY
 
 curl --silent --show-error --max-time 10 \
-    --request GET \
+    --http1.1 \
     --user-agent 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' \
     --header 'Content-Type: text/plain' \
     --data 'vm0-captured-request-body' \
     --output /tmp/browser-response.txt \
-    https://www.google.com/ || true
+    https://www.google.com/
 printf 'BROWSER_REQUEST_DONE\n'
 printf 'NETWORK_PROBES_DONE\n'
 EOF
@@ -125,8 +135,8 @@ EOF
             jq -e '
                 any(.[];
                     .type == "tcp" and
-                    .host == "192.0.2.1" and
-                    .port == 4444) and
+                    .port == 443 and
+                    .response_size > 0) and
                 any(.[];
                     .type == "udp" and
                     .host == "192.0.2.1" and
