@@ -71,7 +71,7 @@ export function feishuCallbackUrl(installationId: string): string {
 
 export function feishuOAuthCallbackUrl(): string {
   return new URL(
-    "/api/okou/feishu/oauth/callback",
+    "/api/zero/feishu/oauth/callback",
     env("FEISHU_CALLBACK_BASE_URL"),
   ).toString();
 }

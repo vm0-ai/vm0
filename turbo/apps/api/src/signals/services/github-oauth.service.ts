@@ -365,7 +365,7 @@ async function buildGithubOauthState(args: {
 }
 
 export function githubUserConnectCallbackRedirectUri(origin: string): string {
-  return `${origin}/api/okou/github/oauth/connect/callback`;
+  return `${origin}/api/zero/github/oauth/connect/callback`;
 }
 
 function githubAppSetupCallbackRedirectUri(origin: string): string {

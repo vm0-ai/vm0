@@ -12,6 +12,11 @@ also use that namespace. The API registration and runtime-schema layers still
 publish the same handlers and schemas through `/api/zero/**` for older clients,
 pinned CLI artifacts, installed Desktop builds, and stored callback URLs.
 
+OAuth start requests use the canonical Okou namespace, while provider-facing
+Slack, Teams, Feishu, and GitHub `redirect_uri` values deliberately remain on
+the Zero alias until the corresponding third-party allowlists are migrated in
+a separately verified rollout. Both callback paths reach the same handler.
+
 Current consumers prefer `OKOU_*` variables and fall back to their `ZERO_*`
 aliases. Every new Zero-agent run emits both `OKOU_APP_URL` and `ZERO_APP_URL`,
 both agent and optional chat-thread identifier names, and two independent
