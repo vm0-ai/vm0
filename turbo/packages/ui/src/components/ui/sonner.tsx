@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Toaster as Sonner, toast } from "sonner";
 
@@ -19,9 +19,11 @@ const DEFAULT_TOASTER_MOBILE_OFFSET = {
 } satisfies ToasterProps["mobileOffset"];
 
 function ToasterReady({ onReady }: { readonly onReady: () => void }) {
+  const initialOnReadyRef = useRef(onReady);
+
   useEffect(() => {
-    onReady();
-  }, [onReady]);
+    initialOnReadyRef.current();
+  }, []);
 
   return null;
 }
