@@ -36,10 +36,10 @@ export const usagePackMemberAdditionsExpandedMemberId$ = computed((get) => {
 
 export const setUsagePackMembersDialogOpen$ = command(
   ({ set }, open: boolean) => {
-    set(usagePackMembersDialogOpenState$, open);
-    if (!open) {
+    if (open) {
       set(usagePackMemberAdditionsExpandedMemberIdState$, null);
     }
+    set(usagePackMembersDialogOpenState$, open);
   },
 );
 

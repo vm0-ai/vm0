@@ -399,8 +399,10 @@ export const setWorkflowAgentFilter$ = command(
 
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
+    if (dialog === "copy") {
+      set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
+    }
     set(internalWorkflowActionDialog$, dialog);
-    set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   },
 );
 
@@ -498,11 +500,11 @@ export const editingWorkflowAutomationId$ = computed((get) => {
 
 export const setEditingWorkflowAutomationId$ = command(
   ({ set }, automationId: string | null) => {
-    set(internalEditingWorkflowAutomationId$, automationId);
-    set(internalEditingGithubPullRequestAction$, null);
-    if (!automationId) {
+    if (automationId) {
+      set(internalEditingGithubPullRequestAction$, null);
       set(internalEditingGmailMatchConditions$, {});
     }
+    set(internalEditingWorkflowAutomationId$, automationId);
   },
 );
 

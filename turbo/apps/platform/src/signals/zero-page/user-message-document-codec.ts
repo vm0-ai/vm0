@@ -223,10 +223,43 @@ function feedbackSource(
   };
 }
 
+interface FeedbackLocation {
+  readonly eventId: string;
+  readonly range: {
+    readonly start: number;
+    readonly end: number;
+  };
+}
+
+function feedbackLocation(
+  node: ProseMirrorNode,
+): FeedbackLocation | null | undefined {
+  const eventId: unknown = node.attrs.eventId;
+  const rangeStart: unknown = node.attrs.rangeStart;
+  const rangeEnd: unknown = node.attrs.rangeEnd;
+  if (eventId === null && rangeStart === null && rangeEnd === null) {
+    return undefined;
+  }
+  if (
+    typeof eventId !== "string" ||
+    eventId.length === 0 ||
+    typeof rangeStart !== "number" ||
+    !Number.isInteger(rangeStart) ||
+    rangeStart < 0 ||
+    typeof rangeEnd !== "number" ||
+    !Number.isInteger(rangeEnd) ||
+    rangeEnd <= rangeStart
+  ) {
+    return null;
+  }
+  return { eventId, range: { start: rangeStart, end: rangeEnd } };
+}
+
 function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
   const quote: unknown = node.attrs.quote;
   const source = feedbackSource(node);
-  if (typeof quote !== "string" || source === null) {
+  const location = feedbackLocation(node);
+  if (typeof quote !== "string" || source === null || location === null) {
     return null;
   }
   const note: UserMessagePart[] = [];
@@ -258,6 +291,7 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
     type: "feedback",
     quote,
     note,
+    ...location,
     ...(source ? { source } : {}),
   };
 }
@@ -638,6 +672,13 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
           quote: part.quote,
           showDivider: feedbackIndex > 0,
           fill: feedbackIndex === feedbackCount - 1,
+          ...(part.eventId !== undefined && part.range !== undefined
+            ? {
+                eventId: part.eventId,
+                rangeStart: part.range.start,
+                rangeEnd: part.range.end,
+              }
+            : {}),
           ...(part.source
             ? {
                 sourceType: part.source.type,

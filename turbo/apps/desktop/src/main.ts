@@ -1,4 +1,5 @@
 import { captureDesktopNativeHelperError } from "./sentry-main";
+import { writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1427,11 +1428,7 @@ if (!hasSingleInstanceLock) {
         app.exit(1);
         return;
       }
-      await new Promise<void>((resolve) => {
-        process.stdout.write(`${DESKTOP_SMOKE_TEST_READY_MARKER}\n`, () => {
-          resolve();
-        });
-      });
+      writeSync(1, `${DESKTOP_SMOKE_TEST_READY_MARKER}\n`);
       process.exit(0);
     }
   });

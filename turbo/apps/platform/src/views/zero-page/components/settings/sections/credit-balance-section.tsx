@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { UsagePackCreditsResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { ChevronDown, History, Users } from "lucide-react";
+import { ArrowRight, ChevronDown, History, Users } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -18,9 +18,6 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  Tabs,
-  TabsList,
-  TabsTrigger,
 } from "@vm0/ui";
 import {
   Tooltip,
@@ -34,27 +31,18 @@ import {
   formatCreditDate,
   type CreditAddition,
 } from "../../org-manage/org-usage-tab.tsx";
-import {
-  PersonalUsageRecord,
-  TeamUsageRecord,
-  UsageRangeSelect,
-} from "../../preferences/personal-usage-record.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
 import { orgMembers$ } from "../../../../../signals/external/org-members.ts";
 import { usagePackCreditsAsync$ } from "../../../../../signals/zero-page/billing.ts";
 import { setSettingsActiveSection$ } from "../../../../../signals/zero-page/settings/settings-dialog.ts";
-import { setBillingSubPage$ } from "../../../../../signals/zero-page/settings/workspace-settings-state.ts";
 import {
-  creditBalanceTab$,
-  myUsageRange$,
-  setCreditBalanceTab$,
-  setMyUsageRange$,
-  setTeamUsageRange$,
+  requestBuyCreditsScroll$,
+  setBillingSubPage$,
+} from "../../../../../signals/zero-page/settings/workspace-settings-state.ts";
+import {
   setUsagePackMembersDialogOpen$,
-  teamUsageRange$,
   toggleUsagePackMemberAdditions$,
-  type CreditBalanceTab,
   usagePackMemberAdditionsExpandedMemberId$,
   usagePackMembersDialogOpen$,
 } from "../../../../../signals/zero-page/settings/personal-usage-record.ts";
@@ -694,15 +682,10 @@ export function CreditBalanceSection() {
   const { t } = useTranslation();
   const setActiveSection = useSet(setSettingsActiveSection$);
   const setBillingSubPage = useSet(setBillingSubPage$);
+  const requestBuyCredits = useSet(requestBuyCreditsScroll$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const tab = useGet(creditBalanceTab$);
-  const setTab = useSet(setCreditBalanceTab$);
-  const myRange = useGet(myUsageRange$);
-  const teamRange = useGet(teamUsageRange$);
-  const setMyRange = useSet(setMyUsageRange$);
-  const setTeamRange = useSet(setTeamUsageRange$);
   const features = useLastResolved(featureSwitch$);
   const usagePackPlansEnabled =
     features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
@@ -712,57 +695,41 @@ export function CreditBalanceSection() {
     setBillingSubPage(true);
   };
 
-  // The credit balance card stays at the section level — above the
-  // My usage / Team usage tabs — so it's always visible regardless of the
-  // active tab.
-  const creditCard = <CreditBalanceCard onComparePlans={goToComparePlans} />;
+  const goToBuyCredits = () => {
+    requestBuyCredits();
+    setActiveSection("billing");
+  };
+
   const usagePackCreditCard = usagePackPlansEnabled ? (
     <UsagePackCreditCard isAdmin={isAdmin} />
   ) : null;
 
-  const activeRange = tab === "team" ? teamRange : myRange;
-  const setActiveRange = tab === "team" ? setTeamRange : setMyRange;
-
   // Members only see credits assigned by their usage pack. Organization
-  // balances and usage records remain available to organization admins.
+  // balances remain available to organization admins.
   if (!isAdmin) {
     return <div>{usagePackCreditCard}</div>;
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {usagePackCreditCard}
-      {creditCard}
-      <div className="flex flex-col gap-4">
-        {/* One compact header row: tabs on the left, range filter on the right. */}
-        <div className="flex items-center justify-between gap-3">
-          <Tabs
-            value={tab}
-            onValueChange={(value) => {
-              setTab(value as CreditBalanceTab);
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="mine">
-                {t(($) => {
-                  return $.usage.records.myUsage;
-                })}
-              </TabsTrigger>
-              <TabsTrigger value="team">
-                {t(($) => {
-                  return $.usage.records.teamUsage;
-                })}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <UsageRangeSelect value={activeRange} onChange={setActiveRange} />
-        </div>
-        {tab === "mine" ? (
-          <PersonalUsageRecord range={myRange} />
-        ) : (
-          <TeamUsageRecord range={teamRange} />
-        )}
-      </div>
+      <CreditBalanceCard
+        onBuyCredits={goToBuyCredits}
+        onComparePlans={goToComparePlans}
+      />
+      <button
+        type="button"
+        data-testid="credit-balance-see-usage"
+        className="flex w-fit items-center gap-1.5 rounded-md px-1 py-0.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+        onClick={() => {
+          setActiveSection("usage-records");
+        }}
+      >
+        {t(($) => {
+          return $.billing.usage.seeUsageRecords;
+        })}
+        <ArrowRight size={13} className="shrink-0" />
+      </button>
     </div>
   );
 }

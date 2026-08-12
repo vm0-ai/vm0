@@ -4,6 +4,7 @@ import { expect } from "vitest";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 import {
+  chatFeedbackLocationEventsContract,
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
@@ -12,6 +13,7 @@ import {
   chatThreadEventsContract,
   chatEventsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
+  type ChatEventSendBody,
   type ChatRunOptionsRequest,
   type ChatThreadServiceTier,
   type CodexServiceTier,
@@ -962,14 +964,13 @@ export function mockChatLifecycle(
       serviceTier: body.serviceTier ?? null,
     });
   });
-  // Unified chat event endpoint (creates thread + run + association)
-  context.mocks.api(chatEventsContract.send, async ({ body, respond }) => {
+  const sendChatEventResponse = async (body: ChatEventSendBody) => {
     if (isRecallEventBody(body)) {
-      return respond(201, appendRecallControlEvent(body));
+      return appendRecallControlEvent(body);
     }
 
     if (isInterruptEventBody(body)) {
-      return respond(201, appendInterruptControlEvent(body));
+      return appendInterruptControlEvent(body);
     }
     if (body.prompt === undefined) {
       throw new Error("Expected prompt for a normal chat event send");
@@ -990,8 +991,18 @@ export function mockChatLifecycle(
     const responseBody = hasActiveRun()
       ? await appendQueuedUserMessage(body)
       : await startRunFromUserMessage(body);
-    return respond(201, responseBody);
+    return responseBody;
+  };
+  // Unified chat event endpoints (create thread + run + association).
+  context.mocks.api(chatEventsContract.send, async ({ body, respond }) => {
+    return respond(201, await sendChatEventResponse(body));
   });
+  context.mocks.api(
+    chatFeedbackLocationEventsContract.send,
+    async ({ body, respond }) => {
+      return respond(201, await sendChatEventResponse(body));
+    },
+  );
   context.mocks.api(logsByIdContract.getById, ({ respond }) => {
     return respond(200, {
       id: "a0000000-0000-4000-a000-000000000001",
