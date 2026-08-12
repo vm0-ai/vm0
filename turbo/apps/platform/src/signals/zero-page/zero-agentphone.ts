@@ -13,6 +13,7 @@ import { i18n } from "../../i18n/index.ts";
 const internalReload$ = state(0);
 const internalPhoneForm$ = state("");
 const internalConnectDialogOpen$ = state(false);
+const internalConnectDialogCloseComplete$ = state(true);
 const internalVerificationPhone$ = state<string | null>(null);
 const internalShowPhoneError$ = state(false);
 const internalAgentPhoneStatus$ = state<AgentPhoneLinkStatusResponse | null>(
@@ -77,15 +78,19 @@ export const setAgentPhoneConnectDialogOpen$ = command(
     if (value && !connecting) {
       set(resetAgentPhoneConnectUi$);
     }
+    if (value) {
+      set(internalConnectDialogCloseComplete$, false);
+    }
     set(internalConnectDialogOpen$, value);
   },
 );
 
 export const completeAgentPhoneConnectDialogClose$ = command(({ get, set }) => {
-  if (
-    !get(internalConnectDialogOpen$) &&
-    get(internalAgentPhoneStatus$)?.linked
-  ) {
+  if (get(internalConnectDialogOpen$)) {
+    return;
+  }
+  set(internalConnectDialogCloseComplete$, true);
+  if (get(internalAgentPhoneStatus$)?.linked) {
     set(resetAgentPhoneConnectUi$);
   }
 });
@@ -159,6 +164,9 @@ const refreshAgentPhoneFromChange$ = command(
       toastAgentPhoneStatusChange(previous, data);
       if (data.linked) {
         set(internalConnectDialogOpen$, false);
+        if (get(internalConnectDialogCloseComplete$)) {
+          set(resetAgentPhoneConnectUi$);
+        }
       } else {
         set(resetAgentPhoneConnectUi$);
       }

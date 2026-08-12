@@ -27,6 +27,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  holdElementAnimations,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -34,8 +35,6 @@ import { pathname } from "../../../signals/location.ts";
 import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
-  renameDialogInput$,
-  renameDialogOpen$,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -968,10 +967,14 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
     await fill(titleInput, "Unsaved title");
+    const finishCloseAnimation = holdElementAnimations(dialog);
     click(buttonByText("Cancel", dialog));
 
-    expect(context.store.get(renameDialogOpen$)).toBeFalsy();
-    expect(context.store.get(renameDialogInput$)).toBe("Unsaved title");
+    expect(titleInput).toBeInTheDocument();
+    expect(titleInput).toBeVisible();
+    expect(titleInput).toHaveValue("Unsaved title");
+
+    finishCloseAnimation();
 
     await waitFor(() => {
       expect(

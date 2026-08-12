@@ -37,6 +37,7 @@ const internalTelegramAddDialogOpen$ = state(false);
 const internalTelegramAddDialogSession$ = state(0);
 const internalTelegramBotTokenForm$ = state("");
 const internalTelegramBotAgentForm$ = state<string | null>(null);
+const internalTelegramRegisteredBotId$ = state<string | null>(null);
 const internalTelegramAddSetupState$ = state<TelegramAddSetupState>(
   initialTelegramAddSetupState(),
 );
@@ -182,16 +183,27 @@ export const setTelegramAddDialogOpen$ = command(({ set }, open: boolean) => {
     });
     set(internalTelegramBotTokenForm$, "");
     set(internalTelegramBotAgentForm$, null);
+    set(internalTelegramRegisteredBotId$, null);
     set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
   }
   set(internalTelegramAddDialogOpen$, open);
 });
 
+export const closeTelegramAddDialogAfterRegistration$ = command(
+  ({ set }, botId: string) => {
+    set(internalTelegramRegisteredBotId$, botId);
+    set(internalTelegramAddDialogOpen$, false);
+  },
+);
+
 export const completeTelegramAddDialogClose$ = command(({ get, set }) => {
   if (get(internalTelegramAddDialogOpen$)) {
-    return;
+    return null;
   }
   set(internalTelegramBotTokenForm$, "");
+  const registeredBotId = get(internalTelegramRegisteredBotId$);
+  set(internalTelegramRegisteredBotId$, null);
+  return registeredBotId;
 });
 
 export const setTelegramBotAgentForm$ = command(
@@ -316,6 +328,7 @@ export const resetTelegramSettingsUi$ = command(({ set }) => {
   set(internalTelegramAddDialogSession$, 0);
   set(internalTelegramBotTokenForm$, "");
   set(internalTelegramBotAgentForm$, null);
+  set(internalTelegramRegisteredBotId$, null);
   set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
   set(internalTelegramSavingBotId$, null);
   set(internalTelegramUnlinkingBotId$, null);
