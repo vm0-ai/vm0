@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.738.0](https://github.com/vm0-ai/vm0/compare/app-v0.737.0...app-v0.738.0) (2026-08-12)
+
+
+### Features
+
+* add DeepSeek V4 Pro support ([#26737](https://github.com/vm0-ai/vm0/issues/26737)) ([3770acd](https://github.com/vm0-ai/vm0/commit/3770acda61dabb8be63f64b8a0dd853519b40700))
+
+
+### Bug Fixes
+
+* **platform:** align fast model picker icons ([#26712](https://github.com/vm0-ai/vm0/issues/26712)) ([4ce5d5f](https://github.com/vm0-ai/vm0/commit/4ce5d5f9a44622f6112d96ac0e08adf1b007fd08))
+* preserve structured feedback when forwarding ([#26728](https://github.com/vm0-ai/vm0/issues/26728)) ([7dc2d91](https://github.com/vm0-ai/vm0/commit/7dc2d919cf2ce4c481ccbe5fe332f74e1417504d))
+
+
+### Refactoring
+
+* **connectors:** require auth mode in responses ([#26730](https://github.com/vm0-ai/vm0/issues/26730)) ([9c36796](https://github.com/vm0-ai/vm0/commit/9c36796b826d17cafa7e8a5ef57ac4424a2a653c))
+* retire axiom-backed log surfaces ([#26689](https://github.com/vm0-ai/vm0/issues/26689)) ([c7266ba](https://github.com/vm0-ai/vm0/commit/c7266baadf3ccf5e624be2ee396c8656887cf6b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.0
+    * @vm0/core bumped to 8.552.0
+
 ## [0.737.0](https://github.com/vm0-ai/vm0/compare/app-v0.736.0...app-v0.737.0) (2026-08-12)
 
 
