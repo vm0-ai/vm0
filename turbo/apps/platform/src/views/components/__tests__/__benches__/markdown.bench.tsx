@@ -214,7 +214,9 @@ function ensurePass(
       mathEnabled: true,
       mermaid: true,
     });
-    embedMermaidSignals(tree, createMermaidDiagramSignals);
+    embedMermaidSignals(tree, (code) => {
+      return createMermaidDiagramSignals(code, context.signal);
+    });
     embedImageLoadSignals(tree, createImageLoadSignals);
     next ??= new Map(cache);
     next.set(event.id, { content: plan.content, tree });
