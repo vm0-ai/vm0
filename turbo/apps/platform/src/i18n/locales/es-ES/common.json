@@ -1418,7 +1418,7 @@
       "partsHeading_many": "Comentarios sobre {{count}} partes de tu respuesta:",
       "partsHeading_other": "Comentarios sobre {{count}} partes de tu respuesta:",
       "placeholder": "¿Qué debería cambiar en esto?",
-      "reference": "Referencia",
+      "quote": "Citar",
       "remove": "Eliminar comentarios",
       "sentEmailDescription": "un correo enviado (ID de correo: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID enviado: {{sentId}}",

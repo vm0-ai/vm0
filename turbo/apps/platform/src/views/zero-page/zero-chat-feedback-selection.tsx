@@ -83,8 +83,21 @@ function FeedbackToolbar({
           <ShortcutHint shortcut="c" />
         </button>
         <div className="h-4 w-px bg-border" />
+        <button
+          type="button"
+          onClick={onProvideFeedback}
+          aria-keyshortcuts="q"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
+        >
+          <MessageCircle size={14} />
+          {t(($) => {
+            return $.chat.feedback.quote;
+          })}
+          <ShortcutHint shortcut="q" />
+        </button>
         {onForward ? (
           <>
+            <div className="h-4 w-px bg-border" />
             <button
               type="button"
               onClick={onForward}
@@ -97,28 +110,15 @@ function FeedbackToolbar({
               })}
               <ShortcutHint shortcut="f" />
             </button>
-            <div className="h-4 w-px bg-border" />
           </>
         ) : null}
-        <button
-          type="button"
-          onClick={onProvideFeedback}
-          aria-keyshortcuts="r"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
-        >
-          <MessageCircle size={14} />
-          {t(($) => {
-            return $.chat.feedback.reference;
-          })}
-          <ShortcutHint shortcut="r" />
-        </button>
       </div>
     </PopoverContent>
   );
 }
 
-// Mounts the selection listeners and the floating Copy / Forward / Reference
-// toolbar anchored to the selected passage. Picking "Reference"
+// Mounts the selection listeners and the floating Copy / Quote / Forward
+// toolbar anchored to the selected passage. Picking "Quote"
 // drops the quoted passage straight into the composer (see ComposerFeedbackRows
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection({

@@ -1418,7 +1418,7 @@
       "partsHeading_many": "Feedback sobre {{count}} partes da resposta:",
       "partsHeading_other": "Feedback sobre {{count}} partes da resposta:",
       "placeholder": "O que deveria mudar aqui?",
-      "reference": "Referência",
+      "quote": "Citar",
       "remove": "Remover feedback",
       "sentEmailDescription": "um e-mail enviado (ID do e-mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID de envio: {{sentId}}",

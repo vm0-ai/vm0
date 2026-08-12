@@ -1390,7 +1390,7 @@
       "partsHeading_one": "답변 {{count}}개 부분에 대한 피드백:",
       "partsHeading_other": "답변 {{count}}개 부분에 대한 피드백:",
       "placeholder": "무엇을 변경해야 하나요?",
-      "reference": "참조",
+      "quote": "인용",
       "remove": "피드백 제거",
       "sentEmailDescription": "발송된 이메일 (메일 ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", 발송 ID: {{sentId}}",

@@ -315,10 +315,10 @@ async function waitForSelectionToolbarButton(
         label === text ||
         label === `${text} C` ||
         label === `${text} F` ||
-        label === `${text} R` ||
+        label === `${text} Q` ||
         label === `${text}C` ||
         label === `${text}F` ||
-        label === `${text}R`
+        label === `${text}Q`
       );
     });
     expect(button).toBeEnabled();
@@ -887,7 +887,7 @@ describe("chat event action cards", () => {
     });
 
     selectMailText(within(messageSection).getByRole("listitem"));
-    await user.click(await waitForSelectionToolbarButton("Reference"));
+    await user.click(await waitForSelectionToolbarButton("Quote"));
     await waitFor(() => {
       const feedbackItem = document.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent("Mail body after");
@@ -1107,7 +1107,7 @@ describe("chat event action cards", () => {
     selectMailText(
       within(sidebar).getByText("Feedback belongs to the right chat."),
     );
-    await user.click(await waitForSelectionToolbarButton("Reference"));
+    await user.click(await waitForSelectionToolbarButton("Quote"));
     const chatThreads = await screen.findAllByLabelText("Chat thread");
     await waitFor(() => {
       expect(

@@ -29,7 +29,7 @@ import type {
 } from "./chat-forward.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
-// drafts, opt into the shared Copy / Reference interaction.
+// drafts, opt into the shared Copy / Quote interaction.
 const FEEDBACK_SOURCE_SELECTOR =
   ".zero-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
@@ -439,7 +439,7 @@ function createToolbarRef({
             await set(copy$, signal);
             return;
           }
-          if (matchShortcut("r", event)) {
+          if (matchShortcut("q", event)) {
             event.preventDefault();
             set(start$);
             return;
