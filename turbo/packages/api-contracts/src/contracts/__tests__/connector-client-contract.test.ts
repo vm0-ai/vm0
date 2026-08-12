@@ -22,8 +22,8 @@ import {
   zeroConnectorsSearchContract,
 } from "../zero-connectors";
 import {
-  customConnectorClientListResponseSchema,
-  customConnectorClientResponseSchema,
+  customConnectorListResponseSchema,
+  customConnectorResponseSchema,
 } from "../zero-custom-connectors";
 import {
   applyUserPermissionGrantsRequestSchema,
@@ -62,7 +62,7 @@ const customHttpConnectorPayloadBase = {
   prefixTemplates: ["https://api.example.test"],
 } as const;
 
-const customHttpConnectorClientPayload = {
+const customHttpConnectorPayload = {
   ...customHttpConnectorPayloadBase,
   kind: "http",
 } as const;
@@ -237,41 +237,36 @@ describe("connector client response contracts", () => {
   });
 });
 
-describe("custom connector client response contracts", () => {
-  it("normalizes previous, current, and future HTTP responses to the client shape", () => {
+describe("custom connector response contracts", () => {
+  it("normalizes kind-less HTTP responses to the canonical shape", () => {
     const previousWirePayload = {
-      ...customHttpConnectorClientPayload,
+      ...customHttpConnectorPayload,
       prefixes: ["https://api.example.test"],
       headerName: "Authorization",
       headerTemplate: "Bearer {{token}}",
-      hasSecret: true,
     };
     const currentWirePayload = {
-      ...customHttpConnectorClientPayload,
-      hasSecret: true,
+      ...customHttpConnectorPayload,
     };
 
-    const previous =
-      customConnectorClientResponseSchema.parse(previousWirePayload);
-    const current =
-      customConnectorClientResponseSchema.parse(currentWirePayload);
-    const future = customConnectorClientResponseSchema.parse(
-      customHttpConnectorClientPayload,
+    const previous = customConnectorResponseSchema.parse(previousWirePayload);
+    const current = customConnectorResponseSchema.parse(currentWirePayload);
+    const future = customConnectorResponseSchema.parse(
+      customHttpConnectorPayload,
     );
-    const kindless = customConnectorClientResponseSchema.parse(
+    const kindless = customConnectorResponseSchema.parse(
       customHttpConnectorPayloadBase,
     );
 
-    expect(previous).toStrictEqual(customHttpConnectorClientPayload);
-    expect(current).toStrictEqual(customHttpConnectorClientPayload);
-    expect(future).toStrictEqual(customHttpConnectorClientPayload);
-    expect(kindless).toStrictEqual(customHttpConnectorClientPayload);
-    expect(current).not.toHaveProperty("hasSecret");
+    expect(previous).toStrictEqual(customHttpConnectorPayload);
+    expect(current).toStrictEqual(customHttpConnectorPayload);
+    expect(future).toStrictEqual(customHttpConnectorPayload);
+    expect(kindless).toStrictEqual(customHttpConnectorPayload);
     expect(
-      customConnectorClientListResponseSchema.parse({
+      customConnectorListResponseSchema.parse({
         connectors: [previousWirePayload],
       }),
-    ).toStrictEqual({ connectors: [customHttpConnectorClientPayload] });
+    ).toStrictEqual({ connectors: [customHttpConnectorPayload] });
   });
 
   it("parses canonical MCP responses", () => {
@@ -304,11 +299,9 @@ describe("custom connector client response contracts", () => {
     } as const;
 
     expect(
-      customConnectorClientResponseSchema.parse(previousWirePayload),
+      customConnectorResponseSchema.parse(previousWirePayload),
     ).toStrictEqual(payload);
-    expect(customConnectorClientResponseSchema.parse(payload)).toStrictEqual(
-      payload,
-    );
+    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
   });
 });
 

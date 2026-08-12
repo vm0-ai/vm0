@@ -304,7 +304,6 @@ function customConnector(
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
     ...overrides,
@@ -343,7 +342,6 @@ function mcpCustomConnector(
     connected: true,
     missingRequiredFields: [],
     configuredFieldKeys: ["secret"],
-    hasSecret: true,
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: "2026-08-10T00:00:00.000Z",
     ...overrides,
@@ -466,9 +464,6 @@ function mockCustomConnectorStory(): {
           configuredFieldKeys: body.values.map((value) => {
             return value.key;
           }),
-          hasSecret: body.values.some((value) => {
-            return value.kind === "secret";
-          }),
         };
         return updated;
       });
@@ -488,7 +483,6 @@ function mockCustomConnectorStory(): {
               connected: false,
               missingRequiredFields: ["secret"],
               configuredFieldKeys: [],
-              hasSecret: false,
             }
           : connector;
       });
@@ -3630,7 +3624,6 @@ describe("connectors page", () => {
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
       permissionBundleRef: "builtin:feishu@1",
     });
     const accessByAgentId = new Map<string, AgentCustomConnectorGrants>([
@@ -3857,7 +3850,6 @@ describe("connectors page", () => {
             ...connector,
             connected,
             configuredFieldKeys: connected ? ["secret"] : [],
-            hasSecret: connected,
             missingRequiredFields: connected ? [] : ["secret"],
           },
         ],
@@ -3896,7 +3888,6 @@ describe("connectors page", () => {
           ...connector,
           connected: true,
           configuredFieldKeys: ["secret"],
-          hasSecret: true,
           missingRequiredFields: [],
         });
       },
@@ -3990,7 +3981,6 @@ describe("connectors page", () => {
           connected: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["api_token", "account_id", "backup_token"],
-          hasSecret: true,
         });
       },
     );
@@ -4099,7 +4089,6 @@ describe("connectors page", () => {
                 connected: false,
                 missingRequiredFields: [],
                 configuredFieldKeys: ["secret"],
-                hasSecret: true,
               });
         },
       );
@@ -4193,7 +4182,6 @@ describe("connectors page", () => {
           connected: false,
           missingRequiredFields: ["secret"],
           configuredFieldKeys: [],
-          hasSecret: false,
         });
         return respond(201, connector);
       },
@@ -4230,7 +4218,6 @@ describe("connectors page", () => {
           connected: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["secret"],
-          hasSecret: true,
         };
         return respond(200, connector);
       },
@@ -4247,7 +4234,6 @@ describe("connectors page", () => {
           connected: false,
           missingRequiredFields: ["secret"],
           configuredFieldKeys: [],
-          hasSecret: false,
         };
         return respond(204);
       },
@@ -4496,7 +4482,6 @@ describe("connectors page", () => {
           connected: false,
           missingRequiredFields: ["oauth"],
           configuredFieldKeys: [],
-          hasSecret: false,
         });
         return respond(201, connector);
       },
@@ -4533,7 +4518,6 @@ describe("connectors page", () => {
           ...connector,
           connected: true,
           missingRequiredFields: [],
-          hasSecret: true,
         };
         authWindow.close();
         return respond(200, {
@@ -4634,7 +4618,6 @@ describe("connectors page", () => {
     const supportAgentId = "c0000000-0000-4000-a000-000000000064";
     let connector = mcpCustomConnector({
       connected: true,
-      hasSecret: true,
     });
     const grantsByAgentId = new Map<string, AgentCustomConnectorGrant[]>([
       [
@@ -4696,7 +4679,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           connected: false,
-          hasSecret: false,
         };
         return respond(204);
       },
@@ -4833,7 +4815,6 @@ describe("connectors page", () => {
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
     });
     context.mocks.data.org({
       id: "org_1",
@@ -4970,7 +4951,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
         };
         authWindow.close();
@@ -5101,7 +5081,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
         };
         authWindow.close();

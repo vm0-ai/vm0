@@ -1,19 +1,18 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { customConnectorMcpClientResponseSchema } from "./zero-custom-connectors";
+import { customConnectorMcpResponseSchema } from "./zero-custom-connectors";
 
 const c = initContract();
 
-export const zeroMcpConnectorSchema =
-  customConnectorMcpClientResponseSchema.pick({
-    id: true,
-    slug: true,
-    displayName: true,
-    transport: true,
-    endpoint: true,
-    connected: true,
-  });
+export const zeroMcpConnectorSchema = customConnectorMcpResponseSchema.pick({
+  id: true,
+  slug: true,
+  displayName: true,
+  transport: true,
+  endpoint: true,
+  connected: true,
+});
 export type ZeroMcpConnector = z.infer<typeof zeroMcpConnectorSchema>;
 
 export const zeroMcpConnectorListResponseSchema = z.object({

@@ -8,7 +8,7 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
@@ -42,7 +42,7 @@ function JobCustomConnectorRow({
   isLast,
   onToggle,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly enabled: boolean;
   readonly loading: boolean;
   readonly agentId: string | undefined;
@@ -129,7 +129,7 @@ export function JobCustomConnectorsSection() {
 function ConnectedJobCustomConnectorsSection({
   connectors,
 }: {
-  readonly connectors: readonly CustomConnectorClientResponse[];
+  readonly connectors: readonly CustomConnectorResponse[];
 }) {
   const { t } = useTranslation("agents");
   const mcpEnabled = useGet(customConnectorMcpEnabled$);

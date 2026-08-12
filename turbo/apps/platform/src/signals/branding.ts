@@ -2,6 +2,7 @@ import { computed } from "ccstate";
 
 type Branding = "vm0" | "okou";
 export type BrandName = "VM0" | "Okou";
+type ComputerUseProductName = "Zero" | "Okou";
 
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"] as const;
 
@@ -17,3 +18,9 @@ const branding$ = computed<Branding>(() => {
 export const brandName$ = computed<BrandName>((get) => {
   return get(branding$) === "okou" ? "Okou" : "VM0";
 });
+
+export const computerUseProductName$ = computed<ComputerUseProductName>(
+  (get) => {
+    return get(branding$) === "okou" ? "Okou" : "Zero";
+  },
+);

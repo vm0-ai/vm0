@@ -249,7 +249,7 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
-  it("uses the validated complete content type when provided", async () => {
+  it("uses a recognized complete content type when provided", async () => {
     const fixture = await createRunUploadFixture();
     const fileId = randomUUID();
     addUploadObject(fixture, fileId, "data.bin", 9);
@@ -395,21 +395,27 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
-  it("returns 400 for unsupported content types", async () => {
-    const response = await chat.completeUploadWithBearer(
-      zeroBearer(),
-      {
-        id: randomUUID(),
-        contentType: "application/x-msdownload",
-      },
-      [400],
+  it("falls back to a generic complete content type for unrecognized MIME values", async () => {
+    const actor = bdd.user();
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
+    const fileId = randomUUID();
+    addUploadObject(
+      { actor: { ...actor, orgId: requireOrgId(actor) }, objectStore },
+      fileId,
+      "capture.custom",
+      10,
     );
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Unsupported file type: application/x-msdownload",
-        code: "BAD_REQUEST",
-      },
+    const response = await chat.completeUpload(actor, {
+      id: fileId,
+      contentType: "application/x-custom",
+    });
+
+    expect(response).toMatchObject({
+      id: fileId,
+      filename: "capture.custom",
+      contentType: "application/octet-stream",
+      size: 10,
     });
   });
 });

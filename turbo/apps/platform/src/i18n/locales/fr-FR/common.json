@@ -482,7 +482,6 @@
       "backToArtifacts": "Retour aux artéfacts",
       "close": "Fermer",
       "closeArtifact": "Fermer l'artéfact",
-      "closeDownloadMenu": "Fermer le menu de téléchargement",
       "closeNamed": "Fermer {{title}}",
       "closePreviewMenu": "Fermer le menu d'aperçu",
       "download": "Télécharger",
@@ -729,7 +728,7 @@
       "lastSeen": "Vu pour la dernière fois le {{date}}",
       "linkExpires": "Le lien expire le {{date}}.",
       "macRequirement": "Nécessite un Mac avec puce Apple et macOS 14 ou version ultérieure. Les Mac Intel ne sont pas pris en charge.",
-      "noHostsDescription": "Ouvrez Open Zero Computer Use sur votre Mac et actualisez cette page lorsqu'il sera en ligne.",
+      "noHostsDescription": "Ouvrez Open {{desktopProductName}} Computer Use sur votre Mac et actualisez cette page lorsqu'il sera en ligne.",
       "noHostsTitle": "Aucun ordinateur en ligne",
       "sources": {
         "chat": "ce fil de discussion chat",
@@ -1350,8 +1349,8 @@
       "cloudBrowser": "Navigateur cloud",
       "connectHost": "Connecter {{hostName}}",
       "connectMyComputer": "Connecter mon ordinateur",
-      "dialogDescription": "Ainsi, Zero peut travailler dans votre navigateur et vos applications pour vous, même celles sans connecteur comme LinkedIn ou Reddit.",
-      "dialogTitle": "Autoriser Zero à utiliser votre ordinateur",
+      "dialogDescription": "Ainsi, {{desktopProductName}} peut travailler dans votre navigateur et vos applications pour vous, même celles sans connecteur comme LinkedIn ou Reddit.",
+      "dialogTitle": "Autoriser {{desktopProductName}} à utiliser votre ordinateur",
       "disableCloudBrowser": "Désactiver le navigateur cloud",
       "disconnectHost": "Déconnecter {{hostName}}",
       "downloadMacos": "Télécharger pour macOS",
@@ -4596,6 +4595,7 @@
     "mermaid": {
       "diagramLabel": "Diagramme",
       "expand": "Agrandir le diagramme",
+      "invalidDiagram": "Diagramme non valide",
       "viewSource": "Source du diagramme"
     },
     "notFound": {

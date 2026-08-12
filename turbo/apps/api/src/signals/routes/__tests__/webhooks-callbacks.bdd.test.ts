@@ -6002,14 +6002,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       connectors.readCustomConnector(doomed, customManual.id),
     ).resolves.toMatchObject({
       connected: false,
-      hasSecret: false,
       configuredFieldKeys: [],
     });
     await expect(
       connectors.readCustomConnector(peer, customManual.id),
     ).resolves.toMatchObject({
       connected: true,
-      hasSecret: true,
     });
     await expect(
       connectors.completeOauthCallbackResult("slack", {

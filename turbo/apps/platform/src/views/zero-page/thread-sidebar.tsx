@@ -212,9 +212,12 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
       </div>
     </aside>
   );
-  return fullscreen && typeof document !== "undefined"
-    ? createPortal(panel, document.body)
-    : panel;
+  // This is an app-local fullscreen surface, not a modal. Keep it inside the
+  // isolated app stack so body-level Base UI portals remain above it by
+  // structure rather than by competing z-index values.
+  const appRoot =
+    typeof document === "undefined" ? null : document.getElementById("root");
+  return fullscreen && appRoot ? createPortal(panel, appRoot) : panel;
 }
 
 function ThreadArtifactUnavailable({

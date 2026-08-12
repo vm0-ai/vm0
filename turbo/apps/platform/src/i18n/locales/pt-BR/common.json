@@ -482,7 +482,6 @@
       "backToArtifacts": "Voltar aos artefatos",
       "close": "Fechar",
       "closeArtifact": "Fechar artefato",
-      "closeDownloadMenu": "Fechar menu de download",
       "closeNamed": "Fechar {{title}}",
       "closePreviewMenu": "Fechar menu de visualização",
       "download": "Baixar",
@@ -729,7 +728,7 @@
       "lastSeen": "Visto pela última vez em {{date}}",
       "linkExpires": "O link expira em {{date}}.",
       "macRequirement": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
-      "noHostsDescription": "Abra o Zero Computer Use no Mac e atualize esta página quando ele ficar online.",
+      "noHostsDescription": "Abra o {{desktopProductName}} Computer Use no Mac e atualize esta página quando ele ficar online.",
       "noHostsTitle": "Nenhum computador online",
       "sources": {
         "chat": "nesta conversa",
@@ -1350,8 +1349,8 @@
       "cloudBrowser": "Navegador na nuvem",
       "connectHost": "Conectar {{hostName}}",
       "connectMyComputer": "Conectar meu computador",
-      "dialogDescription": "Assim, o Zero pode trabalhar por você no navegador e nos aplicativos, inclusive naqueles sem conector, como LinkedIn ou Reddit.",
-      "dialogTitle": "Permita que o Zero use seu computador",
+      "dialogDescription": "Assim, o {{desktopProductName}} pode trabalhar por você no navegador e nos aplicativos, inclusive naqueles sem conector, como LinkedIn ou Reddit.",
+      "dialogTitle": "Permita que o {{desktopProductName}} use seu computador",
       "disableCloudBrowser": "Desativar navegador na nuvem",
       "disconnectHost": "Desconectar {{hostName}}",
       "downloadMacos": "Baixar para macOS",
@@ -4596,6 +4595,7 @@
     "mermaid": {
       "diagramLabel": "Diagrama",
       "expand": "Ampliar diagrama",
+      "invalidDiagram": "Diagrama inválido",
       "viewSource": "Código do diagrama"
     },
     "notFound": {

@@ -32,6 +32,7 @@ interface PreparedUserMessage {
 interface AttachmentFileInfo {
   id: string;
   url: string;
+  contentType: string;
 }
 
 interface ResolvedDraftAttachment {
@@ -182,7 +183,7 @@ export const prepareUserMessageFromDraft$ = command(
             return {
               id: r.info.id,
               filename: r.attachment.filename,
-              contentType: r.attachment.contentType,
+              contentType: r.info.contentType,
               size: r.attachment.size,
               url: r.info.url,
             };

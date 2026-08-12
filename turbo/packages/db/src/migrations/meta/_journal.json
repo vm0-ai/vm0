@@ -722,6 +722,13 @@
       "when": 1786494822985,
       "tag": "0910_contract_legacy_chat_event_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 911,
+      "version": "7",
+      "when": 1786512265466,
+      "tag": "0911_delete_legacy_custom_credentials_on_disconnect",
+      "breakpoints": true
     }
   ]
 }

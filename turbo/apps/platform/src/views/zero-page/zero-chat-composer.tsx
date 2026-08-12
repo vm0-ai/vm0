@@ -142,7 +142,7 @@ import {
 import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -189,9 +189,10 @@ import {
   computerUseHosts$,
   selectedComputerUseHostId,
   visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
-  zeroDesktopDownloadSupportStatus$,
+  OKOU_DESKTOP_DOWNLOAD_URL,
+  desktopDownloadSupportStatus$,
 } from "../../signals/zero-page/computer-use-hosts.ts";
+import { computerUseProductName$ } from "../../signals/branding.ts";
 import type { ComposerConnectorAuthorizationState } from "../../signals/zero-page/zero-connectors.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
@@ -266,7 +267,7 @@ interface ComposerConnectorReadState {
   readonly addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  readonly customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
+  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
@@ -347,7 +348,7 @@ type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
   readonly authorized: boolean;
 };
 
-type ComposerCustomConnectorItem = CustomConnectorClientResponse & {
+type ComposerCustomConnectorItem = CustomConnectorResponse & {
   readonly authorized: boolean;
 };
 
@@ -5938,7 +5939,7 @@ function ConnectorTriggerIcons({
 
 function matchesCustomConnectorSearch(
   search: string,
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
 ): boolean {
   const normalizedSearch = search.trim().toLowerCase();
   if (!normalizedSearch) {
@@ -5957,7 +5958,7 @@ function CustomConnectorCatalogCard({
   connector,
   onConnect,
 }: {
-  connector: CustomConnectorClientResponse;
+  connector: CustomConnectorResponse;
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
@@ -6029,12 +6030,12 @@ function AddConnectorsDialog({
 }: {
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
-  unconnectedCustom: CustomConnectorClientResponse[];
+  unconnectedCustom: CustomConnectorResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
-  onConnectCustom: (connector: CustomConnectorClientResponse) => void;
+  onConnectCustom: (connector: CustomConnectorResponse) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -6725,9 +6726,8 @@ function ComputerUseDownloadDialog({
   downloadUrl: string;
 }) {
   const { t } = useTranslation();
-  const downloadSupportLoadable = useLoadable(
-    zeroDesktopDownloadSupportStatus$,
-  );
+  const computerUseProductName = useGet(computerUseProductName$);
+  const downloadSupportLoadable = useLoadable(desktopDownloadSupportStatus$);
   const downloadSupportStatus =
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
@@ -6745,14 +6745,20 @@ function ComputerUseDownloadDialog({
         </div>
         <DialogHeader className="space-y-2 px-6 pt-5 text-left">
           <DialogTitle className="text-xl leading-7">
-            {t(($) => {
-              return $.chat.computerUse.dialogTitle;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogTitle;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogTitle>
           <DialogDescription className="leading-6">
-            {t(($) => {
-              return $.chat.computerUse.dialogDescription;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogDescription;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogDescription>
           <p className="text-sm leading-5 text-muted-foreground">
             {t(($) => {
@@ -7737,10 +7743,10 @@ interface ResolvedComposerConnectorCollections {
     PlatformConnectorCatalogStatusItem
   >;
   readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
-  readonly unconnectedCustomConnectors: CustomConnectorClientResponse[];
+  readonly unconnectedCustomConnectors: CustomConnectorResponse[];
   readonly agentConnectors: ComposerConnectorItem[];
   readonly agentCustomConnectors: ComposerCustomConnectorItem[];
-  readonly selectedCustomConnector: CustomConnectorClientResponse | undefined;
+  readonly selectedCustomConnector: CustomConnectorResponse | undefined;
 }
 
 function resolveComposerConnectorCollections({
@@ -7757,7 +7763,7 @@ function resolveComposerConnectorCollections({
   addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
+  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
   customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;
@@ -7847,7 +7853,6 @@ function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
       ref={setFileInput}
       type="file"
       className="hidden"
-      accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
       multiple
       onChange={(event) => {
         const files = event.target.files;
@@ -7934,7 +7939,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         Reason.DomCallback,
       );
     },
-    downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+    downloadUrl: OKOU_DESKTOP_DOWNLOAD_URL,
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available

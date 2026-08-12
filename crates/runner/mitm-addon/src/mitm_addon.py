@@ -1576,8 +1576,9 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     if getattr(message, "from_client", False):
         if uses_openai_responses:
             body = message.content.encode() if isinstance(message.content, str) else message.content
-            event_type = usage.inspect_openai_responses_event_type_json(body)
-            codex_output_timing.observe_client_event(flow, event_type, message.timestamp)
+            event = usage.inspect_openai_responses_client_event_json(body)
+            codex_output_timing.observe_client_event(flow, event.event_type, message.timestamp)
+            response_streaming.observe_model_websocket_client_event(flow, event)
         return
     body = message.content.encode() if isinstance(message.content, str) else message.content
     event = usage.inspect_openai_responses_event_json(body)

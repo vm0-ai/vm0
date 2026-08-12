@@ -238,7 +238,6 @@ function customConnector(
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -275,7 +274,6 @@ function mcpCustomConnector(): CustomConnectorMcpResponse {
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-08-11T00:00:00Z",
     updatedAt: "2026-08-11T00:00:00Z",
   };
@@ -400,7 +398,6 @@ describe("directed connector connect page", () => {
           {
             ...connector,
             connected,
-            hasSecret: connected,
             missingRequiredFields: connected ? [] : ["secret"],
             configuredFieldKeys: connected ? ["secret"] : [],
           },
@@ -416,7 +413,6 @@ describe("directed connector connect page", () => {
         return respond(200, {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["secret"],
         });
@@ -485,7 +481,7 @@ describe("directed connector connect page", () => {
     });
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, {
-        connectors: [{ ...connector, connected, hasSecret: connected }],
+        connectors: [{ ...connector, connected }],
       });
     });
     context.mocks.api(
@@ -567,7 +563,7 @@ describe("directed connector connect page", () => {
     });
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, {
-        connectors: [{ ...connector, connected, hasSecret: connected }],
+        connectors: [{ ...connector, connected }],
       });
     });
     context.mocks.api(

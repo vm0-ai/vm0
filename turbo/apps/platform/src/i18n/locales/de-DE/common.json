@@ -468,7 +468,6 @@
       "backToArtifacts": "Zurück zu den Artefakten",
       "close": "Schließen",
       "closeArtifact": "Artefakt schließen",
-      "closeDownloadMenu": "Download-Menü schließen",
       "closeNamed": "Schließen {{title}}",
       "closePreviewMenu": "Vorschaumenü schließen",
       "download": "Herunterladen",
@@ -712,7 +711,7 @@
       "lastSeen": "Zuletzt gesehen {{date}}",
       "linkExpires": "Link läuft am {{date}} ab.",
       "macRequirement": "Erfordert einen Apple Silicon Mac mit macOS 14 oder neuer. Intel-Macs werden nicht unterstützt.",
-      "noHostsDescription": "Öffnen Sie Zero Computer Use auf Ihrem Mac und aktualisieren Sie diese Seite, wenn sie online ist.",
+      "noHostsDescription": "Öffnen Sie {{desktopProductName}} Computer Use auf Ihrem Mac und aktualisieren Sie diese Seite, wenn sie online ist.",
       "noHostsTitle": "Keine Online-Computer",
       "sources": {
         "chat": "dieser Chat-Thread",
@@ -1324,8 +1323,8 @@
       "cloudBrowser": "Cloud-Browser",
       "connectHost": "{{hostName}} verbinden",
       "connectMyComputer": "Meinen Computer verbinden",
-      "dialogDescription": "So kann Zero in Ihrem Browser und in Ihren Apps für Sie arbeiten, auch in solchen ohne Integration wie LinkedIn oder Reddit.",
-      "dialogTitle": "Lassen Sie Zero Ihren Computer nutzen",
+      "dialogDescription": "So kann {{desktopProductName}} in Ihrem Browser und in Ihren Apps für Sie arbeiten, auch in solchen ohne Integration wie LinkedIn oder Reddit.",
+      "dialogTitle": "Lassen Sie {{desktopProductName}} Ihren Computer nutzen",
       "disableCloudBrowser": "Deaktivieren Sie den Cloud-Browser",
       "disconnectHost": "Trennen Sie {{hostName}}",
       "downloadMacos": "Für macOS herunterladen",
@@ -4545,6 +4544,7 @@
     "mermaid": {
       "diagramLabel": "Diagramm",
       "expand": "Diagramm vergrößern",
+      "invalidDiagram": "Ungültiges Diagramm",
       "viewSource": "Diagrammquelle"
     },
     "notFound": {

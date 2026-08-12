@@ -219,7 +219,6 @@ function customConnector(
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-06-09T10:00:00Z",
     updatedAt: "2026-06-09T10:00:00Z",
     ...overrides,
@@ -256,7 +255,6 @@ function mcpCustomConnector(): CustomConnectorMcpResponse {
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-08-11T00:00:00Z",
     updatedAt: "2026-08-11T00:00:00Z",
   };
@@ -2885,7 +2883,6 @@ describe("chat event action cards", () => {
           {
             ...connector,
             connected,
-            hasSecret: connected,
             missingRequiredFields: connected ? [] : ["secret"],
             configuredFieldKeys: connected ? ["secret"] : [],
           },
@@ -2900,7 +2897,6 @@ describe("chat event action cards", () => {
         return respond(200, {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["secret"],
         });
@@ -2988,7 +2984,6 @@ describe("chat event action cards", () => {
           {
             ...connector,
             connected,
-            hasSecret: connected,
             missingRequiredFields: connected ? [] : ["secret"],
             configuredFieldKeys: connected ? ["secret"] : [],
           },
@@ -3003,7 +2998,6 @@ describe("chat event action cards", () => {
         return respond(200, {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["secret"],
         });
@@ -3091,7 +3085,6 @@ describe("chat event action cards", () => {
           {
             ...connector,
             connected,
-            hasSecret: connected,
             missingRequiredFields: connected ? [] : ["secret"],
             configuredFieldKeys: connected ? ["secret"] : [],
           },
@@ -3103,7 +3096,6 @@ describe("chat event action cards", () => {
       return respond(200, {
         ...connector,
         connected: true,
-        hasSecret: true,
         missingRequiredFields: [],
         configuredFieldKeys: ["secret"],
       });
@@ -3168,7 +3160,6 @@ describe("chat event action cards", () => {
     const callbackPrompt = "Continue after authorizing Acme Internal API";
     const connector = customConnector({
       connected: true,
-      hasSecret: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
       permissionBundleRef: "builtin:feishu@1",

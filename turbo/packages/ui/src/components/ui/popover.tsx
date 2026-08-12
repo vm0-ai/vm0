@@ -141,43 +141,6 @@ const PopoverClose = React.forwardRef<HTMLButtonElement, PopoverCloseProps>(
 );
 PopoverClose.displayName = "PopoverClose";
 
-const PopoverOverlay = React.forwardRef<
-  HTMLButtonElement,
-  React.ComponentPropsWithoutRef<"button">
->(
-  (
-    {
-      "aria-label": ariaLabel = "Close popover",
-      className,
-      tabIndex = -1,
-      type = "button",
-      ...props
-    },
-    ref,
-  ) => {
-    return (
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Close
-          render={
-            <button
-              ref={ref}
-              type={type}
-              tabIndex={tabIndex}
-              aria-label={ariaLabel}
-              className={cn(
-                "fixed inset-0 z-40 cursor-default appearance-none border-0 bg-transparent p-0 outline-none",
-                className,
-              )}
-              {...props}
-            />
-          }
-        />
-      </PopoverPrimitive.Portal>
-    );
-  },
-);
-PopoverOverlay.displayName = "PopoverOverlay";
-
 type PopoverPositionerProps = Pick<
   PopoverPrimitive.Positioner.Props,
   | "align"
@@ -200,7 +163,6 @@ type PopoverContentProps = PopoverPrimitive.Popup.Props &
     onCloseAutoFocus?: LegacyAutoFocusHandler;
     onOpenAutoFocus?: LegacyAutoFocusHandler;
     portalContainer?: HTMLElement | null;
-    positionerClassName?: string;
     updatePositionStrategy?: "always" | "optimized";
   };
 
@@ -224,7 +186,6 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
       onOpenAutoFocus,
       portalContainer,
       positionMethod = "fixed",
-      positionerClassName,
       side = "bottom",
       sideOffset = 4,
       sticky,
@@ -258,11 +219,7 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
           align={align}
           alignOffset={alignOffset}
           anchor={resolvedAnchor}
-          className={cn(
-            "isolate z-50",
-            positionerClassName,
-            hideWhenDetached && "data-anchor-hidden:invisible",
-          )}
+          className={cn(hideWhenDetached && "data-anchor-hidden:invisible")}
           collisionAvoidance={resolvedCollisionAvoidance}
           collisionBoundary={collisionBoundary}
           collisionPadding={collisionPadding}
@@ -278,7 +235,7 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
             ref={ref}
             data-slot="popover-content"
             className={cn(
-              "z-50 w-72 origin-[var(--transform-origin)] rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-4 text-foreground outline-none data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+              "w-72 origin-[var(--transform-origin)] rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-4 text-foreground outline-none data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
               className,
             )}
             finalFocus={withLegacyAutoFocus(
@@ -317,11 +274,4 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
 );
 PopoverContent.displayName = "PopoverContent";
 
-export {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverAnchor,
-  PopoverClose,
-  PopoverOverlay,
-};
+export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor, PopoverClose };

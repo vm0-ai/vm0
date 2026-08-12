@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.731.1](https://github.com/vm0-ai/vm0/compare/app-v0.731.0...app-v0.731.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **chat:** bound initial thinking generation ([#26484](https://github.com/vm0-ai/vm0/issues/26484)) ([6944010](https://github.com/vm0-ai/vm0/commit/6944010dfadff1b652324e06f863ffef1c8e9a46))
+* **realtime:** make user signals best effort ([#26495](https://github.com/vm0-ai/vm0/issues/26495)) ([6a6eb89](https://github.com/vm0-ai/vm0/commit/6a6eb89bf3a3e70bbf800de3d6944a06e276fc8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.548.0
+
 ## [0.731.0](https://github.com/vm0-ai/vm0/compare/app-v0.730.4...app-v0.731.0) (2026-08-12)
 
 

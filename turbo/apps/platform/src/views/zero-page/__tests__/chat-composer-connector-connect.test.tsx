@@ -110,7 +110,6 @@ function customConnector(
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-07-30T00:00:00.000Z",
     updatedAt: "2026-07-30T00:00:00.000Z",
     ...overrides,
@@ -149,7 +148,6 @@ function mcpCustomConnector(
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-08-11T00:00:00.000Z",
     updatedAt: "2026-08-11T00:00:00.000Z",
     ...overrides,
@@ -242,7 +240,6 @@ describe("chat composer connector connection", () => {
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
     });
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
@@ -294,7 +291,6 @@ describe("chat composer connector connection", () => {
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
     });
     let grants: AgentCustomConnectorGrant[] = [
       { customConnectorId: connector.id, permissionNames: [] },
@@ -348,7 +344,6 @@ describe("chat composer connector connection", () => {
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
       permissionBundleRef: "builtin:feishu@1",
     });
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
@@ -402,7 +397,6 @@ describe("chat composer connector connection", () => {
                 connected: true,
                 missingRequiredFields: [],
                 configuredFieldKeys: ["secret"],
-                hasSecret: true,
               }
             : connector,
         ],
@@ -421,7 +415,6 @@ describe("chat composer connector connection", () => {
           connected: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["secret"],
-          hasSecret: true,
         });
       },
     );

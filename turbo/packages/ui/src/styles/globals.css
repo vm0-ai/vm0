@@ -557,21 +557,11 @@
     animation: zero-dialog-content-out 180ms ease;
   }
 
-  .zero-dialog-enter-overlay {
-    animation: zero-dialog-overlay-in 180ms ease;
-  }
-
-  .zero-dialog-enter-content {
-    animation: zero-dialog-content-in 180ms ease;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .zero-dialog-overlay[data-open],
     .zero-dialog-overlay[data-ending-style],
     .zero-dialog-content[data-open],
-    .zero-dialog-content[data-ending-style],
-    .zero-dialog-enter-overlay,
-    .zero-dialog-enter-content {
+    .zero-dialog-content[data-ending-style] {
       animation: none;
     }
 

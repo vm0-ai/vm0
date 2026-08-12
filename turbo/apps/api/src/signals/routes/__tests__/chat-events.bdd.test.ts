@@ -7443,14 +7443,12 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
+      "okou resource pull template:black-slabs --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(websitePrompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/resolve-images.mjs`,
-    );
+    expect(websitePrompt).not.toContain("resolve-images.mjs");
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
   }, 90_000);

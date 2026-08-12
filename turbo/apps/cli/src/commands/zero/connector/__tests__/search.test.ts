@@ -262,7 +262,6 @@ describe("okou connector search command", () => {
         connected: true,
         missingRequiredFields: [],
         configuredFieldKeys: ["secret:apiKey"],
-        hasSecret: true,
       });
       server.use(stubCustomConnectors([connector]));
 

@@ -20,7 +20,7 @@ import {
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  CustomConnectorClientResponse,
+  CustomConnectorResponse,
   CustomConnectorPermissionBundleResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
@@ -591,7 +591,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }: {
   readonly draft: CustomConnectorPermissionDraft | null;
   readonly agent: TeamComposeItem | undefined;
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly bundle: CustomConnectorPermissionBundleResponse | null;
   readonly loading: boolean;
   readonly loadError: boolean;
@@ -618,7 +618,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }
 
 function useCustomConnectorAuthorization(
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
   onPermissionRequired: (row: ConnectorAgentAccessRow) => void,
 ) {
   const { t } = useTranslation();
@@ -686,7 +686,7 @@ export function CustomConnectorAccessManagementDialog({
   allowAccessIncrease,
   onClose,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly allowAccessIncrease: boolean;
   readonly onClose: () => void;
 }) {

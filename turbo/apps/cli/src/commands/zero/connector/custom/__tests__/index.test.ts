@@ -28,12 +28,12 @@ describe("okou connector custom readers", () => {
     vi.unstubAllEnvs();
   });
 
-  it("normalizes an older kind-less HTTP list response without hasSecret", async () => {
+  it("normalizes an older kind-less HTTP list response", async () => {
     const connector = customConnector();
     server.use(
       http.get("http://localhost:3000/api/zero/custom-connectors", () => {
         return HttpResponse.json({
-          connectors: [{ ...connector, kind: undefined, hasSecret: undefined }],
+          connectors: [{ ...connector, kind: undefined }],
         });
       }),
     );
@@ -141,7 +141,6 @@ describe("okou connector custom readers", () => {
       configuredFieldKeys: ["secret"],
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
-      hasSecret: true,
     } satisfies CustomConnectorMcpResponse;
     server.use(
       http.get(

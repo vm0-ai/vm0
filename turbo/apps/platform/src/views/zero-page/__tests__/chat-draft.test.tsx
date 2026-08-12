@@ -1435,63 +1435,73 @@ describe("chat drafts", () => {
     });
   });
 
-  it("infers attachment content type when the browser reports a generic file type", async () => {
-    const user = userEvent.setup({ delay: null });
-    let capturedPrepareBody: unknown = null;
+  it.each([
+    {
+      filename: "network.har",
+      expectedContentType: "application/json",
+      contents: '{"log":{"entries":[]}}',
+    },
+    {
+      filename: "payload.vm0unknown",
+      expectedContentType: "application/octet-stream",
+      contents: "opaque bytes",
+    },
+  ])(
+    "allows picker uploads and infers $expectedContentType for $filename",
+    async ({ filename, expectedContentType, contents }) => {
+      const user = userEvent.setup({ delay: null });
+      let capturedPrepareBody: unknown = null;
+      const uploadUrl = `https://mock-upload.example.com/${filename}`;
 
-    context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
-      serviceTier: null,
-      updatedAt: "2026-03-10T00:00:00Z",
-    });
-    mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
-      async ({ request }) => {
-        capturedPrepareBody = await request.json();
-        return HttpResponse.json({
-          id: "upload-launch-plan",
-          filename: "launch-plan.pdf",
-          contentType: "application/pdf",
-          size: 11,
-          uploadUrl: "https://mock-upload.example.com/launch-plan.pdf",
-          uploadHeaders: {},
-          url: "https://example.com/launch-plan.pdf",
-        });
-      },
-    );
-    context.mocks.http.put(
-      "https://mock-upload.example.com/launch-plan.pdf",
-      () => {
-        return new HttpResponse(null, { status: 200 });
-      },
-    );
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
-
-    await waitFor(() => {
-      expect(textarea()).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File(["release pdf"], "launch-plan.pdf", {
-        type: "application/octet-stream",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Remove launch-plan.pdf"),
-      ).toBeInTheDocument();
-      expect(capturedPrepareBody).toMatchObject({
-        filename: "launch-plan.pdf",
-        contentType: "application/pdf",
+      context.mocks.data.userModelPreference({
+        selectedModel: "claude-sonnet-4-6",
+        serviceTier: null,
+        updatedAt: "2026-03-10T00:00:00Z",
       });
-    });
-  });
+      mockThreadDetails();
+      context.mocks.http.post(
+        "*/api/zero/uploads/prepare",
+        async ({ request }) => {
+          capturedPrepareBody = await request.json();
+          return HttpResponse.json({
+            id: `upload-${filename}`,
+            filename,
+            contentType: expectedContentType,
+            size: contents.length,
+            uploadUrl,
+            uploadHeaders: {},
+            url: `https://example.com/${filename}`,
+          });
+        },
+      );
+      context.mocks.http.put(uploadUrl, () => {
+        return new HttpResponse(null, { status: 200 });
+      });
+
+      detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+      await waitFor(() => {
+        expect(textarea()).toBeInTheDocument();
+      });
+
+      const fileInput =
+        document.querySelector<HTMLInputElement>('input[type="file"]')!;
+      await user.upload(
+        fileInput,
+        new File([contents], filename, {
+          type: "application/octet-stream",
+        }),
+      );
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
+        expect(capturedPrepareBody).toMatchObject({
+          filename,
+          contentType: expectedContentType,
+        });
+      });
+    },
+  );
 
   it("uploads dropped files and reports oversized drops", async () => {
     const threadId = THREAD_UPLOADS_ID;

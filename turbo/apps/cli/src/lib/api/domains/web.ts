@@ -37,9 +37,8 @@ const BUILT_IN_GENERATION_WAIT_TIMEOUT_MS_BY_TYPE = {
 const ABLY_CONNECT_TIMEOUT_MS = 10_000;
 
 /**
- * Minimal extension → MIME map covering the server allowlist for
- * `/api/zero/uploads/prepare`. Kept in this file rather than a shared module
- * to match the YAGNI pattern used elsewhere in the CLI.
+ * Known extension → MIME map for accurate upload metadata. Unknown extensions
+ * remain opaque as `application/octet-stream`.
  */
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -74,6 +73,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".md": "text/markdown",
   ".html": "text/html",
   ".htm": "text/html",
+  ".har": "application/json",
   ".json": "application/json",
   ".xml": "application/xml",
   ".yaml": "application/yaml",

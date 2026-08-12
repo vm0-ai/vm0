@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vm0/ui";
-import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,
@@ -42,13 +42,13 @@ import { noConnectorImg } from "../../platform-assets.ts";
 import { customConnectorTarget } from "./custom-connector-display.ts";
 
 function connectsDirectlyWithOAuth(
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
 ): boolean {
   return connector.authMode === "oauth";
 }
 
 interface CustomConnectorRowProps {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly isAdmin: boolean;
   readonly mcpEnabled: boolean;
   readonly onConnect: () => void;
@@ -63,7 +63,7 @@ function CustomConnectorAgentAccess({
   allowAccessIncrease,
   onManageAccess,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly allowAccessIncrease: boolean;
   readonly onManageAccess: () => void;
 }) {
@@ -97,7 +97,7 @@ function CustomConnectorCardContent({
   onConnect,
   onManageAccess,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly hasActions: boolean;
   readonly canConnect: boolean;
   readonly allowAccessIncrease: boolean;
@@ -333,11 +333,11 @@ export function CustomConnectorsPanel() {
   const disconnect = useSet(disconnectCustomConnector$);
   const signal = useGet(pageSignal$);
 
-  const handleDisconnect = (connector: CustomConnectorClientResponse) => {
+  const handleDisconnect = (connector: CustomConnectorResponse) => {
     detach(disconnect(connector.id, signal), Reason.DomCallback);
   };
 
-  const handleConnect = (connector: CustomConnectorClientResponse) => {
+  const handleConnect = (connector: CustomConnectorResponse) => {
     if (connectsDirectlyWithOAuth(connector)) {
       detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
       return;
