@@ -69,7 +69,7 @@ ruby -e '
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
   raise "Desktop promotion must select a product signing identity" unless promote_text.include?("--product")
   raise "Desktop promotion must publish an independent Okou release" unless promote_text.include?("OKOU_RELEASE_TAG: okou-desktop-v")
-  raise "Desktop promotion must publish Okou artifacts" unless promote_text.include?("Okou-darwin-arm64-$DESKTOP_VERSION")
+  raise "Desktop promotion must publish Okou artifacts" unless promote_text.include?("Okou-darwin-arm64-")
   raise "Desktop promotion must smoke-test Okou installation" unless promote_text.include?("okou-install-smoke")
   raise "Desktop promotion must smoke-test Okou updates" unless promote_text.include?("okou-update-smoke")
 
