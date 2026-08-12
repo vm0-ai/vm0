@@ -161,10 +161,10 @@ async function claimChatRun(
   };
 }
 
-function zeroTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.ZERO_TOKEN;
+function okouTokenFromClaim(claim: RunnerClaim): string {
+  const token = claim.environment?.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -230,7 +230,7 @@ async function createHostedArtifact(args: {
     args.runnerGroup,
     run.runId,
   );
-  const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+  const bearer = `Bearer ${okouTokenFromClaim(claim)}`;
   const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
     site: args.site,
     artifactKind: args.artifactKind ?? "hosted-site",
@@ -265,7 +265,7 @@ async function createRunUploadedFile(args: {
     args.owner.runnerGroup,
     run.runId,
   );
-  const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+  const bearer = `Bearer ${okouTokenFromClaim(claim)}`;
   const fileId = randomUUID();
   args.owner.objectStore.addObject({
     bucket: "test-user-artifacts",
@@ -404,8 +404,8 @@ describe("artifact upload provenance", () => {
         prompt: `create ${triggerSource} artifact`,
         modelProviderType: "anthropic-api-key",
         triggerSource,
-        vars: { ZERO_AGENT_ID: owner.agentId },
-        secrets: { ZERO_TOKEN: "bdd-artifact-zero-token" },
+        vars: { OKOU_AGENT_ID: owner.agentId },
+        secrets: { OKOU_TOKEN: "bdd-artifact-okou-token" },
       });
       const fileId = randomUUID();
       owner.objectStore.addObject({
@@ -439,7 +439,7 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
       prompt: "publish two hosted-site versions",
     });
     const { claim } = await claimChatRun(owner.runnerGroup, run.runId);
-    const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+    const bearer = `Bearer ${okouTokenFromClaim(claim)}`;
     host.captureHostedSitesS3();
 
     const site = `artifact-versions-${randomUUID().slice(0, 8)}`;

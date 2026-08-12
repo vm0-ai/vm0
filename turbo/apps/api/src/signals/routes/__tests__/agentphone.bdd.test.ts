@@ -100,7 +100,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   readonly sandboxToken: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
-  readonly zeroToken: string | undefined;
+  readonly okouToken: string | undefined;
 }> {
   const runs = createRunsApi(context);
   await runs.heartbeatRunner(runnerGroup);
@@ -121,7 +121,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
     sandboxToken: claim.sandboxToken,
     prompt: claim.prompt,
     appendSystemPrompt: claim.appendSystemPrompt ?? "",
-    zeroToken: claim.environment?.ZERO_TOKEN,
+    okouToken: claim.environment?.OKOU_TOKEN,
   };
 }
 
@@ -1214,13 +1214,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error("Expected the claimed run to expose ZERO_TOKEN");
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the claimed run to expose OKOU_TOKEN");
     }
 
     const init = await ap.requestPhoneUploadInitWithToken(
-      zeroToken,
+      okouToken,
       { filename: "screen shot.png", contentType: "image/png", length: 123 },
       [200],
     );
@@ -1239,7 +1239,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       size: 456,
     });
     const completed = await ap.requestPhoneUploadCompleteWithToken(
-      zeroToken,
+      okouToken,
       {
         uploadId: init.body.uploadId,
         toNumber: phone,
@@ -1270,7 +1270,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       }),
     );
     const downloaded = await ap.downloadPhoneFileRaw(
-      zeroToken,
+      okouToken,
       completed.body.messageId,
     );
     expect(downloaded.status).toBe(200);

@@ -328,20 +328,6 @@ export function generateZeroToken(
   );
 }
 
-export function generateBrandedRunTokens(
-  userId: string,
-  runId: string,
-  orgId: string,
-  overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-  options?: Omit<ZeroTokenOptions, "scope">,
-): { readonly okouToken: string; readonly zeroToken: string } {
-  const claims = buildZeroTokenClaims(userId, runId, orgId, overrides, options);
-  return {
-    okouToken: signZeroToken("okou", claims),
-    zeroToken: signZeroToken("zero", claims),
-  };
-}
-
 function buildZeroTokenClaims(
   userId: string,
   runId: string,

@@ -629,11 +629,11 @@ function expectApiDispatchTimingEventsNotToLeak(
   }
 }
 
-/** Sandbox-scoped zero token issued to the run, exposed via the claim env. */
-function zeroTokenFromClaim(claim: RunnerClaim): string {
-  const token = claimEnvironment(claim).ZERO_TOKEN;
+/** Sandbox-scoped Okou token issued to the run, exposed via the claim env. */
+function okouTokenFromClaim(claim: RunnerClaim): string {
+  const token = claimEnvironment(claim).OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -3366,7 +3366,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
       setupApp({ context, routes: zeroMailRoutes })(zeroMailContract).linkDraft(
         {
           headers: {
-            authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+            authorization: `Bearer ${okouTokenFromClaim(claim)}`,
           },
           body: {
             threadId: run.threadId,
@@ -8069,7 +8069,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       prompt: "no computer use selected",
     });
     const plainClaim = await claimChatRun(runnerGroup, plain.runId);
-    const plainToken = zeroTokenFromClaim(plainClaim.claim);
+    const plainToken = okouTokenFromClaim(plainClaim.claim);
     const deniedCommand = await cu.requestCreateComputerUseWriteCommand(
       { bearer: plainToken },
       [403],
@@ -8119,7 +8119,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(grantedClaim.claim) },
+      { bearer: okouTokenFromClaim(grantedClaim.claim) },
       [200],
     );
     await cancelChatRun(actor, granted.runId, grantedClaim.sandboxHeaders);
@@ -8133,7 +8133,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const stickyClaim = await claimChatRun(runnerGroup, sticky.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(stickyClaim.claim) },
+      { bearer: okouTokenFromClaim(stickyClaim.claim) },
       [200],
     );
     await cancelChatRun(actor, sticky.runId, stickyClaim.sandboxHeaders);
@@ -8149,7 +8149,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const clearedClaim = await claimChatRun(runnerGroup, cleared.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(clearedClaim.claim) },
+      { bearer: okouTokenFromClaim(clearedClaim.claim) },
       [403],
     );
     await cancelChatRun(actor, cleared.runId, clearedClaim.sandboxHeaders);
@@ -8169,7 +8169,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(staleClaim.claim) },
+      { bearer: okouTokenFromClaim(staleClaim.claim) },
       [200],
     );
     await cancelChatRun(actor, staleGranted.runId);
@@ -8553,7 +8553,7 @@ describe("CHAT-02: shared user message queue", () => {
     });
     const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
       await claimChatRun(runnerGroup, source.runId);
-    const sourceToken = zeroTokenFromClaim(sourceClaim);
+    const sourceToken = okouTokenFromClaim(sourceClaim);
 
     const firstEventId = randomUUID();
     const firstSend = await requestSendEventWithBearer(
@@ -8787,7 +8787,7 @@ describe("CHAT-02: shared user message queue", () => {
     });
     const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
       await claimChatRun(runnerGroup, source.runId);
-    const sourceToken = zeroTokenFromClaim(sourceClaim);
+    const sourceToken = okouTokenFromClaim(sourceClaim);
 
     const rotatedAnchorPrompt = "prior Web round before an agent rotation";
     const rotatedAnchor = await sendChatRun(actor, {
@@ -9003,7 +9003,7 @@ describe("CHAT-02: shared user message queue", () => {
     await setRunAutonomyBudgetFixture(context, root.runId, 1);
 
     const delegated = await requestSendEventWithBearer(
-      zeroTokenFromClaim(rootClaim.claim),
+      okouTokenFromClaim(rootClaim.claim),
       {
         agentId,
         clientEventId: randomUUID(),
@@ -9028,7 +9028,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     const blockedEventId = randomUUID();
     const blocked = await requestSendEventWithBearer(
-      zeroTokenFromClaim(delegatedClaim.claim),
+      okouTokenFromClaim(delegatedClaim.claim),
       {
         agentId,
         clientEventId: blockedEventId,

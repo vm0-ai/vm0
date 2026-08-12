@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import {
-  generateBrandedRunTokens,
   generateZeroToken,
   isPatToken,
   isSandboxToken,
@@ -127,28 +126,47 @@ describe("auth tokens", () => {
     });
   });
 
-  it("generates distinct scope-specific tokens with equivalent run claims", () => {
-    const { okouToken, zeroToken } = generateBrandedRunTokens(
+  it("generates one Okou-scoped run token with the complete run claims", () => {
+    const computerUseHostId = "00000000-0000-4000-8000-000000000001";
+    const okouToken = generateZeroToken(
       "user_shared",
       "run_shared",
       "org_shared",
       { [FeatureSwitchKey.Banking]: true },
       {
-        computerUseHostId: "00000000-0000-4000-8000-000000000001",
+        scope: "okou",
+        computerUseHostId,
         cloudBrowserEnabled: true,
         imageRecognitionAvailable: true,
       },
     );
 
-    expect(okouToken.localeCompare(zeroToken)).not.toBe(0);
     const okouPayload = decodeZeroTokenPayloadForTest(okouToken);
-    const zeroPayload = decodeZeroTokenPayloadForTest(zeroToken);
-    expect(okouPayload).toMatchObject({ scope: "okou" });
-    expect(zeroPayload).toMatchObject({ scope: "zero" });
-    expect({ ...okouPayload, scope: "zero" }).toStrictEqual(zeroPayload);
-    expect(verifyZeroToken(okouToken)).toStrictEqual(
-      verifyZeroToken(zeroToken),
-    );
+    expect(okouPayload).toMatchObject({
+      scope: "okou",
+      userId: "user_shared",
+      runId: "run_shared",
+      orgId: "org_shared",
+      computerUseHostId,
+      cloudBrowserEnabled: true,
+      capabilities: expect.arrayContaining([
+        "banking:read",
+        "browser:read",
+        "browser:write",
+        "computer-use:write",
+        "image-recognition:write",
+      ]),
+      iat: expect.any(Number),
+      exp: expect.any(Number),
+    });
+    expect(okouPayload.exp).toBe(Number(okouPayload.iat) + 2 * 60 * 60);
+    expect(verifyZeroToken(okouToken)).toMatchObject({
+      userId: "user_shared",
+      runId: "run_shared",
+      orgId: "org_shared",
+      computerUseHostId,
+      cloudBrowserEnabled: true,
+    });
   });
 
   it("ignores unknown zero capabilities while preserving known capabilities", () => {
