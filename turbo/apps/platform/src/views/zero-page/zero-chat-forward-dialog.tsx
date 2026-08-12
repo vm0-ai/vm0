@@ -180,9 +180,7 @@ function createForwardContext(
   sourceThreadTitle: string,
 ): ChatForwardContext {
   return {
-    quote: selection.text,
-    runId: selection.runId,
-    threadId: selection.threadId,
+    ...selection,
     agentId: sourceAgentId,
     titleSnapshot: sourceThreadTitle,
   };
@@ -295,7 +293,7 @@ export function ChatForwardDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        <ForwardContent text={selection.text} />
+        {target ? null : <ForwardContent text={selection.quote} />}
         {target && composerState ? (
           <>
             <div className="flex items-center gap-2 px-5 pt-4 text-sm text-muted-foreground">

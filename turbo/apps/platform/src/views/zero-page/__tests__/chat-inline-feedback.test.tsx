@@ -194,17 +194,17 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
-async function findForwardComposerEditor(
+async function findForwardFeedbackNote(
   dialog: HTMLElement,
 ): Promise<HTMLElement> {
-  return await waitFor(() => {
-    const editor = dialog.querySelector(
-      '[data-chat-composer] .zero-composer [contenteditable="true"]',
+  return await waitFor((): HTMLElement => {
+    const note = dialog.querySelector(
+      "[data-chat-composer] [data-feedback-item] [data-feedback-note]",
     );
-    if (!(editor instanceof HTMLElement)) {
-      throw new Error("Forward composer editor not found");
+    if (!(note instanceof HTMLElement)) {
+      throw new Error("Forward feedback note not found");
     }
-    return editor;
+    return note;
   });
 }
 
@@ -364,15 +364,18 @@ describe("chat inline feedback", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Forward to" });
     expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
+    expect(within(dialog).getByText("Content")).toBeInTheDocument();
     const search = within(dialog).getByPlaceholderText(
       "Search agents and chats...",
     );
     await fill(search, "Zero");
     await user.keyboard("{ArrowDown}{Enter}");
 
-    const editor = await findForwardComposerEditor(dialog);
+    const feedbackNote = await findForwardFeedbackNote(dialog);
     expect(within(dialog).getByText("Zero")).toBeInTheDocument();
-    await fill(editor, additionalContext);
+    expect(within(dialog).queryByText("Content")).toBeNull();
+    expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);
+    pastePlainText(feedbackNote, additionalContext);
     await user.click(within(dialog).getByLabelText("Send"));
 
     await waitFor(() => {
@@ -385,16 +388,18 @@ describe("chat inline feedback", () => {
     expect(sentRequests[0]).toMatchObject({
       threadId: expect.any(String),
       sourceRunId,
-      prompt: `Forwarded content:\n\n> ${selectedContent}\n\nAdditional context:\n\n${additionalContext}`,
+      prompt: `Feedback on this part of your reply:\n\n> ${selectedContent}\n\n${additionalContext}`,
     });
     expect(sentRequests[0]?.threadId).not.toBe(FEEDBACK_THREAD_ID);
     expect(sentRequests[0]?.userMessage?.parts).toStrictEqual(
       expect.arrayContaining([
         {
-          type: "text",
-          text: `Forwarded content:\n\n> ${selectedContent}\n\nAdditional context:\n\n`,
+          type: "feedback",
+          quote: selectedContent,
+          eventId: "msg-forward-agent-assistant",
+          range: { start: 0, end: selectedContent.length },
+          note: [{ type: "text", text: additionalContext }],
         },
-        { type: "text", text: additionalContext },
       ]),
     );
     expect(successToast).toHaveBeenCalledWith("Forwarded successfully");
@@ -406,6 +411,7 @@ describe("chat inline feedback", () => {
     const sourceRunId = "d0000000-0000-4000-a000-000000000704";
     const targetThreadId = "b0000000-0000-4000-a000-000000000704";
     const selectedContent = "The launch owner is still unresolved.";
+    const additionalContext = "Assign a launch owner.";
     const sentRequests: RunCreateCapture[] = [];
     let threadCreateCount = 0;
     const successToast = vi.spyOn(toast, "success");
@@ -469,8 +475,11 @@ describe("chat inline feedback", () => {
     await fill(search, "Launch ownership");
     await user.keyboard("{ArrowDown}{Enter}");
 
-    await findForwardComposerEditor(dialog);
+    const feedbackNote = await findForwardFeedbackNote(dialog);
     expect(within(dialog).getByText("Launch ownership")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Content")).toBeNull();
+    expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);
+    pastePlainText(feedbackNote, additionalContext);
     await user.click(within(dialog).getByLabelText("Send"));
 
     await waitFor(() => {
@@ -484,13 +493,16 @@ describe("chat inline feedback", () => {
     expect(sentRequests[0]).toMatchObject({
       threadId: targetThreadId,
       sourceRunId,
-      prompt: `Forwarded content:\n\n> ${selectedContent}`,
+      prompt: `Feedback on this part of your reply:\n\n> ${selectedContent}\n\n${additionalContext}`,
     });
     expect(sentRequests[0]?.userMessage?.parts).toStrictEqual(
       expect.arrayContaining([
         {
-          type: "text",
-          text: `Forwarded content:\n\n> ${selectedContent}`,
+          type: "feedback",
+          quote: selectedContent,
+          eventId: "msg-forward-thread-assistant",
+          range: { start: 0, end: selectedContent.length },
+          note: [{ type: "text", text: additionalContext }],
         },
       ]),
     );

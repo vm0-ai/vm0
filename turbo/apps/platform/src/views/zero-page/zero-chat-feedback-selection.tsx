@@ -175,9 +175,17 @@ export function ChatFeedbackSelection({
                       return;
                     }
                     openForward({
-                      text: selection.text,
+                      quote: selection.text,
                       threadId,
                       runId,
+                      ...(selection.eventId !== undefined &&
+                      selection.range !== undefined
+                        ? {
+                            eventId: selection.eventId,
+                            range: selection.range,
+                          }
+                        : {}),
+                      ...(selection.source ? { source: selection.source } : {}),
                     });
                     setForwardQuery("");
                   }

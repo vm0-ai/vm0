@@ -220,11 +220,7 @@ import {
   canonicalUserMessageFileUrl,
   userMessageFileAttachments,
 } from "./user-message-files.ts";
-import {
-  forwardSubmissionPrompt,
-  withForwardedContent,
-  type ChatForwardContext,
-} from "./chat-forward.ts";
+import type { ChatForwardContext } from "./chat-forward.ts";
 
 const L = logger("ChatThread");
 const noOpComposerDraftSave$ = command(
@@ -2685,13 +2681,11 @@ function userMessageForSend({
   editorDocument,
   generationTemplate,
   attachments,
-  forward,
 }: {
   readonly prompt: string;
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: ResolvedAttachFile[] | undefined;
-  readonly forward: ChatForwardContext | undefined;
 }): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
@@ -2699,9 +2693,6 @@ function userMessageForSend({
         attachments,
       })
     : textToMessageDocument(prompt, undefined, attachments);
-  if (forward) {
-    return withForwardedContent(userMessage, forward);
-  }
   if (!userMessage) {
     throw new Error("Failed to serialize user message");
   }
@@ -2717,7 +2708,6 @@ function queueUserMessage(
     editorDocument: options.editorDocument,
     generationTemplate: options.generationTemplate,
     attachments: result.attachments,
-    forward: options.forward,
   });
 }
 
@@ -2767,12 +2757,6 @@ function generationTemplateForSend(
     : draftGenerationTemplate;
 }
 
-function submissionPromptForSend(request: ValidatedSendMessageRequest): string {
-  return request.options?.forward
-    ? forwardSubmissionPrompt(request.options.forward, request.prompt)
-    : request.prompt;
-}
-
 function prepareSendMessageResult(
   textOnly: boolean,
   prompt: string,
@@ -2781,13 +2765,6 @@ function prepareSendMessageResult(
   return textOnly
     ? Promise.resolve(prepareTextOnlyUserMessage(prompt))
     : prepareFromDraft();
-}
-
-function userMessagePromptForSend(
-  request: ValidatedSendMessageRequest,
-  preparedPrompt: string,
-): string {
-  return request.options?.forward ? request.prompt : preparedPrompt;
 }
 
 function flushDraftForSend(
@@ -2844,7 +2821,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         request,
         get(draft.generationTemplate$),
       );
-      const submissionPrompt = submissionPromptForSend(request);
+      const submissionPrompt = request.prompt;
       const result = await prepareSendMessageResult(
         request.options?.includeDraftAttachments === false,
         submissionPrompt,
@@ -2870,11 +2847,10 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       }
       signal.throwIfAborted();
       const userMessage = userMessageForSend({
-        prompt: userMessagePromptForSend(request, result.prompt),
+        prompt: result.prompt,
         editorDocument: request.options?.editorDocument,
         generationTemplate,
         attachments: result.attachments,
-        forward: request.options?.forward,
       });
       set(cancelDraftSync$);
       set(draft.clear$);
@@ -2984,13 +2960,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
       }
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      const submissionPrompt = options.forward
-        ? forwardSubmissionPrompt(options.forward, prompt)
-        : prompt;
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
-        submissionPrompt,
+        prompt,
         {
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             modelSelection?.selectedModel,
@@ -3793,7 +3766,6 @@ function createChatThreadComposerSignals(
     chatEvents$: options.chatEvents.chatEvents$,
     threadId: options.chatEvents.threadId,
     singleLineOnMobile: true,
-    implicitContent: options.forward !== undefined,
     modelSelection$: composerModelSelection$,
     selectedModelOauthAvailable$: modelSelection.selectedModelOauthAvailable$,
     setModelSelection$: modelSelection.setModelSelection$,

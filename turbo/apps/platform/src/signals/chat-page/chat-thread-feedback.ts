@@ -43,6 +43,9 @@ export interface ChatThreadFeedbackSelection {
   readonly text: string;
   readonly threadId: string | null;
   readonly runId: string | null;
+  readonly eventId?: string;
+  readonly range?: FeedbackRange;
+  readonly source?: FeedbackSource;
 }
 
 interface CapturedFeedbackSelection {
@@ -261,6 +264,12 @@ function createSelectionState(threadId: string) {
           text: selection.text,
           threadId: selection.threadId,
           runId: selection.runId,
+          ...(get(feedbackLocationApiSupported$) &&
+          selection.eventId !== undefined &&
+          selection.range !== undefined
+            ? { eventId: selection.eventId, range: selection.range }
+            : {}),
+          ...(selection.source ? { source: selection.source } : {}),
         }
       : null;
   });

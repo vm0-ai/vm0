@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { createForwardAgentComposerSignals } from "../zero-page/agent-composer-signals.ts";
+import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import { onRef } from "../utils.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type {
@@ -12,11 +13,18 @@ import { createThreadComposerSignals } from "./create-chat-thread.ts";
 const ready$ = computed((): boolean => {
   return true;
 });
-const setReadyLifecycleRef$ = onRef<HTMLDivElement>(
-  command(
-    (_context, _element: HTMLDivElement, _signal: AbortSignal): void => {},
-  ),
-);
+
+function createSeedForwardFeedback(
+  composer: ComposerSignals,
+  forward: ChatForwardContext,
+) {
+  return command(({ get, set }): void => {
+    if (get(composer.feedback.items$).length > 0) {
+      return;
+    }
+    set(composer.feedback.add$, forward);
+  });
+}
 
 function createForwardThreadComposerState(
   target: Extract<ChatForwardTarget, { readonly kind: "thread" }>,
@@ -24,6 +32,13 @@ function createForwardThreadComposerState(
   onOptimisticSend: () => void,
 ): ChatForwardComposerState {
   const chatEvents = createChatEventSignals(target.id);
+  const composer = createThreadComposerSignals(
+    target.id,
+    target.agentId,
+    chatEvents,
+    { forward, onOptimisticSend },
+  );
+  const seedForwardFeedback$ = createSeedForwardFeedback(composer, forward);
   const internalReady$ = state(false);
   const threadReady$ = computed((get): boolean => {
     return get(internalReady$);
@@ -41,17 +56,13 @@ function createForwardThreadComposerState(
       await set(chatEvents.setup$, signal);
       await set(chatEvents.catchUp$, signal);
       signal.throwIfAborted();
+      set(seedForwardFeedback$);
       set(internalReady$, true);
     }),
   );
   return {
     target,
-    composer: createThreadComposerSignals(
-      target.id,
-      target.agentId,
-      chatEvents,
-      { forward, onOptimisticSend },
-    ),
+    composer,
     ready$: threadReady$,
     setLifecycleRef$,
   };
@@ -65,14 +76,21 @@ export function createChatForwardComposerState(
   if (target.kind === "thread") {
     return createForwardThreadComposerState(target, forward, onOptimisticSend);
   }
+  const composer = createForwardAgentComposerSignals(
+    target.id,
+    forward,
+    onOptimisticSend,
+  );
+  const seedForwardFeedback$ = createSeedForwardFeedback(composer, forward);
   return {
     target,
-    composer: createForwardAgentComposerSignals(
-      target.id,
-      forward,
-      onOptimisticSend,
-    ),
+    composer,
     ready$,
-    setLifecycleRef$: setReadyLifecycleRef$,
+    setLifecycleRef$: onRef<HTMLDivElement>(
+      command(({ set }, _element: HTMLDivElement, signal: AbortSignal) => {
+        signal.throwIfAborted();
+        set(seedForwardFeedback$);
+      }),
+    ),
   };
 }
