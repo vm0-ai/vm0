@@ -142,11 +142,8 @@ fn read_args(path: &Path) -> TestResult<Vec<String>> {
 }
 
 async fn execute(runtime: &GuestRuntime) -> TestResult<guest_agent::cli::CliExecutionResult> {
-    let active_input = ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        false,
-        &runtime.config.prompt,
-    );
+    let active_input =
+        ActiveInputRuntime::new_disabled(&runtime.config.run_id, &runtime.config.prompt);
     Ok(guest_agent::cli::execute_cli_with_active_input_for_config(
         &SecretMasker::from_raw(""),
         common::spawn_dummy_heartbeat(),

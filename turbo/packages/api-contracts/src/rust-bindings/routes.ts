@@ -43,16 +43,6 @@ export const rustRouteBindings = [
     rustConstName: "CLAIM",
   },
   {
-    route: runnersActiveInputsContract.list,
-    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs"],
-    rustConstName: "LIST",
-  },
-  {
-    route: runnersActiveInputsContract.claim,
-    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs", "claim"],
-    rustConstName: "CLAIM",
-  },
-  {
     route: runnersActiveInputsContract.reserve,
     rustModulePath: [
       "runners",

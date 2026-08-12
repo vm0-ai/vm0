@@ -1480,7 +1480,7 @@ async fn execute_cli_inner(
                         LOG_TAG,
                         "Claude stdin writer finished after CLI loop with error: {error}"
                     );
-                    if active_input_controller.has_durable_activity() {
+                    if active_input_controller.has_activity() {
                         active_input_error = Some(error);
                     }
                 }
@@ -1489,14 +1489,14 @@ async fn execute_cli_inner(
                         LOG_TAG,
                         "Claude stdin writer failed after CLI loop: {error}"
                     );
-                    if active_input_controller.has_durable_activity() {
+                    if active_input_controller.has_activity() {
                         active_input_error = Some(AgentError::Execution(format!(
                             "Claude stdin writer task failed during active-input quiescence: {error}"
                         )));
                     }
                 }
             }
-        } else if active_input_controller.has_durable_activity() {
+        } else if active_input_controller.has_activity() {
             let mut handle = handle;
             match tokio::time::timeout(
                 Duration::from_secs(constants::ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS),
@@ -2121,7 +2121,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn cli_exit_observation_distinguishes_stdout_drain_from_loop_completion() {
-        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation");
+        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation", "");
         let controller = active_input.controller();
         let termination_deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(termination_deadline);

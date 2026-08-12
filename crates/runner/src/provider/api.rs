@@ -977,11 +977,6 @@ pub(crate) struct ApiClient {
     token: String,
 }
 
-pub(crate) enum ReserveActiveInputResult {
-    RouteUnavailable,
-    Response(ActiveInputReserveResponse),
-}
-
 #[derive(Serialize)]
 struct EmptyRequest {}
 
@@ -990,40 +985,11 @@ impl ApiClient {
         Self { http, token }
     }
 
-    pub(crate) async fn list_active_input_event_ids(
-        &self,
-        run_id: RunId,
-        sandbox_token: &str,
-    ) -> RunnerResult<Vec<String>> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct ListResponse {
-            event_ids: Vec<String>,
-        }
-
-        let run_id = run_id.to_string();
-        let resp = send_api(
-            self.http.request_resolved_route(
-                routes::runners::runs::by_run_id::active_inputs::route(
-                    routes::runners::runs::by_run_id::active_inputs::Params {
-                        run_id: run_id.as_str(),
-                    },
-                ),
-                sandbox_token,
-            ),
-            "list active inputs",
-        )
-        .await?;
-        let resp = check_api_status(resp, "list active inputs").await?;
-        let body: ListResponse = decode_api_json(resp, "list active inputs").await?;
-        Ok(body.event_ids)
-    }
-
     pub(crate) async fn reserve_active_inputs(
         &self,
         run_id: RunId,
         sandbox_token: &str,
-    ) -> RunnerResult<ReserveActiveInputResult> {
+    ) -> RunnerResult<ActiveInputReserveResponse> {
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -1039,12 +1005,8 @@ impl ApiClient {
             "reserve active inputs",
         )
         .await?;
-        if resp.status() == StatusCode::NOT_FOUND {
-            return Ok(ReserveActiveInputResult::RouteUnavailable);
-        }
         let resp = check_api_status(resp, "reserve active inputs").await?;
-        let body = decode_api_json(resp, "reserve active inputs").await?;
-        Ok(ReserveActiveInputResult::Response(body))
+        decode_api_json(resp, "reserve active inputs").await
     }
 
     pub(crate) async fn record_active_input_delivery(
@@ -1071,42 +1033,6 @@ impl ApiClient {
         .await?;
         let resp = check_api_status(resp, "record active input delivery").await?;
         decode_api_json(resp, "record active input delivery").await
-    }
-
-    pub(crate) async fn claim_active_inputs(
-        &self,
-        run_id: RunId,
-        sandbox_token: &str,
-        event_ids: &[String],
-    ) -> RunnerResult<String> {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct ClaimRequest<'a> {
-            event_ids: &'a [String],
-        }
-        #[derive(Deserialize)]
-        struct ClaimResponse {
-            prompt: String,
-        }
-
-        let run_id = run_id.to_string();
-        let resp = send_api(
-            self.http
-                .request_resolved_route(
-                    routes::runners::runs::by_run_id::active_inputs::claim::route(
-                        routes::runners::runs::by_run_id::active_inputs::claim::Params {
-                            run_id: run_id.as_str(),
-                        },
-                    ),
-                    sandbox_token,
-                )
-                .json(&ClaimRequest { event_ids }),
-            "claim active inputs",
-        )
-        .await?;
-        let resp = check_api_status(resp, "claim active inputs").await?;
-        let body: ClaimResponse = decode_api_json(resp, "claim active inputs").await?;
-        Ok(body.prompt)
     }
 
     /// Poll for a pending job. The response contains `job: None` when no work is available.

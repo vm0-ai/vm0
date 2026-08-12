@@ -1013,7 +1013,7 @@ export const runnersJobClaimContract = c.router({
 
 const activeInputDeliveryReferenceSchema = z.object({
   deliveryId: z.uuid(),
-  eventIds: z.array(z.uuid()).min(1),
+  eventIds: z.array(z.uuid()).length(1),
 });
 
 export const activeInputDeliveryReserveResponseSchema = z.discriminatedUnion(
@@ -1044,53 +1044,6 @@ export const activeInputDeliveryReceiptResponseSchema = z.discriminatedUnion(
 );
 
 export const runnersActiveInputsContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/runners/runs/:runId/active-inputs",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      runId: z.uuid(),
-    }),
-    responses: {
-      200: z.object({
-        eventIds: z.array(z.uuid()),
-      }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "List pending input prompts for a running agent run",
-  },
-  claim: {
-    method: "POST",
-    path: "/api/runners/runs/:runId/active-inputs/claim",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      runId: z.uuid(),
-    }),
-    body: z.object({
-      eventIds: z.array(z.uuid()).min(1),
-    }),
-    responses: {
-      200: z.object({
-        prompt: z.string().min(1),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Claim pending input prompts for a running agent run",
-  },
-  /**
-   * This additive route intentionally has no 404 response. During the rollout,
-   * Runner uses route-level 404 exclusively to identify an API that predates
-   * reservation support; every response from an API that implements the route
-   * must preserve its actual lifecycle or error classification.
-   */
   reserve: {
     method: "POST",
     path: "/api/runners/runs/:runId/active-inputs/reserve",
