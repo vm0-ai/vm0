@@ -690,6 +690,39 @@ describe("personal usage settings", () => {
     });
   });
 
+  it("hides the vendor name for talking avatar usage", async () => {
+    const user = userEvent.setup();
+    const row = usageRow({
+      title: "Talking avatar usage",
+      credits: 100,
+      runId: "run-talking-avatar",
+    });
+    mockPersonalUsageStory([
+      {
+        ...row,
+        breakdown: [
+          {
+            kind: "video",
+            credits: 100,
+            providers: [{ provider: "joggai-talking-avatar", credits: 100 }],
+          },
+        ],
+      },
+    ]);
+    await openUsageSettings();
+
+    await user.hover(screen.getByTestId("usage-kind-segment-video"));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Avatar").some((element) => {
+          return element.parentElement?.textContent === "Avatar100";
+        }),
+      ).toBeTruthy();
+      expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps keyboard focus styling on the usage title instead of the row", async () => {
     mockPersonalUsageStory();
     await openUsageSettings();
