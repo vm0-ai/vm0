@@ -49,7 +49,6 @@ import {
   User,
   Video,
   X,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -231,10 +230,7 @@ import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
-import {
-  isCodexFastModeAvailableForSelection,
-  resolveModelFirstUserDefaultSelection,
-} from "../../signals/zero-page/model-default-selection.ts";
+import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -7386,68 +7382,9 @@ function ModelConfigurationWarning({
   );
 }
 
-function ComposerFastModeButton({
-  value,
-  onChange,
-  disabled,
-  codexFastModeEnabled,
-}: ComposerModelPicker & { codexFastModeEnabled: boolean }) {
-  const { t } = useTranslation();
-  const policies = useLastResolved(orgModelPolicies$);
-  const available = isCodexFastModeAvailableForSelection({
-    policies,
-    selectedModel: value?.selectedModel,
-    codexFastModeEnabled,
-  });
-  if (!value || !available) {
-    return null;
-  }
-  const active = value.codexServiceTier === "fast";
-  const label = t(($) => {
-    return $.settings.models.picker.fast;
-  });
-  const impact = t(($) => {
-    return $.settings.models.picker.fastImpact;
-  });
-  return (
-    <TooltipProvider delayDuration={800} skipDelayDuration={0}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="quiet"
-            size="icon-sm"
-            className={cn(
-              "shrink-0",
-              COMPOSER_CONTROL_ICON_CLASS,
-              active &&
-                "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
-            )}
-            aria-label={label}
-            aria-pressed={active}
-            disabled={disabled}
-            onClick={() => {
-              onChange({
-                selectedModel: value.selectedModel,
-                ...(active ? {} : { codexServiceTier: "fast" }),
-              });
-            }}
-          >
-            <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          {label} · {impact}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const policies = useLastResolved(orgModelPolicies$);
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
@@ -7460,27 +7397,14 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";
-  const onFastModeButtonChange = (selection: ModelProviderSelection | null) => {
-    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
-  };
   const onModelPickerChange = (selection: ModelProviderSelection | null) => {
-    const nextSelection =
-      selection &&
-      value?.codexServiceTier === "fast" &&
-      isCodexFastModeAvailableForSelection({
-        policies,
-        selectedModel: selection.selectedModel,
-        codexFastModeEnabled,
-      })
-        ? { ...selection, codexServiceTier: "fast" as const }
-        : selection;
     const nextUnsupported = getVisualAttachmentUnsupportedState(
       {
         value,
         onChange: onModelPickerChange,
       },
       imageRecognitionEnabled,
-      nextSelection,
+      selection,
     );
     if (
       nextUnsupported &&
@@ -7490,7 +7414,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
     ) {
       showVisualAttachmentUnsupportedToast(nextUnsupported);
     }
-    detach(setModelSelection(nextSelection, pageSignal), Reason.DomCallback);
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
   };
   const modelPicker: ComposerModelPicker = {
     value,
@@ -7517,12 +7441,6 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      <ComposerFastModeButton
-        value={modelPicker.value}
-        onChange={onFastModeButtonChange}
-        disabled={modelPicker.disabled}
-        codexFastModeEnabled={codexFastModeEnabled}
-      />
       <ModelProviderPicker
         value={modelPicker.value}
         onChange={onModelPickerChange}
@@ -7541,6 +7459,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         onOpenChange={setModelPickerOpen}
         disabled={modelPicker.disabled}
         resolveDefaultSelection={false}
+        codexFastModeEnabled={codexFastModeEnabled}
       />
       <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
