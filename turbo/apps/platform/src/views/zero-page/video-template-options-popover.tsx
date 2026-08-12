@@ -324,10 +324,12 @@ export function VideoModelPickerRow({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align="end"
+        align="start"
         side="bottom"
         sideOffset={6}
-        className="w-[17.5rem]"
+        // Left edge on the trigger's, and never narrower than it — the same
+        // `--anchor-width` contract Select's menu already uses.
+        className="min-w-[var(--anchor-width)]"
       >
         {PUBLIC_VIDEO_MODELS.map((candidate) => {
           const candidateConfig: VideoModelConfig =
