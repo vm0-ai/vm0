@@ -142,7 +142,11 @@ function fakeListObjects(record: FakeS3CommandRecord) {
   });
 }
 
-function fakeDeleteObjects(record: FakeS3CommandRecord) {
+async function fakeDeleteObjects(
+  record: FakeS3CommandRecord,
+  beforeDelete?: () => Promise<void>,
+) {
+  await beforeDelete?.();
   for (const object of record.input?.Delete?.Objects ?? []) {
     if (!object.Key) {
       continue;
@@ -152,13 +156,14 @@ function fakeDeleteObjects(record: FakeS3CommandRecord) {
       unlinkSync(path);
     }
   }
-  return Promise.resolve({ Errors: [] });
+  return { Errors: [] };
 }
 
 function handleFakeS3Command(
   command: unknown,
   recordedPuts?: RecordedChatEventPut[],
   beforePut?: (put: RecordedChatEventPut) => Promise<void>,
+  beforeDelete?: () => Promise<void>,
 ) {
   const record = command as FakeS3CommandRecord;
   const commandName = record.constructor.name;
@@ -175,7 +180,7 @@ function handleFakeS3Command(
     return fakeListObjects(record);
   }
   if (commandName === "DeleteObjectsCommand") {
-    return fakeDeleteObjects(record);
+    return fakeDeleteObjects(record, beforeDelete);
   }
   return Promise.resolve({ ContentLength: 1024 });
 }
@@ -184,11 +189,12 @@ export function installFakeChatEventR2(
   context: TestContext,
   recordedPuts?: RecordedChatEventPut[],
   beforePut?: (put: RecordedChatEventPut) => Promise<void>,
+  beforeDelete?: () => Promise<void>,
 ): void {
   // The suite-wide mock reset primes getSignedUrl in afterEach, so the first
   // test of a file starts unprimed; presigned downloads are part of this fake.
   context.mocks.s3.getSignedUrl.mockResolvedValue(FAKE_CHAT_EVENT_SNAPSHOT_URL);
   context.mocks.s3.send.mockImplementation((command: unknown) => {
-    return handleFakeS3Command(command, recordedPuts, beforePut);
+    return handleFakeS3Command(command, recordedPuts, beforePut, beforeDelete);
   });
 }
