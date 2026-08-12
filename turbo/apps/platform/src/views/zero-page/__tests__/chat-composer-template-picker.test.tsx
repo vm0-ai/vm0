@@ -404,12 +404,8 @@ describe("chat composer templates", () => {
     // Every parameter is shown, with catalog defaults filled in even though
     // nothing is stored yet. Audio is left to the settings popover so the chip
     // stays readable inside a prompt sentence.
-    const model = await screen.findByLabelText(
-      "Video model Seedance 2.0 fast",
-    );
-    await screen.findByLabelText(
-      "Video options 16:9 \u00b7 8s \u00b7 720p",
-    );
+    const model = await screen.findByLabelText("Video model Seedance 2.0 fast");
+    await screen.findByLabelText("Video options 16:9 \u00b7 8s \u00b7 720p");
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(3);
 
@@ -440,10 +436,9 @@ describe("chat composer templates", () => {
 
     // Every value is expanded in place, so changing one is a single click.
     await user.click(
-      within(await screen.findByRole("radiogroup", { name: "Ratio" })).getByRole(
-        "radio",
-        { name: "9:16" },
-      ),
+      within(
+        await screen.findByRole("radiogroup", { name: "Ratio" }),
+      ).getByRole("radio", { name: "9:16" }),
     );
 
     await waitFor(() => {
