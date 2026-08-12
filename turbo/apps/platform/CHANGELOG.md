@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.736.0](https://github.com/vm0-ai/vm0/compare/app-v0.735.1...app-v0.736.0) (2026-08-12)
+
+
+### Features
+
+* **platform:** split credit usage out of credit balance ([#26699](https://github.com/vm0-ai/vm0/issues/26699)) ([e718f76](https://github.com/vm0-ai/vm0/commit/e718f7630d7cbafa9de416288989abff721b870b))
+* preserve feedback event ranges ([#26644](https://github.com/vm0-ai/vm0/issues/26644)) ([f29a9fb](https://github.com/vm0-ai/vm0/commit/f29a9fb27da979b0c05d31b6f4d2c9e2aca0a87b))
+
+
+### Bug Fixes
+
+* preserve dialog content through close animations ([#26698](https://github.com/vm0-ai/vm0/issues/26698)) ([10081dc](https://github.com/vm0-ai/vm0/commit/10081dc9755b8c0c533bad227ac836041379a752))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.324.0
+    * @vm0/core bumped to 8.550.1
+
 ## [0.735.1](https://github.com/vm0-ai/vm0/compare/app-v0.735.0...app-v0.735.1) (2026-08-12)
 
 
