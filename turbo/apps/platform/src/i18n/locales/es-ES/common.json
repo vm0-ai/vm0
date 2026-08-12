@@ -1656,7 +1656,6 @@
       "removeWebsite": "Eliminar la plantilla de sitio web {{title}}",
       "removeWorkflow": "Eliminar la plantilla de flujo de trabajo {{title}}",
       "videoModelLabel": "Modelo de vídeo {{model}}",
-      "videoModelUpTo": "Hasta {{duration}}",
       "videoOptions": "Opciones de vídeo",
       "videoOptionsAudio": "Generar audio",
       "videoOptionsDuration": "Duración",

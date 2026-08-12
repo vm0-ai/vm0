@@ -116,9 +116,8 @@ function AspectRatioGlyph({ ratio }: { readonly ratio: string }) {
 
 /**
  * A value chip, following the segmented-control language TabsTrigger already
- * sets: the group recedes into the panel and the selected value sits one step
- * brighter than it. No raised card — a drop shadow on a 28px cell inside a
- * popover reads as clutter at this size.
+ * uses: the selected value carries the neutral state layer, hover carries the
+ * lighter one. A white card was invisible against the panel it sits on.
  */
 function OptionChip({
   label,
@@ -142,7 +141,7 @@ function OptionChip({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         glyph ? "flex flex-col items-center gap-1 py-1.5" : "h-7 px-2",
         selected
-          ? "bg-card font-medium text-primary"
+          ? "bg-state-selected font-medium text-primary hover:bg-state-selected-hover"
           : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
       )}
     >
@@ -310,9 +309,11 @@ function VideoDurationField({
               }
             }}
             className={cn(
-              "absolute inset-0 w-full cursor-pointer appearance-none bg-transparent focus:outline-none",
+              "absolute inset-0 m-0 w-full cursor-pointer appearance-none bg-transparent focus:outline-none",
               "[&::-webkit-slider-runnable-track]:h-4 [&::-webkit-slider-runnable-track]:bg-transparent",
-              "[&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full",
+              // Chrome top-aligns the thumb in the runnable track box rather
+              // than centring it, so it needs half the height difference back.
+              "[&::-webkit-slider-thumb]:mt-px [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full",
               "[&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:bg-card",
               "[&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:transition-transform",
               "[&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:ease-out",
@@ -340,50 +341,6 @@ function VideoDurationField({
 }
 
 /**
- * What a model gives you, in the terms the settings pane uses. Shown next to
- * every model so the trade-off between them is legible before switching rather
- * than after, which is the whole reason the model has its own popover.
- */
-function videoModelSummary(
-  config: VideoModelConfig,
-  upTo: (duration: string) => string,
-  audio: string,
-): string {
-  const longest = config.durations[config.durations.length - 1];
-  return [
-    longest === undefined ? undefined : upTo(longest),
-    config.resolutions.join(", "),
-    config.supportsGenerateAudio ? audio : undefined,
-  ]
-    .filter((segment) => {
-      return segment !== undefined;
-    })
-    .join(" · ");
-}
-
-/** "Up to 15s · 480p, 720p · Audio" — what a model gives you, before switching. */
-function useVideoModelSummary(): (config: VideoModelConfig) => string {
-  const { t } = useTranslation();
-  const audio = t(($) => {
-    return $.chat.templates.videoSpecAudioOn;
-  });
-  return (config) => {
-    return videoModelSummary(
-      config,
-      (duration) => {
-        return t(
-          ($) => {
-            return $.chat.templates.videoModelUpTo;
-          },
-          { duration },
-        );
-      },
-      audio,
-    );
-  };
-}
-
-/**
  * Model choice for the whole video tab. Video generation is the most expensive
  * thing the composer can start, so the decision sits above the templates as its
  * own labelled control rather than hiding inside a chip the user edits after
@@ -400,10 +357,9 @@ export function VideoModelPickerRow({
   readonly onChange: (next: VideoModel) => void;
 }) {
   const { t } = useTranslation();
-  const summarize = useVideoModelSummary();
   const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[model];
   return (
-    <div className="flex items-center justify-between gap-3 pb-4">
+    <div className="flex items-center gap-3 pb-4">
       <span className="text-sm font-medium text-foreground">
         {t(($) => {
           return $.chat.templates.videoOptionsModel;
@@ -426,9 +382,6 @@ export function VideoModelPickerRow({
             )}
           >
             <span className="font-medium">{config.label}</span>
-            <span className="text-[11px] text-muted-foreground">
-              {summarize(config)}
-            </span>
             <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
@@ -451,18 +404,13 @@ export function VideoModelPickerRow({
                   onChange(candidate);
                 }}
               >
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span
-                    className={cn(
-                      "truncate leading-none",
-                      selected && "font-medium text-primary",
-                    )}
-                  >
-                    {candidateConfig.label}
-                  </span>
-                  <span className="truncate text-[11px] leading-none text-muted-foreground">
-                    {summarize(candidateConfig)}
-                  </span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate",
+                    selected && "font-medium text-primary",
+                  )}
+                >
+                  {candidateConfig.label}
                 </span>
                 {selected && (
                   <Check

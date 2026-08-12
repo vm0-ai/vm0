@@ -399,8 +399,7 @@ describe("chat composer templates", () => {
     await user.click(tabByText("Video"));
 
     // Video generation is the expensive decision, so the model is chosen above
-    // the templates rather than inside the chip afterwards. Each row states
-    // what that model accepts, before the switch rather than after.
+    // the templates rather than inside the chip afterwards.
     await user.click(
       await screen.findByLabelText("Video model Seedance 2.0 fast"),
     );
@@ -411,7 +410,6 @@ describe("chat composer templates", () => {
       expect(found).toBeDefined();
       return found!;
     });
-    expect(modelOption).toHaveTextContent("Up to 15s \u00b7 480p, 720p, 1080p");
     await user.click(modelOption);
 
     await user.click(

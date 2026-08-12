@@ -1615,7 +1615,6 @@
       "removeWebsite": "Hapus template situs web {{title}}",
       "removeWorkflow": "Hapus template alur kerja {{title}}",
       "videoModelLabel": "Model video {{model}}",
-      "videoModelUpTo": "Hingga {{duration}}",
       "videoOptions": "Opsi video",
       "videoOptionsAudio": "Hasilkan audio",
       "videoOptionsDuration": "Durasi",

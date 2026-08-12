@@ -1656,7 +1656,6 @@
       "removeWebsite": "Rimuovi modello di sito web {{title}}",
       "removeWorkflow": "Rimuovi modello di flusso di lavoro {{title}}",
       "videoModelLabel": "Modello video {{model}}",
-      "videoModelUpTo": "Fino a {{duration}}",
       "videoOptions": "Opzioni video",
       "videoOptionsAudio": "Genera audio",
       "videoOptionsDuration": "Durata",
