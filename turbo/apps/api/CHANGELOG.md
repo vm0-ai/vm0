@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.434.1](https://github.com/vm0-ai/vm0/compare/api-v1.434.0...api-v1.434.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **api:** preserve thread context for queued web runs ([#26560](https://github.com/vm0-ai/vm0/issues/26560)) ([2458558](https://github.com/vm0-ai/vm0/commit/2458558e8195a65e7560e18939459943d12e440f))
+
+## [1.434.0](https://github.com/vm0-ai/vm0/compare/api-v1.433.0...api-v1.434.0) (2026-08-12)
+
+
+### Features
+
+* **api:** expose admitted mcp connectors to agents ([#26477](https://github.com/vm0-ai/vm0/issues/26477)) ([23ff016](https://github.com/vm0-ai/vm0/commit/23ff0168f86b722c32348b69b9a10ebfbea73050))
+
+
+### Refactoring
+
+* **chat:** remove retired snapshot convergence gate ([#26485](https://github.com/vm0-ai/vm0/issues/26485)) ([d95eddc](https://github.com/vm0-ai/vm0/commit/d95eddccb9aae047faa0915ecfa2ede9fe6878c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.2
+    * @vm0/core bumped to 8.548.2
+    * @vm0/db bumped to 1.195.3
+    * @vm0/pi-agent-runtime bumped to 1.3.54
+
 ## [1.433.0](https://github.com/vm0-ai/vm0/compare/api-v1.432.0...api-v1.433.0) (2026-08-12)
 
 

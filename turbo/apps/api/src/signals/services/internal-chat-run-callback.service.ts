@@ -138,7 +138,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { buildAgentRunSourceContext } from "./zero-web-chat-session-prompt.service";
+import { buildWebChatAppendSystemPrompt } from "./zero-web-chat-session-prompt.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   integrationCompletionFallbackEventIdForRun,
@@ -2227,13 +2227,6 @@ async function runTerminalChatCallbackSideEffects(args: {
   });
 }
 
-function buildWebChatPrompt(): string {
-  return [
-    "# Current Integration\nYou are currently running inside: Web",
-    "You are communicating with the user through the web chat UI.",
-  ].join("\n\n");
-}
-
 function buildAppendSystemPrompt(
   integrationPrompt: string,
   incompleteContext: string,
@@ -2759,12 +2752,16 @@ type LaunchLoader = (
 const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
   return Promise.resolve({
     prompt: args.userMessageProjection.agentPrompt,
-    appendSystemPrompt: [
-      buildWebChatPrompt(),
-      ...(args.agentRunSource
-        ? [buildAgentRunSourceContext(args.agentRunSource)]
-        : []),
-    ].join("\n\n"),
+    appendSystemPrompt: buildWebChatAppendSystemPrompt({
+      threadId: args.chatThreadId,
+      incompleteContext: "",
+      priorContext: "",
+      context: {
+        generationTemplatePrompt: "",
+        computerUseHostDisplayName: null,
+        agentRunSource: args.agentRunSource,
+      },
+    }),
     delivery: {},
   });
 };

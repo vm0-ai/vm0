@@ -64,7 +64,7 @@ export async function callZeroBanking(
   }
 
   const response = await fetch(
-    new URL(`/api/zero/banking/${operation}`, baseUrl),
+    new URL(`/api/okou/banking/${operation}`, baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(authenticatedJsonHeaders(token)),

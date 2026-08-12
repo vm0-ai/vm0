@@ -16,12 +16,12 @@ export const zeroAgentCommand = new Command("agent")
     "after",
     `
 Examples:
-  Your agent ID is in $ZERO_AGENT_ID (or run: okou whoami)
-  View your config:      okou agent view $ZERO_AGENT_ID --instructions
-  Update description:    okou agent edit $ZERO_AGENT_ID --description "new role"
-  Update tone:           okou agent edit $ZERO_AGENT_ID --sound friendly
-  Update instructions:   okou agent edit $ZERO_AGENT_ID --instructions-file <path>
-  Attach a workflow:     okou workflow attach <name> --agent $ZERO_AGENT_ID
+  Your agent ID is in $OKOU_AGENT_ID (or run: okou whoami)
+  View your config:      okou agent view $OKOU_AGENT_ID --instructions
+  Update description:    okou agent edit $OKOU_AGENT_ID --description "new role"
+  Update tone:           okou agent edit $OKOU_AGENT_ID --sound friendly
+  Update instructions:   okou agent edit $OKOU_AGENT_ID --instructions-file <path>
+  Attach a workflow:     okou workflow attach <name> --agent $OKOU_AGENT_ID
 
 Notes:
   Manage workflows with 'okou workflow --help'`,

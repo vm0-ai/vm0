@@ -5,9 +5,10 @@ use sandbox_mock::MockSandboxFactory;
 use tokio_util::sync::CancellationToken;
 
 use super::super::super::agent_run::{
-    AgentExecutionResult, ProcessCancelTimeouts, RunControls, RunStart,
+    AgentExecutionResult, PreparedRunInputs, ProcessCancelTimeouts, RunControls, RunStart,
     run_in_sandbox_with_process_cancel_timeouts,
 };
+use super::super::super::env::prepare_run_payload_for_run;
 use super::super::super::sandbox_run::execute_new_sandbox;
 use super::super::super::{
     ExecuteOutcome, ExecutorConfig, JobParams, NewSandboxDispatch, PROCESS_CANCEL_TIMEOUTS,
@@ -70,6 +71,7 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_timeouts(
 ) -> tokio::task::JoinHandle<RunnerResult<AgentExecutionResult>> {
     tokio::spawn(async move {
         let mut telemetry = test_telemetry(&config, &ctx);
+        let prepared_run_payload = prepare_run_payload_for_run(&ctx)?;
         run_in_sandbox_with_process_cancel_timeouts(
             &*sandbox,
             &ctx,
@@ -81,7 +83,7 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_timeouts(
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::new(cancel, None),
+            PreparedRunInputs::new(RunControls::new(cancel, None), prepared_run_payload),
             process_cancel_timeouts,
         )
         .await
@@ -97,6 +99,7 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_cancellation(
 ) -> tokio::task::JoinHandle<RunnerResult<AgentExecutionResult>> {
     tokio::spawn(async move {
         let mut telemetry = test_telemetry(&config, &ctx);
+        let prepared_run_payload = prepare_run_payload_for_run(&ctx)?;
         run_in_sandbox_with_process_cancel_timeouts(
             &*sandbox,
             &ctx,
@@ -108,7 +111,10 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_cancellation(
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::from_cancellation(cancellation, None),
+            PreparedRunInputs::new(
+                RunControls::from_cancellation(cancellation, None),
+                prepared_run_payload,
+            ),
             process_cancel_timeouts,
         )
         .await

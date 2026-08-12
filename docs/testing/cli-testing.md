@@ -30,12 +30,13 @@ src/commands/zero/
 
 ## Authentication and routing
 
-Product CLI requests use `ZERO_TOKEN` as their only authentication source.
-Tests should set it explicitly together with the API URL:
+Product CLI requests prefer `OKOU_TOKEN` and retain `ZERO_TOKEN` as a
+compatibility fallback. Current-command tests should set the canonical name
+explicitly together with the API URL:
 
 ```typescript
 beforeEach(() => {
-  vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+  vi.stubEnv("OKOU_TOKEN", "test-okou-token");
   vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 });
 
@@ -45,8 +46,9 @@ afterEach(() => {
 ```
 
 Do not create `~/.vm0/config.json`, set `VM0_TOKEN`, or mock the config module.
-Tests for missing authentication should leave `ZERO_TOKEN` unset and assert the
-resulting guidance.
+Tests for missing authentication should leave both token names unset and assert
+the resulting guidance. Keep focused compatibility coverage that sets only
+`ZERO_TOKEN` and proves the fallback still reaches the canonical Okou path.
 
 ## Command integration pattern
 
@@ -58,7 +60,7 @@ import { zeroLogsCommand } from "../index";
 
 describe("okou logs", () => {
   beforeEach(() => {
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-okou-token");
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   });
 
@@ -69,7 +71,7 @@ describe("okou logs", () => {
   it("renders returned agent events", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [],
@@ -134,7 +136,7 @@ properties and injected state during teardown.
 
 API failures should be represented with MSW responses and asserted through the
 command's user-visible error and exit code. Missing-token tests should verify
-the `ZERO_TOKEN` setup guidance; present-but-rejected token tests should verify
+the `OKOU_TOKEN` setup guidance; present-but-rejected token tests should verify
 the invalid-or-expired guidance.
 
 ## What belongs elsewhere

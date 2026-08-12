@@ -7,7 +7,7 @@ const c = initContract();
 export const pushSubscriptionsContract = c.router({
   register: {
     method: "POST",
-    path: "/api/zero/push-subscriptions",
+    path: "/api/okou/push-subscriptions",
     headers: authHeadersSchema,
     body: z.object({
       endpoint: z.string().url(),

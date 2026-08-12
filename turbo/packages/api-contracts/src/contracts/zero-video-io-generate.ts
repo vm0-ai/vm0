@@ -60,7 +60,7 @@ export type ZeroVideoIoGenerateResponse = z.infer<
 export const zeroVideoIoGenerateContract = c.router({
   post: {
     method: "POST",
-    path: "/api/zero/video-io/generate",
+    path: "/api/okou/video-io/generate",
     headers: authHeadersSchema,
     body: zeroVideoIoGenerateRequestSchema,
     responses: {

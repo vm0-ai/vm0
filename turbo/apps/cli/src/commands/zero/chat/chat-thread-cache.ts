@@ -93,7 +93,7 @@ function cacheRoot(): string {
 async function cachePath(): Promise<string> {
   const token = decodeZeroTokenPayload();
   if (!token) {
-    throw new Error("ZERO_TOKEN does not contain a valid Zero cache scope");
+    throw new Error("OKOU_TOKEN does not contain a valid Zero cache scope");
   }
   const apiUrl = await getApiUrl();
   const scope = createHash("sha256")

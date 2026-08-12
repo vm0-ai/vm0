@@ -531,11 +531,11 @@ jobs:
     needs: [detect-turbo-ts-checks, prepare]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    # Run on every PR commit and on pushes to main (baseline). Skipped in the
+    # merge queue: benches only report numbers, they must not delay merges.
     if: |
       needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
-        startsWith(github.head_ref, 'perf/') ||
-        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        github.event_name == 'pull_request' ||
         (github.event_name == 'push' && github.ref == 'refs/heads/main')
       )
     container:
@@ -582,11 +582,11 @@ jobs:
     needs: [detect-turbo-ts-checks, prepare]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    # Run on every PR commit and on pushes to main (baseline). Skipped in the
+    # merge queue: benches only report numbers, they must not delay merges.
     if: |
       needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
-        startsWith(github.head_ref, 'perf/') ||
-        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        github.event_name == 'pull_request' ||
         (github.event_name == 'push' && github.ref == 'refs/heads/main')
       )
     container:
@@ -1798,7 +1798,16 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai
+      - name: Cleanup browser E2E account
+        if: always()
+        shell: bash
+        run: |
+          source e2e/helpers/browser.bash
+          delete_e2e_account_if_exists
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai
   cli-e2e-02-playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -1898,11 +1907,20 @@ jobs:
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Cleanup Playwright E2E accounts
+        if: always()
+        run: >-
+          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
+          cleanup-generation playwright,paid-onboarding
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
@@ -2604,6 +2622,7 @@ jobs:
         run: cd e2e && pnpm exec tsx playwright/runner-token.ts /tmp
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -2671,8 +2690,8 @@ jobs:
             ]
           }')"
 
-          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/zero/model-policies" >/dev/null
-          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/zero/user-model-preference" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/okou/model-policies" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/okou/user-model-preference" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap runner mock model provider
@@ -2686,7 +2705,7 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/zero/model-providers" >/dev/null
+            "${E2E_API_URL}/api/okou/model-providers" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap real Codex account
@@ -2708,11 +2727,11 @@ jobs:
           provider_response=$(curl -fsS "${headers[@]}" \
             -X POST \
             -d "$provider_payload" \
-            "${api_url}/api/zero/model-providers")
+            "${api_url}/api/okou/model-providers")
           provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
             <<< "$provider_response")
 
-          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
           policy_payload=$(jq -c --arg providerId "$provider_id" '
             {
               policies: (
@@ -2740,13 +2759,13 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X PUT \
             -d "$policy_payload" \
-            "${api_url}/api/zero/model-policies" \
+            "${api_url}/api/okou/model-policies" \
             >/dev/null
 
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"switches":{"realAgentInPreview":true}}' \
-            "${api_url}/api/zero/feature-switches" \
+            "${api_url}/api/okou/feature-switches" \
             | jq -e '.effectiveSwitches.realAgentInPreview == true' \
             >/dev/null
         env:
@@ -2771,11 +2790,11 @@ jobs:
           provider_response=$(curl -fsS "${headers[@]}" \
             -X POST \
             -d "$provider_payload" \
-            "${api_url}/api/zero/model-providers")
+            "${api_url}/api/okou/model-providers")
           provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
             <<< "$provider_response")
 
-          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
           policy_payload=$(jq -c --arg providerId "$provider_id" '
             {
               policies: (
@@ -2803,13 +2822,13 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X PUT \
             -d "$policy_payload" \
-            "${api_url}/api/zero/model-policies" \
+            "${api_url}/api/okou/model-policies" \
             >/dev/null
 
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"switches":{"realAgentInPreview":true}}' \
-            "${api_url}/api/zero/feature-switches" \
+            "${api_url}/api/okou/feature-switches" \
             | jq -e '.effectiveSwitches.realAgentInPreview == true' \
             >/dev/null
         env:
@@ -2962,8 +2981,7 @@ jobs:
       always() &&
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.cli-e2e-03-runner-prepare.result != 'skipped' &&
-      needs.cli-e2e-03-runner-prepare.result != 'cancelled'
+      needs.cli-e2e-03-runner-prepare.result != 'skipped'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -2977,9 +2995,6 @@ jobs:
         run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2E_RUNNER_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
-          E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
-          E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-organization-id }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
 
   lint-runtime-api-compat:

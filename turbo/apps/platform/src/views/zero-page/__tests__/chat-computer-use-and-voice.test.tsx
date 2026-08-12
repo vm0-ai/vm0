@@ -934,13 +934,13 @@ describe("chat lifecycle", () => {
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.patch(
-      "*/api/zero/chat-threads/:id",
+      "*/api/okou/chat-threads/:id",
       async ({ request }) => {
         draftPatches.push(await request.json());
         return new Response(null, { status: 200 });
       },
     );
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -998,7 +998,7 @@ describe("chat lifecycle", () => {
         submissionRequested.resolve(undefined);
       },
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", async () => {
       transcriptionRequested.resolve(undefined);
       await transcriptionReady.promise;
       return new Response(JSON.stringify({ text: "completed voice input" }), {
@@ -1077,7 +1077,7 @@ describe("chat lifecycle", () => {
         submissionRequested.resolve(undefined);
       },
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "startup voice input" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -1134,13 +1134,13 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.patch(
-      "*/api/zero/chat-threads/:id",
+      "*/api/okou/chat-threads/:id",
       async ({ request }) => {
         draftPatches.push(await request.json());
         return new Response(null, { status: 200 });
       },
     );
-    context.mocks.http.post("*/api/zero/voice-io/stt", async ({ request }) => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", async ({ request }) => {
       transcriptionRequested.resolve(undefined);
       const form = await request.formData();
       const file = form.get("file");
@@ -1232,7 +1232,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: null });
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", async () => {
       const requestIndex = requestCount;
       requestCount += 1;
       activeRequestCount += 1;
@@ -1290,7 +1290,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: 10 });
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalls += 1;
       return new Response(JSON.stringify({ text: "Auto stopped note" }), {
         headers: { "Content-Type": "application/json" },
@@ -1322,7 +1322,7 @@ describe("chat lifecycle", () => {
     const transcriptionRequested = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", async () => {
       transcriptionRequested.resolve(undefined);
       await transcriptionReady.promise;
       return new Response(JSON.stringify({ text: "voice segment" }), {
@@ -1393,7 +1393,7 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, { threadId });
     let transcriptionCalled = false;
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalled = true;
       return new Response(JSON.stringify({ text: "first words" }), {
         headers: { "Content-Type": "application/json" },
@@ -1430,7 +1430,7 @@ describe("chat lifecycle", () => {
     context.mocks.browser.voiceInput({ rms: 0 });
     mockChatLifecycle(context, { threadId });
     let transcriptionCalled = false;
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalled = true;
       return new Response(JSON.stringify({ text: "unexpected" }), {
         headers: { "Content-Type": "application/json" },
@@ -1464,7 +1464,7 @@ describe("chat lifecycle", () => {
     const threadId = "e2000000-0000-4000-a000-000000000014";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       return new Response(
         JSON.stringify({
           error: {
@@ -1523,7 +1523,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: false, count: 10, limit: 10 });
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalls += 1;
       return new Response(JSON.stringify({ text: "Should not upload" }), {
         headers: { "Content-Type": "application/json" },
@@ -1560,7 +1560,7 @@ describe("chat lifecycle", () => {
     const threadId = "e2000000-0000-4000-a000-000000000016";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       return new Response(
         JSON.stringify({
           error: {

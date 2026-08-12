@@ -245,7 +245,7 @@ let originalEnv: NodeJS.ProcessEnv;
 
 beforeEach(() => {
   originalEnv = { ...process.env };
-  delete process.env.ZERO_TOKEN;
+  delete process.env.OKOU_TOKEN;
   process.env.TEST_SECRET = "value";
 });
 
@@ -342,7 +342,7 @@ function authHeaders() {
 }
 
 // ========== TEST SUITE ==========
-describe("POST /api/zero/agents", () => {
+describe("POST /api/okou/agents", () => {
   it("creates an agent and returns it from the list endpoint", async () => {
     context.mocks.clerk.session("user_test", "org_test");
 

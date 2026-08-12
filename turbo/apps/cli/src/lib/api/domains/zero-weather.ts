@@ -70,7 +70,7 @@ export async function callZeroWeather(
   }
 
   const response = await fetch(
-    new URL(`/api/zero/weather/${operation}`, baseUrl),
+    new URL(`/api/okou/weather/${operation}`, baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(authenticatedJsonHeaders(token)),

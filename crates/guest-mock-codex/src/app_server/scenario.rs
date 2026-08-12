@@ -36,6 +36,7 @@ pub(super) enum Scenario {
     RuntimeTurnCompleteWithoutThreadStarted,
     RuntimeEventFlood,
     RuntimeLargeEventFlood,
+    RuntimeOversizedDelivery,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
     ThreadStartInvalidThreadId,
@@ -93,6 +94,7 @@ impl Scenario {
                 }
                 "runtime-event-flood" => Ok(Self::RuntimeEventFlood),
                 "runtime-large-event-flood" => Ok(Self::RuntimeLargeEventFlood),
+                "runtime-oversized-delivery" => Ok(Self::RuntimeOversizedDelivery),
                 "resume-different-thread-id" => Ok(Self::ResumeDifferentThreadId),
                 "resume-rpc-error-with-thread-id" => Ok(Self::ResumeRpcErrorWithThreadId),
                 "thread-start-invalid-thread-id" => Ok(Self::ThreadStartInvalidThreadId),

@@ -180,6 +180,12 @@ pub(crate) enum ConnectorRuntimeRegistryUpdate {
     },
 }
 
+pub(crate) enum ConnectorRuntimeFailCloseOutcome {
+    Applied,
+    Unchanged,
+    Failed(RunnerError),
+}
+
 fn firewall_name(entry: &FirewallEntry) -> &str {
     match entry {
         FirewallEntry::Builtin { name, .. } => name,
@@ -683,106 +689,117 @@ impl ProxyRegistryHandle {
         Ok(outcomes.is_some_and(|outcomes| outcomes == [true]))
     }
 
-    /// Replace one network policy with deny-all if the source IP still belongs
-    /// to `run_id`.
-    pub async fn fail_closed_network_policy_if_run_matches(
+    /// Fail-close all matching connector runtime targets in one registry
+    /// transaction. `None` means the VM disappeared or now belongs to another
+    /// run; otherwise each outcome corresponds to the same-index target.
+    pub(crate) async fn fail_closed_connector_runtime_targets_if_run_matches(
         &self,
         source_ip: &str,
         run_id: &str,
-        connector_slug: &str,
-    ) -> RunnerResult<bool> {
-        let _guard = lock::acquire(self.lock_path.clone()).await?;
-        self.fail_closed_network_policy_locked(source_ip, run_id, connector_slug)
-            .await
-    }
-
-    pub(crate) async fn fail_closed_custom_connector_runtime_target_if_run_matches(
-        &self,
-        source_ip: &str,
-        run_id: &str,
-        custom_connector_id: &str,
-    ) -> RunnerResult<bool> {
+        targets: &[ConnectorRuntimeTarget],
+    ) -> RunnerResult<Option<Vec<ConnectorRuntimeFailCloseOutcome>>> {
         let _guard = lock::acquire(self.lock_path.clone()).await?;
         let mut registry = read_registry(&self.registry_path).await?;
         let Some(vm) = registry.vms.get_mut(source_ip) else {
-            return Ok(false);
+            return Ok(None);
         };
         if vm.run_id != run_id {
-            return Ok(false);
+            return Ok(None);
         }
-        let Some(firewalls) = vm.firewalls.as_deref() else {
-            return Ok(false);
-        };
-        let owned_firewall_names = firewalls
+
+        let outcomes = targets
             .iter()
-            .filter(|entry| custom_connector_owner(entry) == Some(custom_connector_id))
-            .map(firewall_name)
-            .map(ToOwned::to_owned)
-            .collect::<HashSet<_>>();
-        if owned_firewall_names.is_empty() {
-            return Ok(false);
-        }
-        if firewalls.iter().any(|entry| {
-            owned_firewall_names.contains(firewall_name(entry))
-                && custom_connector_owner(entry) != Some(custom_connector_id)
-        }) {
-            return Err(RunnerError::Internal(format!(
-                "custom connector {custom_connector_id} does not exclusively own its firewall"
-            )));
-        }
-        let Some(network_policies) = vm.network_policies.as_mut() else {
-            return Ok(false);
-        };
-        let mut changed = false;
-        for firewall_name in owned_firewall_names {
-            if let Some(policy) = network_policies.get_mut(&firewall_name) {
-                *policy = fail_closed_policy(policy);
-                changed = true;
-            }
-        }
-        if !changed {
-            return Ok(false);
-        }
-        registry.updated_at = chrono::Utc::now().timestamp_millis();
-        write_registry_consuming_fail_closed_capacity(&self.registry_path, &registry).await?;
-        Ok(true)
-    }
-
-    async fn fail_closed_network_policy_locked(
-        &self,
-        source_ip: &str,
-        run_id: &str,
-        connector_slug: &str,
-    ) -> RunnerResult<bool> {
-        let mut registry = read_registry(&self.registry_path).await?;
-        let Some(vm) = registry.vms.get_mut(source_ip) else {
-            return Ok(false);
-        };
-        if vm.run_id != run_id {
-            return Ok(false);
+            .map(|target| {
+                let result = match target {
+                    ConnectorRuntimeTarget::Builtin { connector_slug } => Ok(
+                        fail_closed_builtin_connector_runtime_target(vm, connector_slug),
+                    ),
+                    ConnectorRuntimeTarget::Custom {
+                        custom_connector_id,
+                    } => fail_closed_custom_connector_runtime_target(vm, custom_connector_id),
+                };
+                match result {
+                    Ok(true) => ConnectorRuntimeFailCloseOutcome::Applied,
+                    Ok(false) => ConnectorRuntimeFailCloseOutcome::Unchanged,
+                    Err(error) => ConnectorRuntimeFailCloseOutcome::Failed(error),
+                }
+            })
+            .collect::<Vec<_>>();
+        let applied_count = outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, ConnectorRuntimeFailCloseOutcome::Applied))
+            .count();
+        if applied_count == 0 {
+            return Ok(Some(outcomes));
         }
 
-        if !vm_has_connector_firewall(vm, connector_slug) {
-            return Ok(false);
-        }
-        let Some(policy) = vm
-            .network_policies
-            .as_mut()
-            .and_then(|policies| policies.get_mut(connector_slug))
-        else {
-            return Ok(false);
-        };
-        *policy = fail_closed_policy(policy);
         registry.updated_at = chrono::Utc::now().timestamp_millis();
         write_registry_consuming_fail_closed_capacity(&self.registry_path, &registry).await?;
         info!(
             source_ip,
             run_id,
-            connector_slug = connector_slug,
-            "failed closed connector network policy in proxy registry"
+            target_count = targets.len(),
+            applied_count,
+            failed_count = outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, ConnectorRuntimeFailCloseOutcome::Failed(_)))
+                .count(),
+            "failed closed connector runtime targets in proxy registry"
         );
-        Ok(true)
+        Ok(Some(outcomes))
     }
+}
+
+fn fail_closed_builtin_connector_runtime_target(vm: &mut VmEntry, connector_slug: &str) -> bool {
+    if !vm_has_connector_firewall(vm, connector_slug) {
+        return false;
+    }
+    let Some(policy) = vm
+        .network_policies
+        .as_mut()
+        .and_then(|policies| policies.get_mut(connector_slug))
+    else {
+        return false;
+    };
+    *policy = fail_closed_policy(policy);
+    true
+}
+
+fn fail_closed_custom_connector_runtime_target(
+    vm: &mut VmEntry,
+    custom_connector_id: &str,
+) -> RunnerResult<bool> {
+    let Some(firewalls) = vm.firewalls.as_deref() else {
+        return Ok(false);
+    };
+    let owned_firewall_names = firewalls
+        .iter()
+        .filter(|entry| custom_connector_owner(entry) == Some(custom_connector_id))
+        .map(firewall_name)
+        .map(ToOwned::to_owned)
+        .collect::<HashSet<_>>();
+    if owned_firewall_names.is_empty() {
+        return Ok(false);
+    }
+    if firewalls.iter().any(|entry| {
+        owned_firewall_names.contains(firewall_name(entry))
+            && custom_connector_owner(entry) != Some(custom_connector_id)
+    }) {
+        return Err(RunnerError::Internal(format!(
+            "custom connector {custom_connector_id} does not exclusively own its firewall"
+        )));
+    }
+    let Some(network_policies) = vm.network_policies.as_mut() else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for firewall_name in owned_firewall_names {
+        if let Some(policy) = network_policies.get_mut(&firewall_name) {
+            *policy = fail_closed_policy(policy);
+            changed = true;
+        }
+    }
+    Ok(changed)
 }
 
 fn fail_closed_policy(policy: &NetworkPolicy) -> NetworkPolicy {
@@ -1678,29 +1695,30 @@ mod tests {
             .await
             .unwrap();
         let normal_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
-        harness
+        let fail_close_targets = runtime_targets
+            .iter()
+            .map(ConnectorRuntimeTargetRegistration::target)
+            .collect::<Vec<_>>();
+        let outcomes = harness
             .handle
-            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "github")
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                "10.200.0.2",
+                "run-near-limit",
+                &fail_close_targets,
+            )
             .await
             .unwrap();
-        let after_first_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
-        let first_fail_closed_growth = after_first_fail_closed
+        assert!(outcomes.is_some_and(|outcomes| {
+            outcomes
+                .iter()
+                .all(|outcome| matches!(outcome, ConnectorRuntimeFailCloseOutcome::Applied))
+        }));
+        let after_all_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
+        let total_fail_closed_growth = after_all_fail_closed
             .len()
             .checked_sub(normal_bytes.len())
-            .expect("test policy should grow when failed closed");
-        assert!(first_fail_closed_growth > 0);
-        harness
-            .handle
-            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "slack")
-            .await
-            .unwrap();
-        let after_all_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
-        let second_fail_closed_growth = after_all_fail_closed
-            .len()
-            .checked_sub(after_first_fail_closed.len())
-            .expect("second test policy should grow when failed closed");
-        assert!(second_fail_closed_growth > 0);
-        let total_fail_closed_growth = first_fail_closed_growth + second_fail_closed_growth;
+            .expect("test policies should grow when failed closed");
+        assert!(total_fail_closed_growth > 0);
         harness.handle.unregister_vm("10.200.0.2").await.unwrap();
 
         let max_bytes = PROXY_REGISTRY_MAX_BYTES as usize;
@@ -1751,25 +1769,20 @@ mod tests {
             "a policy update that consumes fail-closed capacity must be rejected"
         );
 
-        let updated = harness
+        let outcomes = harness
             .handle
-            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "github")
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                "10.200.0.2",
+                "run-near-limit",
+                &fail_close_targets,
+            )
             .await
             .unwrap();
-        assert!(updated);
-        let after_first_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
-        assert_eq!(
-            after_first_fail_closed.len() + second_fail_closed_growth,
-            max_bytes
-        );
-        read_registry(harness.registry_path()).await.unwrap();
-
-        let updated = harness
-            .handle
-            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "slack")
-            .await
-            .unwrap();
-        assert!(updated);
+        assert!(outcomes.is_some_and(|outcomes| {
+            outcomes
+                .iter()
+                .all(|outcome| matches!(outcome, ConnectorRuntimeFailCloseOutcome::Applied))
+        }));
         let final_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
         assert_eq!(final_bytes.len(), max_bytes);
         read_registry(harness.registry_path()).await.unwrap();
@@ -1848,9 +1861,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fail_closed_network_policy_uses_existing_policy_names() {
+    async fn fail_closed_connector_runtime_targets_require_matching_run_and_existing_policy() {
         let harness = RegistryHarness::new().await;
         let firewalls = test_firewalls(&["github"]);
+        let target = ConnectorRuntimeTarget::Builtin {
+            connector_slug: "github".to_string(),
+        };
         let without_policy = VmRegistration {
             run_id: "run-1",
             firewalls: Some(&firewalls),
@@ -1861,12 +1877,45 @@ mod tests {
             .register_vm("10.200.0.2", &without_policy)
             .await
             .unwrap();
-        let updated = harness
+        let registry_before = tokio::fs::read(harness.registry_path()).await.unwrap();
+        let outcomes = harness
             .handle
-            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-1", "github")
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                "10.200.0.3",
+                "run-1",
+                std::slice::from_ref(&target),
+            )
             .await
             .unwrap();
-        assert!(!updated);
+        assert!(outcomes.is_none());
+        let outcomes = harness
+            .handle
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                "10.200.0.2",
+                "run-2",
+                std::slice::from_ref(&target),
+            )
+            .await
+            .unwrap();
+        assert!(outcomes.is_none());
+        let outcomes = harness
+            .handle
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                "10.200.0.2",
+                "run-1",
+                std::slice::from_ref(&target),
+            )
+            .await
+            .unwrap();
+        assert!(outcomes.is_some_and(|outcomes| matches!(
+            outcomes.as_slice(),
+            [ConnectorRuntimeFailCloseOutcome::Unchanged]
+        )));
+        assert_eq!(
+            tokio::fs::read(harness.registry_path()).await.unwrap(),
+            registry_before,
+            "an unchanged batch must not persist the registry"
+        );
 
         let mut network_policies = HashMap::new();
         network_policies.insert(
@@ -1885,12 +1934,19 @@ mod tests {
             .await
             .unwrap();
 
-        let updated = harness
+        let outcomes = harness
             .handle
-            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-1", "github")
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                "10.200.0.2",
+                "run-1",
+                std::slice::from_ref(&target),
+            )
             .await
             .unwrap();
-        assert!(updated);
+        assert!(outcomes.is_some_and(|outcomes| matches!(
+            outcomes.as_slice(),
+            [ConnectorRuntimeFailCloseOutcome::Applied]
+        )));
 
         let loaded = read_registry(harness.registry_path()).await.unwrap();
         let policy = loaded
@@ -1903,6 +1959,101 @@ mod tests {
         assert_eq!(policy.deny, vec!["issues.write", "repos.read"]);
         assert_eq!(policy.ask, Vec::<String>::new());
         assert_eq!(policy.unknown_policy, "deny");
+    }
+
+    #[tokio::test]
+    async fn fail_closed_connector_runtime_targets_continue_after_custom_ownership_error() {
+        let harness = RegistryHarness::new().await;
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let custom_firewall_name = "custom_connector_conflict";
+        let firewalls = vec![
+            custom_runtime_firewall(custom_connector_id, custom_firewall_name),
+            FirewallEntry::Builtin {
+                name: "slack".to_string(),
+                base_url_vars: None,
+            },
+        ];
+        let network_policies = HashMap::from([
+            (
+                custom_firewall_name.to_string(),
+                policy(&["custom.read"], &[], &[], "allow"),
+            ),
+            (
+                "slack".to_string(),
+                policy(&["chat:write"], &[], &[], "allow"),
+            ),
+        ]);
+        let runtime_targets = vec![
+            ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                base_url_vars: None,
+            },
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug: "slack".to_string(),
+                base_url_vars: None,
+            },
+        ];
+        harness
+            .handle
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    firewalls: Some(&firewalls),
+                    network_policies: Some(&network_policies),
+                    connector_runtime_targets: Some(&runtime_targets),
+                    ..base_registration()
+                },
+            )
+            .await
+            .unwrap();
+        let mut registry = read_registry(harness.registry_path()).await.unwrap();
+        registry
+            .vms
+            .get_mut("10.200.0.2")
+            .unwrap()
+            .firewalls
+            .as_mut()
+            .unwrap()
+            .push(FirewallEntry::Builtin {
+                name: custom_firewall_name.to_string(),
+                base_url_vars: None,
+            });
+        write_registry(harness.registry_path(), &registry)
+            .await
+            .unwrap();
+
+        let outcomes = harness
+            .handle
+            .fail_closed_connector_runtime_targets_if_run_matches(
+                "10.200.0.2",
+                "run-test",
+                &[
+                    ConnectorRuntimeTarget::Custom {
+                        custom_connector_id: custom_connector_id.to_string(),
+                    },
+                    ConnectorRuntimeTarget::Builtin {
+                        connector_slug: "slack".to_string(),
+                    },
+                ],
+            )
+            .await
+            .unwrap()
+            .expect("the registered run should still match");
+        assert!(matches!(
+            outcomes.as_slice(),
+            [
+                ConnectorRuntimeFailCloseOutcome::Failed(_),
+                ConnectorRuntimeFailCloseOutcome::Applied
+            ]
+        ));
+
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
+        let policies = loaded.vms["10.200.0.2"].network_policies.as_ref().unwrap();
+        assert_eq!(policies[custom_firewall_name].allow, ["custom.read"]);
+        assert_eq!(policies[custom_firewall_name].unknown_policy, "allow");
+        assert!(policies["slack"].allow.is_empty());
+        assert_eq!(policies["slack"].deny, ["chat:write"]);
+        assert_eq!(policies["slack"].unknown_policy, "deny");
     }
 
     #[tokio::test]

@@ -114,7 +114,7 @@ const webSearchResponses = {
 export const zeroWebSearchContract = c.router({
   search: {
     method: "POST",
-    path: "/api/zero/web-search",
+    path: "/api/okou/web-search",
     headers: authHeadersSchema,
     body: zeroWebSearchRequestSchema,
     responses: webSearchResponses,

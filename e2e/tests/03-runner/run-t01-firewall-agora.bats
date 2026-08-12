@@ -61,12 +61,12 @@ EOF
     assert_output --partial "AGORA_CUSTOMER_SECRET=c0ffee5afe10ca1c0ffee5afe10ca1c"
     assert_output --partial "AGORA_APP_ID=e2e-agora-app-${TEST_ID}"
 
-    run runner_api_curl "/api/zero/runs/${RUN_ID}/context"
+    run runner_api_curl "/api/okou/runs/${RUN_ID}/context"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'
 
-    run runner_api_curl "/api/zero/chat-threads/${THREAD_ID}/events?limit=50"
+    run runner_api_curl "/api/okou/chat-threads/${THREAD_ID}/events?limit=50"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'

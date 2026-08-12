@@ -29,7 +29,10 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  warmMermaidParser,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import {
   normalizeMockChatEvents,
@@ -37,6 +40,7 @@ import {
 } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
+warmMermaidParser();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
@@ -482,7 +486,7 @@ describe("thread-owned utility sidebar", () => {
     });
   });
 
-  it("keeps a mermaid file URL alive when a markdown artifact replaces itself", async () => {
+  it("releases a markdown diagram URL when its sidebar preview is replaced", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     const markdownUrl =
       "https://cdn.vm7.io/artifacts/test/run-sidebar/diagram-notes.md";
@@ -527,7 +531,9 @@ describe("thread-owned utility sidebar", () => {
     expect(sidebarUrl).toContain("blob:mock-download-");
     expect(sidebarUrl).not.toBe(url);
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
+    expect(objectUrls.revokedUrls).toContain(url);
     expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
+    expect(context.signal.aborted).toBeFalsy();
   });
 
   it("connects the agent and syncs a catalog artifact to Google Drive", async () => {

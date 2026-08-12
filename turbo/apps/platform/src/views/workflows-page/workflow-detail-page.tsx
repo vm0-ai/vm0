@@ -1135,9 +1135,6 @@ function DetailHeader({
   );
 }
 
-const WORKFLOW_TAB_TRIGGER_CLASS =
-  "gap-1.5 px-3 text-sm data-active:bg-background";
-
 function WorkflowTabNav({
   activeTab,
   onTabChange,
@@ -1182,23 +1179,20 @@ function WorkflowTabNav({
           </SelectContent>
         </Select>
       </div>
-      <TabsList className="zero-tabs hidden h-9 gap-1 px-1 py-1 sm:inline-flex">
-        <TabsTrigger value="automations" className={WORKFLOW_TAB_TRIGGER_CLASS}>
+      <TabsList className="hidden sm:inline-flex">
+        <TabsTrigger value="automations">
           <Clock size={14} />
           {i18n.t(($) => {
             return $.workflows.list.automations;
           })}
         </TabsTrigger>
-        <TabsTrigger
-          value="instructions"
-          className={WORKFLOW_TAB_TRIGGER_CLASS}
-        >
+        <TabsTrigger value="instructions">
           <FileText size={14} />
           {i18n.t(($) => {
             return $.workflows.common.instructions;
           })}
         </TabsTrigger>
-        <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
+        <TabsTrigger value="info">
           <Info size={14} />
           {i18n.t(($) => {
             return $.workflows.common.settings;

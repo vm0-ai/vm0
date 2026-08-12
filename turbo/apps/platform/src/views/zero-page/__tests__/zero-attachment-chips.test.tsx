@@ -129,12 +129,12 @@ beforeEach(() => {
     updatedAt: "2026-03-10T00:00:00Z",
   });
   context.mocks.browser.blobDownload();
-  context.mocks.http.get("/api/zero/web/download-file", () => {
+  context.mocks.http.get("/api/okou/web/download-file", () => {
     return new Response(new Uint8Array([137, 80, 78, 71]), {
       headers: { "Content-Type": "image/png" },
     });
   });
-  context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
+  context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
     const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
     return HttpResponse.json({ url: presignedFileUrl(fileId) });
   });
@@ -278,9 +278,13 @@ async function setupBodyLinkPreviews(): Promise<void> {
   const { audio, video, image, markdown, csv, pdf, html, archive } =
     BODY_LINK_PREVIEWS;
   context.mocks.http.get(markdown, () => {
-    return new Response("# Release notes\n\nBody link rollout is ready.", {
-      headers: { "Content-Type": "text/markdown" },
-    });
+    return new Response(
+      "# Release notes\n\nBody link rollout is ready.\n\n" +
+        "```mermaid\nflowchart TD\n  A --> B\n```",
+      {
+        headers: { "Content-Type": "text/markdown" },
+      },
+    );
   });
   context.mocks.http.get(csv, () => {
     return new Response("metric,value\nactivation,87", {
@@ -904,7 +908,7 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
-    context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
+    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
       expect(request.credentials).toBe("include");
       expect(request.headers.get("authorization")).toMatch(/^Bearer /);
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
@@ -2671,6 +2675,7 @@ describe("zero attachment chips", () => {
   });
 
   it("opens document previews parsed from chat message links", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     await setupBodyLinkPreviews();
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
@@ -2681,6 +2686,11 @@ describe("zero attachment chips", () => {
         screen.getByText("Body link rollout is ready."),
       ).toBeInTheDocument();
     });
+    const diagramUrl = (await screen.findByAltText("Diagram")).getAttribute(
+      "src",
+    );
+    expect(diagramUrl).toContain("blob:mock-download-");
+    expect(objectUrls.revokedUrls).not.toContain(diagramUrl);
 
     click(screen.getByLabelText("Close"));
 
@@ -2688,7 +2698,9 @@ describe("zero attachment chips", () => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
+      expect(objectUrls.revokedUrls).toContain(diagramUrl);
     });
+    expect(context.signal.aborted).toBeFalsy();
 
     click(screen.getByLabelText("Open csv preview for launch-metrics.csv"));
 
@@ -2848,7 +2860,7 @@ describe("zero attachment chips", () => {
     });
     // Guard against regressing to the canonical route, which needs an
     // Authorization header that the download fetch does not carry.
-    context.mocks.http.get("/api/zero/web/download-file", () => {
+    context.mocks.http.get("/api/okou/web/download-file", () => {
       return new Response(null, { status: 500 });
     });
     mockChatLifecycle(context, {

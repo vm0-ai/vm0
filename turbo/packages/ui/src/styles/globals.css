@@ -206,6 +206,18 @@
     hsl(var(--destructive)),
     hsl(var(--black)) var(--state-on-filled-pressed-alpha)
   );
+
+  /* ===================================
+   * Segment Control
+   *
+   * The track reuses `--muted`, which already steps down the ramp in both
+   * themes (gray-100 light, gray-200 dark). The selected segment has to read
+   * as raised above that track, and `--card` cannot carry it: in dark, card
+   * sits *below* gray-200, so a card-filled segment would look recessed
+   * instead of selected. It gets its own pair of tokens instead.
+   * =================================== */
+  --color-segment-selected: hsl(var(--segment-selected));
+  --shadow-segment-selected: var(--segment-selected-shadow);
 }
 
 @layer base {
@@ -318,6 +330,11 @@
     --state-pressed-alpha: 13%;
     --state-on-filled-hover-alpha: 10%;
     --state-on-filled-pressed-alpha: 16%;
+
+    /* Segment control (light): white lifts off the gray-100 track. */
+    --segment-selected: 0 0% 100%;
+    --segment-selected-shadow:
+      0 1px 2px hsl(220 12% 20% / 0.06), 0 1px 3px hsl(220 12% 20% / 0.08);
 
     --radius: 0.5rem;
   }
@@ -434,6 +451,12 @@
     --state-pressed-alpha: 19%;
     --state-on-filled-hover-alpha: 12%;
     --state-on-filled-pressed-alpha: 20%;
+
+    /* Segment control (dark): the selection steps *up* the grey ramp from the
+       gray-200 track, and the veil turns black so it still reads as a lift. */
+    --segment-selected: var(--gray-400);
+    --segment-selected-shadow:
+      0 1px 3px hsl(0 0% 0% / 0.3), 0 2px 6px hsl(0 0% 0% / 0.2);
   }
 }
 

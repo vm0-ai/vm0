@@ -30,8 +30,8 @@ describe("runtime API schema namespaces", () => {
       );
 
       expect(document.supportedBrandedApiNamespacePaths).toStrictEqual([
-        "/api/zero",
         "/api/okou",
+        "/api/zero",
       ]);
       expect(
         document.routes.map(({ id, path }) => {

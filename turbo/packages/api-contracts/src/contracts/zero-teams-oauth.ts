@@ -22,7 +22,7 @@ export const zeroTeamsOauthCallbackQuerySchema = z.object({
 export const zeroTeamsOauthContract = c.router({
   connect: {
     method: "GET",
-    path: "/api/zero/teams/oauth/connect",
+    path: "/api/okou/teams/oauth/connect",
     query: zeroTeamsOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
@@ -33,7 +33,7 @@ export const zeroTeamsOauthContract = c.router({
   },
   callback: {
     method: "GET",
-    path: "/api/zero/teams/oauth/callback",
+    path: "/api/okou/teams/oauth/callback",
     query: zeroTeamsOauthCallbackQuerySchema,
     responses: {
       307: c.noBody(),

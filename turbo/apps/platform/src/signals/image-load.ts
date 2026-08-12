@@ -33,19 +33,25 @@ export function createImageLoadSignals(): ImageLoadSignals {
   };
 }
 
-const internalImageLoadByUrl$ = state<ReadonlyMap<string, ImageLoadSignals>>(
-  new Map(),
-);
+export interface ImageLoadRegistry {
+  /** Get-or-create by source URL; idempotent per URL. */
+  readonly register$: Command<ImageLoadSignals, [string]>;
+}
 
 /**
- * Get-or-create by source URL. Copies of the same image share one entry, and
- * an entry survives the re-parses of a streaming message — the reused `<img>`
- * element never refires its load event, so fresh signals would strand a loaded
- * image behind its placeholder.
+ * A per-surface registry of load signals keyed by source URL. Copies of the
+ * same image share one entry, and an entry survives the re-parses of a
+ * streaming message — the reused `<img>` element never refires its load event,
+ * so fresh signals would strand a loaded image behind its placeholder. The map
+ * is a `state` written only by `register$` and never leaves the registry: the
+ * command that parses a tree embeds each entry on its node.
  */
-export const registerImageLoad$ = command(
-  ({ get, set }, url: string): ImageLoadSignals => {
-    const current = get(internalImageLoadByUrl$);
+export function createImageLoadRegistry(): ImageLoadRegistry {
+  const internalByUrl$ = state<ReadonlyMap<string, ImageLoadSignals>>(
+    new Map(),
+  );
+  const register$ = command(({ get, set }, url: string): ImageLoadSignals => {
+    const current = get(internalByUrl$);
     const existing = current.get(url);
     if (existing !== undefined) {
       return existing;
@@ -53,10 +59,11 @@ export const registerImageLoad$ = command(
     const signals = createImageLoadSignals();
     const next = new Map(current);
     next.set(url, signals);
-    set(internalImageLoadByUrl$, next);
+    set(internalByUrl$, next);
     return signals;
-  },
-);
+  });
+  return { register$ };
+}
 
 // Written by the tree-preparing command alongside `mermaidSignals`; the parse
 // pipeline itself never produces it.

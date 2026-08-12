@@ -108,7 +108,7 @@ describe("okou browser command", () => {
     let authorization: string | null = null;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/browsers",
+        "http://localhost:3000/api/okou/browsers",
         async ({ request }) => {
           requestBody = await request.json();
           authorization = request.headers.get("authorization");
@@ -148,7 +148,7 @@ describe("okou browser command", () => {
   it("opens the thread browser, reports its reclaim time, and hides connection secrets", async () => {
     let useRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/zero/browsers/use", () => {
+      http.post("http://localhost:3000/api/okou/browsers/use", () => {
         useRequests += 1;
         return HttpResponse.json(
           {
@@ -179,7 +179,7 @@ describe("okou browser command", () => {
     let leaseBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/browsers/lease",
+        "http://localhost:3000/api/okou/browsers/lease",
         async ({ request }) => {
           leaseRequests += 1;
           leaseBody = await request.json();
@@ -203,7 +203,7 @@ describe("okou browser command", () => {
 
   it("keeps provider connection URLs out of JSON output", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/browsers", () => {
+      http.post("http://localhost:3000/api/okou/browsers", () => {
         return HttpResponse.json(
           { browser: browser(), cdpUrl: CDP_URL, lifecycleEventId: null },
           { status: 201 },

@@ -9,8 +9,8 @@ const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
 const RUN_ID = "00000000-0000-4000-8000-000000000020";
 const EVENT_ID = "00000000-0000-4000-8000-000000000030";
-const METADATA_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
-const SEND_URL = "http://localhost:3000/api/zero/chat/events";
+const METADATA_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/metadata`;
+const SEND_URL = "http://localhost:3000/api/okou/chat/events";
 
 describe("okou chat cancel command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});

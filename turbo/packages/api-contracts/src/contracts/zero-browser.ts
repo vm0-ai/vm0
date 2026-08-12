@@ -153,7 +153,7 @@ const commonErrorResponses = {
 export const zeroBrowserContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/browsers",
+    path: "/api/okou/browsers",
     headers: authHeadersSchema,
     body: zeroBrowserCreateRequestSchema,
     responses: {
@@ -165,7 +165,7 @@ export const zeroBrowserContract = c.router({
   },
   use: {
     method: "POST",
-    path: "/api/zero/browsers/use",
+    path: "/api/okou/browsers/use",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -177,7 +177,7 @@ export const zeroBrowserContract = c.router({
   },
   lease: {
     method: "POST",
-    path: "/api/zero/browsers/lease",
+    path: "/api/okou/browsers/lease",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -188,7 +188,7 @@ export const zeroBrowserContract = c.router({
   },
   leaseByThread: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/lease",
+    path: "/api/okou/chat-threads/:threadId/browser/lease",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: z.object({}),
@@ -200,7 +200,7 @@ export const zeroBrowserContract = c.router({
   },
   open: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/open",
+    path: "/api/okou/chat-threads/:threadId/browser/open",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserLifecycleRequestSchema,
@@ -212,7 +212,7 @@ export const zeroBrowserContract = c.router({
   },
   close: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/close",
+    path: "/api/okou/chat-threads/:threadId/browser/close",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserLifecycleRequestSchema,
@@ -224,7 +224,7 @@ export const zeroBrowserContract = c.router({
   },
   resizeByThread: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/resize",
+    path: "/api/okou/chat-threads/:threadId/browser/resize",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserResizeRequestSchema,
@@ -236,7 +236,7 @@ export const zeroBrowserContract = c.router({
   },
   current: {
     method: "GET",
-    path: "/api/zero/browsers/current",
+    path: "/api/okou/browsers/current",
     headers: authHeadersSchema,
     responses: {
       200: browserResponseSchema,
@@ -246,7 +246,7 @@ export const zeroBrowserContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/browser",
+    path: "/api/okou/chat-threads/:threadId/browser",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     responses: {
@@ -260,7 +260,7 @@ export const zeroBrowserContract = c.router({
 export const zeroBrowserAuthorizationRequestsContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/browser/authorization-requests",
+    path: "/api/okou/browser/authorization-requests",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -276,7 +276,7 @@ export const zeroBrowserAuthorizationRequestsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/browser/authorization-requests/:requestToken",
+    path: "/api/okou/browser/authorization-requests/:requestToken",
     headers: authHeadersSchema,
     pathParams: browserAuthorizationRequestTokenPathParamsSchema,
     responses: {
@@ -290,7 +290,7 @@ export const zeroBrowserAuthorizationRequestsContract = c.router({
   },
   apply: {
     method: "POST",
-    path: "/api/zero/browser/authorization-requests/:requestToken/apply",
+    path: "/api/okou/browser/authorization-requests/:requestToken/apply",
     headers: authHeadersSchema,
     pathParams: browserAuthorizationRequestTokenPathParamsSchema,
     body: z.object({}),

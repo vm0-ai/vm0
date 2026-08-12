@@ -906,7 +906,7 @@ const chatEventNormalSendBodySchema = z
 export const chatThreadsContract = c.router({
   indicators: {
     method: "GET",
-    path: "/api/zero/indicators",
+    path: "/api/okou/indicators",
     headers: authHeadersSchema,
     responses: {
       200: zeroIndicatorsSchema,
@@ -917,7 +917,7 @@ export const chatThreadsContract = c.router({
   },
   snapshot: {
     method: "GET",
-    path: "/api/zero/chat-threads/snapshot",
+    path: "/api/okou/chat-threads/snapshot",
     headers: authHeadersSchema,
     responses: {
       200: z.object({
@@ -933,7 +933,7 @@ export const chatThreadsContract = c.router({
   },
   events: {
     method: "GET",
-    path: "/api/zero/chat-threads/events",
+    path: "/api/okou/chat-threads/events",
     headers: authHeadersSchema,
     query: z.object({
       sinceSeqId: z.coerce.number().int().positive().optional(),
@@ -951,7 +951,7 @@ export const chatThreadsContract = c.router({
   },
   activeIds: {
     method: "GET",
-    path: "/api/zero/chat-threads/active-ids",
+    path: "/api/okou/chat-threads/active-ids",
     headers: authHeadersSchema,
     responses: {
       200: z.object({
@@ -964,7 +964,7 @@ export const chatThreadsContract = c.router({
   },
   unreadIds: {
     method: "GET",
-    path: "/api/zero/chat-threads/unread-ids",
+    path: "/api/okou/chat-threads/unread-ids",
     headers: authHeadersSchema,
     responses: {
       200: z.object({
@@ -977,7 +977,7 @@ export const chatThreadsContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/zero/chat-threads",
+    path: "/api/okou/chat-threads",
     headers: authHeadersSchema,
     body: chatThreadCreateBodySchema,
     responses: {
@@ -1001,7 +1001,7 @@ export const chatThreadsContract = c.router({
     method: "GET",
     // Sibling path (not nested under /chat-threads/) so it can never
     // collide with the /chat-threads/:id route pattern.
-    path: "/api/zero/chat-thread-drafts",
+    path: "/api/okou/chat-thread-drafts",
     headers: authHeadersSchema,
     query: z.object({}),
     responses: {
@@ -1019,7 +1019,7 @@ export const chatThreadsContract = c.router({
   },
   unreads: {
     method: "GET",
-    path: "/api/zero/chat-thread-unreads",
+    path: "/api/okou/chat-thread-unreads",
     headers: authHeadersSchema,
     query: z.object({
       agentId: z.string().min(1),
@@ -1033,7 +1033,7 @@ export const chatThreadsContract = c.router({
   },
   unreadAgents: {
     method: "GET",
-    path: "/api/zero/chat-thread-unread-agents",
+    path: "/api/okou/chat-thread-unread-agents",
     headers: authHeadersSchema,
     responses: {
       200: chatThreadUnreadAgentsSchema,
@@ -1060,7 +1060,7 @@ const chatThreadEventPathParamsSchema =
 export const chatThreadByIdContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/chat-threads/:id",
+    path: "/api/okou/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     responses: {
@@ -1073,7 +1073,7 @@ export const chatThreadByIdContract = c.router({
   },
   patch: {
     method: "PATCH",
-    path: "/api/zero/chat-threads/:id",
+    path: "/api/okou/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     body: z
@@ -1095,7 +1095,7 @@ export const chatThreadByIdContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/chat-threads/:id",
+    path: "/api/okou/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
@@ -1118,7 +1118,7 @@ export const chatThreadByIdContract = c.router({
 export const chatThreadDraftContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/chat-threads/:id/draft",
+    path: "/api/okou/chat-threads/:id/draft",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     responses: {
@@ -1138,7 +1138,7 @@ export const chatThreadDraftContract = c.router({
 export const chatThreadMarkReadContract = c.router({
   markRead: {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/mark-read",
+    path: "/api/okou/chat-threads/:id/mark-read",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
@@ -1167,7 +1167,7 @@ export const chatThreadMarkReadContract = c.router({
 export const chatThreadMarkAgentReadContract = c.router({
   markAgentRead: {
     method: "POST",
-    path: "/api/zero/chat-thread-unreads/mark-read",
+    path: "/api/okou/chat-thread-unreads/mark-read",
     headers: authHeadersSchema,
     body: z.object({
       agentId: z.string().min(1),
@@ -1194,7 +1194,7 @@ export const chatThreadMarkAgentReadContract = c.router({
 export const chatThreadPinContract = c.router({
   pin: {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/pin",
+    path: "/api/okou/chat-threads/:id/pin",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
@@ -1212,7 +1212,7 @@ export const chatThreadPinContract = c.router({
 export const chatThreadUnpinContract = c.router({
   unpin: {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/unpin",
+    path: "/api/okou/chat-threads/:id/unpin",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
@@ -1239,7 +1239,7 @@ export const chatThreadUnpinContract = c.router({
 export const chatThreadRenameContract = c.router({
   rename: {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/rename",
+    path: "/api/okou/chat-threads/:id/rename",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
@@ -1264,7 +1264,7 @@ export const chatThreadRenameContract = c.router({
 export const chatThreadMetadataContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/chat-threads/:id/metadata",
+    path: "/api/okou/chat-threads/:id/metadata",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     responses: {
@@ -1285,7 +1285,7 @@ export const chatThreadMetadataContract = c.router({
 export const chatThreadModelSelectionContract = c.router({
   update: {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/model-selection",
+    path: "/api/okou/chat-threads/:id/model-selection",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     body: chatThreadModelSelectionUpdateBodySchema,
@@ -1308,7 +1308,7 @@ export const chatThreadModelSelectionContract = c.router({
 export const chatThreadComputerUseHostContract = c.router({
   update: {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/computer-use-host",
+    path: "/api/okou/chat-threads/:id/computer-use-host",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
     body: z
@@ -1341,7 +1341,7 @@ export const chatThreadComputerUseHostContract = c.router({
 export const chatEventsContract = c.router({
   send: {
     method: "POST",
-    path: "/api/zero/chat/events",
+    path: "/api/okou/chat/events",
     headers: authHeadersSchema,
     body: z.union([
       chatEventNormalSendBodySchema,
@@ -1453,14 +1453,14 @@ const chatSearchResponseSchema = z.object({
 });
 
 /**
- * Chat search contract (GET /api/zero/chat/search)
+ * Chat search contract (GET /api/okou/chat/search)
  * Searches chat messages within the caller's own threads in the caller's org.
  * Authorization is enforced at the DB query level via userId + orgId filters.
  */
 export const chatSearchContract = c.router({
   search: {
     method: "GET",
-    path: "/api/zero/chat/search",
+    path: "/api/okou/chat/search",
     headers: authHeadersSchema,
     query: z.object({
       keyword: z.string().trim().min(1),
@@ -1484,7 +1484,7 @@ export const chatSearchContract = c.router({
 export const chatThreadEventsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/events",
+    path: "/api/okou/chat-threads/:threadId/events",
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
@@ -1505,7 +1505,7 @@ export const chatThreadEventsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/events/:eventId",
+    path: "/api/okou/chat-threads/:threadId/events/:eventId",
     headers: authHeadersSchema,
     pathParams: chatThreadEventPathParamsSchema,
     responses: {
@@ -1524,7 +1524,7 @@ export const chatThreadEventsContract = c.router({
    */
   snapshot: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/event-snapshot",
+    path: "/api/okou/chat-threads/:threadId/event-snapshot",
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     responses: {
@@ -1547,7 +1547,7 @@ export const chatThreadEventsContract = c.router({
    */
   rows: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/event-rows",
+    path: "/api/okou/chat-threads/:threadId/event-rows",
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
@@ -1571,7 +1571,7 @@ export const chatThreadEventsContract = c.router({
 export const chatThreadArtifactsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/artifacts",
+    path: "/api/okou/chat-threads/:threadId/artifacts",
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     responses: {
@@ -1587,7 +1587,7 @@ export const chatThreadArtifactsContract = c.router({
   },
   syncGoogleDrive: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/artifacts",
+    path: "/api/okou/chat-threads/:threadId/artifacts",
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     body: z.object({

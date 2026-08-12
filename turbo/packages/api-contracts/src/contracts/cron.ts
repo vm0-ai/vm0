@@ -109,14 +109,6 @@ const cronSnapshotChatEventsResponseSchema =
     r2GcSubpartitionedShards: z.number().int().nonnegative(),
   });
 
-const chatEventSnapshotConvergenceIncompleteSchema = z.object({
-  error: z.object({
-    code: z.literal("CHAT_EVENT_SNAPSHOT_V4_CONVERGENCE_INCOMPLETE"),
-    message: z.string(),
-  }),
-  convergence: chatEventSnapshotConvergenceSchema,
-});
-
 const cronCompactUsageEventsResponseSchema = z.object({
   success: z.literal(true),
   cutoff: z.string(),
@@ -306,19 +298,6 @@ export const cronSnapshotChatEventsContract = c.router({
       500: z.object({ error: z.string() }),
     },
     summary: "Archive chat events into immutable full-thread R2 snapshots",
-  },
-  verifyConvergence: {
-    method: "GET",
-    path: "/api/cron/snapshot-chat-events/verify-convergence",
-    headers: authHeadersSchema,
-    responses: {
-      200: chatEventSnapshotConvergenceSchema.extend({
-        success: z.literal(true),
-      }),
-      401: apiErrorSchema,
-      409: chatEventSnapshotConvergenceIncompleteSchema,
-    },
-    summary: "Verify every chat event snapshot head uses archive schema v4",
   },
 });
 

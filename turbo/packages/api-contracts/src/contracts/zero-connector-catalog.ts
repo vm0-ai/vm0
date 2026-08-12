@@ -240,7 +240,7 @@ export type PublicConnectorCatalogPermissionDetailResponse = z.infer<
 export const zeroConnectorCatalogContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/connector-catalog",
+    path: "/api/okou/connector-catalog",
     headers: authHeadersSchema,
     responses: {
       200: publicConnectorCatalogListResponseSchema,
@@ -252,7 +252,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   status: {
     method: "GET",
-    path: "/api/zero/connector-catalog/status",
+    path: "/api/okou/connector-catalog/status",
     headers: authHeadersSchema,
     responses: {
       200: publicConnectorCatalogStatusResponseSchema,
@@ -264,7 +264,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   discovery: {
     method: "GET",
-    path: "/api/zero/connector-catalog/discovery",
+    path: "/api/okou/connector-catalog/discovery",
     headers: authHeadersSchema,
     query: z.object({ keyword: z.string().optional() }),
     responses: {
@@ -278,7 +278,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   diagnostics: {
     method: "GET",
-    path: "/api/zero/connector-catalog/diagnostics",
+    path: "/api/okou/connector-catalog/diagnostics",
     headers: authHeadersSchema,
     responses: {
       200: connectorCatalogDiagnosticsSchema,
@@ -290,7 +290,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorSlug",
+    path: "/api/okou/connector-catalog/:connectorSlug",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {
@@ -305,7 +305,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   permissions: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorSlug/permissions",
+    path: "/api/okou/connector-catalog/:connectorSlug/permissions",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {

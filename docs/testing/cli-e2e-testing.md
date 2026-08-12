@@ -78,7 +78,7 @@ selects the CI-only runner tests.
 Runner BATS files live in `e2e/tests/03-runner`. They share the accounts and
 public device-flow tokens prepared by the runner E2E workflow, then create and
 clean up their own agents, threads, and connector connections through public
-`/api/zero/*` endpoints.
+`/api/okou/*` endpoints.
 
 Name runner BATS files `run-tNN-<behavior>.bats`, using the next unused `NN`.
 The number is a stable file identifier, not an execution order. Test titles

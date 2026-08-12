@@ -121,7 +121,7 @@ Examples:
   Machine-readable:   okou people-search "Kubernetes platform engineers" --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires people-search:read capability) or a CLI token
+  - Authenticates via OKOU_TOKEN (requires people-search:read capability) or a CLI token
   - Successful requests use managed credits, including searches with no matches
   - Queries are sent to vm0's managed Perplexity provider; never include secrets or private context
   - Profile fields are model-extracted from public professional sources and are not verified facts

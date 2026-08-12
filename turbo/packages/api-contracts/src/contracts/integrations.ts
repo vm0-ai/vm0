@@ -10,10 +10,10 @@ const directUploadResponseShape = {
 
 /**
  * Integration Slack message contract
- * POST /api/zero/integrations/slack/message
+ * POST /api/okou/integrations/slack/message
  *
  * Sends a Slack message via the org's installed bot token.
- * Requires `slack:write` capability (via ZERO_TOKEN).
+ * Requires `slack:write` capability (via OKOU_TOKEN).
  */
 const sendSlackMessageBodySchema = z
   .object({
@@ -45,7 +45,7 @@ export type SendSlackMessageResponse = z.infer<
 export const integrationsSlackMessageContract = c.router({
   sendMessage: {
     method: "POST",
-    path: "/api/zero/integrations/slack/message",
+    path: "/api/okou/integrations/slack/message",
     headers: authHeadersSchema,
     body: sendSlackMessageBodySchema,
     responses: {
@@ -64,10 +64,10 @@ export type IntegrationsSlackMessageContract =
 
 /**
  * Integration Feishu message contract
- * POST /api/zero/integrations/feishu/message
+ * POST /api/okou/integrations/feishu/message
  *
  * Sends a Feishu message via an org-owned custom app.
- * Requires `feishu:write` capability (via ZERO_TOKEN).
+ * Requires `feishu:write` capability (via OKOU_TOKEN).
  */
 const feishuCardSchema = z.record(z.string(), z.unknown());
 
@@ -127,7 +127,7 @@ export type SendFeishuMessageResponse = z.infer<
 export const integrationsFeishuMessageContract = c.router({
   sendMessage: {
     method: "POST",
-    path: "/api/zero/integrations/feishu/message",
+    path: "/api/okou/integrations/feishu/message",
     headers: authHeadersSchema,
     body: sendFeishuMessageBodySchema,
     responses: {
@@ -159,7 +159,7 @@ export type FeishuResourceType = z.infer<typeof feishuResourceTypeSchema>;
 export const integrationsFeishuDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/feishu/download-file",
+    path: "/api/okou/integrations/feishu/download-file",
     headers: authHeadersSchema,
     query: z.object({
       installation_id: z.string().uuid().optional(),
@@ -224,7 +224,7 @@ export type FeishuUploadInitResponse = z.infer<
 export const integrationsFeishuUploadInitContract = c.router({
   init: {
     method: "POST",
-    path: "/api/zero/integrations/feishu/upload-file/init",
+    path: "/api/okou/integrations/feishu/upload-file/init",
     headers: authHeadersSchema,
     body: feishuUploadInitBodySchema,
     responses: {
@@ -296,7 +296,7 @@ export type FeishuUploadCompleteResponse = z.infer<
 export const integrationsFeishuUploadCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/integrations/feishu/upload-file/complete",
+    path: "/api/okou/integrations/feishu/upload-file/complete",
     headers: authHeadersSchema,
     body: feishuUploadCompleteBodySchema,
     responses: {
@@ -314,10 +314,10 @@ export const integrationsFeishuUploadCompleteContract = c.router({
 
 /**
  * Integration Telegram message contract
- * POST /api/zero/integrations/telegram/message
+ * POST /api/okou/integrations/telegram/message
  *
  * Sends a Telegram message via an org-owned bot token.
- * Requires `telegram:write` capability (via ZERO_TOKEN).
+ * Requires `telegram:write` capability (via OKOU_TOKEN).
  */
 const sendTelegramMessageBodySchema = z.object({
   botId: z.string().min(1, "Bot ID is required"),
@@ -344,7 +344,7 @@ export type SendTelegramMessageResponse = z.infer<
 export const integrationsTelegramMessageContract = c.router({
   sendMessage: {
     method: "POST",
-    path: "/api/zero/integrations/telegram/message",
+    path: "/api/okou/integrations/telegram/message",
     headers: authHeadersSchema,
     body: sendTelegramMessageBodySchema,
     responses: {
@@ -364,10 +364,10 @@ export type IntegrationsTelegramMessageContract =
 
 /**
  * Integration Microsoft Teams message contract
- * POST /api/zero/integrations/teams/message
+ * POST /api/okou/integrations/teams/message
  *
  * Sends a Microsoft Teams message via the org's installed Teams bot.
- * Requires `teams:write` capability (via ZERO_TOKEN).
+ * Requires `teams:write` capability (via OKOU_TOKEN).
  */
 const teamsAdaptiveCardSchema = z
   .object({
@@ -429,7 +429,7 @@ export type SendTeamsMessageResponse = z.infer<
 export const integrationsTeamsMessageContract = c.router({
   sendMessage: {
     method: "POST",
-    path: "/api/zero/integrations/teams/message",
+    path: "/api/okou/integrations/teams/message",
     headers: authHeadersSchema,
     body: sendTeamsMessageBodySchema,
     responses: {
@@ -449,10 +449,10 @@ export type IntegrationsTeamsMessageContract =
 
 /**
  * Integration AgentPhone message contract
- * POST /api/zero/integrations/phone/message
+ * POST /api/okou/integrations/phone/message
  *
  * Sends an AgentPhone text message to the connected phone handle.
- * Requires `phone:write` capability (via ZERO_TOKEN).
+ * Requires `phone:write` capability (via OKOU_TOKEN).
  */
 const sendPhoneMessageBodySchema = z.object({
   agentphoneAgentId: z
@@ -479,7 +479,7 @@ export type SendPhoneMessageResponse = z.infer<
 export const integrationsPhoneMessageContract = c.router({
   sendMessage: {
     method: "POST",
-    path: "/api/zero/integrations/phone/message",
+    path: "/api/okou/integrations/phone/message",
     headers: authHeadersSchema,
     body: sendPhoneMessageBodySchema,
     responses: {
@@ -504,7 +504,7 @@ const phoneDownloadFileQuerySchema = z.object({
 export const integrationsPhoneDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/phone/download-file",
+    path: "/api/okou/integrations/phone/download-file",
     headers: authHeadersSchema,
     query: phoneDownloadFileQuerySchema,
     responses: {
@@ -525,10 +525,10 @@ export type IntegrationsPhoneDownloadFileContract =
 
 /**
  * Integration Telegram bot list contract
- * GET /api/zero/integrations/telegram/bots
+ * GET /api/okou/integrations/telegram/bots
  *
  * Lists Telegram bots available in the authenticated user's org.
- * Requires `telegram:read` capability (via ZERO_TOKEN).
+ * Requires `telegram:read` capability (via OKOU_TOKEN).
  */
 const telegramBotTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
 
@@ -568,7 +568,7 @@ export type ListTelegramBotsResponse = z.infer<
 export const integrationsTelegramBotListContract = c.router({
   listBots: {
     method: "GET",
-    path: "/api/zero/integrations/telegram/bots",
+    path: "/api/okou/integrations/telegram/bots",
     headers: authHeadersSchema,
     responses: {
       200: listTelegramBotsResponseSchema,
@@ -584,11 +584,11 @@ export type IntegrationsTelegramBotListContract =
 
 /**
  * Integration Slack file upload — init contract
- * POST /api/zero/integrations/slack/upload-file/init
+ * POST /api/okou/integrations/slack/upload-file/init
  *
  * Requests a pre-signed upload URL from Slack via the org's bot token.
  * The CLI then uploads the file directly to that URL (no auth needed).
- * Requires `slack:write` capability (via ZERO_TOKEN).
+ * Requires `slack:write` capability (via OKOU_TOKEN).
  */
 const slackUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required"),
@@ -634,7 +634,7 @@ export type SlackUploadInitResponse = z.infer<
 export const integrationsSlackUploadInitContract = c.router({
   init: {
     method: "POST",
-    path: "/api/zero/integrations/slack/upload-file/init",
+    path: "/api/okou/integrations/slack/upload-file/init",
     headers: authHeadersSchema,
     body: slackUploadInitBodySchema,
     responses: {
@@ -685,7 +685,7 @@ export type SlackUploadMaterializeResponse = z.infer<
 export const integrationsSlackUploadMaterializeContract = c.router({
   materialize: {
     method: "POST",
-    path: "/api/zero/integrations/slack/upload-file/materialize",
+    path: "/api/okou/integrations/slack/upload-file/materialize",
     headers: authHeadersSchema,
     body: slackUploadMaterializeBodySchema,
     responses: {
@@ -701,12 +701,12 @@ export const integrationsSlackUploadMaterializeContract = c.router({
 
 /**
  * Integration Telegram file upload — init contract
- * POST /api/zero/integrations/telegram/upload-file/init
+ * POST /api/okou/integrations/telegram/upload-file/init
  *
  * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
  * uploads the file body directly to R2, then the complete route asks Telegram
  * to fetch that file URL with the org-owned bot token.
- * Requires `telegram:write` capability (via ZERO_TOKEN).
+ * Requires `telegram:write` capability (via OKOU_TOKEN).
  */
 const telegramUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
@@ -735,7 +735,7 @@ export type TelegramUploadInitResponse = z.infer<
 export const integrationsTelegramUploadInitContract = c.router({
   init: {
     method: "POST",
-    path: "/api/zero/integrations/telegram/upload-file/init",
+    path: "/api/okou/integrations/telegram/upload-file/init",
     headers: authHeadersSchema,
     body: telegramUploadInitBodySchema,
     responses: {
@@ -750,12 +750,12 @@ export const integrationsTelegramUploadInitContract = c.router({
 
 /**
  * Integration Microsoft Teams file upload — init contract
- * POST /api/zero/integrations/teams/upload-file/init
+ * POST /api/okou/integrations/teams/upload-file/init
  *
  * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
  * uploads the file body directly to R2, then the complete route sends a Teams
  * message with the file attachment and public file URL.
- * Requires `teams:write` capability (via ZERO_TOKEN).
+ * Requires `teams:write` capability (via OKOU_TOKEN).
  */
 const teamsUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
@@ -782,7 +782,7 @@ export type TeamsUploadInitResponse = z.infer<
 export const integrationsTeamsUploadInitContract = c.router({
   init: {
     method: "POST",
-    path: "/api/zero/integrations/teams/upload-file/init",
+    path: "/api/okou/integrations/teams/upload-file/init",
     headers: authHeadersSchema,
     body: teamsUploadInitBodySchema,
     responses: {
@@ -797,11 +797,11 @@ export const integrationsTeamsUploadInitContract = c.router({
 
 /**
  * Integration Telegram file upload — complete contract
- * POST /api/zero/integrations/telegram/upload-file/complete
+ * POST /api/okou/integrations/telegram/upload-file/complete
  *
  * Sends an uploaded file URL to a Telegram chat via sendDocument using the
  * requested org-owned bot token.
- * Requires `telegram:write` capability (via ZERO_TOKEN).
+ * Requires `telegram:write` capability (via OKOU_TOKEN).
  */
 const telegramUploadCompleteBodySchema = z.object({
   uploadId: z.string().uuid("Upload ID must be a UUID"),
@@ -833,7 +833,7 @@ export type TelegramUploadCompleteResponse = z.infer<
 export const integrationsTelegramUploadCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/integrations/telegram/upload-file/complete",
+    path: "/api/okou/integrations/telegram/upload-file/complete",
     headers: authHeadersSchema,
     body: telegramUploadCompleteBodySchema,
     responses: {
@@ -850,11 +850,11 @@ export const integrationsTelegramUploadCompleteContract = c.router({
 
 /**
  * Integration Microsoft Teams file upload — complete contract
- * POST /api/zero/integrations/teams/upload-file/complete
+ * POST /api/okou/integrations/teams/upload-file/complete
  *
  * Sends an uploaded file URL to a Microsoft Teams conversation using the org's
  * installed Teams bot.
- * Requires `teams:write` capability (via ZERO_TOKEN).
+ * Requires `teams:write` capability (via OKOU_TOKEN).
  */
 const teamsUploadCompleteBodySchema = z.object({
   uploadId: z.string().uuid("Upload ID must be a UUID"),
@@ -884,7 +884,7 @@ export type TeamsUploadCompleteResponse = z.infer<
 export const integrationsTeamsUploadCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/integrations/teams/upload-file/complete",
+    path: "/api/okou/integrations/teams/upload-file/complete",
     headers: authHeadersSchema,
     body: teamsUploadCompleteBodySchema,
     responses: {
@@ -902,12 +902,12 @@ export const integrationsTeamsUploadCompleteContract = c.router({
 
 /**
  * Integration GitHub file upload — init contract
- * POST /api/zero/integrations/github/upload-file/init
+ * POST /api/okou/integrations/github/upload-file/init
  *
  * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
  * uploads the file body directly to R2, then the complete route posts the file
  * URL back to a GitHub issue or pull request comment.
- * Requires `github:write` capability (via ZERO_TOKEN).
+ * Requires `github:write` capability (via OKOU_TOKEN).
  */
 const githubUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
@@ -934,7 +934,7 @@ export type GithubUploadInitResponse = z.infer<
 export const integrationsGithubUploadInitContract = c.router({
   init: {
     method: "POST",
-    path: "/api/zero/integrations/github/upload-file/init",
+    path: "/api/okou/integrations/github/upload-file/init",
     headers: authHeadersSchema,
     body: githubUploadInitBodySchema,
     responses: {
@@ -952,11 +952,11 @@ export const integrationsGithubUploadInitContract = c.router({
 
 /**
  * Integration GitHub file upload — complete contract
- * POST /api/zero/integrations/github/upload-file/complete
+ * POST /api/okou/integrations/github/upload-file/complete
  *
  * Posts an uploaded file URL to a GitHub issue or pull request comment using
  * the organization GitHub App installation token.
- * Requires `github:write` capability (via ZERO_TOKEN).
+ * Requires `github:write` capability (via OKOU_TOKEN).
  */
 const githubUploadCompleteBodySchema = z.object({
   uploadId: z.string().uuid("Upload ID must be a UUID"),
@@ -993,7 +993,7 @@ export type GithubUploadCompleteResponse = z.infer<
 export const integrationsGithubUploadCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/integrations/github/upload-file/complete",
+    path: "/api/okou/integrations/github/upload-file/complete",
     headers: authHeadersSchema,
     body: githubUploadCompleteBodySchema,
     responses: {
@@ -1011,12 +1011,12 @@ export const integrationsGithubUploadCompleteContract = c.router({
 
 /**
  * Integration AgentPhone file upload — init contract
- * POST /api/zero/integrations/phone/upload-file/init
+ * POST /api/okou/integrations/phone/upload-file/init
  *
  * Requests a pre-signed upload URL for a VM0-hosted file. The CLI uploads the
  * file body directly to R2, then complete sends the public file URL through
  * AgentPhone.
- * Requires `phone:write` capability (via ZERO_TOKEN).
+ * Requires `phone:write` capability (via OKOU_TOKEN).
  */
 const phoneUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
@@ -1043,7 +1043,7 @@ export type PhoneUploadInitResponse = z.infer<
 export const integrationsPhoneUploadInitContract = c.router({
   init: {
     method: "POST",
-    path: "/api/zero/integrations/phone/upload-file/init",
+    path: "/api/okou/integrations/phone/upload-file/init",
     headers: authHeadersSchema,
     body: phoneUploadInitBodySchema,
     responses: {
@@ -1058,10 +1058,10 @@ export const integrationsPhoneUploadInitContract = c.router({
 
 /**
  * Integration AgentPhone file upload — complete contract
- * POST /api/zero/integrations/phone/upload-file/complete
+ * POST /api/okou/integrations/phone/upload-file/complete
  *
  * Sends an uploaded file URL to a connected phone handle through AgentPhone.
- * Requires `phone:write` capability (via ZERO_TOKEN).
+ * Requires `phone:write` capability (via OKOU_TOKEN).
  */
 const phoneUploadCompleteBodySchema = z.object({
   uploadId: z.string().uuid("Upload ID must be a UUID"),
@@ -1095,7 +1095,7 @@ export type PhoneUploadCompleteResponse = z.infer<
 export const integrationsPhoneUploadCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/integrations/phone/upload-file/complete",
+    path: "/api/okou/integrations/phone/upload-file/complete",
     headers: authHeadersSchema,
     body: phoneUploadCompleteBodySchema,
     responses: {
@@ -1112,10 +1112,10 @@ export const integrationsPhoneUploadCompleteContract = c.router({
 
 /**
  * Integration Slack file upload — complete contract
- * POST /api/zero/integrations/slack/upload-file/complete
+ * POST /api/okou/integrations/slack/upload-file/complete
  *
  * Finalizes a Slack file upload and shares it to a channel/thread.
- * Requires `slack:write` capability (via ZERO_TOKEN).
+ * Requires `slack:write` capability (via OKOU_TOKEN).
  */
 const slackUploadCompleteBodySchema = z.object({
   fileId: z.string().min(1, "File ID is required"),
@@ -1148,7 +1148,7 @@ export type SlackUploadCompleteResponse = z.infer<
 export const integrationsSlackUploadCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/integrations/slack/upload-file/complete",
+    path: "/api/okou/integrations/slack/upload-file/complete",
     headers: authHeadersSchema,
     body: slackUploadCompleteBodySchema,
     responses: {

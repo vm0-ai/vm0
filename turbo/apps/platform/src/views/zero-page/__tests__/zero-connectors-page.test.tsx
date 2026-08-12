@@ -739,7 +739,7 @@ describe("connectors page", () => {
   });
 
   it("shows only the update dialog when the client requires an upgrade", async () => {
-    context.mocks.http.get("*/api/zero/connector-catalog/status", () => {
+    context.mocks.http.get("*/api/okou/connector-catalog/status", () => {
       return Response.json(
         { error: "Client update required" },
         { status: CLIENT_FORCE_UPGRADE_STATUS },
@@ -2718,7 +2718,7 @@ describe("connectors page", () => {
     context.mocks.browser.open(createMockAuthWindow());
     let pollCount = 0;
     context.mocks.http.post(
-      "*/api/zero/connectors/stripe/oauth/device/sessions/:sessionId/poll",
+      "*/api/okou/connectors/stripe/oauth/device/sessions/:sessionId/poll",
       () => {
         pollCount += 1;
         if (pollCount === 1) {
@@ -3417,7 +3417,7 @@ describe("connectors page", () => {
 
   it("suppresses external-code transport error toasts and restores a retryable state", async () => {
     context.mocks.http.post(
-      "*/api/zero/connectors/aws/external-code/sessions/:sessionId/complete",
+      "*/api/okou/connectors/aws/external-code/sessions/:sessionId/complete",
       () => {
         return HttpResponse.error();
       },
@@ -4120,7 +4120,7 @@ describe("connectors page", () => {
       role: "admin",
     });
     context.mocks.data.team([]);
-    context.mocks.http.get("*/api/zero/custom-connectors", () => {
+    context.mocks.http.get("*/api/okou/custom-connectors", () => {
       return HttpResponse.json({ connectors: [connector] });
     });
 

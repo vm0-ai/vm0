@@ -13,7 +13,7 @@ import { currentAgentId } from "./shared";
 function currentChatThreadId(): string {
   const threadId = getOkouChatThreadId()?.trim();
   if (!threadId) {
-    throw new Error("ZERO_CHAT_THREAD_ID is not set", {
+    throw new Error("OKOU_CHAT_THREAD_ID is not set", {
       cause: new Error("Run this command from a web chat thread"),
     });
   }

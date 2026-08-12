@@ -10,9 +10,9 @@ import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/feishu/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/feishu/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/feishu/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/feishu/upload-file/complete";
 const STORAGE_UPLOAD_URL = "https://storage.test/feishu-upload";
 const FILE_CONTENT = "feishu pdf content";
 

@@ -12,7 +12,7 @@ import { downloadFileCommand } from "../download-file";
 import chalk from "chalk";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/zero/integrations/telegram/download-file";
+  "http://localhost:3000/api/okou/integrations/telegram/download-file";
 
 describe("okou telegram download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

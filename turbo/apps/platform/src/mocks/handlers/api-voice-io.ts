@@ -1,7 +1,7 @@
 /**
  * Voice IO API Handlers
  *
- * Mock handlers for /api/zero/voice-io endpoints.
+ * Mock handlers for /api/okou/voice-io endpoints.
  * Default behavior: quota endpoint returns `allowed: true` with unlimited
  * (limit: null) so tests that don't care about quota don't produce
  * unhandled-request warnings. Tests that need specific quota state should

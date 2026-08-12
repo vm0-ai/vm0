@@ -325,7 +325,7 @@ describe("chat event background sync", () => {
       version: 1 as const,
       parts: [{ type: "text" as const, text: "Canonical input" }],
     };
-    context.mocks.http.get("*/api/zero/chat-threads/:threadId/events", () => {
+    context.mocks.http.get("*/api/okou/chat-threads/:threadId/events", () => {
       return Response.json({
         events: [
           {

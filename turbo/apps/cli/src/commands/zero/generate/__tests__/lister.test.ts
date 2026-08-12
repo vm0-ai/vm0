@@ -115,7 +115,7 @@ function stubConnectorsWithCatalogSlugs(
 
 function stubUserConnectors(enabledConnectorSlugs: string[]) {
   return http.get(
-    `http://localhost:3000/api/zero/agents/${AGENT_ID}/user-connectors`,
+    `http://localhost:3000/api/okou/agents/${AGENT_ID}/user-connectors`,
     () => {
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -141,7 +141,7 @@ function stubBillingStatus(
   videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
-  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+  return http.get("http://localhost:3000/api/okou/billing/status", () => {
     return HttpResponse.json({
       tier,
       canBuyCredits: videoGenerationAllowed,

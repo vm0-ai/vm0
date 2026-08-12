@@ -10,7 +10,7 @@ const REVOKED_EVENT_ID = "00000000-0000-4000-8000-000000000011";
 const REVOKE_EVENT_ID = "00000000-0000-4000-8000-000000000012";
 const QUEUED_EVENT_ID = "00000000-0000-4000-8000-000000000013";
 const AUTOMATION_EVENT_ID = "00000000-0000-4000-8000-000000000014";
-const EVENTS_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/events`;
+const EVENTS_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/events`;
 
 function promptEvent(args: {
   id: string;

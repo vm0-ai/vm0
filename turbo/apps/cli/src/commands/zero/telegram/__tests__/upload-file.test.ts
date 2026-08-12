@@ -12,9 +12,9 @@ import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/telegram/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/telegram/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/telegram/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/telegram/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/telegram-upload";
 
 describe("okou telegram upload-file command", () => {
