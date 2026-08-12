@@ -14,13 +14,57 @@ interface ModelStatsObservationState {
   readonly aggregatedAt: string | null;
 }
 
+export interface ModelStatsStatKey {
+  readonly hourStart: Date;
+  readonly model: string;
+}
+
+export interface ModelStatsFixtureScope {
+  readonly observationIdempotencyKeys: readonly string[];
+  readonly statKeys: readonly ModelStatsStatKey[];
+}
+
+export interface ModelStatsObservationFixture {
+  readonly idempotencyKey: string;
+  readonly model: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
+  readonly observedAt: Date;
+  readonly aggregatedAt: Date | null;
+}
+
+interface ModelStatsAggregationResult {
+  readonly cutoff: string;
+  readonly processedHours: number;
+  readonly processedObservations: number;
+  readonly updatedStats: number;
+  readonly deletedObservations: number;
+}
+
+interface ModelStatsRankingResult {
+  readonly period: "today" | "week" | "month";
+  readonly totalTokens: number;
+  readonly windowStart: string;
+  readonly windowEnd: string;
+  readonly rows: readonly {
+    readonly model: string;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly totalTokens: number;
+    readonly previousTotalTokens: number;
+  }[];
+}
+
 function requestModelStatsState(
   context: TestContext,
   path: string,
   init?: RequestInit,
+  signal: AbortSignal = context.signal,
 ): Promise<Response> {
   const app = createAppWithRoutes({
-    signal: context.signal,
+    signal,
     routes: testModelStatsStateRoutes,
   });
   return Promise.resolve(app.request(path, init));
@@ -40,6 +84,7 @@ function expectOk(response: Response, operation: string): void {
 async function postAction(
   context: TestContext,
   body: TestModelStatsStateActionBody,
+  signal: AbortSignal = context.signal,
 ): Promise<TestModelStatsStateActionResponse> {
   const response = await requestModelStatsState(
     context,
@@ -49,9 +94,98 @@ async function postAction(
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     },
+    signal,
   );
   await expectOk(response, `model stats state action ${body.action}`);
   return await readJson<TestModelStatsStateActionResponse>(response);
+}
+
+function wireStatKeys(statKeys: readonly ModelStatsStatKey[]) {
+  return statKeys.map((statKey) => {
+    return {
+      hour_start: statKey.hourStart.toISOString(),
+      model: statKey.model,
+    };
+  });
+}
+
+function aggregateFixtureBody(
+  args: ModelStatsFixtureScope & { readonly processedAt: Date },
+): TestModelStatsStateActionBody {
+  return {
+    action: "aggregate-fixture",
+    processed_at: args.processedAt.toISOString(),
+    observation_idempotency_keys: [...args.observationIdempotencyKeys],
+    stat_keys: wireStatKeys(args.statKeys),
+  };
+}
+
+export function requestAggregateModelStatsFixture(
+  context: TestContext,
+  args: ModelStatsFixtureScope & { readonly processedAt: Date },
+  signal: AbortSignal = context.signal,
+): Promise<Response> {
+  return requestModelStatsState(
+    context,
+    `${MODEL_STATS_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(aggregateFixtureBody(args)),
+    },
+    signal,
+  );
+}
+
+export async function aggregateModelStatsFixture(
+  context: TestContext,
+  args: ModelStatsFixtureScope & { readonly processedAt: Date },
+): Promise<ModelStatsAggregationResult> {
+  const response = await postAction(context, aggregateFixtureBody(args));
+  if (!response.aggregation) {
+    throw new Error("Model stats aggregation response is incomplete");
+  }
+  return {
+    cutoff: response.aggregation.cutoff,
+    processedHours: response.aggregation.processed_hours,
+    processedObservations: response.aggregation.processed_observations,
+    updatedStats: response.aggregation.updated_stats,
+    deletedObservations: response.aggregation.deleted_observations,
+  };
+}
+
+export async function readModelStatsFixtureRankings(
+  context: TestContext,
+  args: {
+    readonly period?: string;
+    readonly now: Date;
+    readonly statKeys: readonly ModelStatsStatKey[];
+  },
+): Promise<ModelStatsRankingResult> {
+  const response = await postAction(context, {
+    action: "read-fixture-rankings",
+    ...(args.period === undefined ? {} : { period: args.period }),
+    now: args.now.toISOString(),
+    stat_keys: wireStatKeys(args.statKeys),
+  });
+  if (!response.ranking) {
+    throw new Error("Model stats ranking response is incomplete");
+  }
+  return {
+    period: response.ranking.period,
+    totalTokens: response.ranking.total_tokens,
+    windowStart: response.ranking.window_start,
+    windowEnd: response.ranking.window_end,
+    rows: response.ranking.rows.map((row) => {
+      return {
+        model: row.model,
+        inputTokens: row.input_tokens,
+        outputTokens: row.output_tokens,
+        totalTokens: row.total_tokens,
+        previousTotalTokens: row.previous_total_tokens,
+      };
+    }),
+  };
 }
 
 export async function holdModelStatsAggregationLock(
@@ -133,19 +267,24 @@ export async function readModelStatsObservations(
   });
 }
 
-export async function insertZeroTokenModelStatsObservation(
+export async function insertModelStatsObservations(
   context: TestContext,
-  args: {
-    readonly idempotencyKey: string;
-    readonly model: string;
-    readonly observedAt: Date;
-  },
+  observations: readonly ModelStatsObservationFixture[],
 ): Promise<void> {
   await postAction(context, {
-    action: "insert-zero-token-observation",
-    idempotency_key: args.idempotencyKey,
-    model: args.model,
-    observed_at: args.observedAt.toISOString(),
+    action: "insert-observations",
+    observations: observations.map((observation) => {
+      return {
+        idempotency_key: observation.idempotencyKey,
+        model: observation.model,
+        input_tokens: observation.inputTokens,
+        output_tokens: observation.outputTokens,
+        cache_read_input_tokens: observation.cacheReadInputTokens,
+        cache_creation_input_tokens: observation.cacheCreationInputTokens,
+        observed_at: observation.observedAt.toISOString(),
+        aggregated_at: observation.aggregatedAt?.toISOString() ?? null,
+      };
+    }),
   });
 }
 
@@ -181,16 +320,12 @@ export async function deleteModelStatsFixture(
   context: TestContext,
   args: {
     readonly idempotencyKeys: readonly string[];
-    readonly models: readonly string[];
-    readonly windowStart: Date;
-    readonly windowEnd: Date;
+    readonly statKeys: readonly ModelStatsStatKey[];
   },
 ): Promise<void> {
   await postAction(context, {
     action: "delete-fixture",
     idempotency_keys: [...args.idempotencyKeys],
-    models: [...args.models],
-    window_start: args.windowStart.toISOString(),
-    window_end: args.windowEnd.toISOString(),
+    stat_keys: wireStatKeys(args.statKeys),
   });
 }

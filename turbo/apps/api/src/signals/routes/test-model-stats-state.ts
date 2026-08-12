@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-model-stats-state";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
-import { and, asc, count, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -15,6 +15,12 @@ import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { lockModelStatsAggregation } from "../services/model-stats-aggregation-lock.service";
+import {
+  aggregateModelStats,
+  readModelRankings,
+  type ModelStatKey,
+  type ModelStatsAggregationScope,
+} from "../services/model-stats.service";
 import { createDeferredPromise, onRejection } from "../utils";
 import {
   isTestEndpointAllowed,
@@ -231,24 +237,40 @@ async function deleteObservations(
   signal.throwIfAborted();
 }
 
-async function insertZeroTokenObservation(
+async function insertObservations(
   db: Db,
   body: Extract<
     TestModelStatsStateActionBody,
-    { action: "insert-zero-token-observation" }
+    { action: "insert-observations" }
   >,
   signal: AbortSignal,
 ): Promise<void> {
-  await db.insert(modelUsageObservation).values({
-    idempotencyKey: body.idempotency_key,
-    model: body.model,
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadInputTokens: 0,
-    cacheCreationInputTokens: 0,
-    observedAt: new Date(body.observed_at),
-  });
-  signal.throwIfAborted();
+  for (
+    let offset = 0;
+    offset < body.observations.length;
+    offset += OBSERVATION_FIXTURE_INSERT_BATCH_SIZE
+  ) {
+    await db.insert(modelUsageObservation).values(
+      body.observations
+        .slice(offset, offset + OBSERVATION_FIXTURE_INSERT_BATCH_SIZE)
+        .map((observation) => {
+          return {
+            idempotencyKey: observation.idempotency_key,
+            model: observation.model,
+            inputTokens: observation.input_tokens,
+            outputTokens: observation.output_tokens,
+            cacheReadInputTokens: observation.cache_read_input_tokens,
+            cacheCreationInputTokens: observation.cache_creation_input_tokens,
+            observedAt: new Date(observation.observed_at),
+            aggregatedAt:
+              observation.aggregated_at === null
+                ? null
+                : new Date(observation.aggregated_at),
+          };
+        }),
+    );
+    signal.throwIfAborted();
+  }
 }
 
 async function insertAppliedObservations(
@@ -294,6 +316,18 @@ async function deleteFixture(
   body: Extract<TestModelStatsStateActionBody, { action: "delete-fixture" }>,
   signal: AbortSignal,
 ): Promise<void> {
+  const statKeyPredicate = or(
+    ...body.stat_keys.map((statKey) => {
+      return and(
+        eq(modelStat.hourStart, new Date(statKey.hour_start)),
+        eq(modelStat.model, statKey.model),
+      );
+    }),
+  );
+  if (!statKeyPredicate) {
+    throw new Error("Model stats fixture requires at least one stat key");
+  }
+
   await db.transaction(async (tx) => {
     await tx
       .delete(modelUsageObservation)
@@ -301,17 +335,29 @@ async function deleteFixture(
         inArray(modelUsageObservation.idempotencyKey, body.idempotency_keys),
       );
     signal.throwIfAborted();
-    await tx
-      .delete(modelStat)
-      .where(
-        and(
-          gte(modelStat.hourStart, new Date(body.window_start)),
-          lt(modelStat.hourStart, new Date(body.window_end)),
-          inArray(modelStat.model, body.models),
-        ),
-      );
+    await tx.delete(modelStat).where(statKeyPredicate);
     signal.throwIfAborted();
   });
+}
+
+function modelStatKeys(
+  statKeys: readonly { readonly hour_start: string; readonly model: string }[],
+): readonly ModelStatKey[] {
+  return statKeys.map((statKey) => {
+    return {
+      hourStart: new Date(statKey.hour_start),
+      model: statKey.model,
+    };
+  });
+}
+
+function aggregationScope(
+  body: Extract<TestModelStatsStateActionBody, { action: "aggregate-fixture" }>,
+): ModelStatsAggregationScope {
+  return {
+    observationIdempotencyKeys: body.observation_idempotency_keys,
+    statKeys: modelStatKeys(body.stat_keys),
+  };
 }
 
 async function mutateModelStatsState(
@@ -371,8 +417,54 @@ async function mutateModelStatsState(
         },
       };
     }
-    case "insert-zero-token-observation": {
-      await insertZeroTokenObservation(db, body, signal);
+    case "aggregate-fixture": {
+      const result = await aggregateModelStats(db, signal, {
+        processedAt: new Date(body.processed_at),
+        scope: aggregationScope(body),
+      });
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          aggregation: {
+            cutoff: result.cutoff.toISOString(),
+            processed_hours: result.processedHours,
+            processed_observations: result.processedObservations,
+            updated_stats: result.updatedStats,
+            deleted_observations: result.deletedObservations,
+          },
+        },
+      };
+    }
+    case "read-fixture-rankings": {
+      const result = await readModelRankings(db, body.period, signal, {
+        now: new Date(body.now),
+        statKeys: modelStatKeys(body.stat_keys),
+      });
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          ranking: {
+            period: result.period,
+            total_tokens: result.totalTokens,
+            window_start: result.windowStart.toISOString(),
+            window_end: result.windowEnd.toISOString(),
+            rows: result.rows.map((row) => {
+              return {
+                model: row.model,
+                input_tokens: row.inputTokens,
+                output_tokens: row.outputTokens,
+                total_tokens: row.totalTokens,
+                previous_total_tokens: row.previousTotalTokens,
+              };
+            }),
+          },
+        },
+      };
+    }
+    case "insert-observations": {
+      await insertObservations(db, body, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "insert-applied-observations": {

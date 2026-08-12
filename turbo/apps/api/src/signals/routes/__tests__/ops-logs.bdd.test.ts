@@ -24,39 +24,64 @@ import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
+  aggregateModelStatsFixture,
   deleteModelStatsFixture,
   deleteModelStatsObservations,
   holdModelStatsAggregationLock,
   holdModelStatsObservationLock,
   insertAppliedModelStatsObservations,
-  insertZeroTokenModelStatsObservation,
+  insertModelStatsObservations,
+  readModelStatsFixtureRankings,
   readModelStatsAggregationLockState,
   readModelStatsObservationLockState,
   readModelStatsObservations,
   releaseModelStatsAggregationLock,
   releaseModelStatsObservationLock,
+  requestAggregateModelStatsFixture,
+  type ModelStatsFixtureScope,
+  type ModelStatsObservationFixture,
+  type ModelStatsStatKey,
 } from "./helpers/model-stats-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
 
-/*
- * BILL-02 model stats and OPS-01 user export.
- *
- * This file is the SOLE OWNER of GET /api/cron/aggregate-model-stats:
- * the cron is a global projection sweep over model_stat, so calling it from
- * any other test file would race this file's far-past observation windows on
- * the shared database — the same single-file-ownership rule as the email
- * drain / billing reconcile / screenshot cleanup crons (see the shared cron
- * auth helper in helpers/api-bdd-runs.ts).
- *
- * Shared-DB time design: the model-stats chain derives a random far-past UTC
- * day (2003-2009) per run and asserts rankings as baseline+delta, so leftovers
- * from interrupted past runs in a colliding window cannot flake assertions.
- */
+/* BILL-02 model stats and OPS-01 user export. */
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
+
+function modelStatsObservation(args: {
+  readonly idempotencyKey: string;
+  readonly model: string;
+  readonly observedAt: number;
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly cacheReadInputTokens?: number;
+  readonly cacheCreationInputTokens?: number;
+  readonly aggregatedAt?: number | null;
+}): ModelStatsObservationFixture {
+  return {
+    idempotencyKey: args.idempotencyKey,
+    model: args.model,
+    inputTokens: args.inputTokens ?? 0,
+    outputTokens: args.outputTokens ?? 0,
+    cacheReadInputTokens: args.cacheReadInputTokens ?? 0,
+    cacheCreationInputTokens: args.cacheCreationInputTokens ?? 0,
+    observedAt: new Date(args.observedAt),
+    aggregatedAt:
+      args.aggregatedAt === undefined || args.aggregatedAt === null
+        ? null
+        : new Date(args.aggregatedAt),
+  };
+}
+
+function modelStatsStatKey(
+  model: string,
+  hourStart: number,
+): ModelStatsStatKey {
+  return { model, hourStart: new Date(hourStart) };
+}
 
 interface DeferredS3Put {
   readonly resolve: () => void;
@@ -269,7 +294,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       routes: modelStatsRoutes,
     });
     const rejected = await aggregateApp.request(
-      `${cronAggregateModelStatsContract.aggregate.path}?hours=24`,
+      cronAggregateModelStatsContract.aggregate.path + "?hours=24",
       {
         headers: { authorization: "Bearer test-cron-secret" },
       },
@@ -278,30 +303,39 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     expect(rejected.status).toBe(400);
   });
 
-  it("incrementally projects model observations into public rankings", async () => {
+  it("incrementally projects owned observations into exact rankings", async () => {
     const api = createOpsLogsApi(context);
-    const runs = createRunsApi(context);
-    const webhooks = createWebhookCallbackApi(context);
-    const model = "claude-sonnet-5";
-
-    // Random far-past UTC day (2003-2009): isolated from real-now ranking
-    // windows and unlikely to collide with another interrupted test fixture.
-    const seed = Number.parseInt(randomUUID().slice(0, 8), 16);
-    const dayYear = 2003 + (seed % 7);
-    const dayMonth = Math.floor(seed / 7) % 12;
-    const dayStart = Date.UTC(
-      dayYear,
-      dayMonth,
-      2 + (Math.floor(seed / 84) % 26),
-    );
+    const model = "fixture-model-" + randomUUID();
+    const dayStart = Date.UTC(2026, 0, 2);
     const aggregateAt = dayStart + 4 * HOUR_MS;
     const mainObservedAt = dayStart + 3 * HOUR_MS + 10 * 60_000;
     const previousObservedAt = dayStart - DAY_MS + 22 * HOUR_MS + 30 * 60_000;
+    const oldPendingAt = aggregateAt - 769 * HOUR_MS + 10 * 60_000;
+    const laterAggregateAt = dayStart + 33 * DAY_MS + 4 * HOUR_MS;
     const windowEndIso = new Date(aggregateAt).toISOString();
     const todayStartIso = new Date(dayStart).toISOString();
     const fixtureObservationKeys: string[] = [];
+    const excludedObservationKey = randomUUID();
+    const fixtureStatKeys = [
+      modelStatsStatKey(
+        model,
+        Math.floor(previousObservedAt / HOUR_MS) * HOUR_MS,
+      ),
+      modelStatsStatKey(model, dayStart + 3 * HOUR_MS),
+      modelStatsStatKey(model, dayStart + 4 * HOUR_MS),
+      modelStatsStatKey(model, Math.floor(oldPendingAt / HOUR_MS) * HOUR_MS),
+      modelStatsStatKey(model, dayStart - 5 * HOUR_MS),
+      modelStatsStatKey(model, dayStart - 4 * HOUR_MS),
+    ];
     let aggregationLockRequest: Promise<void> | null = null;
     let observationLockRequest: Promise<void> | null = null;
+
+    function fixtureScope(): ModelStatsFixtureScope {
+      return {
+        observationIdempotencyKeys: [...fixtureObservationKeys],
+        statKeys: fixtureStatKeys,
+      };
+    }
 
     onTestFinished(async () => {
       await releaseModelStatsAggregationLock(context);
@@ -314,190 +348,80 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       }
       if (fixtureObservationKeys.length > 0) {
         await deleteModelStatsFixture(context, {
-          idempotencyKeys: fixtureObservationKeys,
-          models: [model],
-          windowStart: new Date(dayStart - 40 * DAY_MS),
-          windowEnd: new Date(dayStart + DAY_MS),
+          idempotencyKeys: [...fixtureObservationKeys, excludedObservationKey],
+          statKeys: fixtureStatKeys,
         });
       }
     });
 
-    // Given: the run and its sandbox token are created at the real wall
-    // clock, then terminal-ized before any mocked-time ingestion.
-    const { actor, agentId } = await entitledRunActor();
-    const created = await runs.createRun(actor, {
-      agentId,
-      prompt: "observe model usage",
-      modelProvider: "anthropic-api-key",
-    });
-    const sandboxHeaders = {
-      authorization: `Bearer ${runs.sandboxTokenForRun(actor, created.runId)}`,
-    };
-    await runs.requestCancelRun(actor, created.runId, [200]);
-
     mockNow(aggregateAt);
-    const baselineAggregate = await api.requestAggregateModelStats(
-      "valid",
-      [200],
-    );
-    expect(baselineAggregate.body).toMatchObject({
-      success: true,
-      cutoff: windowEndIso,
-    });
-    expect(baselineAggregate.body.processedHours).toBeGreaterThanOrEqual(0);
-    expect(baselineAggregate.body.processedObservations).toBeGreaterThanOrEqual(
-      0,
-    );
-    expect(baselineAggregate.body.updatedStats).toBeGreaterThanOrEqual(0);
-    expect(baselineAggregate.body.deletedObservations).toBeGreaterThanOrEqual(
-      0,
-    );
-
-    const baseline = await api.readModelRankings("today");
-    expect(baseline.headers.get("cache-control")).toBe(
+    const publicRankings = await api.readModelRankings("today");
+    expect(publicRankings.headers.get("cache-control")).toBe(
       "public, s-maxage=300, stale-while-revalidate=600",
     );
-    expect(baseline.body.period).toBe("today");
-    expect(baseline.body.windowStart).toBe(todayStartIso);
-    expect(baseline.body.windowEnd).toBe(windowEndIso);
-    const baseRow = baseline.body.rows.find((row) => {
-      return row.model === model;
-    }) ?? {
-      model,
-      inputTokens: 0,
-      outputTokens: 0,
-      totalTokens: 0,
-      previousTotalTokens: 0,
-    };
-    const baseTotal = baseline.body.totalTokens;
+    expect(publicRankings.body.period).toBe("today");
+    expect(publicRankings.body.windowStart).toBe(todayStartIso);
+    expect(publicRankings.body.windowEnd).toBe(windowEndIso);
+    const fallback = await api.readModelRankings("unsupported");
+    expect(fallback.body.period).toBe("week");
+    clearMockNow();
 
-    mockNow(mainObservedAt);
     const compactIdempotencyKey = randomUUID();
-    fixtureObservationKeys.push(compactIdempotencyKey);
-    const compactBody = {
-      runId: created.runId,
-      events: [
-        {
-          idempotencyKey: compactIdempotencyKey,
-          model,
-          inputTokens: 300,
-          outputTokens: 200,
-          cacheReadInputTokens: 40,
-          cacheCreationInputTokens: 10,
-        },
-      ],
-    };
-    const duplicateWithinRequest =
-      await webhooks.requestAgentModelUsageObservationV2Unchecked(
-        {
-          runId: created.runId,
-          events: [compactBody.events[0], compactBody.events[0]],
-        },
-        sandboxHeaders,
-        [400],
-      );
-    expect(duplicateWithinRequest.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
-
-    const ingested = await webhooks.requestAgentModelUsageObservationV2(
-      compactBody,
-      sandboxHeaders,
-      [200],
+    const previousIdempotencyKey = randomUUID();
+    const zeroTokenIdempotencyKey = randomUUID();
+    const currentHourIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(
+      compactIdempotencyKey,
+      previousIdempotencyKey,
+      zeroTokenIdempotencyKey,
+      currentHourIdempotencyKey,
     );
-    expect(ingested.body).toStrictEqual({ success: true });
-    await webhooks.requestAgentModelUsageObservationV2(
-      compactBody,
-      sandboxHeaders,
-      [200],
-    );
-    await Promise.all([
-      webhooks.requestAgentModelUsageObservationV2(
-        compactBody,
-        sandboxHeaders,
-        [200],
-      ),
-      webhooks.requestAgentModelUsageObservationV2(
-        compactBody,
-        sandboxHeaders,
-        [200],
-      ),
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: compactIdempotencyKey,
+        model,
+        observedAt: mainObservedAt,
+        inputTokens: 300,
+        outputTokens: 200,
+        cacheReadInputTokens: 40,
+        cacheCreationInputTokens: 10,
+      }),
+      modelStatsObservation({
+        idempotencyKey: previousIdempotencyKey,
+        model,
+        observedAt: previousObservedAt,
+        inputTokens: 80,
+      }),
+      modelStatsObservation({
+        idempotencyKey: zeroTokenIdempotencyKey,
+        model,
+        observedAt: mainObservedAt,
+      }),
+      modelStatsObservation({
+        idempotencyKey: currentHourIdempotencyKey,
+        model,
+        observedAt: aggregateAt + 10 * 60_000,
+        inputTokens: 7,
+      }),
+      modelStatsObservation({
+        idempotencyKey: excludedObservationKey,
+        model,
+        observedAt: mainObservedAt,
+        inputTokens: 999,
+      }),
     ]);
 
-    mockNow(previousObservedAt);
-    const previousIdempotencyKey = randomUUID();
-    fixtureObservationKeys.push(previousIdempotencyKey);
-    await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: previousIdempotencyKey,
-            model,
-            inputTokens: 80,
-            outputTokens: 0,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-
-    mockNow(mainObservedAt);
-    const zeroTokenIdempotencyKey = randomUUID();
-    fixtureObservationKeys.push(zeroTokenIdempotencyKey);
-    await insertZeroTokenModelStatsObservation(context, {
-      idempotencyKey: zeroTokenIdempotencyKey,
-      model,
-      observedAt: new Date(mainObservedAt),
+    const aggregated = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(aggregateAt),
     });
-
-    mockNow(aggregateAt + 10 * 60_000);
-    const currentHourIdempotencyKey = randomUUID();
-    fixtureObservationKeys.push(currentHourIdempotencyKey);
-    await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: currentHourIdempotencyKey,
-            model,
-            inputTokens: 7,
-            outputTokens: 0,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-
-    mockNow(aggregateAt);
-    const aggregated = await api.requestAggregateModelStats("valid", [200]);
-    expect(aggregated.body).toMatchObject({
-      success: true,
+    expect(aggregated).toStrictEqual({
       cutoff: windowEndIso,
+      processedHours: 2,
+      processedObservations: 3,
+      updatedStats: 2,
+      deletedObservations: 1,
     });
-    expect(aggregated.body.processedHours).toBeGreaterThanOrEqual(2);
-    expect(aggregated.body.processedObservations).toBeGreaterThanOrEqual(3);
-    expect(aggregated.body.updatedStats).toBeGreaterThanOrEqual(2);
-
-    const afterIngest = await api.readModelRankings("today");
-    expect(
-      afterIngest.body.rows.find((row) => {
-        return row.model === model;
-      }),
-    ).toStrictEqual({
-      model,
-      inputTokens: baseRow.inputTokens + 350,
-      outputTokens: baseRow.outputTokens + 200,
-      totalTokens: baseRow.totalTokens + 550,
-      previousTotalTokens: baseRow.previousTotalTokens + 80,
-    });
-    expect(afterIngest.body.totalTokens).toBe(baseTotal + 550);
 
     const initialObservationStates = await readModelStatsObservations(context, [
       compactIdempotencyKey,
@@ -505,6 +429,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       zeroTokenIdempotencyKey,
       currentHourIdempotencyKey,
     ]);
+    expect(initialObservationStates).toHaveLength(3);
     expect(initialObservationStates).toStrictEqual(
       expect.arrayContaining([
         {
@@ -521,114 +446,133 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
         },
       ]),
     );
-    expect(
-      initialObservationStates.some((observation) => {
-        return observation.idempotencyKey === previousIdempotencyKey;
-      }),
-    ).toBeFalsy();
+    await expect(
+      readModelStatsObservations(context, [excludedObservationKey]),
+    ).resolves.toStrictEqual([
+      {
+        idempotencyKey: excludedObservationKey,
+        aggregatedAt: null,
+      },
+    ]);
 
-    // A delayed delivery in an already-processed hour remains pending and is
-    // added exactly once by the next cron request.
-    mockNow(mainObservedAt);
+    const afterIngest = await readModelStatsFixtureRankings(context, {
+      period: "today",
+      now: new Date(aggregateAt),
+      statKeys: fixtureStatKeys,
+    });
+    expect(afterIngest).toStrictEqual({
+      period: "today",
+      totalTokens: 550,
+      windowStart: todayStartIso,
+      windowEnd: windowEndIso,
+      rows: [
+        {
+          model,
+          inputTokens: 350,
+          outputTokens: 200,
+          totalTokens: 550,
+          previousTotalTokens: 80,
+        },
+      ],
+    });
+
     const lateIdempotencyKey = randomUUID();
     fixtureObservationKeys.push(lateIdempotencyKey);
-    await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: lateIdempotencyKey,
-            model,
-            inputTokens: 0,
-            outputTokens: 50,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-    mockNow(aggregateAt);
-    const lateProcessing = await api.requestAggregateModelStats("valid", [200]);
-    expect(lateProcessing.body).toMatchObject({
-      success: true,
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: lateIdempotencyKey,
+        model,
+        observedAt: mainObservedAt,
+        outputTokens: 50,
+      }),
+    ]);
+    const lateProcessing = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(aggregateAt),
+    });
+    expect(lateProcessing).toStrictEqual({
       cutoff: windowEndIso,
       processedHours: 1,
       processedObservations: 1,
       updatedStats: 1,
+      deletedObservations: 0,
     });
-    const reprocessed = await api.readModelRankings("today");
-    expect(
-      reprocessed.body.rows.find((row) => {
-        return row.model === model;
-      }),
-    ).toStrictEqual({
-      model,
-      inputTokens: baseRow.inputTokens + 350,
-      outputTokens: baseRow.outputTokens + 250,
-      totalTokens: baseRow.totalTokens + 600,
-      previousTotalTokens: baseRow.previousTotalTokens + 80,
+    const reprocessed = await readModelStatsFixtureRankings(context, {
+      period: "today",
+      now: new Date(aggregateAt),
+      statKeys: fixtureStatKeys,
     });
-    expect(reprocessed.body.totalTokens).toBe(baseTotal + 600);
-
-    // Month-period rankings: window asserts only — the month window can
-    // contain leftovers accumulated by colliding past runs.
-    const monthly = await api.readModelRankings("month");
-    expect(monthly.body.period).toBe("month");
-    expect(monthly.body.windowStart).toBe(
-      new Date(Date.UTC(dayYear, dayMonth, 1)).toISOString(),
-    );
-    expect(monthly.body.windowEnd).toBe(windowEndIso);
-    const monthlyRow = monthly.body.rows.find((row) => {
-      return row.model === model;
+    expect(reprocessed).toStrictEqual({
+      period: "today",
+      totalTokens: 600,
+      windowStart: todayStartIso,
+      windowEnd: windowEndIso,
+      rows: [
+        {
+          model,
+          inputTokens: 350,
+          outputTokens: 250,
+          totalTokens: 600,
+          previousTotalTokens: 80,
+        },
+      ],
     });
-    expect(monthlyRow?.totalTokens).toBeGreaterThanOrEqual(600);
 
-    const fallback = await api.readModelRankings("unsupported");
-    expect(fallback.body.period).toBe("week");
+    const monthly = await readModelStatsFixtureRankings(context, {
+      period: "month",
+      now: new Date(aggregateAt),
+      statKeys: fixtureStatKeys,
+    });
+    expect(monthly).toStrictEqual({
+      period: "month",
+      totalTokens: 680,
+      windowStart: new Date(Date.UTC(2026, 0, 1)).toISOString(),
+      windowEnd: windowEndIso,
+      rows: [
+        {
+          model,
+          inputTokens: 430,
+          outputTokens: 250,
+          totalTokens: 680,
+          previousTotalTokens: 0,
+        },
+      ],
+    });
 
-    // Pending work is recovered by lifecycle state regardless of age.
-    const oldPendingAt = aggregateAt - 769 * HOUR_MS + 10 * 60_000;
-    mockNow(oldPendingAt);
     const oldPendingIdempotencyKey = randomUUID();
     fixtureObservationKeys.push(oldPendingIdempotencyKey);
-    await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: oldPendingIdempotencyKey,
-            model,
-            inputTokens: 17,
-            outputTokens: 0,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-    mockNow(aggregateAt);
-    const extended = await api.requestAggregateModelStats("valid", [200]);
-    expect(extended.body).toMatchObject({
-      success: true,
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: oldPendingIdempotencyKey,
+        model,
+        observedAt: oldPendingAt,
+        inputTokens: 17,
+      }),
+    ]);
+    const extended = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(aggregateAt),
+    });
+    expect(extended).toStrictEqual({
       cutoff: windowEndIso,
       processedHours: 1,
       processedObservations: 1,
       updatedStats: 1,
+      deletedObservations: 1,
     });
     await expect(
       readModelStatsObservations(context, [oldPendingIdempotencyKey]),
     ).resolves.toStrictEqual([]);
-    await expect(api.readModelRankings("today")).resolves.toMatchObject({
-      body: reprocessed.body,
-    });
+    await expect(
+      readModelStatsFixtureRankings(context, {
+        period: "today",
+        now: new Date(aggregateAt),
+        statKeys: fixtureStatKeys,
+      }),
+    ).resolves.toStrictEqual(reprocessed);
 
-    // Both cron requests begin before this observation is committed. The
-    // transaction lock gives each processing statement a post-lock snapshot,
-    // and the two callers must claim the delivery only once.
+    const concurrentIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(concurrentIdempotencyKey);
     aggregationLockRequest = holdModelStatsAggregationLock(context);
     await expect
       .poll(
@@ -638,9 +582,16 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
         { timeout: 5000, interval: 20 },
       )
       .toMatchObject({ held: true });
+    const concurrentScope = fixtureScope();
     const concurrentAggregations = [
-      api.requestAggregateModelStats("valid", [200]),
-      api.requestAggregateModelStats("valid", [200]),
+      aggregateModelStatsFixture(context, {
+        ...concurrentScope,
+        processedAt: new Date(aggregateAt),
+      }),
+      aggregateModelStatsFixture(context, {
+        ...concurrentScope,
+        processedAt: new Date(aggregateAt),
+      }),
     ];
     await expect
       .poll(
@@ -652,67 +603,58 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       )
       .toBe(2);
 
-    mockNow(mainObservedAt);
-    const concurrentIdempotencyKey = randomUUID();
-    fixtureObservationKeys.push(concurrentIdempotencyKey);
-    await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: concurrentIdempotencyKey,
-            model,
-            inputTokens: 0,
-            outputTokens: 25,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-
-    mockNow(aggregateAt);
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: concurrentIdempotencyKey,
+        model,
+        observedAt: mainObservedAt,
+        outputTokens: 25,
+      }),
+    ]);
     await releaseModelStatsAggregationLock(context);
     await aggregationLockRequest;
     aggregationLockRequest = null;
     const concurrentResults = await Promise.all(concurrentAggregations);
     for (const result of concurrentResults) {
-      expect(result.body).toMatchObject({
-        success: true,
-        cutoff: windowEndIso,
-      });
+      expect(result.cutoff).toBe(windowEndIso);
+      expect(result.deletedObservations).toBe(0);
     }
     expect(
       concurrentResults.reduce((total, result) => {
-        return total + result.body.processedHours;
+        return total + result.processedHours;
       }, 0),
     ).toBe(1);
     expect(
       concurrentResults.reduce((total, result) => {
-        return total + result.body.processedObservations;
+        return total + result.processedObservations;
       }, 0),
     ).toBe(1);
     expect(
       concurrentResults.reduce((total, result) => {
-        return total + result.body.updatedStats;
+        return total + result.updatedStats;
       }, 0),
     ).toBe(1);
 
-    const afterConcurrent = await api.readModelRankings("today");
-    expect(
-      afterConcurrent.body.rows.find((row) => {
-        return row.model === model;
-      }),
-    ).toStrictEqual({
-      model,
-      inputTokens: baseRow.inputTokens + 350,
-      outputTokens: baseRow.outputTokens + 275,
-      totalTokens: baseRow.totalTokens + 625,
-      previousTotalTokens: baseRow.previousTotalTokens + 80,
+    const afterConcurrent = await readModelStatsFixtureRankings(context, {
+      period: "today",
+      now: new Date(aggregateAt),
+      statKeys: fixtureStatKeys,
     });
-    expect(afterConcurrent.body.totalTokens).toBe(baseTotal + 625);
+    expect(afterConcurrent).toStrictEqual({
+      period: "today",
+      totalTokens: 625,
+      windowStart: todayStartIso,
+      windowEnd: windowEndIso,
+      rows: [
+        {
+          model,
+          inputTokens: 350,
+          outputTokens: 275,
+          totalTokens: 625,
+          previousTotalTokens: 80,
+        },
+      ],
+    });
     await expect(
       readModelStatsObservations(context, [concurrentIdempotencyKey]),
     ).resolves.toStrictEqual([
@@ -722,24 +664,24 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       },
     ]);
 
-    // Cancellation after one committed hour must preserve that progress and
-    // roll the later in-flight hour back for the next request.
     const firstCancellationIdempotencyKey = randomUUID();
     const secondCancellationIdempotencyKey = randomUUID();
     fixtureObservationKeys.push(
       firstCancellationIdempotencyKey,
       secondCancellationIdempotencyKey,
     );
-    await insertZeroTokenModelStatsObservation(context, {
-      idempotencyKey: firstCancellationIdempotencyKey,
-      model,
-      observedAt: new Date(dayStart - 5 * HOUR_MS + 10 * 60_000),
-    });
-    await insertZeroTokenModelStatsObservation(context, {
-      idempotencyKey: secondCancellationIdempotencyKey,
-      model,
-      observedAt: new Date(dayStart - 4 * HOUR_MS + 10 * 60_000),
-    });
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: firstCancellationIdempotencyKey,
+        model,
+        observedAt: dayStart - 5 * HOUR_MS + 10 * 60_000,
+      }),
+      modelStatsObservation({
+        idempotencyKey: secondCancellationIdempotencyKey,
+        model,
+        observedAt: dayStart - 4 * HOUR_MS + 10 * 60_000,
+      }),
+    ]);
 
     observationLockRequest = holdModelStatsObservationLock(
       context,
@@ -755,15 +697,13 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       .toStrictEqual({ held: true });
 
     const cancellationController = new AbortController();
-    const cancelledAggregateApp = createAppWithRoutes({
-      signal: cancellationController.signal,
-      routes: modelStatsRoutes,
-    });
-    const cancelledAggregation = cancelledAggregateApp.request(
-      cronAggregateModelStatsContract.aggregate.path,
+    const cancelledAggregation = requestAggregateModelStatsFixture(
+      context,
       {
-        headers: { authorization: "Bearer test-cron-secret" },
+        ...fixtureScope(),
+        processedAt: new Date(aggregateAt),
       },
+      cancellationController.signal,
     );
     await expect
       .poll(
@@ -819,68 +759,54 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       ]),
     );
 
-    const resumed = await api.requestAggregateModelStats("valid", [200]);
-    expect(resumed.body).toMatchObject({
-      success: true,
+    const resumed = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(aggregateAt),
+    });
+    expect(resumed).toStrictEqual({
       cutoff: windowEndIso,
       processedHours: 1,
       processedObservations: 1,
       updatedStats: 0,
+      deletedObservations: 2,
     });
-    expect(resumed.body.deletedObservations).toBeGreaterThanOrEqual(2);
-    const resumedStates = await readModelStatsObservations(context, [
-      firstCancellationIdempotencyKey,
-      secondCancellationIdempotencyKey,
-    ]);
-    expect(resumedStates).toStrictEqual([]);
+    await expect(
+      readModelStatsObservations(context, [
+        firstCancellationIdempotencyKey,
+        secondCancellationIdempotencyKey,
+      ]),
+    ).resolves.toStrictEqual([]);
 
-    // A failed increment must roll back every statistic mutation. 1,024 maximum
-    // safe integers still fit in PostgreSQL bigint; the 1,025th overflows SUM.
-    // The observation markers must roll back with the additive upsert.
-    mockNow(mainObservedAt);
     const overflowEvents = Array.from({ length: 1025 }, () => {
-      return {
+      return modelStatsObservation({
         idempotencyKey: randomUUID(),
         model,
+        observedAt: mainObservedAt,
         inputTokens: Number.MAX_SAFE_INTEGER,
-        outputTokens: 0,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-      };
+      });
     });
     fixtureObservationKeys.push(
       ...overflowEvents.map((event) => {
         return event.idempotencyKey;
       }),
     );
-    for (let offset = 0; offset < overflowEvents.length; offset += 100) {
-      await webhooks.requestAgentModelUsageObservationV2(
-        {
-          runId: created.runId,
-          events: overflowEvents.slice(offset, offset + 100),
-        },
-        sandboxHeaders,
-        [200],
-      );
-    }
+    await insertModelStatsObservations(context, overflowEvents);
 
-    mockNow(aggregateAt);
-    const aggregateApp = createAppWithRoutes({
-      signal: context.signal,
-      routes: modelStatsRoutes,
+    const failedAggregate = await requestAggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(aggregateAt),
     });
-    const failedAggregate = await aggregateApp.request(
-      cronAggregateModelStatsContract.aggregate.path,
-      {
-        headers: { authorization: "Bearer test-cron-secret" },
-      },
-    );
     expect(failedAggregate.status).toBe(500);
     await expect(failedAggregate.json()).resolves.toStrictEqual({
       error: "Internal server error",
     });
-    const afterFailedIncrement = await api.readModelRankings("today");
-    expect(afterFailedIncrement.body).toStrictEqual(afterConcurrent.body);
+    await expect(
+      readModelStatsFixtureRankings(context, {
+        period: "today",
+        now: new Date(aggregateAt),
+        statKeys: fixtureStatKeys,
+      }),
+    ).resolves.toStrictEqual(afterConcurrent);
     const firstOverflowEvent = overflowEvents[0];
     const lastOverflowEvent = overflowEvents.at(-1);
     if (!firstOverflowEvent || !lastOverflowEvent) {
@@ -890,12 +816,20 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       firstOverflowEvent.idempotencyKey,
       lastOverflowEvent.idempotencyKey,
     ]);
-    expect(overflowStates).toHaveLength(2);
-    expect(
-      overflowStates.every((observation) => {
-        return observation.aggregatedAt === null;
+    expect(overflowStates).toStrictEqual(
+      [
+        {
+          idempotencyKey: firstOverflowEvent.idempotencyKey,
+          aggregatedAt: null,
+        },
+        {
+          idempotencyKey: lastOverflowEvent.idempotencyKey,
+          aggregatedAt: null,
+        },
+      ].sort((left, right) => {
+        return left.idempotencyKey.localeCompare(right.idempotencyKey);
       }),
-    ).toBeTruthy();
+    );
     await deleteModelStatsObservations(
       context,
       overflowEvents.map((event) => {
@@ -903,24 +837,17 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       }),
     );
 
-    // A later run processes the formerly current hour before cleaning every
-    // applied observation whose receipt-time retry lifetime has expired.
-    const laterAggregateAt = dayStart + 33 * DAY_MS + 4 * HOUR_MS;
-    mockNow(laterAggregateAt);
-    const laterProcessing = await api.requestAggregateModelStats(
-      "valid",
-      [200],
-    );
-    expect(laterProcessing.body).toMatchObject({
-      success: true,
-      cutoff: new Date(laterAggregateAt).toISOString(),
+    const laterProcessing = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(laterAggregateAt),
     });
-    expect(laterProcessing.body.processedHours).toBeGreaterThanOrEqual(1);
-    expect(laterProcessing.body.processedObservations).toBeGreaterThanOrEqual(
-      1,
-    );
-    expect(laterProcessing.body.updatedStats).toBeGreaterThanOrEqual(1);
-    expect(laterProcessing.body.deletedObservations).toBeGreaterThanOrEqual(5);
+    expect(laterProcessing).toStrictEqual({
+      cutoff: new Date(laterAggregateAt).toISOString(),
+      processedHours: 1,
+      processedObservations: 1,
+      updatedStats: 1,
+      deletedObservations: 5,
+    });
     const cleanedStates = await readModelStatsObservations(context, [
       compactIdempotencyKey,
       previousIdempotencyKey,
@@ -934,31 +861,29 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     ]);
     expect(cleanedStates).toStrictEqual([]);
 
-    mockNow(aggregateAt);
-    const noOp = await api.requestAggregateModelStats("valid", [200]);
-    expect(noOp.body).toStrictEqual({
-      success: true,
+    const noOp = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(aggregateAt),
+    });
+    expect(noOp).toStrictEqual({
       cutoff: windowEndIso,
       processedHours: 0,
       processedObservations: 0,
       updatedStats: 0,
       deletedObservations: 0,
     });
-    const unchanged = await api.readModelRankings("today");
-    expect(unchanged.body).toStrictEqual(afterConcurrent.body);
+    await expect(
+      readModelStatsFixtureRankings(context, {
+        period: "today",
+        now: new Date(aggregateAt),
+        statKeys: fixtureStatKeys,
+      }),
+    ).resolves.toStrictEqual(afterConcurrent);
   });
 
-  it("cleans expired applied observations in bounded batches", async () => {
-    const api = createOpsLogsApi(context);
-    const runs = createRunsApi(context);
-    const webhooks = createWebhookCallbackApi(context);
-    const model = "claude-sonnet-5";
-    const seed = Number.parseInt(randomUUID().slice(0, 8), 16);
-    const dayStart = Date.UTC(
-      1970 + (seed % 7),
-      Math.floor(seed / 7) % 12,
-      2 + (Math.floor(seed / 84) % 26),
-    );
+  it("cleans owned applied observations in bounded batches", async () => {
+    const model = "fixture-model-" + randomUUID();
+    const dayStart = Date.UTC(2026, 1, 2);
     const exactBoundaryObservedAt = dayStart + 3 * HOUR_MS + 15 * 60_000;
     const overBoundaryObservedAt = exactBoundaryObservedAt - 1;
     const underBoundaryObservedAt = exactBoundaryObservedAt + 1;
@@ -966,54 +891,32 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const cleanupAt = exactBoundaryObservedAt + HOUR_MS;
     const oldPendingAt = cleanupAt - 769 * HOUR_MS;
     const fixtureObservationKeys: string[] = [];
+    const excludedAppliedObservationKey = randomUUID();
+    const fixtureStatKeys = [
+      modelStatsStatKey(model, dayStart + 2 * HOUR_MS),
+      modelStatsStatKey(model, dayStart + 3 * HOUR_MS),
+      modelStatsStatKey(model, dayStart + 4 * HOUR_MS),
+      modelStatsStatKey(model, Math.floor(oldPendingAt / HOUR_MS) * HOUR_MS),
+    ];
+
+    function fixtureScope(): ModelStatsFixtureScope {
+      return {
+        observationIdempotencyKeys: [...fixtureObservationKeys],
+        statKeys: fixtureStatKeys,
+      };
+    }
 
     onTestFinished(async () => {
       if (fixtureObservationKeys.length > 0) {
         await deleteModelStatsFixture(context, {
-          idempotencyKeys: fixtureObservationKeys,
-          models: [model],
-          windowStart: new Date(oldPendingAt - HOUR_MS),
-          windowEnd: new Date(dayStart + DAY_MS),
+          idempotencyKeys: [
+            ...fixtureObservationKeys,
+            excludedAppliedObservationKey,
+          ],
+          statKeys: fixtureStatKeys,
         });
       }
     });
-
-    const { actor, agentId } = await entitledRunActor();
-    const created = await runs.createRun(actor, {
-      agentId,
-      prompt: "clean model usage observations",
-      modelProvider: "anthropic-api-key",
-    });
-    const sandboxHeaders = {
-      authorization: `Bearer ${runs.sandboxTokenForRun(actor, created.runId)}`,
-    };
-    await runs.requestCancelRun(actor, created.runId, [200]);
-
-    async function sendObservation(
-      idempotencyKey: string,
-      inputTokens: number,
-    ): Promise<void> {
-      await webhooks.requestAgentModelUsageObservationV2(
-        {
-          runId: created.runId,
-          events: [
-            {
-              idempotencyKey,
-              model,
-              inputTokens,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        sandboxHeaders,
-        [200],
-      );
-    }
-
-    mockNow(projectionAt);
-    await api.requestAggregateModelStats("valid", [200]);
 
     const overBoundaryIdempotencyKey = randomUUID();
     const exactBoundaryIdempotencyKey = randomUUID();
@@ -1023,29 +926,64 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       exactBoundaryIdempotencyKey,
       underBoundaryIdempotencyKey,
     );
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: overBoundaryIdempotencyKey,
+        model,
+        observedAt: overBoundaryObservedAt,
+        inputTokens: 11,
+      }),
+      modelStatsObservation({
+        idempotencyKey: exactBoundaryIdempotencyKey,
+        model,
+        observedAt: exactBoundaryObservedAt,
+        inputTokens: 13,
+      }),
+      modelStatsObservation({
+        idempotencyKey: underBoundaryIdempotencyKey,
+        model,
+        observedAt: underBoundaryObservedAt,
+        inputTokens: 17,
+      }),
+      modelStatsObservation({
+        idempotencyKey: excludedAppliedObservationKey,
+        model,
+        observedAt: dayStart + 2 * HOUR_MS,
+        aggregatedAt: projectionAt,
+      }),
+    ]);
 
-    mockNow(overBoundaryObservedAt);
-    await sendObservation(overBoundaryIdempotencyKey, 11);
-    mockNow(exactBoundaryObservedAt);
-    await sendObservation(exactBoundaryIdempotencyKey, 13);
-    mockNow(underBoundaryObservedAt);
-    await sendObservation(underBoundaryIdempotencyKey, 17);
-
-    mockNow(projectionAt);
-    const projected = await api.requestAggregateModelStats("valid", [200]);
-    expect(projected.body).toMatchObject({
-      success: true,
+    const projected = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(projectionAt),
+    });
+    expect(projected).toStrictEqual({
       cutoff: new Date(projectionAt).toISOString(),
       processedHours: 1,
       processedObservations: 3,
       updatedStats: 1,
       deletedObservations: 0,
     });
-    const rankingBeforeCleanup = await api.readModelRankings("today");
-
-    // A retry after projection but within one hour still finds the original
-    // UUID ledger row and cannot create new pending work.
-    await sendObservation(exactBoundaryIdempotencyKey, 13);
+    const rankingBeforeCleanup = await readModelStatsFixtureRankings(context, {
+      period: "today",
+      now: new Date(projectionAt),
+      statKeys: fixtureStatKeys,
+    });
+    expect(rankingBeforeCleanup).toStrictEqual({
+      period: "today",
+      totalTokens: 41,
+      windowStart: new Date(dayStart).toISOString(),
+      windowEnd: new Date(projectionAt).toISOString(),
+      rows: [
+        {
+          model,
+          inputTokens: 41,
+          outputTokens: 0,
+          totalTokens: 41,
+          previousTotalTokens: 0,
+        },
+      ],
+    });
     await expect(
       readModelStatsObservations(context, [exactBoundaryIdempotencyKey]),
     ).resolves.toStrictEqual([
@@ -1057,13 +995,20 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 
     const oldPendingIdempotencyKey = randomUUID();
     fixtureObservationKeys.push(oldPendingIdempotencyKey);
-    mockNow(oldPendingAt);
-    await sendObservation(oldPendingIdempotencyKey, 19);
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: oldPendingIdempotencyKey,
+        model,
+        observedAt: oldPendingAt,
+        inputTokens: 19,
+      }),
+    ]);
 
-    mockNow(cleanupAt);
-    const cleaned = await api.requestAggregateModelStats("valid", [200]);
-    expect(cleaned.body).toStrictEqual({
-      success: true,
+    const cleaned = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(cleanupAt),
+    });
+    expect(cleaned).toStrictEqual({
       cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),
       processedHours: 1,
       processedObservations: 1,
@@ -1089,12 +1034,22 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
         },
       ]),
     );
-    const rankingAfterCleanup = await api.readModelRankings("today");
-    expect(rankingAfterCleanup.body).toStrictEqual(rankingBeforeCleanup.body);
+    await expect(
+      readModelStatsFixtureRankings(context, {
+        period: "today",
+        now: new Date(projectionAt),
+        statKeys: fixtureStatKeys,
+      }),
+    ).resolves.toStrictEqual(rankingBeforeCleanup);
 
-    // Once the one-hour guarantee has expired and cleanup removed the ledger
-    // row, the same UUID is accepted as a new current-hour observation.
-    await sendObservation(overBoundaryIdempotencyKey, 11);
+    await insertModelStatsObservations(context, [
+      modelStatsObservation({
+        idempotencyKey: overBoundaryIdempotencyKey,
+        model,
+        observedAt: cleanupAt,
+        inputTokens: 11,
+      }),
+    ]);
     await expect(
       readModelStatsObservations(context, [overBoundaryIdempotencyKey]),
     ).resolves.toStrictEqual([
@@ -1115,9 +1070,11 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       aggregatedAt: new Date(projectionAt),
     });
 
-    const firstBatch = await api.requestAggregateModelStats("valid", [200]);
-    expect(firstBatch.body).toStrictEqual({
-      success: true,
+    const firstBatch = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(cleanupAt),
+    });
+    expect(firstBatch).toStrictEqual({
       cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),
       processedHours: 0,
       processedObservations: 0,
@@ -1128,9 +1085,11 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       readModelStatsObservations(context, cleanupBatchIdempotencyKeys),
     ).resolves.toHaveLength(1);
 
-    const finalBatch = await api.requestAggregateModelStats("valid", [200]);
-    expect(finalBatch.body).toStrictEqual({
-      success: true,
+    const finalBatch = await aggregateModelStatsFixture(context, {
+      ...fixtureScope(),
+      processedAt: new Date(cleanupAt),
+    });
+    expect(finalBatch).toStrictEqual({
       cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),
       processedHours: 0,
       processedObservations: 0,
@@ -1140,6 +1099,14 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     await expect(
       readModelStatsObservations(context, cleanupBatchIdempotencyKeys),
     ).resolves.toStrictEqual([]);
+    await expect(
+      readModelStatsObservations(context, [excludedAppliedObservationKey]),
+    ).resolves.toStrictEqual([
+      {
+        idempotencyKey: excludedAppliedObservationKey,
+        aggregatedAt: new Date(projectionAt).toISOString(),
+      },
+    ]);
   });
 });
 

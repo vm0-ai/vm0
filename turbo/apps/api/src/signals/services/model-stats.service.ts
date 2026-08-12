@@ -80,6 +80,26 @@ interface ModelStatsProcessingResult {
   readonly deletedObservations: number;
 }
 
+export interface ModelStatKey {
+  readonly hourStart: Date;
+  readonly model: string;
+}
+
+export interface ModelStatsAggregationScope {
+  readonly observationIdempotencyKeys: readonly string[];
+  readonly statKeys: readonly ModelStatKey[];
+}
+
+interface ModelStatsAggregationOptions {
+  readonly processedAt: Date;
+  readonly scope: ModelStatsAggregationScope;
+}
+
+interface ModelStatsRankingOptions {
+  readonly now: Date;
+  readonly statKeys: readonly ModelStatKey[];
+}
+
 interface ModelStatsHourProcessingResult {
   readonly hourStart: Date | null;
   readonly processedObservations: number;
@@ -138,6 +158,25 @@ function utcTimestampParam(date: Date): string {
   return date.toISOString().replace("T", " ").replace("Z", "");
 }
 
+function modelStatKeysPredicate(
+  hourStart: SQLWrapper,
+  model: SQLWrapper,
+  statKeys: readonly ModelStatKey[],
+): SQL {
+  const predicate = or(
+    ...statKeys.map((statKey) => {
+      return and(
+        eq(hourStart, sql`${utcTimestampParam(statKey.hourStart)}::timestamp`),
+        eq(model, statKey.model),
+      );
+    }),
+  );
+  if (!predicate) {
+    throw new Error("Model stats scope requires at least one stat key");
+  }
+  return predicate;
+}
+
 function parseModelRankingPeriod(
   value: string | undefined,
 ): ModelRankingPeriod {
@@ -189,6 +228,7 @@ interface ModelStatsHourProcessingSqlArgs {
   readonly observationModelExpr: SQLWrapper;
   readonly processedAt: string;
   readonly cutoff: string;
+  readonly scope: ModelStatsAggregationScope | undefined;
 }
 
 function modelStatsHourClaimCtes(args: ModelStatsHourProcessingSqlArgs): SQL {
@@ -203,6 +243,11 @@ function modelStatsHourClaimCtes(args: ModelStatsHourProcessingSqlArgs): SQL {
         WHERE ${and(
           isNull(modelUsageObservation.aggregatedAt),
           lt(modelUsageObservation.observedAt, sql`${args.cutoff}::timestamp`),
+          args.scope
+            ? inArray(modelUsageObservation.idempotencyKey, [
+                ...args.scope.observationIdempotencyKeys,
+              ])
+            : undefined,
         )}
         ORDER BY ${modelUsageObservation.observedAt}
         LIMIT 1
@@ -221,6 +266,11 @@ function modelStatsHourClaimCtes(args: ModelStatsHourProcessingSqlArgs): SQL {
             modelUsageObservation.observedAt,
             sql`oldest_pending_hour.hour_start + INTERVAL '1 hour'`,
           ),
+          args.scope
+            ? inArray(modelUsageObservation.idempotencyKey, [
+                ...args.scope.observationIdempotencyKeys,
+              ])
+            : undefined,
         )}
         RETURNING
           ${args.observationModelExpr} AS model,
@@ -237,6 +287,14 @@ function modelStatsHourClaimCtes(args: ModelStatsHourProcessingSqlArgs): SQL {
 function modelStatsHourProjectionCtes(
   args: ModelStatsHourProcessingSqlArgs,
 ): SQL {
+  const statKeyPredicate = args.scope
+    ? modelStatKeysPredicate(
+        sql`oldest_pending_hour.hour_start`,
+        sql`claimed_observations.model`,
+        args.scope.statKeys,
+      )
+    : inArray(sql`claimed_observations.model`, args.modelStatsModelIds);
+
   return sql`
     aggregated AS MATERIALIZED (
         SELECT
@@ -269,7 +327,7 @@ function modelStatsHourProjectionCtes(
         FROM claimed_observations
         CROSS JOIN oldest_pending_hour
         WHERE ${and(
-          inArray(sql`claimed_observations.model`, args.modelStatsModelIds),
+          statKeyPredicate,
           or(
             gt(sql`claimed_observations.input_tokens`, sql`0`),
             gt(sql`claimed_observations.output_tokens`, sql`0`),
@@ -347,12 +405,14 @@ async function processOldestPendingModelStatsHour(
   cutoff: Date,
   processedAt: Date,
   signal: AbortSignal,
+  scope: ModelStatsAggregationScope | undefined,
 ): Promise<ModelStatsHourProcessingResult> {
   const query = modelStatsHourProcessingSql({
     modelStatsModelIds: getModelStatsModelIds(),
     observationModelExpr: modelUsageObservationModelExpression(),
     processedAt: utcTimestampParam(processedAt),
     cutoff: utcTimestampParam(cutoff),
+    scope,
   });
 
   const result = await db.transaction(async (tx) => {
@@ -381,6 +441,7 @@ async function cleanupAppliedModelUsageObservations(
   db: Db,
   cutoff: Date,
   signal: AbortSignal,
+  observationIdempotencyKeys: readonly string[] | undefined,
 ): Promise<number> {
   let deletedObservations = 0;
 
@@ -399,6 +460,11 @@ async function cleanupAppliedModelUsageObservations(
         and(
           isNotNull(modelUsageObservation.aggregatedAt),
           lt(modelUsageObservation.observedAt, cutoff),
+          observationIdempotencyKeys
+            ? inArray(modelUsageObservation.idempotencyKey, [
+                ...observationIdempotencyKeys,
+              ])
+            : undefined,
         ),
       )
       .orderBy(
@@ -425,8 +491,10 @@ async function cleanupAppliedModelUsageObservations(
 async function selectModelRankings(
   db: Db,
   period: ModelRankingPeriod,
+  now: Date,
+  statKeys: readonly ModelStatKey[] | undefined,
 ): Promise<ModelRankingResult> {
-  const window = currentWindow(period, nowDate());
+  const window = currentWindow(period, now);
   const duration = Math.max(window.end.getTime() - window.start.getTime(), 0);
   const previousEnd = window.start;
   const previousStart = new Date(previousEnd.getTime() - duration);
@@ -452,7 +520,13 @@ async function selectModelRankings(
       and(
         gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`),
         lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
-        inArray(modelStat.model, modelStatsModelIds),
+        statKeys
+          ? modelStatKeysPredicate(
+              modelStat.hourStart,
+              modelStat.model,
+              statKeys,
+            )
+          : inArray(modelStat.model, modelStatsModelIds),
       ),
     )
     .as("normalized_model_stats");
@@ -515,73 +589,103 @@ async function selectModelRankings(
   };
 }
 
-export const aggregateModelStats$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ModelStatsProcessingResult> => {
-    const db = set(writeDb$);
-    const startedAt = performance.now();
-    const processedAt = nowDate();
-    const cutoff = utcHourStart(processedAt);
-    const cleanupCutoff = new Date(processedAt.getTime() - HOUR_MS);
-    let processedHours = 0;
-    let processedObservations = 0;
-    let updatedStats = 0;
-    let firstProcessedHour: Date | null = null;
-    let lastProcessedHour: Date | null = null;
+export async function aggregateModelStats(
+  db: Db,
+  signal: AbortSignal,
+  options?: ModelStatsAggregationOptions,
+): Promise<ModelStatsProcessingResult> {
+  const startedAt = performance.now();
+  const processedAt = options?.processedAt ?? nowDate();
+  const scope = options?.scope;
+  const cutoff = utcHourStart(processedAt);
+  const cleanupCutoff = new Date(processedAt.getTime() - HOUR_MS);
+  let processedHours = 0;
+  let processedObservations = 0;
+  let updatedStats = 0;
+  let firstProcessedHour: Date | null = null;
+  let lastProcessedHour: Date | null = null;
 
-    while (true) {
-      signal.throwIfAborted();
-      const result = await processOldestPendingModelStatsHour(
-        db,
-        cutoff,
-        processedAt,
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!result.hourStart) {
-        break;
-      }
-
-      firstProcessedHour ??= result.hourStart;
-      lastProcessedHour = result.hourStart;
-      processedHours++;
-      processedObservations += result.processedObservations;
-      updatedStats += result.updatedStats;
-    }
-
-    const deletedObservations = await cleanupAppliedModelUsageObservations(
+  while (true) {
+    signal.throwIfAborted();
+    const result = await processOldestPendingModelStatsHour(
       db,
-      cleanupCutoff,
+      cutoff,
+      processedAt,
       signal,
+      scope,
     );
     signal.throwIfAborted();
+    if (!result.hourStart) {
+      break;
+    }
 
-    const durationMs = Math.round(performance.now() - startedAt);
-    L.debug("model stats processing completed", {
-      cutoff: cutoff.toISOString(),
-      cleanupCutoff: cleanupCutoff.toISOString(),
-      firstProcessedHour: firstProcessedHour?.toISOString() ?? null,
-      lastProcessedHour: lastProcessedHour?.toISOString() ?? null,
-      oldestCompleteBacklogAgeHours:
-        firstProcessedHour === null
-          ? 0
-          : (cutoff.getTime() - firstProcessedHour.getTime()) / HOUR_MS,
-      processedHours,
-      processedObservations,
-      updatedStats,
-      deletedObservations,
-      remainingCompletePendingObservations: 0,
-      durationMs,
-    });
+    firstProcessedHour ??= result.hourStart;
+    lastProcessedHour = result.hourStart;
+    processedHours++;
+    processedObservations += result.processedObservations;
+    updatedStats += result.updatedStats;
+  }
 
-    return {
-      cutoff,
-      processedHours,
-      processedObservations,
-      updatedStats,
-      deletedObservations,
-    };
+  const deletedObservations = await cleanupAppliedModelUsageObservations(
+    db,
+    cleanupCutoff,
+    signal,
+    scope?.observationIdempotencyKeys,
+  );
+  signal.throwIfAborted();
+
+  const durationMs = Math.round(performance.now() - startedAt);
+  L.debug("model stats processing completed", {
+    cutoff: cutoff.toISOString(),
+    cleanupCutoff: cleanupCutoff.toISOString(),
+    firstProcessedHour: firstProcessedHour?.toISOString() ?? null,
+    lastProcessedHour: lastProcessedHour?.toISOString() ?? null,
+    oldestCompleteBacklogAgeHours:
+      firstProcessedHour === null
+        ? 0
+        : (cutoff.getTime() - firstProcessedHour.getTime()) / HOUR_MS,
+    processedHours,
+    processedObservations,
+    updatedStats,
+    deletedObservations,
+    remainingCompletePendingObservations: 0,
+    durationMs,
+  });
+
+  return {
+    cutoff,
+    processedHours,
+    processedObservations,
+    updatedStats,
+    deletedObservations,
+  };
+}
+
+export const aggregateModelStats$ = command(
+  async ({ set }, signal: AbortSignal): Promise<ModelStatsProcessingResult> => {
+    return await aggregateModelStats(set(writeDb$), signal);
   },
 );
+
+export async function readModelRankings(
+  db: Db,
+  periodValue: string | undefined,
+  signal: AbortSignal,
+  options?: ModelStatsRankingOptions,
+): Promise<ModelRankingResult> {
+  const period = parseModelRankingPeriod(periodValue);
+
+  signal.throwIfAborted();
+  const result = await selectModelRankings(
+    db,
+    period,
+    options?.now ?? nowDate(),
+    options?.statKeys,
+  );
+  signal.throwIfAborted();
+
+  return result;
+}
 
 export const readPublicModelRankings$ = command(
   async (
@@ -590,12 +694,6 @@ export const readPublicModelRankings$ = command(
     signal: AbortSignal,
   ): Promise<ModelRankingResult> => {
     const db = set(writeDb$);
-    const period = parseModelRankingPeriod(periodValue);
-
-    signal.throwIfAborted();
-    const result = await selectModelRankings(db, period);
-    signal.throwIfAborted();
-
-    return result;
+    return await readModelRankings(db, periodValue, signal);
   },
 );
