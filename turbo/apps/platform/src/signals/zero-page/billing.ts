@@ -415,18 +415,26 @@ const reloadUsagePackMigration$ = command(({ set }) => {
   });
 });
 
-export const handleBillingRedirect$ = command(
+const reconcilePendingBillingPayment$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const hasPendingPayment =
       get(restorePaymentPendingStorage.get$) === "1" ||
       pendingDowngradeTargetTier(get(downgradePaymentPendingStorage.get$)) !==
         null;
-    if (hasPendingPayment) {
-      const status = await get(billingStatusAsync$);
-      signal.throwIfAborted();
-      set(maybeShowPendingRestoreToast$, status);
-      set(maybeShowPendingDowngradeToast$, status);
+    if (!hasPendingPayment) {
+      return;
     }
+
+    const status = await get(billingStatusAsync$);
+    signal.throwIfAborted();
+    set(maybeShowPendingRestoreToast$, status);
+    set(maybeShowPendingDowngradeToast$, status);
+  },
+);
+
+export const handleBillingRedirect$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    await set(reconcilePendingBillingPayment$, signal);
 
     const searchParams = new URLSearchParams(get(searchParams$));
     const billing = searchParams.get("billing");
@@ -492,13 +500,16 @@ export const handleBillingRedirect$ = command(
   },
 );
 
-const reloadBillingStatusFromRealtime$ = command(({ set }) => {
-  set(reloadBillingStatus$);
-  set(reloadQueueData$);
-  set(reloadUsagePackManagement$);
-  set(reloadUsageRecords$);
-  return false;
-});
+const reloadBillingStatusFromRealtime$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(reloadBillingStatus$);
+    set(reloadQueueData$);
+    set(reloadUsagePackManagement$);
+    set(reloadUsageRecords$);
+    await set(reconcilePendingBillingPayment$, signal);
+    return false;
+  },
+);
 
 export const setupBillingRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
