@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.71.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.2...guest-agent-v0.71.3) (2026-08-12)
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
 ## [0.71.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.1...guest-agent-v0.71.2) (2026-08-12)
 
 

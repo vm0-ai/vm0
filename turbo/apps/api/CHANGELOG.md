@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.439.0](https://github.com/vm0-ai/vm0/compare/api-v1.438.0...api-v1.439.0) (2026-08-12)
+
+
+### Features
+
+* **chat:** enable snapshot reads for all users ([#26718](https://github.com/vm0-ai/vm0/issues/26718)) ([72a4c1b](https://github.com/vm0-ai/vm0/commit/72a4c1b02eac7a392df03d309c817dc0b92bf90b))
+* **desktop:** add staged zero migration controls ([#26731](https://github.com/vm0-ai/vm0/issues/26731)) ([c821025](https://github.com/vm0-ai/vm0/commit/c821025b83d05e9bb100777a35b76112b93a114a))
+
+
+### Bug Fixes
+
+* return bad request for personal account limits ([#26723](https://github.com/vm0-ai/vm0/issues/26723)) ([87eee40](https://github.com/vm0-ai/vm0/commit/87eee40a0400e72bf238359d064b8056afcfa0f4))
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.325.0
+    * @vm0/core bumped to 8.551.0
+    * @vm0/db bumped to 1.197.2
+    * @vm0/pi-agent-runtime bumped to 1.3.58
+
 ## [1.438.0](https://github.com/vm0-ai/vm0/compare/api-v1.437.0...api-v1.438.0) (2026-08-12)
 
 
