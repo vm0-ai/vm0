@@ -53,10 +53,19 @@ unless browser_cleanup.fetch("if") == "always()" &&
 end
 
 playwright = turbo_jobs.fetch("cli-e2e-02-playwright")
+playwright_run = playwright.fetch("steps").find do |step|
+  step["name"] == "Run Playwright E2E tests"
+end
 playwright_cleanup = playwright.fetch("steps").find do |step|
   step["name"] == "Cleanup Playwright E2E accounts"
 end
+raise "missing Playwright E2E execution" unless playwright_run
 raise "missing Playwright E2E account finalizer" unless playwright_cleanup
+expected_playwright_job_ref = "${{ format('{0}-pw-{1}', matrix.runtime == 'vercel' && format('{0}-v', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref, matrix.shard) }}"
+unless playwright_run.dig("env", "JOB_REF") == expected_playwright_job_ref &&
+    playwright_cleanup.dig("env", "JOB_REF") == expected_playwright_job_ref
+  raise "Playwright execution and cleanup must share a compact runtime namespace"
+end
 unless playwright_cleanup.fetch("if") == "always()" &&
     playwright_cleanup.fetch("run").include?("cleanup-generation playwright,paid-onboarding")
   raise "Playwright cleanup must always target only its current-generation roles"
