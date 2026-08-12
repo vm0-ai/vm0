@@ -98,7 +98,10 @@ export function publishUserSignal(
   topic: string,
   payload: unknown = null,
 ): Promise<void> {
-  waitUntil(bestEffort(publishUserSignalNow(userIds, topic, payload)));
+  waitUntil(
+    "publish-user-signal",
+    bestEffort(publishUserSignalNow(userIds, topic, payload)),
+  );
   return Promise.resolve();
 }
 
