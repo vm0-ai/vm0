@@ -4559,6 +4559,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Keuangan",
       "imageRecognize": "Pengenalan Gambar",
       "maps": "Peta",

@@ -4560,6 +4560,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Finanzen",
       "imageRecognize": "Bilderkennung",
       "maps": "Karten",

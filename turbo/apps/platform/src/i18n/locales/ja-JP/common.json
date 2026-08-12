@@ -4559,6 +4559,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "アバター",
       "finance": "金融",
       "imageRecognize": "画像認識",
       "maps": "地図",
