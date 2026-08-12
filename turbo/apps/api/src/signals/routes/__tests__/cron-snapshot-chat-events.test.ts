@@ -217,7 +217,8 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(1);
 
     // A new Postgres tail beyond the projected watermark triggers another
-    // full canonical rebuild while preserving ordering and prior history.
+    // generation seeded by the head object, preserving ordering and prior
+    // history byte for byte.
     await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       threadId,
@@ -333,7 +334,7 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
-  it("never reads or transforms an old R2 object during a rebuild", async () => {
+  it("falls back to a canonical rebuild when the head object is damaged", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Corruption agent",

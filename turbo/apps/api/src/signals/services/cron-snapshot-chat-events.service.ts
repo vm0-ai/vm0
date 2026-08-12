@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { gzipSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gunzip, gzip } from "node:zlib";
 
 import {
   chatEventRowV4Schema,
@@ -30,6 +31,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   deleteS3Objects,
+  downloadS3Buffer,
   listS3ObjectsPage,
   putImmutableS3Object,
   type S3Object,
@@ -89,6 +91,8 @@ export const ARCHIVE_SCHEMA_VERSION = 4;
 const MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION = 4;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
 /**
  * At the 10-minute cron cadence this cap permits 144k changed threads per day.
  * Normal traffic re-archives roughly 700 active threads per day, so the cap
@@ -213,14 +217,17 @@ function chatEventSnapshotObjectKey(
 async function readCanonicalEvents(
   db: Db,
   candidate: SnapshotCandidate,
+  fromSeqId: number,
 ): Promise<{
   readonly lines: readonly Buffer[];
   readonly count: number;
+  readonly firstSeqId: number | null;
   readonly lastSeqId: number;
 }> {
   const lines: Buffer[] = [];
-  let cursor = 0;
+  let cursor = fromSeqId;
   let count = 0;
+  let firstSeqId: number | null = null;
   for (;;) {
     const rows = await db
       .select({
@@ -248,6 +255,7 @@ async function readCanonicalEvents(
       .orderBy(asc(chatEvents.seqId))
       .limit(EVENT_PAGE_SIZE);
     for (const row of rows) {
+      firstSeqId ??= row.seqId;
       lines.push(archiveLine(row));
     }
     count += rows.length;
@@ -256,12 +264,12 @@ async function readCanonicalEvents(
       cursor = lastRow.seqId;
     }
     if (rows.length < EVENT_PAGE_SIZE) {
-      if (count === 0) {
-        throw new Error(
-          `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
-        );
-      }
-      return { lines, count, lastSeqId: candidate.indexedSeqId };
+      return {
+        lines,
+        count,
+        firstSeqId,
+        lastSeqId: candidate.indexedSeqId,
+      };
     }
   }
 }
@@ -319,6 +327,42 @@ async function publishSnapshotHead(
   });
 }
 
+/**
+ * Returns the head object's decompressed body when it can seed the next
+ * generation, and null when the thread has to be rebuilt from PostgreSQL.
+ *
+ * A retired-version head is rejected so the migration path still rewrites it
+ * from canonical rows. A missing or undecodable object is also rejected: the
+ * rebuild is the recovery path, so a damaged archive repairs itself on the
+ * next pass instead of failing the thread forever.
+ */
+async function readReusableParentArchive(
+  get: ComputedGetter,
+  bucket: string,
+  candidate: SnapshotCandidate,
+  signal: AbortSignal,
+): Promise<Buffer | null> {
+  if (
+    candidate.headObjectKey === null ||
+    candidate.headLastSeqId === null ||
+    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION
+  ) {
+    return null;
+  }
+  const downloaded = await settle(
+    get(downloadS3Buffer(bucket, candidate.headObjectKey)),
+    signal,
+  );
+  if (!downloaded.ok) {
+    return null;
+  }
+  const decompressed = await settle(gunzipAsync(downloaded.value), signal);
+  if (!decompressed.ok) {
+    return null;
+  }
+  return decompressed.value;
+}
+
 async function archiveThread(
   get: ComputedGetter,
   db: Db,
@@ -326,11 +370,41 @@ async function archiveThread(
   candidate: SnapshotCandidate,
   signal: AbortSignal,
 ): Promise<number | null> {
-  const archive = await readCanonicalEvents(db, candidate);
+  const parent = await readReusableParentArchive(
+    get,
+    bucket,
+    candidate,
+    signal,
+  );
   signal.throwIfAborted();
-  // Every generation is rebuilt from canonical Postgres rows. Existing R2
-  // objects are never read or transformed in place.
-  const compressed = gzipSync(Buffer.concat(archive.lines));
+  // The head object carries the prefix, so a generation only reads the rows
+  // past it. A thread without a reusable head falls back to the full canonical
+  // history.
+  const fromSeqId = parent === null ? 0 : (candidate.headLastSeqId ?? 0);
+  const archive = await readCanonicalEvents(db, candidate, fromSeqId);
+  signal.throwIfAborted();
+  if (archive.count === 0) {
+    if (parent !== null) {
+      // The indexed tail was already archived by a concurrent pass.
+      return null;
+    }
+    throw new Error(
+      `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
+    );
+  }
+  // A full rebuild must start at the thread's first event. Publishing a
+  // prefix-less body would advance the head to a truncated archive, and the
+  // exact-parent CAS cannot detect that on its own.
+  if (parent === null && archive.firstSeqId !== 1) {
+    throw new Error(
+      `chat event snapshot rebuild for ${candidate.chatThreadId} started at seq ${String(archive.firstSeqId)} instead of the thread's first event`,
+    );
+  }
+  const compressed = await gzipAsync(
+    parent === null
+      ? Buffer.concat(archive.lines)
+      : Buffer.concat([parent, ...archive.lines]),
+  );
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
     archive.lastSeqId,
@@ -635,10 +709,12 @@ async function collectR2SnapshotGarbage(
 /**
  * Archives chat_events into immutable canonical full-thread R2 snapshots.
  * Each bounded pass picks both retired-version heads and threads whose search
- * watermark advanced. It rebuilds from Postgres through that watermark,
- * uploads content-addressed v4 bytes, and publishes with an exact parent CAS.
- * Existing objects remain immutable. Repeated or interrupted ticks are
- * idempotent; a lost race can only leave a collectable orphan object.
+ * watermark advanced. A current-version head seeds the next generation, so a
+ * pass reads only the rows past it and falls back to the full canonical
+ * history when no reusable head exists. Every generation uploads
+ * content-addressed v4 bytes and publishes with an exact parent CAS. Prior
+ * objects remain immutable. Repeated or interrupted ticks are idempotent; a
+ * lost race can only leave a collectable orphan object.
  */
 export const snapshotChatEvents$ = command(
   async (
