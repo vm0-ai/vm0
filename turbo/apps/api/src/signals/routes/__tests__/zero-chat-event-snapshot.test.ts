@@ -390,6 +390,13 @@ describe("chat event snapshot read endpoints", () => {
     expect(queued.body.runId).toBeNull();
     const threadId = active.body.threadId;
 
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...owner, orgId },
+      {
+        [FeatureSwitchKey.ChatEventSnapshotRead]: false,
+      },
+    );
     const disabled = await accept(
       eventsClient().queued({
         headers: authenticate(owner),

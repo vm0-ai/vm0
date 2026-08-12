@@ -66,7 +66,7 @@ describe("okou web-search command", () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
     zeroWebSearchCommand.setOptionValue("limit", 5);
     zeroWebSearchCommand.setOptionValue("recency", undefined);
     zeroWebSearchCommand.setOptionValue("domain", []);

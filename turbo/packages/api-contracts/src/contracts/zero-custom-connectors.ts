@@ -157,28 +157,10 @@ export type CustomConnectorMcpResponse = z.infer<
   typeof customConnectorMcpResponseSchema
 >;
 
-const taggedCustomConnectorResponseSchema = z.discriminatedUnion("kind", [
+export const customConnectorResponseSchema = z.discriminatedUnion("kind", [
   customConnectorHttpResponseSchema,
   customConnectorMcpResponseSchema,
 ]);
-
-function normalizeCustomConnectorResponseKind(value: unknown): unknown {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    !("kind" in value) &&
-    !("endpoint" in value) &&
-    !("transport" in value)
-  ) {
-    return { ...value, kind: "http" };
-  }
-  return value;
-}
-
-export const customConnectorResponseSchema = z.preprocess(
-  normalizeCustomConnectorResponseKind,
-  taggedCustomConnectorResponseSchema,
-);
 export type CustomConnectorResponse = z.infer<
   typeof customConnectorResponseSchema
 >;

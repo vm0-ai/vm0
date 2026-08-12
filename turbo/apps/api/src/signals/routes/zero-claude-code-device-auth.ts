@@ -128,6 +128,9 @@ const completeClaudeCodeDeviceAuthInner$ = command(
       case "forbidden": {
         return notFound(result.message);
       }
+      case "auth_error": {
+        return result.response;
+      }
       case "error": {
         return claudeCodeDeviceAuthUnavailable(result.message);
       }

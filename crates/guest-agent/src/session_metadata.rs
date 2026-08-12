@@ -29,6 +29,10 @@ pub(crate) fn history_marker_payload_for_session_id_with_home(
                 &thread_id,
             ))
         }
+        Framework::Pi => is_valid_cli_agent_session_id(session_id).then(|| {
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
+                .to_string()
+        }),
     }
 }
 
@@ -64,6 +68,10 @@ fn codex_sessions_dir(home_dir: &Path) -> PathBuf {
 pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'static str {
     if session_history::is_codex_marker(history_path_payload) {
         "codex"
+    } else if history_path_payload
+        == api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
+    {
+        "pi"
     } else {
         "claude"
     }
@@ -204,6 +212,34 @@ mod tests {
         assert_eq!(
             marker, ".claude/projects/-home-user-workspace/session-123.jsonl",
             "marker should use relative .claude history dir for empty HOME"
+        );
+    }
+
+    #[test]
+    fn pi_history_marker_uses_versioned_native_sqlite_database() {
+        let marker = history_marker_payload_for_session_id_with_home(
+            Framework::Pi,
+            "/ignored-for-pi",
+            "00000000-0000-4000-8000-000000000001",
+        )
+        .expect("safe chat thread id should produce a Pi marker");
+
+        assert_eq!(
+            marker,
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
+        );
+        assert_eq!(session_history_marker_kind(&marker), "pi");
+    }
+
+    #[test]
+    fn pi_history_marker_rejects_unsafe_chat_thread_id() {
+        assert!(
+            history_marker_payload_for_session_id_with_home(
+                Framework::Pi,
+                "/ignored-for-pi",
+                "../../sessions.sqlite",
+            )
+            .is_none()
         );
     }
 

@@ -173,7 +173,6 @@
       "emptyOutput": "(출력 없음)",
       "files_one": "{{formattedCount}} 파일",
       "files_other": "{{formattedCount}} 파일",
-      "handoffApiToSandbox": "핸드오프 · API 서버 → 샌드박스",
       "initialize": "초기화",
       "inputTokens": "입력: {{formattedCount}}",
       "models_one": "{{formattedCount}} 모델",
@@ -1674,7 +1673,8 @@
       "pickEmoji": "이모지 선택",
       "scrollToBottom": "맨 아래로 스크롤",
       "searchEmoji": "이모지 검색",
-      "steerMessageExplanation": "에이전트가 작업하는 동안 동작을 조정하기 위해 보낸 메시지입니다"
+      "steerAcknowledgement_one": "실행 중에 반영했습니다. 이전 작업은 그대로 유지됩니다",
+      "steerAcknowledgement_other": "{{count}}개 메시지를 모두 실행 중에 반영했습니다. 이전 작업은 그대로 유지됩니다"
     },
     "threadSidebar": {
       "resize": "사이드바 크기 조절"

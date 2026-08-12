@@ -694,6 +694,85 @@ body {
   }
 }
 
+/* Chat: steer acknowledgement label.
+
+   Both wordings share one box so a single feathered gradient boundary sweeps
+   across both: the previous wording is erased and the new one drawn in place,
+   without either moving. A hard edge sweeping across reads as the text being
+   pushed away, which is why this is a gradient and not a clip. */
+.zero-app .zero-steer-ack {
+  position: relative;
+  display: block;
+  /* 0% rests on the incoming wording, 100% on the outgoing one. */
+  --zero-steer-ack-sweep: 0%;
+  --zero-steer-ack-feather: 20px;
+}
+.zero-app .zero-steer-ack-layer {
+  display: block;
+  text-align: right;
+  white-space: nowrap;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  /* Wider than twice the box on purpose: at exactly 200% the resting edge lands
+     mid-ramp and fades out the first glyph. */
+  -webkit-mask-size: calc(200% + 4 * var(--zero-steer-ack-feather)) 100%;
+  mask-size: calc(200% + 4 * var(--zero-steer-ack-feather)) 100%;
+  -webkit-mask-position: var(--zero-steer-ack-sweep) 0;
+  mask-position: var(--zero-steer-ack-sweep) 0;
+}
+.zero-app .zero-steer-ack-outgoing {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(50% - var(--zero-steer-ack-feather)),
+    #000 calc(50% + var(--zero-steer-ack-feather)),
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(50% - var(--zero-steer-ack-feather)),
+    #000 calc(50% + var(--zero-steer-ack-feather)),
+    #000 100%
+  );
+}
+.zero-app .zero-steer-ack-incoming {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 0,
+    #000 calc(50% - var(--zero-steer-ack-feather)),
+    transparent calc(50% + var(--zero-steer-ack-feather)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000 0,
+    #000 calc(50% - var(--zero-steer-ack-feather)),
+    transparent calc(50% + var(--zero-steer-ack-feather)),
+    transparent 100%
+  );
+}
+.zero-app .zero-steer-ack[data-steer-acknowledgement-sweeping] {
+  transition: width 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.zero-app
+  .zero-steer-ack[data-steer-acknowledgement-sweeping]
+  .zero-steer-ack-layer {
+  transition:
+    -webkit-mask-position 520ms cubic-bezier(0.4, 0, 0.2, 1),
+    mask-position 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .zero-app .zero-steer-ack[data-steer-acknowledgement-sweeping],
+  .zero-app
+    .zero-steer-ack[data-steer-acknowledgement-sweeping]
+    .zero-steer-ack-layer {
+    transition-duration: 1ms;
+  }
+}
+
 /* Chat: outline buttons inside dialogue */
 .zero-app .zero-chat-btn {
   background-color: hsl(var(--gray-50));

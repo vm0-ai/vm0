@@ -618,10 +618,22 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsBeforeWebCompletion);
     await waitForRunSessionId(actor, webRun.runId, sharedSession);
 
+    // Provider history changes prompt context without rotating the canonical
+    // session shared by the phone and web surfaces.
     await ap.postAgentPhoneInboundMessage({
       channel: "sms",
       from: phone,
       body: "finish back on my phone",
+      recentHistory: [
+        {
+          messageId: "rh-shared-session",
+          content: "provider history before returning to the phone",
+          direction: "inbound",
+          channel: "sms",
+          from: phone,
+          at: "2026-06-01T08:00:00.000Z",
+        },
+      ],
     });
     const phoneRun2 = await claimDispatchedRun(runnerGroup);
     await completeSandboxRun(phoneRun2.sandboxToken, phoneRun2.runId, 0);
@@ -754,20 +766,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
   });
 
-  it("renders provider recent history and reuses the linked session", async () => {
+  it("renders provider recent history", async () => {
     const ap = createAgentPhoneBddApi(context);
-    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
-
-    await ap.postAgentPhoneInboundMessage({
-      channel: "sms",
-      from: phone,
-      body: "establish history session",
-    });
-    const run1 = await claimDispatchedRun(runnerGroup);
-    const beforeRun1Completion = sends.messages.length;
-    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
-    await waitForSendCount(sends, beforeRun1Completion + 1);
-    const historySession = await waitForRunSessionIdPresent(actor, run1.runId);
+    const { phone, runnerGroup } = await entitledLinkedActor();
 
     // Provider-sent recent history wins over stored context: full entries
     // keep channel and timestamp lines, media-only entries become file
@@ -789,25 +790,19 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         { direction: "inbound" },
       ],
     });
-    const run2 = await claimDispatchedRun(runnerGroup);
-    expect(run2.appendSystemPrompt).toContain("# AgentPhone Message Context");
-    expect(run2.appendSystemPrompt).toContain("MSG_ID: rh-full");
-    expect(run2.appendSystemPrompt).toContain("prior context from provider");
-    expect(run2.appendSystemPrompt).toContain("CHANNEL: sms");
-    expect(run2.appendSystemPrompt).toContain("AT: 2026-06-01T08:00:00.000Z");
-    expect(run2.appendSystemPrompt).toContain(
+    const run = await claimDispatchedRun(runnerGroup);
+    expect(run.appendSystemPrompt).toContain("# AgentPhone Message Context");
+    expect(run.appendSystemPrompt).toContain("MSG_ID: rh-full");
+    expect(run.appendSystemPrompt).toContain("prior context from provider");
+    expect(run.appendSystemPrompt).toContain("CHANNEL: sms");
+    expect(run.appendSystemPrompt).toContain("AT: 2026-06-01T08:00:00.000Z");
+    expect(run.appendSystemPrompt).toContain(
       "[AgentPhone file] https://media.agentphone.test/history-photo.png",
     );
     expect(
-      run2.appendSystemPrompt.match(/- RELATIVE_INDEX:/gu) ?? [],
+      run.appendSystemPrompt.match(/- RELATIVE_INDEX:/gu) ?? [],
     ).toHaveLength(2);
-
-    // Session continuity: the second DM reuses the session saved by the
-    // first completion.
-    const beforeRun2Completion = sends.messages.length;
-    await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
-    await waitForSendCount(sends, beforeRun2Completion + 1);
-    await waitForRunSessionId(actor, run2.runId, historySession);
+    await completeSandboxRun(run.sandboxToken, run.runId, 0);
   });
 
   it("restarts linked sessions when the model route changes", async () => {

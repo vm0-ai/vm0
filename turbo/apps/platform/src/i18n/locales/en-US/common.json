@@ -173,7 +173,6 @@
       "emptyOutput": "(empty output)",
       "files_one": "{{formattedCount}} file",
       "files_other": "{{formattedCount}} files",
-      "handoffApiToSandbox": "Handoff · API Server → Sandbox",
       "initialize": "Initialize",
       "inputTokens": "in: {{formattedCount}}",
       "models_one": "{{formattedCount}} model",
@@ -1675,7 +1674,8 @@
       "pickEmoji": "Pick an emoji",
       "scrollToBottom": "Scroll to bottom",
       "searchEmoji": "Search emoji",
-      "steerMessageExplanation": "Sent while the agent was working to direct its behavior"
+      "steerAcknowledgement_one": "Picked this up mid-run — earlier work kept",
+      "steerAcknowledgement_other": "All {{count}} messages picked up mid-run — earlier work kept"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"

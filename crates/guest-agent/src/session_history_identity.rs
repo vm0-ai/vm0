@@ -51,6 +51,7 @@ fn session_id_hash(framework: env::Framework, session_id: &str) -> Option<String
     let normalized = match framework {
         env::Framework::ClaudeCode => session_id.to_owned(),
         env::Framework::Codex => canonical_codex_thread_id(session_id)?,
+        env::Framework::Pi => session_id.to_owned(),
     };
     Some(hex::encode(Sha256::digest(normalized.as_bytes())))
 }
@@ -59,6 +60,7 @@ fn final_framework(framework: env::Framework) -> FinalSessionHistoryFramework {
     match framework {
         env::Framework::ClaudeCode => FinalSessionHistoryFramework::ClaudeCode,
         env::Framework::Codex => FinalSessionHistoryFramework::Codex,
+        env::Framework::Pi => FinalSessionHistoryFramework::Pi,
     }
 }
 
@@ -189,6 +191,13 @@ fn verify_final_session_history_identity_constraints(
         }
         FinalSessionHistoryFramework::Codex => {
             if !session_history::is_codex_marker(&identity.history_marker_payload) {
+                return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
+            }
+        }
+        FinalSessionHistoryFramework::Pi => {
+            if identity.history_marker_payload
+                != api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
+            {
                 return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
             }
         }
@@ -425,6 +434,29 @@ mod tests {
         let metadata_path = write_metadata(&dir, &identity);
 
         verify_final_session_history_identity_file(metadata_path, None).unwrap();
+    }
+
+    #[test]
+    fn builds_pi_sqlite_history_identity() {
+        let session_id = "00000000-0000-4000-8000-000000000001";
+        let history = b"SQLite format 3\0\xff\x00native-pi-session";
+        let history_path =
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH;
+        let identity = build_final_session_history_identity(
+            env::Framework::Pi,
+            session_id,
+            &hex::encode(Sha256::digest(history)),
+            history.len() as u64,
+            history_path,
+        )
+        .unwrap();
+
+        assert_eq!(identity.framework, FinalSessionHistoryFramework::Pi);
+        assert_eq!(identity.history_marker_payload, history_path);
+        assert_eq!(
+            identity.session_id_hash,
+            hex::encode(Sha256::digest(session_id.as_bytes()))
+        );
     }
 
     #[test]

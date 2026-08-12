@@ -1,34 +1,18 @@
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 
 import {
   createPiNodeExecutionEnv,
-  DEFAULT_PI_STANDBY_TTL_SECONDS,
-  piStandbyAgentConfigFromEnv,
-  runPiStandbyAgentLoop,
+  piSandboxAgentConfigFromEnv,
+  runPiSandboxAgentLoop,
   StdioPiAgentLoopIo,
 } from "../../lib/pi-agent-loop";
 
-function positiveInteger(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new InvalidArgumentError("must be a positive integer");
-  }
-  return parsed;
-}
-
 export const zeroAgentLoopCommand = new Command()
   .name("__agent-loop")
-  .description("Internal sandbox agent loop")
-  .requiredOption("--standby", "Wait for a Pi handoff control")
-  .option(
-    "--standby-ttl-seconds <seconds>",
-    "Fail when no persisted tool call appears before this duration",
-    positiveInteger,
-    DEFAULT_PI_STANDBY_TTL_SECONDS,
-  )
-  .action(async (options: { standby: true; standbyTtlSeconds: number }) => {
+  .description("Internal sandbox Pi agent loop")
+  .action(async () => {
     const io = new StdioPiAgentLoopIo(process.stdin, process.stdout);
-    const executionEnv = createPiNodeExecutionEnv();
+    const executionEnv = await createPiNodeExecutionEnv();
     const abortController = new AbortController();
     const abortOnSigterm = () => {
       const error = new Error("Pi agent loop received SIGTERM");
@@ -38,20 +22,16 @@ export const zeroAgentLoopCommand = new Command()
     };
     process.once("SIGTERM", abortOnSigterm);
     try {
-      await runPiStandbyAgentLoop(
+      process.exitCode = await runPiSandboxAgentLoop(
         {
           io,
-          config: piStandbyAgentConfigFromEnv(),
+          config: piSandboxAgentConfigFromEnv(),
           executionEnv,
-          standbyTtlSeconds: options.standbyTtlSeconds,
         },
         abortController.signal,
       );
     } catch (error) {
-      await io.write({
-        type: "pi-error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
     } finally {
       process.removeListener("SIGTERM", abortOnSigterm);

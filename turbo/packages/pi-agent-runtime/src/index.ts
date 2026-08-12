@@ -11,7 +11,6 @@ import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
 import {
   isPiAgentModelSupported as isPiAgentModelSupportedImpl,
   runPiAgentPrompt as runPiAgentPromptImpl,
-  runPiAgentResume as runPiAgentResumeImpl,
 } from "./agent-loop";
 import {
   formatPiUserPrompt as formatPiUserPromptImpl,
@@ -19,9 +18,6 @@ import {
   PI_BASE_SYSTEM_PROMPT as PI_BASE_SYSTEM_PROMPT_IMPL,
   renderPiSystemPrompt as renderPiSystemPromptImpl,
 } from "./runtime";
-import { createPiNoopExecutionEnv as createPiNoopExecutionEnvImpl } from "./noop";
-import { piMessageRequiresSandbox as piMessageRequiresSandboxImpl } from "./tools";
-import { parsePiAgentMessages as parsePiAgentMessagesImpl } from "./transcript";
 import type {
   ExecutionEnv,
   ExecutionErrorConstructor,
@@ -34,10 +30,6 @@ import type {
   Result,
   Skill,
 } from "./types";
-
-/** An {@link ExecutionEnv} that reports every operation as unavailable. */
-export const createPiNoopExecutionEnv: () => ExecutionEnv =
-  createPiNoopExecutionEnvImpl;
 
 /**
  * Every export below is annotated with this package's own types from
@@ -53,12 +45,9 @@ export const createPiNoopExecutionEnv: () => ExecutionEnv =
  *
  * The native `AgentMessage` union is wider than {@link PiAgentMessage} because
  * it also covers the harness-only roles (`bashExecution`, `custom`,
- * `branchSummary`, `compactionSummary`). Those are produced by
- * pi-agent-core's session layer, which this package never instantiates: it
- * drives `runAgentLoop`/`runAgentLoopContinue` directly, and the only other
- * emitter is `executePiUnresolvedToolBatch`, which emits tool results. The
- * `null` branch is therefore unreachable rather than tolerant, and exists so
- * the published surface can be typed without referencing native types.
+ * `branchSummary`, `compactionSummary`). The sandbox loop only projects the
+ * LLM-compatible roles through this public callback. The `null` branch exists
+ * so the published surface can be typed without referencing native types.
  */
 function transcriptMessage(message: AgentMessage): PiAgentMessage | null {
   return message.role === "user" ||
@@ -121,22 +110,13 @@ export const renderPiSystemPrompt: (args: {
   readonly skills: readonly Skill[];
 }) => string = renderPiSystemPromptImpl;
 
-/** Whether an assistant batch must leave the API-backed ExecutionEnv. */
-export const piMessageRequiresSandbox: (message: PiAgentMessage) => boolean =
-  piMessageRequiresSandboxImpl;
-
 /** Whether Pi's native provider catalog knows this model. */
 export const isPiAgentModelSupported: (config: PiAgentModelConfig) => boolean =
   isPiAgentModelSupportedImpl;
 
-/** Validate persisted transcript payloads before replaying them into Pi. */
-export const parsePiAgentMessages: (
-  messages: readonly unknown[],
-) => PiAgentMessage[] = parsePiAgentMessagesImpl;
-
 /**
  * Run the native Pi agent loop with the same model, prompt, messages, and
- * ExecutionEnv-driven tools used on both sides of a handoff.
+ * ExecutionEnv-driven tools used inside the Sandbox.
  */
 export async function runPiAgentPrompt(
   args: {
@@ -162,32 +142,6 @@ export async function runPiAgentPrompt(
   );
 }
 
-/**
- * Resume a handed-off Pi turn by executing the latest assistant tool batch in
- * the Sandbox, then continuing the native model loop.
- */
-export async function runPiAgentResume(
-  args: {
-    readonly model: PiAgentModelConfig;
-    readonly systemPrompt: string;
-    readonly messages: readonly PiAgentMessage[];
-    readonly executionEnv: ExecutionEnv;
-    readonly onMessage: (message: PiAgentMessage) => Promise<void> | void;
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  await runPiAgentResumeImpl(
-    {
-      model: args.model,
-      systemPrompt: args.systemPrompt,
-      messages: args.messages,
-      executionEnv: args.executionEnv,
-      onEvent: messageSink(args.onMessage),
-    },
-    signal,
-  );
-}
-
 /** Error returned by {@link ExecutionEnv} file operations. */
 export type FileError = NativeFileErrorShape;
 
@@ -200,6 +154,8 @@ export type {
   FileInfo,
   PiAgentMessage,
   PiAgentModelConfig,
+  PiAgentSessionResult,
+  PiAssistantMessage,
   PiOpenAICompatibleProvider,
   PiRunSkills,
   Result,

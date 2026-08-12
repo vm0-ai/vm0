@@ -179,7 +179,6 @@
       "files_one": "{{formattedCount}} fichier",
       "files_many": "{{formattedCount}} fichiers",
       "files_other": "{{formattedCount}} fichiers",
-      "handoffApiToSandbox": "Transfert · Serveur API → Sandbox",
       "initialize": "Initialiser",
       "inputTokens": "dans : {{formattedCount}}",
       "models_one": "{{formattedCount}} modèle",
@@ -1715,7 +1714,9 @@
       "pickEmoji": "Choisissez un emoji",
       "scrollToBottom": "Faire défiler vers le bas",
       "searchEmoji": "Rechercher un emoji",
-      "steerMessageExplanation": "Envoyé pendant que l’agent travaillait afin d’orienter son comportement"
+      "steerAcknowledgement_one": "Pris en compte pendant l'exécution — le travail précédent est conservé",
+      "steerAcknowledgement_many": "Les {{count}} messages pris en compte pendant l'exécution — le travail précédent est conservé",
+      "steerAcknowledgement_other": "Les {{count}} messages pris en compte pendant l'exécution — le travail précédent est conservé"
     },
     "threadSidebar": {
       "resize": "Redimensionner la barre latérale"

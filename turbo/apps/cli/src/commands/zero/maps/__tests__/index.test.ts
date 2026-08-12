@@ -32,7 +32,7 @@ describe("okou maps command", () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
   });
 
   afterEach(async () => {
@@ -406,7 +406,7 @@ describe("okou maps command", () => {
   });
 
   it("shows auth guidance when no token is available", async () => {
-    vi.stubEnv("ZERO_TOKEN", undefined);
+    vi.stubEnv("OKOU_TOKEN", undefined);
 
     await expect(
       zeroMapsCommand.parseAsync([

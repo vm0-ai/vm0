@@ -3,7 +3,6 @@ import {
   compatibleStoredExecutionContextSchema,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
-  piExecutionModeSchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
@@ -16,7 +15,6 @@ import {
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
-  type PiExecutionMode,
   type RunnerPreference,
   type RunnerPreferenceClaimState,
   type SessionHistoryDownloadSource,
@@ -706,10 +704,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`.mapWith(
           nullableDriverValueDecoder(pgTextDecoder),
         ),
-      piExecutionMode:
-        sql`${runnerJobQueue.executionContext}->>'piExecutionMode'`.mapWith(
-          nullableDriverValueDecoder(pgTextDecoder),
-        ),
       createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)
@@ -727,10 +721,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-  const piExecutionMode =
-    pendingJob.piExecutionMode === null
-      ? undefined
-      : piExecutionModeSchema.parse(pendingJob.piExecutionMode);
   const runnerPreference = await resolvePollRunnerReusePreference(db, {
     runId: pendingJob.runId,
     runnerGroup: group,
@@ -770,7 +760,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        ...(piExecutionMode ? { piExecutionMode } : {}),
         runnerPreference,
       },
     },
@@ -927,11 +916,7 @@ function claimAuthorizationError(
 }
 
 type ClaimTransitionResult =
-  | {
-      readonly status: "claimed";
-      readonly claimedAt: Date;
-      readonly piExecutionMode: PiExecutionMode | undefined;
-    }
+  | { readonly status: "claimed"; readonly claimedAt: Date }
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
 type ClaimedTransitionResult = Extract<
@@ -958,7 +943,6 @@ const claimTransitionSqlRowSchema = z.object({
     "invariant-error",
   ]),
   claimedAtMs: z.number().nullable(),
-  piExecutionMode: piExecutionModeSchema.nullable(),
 });
 
 function decodeClaimTransitionResult(
@@ -972,11 +956,7 @@ function decodeClaimTransitionResult(
     if (row.claimedAtMs === null) {
       throw new Error("Claimed runner job is missing its transition time");
     }
-    return {
-      status: "claimed",
-      claimedAt: new Date(row.claimedAtMs),
-      piExecutionMode: row.piExecutionMode ?? undefined,
-    };
+    return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
   }
   return { status: row.status };
 }
@@ -1015,86 +995,6 @@ async function lockRunnerJob(
   return row;
 }
 
-function piExecutionContextValidSql(): SQL {
-  return sql`
-    (
-      NOT (${runnerJobQueue.executionContext} ? 'piExecutionMode')
-      AND NOT (
-        ${runnerJobQueue.executionContext}
-          ?| ARRAY['piSystemPrompt', 'piModelConfig', 'runSkillSnapshot']
-      )
-    )
-    OR COALESCE(
-      (
-        ${runnerJobQueue.executionContext}->>'piExecutionMode' = 'standby'
-        AND jsonb_typeof(
-          ${runnerJobQueue.executionContext}->'piSystemPrompt'
-        ) = 'string'
-        AND btrim(${runnerJobQueue.executionContext}->>'piSystemPrompt') <> ''
-        AND jsonb_typeof(
-          ${runnerJobQueue.executionContext}->'piModelConfig'
-        ) = 'object'
-        AND jsonb_typeof(
-          ${runnerJobQueue.executionContext}->'runSkillSnapshot'
-        ) = 'object'
-      ),
-      false
-    )
-  `;
-}
-
-function selectClaimTransitionResultSql(): SQL {
-  return sql`
-    SELECT
-      CASE
-        WHEN NOT EXISTS (SELECT 1 FROM locked_run)
-          THEN 'run-not-found'
-        WHEN EXISTS (
-          SELECT 1
-          FROM locked_run
-          WHERE locked_run."status" <> 'pending'
-        )
-          THEN 'run-not-found'
-        WHEN NOT EXISTS (SELECT 1 FROM locked_job)
-          OR EXISTS (
-            SELECT 1
-            FROM locked_job
-            WHERE locked_job."isExpired"
-          )
-          THEN 'job-not-found'
-        WHEN EXISTS (
-          SELECT 1
-          FROM locked_job
-          WHERE NOT locked_job."piExecutionContextValid"
-        )
-          THEN 'invariant-error'
-        WHEN EXISTS (SELECT 1 FROM updated_run)
-          AND (
-            EXISTS (SELECT 1 FROM deleted_job)
-            OR EXISTS (SELECT 1 FROM retained_pi_job)
-          )
-          THEN 'claimed'
-        ELSE 'invariant-error'
-      END AS "status",
-      (
-        SELECT
-          (
-            EXTRACT(EPOCH FROM updated_run."claimedAt") * 1000
-          )::double precision
-        FROM updated_run
-      ) AS "claimedAtMs",
-      (
-        SELECT
-          CASE
-            WHEN locked_job."piExecutionContextValid"
-              THEN locked_job."piExecutionMode"
-            ELSE NULL
-          END
-        FROM locked_job
-      ) AS "piExecutionMode"
-  `;
-}
-
 function buildClaimTransitionSql(
   runId: string,
   runnerId: string | null,
@@ -1113,9 +1013,6 @@ function buildClaimTransitionSql(
           locked_job AS MATERIALIZED (
             SELECT
               ${runnerJobQueue.runId} AS "runId",
-              ${runnerJobQueue.executionContext}->>'piExecutionMode'
-                AS "piExecutionMode",
-              (${piExecutionContextValidSql()}) AS "piExecutionContextValid",
               ${lte(runnerJobQueue.expiresAt, sql`now()`)} AS "isExpired"
             FROM ${runnerJobQueue}
             INNER JOIN locked_run
@@ -1134,7 +1031,6 @@ function buildClaimTransitionSql(
             WHERE
               locked_run."status" = 'pending'
               AND NOT locked_job."isExpired"
-              AND locked_job."piExecutionContextValid"
           ),
           updated_run AS (
             UPDATE ${agentRuns}
@@ -1161,8 +1057,6 @@ function buildClaimTransitionSql(
             WHERE ${and(
               eq(runnerJobQueue.runId, sql`locked_job."runId"`),
               sql`locked_job."runId" = locked_run."id"`,
-              sql`locked_job."piExecutionContextValid"`,
-              sql`locked_job."piExecutionMode" IS DISTINCT FROM 'standby'`,
               sql`(
                 locked_run."status" <> 'pending'
                 OR EXISTS (
@@ -1173,19 +1067,36 @@ function buildClaimTransitionSql(
               )`,
             )}
             RETURNING ${runnerJobQueue.runId} AS "runId"
-          ),
-          retained_pi_job AS (
-            SELECT locked_job."runId" AS "runId"
-            FROM locked_job
-            WHERE
-              locked_job."piExecutionMode" = 'standby'
-              AND EXISTS (
-                SELECT 1
-                FROM updated_run
-                WHERE updated_run."id" = locked_job."runId"
-              )
           )
-          ${selectClaimTransitionResultSql()}
+          SELECT
+            CASE
+              WHEN NOT EXISTS (SELECT 1 FROM locked_run)
+                THEN 'run-not-found'
+              WHEN EXISTS (
+                SELECT 1
+                FROM locked_run
+                WHERE locked_run."status" <> 'pending'
+              )
+                THEN 'run-not-found'
+              WHEN NOT EXISTS (SELECT 1 FROM locked_job)
+                OR EXISTS (
+                  SELECT 1
+                  FROM locked_job
+                  WHERE locked_job."isExpired"
+                )
+                THEN 'job-not-found'
+              WHEN EXISTS (SELECT 1 FROM updated_run)
+                AND EXISTS (SELECT 1 FROM deleted_job)
+                THEN 'claimed'
+              ELSE 'invariant-error'
+            END AS "status",
+            (
+              SELECT
+                (
+                  EXTRACT(EPOCH FROM updated_run."claimedAt") * 1000
+                )::double precision
+              FROM updated_run
+            ) AS "claimedAtMs"
           `;
 }
 
@@ -1888,7 +1799,7 @@ async function buildClaimResponseBody(
       signal.throwIfAborted();
       const {
         connectorPermissionBaseline: _connectorPermissionBaseline,
-        piExecutionMode: _unlockedPiExecutionMode,
+        piPrompt,
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
         storageMounts: _storedStorageMounts,
         ...runnerStoredContext
@@ -1897,7 +1808,7 @@ async function buildClaimResponseBody(
         ...runnerStoredContext,
         runId: args.run.id,
         reuseKey: args.reuseKey,
-        prompt: args.run.prompt,
+        prompt: piPrompt ?? args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
         agentComposeVersionId: args.run.agentComposeVersionId,
         vars: mergeClaimVars({
@@ -2550,15 +2461,7 @@ const claimAuthorizedJob$ = command(
       return claimTransitionErrorResponse(claimResult);
     }
 
-    const response = {
-      status: 200 as const,
-      body: {
-        ...responseBodyResult.value,
-        ...(claimResult.piExecutionMode
-          ? { piExecutionMode: claimResult.piExecutionMode }
-          : {}),
-      },
-    };
+    const response = { status: 200 as const, body: responseBodyResult.value };
     claimRouteTiming.recordElapsed(
       "claim_route_request_to_response_ready",
       "parent",

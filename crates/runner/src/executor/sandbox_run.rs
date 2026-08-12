@@ -1529,6 +1529,19 @@ fn normalize_guest_cli_agent_session_id(
                 None
             }
         }
+        EffectiveCliFramework::Pi => {
+            if is_valid_cli_agent_session_id(&session_id) {
+                Some(session_id)
+            } else {
+                warn!(
+                    run_id = %context.run_id,
+                    framework = "pi",
+                    session_id = %invalid_session_id_diagnostic_preview(&session_id),
+                    "ignoring invalid guest session ID for framework"
+                );
+                None
+            }
+        }
     }
 }
 

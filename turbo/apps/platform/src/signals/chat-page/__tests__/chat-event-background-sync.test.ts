@@ -5,6 +5,7 @@ import {
   chatThreadsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,6 +19,8 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
+import { FEATURE_SWITCH_CACHE_KEY } from "../../external/feature-switch-state.ts";
+import { localStorageSignals } from "../../external/local-storage.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
 import { writeIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
@@ -30,6 +33,9 @@ vi.mock("idb", async () => {
 
 const context = testContext();
 const resetSubscriberSignal$ = resetSignal();
+const { set$: setFeatureSwitchCache$ } = localStorageSignals(
+  FEATURE_SWITCH_CACHE_KEY,
+);
 
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
@@ -100,6 +106,13 @@ const newEvent = assistantEvent(
 
 function mockSignedInUser(): void {
   clearMockedAuthOnAbort(context.signal);
+  context.store.set(
+    setFeatureSwitchCache$,
+    JSON.stringify({
+      ...getAllFeatureStates({}),
+      [FeatureSwitchKey.ChatEventSnapshotRead]: false,
+    }),
+  );
   mockUser(
     {
       id: userId(),
@@ -129,7 +142,10 @@ async function setupAuthenticatedBackgroundSync(): Promise<void> {
       activeOrg: { id: orgId(), name: "Background Sync Org" },
       memberships: [{ id: orgId() }],
     },
-    featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.UnifiedIndicatorApi]: true,
+      [FeatureSwitchKey.ChatEventSnapshotRead]: false,
+    },
   });
 }
 

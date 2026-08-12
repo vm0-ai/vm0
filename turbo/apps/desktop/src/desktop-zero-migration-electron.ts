@@ -9,6 +9,7 @@ interface DesktopZeroMigrationNativeApi {
   readonly remindLater: () => DesktopZeroMigrationState;
   readonly beginMigration: () => Promise<DesktopZeroMigrationState>;
   readonly resumeZero: () => Promise<DesktopZeroMigrationState>;
+  readonly quitZero: () => DesktopZeroMigrationState;
 }
 
 export function notifyDesktopZeroMigrationChanged(): void {
@@ -49,5 +50,9 @@ export function installDesktopZeroMigrationIpc(
   ipcMain.handle(DESKTOP_ZERO_MIGRATION_CHANNELS.resumeZero, (event) => {
     assertComputerUsePage(event);
     return api.resumeZero();
+  });
+  ipcMain.handle(DESKTOP_ZERO_MIGRATION_CHANNELS.quitZero, (event) => {
+    assertComputerUsePage(event);
+    return api.quitZero();
   });
 }

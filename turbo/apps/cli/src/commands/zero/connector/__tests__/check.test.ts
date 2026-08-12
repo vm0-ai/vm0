@@ -42,7 +42,7 @@ function buildZeroToken(
     userId: "user-1",
     runId: "run-abc-123",
     orgId: "org-1",
-    scope: "zero",
+    scope: "okou",
     capabilities: ["connector:read", "agent-run:read"],
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -240,9 +240,9 @@ describe("okou connector check command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", API_BASE_URL);
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken());
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");
   });
@@ -376,8 +376,8 @@ describe("okou connector check command", () => {
     });
 
     it("requires a URL diagnostic before printing a callback permission command", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
-      vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-abc-123");
       stubDiagnostic(
         resolvedEnvironment({
           permission: { outcome: "ask", basis: "ask-list" },

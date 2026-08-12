@@ -29,6 +29,7 @@ fn env_or_empty(name: &str) -> String {
 pub enum Framework {
     ClaudeCode,
     Codex,
+    Pi,
 }
 
 impl Framework {
@@ -37,6 +38,7 @@ impl Framework {
         match self {
             Framework::ClaudeCode => "claude-code",
             Framework::Codex => "codex",
+            Framework::Pi => "pi",
         }
     }
 }
@@ -279,7 +281,7 @@ pub struct GuestConfig {
     pub codex_runtime_config: String,
     pub pi_system_prompt: String,
     pub pi_model_config: String,
-    pub run_skill_snapshot: String,
+    pub pi_session_id: String,
     pub stuck_tool_timeout_secs: u64,
     pub post_result_sigterm_grace: Duration,
     pub post_result_total_cap: Duration,
@@ -365,7 +367,7 @@ impl GuestConfig {
             codex_runtime_config: payload.codex_runtime_config,
             pi_system_prompt: payload.pi_system_prompt,
             pi_model_config: payload.pi_model_config,
-            run_skill_snapshot: payload.run_skill_snapshot,
+            pi_session_id: payload.pi_session_id,
             stuck_tool_timeout_secs: u64_value_or(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
                 non_empty(&raw.stuck_tool_timeout_secs),
@@ -396,6 +398,7 @@ impl GuestConfig {
 fn framework_from_cli_agent_type(value: &str) -> Framework {
     match value {
         "codex" => Framework::Codex,
+        "pi" => Framework::Pi,
         "" | "claude-code" => Framework::ClaudeCode,
         other => {
             log_warn!(
@@ -924,7 +927,7 @@ mod tests {
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
             pi_system_prompt: "fixed Pi prompt".to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
-            run_skill_snapshot: r#"{"digest":"sha256:test"}"#.to_string(),
+            pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
         let path = write_run_payload_fixture(&runtime_dir, &payload);
         let parent = path.parent().unwrap().to_path_buf();
@@ -948,7 +951,7 @@ mod tests {
         assert_eq!(config.codex_runtime_config, r#"{"providerId":"deepseek"}"#);
         assert_eq!(config.pi_system_prompt, "fixed Pi prompt");
         assert_eq!(config.pi_model_config, r#"{"provider":"deepseek"}"#);
-        assert_eq!(config.run_skill_snapshot, r#"{"digest":"sha256:test"}"#);
+        assert_eq!(config.pi_session_id, "22222222-2222-4222-8222-222222222222");
         assert!(!path.exists());
         assert!(!parent.exists());
     }

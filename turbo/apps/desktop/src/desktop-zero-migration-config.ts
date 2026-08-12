@@ -1,5 +1,8 @@
 export const ZERO_MIGRATION_BRIDGE_CONFIG = {
   minimumVersion: "0.34.0",
+  policyPath: "/api/desktop/migration-policy",
+  policyRefreshIntervalMs: 5 * 60 * 1_000,
+  policyRequestTimeoutMs: 5 * 1_000,
   downloadUrl:
     "https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg",
   reminderDelayMs: 7 * 24 * 60 * 60 * 1_000,
@@ -10,6 +13,9 @@ export const ZERO_MIGRATION_BRIDGE_CONFIG = {
     pausedTitle: "Zero is paused while you set up Okou",
     pausedDetail:
       "Finish installing and setting up Okou. If that does not work, you can resume Zero and try again later.",
+    hardStopTitle: "Zero has moved to Okou",
+    hardStopDetail:
+      "Zero is now offline. Download Okou to continue using Computer Use.",
   },
 } as const;
 

@@ -173,7 +173,6 @@
       "emptyOutput": "(空の出力)",
       "files_one": "{{formattedCount}} ファイル",
       "files_other": "{{formattedCount}} ファイル",
-      "handoffApiToSandbox": "ハンドオフ · API サーバー → サンドボックス",
       "initialize": "初期化する",
       "inputTokens": "入力: {{formattedCount}}",
       "models_one": "{{formattedCount}} モデル",
@@ -1674,7 +1673,8 @@
       "pickEmoji": "絵文字を選択",
       "scrollToBottom": "一番下までスクロール",
       "searchEmoji": "絵文字を検索",
-      "steerMessageExplanation": "エージェントの動作を指示するため、作業中に送信されました"
+      "steerAcknowledgement_one": "実行中に受け取りました。これまでの作業はそのまま残ります",
+      "steerAcknowledgement_other": "{{count}} 件すべてを実行中に受け取りました。これまでの作業はそのまま残ります"
     },
     "threadSidebar": {
       "resize": "サイドバーのサイズを変更する"

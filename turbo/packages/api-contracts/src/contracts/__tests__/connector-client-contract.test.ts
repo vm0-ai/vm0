@@ -238,35 +238,18 @@ describe("connector client response contracts", () => {
 });
 
 describe("custom connector response contracts", () => {
-  it("normalizes kind-less HTTP responses to the canonical shape", () => {
-    const previousWirePayload = {
-      ...customHttpConnectorPayload,
-      prefixes: ["https://api.example.test"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{token}}",
-    };
-    const currentWirePayload = {
-      ...customHttpConnectorPayload,
-    };
-
-    const previous = customConnectorResponseSchema.parse(previousWirePayload);
-    const current = customConnectorResponseSchema.parse(currentWirePayload);
-    const future = customConnectorResponseSchema.parse(
-      customHttpConnectorPayload,
-    );
-    const kindless = customConnectorResponseSchema.parse(
-      customHttpConnectorPayloadBase,
-    );
-
-    expect(previous).toStrictEqual(customHttpConnectorPayload);
-    expect(current).toStrictEqual(customHttpConnectorPayload);
-    expect(future).toStrictEqual(customHttpConnectorPayload);
-    expect(kindless).toStrictEqual(customHttpConnectorPayload);
+  it("requires tagged HTTP responses", () => {
+    expect(
+      customConnectorResponseSchema.parse(customHttpConnectorPayload),
+    ).toStrictEqual(customHttpConnectorPayload);
     expect(
       customConnectorListResponseSchema.parse({
-        connectors: [previousWirePayload],
+        connectors: [customHttpConnectorPayload],
       }),
     ).toStrictEqual({ connectors: [customHttpConnectorPayload] });
+    expect(() => {
+      customConnectorResponseSchema.parse(customHttpConnectorPayloadBase);
+    }).toThrow();
   });
 
   it("parses canonical MCP responses", () => {
@@ -291,16 +274,6 @@ describe("custom connector response contracts", () => {
       transport: "streamable-http",
       prefixTemplates: [],
     } as const;
-    const previousWirePayload = {
-      ...payload,
-      prefixes: [],
-      headerName: "",
-      headerTemplate: "",
-    } as const;
-
-    expect(
-      customConnectorResponseSchema.parse(previousWirePayload),
-    ).toStrictEqual(payload);
     expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
   });
 });

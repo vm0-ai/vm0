@@ -11,6 +11,7 @@ import {
   isCodexAuthJsonFreePlanError,
 } from "./codex-auth-json-parser";
 import { fetchCodexUsageMetadata } from "./codex-usage.service";
+import type { PersonalProviderAccountErrorResponse } from "./model-provider-account.service";
 import { logger } from "../../lib/log";
 import { settle, tapError, throwIfAbort } from "../utils";
 
@@ -108,7 +109,10 @@ type UpsertCodexProvider = (args: {
     subscriptionResetPeriod?: string | null;
     subscriptionNextResetAt?: Date | null;
   };
-}) => Promise<{ provider: UpsertedProvider; created: boolean }>;
+}) => Promise<
+  | { provider: UpsertedProvider; created: boolean }
+  | PersonalProviderAccountErrorResponse
+>;
 
 /**
  * Common args shared by both scopes. Split out so the discriminated union
@@ -176,7 +180,7 @@ export async function handleCodexAuthJsonPaste(
           },
         )) ?? null;
 
-      const { provider, created } = await args.upsert({
+      const upserted = await args.upsert({
         authMethod: "auth_json",
         secretValues: {
           CHATGPT_ACCESS_TOKEN: parsed.accessToken,
@@ -201,6 +205,10 @@ export async function handleCodexAuthJsonPaste(
             : {}),
         },
       });
+      if ("status" in upserted) {
+        return upserted;
+      }
+      const { provider, created } = upserted;
 
       return {
         status: (created ? 201 : 200) as 200 | 201,

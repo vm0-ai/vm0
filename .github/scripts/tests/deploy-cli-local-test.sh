@@ -12,6 +12,7 @@ test_root="${tmp_dir}/repo"
 mkdir -p \
   "${test_root}/scripts" \
   "${test_root}/.github/scripts" \
+  "${test_root}/turbo/apps/cli/dist/migrations" \
   "${test_root}/turbo/apps/cli/dist" \
   "${test_root}/bin"
 
@@ -40,10 +41,12 @@ cat >"${test_root}/turbo/apps/cli/dist/package.json" <<'EOF'
   "version": "1.0.0",
   "private": true,
   "bin": { "okou": "okou.js" },
-  "files": ["*.js"]
+  "files": ["*.js", "migrations/*.sql"]
 }
 EOF
 printf '#!/usr/bin/env node\n' >"${test_root}/turbo/apps/cli/dist/okou.js"
+printf 'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY);\n' \
+  >"${test_root}/turbo/apps/cli/dist/migrations/001_initial.sql"
 
 cat >"${test_root}/bin/git" <<'EOF'
 #!/usr/bin/env bash

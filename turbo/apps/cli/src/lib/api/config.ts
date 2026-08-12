@@ -7,7 +7,7 @@ export async function getToken(): Promise<string | undefined> {
 
 /**
  * Get the active token for API requests.
- * Agent runs use OKOU_TOKEN with ZERO_TOKEN as a compatibility fallback.
+ * Agent runs use OKOU_TOKEN.
  */
 export async function getActiveToken(): Promise<string | undefined> {
   return getToken();
@@ -19,7 +19,7 @@ export async function getApiUrl(): Promise<string> {
     // Add protocol if missing
     return apiUrl.startsWith("http") ? apiUrl : `https://${apiUrl}`;
   }
-  return "https://api.vm0.ai";
+  return "https://api.okou.ai";
 }
 
 export { decodeZeroTokenPayload };
