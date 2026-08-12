@@ -2,10 +2,11 @@
 //!
 //! Builtin and custom connector targets share one scheduler, bounded
 //! queue, generation model, retry policy, and registry publication boundary.
-//! Realtime notifications advance a target generation and schedule immediate
-//! work; API deadlines and retries continue the generation they belong to.
-//! Nearby due targets for one run are coalesced and split to the shared API
-//! contract limit.
+//! The scheduler runs a bounded number of independent runs concurrently while
+//! serializing and coalescing work for each run. Realtime notifications advance
+//! a target generation and schedule immediate work; API deadlines and retries
+//! continue the generation they belong to. Nearby due targets for one run are
+//! coalesced and split to the shared API contract limit.
 //!
 //! A sync response must contain each requested target exactly once. Valid
 //! builtin policy and custom firewall updates are prepared independently, then
@@ -27,13 +28,16 @@
 //! and aborts the worker task, preventing orphaned scheduled tasks from
 //! enqueueing stale registry refreshes.
 //!
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::Future;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::pin::Pin;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::CONNECTOR_RUNTIME_SYNC_TARGETS_MAX;
 use chrono::{DateTime, Utc};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::{
     Mutex, mpsc,
     mpsc::error::{TrySendError, TrySendError::Closed, TrySendError::Full},
@@ -54,6 +58,8 @@ use crate::types::{
 };
 
 const SYNC_REQUEST_QUEUE_CAPACITY: usize = 256;
+const SYNC_REQUEST_SCHEDULER_CAPACITY: usize = SYNC_REQUEST_QUEUE_CAPACITY;
+const SYNC_REQUEST_CONCURRENCY: usize = 4;
 const CONNECTOR_RUNTIME_SYNC_BATCH_MAX: usize = CONNECTOR_RUNTIME_SYNC_TARGETS_MAX as usize;
 const EXPIRED_SYNC_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_SYNC_COALESCE_WINDOW: Duration = Duration::from_millis(100);
@@ -125,6 +131,17 @@ pub(crate) struct ConnectorRuntimeSyncRegistration<'a> {
 struct SyncRequest {
     run_id: RunId,
     targets: Vec<ConnectorSyncTarget>,
+    cancel: CancellationToken,
+}
+
+type SyncFuture = Pin<Box<dyn Future<Output = RunId> + Send>>;
+
+struct SyncDispatcher {
+    pending: HashMap<RunId, SyncRequest>,
+    ready: VecDeque<RunId>,
+    ready_runs: HashSet<RunId>,
+    in_flight_runs: HashSet<RunId>,
+    in_flight: FuturesUnordered<SyncFuture>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -151,7 +168,7 @@ impl ConnectorRuntimeSyncHandle {
             }),
             request_tx,
         };
-        let worker_task = tokio::spawn(run_sync_worker(core.clone(), request_rx));
+        let worker_task = tokio::spawn(run_sync_dispatcher(core.clone(), request_rx));
         Self {
             core: core.clone(),
             worker: Arc::new(ConnectorRuntimeSyncWorker {
@@ -1174,6 +1191,7 @@ impl ConnectorRuntimeSyncCore {
                                 SyncRequest {
                                     run_id,
                                     targets,
+                                    cancel: enqueue_cancel.clone(),
                                 },
                                 &enqueue_cancel,
                             )
@@ -1242,36 +1260,123 @@ impl ConnectorRuntimeSyncCore {
     }
 }
 
-async fn run_sync_worker(
+impl SyncDispatcher {
+    fn new() -> Self {
+        Self {
+            pending: HashMap::new(),
+            ready: VecDeque::new(),
+            ready_runs: HashSet::new(),
+            in_flight_runs: HashSet::new(),
+            in_flight: FuturesUnordered::new(),
+        }
+    }
+
+    fn can_receive(&self) -> bool {
+        self.pending.len() + self.in_flight.len() < SYNC_REQUEST_SCHEDULER_CAPACITY
+    }
+
+    fn is_idle(&self) -> bool {
+        self.pending.is_empty() && self.in_flight.is_empty()
+    }
+
+    fn enqueue(&mut self, request: SyncRequest) {
+        if request.cancel.is_cancelled() {
+            return;
+        }
+        let run_id = request.run_id;
+        match self.pending.get_mut(&run_id) {
+            Some(pending) if pending.cancel == request.cancel => {
+                merge_sync_requests(pending, request);
+            }
+            Some(pending) => {
+                *pending = request;
+            }
+            None => {
+                self.pending.insert(run_id, request);
+            }
+        }
+        if !self.in_flight_runs.contains(&run_id) && self.ready_runs.insert(run_id) {
+            self.ready.push_back(run_id);
+        }
+    }
+
+    fn start_ready(&mut self, handle: &ConnectorRuntimeSyncCore) {
+        while self.in_flight.len() < SYNC_REQUEST_CONCURRENCY {
+            let Some(run_id) = self.ready.pop_front() else {
+                break;
+            };
+            self.ready_runs.remove(&run_id);
+            let Some(request) = self.pending.remove(&run_id) else {
+                continue;
+            };
+            assert!(
+                self.in_flight_runs.insert(run_id),
+                "connector runtime sync run must not overlap itself"
+            );
+            let handle = handle.clone();
+            self.in_flight.push(Box::pin(async move {
+                tokio::select! {
+                    () = request.cancel.cancelled() => {}
+                    () = handle.sync_connector_runtime_targets_now(run_id, request.targets) => {}
+                }
+                run_id
+            }));
+        }
+    }
+
+    fn complete(&mut self, run_id: RunId) {
+        assert!(
+            self.in_flight_runs.remove(&run_id),
+            "completed connector runtime sync should be in flight"
+        );
+        if self.pending.contains_key(&run_id) && self.ready_runs.insert(run_id) {
+            self.ready.push_back(run_id);
+        }
+    }
+}
+
+fn merge_sync_requests(pending: &mut SyncRequest, request: SyncRequest) {
+    debug_assert_eq!(pending.run_id, request.run_id);
+    let mut targets = pending
+        .targets
+        .drain(..)
+        .map(|target| (target.target.clone(), target))
+        .collect::<HashMap<_, _>>();
+    for target in request.targets {
+        targets.insert(target.target.clone(), target);
+    }
+    pending.targets = targets.into_values().collect();
+    pending
+        .targets
+        .sort_by_key(|target| target.target.log_identity());
+}
+
+async fn run_sync_dispatcher(
     handle: ConnectorRuntimeSyncCore,
     mut request_rx: mpsc::Receiver<SyncRequest>,
 ) {
+    let mut dispatcher = SyncDispatcher::new();
+    let mut request_channel_open = true;
     loop {
+        dispatcher.start_ready(&handle);
+        if !request_channel_open && dispatcher.is_idle() {
+            break;
+        }
+        let can_receive = request_channel_open && dispatcher.can_receive();
+        let has_in_flight = !dispatcher.in_flight.is_empty();
         tokio::select! {
             () = handle.inner.cancel.cancelled() => {
                 break;
             }
-            request = request_rx.recv() => {
-                let Some(request) = request else {
-                    break;
-                };
-                let SyncRequest {
-                    run_id,
-                    targets,
-                } = request;
-                let completed = tokio::select! {
-                    () = handle.inner.cancel.cancelled() => {
-                        false
-                    }
-                    () = handle.sync_connector_runtime_targets_now(
-                        run_id,
-                        targets,
-                    ) => {
-                        true
-                    }
-                };
-                if !completed {
-                    break;
+            request = request_rx.recv(), if can_receive => {
+                match request {
+                    Some(request) => dispatcher.enqueue(request),
+                    None => request_channel_open = false,
+                }
+            }
+            completed = dispatcher.in_flight.next(), if has_in_flight => {
+                if let Some(run_id) = completed {
+                    dispatcher.complete(run_id);
                 }
             }
         }
@@ -1850,6 +1955,7 @@ mod tests {
                 },
                 generation: 0,
             }],
+            cancel: CancellationToken::new(),
         }
     }
 
@@ -2101,6 +2207,52 @@ mod tests {
         .expect("slack policy should match before timeout")
     }
 
+    async fn register_slack_run(
+        handle: &ConnectorRuntimeSyncHandle,
+        run_id: RunId,
+    ) -> (tempfile::TempDir, std::path::PathBuf) {
+        let (dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
+        let targets = [runtime_target_registration(&builtin_target("slack"))];
+        handle
+            .register_run(ConnectorRuntimeSyncRegistration {
+                run_id,
+                source_ip: "10.200.0.2",
+                registry,
+                targets: &targets,
+                refreshes: None,
+            })
+            .await;
+        (dir, registry_path)
+    }
+
+    async fn write_connector_runtime_sync_response(
+        socket: &mut tokio::net::TcpStream,
+        allow: &[&str],
+    ) {
+        let body = json!({
+            "results": [{
+                "target": { "kind": "builtin", "connectorSlug": "slack" },
+                "state": "available",
+                "networkPolicy": {
+                    "allow": allow,
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+            }],
+        })
+        .to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .expect("connector runtime sync response should be written");
+    }
+
     #[tokio::test]
     async fn shutdown_awaits_runtime_sync_worker_task() {
         let server = MockServer::start();
@@ -2239,6 +2391,205 @@ mod tests {
             policy_before_shutdown,
             "shutdown should not mutate the network policy"
         );
+    }
+
+    #[tokio::test]
+    async fn stalled_run_does_not_block_or_overlap_other_run() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = ConnectorRuntimeSyncHandle::new(api_client_for_url(api_url));
+        let run_a = RunId::from(uuid::Uuid::from_u128(1));
+        let run_b = RunId::from(uuid::Uuid::from_u128(2));
+        let (_dir_a, registry_a) = register_slack_run(&handle, run_a).await;
+        let (_dir_b, registry_b) = register_slack_run(&handle, run_b).await;
+
+        handle
+            .notify_connector_runtime_sync(run_a, builtin_target("slack"))
+            .await;
+        let (mut run_a_socket, run_a_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("run A should reach the API");
+        assert_connector_runtime_sync_request(&run_a_request, &run_a);
+
+        handle
+            .notify_connector_runtime_sync(run_a, builtin_target("slack"))
+            .await;
+        handle
+            .notify_connector_runtime_sync(run_a, builtin_target("slack"))
+            .await;
+        handle
+            .notify_connector_runtime_sync(run_b, builtin_target("slack"))
+            .await;
+
+        let (mut run_b_socket, run_b_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("run B should bypass stalled run A");
+        assert_connector_runtime_sync_request(&run_b_request, &run_b);
+        write_connector_runtime_sync_response(&mut run_b_socket, &["run-b:read"]).await;
+        drop(run_b_socket);
+        let run_b_policy = wait_until_slack_policy(&registry_b, |policy| {
+            policy["allow"] == json!(["run-b:read"])
+        })
+        .await;
+        assert_eq!(run_b_policy["unknownPolicy"], json!("allow"));
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), listener.accept())
+                .await
+                .is_err(),
+            "run A follow-up must not overlap its stalled request"
+        );
+
+        write_connector_runtime_sync_response(&mut run_a_socket, &["stale:read"]).await;
+        drop(run_a_socket);
+        let (mut run_a_follow_up_socket, run_a_follow_up_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("run A follow-up should start after its first request completes");
+        assert_connector_runtime_sync_request(&run_a_follow_up_request, &run_a);
+        write_connector_runtime_sync_response(&mut run_a_follow_up_socket, &["new:read"]).await;
+        drop(run_a_follow_up_socket);
+        let run_a_policy =
+            wait_until_slack_policy(&registry_a, |policy| policy["allow"] == json!(["new:read"]))
+                .await;
+        assert_eq!(run_a_policy["unknownPolicy"], json!("allow"));
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn connector_runtime_sync_bounds_independent_run_concurrency() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = ConnectorRuntimeSyncHandle::new(api_client_for_url(api_url));
+        let run_ids = (1_u128..=SYNC_REQUEST_CONCURRENCY as u128 + 1)
+            .map(|value| RunId::from(uuid::Uuid::from_u128(value)))
+            .collect::<Vec<_>>();
+        let mut run_state = Vec::new();
+        for run_id in &run_ids {
+            run_state.push(register_slack_run(&handle, *run_id).await);
+            handle
+                .notify_connector_runtime_sync(*run_id, builtin_target("slack"))
+                .await;
+        }
+
+        let mut stalled = Vec::new();
+        let mut accepted_runs = HashSet::new();
+        for _ in 0..SYNC_REQUEST_CONCURRENCY {
+            let (socket, request) =
+                tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                    .await
+                    .expect("an admitted run should reach the API");
+            let run_id = *run_ids
+                .iter()
+                .find(|run_id| {
+                    request.starts_with(&format!(
+                        "POST /api/runners/runs/{run_id}/connector-runtime/sync HTTP/1.1"
+                    ))
+                })
+                .expect("request should belong to a registered run");
+            assert!(
+                accepted_runs.insert(run_id),
+                "one run must not consume multiple concurrency slots"
+            );
+            assert_connector_runtime_sync_request(&request, &run_id);
+            stalled.push((socket, request));
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), listener.accept())
+                .await
+                .is_err(),
+            "requests beyond the concurrency cap must wait"
+        );
+
+        let (mut released_socket, _released_request) = stalled.remove(0);
+        write_connector_runtime_sync_response(&mut released_socket, &["released:read"]).await;
+        drop(released_socket);
+        let (fifth_socket, fifth_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("a waiting run should start after a slot is released");
+        let fifth_run = *run_ids
+            .iter()
+            .find(|run_id| {
+                fifth_request.starts_with(&format!(
+                    "POST /api/runners/runs/{run_id}/connector-runtime/sync HTTP/1.1"
+                ))
+            })
+            .expect("fifth request should belong to a registered run");
+        assert!(accepted_runs.insert(fifth_run));
+        assert_eq!(accepted_runs.len(), run_ids.len());
+        assert_connector_runtime_sync_request(&fifth_request, &fifth_run);
+        stalled.push((fifth_socket, fifth_request));
+
+        tokio::time::timeout(Duration::from_secs(1), handle.shutdown())
+            .await
+            .expect("shutdown should cancel every stalled sync promptly");
+        for (mut socket, _) in stalled {
+            let mut byte = [0_u8; 1];
+            let closed = tokio::time::timeout(Duration::from_secs(1), socket.read(&mut byte))
+                .await
+                .expect("stalled request should close during shutdown")
+                .expect("stalled request socket should remain readable");
+            assert_eq!(closed, 0, "shutdown should drop every in-flight request");
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), listener.accept())
+                .await
+                .is_err(),
+            "shutdown must not retry cancelled sync requests"
+        );
+        drop(run_state);
+    }
+
+    #[tokio::test]
+    async fn reregister_cancels_stalled_sync_before_starting_new_registration() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = ConnectorRuntimeSyncHandle::new(api_client_for_url(api_url));
+        let run_id = RunId::nil();
+        let (_old_dir, _old_registry) = register_slack_run(&handle, run_id).await;
+
+        handle
+            .notify_connector_runtime_sync(run_id, builtin_target("slack"))
+            .await;
+        let (mut old_socket, old_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("old registration should reach the API");
+        assert_connector_runtime_sync_request(&old_request, &run_id);
+
+        handle
+            .notify_connector_runtime_sync(run_id, builtin_target("slack"))
+            .await;
+        let (_new_dir, new_registry) = register_slack_run(&handle, run_id).await;
+        handle
+            .notify_connector_runtime_sync(run_id, builtin_target("slack"))
+            .await;
+
+        let mut byte = [0_u8; 1];
+        let old_closed = tokio::time::timeout(Duration::from_secs(1), old_socket.read(&mut byte))
+            .await
+            .expect("re-registration should cancel the old request")
+            .expect("old request socket should remain readable");
+        assert_eq!(old_closed, 0);
+
+        let (mut new_socket, new_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("new registration should not wait for the old request timeout");
+        assert_connector_runtime_sync_request(&new_request, &run_id);
+        write_connector_runtime_sync_response(&mut new_socket, &["new-registration:read"]).await;
+        drop(new_socket);
+        let policy = wait_until_slack_policy(&new_registry, |policy| {
+            policy["allow"] == json!(["new-registration:read"])
+        })
+        .await;
+        assert_eq!(policy["unknownPolicy"], json!("allow"));
+
+        handle.shutdown().await;
     }
 
     #[tokio::test]
