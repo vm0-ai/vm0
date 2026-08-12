@@ -7448,7 +7448,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(websitePrompt).not.toContain("resolve-images.mjs");
+    expect(websitePrompt).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
   }, 90_000);
