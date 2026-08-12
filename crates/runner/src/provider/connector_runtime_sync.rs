@@ -1316,6 +1316,7 @@ impl SyncDispatcher {
             let handle = handle.clone();
             self.in_flight.push(Box::pin(async move {
                 tokio::select! {
+                    biased;
                     () = request.cancel.cancelled() => {}
                     () = handle.sync_connector_runtime_targets_now(run_id, request.targets) => {}
                 }
