@@ -21,7 +21,7 @@ function buildZeroToken(): string {
       userId: "user-1",
       runId: "run-1",
       orgId: "org-1",
-      scope: "zero",
+      scope: "okou",
       capabilities: ["connector:write"],
       iat: 1,
       exp: 2,
@@ -114,7 +114,7 @@ describe("okou connector custom update", () => {
     chalk.level = 0;
     tempDir = mkdtempSync(join(tmpdir(), "zero-custom-connector-update-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken());
   });
 
   afterEach(() => {

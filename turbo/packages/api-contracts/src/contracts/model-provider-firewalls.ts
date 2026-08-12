@@ -25,7 +25,7 @@ interface SingleSecretFirewallProviderConfig {
    *
    * The firewall injects the real key only for bases it lists, and `base`
    * matching is a prefix match. The Codex-era bases above point at
-   * `/responses`, which does not prefix `/chat/completions`, so a Pi standby
+   * `/responses`, which does not prefix `/chat/completions`, so a Pi sandbox
    * turn would forward the placeholder verbatim and be rejected upstream.
    * Listing the exact inference path keeps injection scoped: it does not widen
    * to vendor admin endpoints on the same host.
@@ -266,7 +266,7 @@ function isFirewallSupported(
 
 /**
  * Chat-completions URL the in-sandbox Pi agent loop calls for a provider, or
- * undefined when the provider is not Pi-capable. `pi-edge-config` derives the
+ * undefined when the provider is not Pi-capable. `pi-sandbox-config` derives the
  * Pi base URL from this same table so the firewall rule and the runtime call
  * cannot drift apart.
  */

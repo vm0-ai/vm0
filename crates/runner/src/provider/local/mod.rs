@@ -196,10 +196,9 @@ impl JobProvider for LocalProvider {
             billable_firewalls: vec![],
             model_usage_provider: None,
             codex_runtime_config: None,
-            pi_execution_mode: None,
             pi_system_prompt: None,
             pi_model_config: None,
-            run_skill_snapshot: None,
+            pi_session_id: None,
         };
         let active_input_source = req.active_input.unwrap_or(false).then(|| {
             crate::active_input::ActiveInputSource::local_queue(self.queue.clone(), run_id)

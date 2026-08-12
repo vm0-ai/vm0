@@ -100,6 +100,8 @@ def model_usage_protocol(flow: http.HTTPFlow) -> usage.ModelUsageProtocol:
     request_path = runtime_url_parsing.strip_url_query_and_fragment(request_target).rstrip("/")
     if request_path.endswith("/chat/completions"):
         return "openai_chat_completions"
+    if request_path.endswith("/responses"):
+        return "openai_responses"
     if flow_metadata.cli_agent_type(flow.metadata) == "codex":
         return "openai_responses"
     return "anthropic_messages"

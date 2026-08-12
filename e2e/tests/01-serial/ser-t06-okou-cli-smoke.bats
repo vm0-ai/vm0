@@ -28,7 +28,7 @@ load '../../helpers/setup'
 @test "okou can load the internal agent loop" {
     run $OKOU_CLI __agent-loop --help
     assert_success
-    assert_output --partial "--standby"
+    assert_output --partial "Internal sandbox Pi agent loop"
 }
 
 @test "okou preserves error output and exit behavior" {

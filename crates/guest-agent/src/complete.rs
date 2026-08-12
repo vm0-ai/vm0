@@ -48,10 +48,8 @@ fn as_optional_slice(values: &[String]) -> Option<&[String]> {
     (!values.is_empty()).then_some(values)
 }
 
-/// Report a successful run to the host. Normal CLI runs call this only after
-/// `checkpoint::create_checkpoint_for_runtime()` succeeds. Pi runs do not
-/// create CLI session checkpoints; their acknowledged terminal transcript
-/// message is the host-side completion proof instead.
+/// Report a successful run to the host after
+/// `checkpoint::create_checkpoint_for_runtime()` succeeds.
 ///
 /// Sandbox and workspace reuse fields are relayed analytics values;
 /// empty strings are serialized as absent so an unset env var is equivalent

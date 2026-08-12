@@ -29,7 +29,7 @@ describe("okou feishu upload-file command", () => {
 
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     tempDir = mkdtempSync(join(tmpdir(), "feishu-upload-file-"));
     filePath = join(tempDir, "report.pdf");
     writeFileSync(filePath, FILE_CONTENT);
