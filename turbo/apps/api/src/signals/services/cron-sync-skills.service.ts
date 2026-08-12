@@ -48,6 +48,11 @@ interface SyncSkillsResult {
   readonly total: number;
 }
 
+interface SyncSkillsScope {
+  readonly skillNamePrefix: string | null;
+  readonly requiredSkillNames: readonly string[];
+}
+
 interface ExtractedFile {
   readonly path: string;
   readonly content: Buffer;
@@ -103,6 +108,7 @@ interface SkillTreeSyncPlan {
 
 const log = logger("skills:sync");
 const REPO_REFS_URL = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}.git/info/refs?service=git-upload-pack`;
+const OFFICIAL_SKILL_URL_ROOT = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
 const GITHUB_API_BASE = `https://api.github.com/repos/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}`;
 const RAW_CONTENT_BASE = `https://raw.githubusercontent.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}`;
 const GITHUB_API_HEADERS = {
@@ -726,6 +732,7 @@ function syncSingleSkill(
 function removeOrphanedSkills(
   db: Db,
   sourceSkillNames: ReadonlySet<string>,
+  urlPrefix: string,
   signal: AbortSignal,
   s3ClientScope: S3ClientScope,
 ): Computed<Promise<number>> {
@@ -735,7 +742,6 @@ function removeOrphanedSkills(
         return skillUrl(skillName);
       }),
     );
-    const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
     const existingSkills = await db
       .select({ id: skills.id, url: skills.url, storageId: skills.storageId })
       .from(skills)
@@ -817,8 +823,11 @@ function removeOrphanedSkills(
   });
 }
 
-function validateSeedSkills(sourceSkillNames: ReadonlySet<string>): void {
-  const missingSkills = SEED_SKILLS.filter((name) => {
+function validateSeedSkills(
+  sourceSkillNames: ReadonlySet<string>,
+  requiredSkillNames: readonly string[],
+): void {
+  const missingSkills = requiredSkillNames.filter((name) => {
     return !sourceSkillNames.has(name);
   });
 
@@ -1048,13 +1057,17 @@ async function syncChangedSkill(
   return result.value ? "synced" : "skipped";
 }
 
-export const syncSkills$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
+export const syncSkillsForScope$ = command(
+  async (
+    { get, set },
+    scope: SyncSkillsScope,
+    signal: AbortSignal,
+  ): Promise<SyncSkillsResult> => {
     const db = set(writeDb$);
     const headSha = await fetchHeadCommitSha(signal);
     signal.throwIfAborted();
 
-    const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
+    const urlPrefix = `${OFFICIAL_SKILL_URL_ROOT}${scope.skillNamePrefix ?? ""}`;
     const existing = await db
       .select({
         url: skills.url,
@@ -1086,8 +1099,25 @@ export const syncSkills$ = command(
     }
 
     const authorization = githubApiAuthorization();
-    const { currentTree, changedSkills, sourceSkillNames } =
-      await buildSkillTreeSyncPlan(existing, headSha, authorization, signal);
+    const treePlan = await buildSkillTreeSyncPlan(
+      existing,
+      headSha,
+      authorization,
+      signal,
+    );
+    const matchesScope = (skillName: string): boolean => {
+      return (
+        scope.skillNamePrefix === null ||
+        skillName.startsWith(scope.skillNamePrefix)
+      );
+    };
+    const sourceSkillNames = new Set(
+      [...treePlan.sourceSkillNames].filter(matchesScope),
+    );
+    const changedSkills = new Set(
+      [...treePlan.changedSkills].filter(matchesScope),
+    );
+    const { currentTree } = treePlan;
     const s3ClientScope = get(
       s3ClientScopeForBucket(env("R2_USER_STORAGES_BUCKET_NAME")),
     );
@@ -1128,10 +1158,16 @@ export const syncSkills$ = command(
       pendingChangedSkills.length - invocationSkills.length + failed;
 
     const removed = await get(
-      removeOrphanedSkills(db, sourceSkillNames, signal, s3ClientScope),
+      removeOrphanedSkills(
+        db,
+        sourceSkillNames,
+        urlPrefix,
+        signal,
+        s3ClientScope,
+      ),
     );
     signal.throwIfAborted();
-    validateSeedSkills(sourceSkillNames);
+    validateSeedSkills(sourceSkillNames, scope.requiredSkillNames);
     if (remaining === 0) {
       await markSkillsSyncComplete(db, sourceSkillNames, headSha, signal);
     }
@@ -1155,5 +1191,15 @@ export const syncSkills$ = command(
       remaining,
       total: sourceSkillNames.size,
     };
+  },
+);
+
+export const syncSkills$ = command(
+  async ({ set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
+    return await set(
+      syncSkillsForScope$,
+      { skillNamePrefix: null, requiredSkillNames: SEED_SKILLS },
+      signal,
+    );
   },
 );

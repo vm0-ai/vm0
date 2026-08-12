@@ -5,35 +5,26 @@ import {
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
 } from "@vm0/core/github-url";
-import { getSkillStorageName, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
+import { getSkillStorageName } from "@vm0/core/storage-names";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import { createBddApi } from "./helpers/api-bdd";
-import {
-  createRunsApi,
-  expectCanonicalStorageManifest,
-} from "./helpers/api-bdd-runs";
 import { readStrictTarGzip } from "./helpers/strict-tar-gzip";
 import {
-  cleanupOfficialTestSkillsState,
+  cleanupOwnedSkillsState,
   findSkillByUrlState,
   findSystemStorageByNameState,
   seedCurrentSkillVersionsState,
-  setAllSkillsCommitShaState,
+  setOwnedSkillsCommitShaState,
+  syncOwnedSkillsState,
 } from "./helpers/cron-sync-skills-state";
 
 const context = testContext();
 const BUCKET = "test-user-storages";
-const TEST_SKILL_PREFIX = "api-test-skill";
-// The service validates SEED_SKILLS; alpha and beta cover arbitrary repository
-// entries without coupling these route tests to the connector registry size.
-const REQUIRED_SEED_SKILL_NAMES = SEED_SKILLS;
 const STALE_PRESEEDED_COMMIT_SHA = "0".repeat(40);
 const SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER = createHash("sha256")
   .update("system-skill-archive-format:ustar-1")
@@ -55,8 +46,6 @@ interface MockSkillVersion {
   readonly fullPath: string;
   readonly storageName: string;
   readonly versionHash: string;
-  readonly s3Prefix: string;
-  readonly s3Key: string;
   readonly size: number;
   readonly archiveSize: number;
   readonly fileCount: number;
@@ -66,84 +55,152 @@ interface MockSkillVersion {
   };
 }
 
-const EXTRA_SKILLS = {
-  alphaSkill: {
-    name: `${TEST_SKILL_PREFIX}-alpha`,
-    files: [
-      {
-        path: "SKILL.md",
-        content: [
-          "---",
-          `name: ${TEST_SKILL_PREFIX}-alpha`,
-          "description: Alpha integration skill",
-          "---",
-          "",
-          "# Alpha Skill",
-          "Send messages to Alpha.",
-        ].join("\n"),
-      },
-      { path: "index.ts", content: 'console.log("alpha");' },
-    ],
-  },
-  betaSkill: {
-    name: `${TEST_SKILL_PREFIX}-beta`,
-    files: [
-      {
-        path: "SKILL.md",
-        content: [
-          "---",
-          `name: ${TEST_SKILL_PREFIX}-beta`,
-          "description: Beta integration",
-          "---",
-          "",
-          "# Beta Skill",
-        ].join("\n"),
-      },
-    ],
-  },
-} satisfies Record<string, MockSkillEntry>;
-
-function officialTestSkillUrlPrefix(): string {
-  return `https://github.com/vm0-ai/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${TEST_SKILL_PREFIX}-`;
+interface CronSyncSkillsFixture {
+  readonly skillNamePrefix: string;
+  readonly requiredSeedSkillNames: readonly string[];
+  readonly existingSkillName: string;
+  readonly sentinelSkillName: string;
+  readonly alphaSkill: MockSkillEntry;
+  readonly betaSkill: MockSkillEntry;
+  readonly skillUrls: Set<string>;
+  readonly storageNames: Set<string>;
 }
 
-async function cleanupOfficialTestSkills(): Promise<void> {
-  await cleanupOfficialTestSkillsState(context, officialTestSkillUrlPrefix());
+function createCronSyncSkillsFixture(): CronSyncSkillsFixture {
+  const fixtureId = randomUUID().replaceAll("-", "");
+  const skillNamePrefix = `api-test-skill-${fixtureId}-`;
+  const alphaName = `${skillNamePrefix}alpha`;
+  const betaName = `${skillNamePrefix}beta`;
+  return {
+    skillNamePrefix,
+    requiredSeedSkillNames: SEED_SKILLS.map((name) => {
+      return `${skillNamePrefix}${name}`;
+    }),
+    existingSkillName: `${skillNamePrefix}existing`,
+    sentinelSkillName: `api-test-sentinel-${fixtureId}-existing`,
+    alphaSkill: {
+      name: alphaName,
+      files: [
+        {
+          path: "SKILL.md",
+          content: [
+            "---",
+            `name: ${alphaName}`,
+            "description: Alpha integration skill",
+            "---",
+            "",
+            "# Alpha Skill",
+            "Send messages to Alpha.",
+          ].join("\n"),
+        },
+        { path: "index.ts", content: 'console.log("alpha");' },
+      ],
+    },
+    betaSkill: {
+      name: betaName,
+      files: [
+        {
+          path: "SKILL.md",
+          content: [
+            "---",
+            `name: ${betaName}`,
+            "description: Beta integration",
+            "---",
+            "",
+            "# Beta Skill",
+          ].join("\n"),
+        },
+      ],
+    },
+    skillUrls: new Set(),
+    storageNames: new Set(),
+  };
 }
 
-async function setAllSkillsCommitSha(commitSha: string): Promise<void> {
-  const skillName = `${TEST_SKILL_PREFIX}-existing`;
-  await setAllSkillsCommitShaState(context, {
-    skillName,
-    url: testSkillUrl(skillName),
-    fullPath: `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`,
+function registerOwnedSkill(
+  fixture: CronSyncSkillsFixture,
+  name: string,
+  ownsStorage: boolean,
+): {
+  readonly name: string;
+  readonly url: string;
+  readonly fullPath: string;
+  readonly frontmatter: { readonly name: string; readonly description: string };
+} {
+  const url = testSkillUrl(name);
+  const fullPath = `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${name}`;
+  fixture.skillUrls.add(url);
+  if (ownsStorage) {
+    fixture.storageNames.add(getSkillStorageName(fullPath));
+  }
+  return {
+    name,
+    url,
+    fullPath,
+    frontmatter: { name, description: `${name} skill` },
+  };
+}
+
+function registerOwnedEntries(
+  fixture: CronSyncSkillsFixture,
+  entries: readonly MockSkillEntry[],
+): void {
+  for (const entry of entries) {
+    registerOwnedSkill(fixture, entry.name, true);
+  }
+}
+
+async function cleanupOwnedSkills(
+  fixture: CronSyncSkillsFixture,
+): Promise<void> {
+  if (fixture.skillUrls.size === 0 && fixture.storageNames.size === 0) {
+    return;
+  }
+  await cleanupOwnedSkillsState(context, {
+    skillUrls: [...fixture.skillUrls],
+    storageNames: [...fixture.storageNames],
+  });
+}
+
+async function setOwnedSkillsCommitSha(
+  fixture: CronSyncSkillsFixture,
+  commitSha: string,
+  skillNames: readonly string[] = [fixture.existingSkillName],
+): Promise<void> {
+  await setOwnedSkillsCommitShaState(context, {
+    skills: skillNames.map((name) => {
+      return registerOwnedSkill(fixture, name, false);
+    }),
     commitSha,
     versionHashMarker: SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER,
-    frontmatter: {
-      name: skillName,
-      description: `${skillName} skill`,
-    },
+  });
+}
+
+async function syncOwnedSkills(fixture: CronSyncSkillsFixture) {
+  return await syncOwnedSkillsState(context, {
+    skillNamePrefix: fixture.skillNamePrefix,
+    requiredSkillNames: fixture.requiredSeedSkillNames,
   });
 }
 
 async function seedCurrentSkillVersions(
+  fixture: CronSyncSkillsFixture,
   entries: readonly MockSkillEntry[],
 ): Promise<void> {
   if (entries.length === 0) {
     return;
   }
+  registerOwnedEntries(fixture, entries);
   await seedCurrentSkillVersionsState(context, {
     staleCommitSha: STALE_PRESEEDED_COMMIT_SHA,
     versions: entries.map((entry) => {
-      const version = buildMockSkillVersion(entry);
+      const version = buildMockSkillVersion(fixture, entry);
       return {
         name: version.name,
         url: version.url,
         full_path: version.fullPath,
         storage_name: version.storageName,
         version_hash: version.versionHash,
-        s3_prefix: version.s3Prefix,
-        s3_key: version.s3Key,
         size: version.size,
         archive_size: version.archiveSize,
         file_count: version.fileCount,
@@ -163,8 +220,8 @@ function createGitRefsResponse(commitSha: string): string {
   return header + refLine;
 }
 
-function seedSkillEntries(): MockSkillEntry[] {
-  return REQUIRED_SEED_SKILL_NAMES.map((name) => {
+function seedSkillEntries(fixture: CronSyncSkillsFixture): MockSkillEntry[] {
+  return fixture.requiredSeedSkillNames.map((name) => {
     return {
       name,
       files: [
@@ -178,25 +235,34 @@ function seedSkillEntries(): MockSkillEntry[] {
 }
 
 function createFullSkillTree(
+  fixture: CronSyncSkillsFixture,
   extras: readonly MockSkillEntry[],
 ): readonly MockSkillEntry[] {
-  return [...seedSkillEntries(), ...extras];
+  return createSkillTree(fixture, [...seedSkillEntries(fixture), ...extras]);
 }
 
-function buildMockSkillVersion(skill: MockSkillEntry): MockSkillVersion {
+function createSkillTree(
+  fixture: CronSyncSkillsFixture,
+  entries: readonly MockSkillEntry[],
+): readonly MockSkillEntry[] {
+  registerOwnedEntries(fixture, entries);
+  return entries;
+}
+
+function buildMockSkillVersion(
+  fixture: CronSyncSkillsFixture,
+  skill: MockSkillEntry,
+): MockSkillVersion {
   const fullPath = `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skill.name}`;
   const storageName = getSkillStorageName(fullPath);
+  fixture.storageNames.add(storageName);
   const versionHash = computeMockSkillVersionHash(skill);
-  const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
-  const s3Key = `${s3Prefix}/${versionHash}`;
   return {
     name: skill.name,
     url: testSkillUrl(skill.name),
     fullPath,
     storageName,
     versionHash,
-    s3Prefix,
-    s3Key,
     size: skill.files.reduce((sum, file) => {
       return sum + Buffer.byteLength(file.content);
     }, 0),
@@ -235,8 +301,18 @@ function mockSkillFileContent(skill: MockSkillEntry, path: string): string {
   return file.content;
 }
 
-async function seedCurrentSeedSkillVersions(): Promise<void> {
-  await seedCurrentSkillVersions(seedSkillEntries());
+async function seedCurrentSeedSkillVersions(
+  fixture: CronSyncSkillsFixture,
+): Promise<void> {
+  await seedCurrentSkillVersions(fixture, seedSkillEntries(fixture));
+}
+
+function useCronSyncSkillsFixture(): CronSyncSkillsFixture {
+  const fixture = createCronSyncSkillsFixture();
+  onTestFinished(async () => {
+    await cleanupOwnedSkills(fixture);
+  });
+  return fixture;
 }
 
 function setupGitRefsHandler(commitSha: string): void {
@@ -336,7 +412,7 @@ function s3CallsByName(name: string): unknown[] {
     });
 }
 
-function successfulS3Response(command: unknown): Promise<unknown> {
+function successfulS3Response(_command: unknown): Promise<unknown> {
   return Promise.resolve({});
 }
 
@@ -350,10 +426,6 @@ function uploadedBodyForKeySuffix(keySuffix: string): Buffer {
     throw new Error("Expected a buffered upload body");
   }
   return body;
-}
-
-function uploadedBytesForKeySuffix(keySuffix: string): number {
-  return uploadedBodyForKeySuffix(keySuffix).length;
 }
 
 function setupS3ListObjects(keys: readonly string[]): void {
@@ -378,6 +450,7 @@ function testSkillUrl(name: string): string {
 }
 
 async function findSkillByUrl(url: string): Promise<{
+  readonly name: string;
   readonly fullPath: string;
   readonly commitSha: string | null;
   readonly versionHash: string | null;
@@ -389,6 +462,7 @@ async function findSkillByUrl(url: string): Promise<{
 
 async function findSystemStorageByName(name: string): Promise<{
   readonly headVersionId: string | null;
+  readonly s3Prefix: string;
   readonly size: number;
   readonly versionSize: number | null;
   readonly archiveSize: number | null;
@@ -414,21 +488,19 @@ describe("GET /api/cron/sync-skills", () => {
     context.mocks.s3.send.mockImplementation(successfulS3Response);
   });
 
-  afterEach(async () => {
-    await cleanupOfficialTestSkills();
-  });
-
   it("skips sync when the stored commit SHA is unchanged", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
-    await setAllSkillsCommitSha(commitSha);
+    const sentinelCommitSha = newCommitSha();
+    await setOwnedSkillsCommitSha(fixture, sentinelCommitSha, [
+      fixture.sentinelSkillName,
+    ]);
+    await setOwnedSkillsCommitSha(fixture, commitSha);
     setupGitRefsHandler(commitSha);
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body).toStrictEqual({
+    expect(response).toStrictEqual({
       success: true,
       commitSha,
       synced: 0,
@@ -438,12 +510,16 @@ describe("GET /api/cron/sync-skills", () => {
       remaining: 0,
       total: 0,
     });
+    await expect(
+      findSkillByUrl(testSkillUrl(fixture.sentinelSkillName)),
+    ).resolves.toMatchObject({ commitSha: sentinelCommitSha });
   });
 
   it("rebuilds legacy archives when the stored commit SHA is unchanged", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
-    const skill = EXTRA_SKILLS.alphaSkill;
-    const currentVersion = buildMockSkillVersion(skill);
+    const skill = fixture.alphaSkill;
+    const currentVersion = buildMockSkillVersion(fixture, skill);
     const legacyVersionHash = createHash("sha256")
       .update(`legacy:${currentVersion.versionHash}`)
       .digest("hex");
@@ -456,8 +532,6 @@ describe("GET /api/cron/sync-skills", () => {
           full_path: currentVersion.fullPath,
           storage_name: currentVersion.storageName,
           version_hash: legacyVersionHash,
-          s3_prefix: currentVersion.s3Prefix,
-          s3_key: `${currentVersion.s3Prefix}/${legacyVersionHash}`,
           size: currentVersion.size,
           archive_size: currentVersion.archiveSize,
           file_count: currentVersion.fileCount,
@@ -465,22 +539,19 @@ describe("GET /api/cron/sync-skills", () => {
         },
       ],
     });
-    setupMswHandlers(commitSha, [skill]);
+    setupMswHandlers(commitSha, createFullSkillTree(fixture, [skill]));
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body).toMatchObject({
+    expect(response).toMatchObject({
       success: true,
       commitSha,
-      synced: 1,
+      synced: fixture.requiredSeedSkillNames.length + 1,
       failed: 0,
       remaining: 0,
-      total: 1,
+      total: fixture.requiredSeedSkillNames.length + 1,
     });
-    expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(8);
     await expect(findSkillByUrl(currentVersion.url)).resolves.toMatchObject({
       commitSha,
       versionHash: currentVersion.versionHash,
@@ -488,49 +559,57 @@ describe("GET /api/cron/sync-skills", () => {
   });
 
   it("syncs new skills from the repository tree", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
-    await seedCurrentSeedSkillVersions();
+    await seedCurrentSeedSkillVersions(fixture);
     setupMswHandlers(
       commitSha,
-      createFullSkillTree([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
+      createFullSkillTree(fixture, [fixture.alphaSkill, fixture.betaSkill]),
     );
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body.success).toBeTruthy();
-    expect(response.body.commitSha).toBe(commitSha);
-    expect(response.body.synced + response.body.skipped).toBeGreaterThan(0);
+    expect(response).toStrictEqual({
+      success: true,
+      commitSha,
+      synced: 2,
+      skipped: fixture.requiredSeedSkillNames.length,
+      failed: 0,
+      removed: 0,
+      remaining: 0,
+      total: fixture.requiredSeedSkillNames.length + 2,
+    });
 
     const alphaSkill = await findSkillByUrl(
-      testSkillUrl(EXTRA_SKILLS.alphaSkill.name),
+      testSkillUrl(fixture.alphaSkill.name),
     );
     expect(alphaSkill).toMatchObject({
-      fullPath: `vm0-ai/vm0-skills/tree/main/${EXTRA_SKILLS.alphaSkill.name}`,
+      name: fixture.alphaSkill.name,
+      fullPath: `vm0-ai/vm0-skills/tree/main/${fixture.alphaSkill.name}`,
       commitSha,
       fileCount: 2,
       frontmatter: {
-        name: EXTRA_SKILLS.alphaSkill.name,
+        name: fixture.alphaSkill.name,
         description: "Alpha integration skill",
       },
     });
-    expect(alphaSkill?.versionHash).toBeTruthy();
+    expect(alphaSkill?.versionHash).toBe(
+      buildMockSkillVersion(fixture, fixture.alphaSkill).versionHash,
+    );
 
     const alphaStorage = await findSystemStorageByName(
       getSkillStorageName(
-        `vm0-ai/vm0-skills/tree/main/${EXTRA_SKILLS.alphaSkill.name}`,
+        `vm0-ai/vm0-skills/tree/main/${fixture.alphaSkill.name}`,
       ),
     );
-    const alphaVersion = buildMockSkillVersion(EXTRA_SKILLS.alphaSkill);
+    if (!alphaStorage) {
+      throw new Error("Expected the alpha skill storage");
+    }
+    const alphaVersion = buildMockSkillVersion(fixture, fixture.alphaSkill);
+    const alphaArchiveKey = `${alphaStorage.s3Prefix}/${alphaVersion.versionHash}/archive.tar.gz`;
     const alphaArchiveUpload = s3CallsByName("PutObjectCommand").find(
       (command) => {
-        const key = commandInput(command).Key;
-        return (
-          typeof key === "string" &&
-          key.endsWith(`/${alphaVersion.versionHash}/archive.tar.gz`)
-        );
+        return commandInput(command).Key === alphaArchiveKey;
       },
     );
     expect(alphaArchiveUpload).toBeDefined();
@@ -544,25 +623,33 @@ describe("GET /api/cron/sync-skills", () => {
       "SKILL.md",
     ]);
     expect(alphaArchiveFiles.get("SKILL.md")?.toString()).toBe(
-      mockSkillFileContent(EXTRA_SKILLS.alphaSkill, "SKILL.md"),
+      mockSkillFileContent(fixture.alphaSkill, "SKILL.md"),
     );
     expect(alphaArchiveFiles.get("index.ts")?.toString()).toBe(
-      mockSkillFileContent(EXTRA_SKILLS.alphaSkill, "index.ts"),
+      mockSkillFileContent(fixture.alphaSkill, "index.ts"),
     );
     expect(alphaStorage).toMatchObject({
-      headVersionId: expect.any(String),
+      headVersionId: alphaVersion.versionHash,
       size: alphaVersion.size,
       versionSize: alphaVersion.size,
       archiveSize: alphaArchiveSize,
     });
     expect(alphaArchiveSize).toBeGreaterThan(0);
+    expect(
+      s3CallsByName("PutObjectCommand").map((command) => {
+        return commandInput(command).Key;
+      }),
+    ).toContain(
+      `${alphaStorage.s3Prefix}/${alphaVersion.versionHash}/manifest.json`,
+    );
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(4);
   });
 
   it("converges a large skill catalog across bounded invocations", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
     const extraSkills = Array.from({ length: 10 }, (_, index) => {
-      const name = `${TEST_SKILL_PREFIX}-batch-${index.toString().padStart(2, "0")}`;
+      const name = `${fixture.skillNamePrefix}batch-${index.toString().padStart(2, "0")}`;
       return {
         name,
         files: [
@@ -573,40 +660,31 @@ describe("GET /api/cron/sync-skills", () => {
         ],
       } satisfies MockSkillEntry;
     });
-    setupMswHandlers(commitSha, createFullSkillTree(extraSkills));
+    setupMswHandlers(commitSha, createFullSkillTree(fixture, extraSkills));
 
-    const first = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(first.body).toMatchObject({
+    const first = await syncOwnedSkills(fixture);
+    expect(first).toMatchObject({
       success: true,
       commitSha,
       failed: 0,
       remaining: 5,
-      total: 13,
+      total: fixture.requiredSeedSkillNames.length + 10,
     });
-    expect(first.body.synced + first.body.skipped).toBe(8);
+    expect(first.synced + first.skipped).toBe(8);
 
-    const second = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(second.body).toMatchObject({
+    const second = await syncOwnedSkills(fixture);
+    expect(second).toMatchObject({
       success: true,
       commitSha,
       synced: 5,
       failed: 0,
       remaining: 0,
-      total: 13,
+      total: fixture.requiredSeedSkillNames.length + 10,
     });
-    expect(s3CallsByName("PutObjectCommand")).toHaveLength(20);
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(26);
 
-    const current = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(current.body).toMatchObject({
+    const current = await syncOwnedSkills(fixture);
+    expect(current).toMatchObject({
       success: true,
       commitSha,
       synced: 0,
@@ -624,23 +702,20 @@ describe("GET /api/cron/sync-skills", () => {
         }),
       } satisfies MockSkillEntry;
     });
-    setupMswHandlers(nextCommitSha, createFullSkillTree(modifiedExtraSkills));
-
-    const changedFirst = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
+    setupMswHandlers(
+      nextCommitSha,
+      createFullSkillTree(fixture, modifiedExtraSkills),
     );
-    expect(changedFirst.body).toMatchObject({
+
+    const changedFirst = await syncOwnedSkills(fixture);
+    expect(changedFirst).toMatchObject({
       commitSha: nextCommitSha,
       synced: 8,
       failed: 0,
       remaining: 2,
     });
-    const changedSecond = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(changedSecond.body).toMatchObject({
+    const changedSecond = await syncOwnedSkills(fixture);
+    expect(changedSecond).toMatchObject({
       commitSha: nextCommitSha,
       synced: 2,
       failed: 0,
@@ -650,9 +725,10 @@ describe("GET /api/cron/sync-skills", () => {
   });
 
   it("authenticates public tree requests with OAuth client credentials", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
-    const sourceSkills = createFullSkillTree([EXTRA_SKILLS.alphaSkill]);
-    await seedCurrentSeedSkillVersions();
+    const sourceSkills = createFullSkillTree(fixture, [fixture.alphaSkill]);
+    await seedCurrentSeedSkillVersions(fixture);
     setupMswHandlers(commitSha, sourceSkills);
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "github-client-secret");
@@ -682,101 +758,109 @@ describe("GET /api/cron/sync-skills", () => {
       ),
     );
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body.failed).toBe(0);
-    expect(response.body.commitSha).toBe(commitSha);
+    expect(response.failed).toBe(0);
+    expect(response.commitSha).toBe(commitSha);
   });
 
-  it("mounts only the current default seed skills in claimed runs", async () => {
+  it("syncs isolated counterparts for the current default seed skills", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
-    setupMswHandlers(commitSha, createFullSkillTree([]));
-    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+    setupMswHandlers(commitSha, createFullSkillTree(fixture, []));
+    const response = await syncOwnedSkills(fixture);
 
-    const bdd = createBddApi(context);
-    const runs = createRunsApi(context);
-    const actor = bdd.user();
-    bdd.acceptAgentStorageWrites();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-    const runnerGroup = runs.configureRunnerGroup();
-    await runs.grantProEntitlement(actor);
-    await runs.ensureOrgModelProvider(actor);
-    const agent = await bdd.createAgent(actor, {
-      displayName: "Seed Skill Mount Agent",
-      visibility: "private",
+    expect(response).toStrictEqual({
+      success: true,
+      commitSha,
+      synced: fixture.requiredSeedSkillNames.length,
+      skipped: 0,
+      failed: 0,
+      removed: 0,
+      remaining: 0,
+      total: fixture.requiredSeedSkillNames.length,
     });
-
-    await installApiTestConnectorCatalog();
-    const run = await runs.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "inspect default seed skill mounts",
-      modelProvider: "anthropic-api-key",
-    });
-    await runs.heartbeatRunner(runnerGroup);
-    const claim = await runs.claimRunnerJob(run.runId);
-    const skillMountPaths =
-      expectCanonicalStorageManifest(claim.storageManifest)
-        ?.storageMounts.map((storage) => {
-          return storage.mountPath;
-        })
-        .filter((mountPath) => {
-          return mountPath.startsWith("/home/user/.claude/skills/");
-        })
-        .sort() ?? [];
-
-    expect(skillMountPaths).toStrictEqual([
-      "/home/user/.claude/skills/computer-use",
-      "/home/user/.claude/skills/gen",
-      "/home/user/.claude/skills/workflow-setup",
-    ]);
-    expect(skillMountPaths).not.toContain(
-      "/home/user/.claude/skills/deep-dive",
+    const syncedSkills = await Promise.all(
+      fixture.requiredSeedSkillNames.map((name) => {
+        return findSkillByUrl(testSkillUrl(name));
+      }),
     );
+    expect(
+      syncedSkills.map((skill) => {
+        return skill?.name;
+      }),
+    ).toStrictEqual(fixture.requiredSeedSkillNames);
+    expect(
+      new Set(
+        syncedSkills.map((skill) => {
+          return skill?.versionHash;
+        }),
+      ).size,
+    ).toBe(fixture.requiredSeedSkillNames.length);
 
-    await runs.requestCancelRun(actor, run.runId, [200]);
+    const storages = await Promise.all(
+      fixture.requiredSeedSkillNames.map((name) => {
+        const fullPath = `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${name}`;
+        return findSystemStorageByName(getSkillStorageName(fullPath));
+      }),
+    );
+    const objectPrefixes = storages.map((storage) => {
+      if (!storage) {
+        throw new Error("Expected an isolated seed skill storage");
+      }
+      return storage.s3Prefix;
+    });
+    expect(new Set(objectPrefixes).size).toBe(
+      fixture.requiredSeedSkillNames.length,
+    );
   });
 
   it("excludes repository directories without a SKILL.md file", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
     const nonSkillDirectory = {
-      name: `${TEST_SKILL_PREFIX}-no-skill-md`,
+      name: `${fixture.skillNamePrefix}no-skill-md`,
       files: [{ path: "README.md", content: "Not a skill." }],
     };
-    await seedCurrentSeedSkillVersions();
+    await seedCurrentSeedSkillVersions(fixture);
     setupMswHandlers(
       commitSha,
-      createFullSkillTree([
-        EXTRA_SKILLS.alphaSkill,
-        EXTRA_SKILLS.betaSkill,
+      createFullSkillTree(fixture, [
+        fixture.alphaSkill,
+        fixture.betaSkill,
         nonSkillDirectory,
       ]),
     );
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body.total).toBe(REQUIRED_SEED_SKILL_NAMES.length + 2);
+    expect(response).toStrictEqual({
+      success: true,
+      commitSha,
+      synced: 2,
+      skipped: fixture.requiredSeedSkillNames.length,
+      failed: 0,
+      removed: 0,
+      remaining: 0,
+      total: fixture.requiredSeedSkillNames.length + 2,
+    });
     await expect(
       findSkillByUrl(testSkillUrl(nonSkillDirectory.name)),
     ).resolves.toBeNull();
   });
 
   it("skips malformed skill frontmatter and syncs other skills", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
+    const badSkillName = `${fixture.skillNamePrefix}bad-yaml`;
     const badSkill = {
-      name: `${TEST_SKILL_PREFIX}-bad-yaml`,
+      name: badSkillName,
       files: [
         {
           path: "SKILL.md",
           content: [
             "---",
-            `name: ${TEST_SKILL_PREFIX}-bad-yaml`,
+            `name: ${badSkillName}`,
             "description:",
             "  - not_a_string",
             "- BAD_LINE",
@@ -787,19 +871,26 @@ describe("GET /api/cron/sync-skills", () => {
         },
       ],
     };
-    await seedCurrentSeedSkillVersions();
+    await seedCurrentSeedSkillVersions(fixture);
     setupMswHandlers(
       commitSha,
-      createFullSkillTree([EXTRA_SKILLS.alphaSkill, badSkill]),
+      createFullSkillTree(fixture, [fixture.alphaSkill, badSkill]),
     );
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(response.body.failed).toBe(1);
+    const response = await syncOwnedSkills(fixture);
+
+    expect(response).toStrictEqual({
+      success: true,
+      commitSha,
+      synced: 1,
+      skipped: fixture.requiredSeedSkillNames.length,
+      failed: 1,
+      removed: 0,
+      remaining: 1,
+      total: fixture.requiredSeedSkillNames.length + 2,
+    });
     await expect(
-      findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
+      findSkillByUrl(testSkillUrl(fixture.alphaSkill.name)),
     ).resolves.not.toBeNull();
     await expect(
       findSkillByUrl(testSkillUrl(badSkill.name)),
@@ -807,42 +898,39 @@ describe("GET /api/cron/sync-skills", () => {
   });
 
   it("rejects a skill whose declared content cannot fit the Worker bound", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
+    const oversizedSkillName = `${fixture.skillNamePrefix}oversized`;
     const oversizedSkill = {
-      name: `${TEST_SKILL_PREFIX}-oversized`,
+      name: oversizedSkillName,
       files: [
         {
           path: "SKILL.md",
           content:
-            `---\nname: ${TEST_SKILL_PREFIX}-oversized\n` +
+            `---\nname: ${oversizedSkillName}\n` +
             "description: Oversized skill\n---\n",
           declaredSize: 8 * 1024 * 1024 + 1,
         },
       ],
     } satisfies MockSkillEntry;
-    await seedCurrentSeedSkillVersions();
-    setupMswHandlers(commitSha, createFullSkillTree([oversizedSkill]));
+    await seedCurrentSeedSkillVersions(fixture);
+    setupMswHandlers(commitSha, createFullSkillTree(fixture, [oversizedSkill]));
 
-    const firstResponse = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(firstResponse.body).toMatchObject({ failed: 0, remaining: 1 });
+    const firstResponse = await syncOwnedSkills(fixture);
+    expect(firstResponse).toMatchObject({ failed: 0, remaining: 1 });
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(response.body).toMatchObject({ failed: 1, remaining: 1 });
+    const response = await syncOwnedSkills(fixture);
+    expect(response).toMatchObject({ failed: 1, remaining: 1 });
     await expect(
       findSkillByUrl(testSkillUrl(oversizedSkill.name)),
     ).resolves.toBeNull();
   });
 
   it("retries a transient skill download failure at the same commit", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const commitSha = newCommitSha();
-    const sourceSkills = createFullSkillTree([EXTRA_SKILLS.alphaSkill]);
-    const alphaSkillMd = EXTRA_SKILLS.alphaSkill.files.find((file) => {
+    const sourceSkills = createFullSkillTree(fixture, [fixture.alphaSkill]);
+    const alphaSkillMd = fixture.alphaSkill.files.find((file) => {
       return file.path === "SKILL.md";
     });
     if (!alphaSkillMd) {
@@ -852,7 +940,7 @@ describe("GET /api/cron/sync-skills", () => {
     let alphaSkillMdRequests = 0;
     server.use(
       http.get(
-        `https://raw.githubusercontent.com/vm0-ai/vm0-skills/${commitSha}/${EXTRA_SKILLS.alphaSkill.name}/SKILL.md`,
+        `https://raw.githubusercontent.com/vm0-ai/vm0-skills/${commitSha}/${fixture.alphaSkill.name}/SKILL.md`,
         () => {
           alphaSkillMdRequests++;
           if (alphaSkillMdRequests === 1) {
@@ -863,45 +951,40 @@ describe("GET /api/cron/sync-skills", () => {
       ),
     );
 
-    const failedResponse = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(failedResponse.body.failed).toBe(1);
+    const failedResponse = await syncOwnedSkills(fixture);
+    expect(failedResponse.failed).toBe(1);
     await expect(
-      findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
+      findSkillByUrl(testSkillUrl(fixture.alphaSkill.name)),
     ).resolves.toBeNull();
-    expect(s3CallsByName("PutObjectCommand")).toHaveLength(0);
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(6);
 
-    const retriedResponse = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(retriedResponse.body.failed).toBe(0);
+    const retriedResponse = await syncOwnedSkills(fixture);
+    expect(retriedResponse.failed).toBe(0);
     await expect(
-      findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
+      findSkillByUrl(testSkillUrl(fixture.alphaSkill.name)),
     ).resolves.toMatchObject({ commitSha });
   });
 
   it("only uploads changed skills during incremental sync", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const firstCommitSha = newCommitSha();
-    await seedCurrentSeedSkillVersions();
+    await seedCurrentSeedSkillVersions(fixture);
     setupMswHandlers(
       firstCommitSha,
-      createFullSkillTree([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
+      createFullSkillTree(fixture, [fixture.alphaSkill, fixture.betaSkill]),
     );
-    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+    await syncOwnedSkills(fixture);
 
     context.mocks.s3.send.mockClear();
     const nextCommitSha = newCommitSha();
     const modifiedAlpha = {
-      name: EXTRA_SKILLS.alphaSkill.name,
+      name: fixture.alphaSkill.name,
       files: [
         {
           path: "SKILL.md",
           content: [
             "---",
-            `name: ${EXTRA_SKILLS.alphaSkill.name}`,
+            `name: ${fixture.alphaSkill.name}`,
             "description: Updated alpha skill",
             "---",
             "",
@@ -913,80 +996,107 @@ describe("GET /api/cron/sync-skills", () => {
     };
     setupMswHandlers(
       nextCommitSha,
-      createFullSkillTree([modifiedAlpha, EXTRA_SKILLS.betaSkill]),
+      createFullSkillTree(fixture, [modifiedAlpha, fixture.betaSkill]),
     );
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body.commitSha).toBe(nextCommitSha);
-    expect(response.body.synced).toBe(1);
-    expect(response.body.skipped).toBeGreaterThanOrEqual(1);
+    expect(response).toStrictEqual({
+      success: true,
+      commitSha: nextCommitSha,
+      synced: 1,
+      skipped: fixture.requiredSeedSkillNames.length + 1,
+      failed: 0,
+      removed: 0,
+      remaining: 0,
+      total: fixture.requiredSeedSkillNames.length + 2,
+    });
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
 
     await expect(
-      findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
+      findSkillByUrl(testSkillUrl(fixture.alphaSkill.name)),
     ).resolves.toMatchObject({
       commitSha: nextCommitSha,
       frontmatter: {
-        name: EXTRA_SKILLS.alphaSkill.name,
+        name: fixture.alphaSkill.name,
         description: "Updated alpha skill",
       },
     });
   });
 
   it("removes skills deleted from the source repository and cleans S3 objects", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const firstCommitSha = newCommitSha();
-    await seedCurrentSeedSkillVersions();
+    await seedCurrentSeedSkillVersions(fixture);
     setupMswHandlers(
       firstCommitSha,
-      createFullSkillTree([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
+      createFullSkillTree(fixture, [fixture.alphaSkill, fixture.betaSkill]),
     );
-    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+    await syncOwnedSkills(fixture);
 
     context.mocks.s3.send.mockClear();
-    setupS3ListObjects(["mock/archive.tar.gz", "mock/manifest.json"]);
+    const betaVersion = buildMockSkillVersion(fixture, fixture.betaSkill);
+    const betaStorage = await findSystemStorageByName(betaVersion.storageName);
+    if (!betaStorage) {
+      throw new Error("Expected the beta skill storage");
+    }
+    const betaObjectKeys = [
+      `${betaStorage.s3Prefix}/${betaVersion.versionHash}/archive.tar.gz`,
+      `${betaStorage.s3Prefix}/${betaVersion.versionHash}/manifest.json`,
+    ];
+    setupS3ListObjects(betaObjectKeys);
+    const sentinelCommitSha = newCommitSha();
+    await setOwnedSkillsCommitSha(fixture, sentinelCommitSha, [
+      fixture.sentinelSkillName,
+    ]);
     const nextCommitSha = newCommitSha();
     setupMswHandlers(
       nextCommitSha,
-      createFullSkillTree([EXTRA_SKILLS.alphaSkill]),
+      createFullSkillTree(fixture, [fixture.alphaSkill]),
     );
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body.removed).toBe(1);
+    expect(response).toStrictEqual({
+      success: true,
+      commitSha: nextCommitSha,
+      synced: 0,
+      skipped: fixture.requiredSeedSkillNames.length + 1,
+      failed: 0,
+      removed: 1,
+      remaining: 0,
+      total: fixture.requiredSeedSkillNames.length + 1,
+    });
     await expect(
-      findSkillByUrl(testSkillUrl(EXTRA_SKILLS.betaSkill.name)),
+      findSkillByUrl(testSkillUrl(fixture.betaSkill.name)),
     ).resolves.toBeNull();
     await expect(
-      findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
+      findSkillByUrl(testSkillUrl(fixture.alphaSkill.name)),
     ).resolves.not.toBeNull();
+    await expect(
+      findSkillByUrl(testSkillUrl(fixture.sentinelSkillName)),
+    ).resolves.toMatchObject({ commitSha: sentinelCommitSha });
 
     const deleteCommand = s3CallsByName("DeleteObjectsCommand")[0];
     expect(commandInput(deleteCommand)).toMatchObject({
       Bucket: BUCKET,
       Delete: {
-        Objects: [
-          { Key: "mock/archive.tar.gz" },
-          { Key: "mock/manifest.json" },
-        ],
+        Objects: betaObjectKeys.map((key) => {
+          return { Key: key };
+        }),
       },
     });
   });
 
   it("keeps DB orphan removal when S3 cleanup fails", async () => {
+    const fixture = useCronSyncSkillsFixture();
     const firstCommitSha = newCommitSha();
-    await seedCurrentSeedSkillVersions();
+    await seedCurrentSeedSkillVersions(fixture);
     setupMswHandlers(
       firstCommitSha,
-      createFullSkillTree([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
+      createFullSkillTree(fixture, [fixture.alphaSkill, fixture.betaSkill]),
     );
-    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+    await syncOwnedSkills(fixture);
 
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       if (commandName(command) === "ListObjectsV2Command") {
@@ -997,58 +1107,105 @@ describe("GET /api/cron/sync-skills", () => {
     const nextCommitSha = newCommitSha();
     setupMswHandlers(
       nextCommitSha,
-      createFullSkillTree([EXTRA_SKILLS.alphaSkill]),
+      createFullSkillTree(fixture, [fixture.alphaSkill]),
     );
 
-    const response = await accept(
-      apiClient().sync({ headers: cronHeaders() }),
-      [200],
-    );
+    const response = await syncOwnedSkills(fixture);
 
-    expect(response.body.removed).toBe(1);
+    expect(response).toStrictEqual({
+      success: true,
+      commitSha: nextCommitSha,
+      synced: 0,
+      skipped: fixture.requiredSeedSkillNames.length + 1,
+      failed: 0,
+      removed: 1,
+      remaining: 0,
+      total: fixture.requiredSeedSkillNames.length + 1,
+    });
     await expect(
-      findSkillByUrl(testSkillUrl(EXTRA_SKILLS.betaSkill.name)),
+      findSkillByUrl(testSkillUrl(fixture.betaSkill.name)),
     ).resolves.toBeNull();
   });
 
-  it("logs when seed skills are missing from the source repository", async () => {
+  it("logs missing required skills and restores them after a source rollback", async () => {
+    const fixture = useCronSyncSkillsFixture();
     mockEnv("AXIOM_TOKEN_TELEMETRY", "test-token");
     mockEnv("AXIOM_DATASET_SUFFIX", "dev");
-    const omittedSkills = SEED_SKILLS.slice(0, 2);
+    const omittedSkills = fixture.requiredSeedSkillNames.slice(0, 2);
     const omittedSkillSet = new Set(omittedSkills);
-    const keptSkills = REQUIRED_SEED_SKILL_NAMES.filter((name) => {
+    const keptSkills = fixture.requiredSeedSkillNames.filter((name) => {
       return !omittedSkillSet.has(name);
     });
-    const commitSha = newCommitSha();
+    const initialCommitSha = newCommitSha();
+    setupMswHandlers(initialCommitSha, createFullSkillTree(fixture, []));
+    await syncOwnedSkills(fixture);
+
+    const removalCommitSha = newCommitSha();
     setupMswHandlers(
-      commitSha,
-      keptSkills.map((name) => {
-        return {
-          name,
-          files: [
-            {
-              path: "SKILL.md",
-              content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
-            },
-          ],
-        };
-      }),
+      removalCommitSha,
+      createSkillTree(
+        fixture,
+        keptSkills.map((name) => {
+          return {
+            name,
+            files: [
+              {
+                path: "SKILL.md",
+                content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+              },
+            ],
+          };
+        }),
+      ),
     );
 
-    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+    const removalResponse = await syncOwnedSkills(fixture);
+
+    expect(removalResponse).toStrictEqual({
+      success: true,
+      commitSha: removalCommitSha,
+      synced: 0,
+      skipped: keptSkills.length,
+      failed: 0,
+      removed: omittedSkills.length,
+      remaining: 0,
+      total: keptSkills.length,
+    });
+    await Promise.all(
+      omittedSkills.map(async (name) => {
+        await expect(findSkillByUrl(testSkillUrl(name))).resolves.toBeNull();
+      }),
+    );
 
     expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
       expect.stringContaining("SEED_SKILLS references skills not found"),
       expect.objectContaining({
         context: "skills:sync",
-        missingSkills: expect.arrayContaining([
-          expect.stringContaining("vm0-ai/vm0-skills"),
-        ]),
+        missingSkills: omittedSkills.map((name) => {
+          return testSkillUrl(name);
+        }),
       }),
     );
 
-    const restoreCommitSha = newCommitSha();
-    setupMswHandlers(restoreCommitSha, createFullSkillTree([]));
-    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
+    setupMswHandlers(initialCommitSha, createFullSkillTree(fixture, []));
+    const rollbackResponse = await syncOwnedSkills(fixture);
+
+    expect(rollbackResponse).toStrictEqual({
+      success: true,
+      commitSha: initialCommitSha,
+      synced: omittedSkills.length,
+      skipped: keptSkills.length,
+      failed: 0,
+      removed: 0,
+      remaining: 0,
+      total: fixture.requiredSeedSkillNames.length,
+    });
+    await Promise.all(
+      omittedSkills.map(async (name) => {
+        await expect(findSkillByUrl(testSkillUrl(name))).resolves.toMatchObject(
+          { commitSha: initialCommitSha },
+        );
+      }),
+    );
   });
 });
