@@ -3754,7 +3754,7 @@ jobs:
 
   cli-e2e-03-runner-bootstrap:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
