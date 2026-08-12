@@ -57,6 +57,14 @@ async function main(): Promise<void> {
       ),
       upgradeToPro: true,
     },
+    {
+      email: accounts.mockClaude,
+      fileName: "e2e-api-credentials-runner-mock-claude.json",
+      organizationId: requiredEnvironmentVariable(
+        "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID",
+      ),
+      upgradeToPro: true,
+    },
   ];
   const vercelAutomationBypassSecret =
     process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
