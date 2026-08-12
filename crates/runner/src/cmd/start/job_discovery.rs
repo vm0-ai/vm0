@@ -319,11 +319,6 @@ pub(super) async fn handle_discovered_job(
         return DiscoveredJobResult::completed(true);
     }
     let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(claim_returned_at);
-    pre_spawn_timing.observe_immediate_successor_intent(
-        ctx.spawn_ctx
-            .immediate_successor_intents
-            .observe_claim(claimed.history_generation_run_id(), claim_returned_at),
-    );
     let started_at = Instant::now();
     let resume_session_error = validate_resume_session_id(claimed.context()).err();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);

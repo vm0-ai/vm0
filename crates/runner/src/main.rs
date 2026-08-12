@@ -23,7 +23,6 @@ mod idle_pool;
 mod idle_reuse_preparation;
 mod ids;
 mod image_hash;
-mod immediate_successor_intent;
 mod io_limits;
 mod kmsg_log;
 mod lifecycle;
