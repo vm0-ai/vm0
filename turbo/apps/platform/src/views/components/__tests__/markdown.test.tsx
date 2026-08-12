@@ -556,7 +556,7 @@ describe("assistant markdown", () => {
     );
   });
 
-  it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
+  it("keeps an invalid mermaid fence as an ordinary code block", async () => {
     context.mocks.browser.blobDownload();
     mockThread("```mermaid\nthis is not a diagram\n```");
 
@@ -566,13 +566,12 @@ describe("assistant markdown", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("mermaid-diagram-fallback"),
-      ).toBeInTheDocument();
+      expect(document.querySelector("code.language-mermaid")).not.toBeNull();
     });
-    expect(screen.getByTestId("mermaid-diagram-fallback").textContent).toBe(
+    expect(document.querySelector("code.language-mermaid")?.textContent).toBe(
       "this is not a diagram",
     );
+    expect(document.querySelector(".mermaid-block")).toBeNull();
     expect(screen.queryByAltText("Diagram")).toBeNull();
   });
 

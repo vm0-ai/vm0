@@ -7,8 +7,10 @@ import { theme$ } from "./theme.ts";
  * Mermaid diagrams render through a pull model. Each unique diagram source
  * owns one `MermaidDiagramSignals` in a module-scope registry; its `diagram$`
  * computed loads mermaid, lays the diagram out and resolves to an image the
- * view shows in an `<img>`. Reading the theme inside the computed makes a
- * theme switch re-render every diagram without any remounting.
+ * view shows in an `<img>` — or to `null` when the parser rejects the source,
+ * in which case the fence simply stays a code block. Reading the theme inside
+ * the computed makes a theme switch re-render every diagram without any
+ * remounting.
  *
  * The command that parses a tree registers each diagram and embeds the
  * returned signals on the marker node, so rendering receives the signals
@@ -29,7 +31,8 @@ export interface MermaidDiagramImage {
 
 export interface MermaidDiagramSignals {
   readonly code: string;
-  readonly diagram$: Computed<Promise<MermaidDiagramImage>>;
+  /** Resolves `null` when the source is not a valid mermaid diagram. */
+  readonly diagram$: Computed<Promise<MermaidDiagramImage | null>>;
 }
 
 // Declared here rather than in the parse pipeline: the pipeline emits only
@@ -164,60 +167,62 @@ function svgFile(markup: string): File {
 export function createMermaidDiagramSignals(
   code: string,
 ): MermaidDiagramSignals {
-  const diagram$ = computed(async (get): Promise<MermaidDiagramImage> => {
-    const theme = get(theme$);
-    const { default: mermaid } = await get(mermaidModule$);
-    mermaid.initialize({
-      startOnLoad: false,
-      // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
-      // disables click handlers declared inside diagram sources.
-      securityLevel: "strict",
-      // Without this mermaid injects its own error diagram into the document.
-      suppressErrorRendering: true,
-      theme: theme === "dark" ? "redux-dark" : "redux",
-      // Resolved to a concrete stack rather than passed as `var(...)`: the same
-      // SVG is also shown inside an <img> in the lightbox, where page-level CSS
-      // custom properties do not resolve.
-      fontFamily: getComputedStyle(document.documentElement)
-        .getPropertyValue("--font-family-sans")
-        .trim(),
-      // mermaid's defaults are sized for a standalone page: 16px labels and
-      // 50px rank spacing make a five-node flowchart taller than the message
-      // around it. These match the chat body text and cut roughly a third of
-      // the height.
-      themeVariables: { fontSize: "14px" },
-      flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
-    });
+  const diagram$ = computed(
+    async (get): Promise<MermaidDiagramImage | null> => {
+      const theme = get(theme$);
+      const { default: mermaid } = await get(mermaidModule$);
+      mermaid.initialize({
+        startOnLoad: false,
+        // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
+        // disables click handlers declared inside diagram sources.
+        securityLevel: "strict",
+        // Without this mermaid injects its own error diagram into the document.
+        suppressErrorRendering: true,
+        theme: theme === "dark" ? "redux-dark" : "redux",
+        // Resolved to a concrete stack rather than passed as `var(...)`: the same
+        // SVG is also shown inside an <img> in the lightbox, where page-level CSS
+        // custom properties do not resolve.
+        fontFamily: getComputedStyle(document.documentElement)
+          .getPropertyValue("--font-family-sans")
+          .trim(),
+        // mermaid's defaults are sized for a standalone page: 16px labels and
+        // 50px rank spacing make a five-node flowchart taller than the message
+        // around it. These match the chat body text and cut roughly a third of
+        // the height.
+        themeVariables: { fontSize: "14px" },
+        flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
+      });
 
-    const markup = await renderDiagramSvg(
-      mermaid,
-      diagramRenderId(`${theme}:${code}`),
-      code,
-    );
-    if (markup === undefined) {
-      throw new Error("mermaid source failed to parse");
-    }
+      const markup = await renderDiagramSvg(
+        mermaid,
+        diagramRenderId(`${theme}:${code}`),
+        code,
+      );
+      if (markup === undefined) {
+        return null;
+      }
 
-    // Parsed in a detached element. The markup never reaches the document, so
-    // the only thing that ever shows it is an <img>, where a data URL SVG
-    // cannot run scripts or resolve page-level CSS custom properties.
-    const host = document.createElement("div");
-    host.innerHTML = markup;
-    const svg = host.querySelector("svg");
-    if (!svg) {
-      throw new Error("mermaid renderer produced no svg");
-    }
+      // Parsed in a detached element. The markup never reaches the document, so
+      // the only thing that ever shows it is an <img>, where a data URL SVG
+      // cannot run scripts or resolve page-level CSS custom properties.
+      const host = document.createElement("div");
+      host.innerHTML = markup;
+      const svg = host.querySelector("svg");
+      if (!svg) {
+        throw new Error("mermaid renderer produced no svg");
+      }
 
-    const serialized = sizeDiagramAndSerialize(svg);
-    const file = svgFile(serialized);
-    return {
-      // A blob URL keeps the multi-kilobyte SVG out of the `src` attribute:
-      // assigning a data: URL string of that size showed up in commit-phase
-      // profiles as a per-mount cost.
-      url: URL.createObjectURL(file),
-      file,
-    };
-  });
+      const serialized = sizeDiagramAndSerialize(svg);
+      const file = svgFile(serialized);
+      return {
+        // A blob URL keeps the multi-kilobyte SVG out of the `src` attribute:
+        // assigning a data: URL string of that size showed up in commit-phase
+        // profiles as a per-mount cost.
+        url: URL.createObjectURL(file),
+        file,
+      };
+    },
+  );
   return { code, diagram$ };
 }
 
