@@ -230,8 +230,8 @@ interface ResolvedFirewallAuthMaterial {
   readonly missingSecretFailure: MissingResolvedSecretFailure;
 }
 
-type FirewallAuthPreparation =
-  | { readonly ok: true; readonly prepared: PreparedFirewallAuth }
+type FirewallAuthPreparation<TPrepared extends PreparedFirewallAuth> =
+  | { readonly ok: true; readonly prepared: TPrepared }
   | { readonly ok: false; readonly response: ResolveFirewallAuthResult };
 
 type FirewallAuthMaterialResolution =
@@ -3879,17 +3879,10 @@ async function decryptFirewallAuthSecrets(
   auth: SandboxAuth,
   orgId: string,
   encryptedSecrets: string,
-): Promise<
-  | {
-      readonly ok: true;
-      readonly featureSwitchContext: FeatureSwitchContext;
-      readonly secrets: Record<string, string> | null;
-    }
-  | {
-      readonly ok: false;
-      readonly response: ReturnType<typeof badRequestMessage>;
-    }
-> {
+): Promise<{
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly secrets: Record<string, string> | null;
+}> {
   const featureSwitchContext = await loadUserFeatureSwitchContext(
     db,
     orgId,
@@ -3899,7 +3892,6 @@ async function decryptFirewallAuthSecrets(
     decryptPersistentSecretsMap(encryptedSecrets, featureSwitchContext),
   );
   return {
-    ok: true,
     featureSwitchContext,
     secrets: secrets ?? null,
   };
@@ -4524,9 +4516,9 @@ type CurrentCustomConnectorAuthRefsResolution =
   | {
       readonly kind: "available";
       readonly authRefs: readonly CurrentCustomConnectorAuthRef[];
+      readonly runtimeAvailable: boolean;
     }
-  | { readonly kind: "unavailable" }
-  | { readonly kind: "reconnect-required" };
+  | { readonly kind: "unavailable" };
 
 async function loadCurrentCustomConnectorAuthRefs(args: {
   readonly db: Db;
@@ -4547,9 +4539,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
   }
   if (runtime.credentialAccess.kind === "absent") {
     return { kind: "unavailable" };
-  }
-  if (!runtime.credentialAccess.runtimeAvailable) {
-    return { kind: "reconnect-required" };
   }
 
   const declaredFields = new Map(
@@ -4631,7 +4620,11 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       encryptedValue: null,
     });
   }
-  return { kind: "available", authRefs: [...refs.values()] };
+  return {
+    kind: "available",
+    authRefs: [...refs.values()],
+    runtimeAvailable: runtime.credentialAccess.runtimeAvailable,
+  };
 }
 
 type CurrentCustomConnectorSecretsResolution =
@@ -4664,7 +4657,7 @@ async function prepareCurrentCustomConnectorFirewallAuth(args: {
   readonly referenced: ReferencedAuthKeys;
   readonly customConnectorId: string;
   readonly routingVariables: Record<string, string>;
-}): Promise<FirewallAuthPreparation> {
+}): Promise<FirewallAuthPreparation<PreparedCustomFirewallAuth>> {
   // The trusted host already matched this request against its effective
   // firewall. Runtime sync owns firewall changes; auth resolves only the
   // referenced values from the connector's current credential storage. Every
@@ -4678,12 +4671,6 @@ async function prepareCurrentCustomConnectorFirewallAuth(args: {
   if (authRefsResolution.kind === "unavailable") {
     return { ok: false, response: connectorNotConfigured() };
   }
-  if (authRefsResolution.kind === "reconnect-required") {
-    return {
-      ok: false,
-      response: connectorReconnectRequired([args.customConnectorId]),
-    };
-  }
   const authRefs = authRefsResolution.authRefs;
   const refsByAlias = new Map(
     authRefs.map((ref) => {
@@ -4696,6 +4683,12 @@ async function prepareCurrentCustomConnectorFirewallAuth(args: {
     })
   ) {
     return { ok: false, response: connectorNotConfigured() };
+  }
+  if (!authRefsResolution.runtimeAvailable) {
+    return {
+      ok: false,
+      response: connectorReconnectRequired([args.customConnectorId]),
+    };
   }
   if (hasMissingResolvedSecrets(args.body.vars ?? {}, args.referenced.vars)) {
     return { ok: false, response: connectorNotConfigured() };
@@ -4851,21 +4844,15 @@ async function prepareNonCustomFirewallAuth(args: {
   readonly body: FirewallAuthBody;
   readonly orgId: string;
   readonly referenced: ReferencedAuthKeys;
-}): Promise<FirewallAuthPreparation> {
+  readonly forceRefreshStartedAtMicros: bigint | null;
+}): Promise<FirewallAuthPreparation<PreparedNonCustomFirewallAuth>> {
   const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(args.db);
-  const forceRefreshStartedAtMicros =
-    args.body.forceRefresh === true
-      ? await currentDatabaseTimestampMicros(args.db)
-      : null;
   const decrypted = await decryptFirewallAuthSecrets(
     args.db,
     args.auth,
     args.orgId,
     args.body.encryptedSecrets,
   );
-  if (!decrypted.ok) {
-    return { ok: false, response: decrypted.response };
-  }
   if (!decrypted.secrets) {
     return {
       ok: false,
@@ -4893,7 +4880,7 @@ async function prepareNonCustomFirewallAuth(args: {
       featureSwitchContext: decrypted.featureSwitchContext,
       secrets: decrypted.secrets,
       context: prepared.context,
-      forceRefreshStartedAtMicros,
+      forceRefreshStartedAtMicros: args.forceRefreshStartedAtMicros,
     },
   };
 }
@@ -5111,6 +5098,12 @@ export async function resolveFirewallAuth(
   auth: SandboxAuth,
   body: FirewallAuthBody,
 ): Promise<ResolveFirewallAuthResult> {
+  const matchedFirewall = body.matchedFirewall;
+  const customConnectorId = matchedFirewall?.customConnectorId;
+  const forceRefreshStartedAtMicros =
+    customConnectorId === undefined && body.forceRefresh === true
+      ? await currentDatabaseTimestampMicros(db)
+      : null;
   const orgId = await findRefreshRunOrgId(db, auth);
   if (!orgId) {
     L.warn(`[${auth.runId}] Run not found for firewall auth`);
@@ -5122,8 +5115,6 @@ export async function resolveFirewallAuth(
     body.authQuery,
     body.authAwsSigv4,
   );
-  const matchedFirewall = body.matchedFirewall;
-  const customConnectorId = matchedFirewall?.customConnectorId;
   const preparation = customConnectorId
     ? await prepareCurrentCustomConnectorFirewallAuth({
         db,
@@ -5140,6 +5131,7 @@ export async function resolveFirewallAuth(
         body,
         orgId,
         referenced,
+        forceRefreshStartedAtMicros,
       });
   if (!preparation.ok) {
     return preparation.response;

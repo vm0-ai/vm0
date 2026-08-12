@@ -8315,6 +8315,20 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       storageVersion: 1,
       needsReconnect: true,
     });
+    const unknownAliasAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        ...currentAuthBody,
+        authHeaders: {
+          Authorization: "Bearer ${{ secrets.UNKNOWN_CUSTOM_ALIAS }}",
+        },
+      },
+      [424],
+    );
+    if (unknownAliasAuth.status !== 424) {
+      throw new Error("Expected unknown custom connector auth alias");
+    }
+    expect(unknownAliasAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
     const reconnectRequiredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
