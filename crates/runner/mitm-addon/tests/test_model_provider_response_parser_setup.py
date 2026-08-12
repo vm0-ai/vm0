@@ -1,6 +1,7 @@
 """Model-provider response parser setup integration tests."""
 
 import gzip
+from typing import cast
 
 import pytest
 from mitmproxy.test import tutils
@@ -8,9 +9,26 @@ from mitmproxy.test import tutils
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_streaming
+import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush
 from tests.x_flow_helpers import make_x_response_flow
+
+
+class TestModelJsonUsageProtocolDispatch:
+    """Tests for the public typed model JSON dispatch owner."""
+
+    def test_unsupported_protocol_fails_explicitly(self):
+        unsupported_protocol = cast(usage.ModelUsageProtocol, "unsupported")
+
+        with pytest.raises(AssertionError, match="Expected code to be unreachable"):
+            usage.create_model_json_usage_extractor(unsupported_protocol)
+        with pytest.raises(AssertionError, match="Expected code to be unreachable"):
+            usage.extract_model_usage_with_error_from_json(
+                unsupported_protocol,
+                b"{}",
+                None,
+            )
 
 
 class TestResponseHeadersModelJsonParser:
