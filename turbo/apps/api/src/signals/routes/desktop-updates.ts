@@ -1,8 +1,14 @@
 import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
-import { DESKTOP_PRODUCT_ZERO } from "@vm0/api-contracts/contracts/client-headers";
+import { brandedApiNamespace } from "@vm0/api-contracts/contracts/api-namespaces";
+import {
+  DESKTOP_PRODUCT_OKOU,
+  DESKTOP_PRODUCT_ZERO,
+  type DesktopProduct,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { command } from "ccstate";
 
 import { notFound } from "../../lib/error";
+import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -22,9 +28,18 @@ const productDmgDownloadParams$ = pathParamsOf(
   desktopUpdatesContract.productDmgDownload,
 );
 
+function desktopProductFromRequestUrl(requestUrl: string): DesktopProduct {
+  return brandedApiNamespace(new URL(requestUrl).pathname) === "okou"
+    ? DESKTOP_PRODUCT_OKOU
+    : DESKTOP_PRODUCT_ZERO;
+}
+
 const getDesktopReleasePage$ = command(async ({ get }, signal: AbortSignal) => {
   const url = await loadDesktopReleasePageUrl(
-    { product: DESKTOP_PRODUCT_ZERO, ...get(releasePageParams$) },
+    {
+      product: desktopProductFromRequestUrl(get(request$).url),
+      ...get(releasePageParams$),
+    },
     signal,
   );
   signal.throwIfAborted();
@@ -61,7 +76,10 @@ const getDesktopUpdateFeed$ = command(async ({ get }, signal: AbortSignal) => {
 
 const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
   const url = await loadDesktopDmgDownloadUrl(
-    { product: DESKTOP_PRODUCT_ZERO, ...get(dmgDownloadParams$) },
+    {
+      product: desktopProductFromRequestUrl(get(request$).url),
+      ...get(dmgDownloadParams$),
+    },
     signal,
   );
   signal.throwIfAborted();

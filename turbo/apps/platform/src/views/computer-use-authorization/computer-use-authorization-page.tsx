@@ -12,10 +12,11 @@ import {
   computerUseAuthorizationRequest$,
 } from "../../signals/computer-use-authorization/computer-use-authorization.ts";
 import {
-  zeroDesktopDownloadSupportStatus$,
+  desktopDownloadSupportStatus$,
   visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
+  OKOU_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
+import { computerUseProductName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { computerUseIllustrationImg } from "../zero-page/platform-assets.ts";
@@ -117,9 +118,8 @@ function HostOption({
 
 function EmptyHosts() {
   const { t } = useTranslation();
-  const downloadSupportLoadable = useLoadable(
-    zeroDesktopDownloadSupportStatus$,
-  );
+  const computerUseProductName = useGet(computerUseProductName$);
+  const downloadSupportLoadable = useLoadable(desktopDownloadSupportStatus$);
   const downloadSupportStatus =
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
@@ -141,9 +141,12 @@ function EmptyHosts() {
           })}
         </h2>
         <p className="text-sm leading-5 text-muted-foreground">
-          {t(($) => {
-            return $.authorization.computerUse.noHostsDescription;
-          })}
+          {t(
+            ($) => {
+              return $.authorization.computerUse.noHostsDescription;
+            },
+            { desktopProductName: computerUseProductName },
+          )}
         </p>
         <p className="text-sm leading-5 text-muted-foreground">
           {t(($) => {
@@ -166,7 +169,7 @@ function EmptyHosts() {
         </Button>
       ) : (
         <a
-          href={ZERO_DESKTOP_DOWNLOAD_URL}
+          href={OKOU_DESKTOP_DOWNLOAD_URL}
           target="_blank"
           rel="noreferrer"
           className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-state-hover"

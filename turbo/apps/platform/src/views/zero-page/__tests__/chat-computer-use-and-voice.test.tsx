@@ -495,7 +495,52 @@ describe("chat lifecycle", () => {
     expect(downloadLink).toHaveAttribute(
       "href",
       expect.stringContaining(
-        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
+  });
+
+  it("uses Okou Computer Use copy on an Okou host", async () => {
+    const previousUrl = window.location.href;
+    window.location.href = "https://app.okou.ai/";
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        window.location.href = previousUrl;
+      },
+      { once: true },
+    );
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000005";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    expect(screen.getByText("Let Okou use your computer")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "So Okou can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
+      ),
+    ).toBeInTheDocument();
+    const downloadLink = await waitFor(() => {
+      return linkByText("Download for macOS");
+    });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
   });

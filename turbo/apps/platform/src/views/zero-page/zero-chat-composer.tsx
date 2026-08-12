@@ -189,9 +189,10 @@ import {
   computerUseHosts$,
   selectedComputerUseHostId,
   visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
-  zeroDesktopDownloadSupportStatus$,
+  OKOU_DESKTOP_DOWNLOAD_URL,
+  desktopDownloadSupportStatus$,
 } from "../../signals/zero-page/computer-use-hosts.ts";
+import { computerUseProductName$ } from "../../signals/branding.ts";
 import type { ComposerConnectorAuthorizationState } from "../../signals/zero-page/zero-connectors.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
@@ -6725,9 +6726,8 @@ function ComputerUseDownloadDialog({
   downloadUrl: string;
 }) {
   const { t } = useTranslation();
-  const downloadSupportLoadable = useLoadable(
-    zeroDesktopDownloadSupportStatus$,
-  );
+  const computerUseProductName = useGet(computerUseProductName$);
+  const downloadSupportLoadable = useLoadable(desktopDownloadSupportStatus$);
   const downloadSupportStatus =
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
@@ -6745,14 +6745,20 @@ function ComputerUseDownloadDialog({
         </div>
         <DialogHeader className="space-y-2 px-6 pt-5 text-left">
           <DialogTitle className="text-xl leading-7">
-            {t(($) => {
-              return $.chat.computerUse.dialogTitle;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogTitle;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogTitle>
           <DialogDescription className="leading-6">
-            {t(($) => {
-              return $.chat.computerUse.dialogDescription;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogDescription;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogDescription>
           <p className="text-sm leading-5 text-muted-foreground">
             {t(($) => {
@@ -7934,7 +7940,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         Reason.DomCallback,
       );
     },
-    downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+    downloadUrl: OKOU_DESKTOP_DOWNLOAD_URL,
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
