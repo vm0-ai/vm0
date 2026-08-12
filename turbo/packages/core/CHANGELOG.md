@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.552.0](https://github.com/vm0-ai/vm0/compare/core-v8.551.0...core-v8.552.0) (2026-08-12)
+
+
+### Features
+
+* add DeepSeek V4 Pro support ([#26737](https://github.com/vm0-ai/vm0/issues/26737)) ([3770acd](https://github.com/vm0-ai/vm0/commit/3770acda61dabb8be63f64b8a0dd853519b40700))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.0
+
 ## [8.551.0](https://github.com/vm0-ai/vm0/compare/core-v8.550.1...core-v8.551.0) (2026-08-12)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.440.0](https://github.com/vm0-ai/vm0/compare/api-v1.439.0...api-v1.440.0) (2026-08-12)
+
+
+### Features
+
+* add DeepSeek V4 Pro support ([#26737](https://github.com/vm0-ai/vm0/issues/26737)) ([3770acd](https://github.com/vm0-ai/vm0/commit/3770acda61dabb8be63f64b8a0dd853519b40700))
+
+
+### Refactoring
+
+* **connectors:** require auth mode in responses ([#26730](https://github.com/vm0-ai/vm0/issues/26730)) ([9c36796](https://github.com/vm0-ai/vm0/commit/9c36796b826d17cafa7e8a5ef57ac4424a2a653c))
+* retire axiom-backed log surfaces ([#26689](https://github.com/vm0-ai/vm0/issues/26689)) ([c7266ba](https://github.com/vm0-ai/vm0/commit/c7266baadf3ccf5e624be2ee396c8656887cf6b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.0
+    * @vm0/core bumped to 8.552.0
+    * @vm0/db bumped to 1.197.3
+    * @vm0/pi-agent-runtime bumped to 1.4.0
+
 ## [1.439.0](https://github.com/vm0-ai/vm0/compare/api-v1.438.0...api-v1.439.0) (2026-08-12)
 
 
