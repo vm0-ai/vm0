@@ -35,7 +35,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
-import { chatEvents } from "../src/schema/chat-event";
+import {
+  chatEventTerminalPredicate,
+  chatEvents,
+} from "../src/schema/chat-event";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -356,7 +359,7 @@ async function assertChatEventsAppendOnlyProtection(
   ]);
   await expectAppendOnlyUpdateRejected(client, {
     tableName: "chat_events",
-    query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+    query: `UPDATE "chat_events" SET "event_type" = "event_type" WHERE "id" = $1`,
     rowId,
   });
 }
@@ -382,12 +385,10 @@ async function validateCanonicalChatMessageStorage(
     parts: [{ type: "text", text: "canonical API migration test" }],
   };
   const message = await client.query<{
-    content: string | null;
     contextType: string | null;
     id: string;
     payload: unknown;
     seqId: string;
-    userMessage: unknown;
   }>(
     `
       INSERT INTO "chat_events" (
@@ -407,10 +408,8 @@ async function validateCanonicalChatMessageStorage(
       RETURNING
         "id",
         "seq_id" AS "seqId",
-        "content",
         "context_type" AS "contextType",
-        "payload",
-        "user_message" AS "userMessage"
+        "payload"
     `,
     [threadId, firstSeqId, JSON.stringify({ userMessage })],
   );
@@ -419,13 +418,10 @@ async function validateCanonicalChatMessageStorage(
     throw new Error("Failed to create append-only chat message fixture");
   }
   assert.equal(messageRow.seqId, String(firstSeqId));
-  assert.equal(messageRow.content, null);
   assert.equal(messageRow.contextType, "web");
   assert.deepEqual(messageRow.payload, { userMessage });
-  assert.equal(messageRow.userMessage, null);
 
   const nextMessage = await client.query<{
-    content: string | null;
     payload: unknown;
     seqId: string;
   }>(
@@ -444,13 +440,11 @@ async function validateCanonicalChatMessageStorage(
       )
       RETURNING
         "seq_id" AS "seqId",
-        "content",
         "payload"
     `,
     [threadId, lastSeqId],
   );
   assert.equal(nextMessage.rows[0]?.seqId, String(lastSeqId));
-  assert.equal(nextMessage.rows[0]?.content, null);
   assert.deepEqual(nextMessage.rows[0]?.payload, {
     content: "second typed API migration test",
   });
@@ -629,7 +623,7 @@ async function validateChatEventSourcesAreAppendOnly(
 
     await expectAppendOnlyUpdateRejected(client, {
       tableName: "chat_events",
-      query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+      query: `UPDATE "chat_events" SET "event_type" = "event_type" WHERE "id" = $1`,
       rowId: messageId,
     });
     await expectAppendOnlyUpdateRejected(client, {
@@ -2231,20 +2225,6 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
-      "CREATE TRIGGER bridge_invalidated_goal_continuation_0829 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'input.rejected'::text) AND (new.error = 'Goal continuation no longer matches the active goal'::text))) EXECUTE FUNCTION bridge_invalidated_goal_continuation_0829()",
-    schemaName: "public",
-    tableName: "chat_events",
-    triggerName: "bridge_invalidated_goal_continuation_0829",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_goal_only_chat_event_run_group_0810 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_chat_event_run_group_0810()",
-    schemaName: "public",
-    tableName: "chat_events",
-    triggerName: "bridge_goal_only_chat_event_run_group_0810",
-  },
-  {
-    definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
@@ -2369,13 +2349,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
-  {
-    definition:
-      "CREATE TRIGGER bridge_goal_only_zero_run_group_0810 BEFORE INSERT OR UPDATE OF run_group_id, goal_id ON public.zero_runs FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_zero_run_group_0810()",
-    schemaName: "public",
-    tableName: "zero_runs",
-    triggerName: "bridge_goal_only_zero_run_group_0810",
-  },
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
@@ -2390,27 +2363,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "d222c803fed6a784bf53288dd866f2a2",
-    functionName: "bridge_goal_only_chat_event_run_group_0810",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "14663ff71eec325962f2784692c96937",
-    functionName: "bridge_invalidated_goal_continuation_0829",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "24620b451e6c4d3c61ca9e449f5faa19",
-    functionName: "bridge_goal_only_zero_run_group_0810",
-    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -5825,7 +5777,6 @@ async function validateChatEventContractionFinalization(): Promise<void> {
           id: fixture.currentInsertId,
           chatThreadId: fixture.threadId,
           eventType: "output.message",
-          content: "Current ORM insert",
           payload: { content: "Current ORM insert" },
           seqId: 4,
         })
@@ -5833,7 +5784,7 @@ async function validateChatEventContractionFinalization(): Promise<void> {
       const currentInsertSql = currentInsert.toSQL();
       assert.doesNotMatch(
         currentInsertSql.sql,
-        /active_input_sequence|goal_event|attach_files|generation_template|recommended_followups/u,
+        /content|user_message|thinking|error|usage_payload|interrupts_run_id|run_group_id|active_input_sequence|goal_event|attach_files|generation_template|recommended_followups/u,
       );
       assert.match(currentInsertSql.sql, /"payload"/u);
       assert.deepEqual(await currentInsert, [{ id: fixture.currentInsertId }]);
@@ -6560,6 +6511,563 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
       );
       console.log(
         "   ✅ Canonical chat event storage backfill converges, aborts on conflicts, and reruns cleanly\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const CHAT_EVENT_PHYSICAL_CONTRACTION_PREVIOUS_MIGRATION =
+  "0909_canonical_chat_event_writes";
+const CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION =
+  "0910_contract_legacy_chat_event_storage";
+
+interface CanonicalChatEventWriterProbe {
+  readonly batch: string;
+  readonly idConflict: string;
+  readonly insert: string;
+  readonly replacementConflict: string;
+  readonly runLifecycleConflict: string;
+}
+
+async function exerciseCanonicalChatEventWriter(
+  client: Client,
+  args: {
+    readonly ids: {
+      readonly batchA: string;
+      readonly batchB: string;
+      readonly insert: string;
+      readonly replacement: string;
+      readonly replacementConflict: string;
+      readonly replacementTarget: string;
+      readonly terminal: string;
+      readonly terminalConflict: string;
+      readonly terminalRun: string;
+    };
+    readonly seqId: number;
+    readonly threadId: string;
+  },
+): Promise<CanonicalChatEventWriterProbe> {
+  const database = drizzle(client);
+  const insert = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.insert,
+      chatThreadId: args.threadId,
+      eventType: "output.message",
+      payload: { content: "canonical insert" },
+      seqId: args.seqId,
+    })
+    .returning({ id: chatEvents.id });
+  const insertSql = insert.toSQL().sql;
+  assert.deepEqual(await insert, [{ id: args.ids.insert }]);
+
+  const idConflict = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.insert,
+      chatThreadId: args.threadId,
+      eventType: "output.message",
+      payload: { content: "id conflict" },
+      seqId: args.seqId + 1,
+    })
+    .onConflictDoNothing({ target: chatEvents.id })
+    .returning({ id: chatEvents.id });
+  const idConflictSql = idConflict.toSQL().sql;
+  assert.deepEqual(await idConflict, []);
+
+  await database.insert(chatEvents).values({
+    id: args.ids.terminal,
+    chatThreadId: args.threadId,
+    runId: args.ids.terminalRun,
+    eventType: "run.completed",
+    payload: { content: "completed" },
+    seqId: args.seqId + 2,
+  });
+  const runLifecycleConflict = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.terminalConflict,
+      chatThreadId: args.threadId,
+      runId: args.ids.terminalRun,
+      eventType: "run.failed",
+      payload: { content: "failed", error: "late failure" },
+      seqId: args.seqId + 3,
+    })
+    .onConflictDoNothing({
+      target: chatEvents.runId,
+      where: chatEventTerminalPredicate(chatEvents.eventType),
+    })
+    .returning({ id: chatEvents.id });
+  const runLifecycleConflictSql = runLifecycleConflict.toSQL().sql;
+  assert.deepEqual(await runLifecycleConflict, []);
+
+  const batch = database
+    .insert(chatEvents)
+    .values([
+      {
+        id: args.ids.batchA,
+        chatThreadId: args.threadId,
+        eventType: "browser.open",
+        seqId: args.seqId + 4,
+      },
+      {
+        id: args.ids.batchB,
+        chatThreadId: args.threadId,
+        eventType: "browser.close",
+        seqId: args.seqId + 4,
+      },
+    ])
+    .onConflictDoNothing()
+    .returning({ id: chatEvents.id });
+  const batchSql = batch.toSQL().sql;
+  assert.equal((await batch).length, 1);
+
+  const userMessage = {
+    version: 1 as const,
+    parts: [{ type: "text" as const, text: "replacement target" }],
+  };
+  await database.insert(chatEvents).values({
+    id: args.ids.replacementTarget,
+    chatThreadId: args.threadId,
+    eventType: "input.prompt",
+    payload: { userMessage },
+    contextType: "web",
+    seqId: args.seqId + 5,
+  });
+  await database.insert(chatEvents).values({
+    id: args.ids.replacement,
+    chatThreadId: args.threadId,
+    revokesEventId: args.ids.replacementTarget,
+    eventType: "input.rejected",
+    payload: { userMessage, error: "replacement rejected" },
+    contextType: "web",
+    seqId: args.seqId + 6,
+  });
+  const replacementConflict = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.replacementConflict,
+      chatThreadId: args.threadId,
+      revokesEventId: args.ids.replacementTarget,
+      eventType: "input.rejected",
+      payload: { userMessage, error: "duplicate replacement" },
+      contextType: "web",
+      seqId: args.seqId + 7,
+    })
+    .onConflictDoNothing()
+    .returning({ id: chatEvents.id });
+  const replacementConflictSql = replacementConflict.toSQL().sql;
+  assert.deepEqual(await replacementConflict, []);
+
+  const statements = {
+    batch: batchSql,
+    idConflict: idConflictSql,
+    insert: insertSql,
+    replacementConflict: replacementConflictSql,
+    runLifecycleConflict: runLifecycleConflictSql,
+  };
+  for (const statement of Object.values(statements)) {
+    assert.doesNotMatch(
+      statement,
+      /content|user_message|thinking|error|usage_payload|interrupts_run_id|run_group_id/u,
+    );
+  }
+  return statements;
+}
+
+async function validateChatEventPhysicalContraction(): Promise<void> {
+  console.log("=== Validate physical chat-event storage contraction ===\n");
+  const testDb = "migration_chat_event_physical_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000091001",
+    threadId: "00000000-0000-4000-8000-000000091002",
+    goalId: "00000000-0000-4000-8000-000000091003",
+    sessionId: "00000000-0000-4000-8000-000000091004",
+    zeroRunId: "00000000-0000-4000-8000-000000091005",
+    legacyEventId: "00000000-0000-4000-8000-000000091006",
+    interruptEventId: "00000000-0000-4000-8000-000000091007",
+    interruptRunId: "00000000-0000-4000-8000-000000091008",
+    goalOpenId: "00000000-0000-4000-8000-000000091009",
+    divergentEventId: "00000000-0000-4000-8000-000000091010",
+    validGoalCloseId: "00000000-0000-4000-8000-000000091011",
+    invalidGoalOpenId: "00000000-0000-4000-8000-000000091012",
+    before: {
+      batchA: "00000000-0000-4000-8000-000000091020",
+      batchB: "00000000-0000-4000-8000-000000091021",
+      insert: "00000000-0000-4000-8000-000000091022",
+      replacement: "00000000-0000-4000-8000-000000091023",
+      replacementConflict: "00000000-0000-4000-8000-000000091024",
+      replacementTarget: "00000000-0000-4000-8000-000000091025",
+      terminal: "00000000-0000-4000-8000-000000091026",
+      terminalConflict: "00000000-0000-4000-8000-000000091027",
+      terminalRun: "00000000-0000-4000-8000-000000091028",
+    },
+    after: {
+      batchA: "00000000-0000-4000-8000-000000091030",
+      batchB: "00000000-0000-4000-8000-000000091031",
+      insert: "00000000-0000-4000-8000-000000091032",
+      replacement: "00000000-0000-4000-8000-000000091033",
+      replacementConflict: "00000000-0000-4000-8000-000000091034",
+      replacementTarget: "00000000-0000-4000-8000-000000091035",
+      terminal: "00000000-0000-4000-8000-000000091036",
+      terminalConflict: "00000000-0000-4000-8000-000000091037",
+      terminalRun: "00000000-0000-4000-8000-000000091038",
+    },
+  } as const;
+  const userMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "legacy payload" }],
+  };
+  const usage = {
+    version: 1,
+    totalCredits: 1,
+    settledAt: "2026-08-12T00:00:00.000Z",
+    breakdown: [],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CHAT_EVENT_PHYSICAL_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'physical-contract-user', 'physical-contract', 'physical-contract-org')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+          VALUES ($1, 'physical-contract-org', 'physical-contract-user', 'physical-contract')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id", "user_id", "agent_compose_id", "title", "last_chat_event_seq_id"
+          ) VALUES ($1, 'physical-contract-user', $2, 'physical contract', 100)
+        `,
+        [fixture.threadId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "thread_goals" (
+            "id", "org_id", "owner_user_id", "agent_id", "chat_thread_id",
+            "status", "objective", "objective_brief"
+          ) VALUES (
+            $1, 'physical-contract-org', 'physical-contract-user', $2, $3,
+            'active', 'Physical contraction goal', 'Physical contraction goal'
+          )
+        `,
+        [fixture.goalId, fixture.composeId, fixture.threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id", "user_id", "org_id", "agent_compose_id"
+          ) VALUES (
+            $1, 'physical-contract-user', 'physical-contract-org', $2
+          )
+        `,
+        [fixture.sessionId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id", "user_id", "session_id", "status", "prompt", "org_id"
+          ) VALUES (
+            $1, 'physical-contract-user', $2, 'completed',
+            'physical contraction goal run', 'physical-contract-org'
+          )
+        `,
+        [fixture.zeroRunId, fixture.sessionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" (
+            "id", "trigger_source", "chat_thread_id", "run_group_id", "goal_id"
+          ) VALUES ($1, 'goal', $2, $3, $3)
+        `,
+        [fixture.zeroRunId, fixture.threadId, fixture.goalId],
+      );
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "run_id", "usage_payload",
+            "interrupts_run_id", "run_group_id", "event_type", "payload",
+            "context_type", "context_id", "content", "user_message",
+            "thinking", "error", "seq_id"
+          ) VALUES (
+            $1, $2, NULL, $3::jsonb, NULL, $4, 'output.message', $5::jsonb,
+            'goal', $4, 'legacy content', $6::jsonb,
+            'legacy thinking', 'legacy error', 1
+          )
+        `,
+        [
+          fixture.legacyEventId,
+          fixture.threadId,
+          JSON.stringify(usage),
+          fixture.goalId,
+          JSON.stringify({
+            content: "legacy content",
+            userMessage,
+            thinking: "legacy thinking",
+            error: "legacy error",
+            usage,
+          }),
+          JSON.stringify(userMessage),
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "run_id", "interrupts_run_id",
+            "event_type", "seq_id"
+          ) VALUES ($1, $2, $3, $3, 'control.interrupt', 2)
+        `,
+        [fixture.interruptEventId, fixture.threadId, fixture.interruptRunId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "payload", "content", "seq_id"
+          ) VALUES (
+            $1, $2, 'goal.open', '{"content":"Canonical objective"}'::jsonb,
+            'Canonical objective', 3
+          )
+        `,
+        [fixture.goalOpenId, fixture.threadId],
+      );
+
+      const beforeWriterSql = await exerciseCanonicalChatEventWriter(client, {
+        ids: fixture.before,
+        seqId: 10,
+        threadId: fixture.threadId,
+      });
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "payload", "content", "seq_id"
+          ) VALUES (
+            $1, $2, 'output.message', '{"content":"canonical"}'::jsonb,
+            'divergent', 30
+          )
+        `,
+        [fixture.divergentEventId, fixture.threadId],
+      );
+      await assert.rejects(
+        applyMigrationsUpToTag(
+          client,
+          CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
+        ),
+        /legacy payload leaves lack canonical values/u,
+      );
+      await client.query(`DELETE FROM "chat_events" WHERE "id" = $1`, [
+        fixture.divergentEventId,
+      ]);
+
+      await applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
+      );
+
+      const retained = await client.query<{ row: Record<string, unknown> }>(
+        `
+          SELECT to_jsonb("event") AS "row"
+          FROM "chat_events" AS "event"
+          WHERE "id" = $1
+        `,
+        [fixture.legacyEventId],
+      );
+      const retainedRow = retained.rows[0]?.row;
+      assert.ok(retainedRow);
+      assert.deepEqual(Object.keys(retainedRow).sort(), [
+        "chat_thread_id",
+        "context_id",
+        "context_type",
+        "created_at",
+        "event_type",
+        "id",
+        "payload",
+        "revokes_event_id",
+        "run_event_id",
+        "run_event_sequence_number",
+        "run_id",
+        "seq_id",
+      ]);
+      assert.deepEqual(retainedRow.payload, {
+        content: "legacy content",
+        userMessage,
+        thinking: "legacy thinking",
+        error: "legacy error",
+        usage,
+      });
+      assert.equal(retainedRow.context_type, "goal");
+      assert.equal(retainedRow.context_id, fixture.goalId);
+
+      const catalog = await client.query<{
+        bridgeFunctionCount: number;
+        bridgeTriggerCount: number;
+        legacyColumnCount: number;
+        legacyIndexCount: number;
+        zeroRunGoalId: string | null;
+      }>(
+        `
+          SELECT
+            (
+              SELECT count(*)::integer
+              FROM "information_schema"."columns"
+              WHERE ("table_name", "column_name") IN (
+                ('chat_events', 'content'),
+                ('chat_events', 'user_message'),
+                ('chat_events', 'thinking'),
+                ('chat_events', 'error'),
+                ('chat_events', 'usage_payload'),
+                ('chat_events', 'interrupts_run_id'),
+                ('chat_events', 'run_group_id'),
+                ('zero_runs', 'run_group_id')
+              )
+            ) AS "legacyColumnCount",
+            (
+              SELECT count(*)::integer
+              FROM "pg_indexes"
+              WHERE "indexname" IN (
+                'chat_events_usage_run_id_idx',
+                'chat_events_interrupts_run_id_not_null_unique',
+                'chat_events_run_thinking_unique',
+                'idx_zero_runs_run_group'
+              )
+            ) AS "legacyIndexCount",
+            (
+              SELECT count(*)::integer
+              FROM "pg_trigger"
+              WHERE NOT "tgisinternal"
+                AND "tgname" IN (
+                  'bridge_goal_only_chat_event_run_group_0810',
+                  'bridge_goal_only_zero_run_group_0810',
+                  'bridge_invalidated_goal_continuation_0829'
+                )
+            ) AS "bridgeTriggerCount",
+            (
+              SELECT count(*)::integer
+              FROM "pg_proc"
+              WHERE "proname" IN (
+                'bridge_goal_only_chat_event_run_group_0810',
+                'bridge_goal_only_zero_run_group_0810',
+                'bridge_invalidated_goal_continuation_0829'
+              )
+            ) AS "bridgeFunctionCount",
+            (
+              SELECT "goal_id"::text
+              FROM "zero_runs"
+              WHERE "id" = $1
+            ) AS "zeroRunGoalId"
+        `,
+        [fixture.zeroRunId],
+      );
+      assert.deepEqual(catalog.rows, [
+        {
+          bridgeFunctionCount: 0,
+          bridgeTriggerCount: 0,
+          legacyColumnCount: 0,
+          legacyIndexCount: 0,
+          zeroRunGoalId: fixture.goalId,
+        },
+      ]);
+
+      const goalMarker = await client.query<{
+        columns: string[];
+        definition: string;
+        validated: boolean;
+      }>(`
+        SELECT
+          to_jsonb(ARRAY(
+            SELECT "attribute"."attname"
+            FROM unnest("constraint"."conkey") AS "key"("attnum")
+            INNER JOIN "pg_attribute" AS "attribute"
+              ON "attribute"."attrelid" = "constraint"."conrelid"
+              AND "attribute"."attnum" = "key"."attnum"
+            ORDER BY "attribute"."attname"
+          )) AS "columns",
+          pg_get_constraintdef("constraint"."oid", true) AS "definition",
+          "constraint"."convalidated" AS "validated"
+        FROM "pg_constraint" AS "constraint"
+        WHERE "constraint"."conrelid" = 'public.chat_events'::regclass
+          AND "constraint"."conname" = 'chat_events_goal_marker_payload_check'
+      `);
+      assert.deepEqual(goalMarker.rows[0]?.columns, [
+        "context_id",
+        "context_type",
+        "event_type",
+        "revokes_event_id",
+        "run_event_id",
+        "run_event_sequence_number",
+        "run_id",
+      ]);
+      assert.equal(goalMarker.rows[0]?.validated, true);
+      assert.doesNotMatch(
+        goalMarker.rows[0]?.definition ?? "",
+        /content|user_message|thinking|error|usage_payload|interrupts_run_id|run_group_id/u,
+      );
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "seq_id"
+          ) VALUES ($1, $2, 'goal.close', 60)
+        `,
+        [fixture.validGoalCloseId, fixture.threadId],
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chat_events_goal_marker_payload_check",
+        query: `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "run_id", "event_type", "payload", "seq_id"
+          ) VALUES (
+            $1, $2, $3, 'goal.open', '{"content":"Invalid objective"}'::jsonb, 61
+          )
+        `,
+        values: [
+          fixture.invalidGoalOpenId,
+          fixture.threadId,
+          fixture.interruptRunId,
+        ],
+      });
+
+      const afterWriterSql = await exerciseCanonicalChatEventWriter(client, {
+        ids: fixture.after,
+        seqId: 70,
+        threadId: fixture.threadId,
+      });
+      assert.deepEqual(afterWriterSql, beforeWriterSql);
+      await assertChatEventsAppendOnlyProtection(client, fixture.legacyEventId);
+
+      console.log(
+        "   ✅ legacy columns, indexes, and bridge objects are absent",
+      );
+      console.log(
+        "   ✅ canonical payload, interrupt, goal, and zero-run data survive",
+      );
+      console.log(
+        "   ✅ canonical insert and conflict SQL is unchanged across the drop",
+      );
+      console.log(
+        "   ✅ canonical goal-marker and append-only invariants remain\n",
       );
     } finally {
       await client.end();
@@ -8798,6 +9306,7 @@ async function main(): Promise<void> {
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
     await validateCanonicalChatEventStorageBackfill();
+    await validateChatEventPhysicalContraction();
     await validateChatRunServiceTierAnnotationBackfill();
     await validateUsagePackInviteLifecycleMigrations();
     await validateRetiredRunModelStateMigration();

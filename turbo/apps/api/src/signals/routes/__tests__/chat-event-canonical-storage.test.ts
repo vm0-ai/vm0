@@ -55,28 +55,20 @@ describe("canonical chat event storage", () => {
       userMessage: {
         version: 1,
         parts: [{ type: "text", text: "rejected canonical input" }],
-        nestedProbe: { value: null },
       },
       error: "input rejected",
     });
-    expect(inputRejected.payload).toHaveProperty(
-      "userMessage.nestedProbe.value",
-      null,
-    );
-    expect(inputRejected).toMatchObject({ userMessage: null, error: null });
 
     const outputError = row(fixture.single.outputErrorId);
     expect(outputError.payload).toStrictEqual({
       content: "output failed",
       error: "output error",
     });
-    expect(outputError).toMatchObject({ content: null, error: null });
 
     const interrupt = row(fixture.single.interruptId);
     expect(interrupt).toMatchObject({
       payload: null,
       runId: fixture.single.interruptTargetRunId,
-      interruptsRunId: null,
     });
     await expect(
       isVisibleChatEventFixture(fixture.single.interruptId),
@@ -97,7 +89,6 @@ describe("canonical chat event storage", () => {
 
     expect(row(fixture.single.goalContextEventId)).toMatchObject({
       payload: { content: "goal output" },
-      runGroupId: null,
       contextType: "goal",
       contextId: fixture.single.goalId,
     });
@@ -105,13 +96,10 @@ describe("canonical chat event storage", () => {
       content: "goal opened",
     });
 
-    expect(row(fixture.batch.thinkingId)).toMatchObject({
-      thinking: null,
-      payload: { thinking: "canonical thinking" },
+    expect(row(fixture.batch.thinkingId).payload).toStrictEqual({
+      thinking: "canonical thinking",
     });
     expect(row(fixture.batch.runFailedId)).toMatchObject({
-      content: null,
-      error: null,
       payload: { content: "run failed", error: "runner error" },
     });
     expect(row(fixture.batch.browserCloseId).payload).toBeNull();
@@ -131,8 +119,6 @@ describe("canonical chat event storage", () => {
         ],
       },
     });
-    expect(usage.usagePayload).toBeNull();
-
     const replacementTarget = row(fixture.replacement.targetId);
     expect(replacementTarget.payload).toStrictEqual({
       userMessage: {
@@ -140,12 +126,9 @@ describe("canonical chat event storage", () => {
         parts: [{ type: "text", text: "replacement canonical input" }],
       },
     });
-    expect(replacementTarget.userMessage).toBeNull();
     const replacement = row(fixture.replacement.replacementId);
     expect(replacement).toMatchObject({
       revokesEventId: fixture.replacement.targetId,
-      error: null,
-      userMessage: null,
       payload: {
         userMessage: {
           version: 1,

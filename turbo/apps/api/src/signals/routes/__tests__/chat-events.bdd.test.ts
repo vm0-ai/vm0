@@ -1424,7 +1424,6 @@ describe("CHAT-02: interrupting active chat runs", () => {
     expect(storedInterrupt).toMatchObject({
       payload: null,
       runId: first.runId,
-      interruptsRunId: null,
     });
     expect(
       assistantMessages(messages.events).filter((message) => {

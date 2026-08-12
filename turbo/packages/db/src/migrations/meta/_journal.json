@@ -715,6 +715,13 @@
       "when": 1786485274149,
       "tag": "0909_canonical_chat_event_writes",
       "breakpoints": true
+    },
+    {
+      "idx": 910,
+      "version": "7",
+      "when": 1786494822985,
+      "tag": "0910_contract_legacy_chat_event_storage",
+      "breakpoints": true
     }
   ]
 }
