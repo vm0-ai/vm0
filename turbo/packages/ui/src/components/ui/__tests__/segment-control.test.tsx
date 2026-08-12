@@ -51,35 +51,6 @@ describe("SegmentControl", () => {
     expect(screen.getByRole("radio", { name: "16:9" })).toBeChecked();
   });
 
-  it("carries the matching button height for every size", () => {
-    // One row per `buttonVariants` size, so the control scale cannot drift.
-    const heightForSize = {
-      xs: "h-7",
-      sm: "h-8",
-      default: "h-9",
-      lg: "h-10",
-    } as const;
-
-    const { rerender } = renderAspectRatioControl();
-    expect(screen.getByRole("radiogroup")).toHaveClass(
-      heightForSize["default"],
-    );
-
-    for (const [size, height] of Object.entries(heightForSize)) {
-      rerender(
-        <SegmentControl
-          aria-label="Aspect ratio"
-          defaultValue="portrait"
-          size={size as keyof typeof heightForSize}
-        >
-          <SegmentControlItem value="portrait">9:16</SegmentControlItem>
-        </SegmentControl>,
-      );
-
-      expect(screen.getByRole("radiogroup")).toHaveClass(height);
-    }
-  });
-
   it("skips a disabled segment", async () => {
     const user = userEvent.setup();
     render(

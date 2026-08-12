@@ -206,7 +206,7 @@ function AgentTabsView({
       <div className="flex items-center justify-between gap-3">
         <SegmentControl
           aria-label={t(($) => {
-            return $.list.title;
+            return $.list.create.visibilityLabel;
           })}
           value={activeTab}
           onValueChange={onTabChange}
