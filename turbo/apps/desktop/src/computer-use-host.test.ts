@@ -711,6 +711,66 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
+  it("drains an active command before stopping without claiming more work", async () => {
+    vi.useFakeTimers();
+    const command: ComputerUseCommand = {
+      id: "cmd-1",
+      kind: "keyboard.type_text",
+      payload: { app: "Chrome", text: "okou" },
+    };
+    const execution = deferred<ComputerUseCommandExecutionResult>();
+    const events: string[] = [];
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls += 1;
+        events.push("claim");
+        return jsonResponse({ status: "command", command });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        events.push("complete");
+        return jsonResponse({ ok: true });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/stop")) {
+        events.push("stop");
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const executeCommand = vi.fn(async () => {
+      events.push("execute");
+      const result = await execution.promise;
+      events.push("executed");
+      return result;
+    });
+    const { runtime } = createRuntime({ hostFetch, executeCommand });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(executeCommand).toHaveBeenCalledOnce();
+
+    const drain = runtime.drainAndStop();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(events).not.toContain("stop");
+
+    execution.resolve({ status: "succeeded", result: {} });
+    await vi.advanceTimersByTimeAsync(100);
+    await drain;
+
+    expect(nextCalls).toBe(1);
+    expect(events).toEqual([
+      "claim",
+      "execute",
+      "executed",
+      "complete",
+      "stop",
+    ]);
+    expect(runtime.getState().status).toBe("offline");
+  });
+
   it("retries transient command completion failures", async () => {
     vi.useFakeTimers();
     let nextCalls = 0;

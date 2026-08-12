@@ -177,6 +177,23 @@ associates those permissions with the application identity. The current
 release promotion signs and notarizes both product lines while publishing them
 under independent release tags and update manifests.
 
+### Final Zero bridge release
+
+Production Zero builds at version `0.33.4` or newer show a soft migration
+reminder for Okou. `Remind Me Later` keeps Zero running and defers the reminder
+for seven days. `Download Okou` records the migration handoff before waiting for
+the active Computer Use command, stops the Zero host after that command finishes,
+and then opens the stable signed Okou DMG route:
+
+`https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg`
+
+Once the handoff starts, Zero does not automatically register or relaunch its
+host on restart. The migration notice remains available so the user can retry
+the Okou download or explicitly resume Zero if installation or setup fails.
+This bridge is limited to packaged production Zero builds and does not change
+either product's updater feed. The later remote hard-stop, cohort rollout,
+telemetry thresholds, and Zero retirement remain separate rollout work.
+
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's
 notarization service.
