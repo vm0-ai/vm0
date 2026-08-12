@@ -101,8 +101,9 @@ const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
 
 const getProductDesktopReleasePage$ = command(
   async ({ get }, signal: AbortSignal) => {
+    const { product, ...params } = get(productReleasePageParams$);
     const url = await loadDesktopReleasePageUrl(
-      get(productReleasePageParams$),
+      { line: product, ...params },
       signal,
     );
     signal.throwIfAborted();
@@ -123,7 +124,11 @@ const getProductDesktopReleasePage$ = command(
 
 const getProductDesktopUpdateFeed$ = command(
   async ({ get }, signal: AbortSignal) => {
-    const feed = await loadDesktopUpdateFeed(get(productFeedParams$), signal);
+    const { product, ...params } = get(productFeedParams$);
+    const feed = await loadDesktopUpdateFeed(
+      { line: product, ...params },
+      signal,
+    );
     signal.throwIfAborted();
 
     if (!feed) {
@@ -139,8 +144,9 @@ const getProductDesktopUpdateFeed$ = command(
 
 const getProductDesktopDmgDownload$ = command(
   async ({ get }, signal: AbortSignal) => {
+    const { product, ...params } = get(productDmgDownloadParams$);
     const url = await loadDesktopDmgDownloadUrl(
-      get(productDmgDownloadParams$),
+      { line: product, ...params },
       signal,
     );
     signal.throwIfAborted();

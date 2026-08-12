@@ -265,7 +265,7 @@ describe("desktop update routes", () => {
     const response = await accept(
       client().productFeed({
         params: {
-          line: "ai-okou-desktop",
+          product: "ai-okou-desktop",
           channel: "stable",
           platform: "darwin",
           arch: "arm64",
@@ -384,7 +384,7 @@ describe("desktop update routes", () => {
     const response = await accept(
       client().productFeed({
         params: {
-          line: "ai-okou-desktop",
+          product: "ai-okou-desktop",
           channel: "stable",
           platform: "darwin",
           arch: "arm64",

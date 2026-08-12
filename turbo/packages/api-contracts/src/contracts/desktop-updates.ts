@@ -85,9 +85,9 @@ export const desktopUpdatesContract = c.router({
   },
   productReleasePage: {
     method: "GET",
-    path: "/api/desktop/updates/:line/:channel/:platform/:arch/release",
+    path: "/api/desktop/updates/:product/:channel/:platform/:arch/release",
     pathParams: z.object({
-      line: desktopUpdateLineSchema,
+      product: desktopUpdateLineSchema,
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
       arch: desktopUpdateArchitectureSchema,
@@ -100,9 +100,9 @@ export const desktopUpdatesContract = c.router({
   },
   productDmgDownload: {
     method: "GET",
-    path: "/api/desktop/updates/:line/:channel/:platform/:arch/dmg",
+    path: "/api/desktop/updates/:product/:channel/:platform/:arch/dmg",
     pathParams: z.object({
-      line: desktopUpdateLineSchema,
+      product: desktopUpdateLineSchema,
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
       arch: desktopUpdateArchitectureSchema,
@@ -115,9 +115,9 @@ export const desktopUpdatesContract = c.router({
   },
   productFeed: {
     method: "GET",
-    path: "/api/desktop/updates/:line/:channel/:platform/:arch/RELEASES.json",
+    path: "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
     pathParams: z.object({
-      line: desktopUpdateLineSchema,
+      product: desktopUpdateLineSchema,
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
       arch: desktopUpdateArchitectureSchema,
