@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.738.1](https://github.com/vm0-ai/vm0/compare/app-v0.738.0...app-v0.738.1) (2026-08-12)
+
+
+### Refactoring
+
+* remove chat event snapshot read feature switch ([#26745](https://github.com/vm0-ai/vm0/issues/26745)) ([1a3b9d9](https://github.com/vm0-ai/vm0/commit/1a3b9d96818bd4ec7ba6a5a85158d3a126eec790))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.1
+    * @vm0/core bumped to 8.552.1
+
 ## [0.738.0](https://github.com/vm0-ai/vm0/compare/app-v0.737.0...app-v0.738.0) (2026-08-12)
 
 
