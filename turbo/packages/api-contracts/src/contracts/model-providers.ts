@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import DEEPSEEK_MODEL_CATALOG from "./deepseek-model-catalog.json" with { type: "json" };
+import DEEPSEEK_V4_FLASH_MODEL_CATALOG from "./deepseek-model-catalog.json" with { type: "json" };
 import {
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
@@ -23,6 +23,23 @@ export type {
   ModelProviderFramework,
   ModelProviderType,
 } from "./model-provider-types";
+
+const deepseekV4FlashCatalogModel = DEEPSEEK_V4_FLASH_MODEL_CATALOG.models[0];
+if (!deepseekV4FlashCatalogModel) {
+  throw new Error("DeepSeek V4 Flash model catalog entry is required");
+}
+
+const DEEPSEEK_MODEL_CATALOG = {
+  ...DEEPSEEK_V4_FLASH_MODEL_CATALOG,
+  models: [
+    deepseekV4FlashCatalogModel,
+    {
+      ...deepseekV4FlashCatalogModel,
+      slug: "deepseek-v4-pro",
+      display_name: "DeepSeek-V4-Pro",
+    },
+  ],
+};
 
 export {
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
@@ -138,6 +155,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-sonnet-5": "Claude Sonnet 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
   "gpt-5.6-sol": "GPT 5.6 Sol",
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",
@@ -244,6 +262,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "deepseek",
     vendor: "deepseek",
   },
+  "deepseek-v4-pro": {
+    concreteType: "deepseek",
+    vendor: "deepseek",
+  },
   "gpt-5.6-sol": {
     concreteType: "openai-api-key",
     vendor: "openai",
@@ -319,6 +341,7 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
 
 const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
   "deepseek-v4-flash",
+  "deepseek-v4-pro",
   "minimax/minimax-m2.5",
 ]);
 
@@ -450,7 +473,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_BASE_URL: "https://api.deepseek.com/",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["deepseek-v4-flash"] as string[],
+    models: ["deepseek-v4-flash", "deepseek-v4-pro"] as string[],
     defaultModel: "deepseek-v4-flash",
   },
   "vercel-ai-gateway": {
@@ -797,6 +820,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "vercel-ai-gateway-codex",
   ],
   "deepseek-v4-flash": ["vm0", "deepseek"],
+  "deepseek-v4-pro": ["vm0", "deepseek"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<

@@ -15,6 +15,7 @@ export const SUPPORTED_RUN_MODELS = [
   "claude-sonnet-5",
   "claude-sonnet-4-6",
   "deepseek-v4-flash",
+  "deepseek-v4-pro",
 ] as const;
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
@@ -39,6 +40,8 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "claude-sonnet-5": "$$",
   "claude-sonnet-4-6": "$$",
   "deepseek-v4-flash": "$",
+  // Display tier only. Runtime token pricing is seeded separately.
+  "deepseek-v4-pro": "$",
 });
 
 /**

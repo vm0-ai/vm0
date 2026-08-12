@@ -252,18 +252,22 @@ describe("Pi Codex subscription provider", () => {
 });
 
 describe("Pi DeepSeek provider", () => {
-  it("resolves DeepSeek models through the Responses API", () => {
-    const model = resolvePiAgentModel({
-      provider: "deepseek",
-      baseUrl: DEEPSEEK_BASE_URL,
-      apiKey: "unused-for-resolution",
-      model: "deepseek-v4-flash",
-    });
-    expect(model).not.toBeNull();
-    expect(model?.api).toBe("openai-responses");
-    expect(model?.provider).toBe("deepseek");
-    expect(model?.baseUrl).toBe(DEEPSEEK_BASE_URL);
-  });
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro"])(
+    "resolves %s through the Responses API",
+    (modelId) => {
+      const model = resolvePiAgentModel({
+        provider: "deepseek",
+        baseUrl: DEEPSEEK_BASE_URL,
+        apiKey: "unused-for-resolution",
+        model: modelId,
+      });
+      expect(model).not.toBeNull();
+      expect(model?.id).toBe(modelId);
+      expect(model?.api).toBe("openai-responses");
+      expect(model?.provider).toBe("deepseek");
+      expect(model?.baseUrl).toBe(DEEPSEEK_BASE_URL);
+    },
+  );
 
   it("streams through the native Responses endpoint with the DeepSeek key", async () => {
     const apiKey = "sk-deepseek-pi-responses";

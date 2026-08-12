@@ -676,6 +676,9 @@ describe("organization model providers settings", () => {
     await expect(
       screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
     ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("option", { name: "DeepSeek V4 Pro" }),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
@@ -702,9 +705,16 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     click(buttonByText("Add model"));
-    await selectDialogModel("DeepSeek V4 Flash");
-
     const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    const deepSeekFlashOption = await screen.findByRole("option", {
+      name: "DeepSeek V4 Flash",
+    });
+    expect(
+      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
+    ).not.toBeInTheDocument();
+    click(deepSeekFlashOption);
+
     expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
     click(buttonByText("Add model", dialog));
 

@@ -571,8 +571,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
       headers: authHeaders(),
       body: {
         policies: [
-          makeVm0Policy("claude-sonnet-5", true),
-          makeVm0Policy("gpt-5.6-terra"),
+          makeVm0Policy("deepseek-v4-flash", true),
+          makeVm0Policy("deepseek-v4-pro"),
         ],
       },
     });

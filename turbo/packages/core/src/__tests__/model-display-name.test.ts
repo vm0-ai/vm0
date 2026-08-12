@@ -22,6 +22,11 @@ describe("getModelDisplayName", () => {
     );
   });
 
+  it("uses friendly labels for DeepSeek V4 models", () => {
+    expect(getModelDisplayName("deepseek-v4-flash")).toBe("DeepSeek V4 Flash");
+    expect(getModelDisplayName("deepseek-v4-pro")).toBe("DeepSeek V4 Pro");
+  });
+
   it("falls back to the raw model ID when no display name is defined", () => {
     expect(getModelDisplayName("custom/model")).toBe("custom/model");
   });

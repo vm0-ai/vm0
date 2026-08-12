@@ -5901,7 +5901,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to DeepSeek, allows Luna, and rejects Sol", async () => {
+  it("defaults limited-free runs to Flash and rejects paid models", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -5957,20 +5957,22 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     }
 
-    const solThreadId = randomUUID();
-    const sol = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        clientThreadId: solThreadId,
-        prompt: "limited-free Sol run",
-        model: "gpt-5.6-sol",
-      },
-      [402],
-    );
-    expectApiError(sol.body);
-    expect(sol.body.error.code).toBe("INSUFFICIENT_CREDITS");
-    await chat.requestReadThread(actor, solThreadId, [404]);
+    for (const model of ["gpt-5.6-sol", "deepseek-v4-pro"] as const) {
+      const rejectedThreadId = randomUUID();
+      const rejected = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          clientThreadId: rejectedThreadId,
+          prompt: `limited-free rejected ${model} run`,
+          model,
+        },
+        [402],
+      );
+      expectApiError(rejected.body);
+      expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+      await chat.requestReadThread(actor, rejectedThreadId, [404]);
+    }
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
@@ -6136,72 +6138,77 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
-  it("claims vm0 DeepSeek V4 Flash runs with the Responses adapter", async () => {
-    const api = createRunsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const selectedModel = "deepseek-v4-flash";
-    await seedVm0ManagedModelKey(selectedModel);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
+    "claims vm0 %s runs with the Responses adapter",
+    async (selectedModel) => {
+      const api = createRunsApi(context);
+      const chat = createChatFilesBddApi(context);
+      await seedVm0ManagedModelKey(selectedModel);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: selectedModel,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: selectedModel,
+          isDefault: true,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ]);
 
-    const sent = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "vm0 built-in DeepSeek Responses model provider",
-        model: selectedModel,
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected the DeepSeek chat send to create a run");
-    }
+      const sent = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          prompt: "vm0 built-in DeepSeek Responses model provider",
+          model: selectedModel,
+        },
+        [201],
+      );
+      if (sent.status !== 201 || sent.body.runId === null) {
+        throw new Error("Expected the DeepSeek chat send to create a run");
+      }
 
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(sent.body.runId);
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(sent.body.runId);
 
-    expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment).toMatchObject({
-      OPENAI_API_KEY: modelProviderPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
-      OPENAI_BASE_URL: "https://api.deepseek.com/",
-      OPENAI_MODEL: selectedModel,
-    });
-    expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
-    expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "deepseek",
-      name: "DeepSeek",
-      baseUrl: "https://api.deepseek.com/",
-      envKey: "OPENAI_API_KEY",
-      wireApi: "responses",
-      supportsWebsockets: false,
-      modelCatalog: {
-        models: [
-          expect.objectContaining({
-            slug: selectedModel,
-            default_reasoning_level: "high",
-          }),
-        ],
-      },
-    });
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("model-provider:deepseek");
-    expect(claim.billableFirewalls).toContain("model-provider:deepseek");
-    expect(claim.modelUsageProvider).toBe(selectedModel);
+      expect(claim.cliAgentType).toBe("codex");
+      expect(claim.environment).toMatchObject({
+        OPENAI_API_KEY: modelProviderPlaceholder(
+          "deepseek",
+          "DEEPSEEK_API_KEY",
+        ),
+        OPENAI_BASE_URL: "https://api.deepseek.com/",
+        OPENAI_MODEL: selectedModel,
+      });
+      expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
+      expect(claim.codexRuntimeConfig).toMatchObject({
+        providerId: "deepseek",
+        name: "DeepSeek",
+        baseUrl: "https://api.deepseek.com/",
+        envKey: "OPENAI_API_KEY",
+        wireApi: "responses",
+        supportsWebsockets: false,
+        modelCatalog: {
+          models: expect.arrayContaining([
+            expect.objectContaining({
+              slug: selectedModel,
+              default_reasoning_level: "high",
+            }),
+          ]),
+        },
+      });
+      expect(
+        claim.firewalls?.map((firewall) => {
+          return firewallEntryName(firewall);
+        }),
+      ).toContain("model-provider:deepseek");
+      expect(claim.billableFirewalls).toContain("model-provider:deepseek");
+      expect(claim.modelUsageProvider).toBe(selectedModel);
 
-    await api.requestCancelRun(actor, sent.body.runId, [200]);
-  });
+      await api.requestCancelRun(actor, sent.body.runId, [200]);
+    },
+  );
 
   it("offers image recognition only for image-unsupported models", async () => {
     const api = createRunsApi(context);
