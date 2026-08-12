@@ -518,7 +518,12 @@ export function VideoTemplateOptionsPopover({
         sideOffset={6}
         className={cn(
           "rounded-xl p-2",
-          pane === "model" ? "w-[15rem]" : "w-[17.5rem] px-3 py-2.5",
+          // One width for both panes: the model list needs room for its
+          // longest capability line ("Up to 15s · 480p, 720p, 1080p · Audio")
+          // on a single row, and matching the settings pane makes the two
+          // popovers read as one surface seen from two zones.
+          "w-[17.5rem]",
+          pane === "model" ? undefined : "px-3 py-2.5",
         )}
         // Keyboard navigation starts from the model in use rather than the top
         // of a list the user has already read once.
