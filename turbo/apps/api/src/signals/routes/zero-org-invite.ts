@@ -13,13 +13,15 @@ import {
 } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$ } from "../external/db";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
+  confirmUsagePackInvitationPurchase,
   createUsagePackInvitationCheckout,
+  createUsagePackInvitationPreview,
   revokeUsagePackInvitationPurchase,
   usagePackInvitationPurchaseSchemaAvailable,
 } from "../services/usage-pack-invitation-purchase.service";
@@ -160,6 +162,9 @@ const revokeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const purchaseBody$ = bodyResultOf(zeroOrgInviteContract.purchase);
+const purchasePreviewBody$ = bodyResultOf(
+  zeroOrgInviteContract.previewPurchase,
+);
 
 const purchaseInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -230,6 +235,123 @@ const purchaseInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { url: result.url } };
 });
 
+const purchasePreviewInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    if (!(await usagePackInvitationsEnabled(get, auth.orgId, auth.userId))) {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "Usage pack invitations are not enabled",
+            code: "FORBIDDEN",
+          },
+        },
+      };
+    }
+    signal.throwIfAborted();
+    const db = get(db$);
+    const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
+    signal.throwIfAborted();
+    if (!capabilities?.memberInvitationAllowed) {
+      return memberInvitationUpgradeRequired;
+    }
+    if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
+      return providerUnavailable("Usage pack invitations are not ready");
+    }
+    signal.throwIfAborted();
+    const body = await get(purchasePreviewBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const result = await createUsagePackInvitationPreview(
+      set(writeDb$),
+      get(clerk$),
+      {
+        orgId: auth.orgId,
+        inviterUserId: auth.userId,
+        email: body.data.email,
+        role: body.data.role,
+        usagePackUsd: body.data.usagePackUsd,
+      },
+      signal,
+    );
+    if (result.status === "not_found") {
+      return notFound("Usage pack subscription not found");
+    }
+    if (result.status === "conflict") {
+      return conflict(
+        "This invitation cannot be purchased in the current billing state",
+      );
+    }
+    return { status: 200 as const, body: result.preview };
+  },
+);
+
+const purchaseConfirmInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    if (!(await usagePackInvitationsEnabled(get, auth.orgId, auth.userId))) {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "Usage pack invitations are not enabled",
+            code: "FORBIDDEN",
+          },
+        },
+      };
+    }
+    signal.throwIfAborted();
+    const db = get(db$);
+    const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
+    signal.throwIfAborted();
+    if (!capabilities?.memberInvitationAllowed) {
+      return memberInvitationUpgradeRequired;
+    }
+    if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
+      return providerUnavailable("Usage pack invitations are not ready");
+    }
+    const { purchaseId } = get(
+      pathParamsOf(zeroOrgInviteContract.confirmPurchase),
+    );
+    const result = await confirmUsagePackInvitationPurchase(
+      set(writeDb$),
+      get(clerk$),
+      { orgId: auth.orgId, purchaseId },
+      signal,
+    );
+    if (result.status === "not_found") {
+      return notFound("Invitation purchase not found");
+    }
+    if (result.status === "expired") {
+      return badRequestMessage("Invitation purchase preview expired");
+    }
+    if (result.status === "conflict") {
+      return conflict(
+        "This invitation cannot be purchased in the current billing state",
+      );
+    }
+    return {
+      status: 200 as const,
+      body: { message: "Invitation purchased and sent" },
+    };
+  },
+);
+
 export const zeroOrgInviteRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgInviteContract.invite,
@@ -250,6 +372,20 @@ export const zeroOrgInviteRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       purchaseInner$,
+    ),
+  },
+  {
+    route: zeroOrgInviteContract.previewPurchase,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      purchasePreviewInner$,
+    ),
+  },
+  {
+    route: zeroOrgInviteContract.confirmPurchase,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      purchaseConfirmInner$,
     ),
   },
 ];

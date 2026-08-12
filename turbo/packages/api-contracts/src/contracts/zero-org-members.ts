@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
@@ -9,6 +10,8 @@ import {
   membershipRequestActionSchema,
   orgMessageResponseSchema,
   orgInvitationCheckoutResponseSchema,
+  orgInvitationPurchasePreviewResponseSchema,
+  previewOrgInvitationPurchaseRequestSchema,
   purchaseOrgInvitationRequestSchema,
 } from "./org-members";
 
@@ -88,6 +91,7 @@ export const zeroOrgInviteContract = c.router({
     },
     summary: "Invite a member to the org (zero proxy)",
   },
+  // Rollout compatibility for app builds that predate in-app confirmation.
   purchase: {
     method: "POST",
     path: "/api/zero/org/invite/checkout",
@@ -104,6 +108,41 @@ export const zeroOrgInviteContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Purchase a prorated usage pack for an org invitation",
+  },
+  previewPurchase: {
+    method: "POST",
+    path: "/api/zero/org/invite/purchase/preview",
+    headers: authHeadersSchema,
+    body: previewOrgInvitationPurchaseRequestSchema,
+    responses: {
+      200: orgInvitationPurchasePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Preview a prorated usage pack purchase for an org invitation",
+  },
+  confirmPurchase: {
+    method: "POST",
+    path: "/api/zero/org/invite/purchase/:purchaseId/confirm",
+    pathParams: z.object({ purchaseId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: orgMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Confirm an org invitation usage pack purchase",
   },
   revoke: {
     method: "DELETE",

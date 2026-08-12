@@ -676,7 +676,15 @@ describe("organization billing settings", () => {
           joinedAt: "2026-01-02T00:00:00Z",
         },
       ],
-      pendingInvitations: [],
+      pendingInvitations: [
+        {
+          id: "invitation_paid_pending",
+          email: "paid.pending@example.com",
+          role: "member",
+          createdAt: "2026-01-03T00:00:00Z",
+          usagePackUsd: 100,
+        },
+      ],
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
@@ -758,6 +766,17 @@ describe("organization billing settings", () => {
     });
     expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
     expect(within(memberUsage).getByText("Sam Lee")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("paid.pending@example.com"),
+    ).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Pending")).toBeInTheDocument();
+    const paidPendingUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for paid.pending@example.com",
+    });
+    expect(paidPendingUsage).toHaveTextContent(
+      "$100 · 109,999 credits · 9% off",
+    );
+    expect(paidPendingUsage).toBeDisabled();
     const samUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for Sam Lee",
     });

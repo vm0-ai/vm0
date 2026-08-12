@@ -29,6 +29,7 @@ export const orgPendingInvitationSchema = z.object({
   email: z.string(),
   role: orgRoleSchema,
   createdAt: z.string(),
+  usagePackUsd: usagePackUsdSchema.optional(),
 });
 export type OrgPendingInvitation = z.infer<typeof orgPendingInvitationSchema>;
 
@@ -98,6 +99,26 @@ export const purchaseOrgInvitationRequestSchema =
   });
 export type PurchaseOrgInvitationRequest = z.infer<
   typeof purchaseOrgInvitationRequestSchema
+>;
+
+export const previewOrgInvitationPurchaseRequestSchema =
+  inviteOrgMemberRequestSchema.extend({
+    usagePackUsd: usagePackUsdSchema,
+  });
+
+export const orgInvitationPurchasePreviewResponseSchema = z.object({
+  purchaseId: z.uuid(),
+  usagePackUsd: usagePackUsdSchema,
+  immediateAmountCents: z.number().int().positive(),
+  currency: z.string().length(3),
+  purchasedCredits: z.number().int().nonnegative(),
+  bonusCredits: z.number().int().nonnegative(),
+  totalCredits: z.number().int().positive(),
+  currentPeriodEnd: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+export type OrgInvitationPurchasePreviewResponse = z.infer<
+  typeof orgInvitationPurchasePreviewResponseSchema
 >;
 
 export const orgInvitationCheckoutResponseSchema = z.object({

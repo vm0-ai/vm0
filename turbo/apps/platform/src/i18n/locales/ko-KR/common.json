@@ -4446,9 +4446,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "유효한 이메일 주소를 입력하세요",
           "progress": "전송 중...",
+          "purchase": {
+            "description": "아래의 일할 계산 금액을 확인하세요. 확인하면 저장된 결제 수단으로 청구되고 초대가 전송됩니다.",
+            "error": "이 멤버 패키지를 구매할 수 없습니다. 결제 정보를 확인하고 다시 시도하세요.",
+            "invitee": "초대 대상",
+            "title": "초대 검토"
+          },
           "roleLabel": "역할",
           "send": "초대장 보내기",
-          "title": "멤버 초대"
+          "title": "멤버 초대",
+          "upgrade": {
+            "action": "Pro로 업그레이드",
+            "description": "멤버 초대는 Pro 플랜에서 사용할 수 있습니다. 이 워크스페이스를 업그레이드하여 멤버를 초대하고 역할을 관리하세요.",
+            "title": "멤버를 초대하려면 업그레이드하세요"
+          }
         },
         "joined": "참여함",
         "joinRequests": "참여 요청",

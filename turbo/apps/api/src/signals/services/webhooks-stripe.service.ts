@@ -66,6 +66,7 @@ import {
 import {
   handleUsagePackInvitationCheckoutFailed,
   handleUsagePackInvitationCheckoutPaid,
+  handleUsagePackInvitationInvoicePaid,
   handleUsagePackInvitationPaymentIntentSucceeded,
 } from "./usage-pack-invitation-purchase.service";
 import {
@@ -3293,6 +3294,15 @@ async function handleInvoicePaid(
   );
   if (migrationResult.handled) {
     return migrationResult.orgId;
+  }
+
+  const invitationResult = await handleUsagePackInvitationInvoicePaid(
+    db,
+    getClerk(),
+    invoice,
+  );
+  if (invitationResult.handled) {
+    return invitationResult.orgId;
   }
 
   const usagePackResult = await handleUsagePackInvoicePaid(db, invoice);

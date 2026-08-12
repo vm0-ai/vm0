@@ -4498,9 +4498,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Insira um endereço de e-mail válido",
           "progress": "Enviando...",
+          "purchase": {
+            "description": "Revise a cobrança proporcional abaixo. Ao confirmar, o método de pagamento salvo será cobrado e o convite será enviado.",
+            "error": "Não foi possível comprar este pacote de membro. Revise os dados de cobrança e tente novamente.",
+            "invitee": "Pessoa convidada",
+            "title": "Revisar convite"
+          },
           "roleLabel": "Função",
           "send": "Enviar convite",
-          "title": "Convidar membro"
+          "title": "Convidar membro",
+          "upgrade": {
+            "action": "Fazer upgrade para o Pro",
+            "description": "Os convites de membros estão disponíveis no plano Pro. Faça upgrade deste espaço de trabalho para convidar pessoas e gerenciar suas funções.",
+            "title": "Faça upgrade para convidar membros"
+          }
         },
         "joined": "Data de entrada",
         "joinRequests": "Solicitações de entrada",

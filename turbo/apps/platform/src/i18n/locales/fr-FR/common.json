@@ -4498,9 +4498,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Veuillez saisir une adresse e-mail valide",
           "progress": "Envoi...",
+          "purchase": {
+            "description": "Vérifiez le montant calculé au prorata ci-dessous. La confirmation débite votre moyen de paiement enregistré et envoie l’invitation.",
+            "error": "Impossible d’acheter ce forfait membre. Vérifiez vos informations de facturation et réessayez.",
+            "invitee": "Personne invitée",
+            "title": "Vérifier l’invitation"
+          },
           "roleLabel": "Rôle",
           "send": "Envoyer l'invitation",
-          "title": "Inviter un membre"
+          "title": "Inviter un membre",
+          "upgrade": {
+            "action": "Passer à Pro",
+            "description": "Les invitations de membres sont disponibles avec l’offre Pro. Mettez cet espace de travail à niveau pour inviter des personnes et gérer leurs rôles.",
+            "title": "Passez à Pro pour inviter des membres"
+          }
         },
         "joined": "Rejoint",
         "joinRequests": "Demandes d'adhésion",

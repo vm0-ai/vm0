@@ -80,6 +80,9 @@ import {
   revokeInvitationDialogTarget$,
   setRevokeInvitationDialogTarget$,
   inviteMember$,
+  invitePurchasePreview$,
+  closeInvitePurchasePreview$,
+  confirmInvitePurchase$,
   changeRole$,
   selfDemote$,
   removeMember$,
@@ -97,6 +100,7 @@ import {
   parseUsagePackOption,
   usagePackOptionLabel,
 } from "./usage-pack-options.ts";
+import { UsagePackPaymentSummary } from "./usage-pack-pricing-page.tsx";
 
 const ROW_GRID = "grid gap-x-4 items-center";
 
@@ -235,7 +239,12 @@ export function OrgMembersTab() {
             className="pl-9"
           />
         </div>
-        {isAdmin && <InviteDialog />}
+        {isAdmin && (
+          <>
+            <InviteDialog />
+            <InvitePurchaseConfirmationDialog />
+          </>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl bg-card zero-border">
@@ -412,107 +421,122 @@ function InviteDialog() {
       >
         <DialogHeader>
           <DialogTitle>
-            {t(($) => {
-              return $.settings.workspace.members.invite.title;
-            })}
+            {upgradeRequired
+              ? t(($) => {
+                  return $.settings.workspace.members.invite.upgrade.title;
+                })
+              : t(($) => {
+                  return $.settings.workspace.members.invite.title;
+                })}
           </DialogTitle>
-          <DialogDescription>
+          {!upgradeRequired && (
+            <DialogDescription>
+              {t(($) => {
+                return $.settings.workspace.members.invite.description;
+              })}
+            </DialogDescription>
+          )}
+        </DialogHeader>
+        {upgradeRequired && (
+          <DialogDescription className="py-2 leading-6">
             {t(($) => {
-              return $.settings.workspace.members.invite.description;
+              return $.settings.workspace.members.invite.upgrade.description;
             })}
           </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Input
-              placeholder={t(($) => {
-                return $.settings.workspace.members.invite.emailPlaceholder;
-              })}
-              type="email"
-              value={email}
-              disabled={sending || upgradeRequired}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setTouched(false);
-              }}
-              onBlur={() => {
-                return setTouched(true);
-              }}
-            />
-            {touched && trimmed && !isValid && (
-              <p className="text-[13px] text-destructive">
-                {t(($) => {
-                  return $.settings.workspace.members.invite.invalidEmail;
+        )}
+        {!upgradeRequired && (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Input
+                placeholder={t(($) => {
+                  return $.settings.workspace.members.invite.emailPlaceholder;
                 })}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium">
-              {t(($) => {
-                return $.settings.workspace.members.invite.roleLabel;
-              })}
-            </label>
-            <Select
-              value={role}
-              onValueChange={(v) => {
-                return setRole(orgRoleSchema.parse(v));
-              }}
-              disabled={sending || upgradeRequired}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="member">
+                type="email"
+                value={email}
+                disabled={sending}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setTouched(false);
+                }}
+                onBlur={() => {
+                  return setTouched(true);
+                }}
+              />
+              {touched && trimmed && !isValid && (
+                <p className="text-[13px] text-destructive">
                   {t(($) => {
-                    return $.settings.workspace.members.member;
+                    return $.settings.workspace.members.invite.invalidEmail;
                   })}
-                </SelectItem>
-                <SelectItem value="admin">
-                  {t(($) => {
-                    return $.settings.workspace.members.admin;
-                  })}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {usagePacks && (
+                </p>
+              )}
+            </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium">
                 {t(($) => {
-                  return $.billing.plans.usagePacks.memberPackages;
+                  return $.settings.workspace.members.invite.roleLabel;
                 })}
               </label>
               <Select
-                value={String(usagePackUsd)}
-                onValueChange={(value) => {
-                  return setUsagePackUsd(
-                    parseUsagePackOption(value, usagePacks),
-                  );
+                value={role}
+                onValueChange={(v) => {
+                  return setRole(orgRoleSchema.parse(v));
                 }}
-                disabled={sending || upgradeRequired}
+                disabled={sending}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
-                  {usagePacks.map((usagePack) => {
-                    return (
-                      <SelectItem
-                        key={usagePack.usagePackUsd}
-                        value={String(usagePack.usagePackUsd)}
-                        className="whitespace-nowrap"
-                      >
-                        {usagePackOptionLabel(usagePack)}
-                      </SelectItem>
-                    );
-                  })}
+                <SelectContent>
+                  <SelectItem value="member">
+                    {t(($) => {
+                      return $.settings.workspace.members.member;
+                    })}
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    {t(($) => {
+                      return $.settings.workspace.members.admin;
+                    })}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          )}
-        </div>
+            {usagePacks && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">
+                  {t(($) => {
+                    return $.billing.plans.usagePacks.memberPackages;
+                  })}
+                </label>
+                <Select
+                  value={String(usagePackUsd)}
+                  onValueChange={(value) => {
+                    return setUsagePackUsd(
+                      parseUsagePackOption(value, usagePacks),
+                    );
+                  }}
+                  disabled={sending}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
+                    {usagePacks.map((usagePack) => {
+                      return (
+                        <SelectItem
+                          key={usagePack.usagePackUsd}
+                          value={String(usagePack.usagePackUsd)}
+                          className="whitespace-nowrap"
+                        >
+                          {usagePackOptionLabel(usagePack)}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        )}
         <DialogFooter>
           <Button
             variant="outline"
@@ -539,7 +563,7 @@ function InviteDialog() {
           >
             {upgradeRequired
               ? t(($) => {
-                  return $.settings.models.actions.upgradePro;
+                  return $.settings.workspace.members.invite.upgrade.action;
                 })
               : sending
                 ? t(($) => {
@@ -552,6 +576,136 @@ function InviteDialog() {
                   : t(($) => {
                       return $.settings.workspace.members.invite.send;
                     })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InvitePurchaseConfirmationDialog() {
+  const { t } = useTranslation();
+  const preview = useGet(invitePurchasePreview$);
+  const close = useSet(closeInvitePurchasePreview$);
+  const [confirmationLoadable, confirm] = useLoadableSet(
+    confirmInvitePurchase$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const confirming = confirmationLoadable.state === "loading";
+  const error = confirmationLoadable.state === "hasError";
+
+  return (
+    <Dialog
+      open={preview !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !confirming) {
+          close();
+        }
+      }}
+    >
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.purchase.title;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {t(($) => {
+              return $.settings.workspace.members.invite.purchase.description;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {preview && (
+          <>
+            <UsagePackPaymentSummary
+              preview={{
+                immediateAmountCents: preview.payment.immediateAmountCents,
+                immediateCreditGrant: {
+                  purchasedCredits: preview.payment.purchasedCredits,
+                  bonusCredits: preview.payment.bonusCredits,
+                  totalCredits: preview.payment.totalCredits,
+                  expiresAt: preview.payment.currentPeriodEnd,
+                },
+              }}
+            />
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 pt-1 text-sm">
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.settings.workspace.members.invite.purchase.invitee;
+                })}
+              </span>
+              <span className="max-w-64 truncate text-right font-medium text-foreground">
+                {preview.email}
+              </span>
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.settings.workspace.members.invite.roleLabel;
+                })}
+              </span>
+              <span className="text-right font-medium text-foreground">
+                {preview.role === "admin"
+                  ? t(($) => {
+                      return $.settings.workspace.members.admin;
+                    })
+                  : t(($) => {
+                      return $.settings.workspace.members.member;
+                    })}
+              </span>
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.billing.plans.usagePacks.memberPackages;
+                })}
+              </span>
+              <span className="text-right font-medium text-foreground">
+                {t(
+                  ($) => {
+                    return $.billing.plans.pricePerMonth;
+                  },
+                  { price: formatUsd(preview.payment.usagePackUsd, 0) },
+                )}
+              </span>
+            </div>
+          </>
+        )}
+        {error && (
+          <p className="text-xs text-destructive">
+            {t(($) => {
+              return $.settings.workspace.members.invite.purchase.error;
+            })}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={confirming}
+            onClick={close}
+          >
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={confirming || !preview}
+            onClick={() => {
+              detach(confirm(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {confirming
+              ? t(($) => {
+                  return $.billing.common.updating;
+                })
+              : t(($) => {
+                  return $.billing.common.confirm;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1021,7 +1175,16 @@ function PendingInvitationRow({
         )}
       </div>
       {showUsagePack && (
-        <div className="text-[13px] text-muted-foreground">—</div>
+        <div className="text-[13px] text-muted-foreground tabular-nums">
+          {invitation.usagePackUsd === undefined
+            ? "—"
+            : t(
+                ($) => {
+                  return $.billing.plans.pricePerMonth;
+                },
+                { price: formatUsd(invitation.usagePackUsd, 0) },
+              )}
+        </div>
       )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">

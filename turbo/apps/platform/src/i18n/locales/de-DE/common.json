@@ -4447,9 +4447,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
           "progress": "Senden...",
+          "purchase": {
+            "description": "Prüfen Sie die unten aufgeführte anteilige Gebühr. Mit der Bestätigung wird Ihre gespeicherte Zahlungsmethode belastet und die Einladung gesendet.",
+            "error": "Dieses Mitgliederpaket konnte nicht gekauft werden. Prüfen Sie Ihre Zahlungsdaten und versuchen Sie es erneut.",
+            "invitee": "Eingeladene Person",
+            "title": "Einladung prüfen"
+          },
           "roleLabel": "Rolle",
           "send": "Einladung senden",
-          "title": "Mitglied einladen"
+          "title": "Mitglied einladen",
+          "upgrade": {
+            "action": "Auf Pro upgraden",
+            "description": "Mitgliedereinladungen sind im Pro-Tarif verfügbar. Führen Sie für diesen Arbeitsbereich ein Upgrade durch, um Personen einzuladen und ihre Rollen zu verwalten.",
+            "title": "Upgrade zum Einladen von Mitgliedern"
+          }
         },
         "joined": "Beigetreten",
         "joinRequests": "Beitrittsanfragen",
