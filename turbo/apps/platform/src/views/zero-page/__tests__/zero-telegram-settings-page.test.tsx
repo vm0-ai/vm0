@@ -6,6 +6,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  holdElementAnimations,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -112,7 +113,19 @@ describe("telegram settings page", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Default agent")).toHaveTextContent("Zero");
     });
+    const createStep = within(dialog).getByText(
+      "Ready to create the integration",
+    );
+    const finishCloseAnimation = holdElementAnimations(dialog);
     click(within(dialog).getByText("Add bot"));
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Add bot")).toBeEnabled();
+    });
+    expect(dialog).toBeInTheDocument();
+    expect(createStep).toBeVisible();
+
+    finishCloseAnimation();
 
     await waitFor(() => {
       expect(screen.getByText("Connect to Telegram")).toBeInTheDocument();

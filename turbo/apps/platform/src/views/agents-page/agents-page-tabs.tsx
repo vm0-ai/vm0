@@ -90,6 +90,7 @@ export function AgentsPageTabs() {
   const atPublicLimit = publicAgentCount >= MAX_PUBLIC_AGENTS;
 
   const openCreateDialog = (target: Visibility) => {
+    resetDialog();
     setVisibility(target);
     setDialogOpen(true);
   };
@@ -101,7 +102,6 @@ export function AgentsPageTabs() {
     }
     await createSubagentFn(trimmed, avatarUrl, visibility, pageSignal);
     setDialogOpen(false);
-    resetDialog();
     toast.success(
       t(
         ($) => {
@@ -361,20 +361,17 @@ function CreateTeammateDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
-      {/* Render content only when open so inner state resets each time */}
-      {open && (
-        <CreateTeammateDialogContent
-          newName={newName}
-          onNameChange={onNameChange}
-          onConfirm={onConfirm}
-          onCancel={() => {
-            return onOpenChange(false);
-          }}
-          creating={creating}
-          visibility={visibility}
-          onVisibilityChange={onVisibilityChange}
-        />
-      )}
+      <CreateTeammateDialogContent
+        newName={newName}
+        onNameChange={onNameChange}
+        onConfirm={onConfirm}
+        onCancel={() => {
+          return onOpenChange(false);
+        }}
+        creating={creating}
+        visibility={visibility}
+        onVisibilityChange={onVisibilityChange}
+      />
     </Dialog>
   );
 }
