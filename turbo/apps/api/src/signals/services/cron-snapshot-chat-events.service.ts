@@ -405,63 +405,65 @@ interface RetiredSnapshotVersionGcStats {
   readonly referencesDeleted: number;
 }
 
-async function deleteRetiredSnapshotVersions(
-  get: ComputedGetter,
-  db: Db,
-  bucket: string,
-  deleteQuota: number,
-  signal: AbortSignal,
-): Promise<RetiredSnapshotVersionGcStats> {
-  const candidates = await db
-    .select({
-      id: chatEventSnapshots.id,
-      objectKey: chatEventSnapshots.objectKey,
-    })
-    .from(chatEventSnapshots)
-    .where(
-      lt(
-        chatEventSnapshots.archiveSchemaVersion,
-        MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
-      ),
-    )
-    .limit(deleteQuota);
-  signal.throwIfAborted();
-  if (candidates.length === 0) {
-    return { selected: 0, referencesDeleted: 0 };
-  }
-
-  const candidateIds = candidates.map((candidate) => {
-    return candidate.id;
-  });
-  const objectKeys = candidates.map((candidate) => {
-    return candidate.objectKey;
-  });
-  const referenceDeletion = db
-    .delete(chatEventSnapshots)
-    .where(
-      and(
-        inArray(chatEventSnapshots.id, candidateIds),
+const deleteRetiredSnapshotVersions$ = command(
+  async (
+    { get },
+    db: Db,
+    bucket: string,
+    deleteQuota: number,
+    signal: AbortSignal,
+  ): Promise<RetiredSnapshotVersionGcStats> => {
+    const candidates = await db
+      .select({
+        id: chatEventSnapshots.id,
+        objectKey: chatEventSnapshots.objectKey,
+      })
+      .from(chatEventSnapshots)
+      .where(
         lt(
           chatEventSnapshots.archiveSchemaVersion,
           MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
         ),
-      ),
-    )
-    .returning({ id: chatEventSnapshots.id });
-  // R2 cleanup is deliberately best-effort. Running it beside the database
-  // delete keeps either system's failure from preventing the other attempt;
-  // failed object deletes become ordinary unreferenced-object GC candidates.
-  const objectDeletion = settle(get(deleteS3Objects(bucket, objectKeys)));
-  const [deletedReferences] = await Promise.all([
-    referenceDeletion,
-    objectDeletion,
-  ]);
-  signal.throwIfAborted();
-  return {
-    selected: candidates.length,
-    referencesDeleted: deletedReferences.length,
-  };
-}
+      )
+      .limit(deleteQuota);
+    signal.throwIfAborted();
+    if (candidates.length === 0) {
+      return { selected: 0, referencesDeleted: 0 };
+    }
+
+    const candidateIds = candidates.map((candidate) => {
+      return candidate.id;
+    });
+    const objectKeys = candidates.map((candidate) => {
+      return candidate.objectKey;
+    });
+    const referenceDeletion = db
+      .delete(chatEventSnapshots)
+      .where(
+        and(
+          inArray(chatEventSnapshots.id, candidateIds),
+          lt(
+            chatEventSnapshots.archiveSchemaVersion,
+            MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
+          ),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    // R2 cleanup is deliberately best-effort. Running it beside the database
+    // delete keeps either system's failure from preventing the other attempt;
+    // failed object deletes become ordinary unreferenced-object GC candidates.
+    const objectDeletion = settle(get(deleteS3Objects(bucket, objectKeys)));
+    const [deletedReferences] = await Promise.all([
+      referenceDeletion,
+      objectDeletion,
+    ]);
+    signal.throwIfAborted();
+    return {
+      selected: candidates.length,
+      referencesDeleted: deletedReferences.length,
+    };
+  },
+);
 
 function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
   const override = optionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD");
@@ -706,8 +708,8 @@ export const snapshotChatEvents$ = command(
         archivedEvents += archived;
       }
     }
-    const retiredSnapshots = await deleteRetiredSnapshotVersions(
-      get,
+    const retiredSnapshots = await set(
+      deleteRetiredSnapshotVersions$,
       db,
       bucket,
       SNAPSHOT_GC_DELETE_QUOTA,
