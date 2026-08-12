@@ -19,6 +19,9 @@ import {
   setSelectedUsagePackPlan$,
 } from "./usage-pack-pricing-state.ts";
 
+// `usage` is the credit balance surface and keeps its id so existing
+// `?settings=usage` links stay valid; `usage-records` is the usage history that
+// used to live at the bottom of it.
 export const SETTINGS_SECTIONS = [
   "preference",
   "model",
@@ -27,6 +30,7 @@ export const SETTINGS_SECTIONS = [
   "people",
   "billing",
   "usage",
+  "usage-records",
   "invoices",
 ] as const;
 

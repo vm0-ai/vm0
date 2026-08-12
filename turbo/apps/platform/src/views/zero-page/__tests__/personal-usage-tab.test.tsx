@@ -239,10 +239,13 @@ function mockPersonalUsageStory(
   return requestedRanges;
 }
 
-async function openUsageSettings(usagePackPlansEnabled = true): Promise<void> {
+async function openUsageSettings(
+  usagePackPlansEnabled = true,
+  section: "usage" | "usage-records" = "usage",
+): Promise<void> {
   detachedSetupPage({
     context,
-    path: "/?settings=usage",
+    path: `/?settings=${section}`,
     featureSwitches: usagePackPlansEnabled
       ? { [FeatureSwitchKey.UsagePackPlans]: true }
       : undefined,
@@ -273,11 +276,18 @@ describe("personal usage settings", () => {
     );
 
     await openUsageSettings(false);
+    // Without a usage pack a member has no organization balance to read, but
+    // their own usage records stay available in their own section.
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.textContent === "Credit balance";
+      }),
+    ).toBeFalsy();
     expect(
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Credit usage";
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
     expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
     expect(usagePackCreditRequests).toBe(0);
   });
@@ -595,7 +605,7 @@ describe("personal usage settings", () => {
   it("shows personal usage, loads more, and changes the usage range", async () => {
     const user = userEvent.setup();
     const requestedRanges = mockPersonalUsageStory();
-    await openUsageSettings();
+    await openUsageSettings(true, "usage-records");
 
     await waitFor(() => {
       expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
@@ -679,7 +689,7 @@ describe("personal usage settings", () => {
       ],
       "limited-free-1",
     );
-    await openUsageSettings();
+    await openUsageSettings(true, "usage-records");
 
     await user.hover(screen.getByTestId("usage-kind-segment-model"));
 
@@ -709,7 +719,7 @@ describe("personal usage settings", () => {
         ],
       },
     ]);
-    await openUsageSettings();
+    await openUsageSettings(true, "usage-records");
 
     await user.hover(screen.getByTestId("usage-kind-segment-video"));
 
@@ -725,7 +735,7 @@ describe("personal usage settings", () => {
 
   it("keeps keyboard focus styling on the usage title instead of the row", async () => {
     mockPersonalUsageStory();
-    await openUsageSettings();
+    await openUsageSettings(true, "usage-records");
 
     const titleLink = await screen.findByText("Quarterly planning chat");
 
@@ -782,7 +792,7 @@ describe("personal usage settings", () => {
     });
     mockEmptyUsagePackCredits();
 
-    await openUsageSettings();
+    await openUsageSettings(true, "usage-records");
 
     await waitFor(() => {
       expect(screen.getByText("Initial usage row")).toBeInTheDocument();
