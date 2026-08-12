@@ -24,11 +24,14 @@ ModelJsonUsageResult = tuple[dict | None, str | None]
 class ModelJsonUsageExtractor(Protocol):
     """Incremental parser lifecycle shared by model JSON protocols."""
 
-    def feed(self, chunk: bytes) -> None: ...
+    def feed(self, chunk: bytes) -> None:
+        raise NotImplementedError
 
-    def accepts_more_input(self) -> bool: ...
+    def accepts_more_input(self) -> bool:
+        raise NotImplementedError
 
-    def finish(self) -> ModelJsonUsageResult: ...
+    def finish(self) -> ModelJsonUsageResult:
+        raise NotImplementedError
 
 
 _ModelJsonUsageExtractorFactory = Callable[[], ModelJsonUsageExtractor]
@@ -72,7 +75,7 @@ def _model_json_usage_registration(
         return _OPENAI_CHAT_COMPLETIONS_REGISTRATION
     if protocol == "openai_responses":
         return _OPENAI_RESPONSES_REGISTRATION
-    assert_never(protocol)
+    return assert_never(protocol)
 
 
 def create_model_json_usage_extractor(
