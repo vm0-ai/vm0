@@ -345,6 +345,18 @@ describe("assistant markdown", () => {
     await expect(
       renderedDiagramMarkup(screen.getByAltText("Diagram"), objectUrls),
     ).resolves.toContain('data-mermaid-theme="redux-dark"');
+    const darkUrl = screen.getByAltText("Diagram").getAttribute("src") ?? "";
+
+    click(getButtonByText(settingsDialog, "Light"));
+
+    await waitFor(() => {
+      expect(screen.getByAltText("Diagram")).toHaveAttribute("src", lightUrl);
+    });
+    expect(darkUrl).not.toBe(lightUrl);
+    // Resolved theme is a finite two-value domain. Returning to light reuses
+    // the root-owned URL rather than allocating a blob per theme flip.
+    expect(objectUrls.revokedUrls).not.toContain(lightUrl);
+    expect(objectUrls.revokedUrls).not.toContain(darkUrl);
   });
 
   it("moves a rendered mermaid diagram from the lightbox into split view", async () => {
