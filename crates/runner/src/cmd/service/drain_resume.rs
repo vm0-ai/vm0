@@ -24,14 +24,14 @@
 //!
 //! ## Drain rollback boundary
 //!
-//! Reload failures, and policy-verification failures while the unit remains
-//! active-like, occur before the first signal attempt and use
-//! [`rollback_drain_transition`] to restore captured boot enablement and reload
-//! the restored state. If the policy query fails after the runner has already
-//! exited, no signal or rollback is needed and drain leaves the protected state
-//! in place. Rollback removes a drop-in created by the current attempt, but a
-//! repeated drain reports that the drop-in already existed and preserves that
-//! protection instead of removing it.
+//! Reload failures and effective-policy mismatches occur before the first
+//! signal attempt and use [`rollback_drain_transition`] to restore captured boot
+//! enablement and reload the restored state. A policy query error follows the
+//! same path unless a lifecycle recheck proves the runner already exited; in
+//! that case no signal or rollback is needed and drain leaves the protected
+//! state in place. Rollback removes a drop-in created by the current attempt,
+//! but a repeated drain reports that the drop-in already existed and preserves
+//! that protection instead of removing it.
 //!
 //! Once signal delivery has been attempted, convergence failures deliberately
 //! do not roll back. At that point the original process may have exited while
