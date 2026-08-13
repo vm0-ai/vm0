@@ -1102,7 +1102,7 @@ export function ZeroActivityDetailPage() {
   }
 
   return (
-    <div ref={activityEventsPollerRef} className="contents">
+    <div key={currentRunId} ref={activityEventsPollerRef} className="contents">
       {events === null ? (
         <ActivitySkeleton />
       ) : (

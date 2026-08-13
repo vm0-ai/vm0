@@ -8,6 +8,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
   AgentEventsResponse,
@@ -288,5 +289,69 @@ describe("activity paged events", () => {
     expect(finalEvent).toBeInTheDocument();
     expect(screen.getByText("Running event")).toBeInTheDocument();
     expect(requestCount).toBe(3);
+  });
+
+  it("starts a fresh event poller when navigating between activity runs", async () => {
+    const firstRunId = "a0000000-0000-4000-a000-000000000099";
+    const secondRunId = "a0000000-0000-4000-a000-000000000100";
+    let secondRunRequestCount = 0;
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: params.id,
+          displayName:
+            params.id === firstRunId ? "First Agent" : "Second Agent",
+          status: params.id === firstRunId ? "completed" : "running",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ params, respond }) => {
+        if (params.id === firstRunId) {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "First run event")],
+            hasMore: false,
+            framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 0,
+          } satisfies AgentEventsResponse);
+        }
+
+        secondRunRequestCount++;
+        if (secondRunRequestCount < 3) {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "Second run initial event")],
+            hasMore: false,
+            framework: "claude-code",
+            status: secondRunRequestCount === 1 ? "running" : "completed",
+            lastEventSequence: secondRunRequestCount === 1 ? null : 1,
+          } satisfies AgentEventsResponse);
+        }
+        return respond(200, {
+          events: [
+            makeAssistantEvent(0, "Second run initial event"),
+            makeAssistantEvent(1, "Second run final event"),
+          ],
+          hasMore: false,
+          framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 1,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({ context, path: `/activities/${firstRunId}` });
+    await screen.findByText("First run event");
+
+    context.store.set(detachedNavigateTo$, "/activities/:activityRunId", {
+      pathParams: { activityRunId: secondRunId },
+    });
+
+    await screen.findByText("Second run final event");
+    expect(secondRunRequestCount).toBe(3);
   });
 });
