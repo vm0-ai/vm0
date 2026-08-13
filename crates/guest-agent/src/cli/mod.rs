@@ -79,11 +79,12 @@ const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
-const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
     "analytics.enabled=false",
     "features.plugins=false",
     "features.apps=false",
     "features.goals=false",
+    "features.image_generation=false",
 ];
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];

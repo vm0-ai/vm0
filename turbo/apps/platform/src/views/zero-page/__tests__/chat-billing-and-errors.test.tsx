@@ -19,6 +19,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
@@ -219,6 +220,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows paid credit top-ups when a paid workspace runs out of credits", async () => {
+    const checkoutReady = createDeferredPromise<void>(context.signal);
     const threadId = "e1000000-0000-4000-a000-000000000006";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
@@ -249,7 +251,8 @@ describe("chat lifecycle", () => {
     });
     context.mocks.api(
       zeroBillingCreditCheckoutContract.create,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
+        await checkoutReady.promise;
         return respond(200, {
           url: `https://checkout.stripe.com/credits?credits=${body.credits}`,
         });
@@ -279,6 +282,12 @@ describe("chat lifecycle", () => {
 
     await fill(screen.getByLabelText("Custom dollar amount"), "25");
     click(buttonByText("Buy"));
+
+    await waitFor(() => {
+      expect(buttonByText("Preparing...")).toBeDisabled();
+    });
+    expect(queryButtonByText("Redirecting...")).toBeNull();
+    checkoutReady.resolve(undefined);
 
     await waitFor(() => {
       expect(window.location.href).toBe(

@@ -7,7 +7,7 @@ matches_file="$(mktemp)"
 legacy_argv_file="$(mktemp)"
 trap 'rm -f -- "${matches_file}" "${legacy_argv_file}"' EXIT
 
-command_pattern='(^|[^[:alnum:]_])zero[[:space:]]+(--help|--version|__agent-loop|agent|workflow|goal|connector|mcp|presentation-template|mail|credit|upgrade|doctor|model|model-provider|logs|search|chat|resource|github|slack|feishu|teams|telegram|phone|whoami|developer-support|computer-use|browser|intro|generate|web|video|host|maps|weather|scrape|people-search|web-search|recognize|translate|finance|seo|banking|local-agent|local-browser|secret|variable|schedule|automation)([^[:alnum:]_-]|$)'
+command_pattern='(^|[^[:alnum:]_])zero[[:space:]]+(--help|--version|__agent-loop|agent|workflow|goal|connector|mcp|mail|credit|upgrade|doctor|model|model-provider|logs|search|chat|resource|github|slack|feishu|teams|telegram|phone|whoami|developer-support|computer-use|browser|intro|generate|web|video|host|maps|weather|scrape|people-search|web-search|recognize|translate|finance|seo|banking|local-agent|local-browser|secret|variable|schedule|automation)([^[:alnum:]_-]|$)'
 standalone_entrypoint_pattern='(^|[[:space:]])assert_clean_success[[:space:]]+zero([[:space:]]|$)|^[[:space:]]*zero[[:space:]]*\\[[:space:]]*(#.*)?$'
 
 scan_repo_files() {

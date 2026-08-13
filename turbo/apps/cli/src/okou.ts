@@ -33,7 +33,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: ["connector:read", "connector:write"],
   mcp: "connector:read",
-  "presentation-template": null,
   mail: "connector:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],
@@ -74,12 +73,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set([
-  "mcp",
-  "presentation-template",
-  "recognize",
-  "translate",
-]);
+const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize", "translate"]);
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
@@ -124,14 +118,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Use MCP Custom Connectors authorized for this Agent",
     load: async () => {
       return (await import("./commands/zero/mcp")).zeroMcpCommand;
-    },
-  },
-  {
-    name: "presentation-template",
-    description: "Run-scoped presentation template import I/O",
-    load: async () => {
-      return (await import("./commands/zero/presentation-template"))
-        .zeroPresentationTemplateCommand;
     },
   },
   {

@@ -8,6 +8,7 @@ const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
 const imageLayoutThreadId = "b0000000-0000-4000-a000-000000000736";
 const cardSpacingThreadId = "b0000000-0000-4000-a000-000000000737";
+const forwardLayoutThreadId = "b0000000-0000-4000-a000-000000000738";
 // Card slots carry the same block margins as the paragraphs around them, and
 // adjacent margins collapse into one gap.
 const cardSlotGapPx = 8;
@@ -180,7 +181,10 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
   });
 }
 
-async function enableResponsiveFollowupCards(page: Page): Promise<void> {
+async function enableFeatureSwitch(
+  page: Page,
+  key: "chatForward" | "responsiveFollowupCards",
+): Promise<void> {
   await page.route("**/api/okou/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
@@ -193,11 +197,19 @@ async function enableResponsiveFollowupCards(page: Page): Promise<void> {
         ...body,
         effectiveSwitches: {
           ...body.effectiveSwitches,
-          responsiveFollowupCards: true,
+          [key]: true,
         },
       },
     });
   });
+}
+
+async function enableResponsiveFollowupCards(page: Page): Promise<void> {
+  await enableFeatureSwitch(page, "responsiveFollowupCards");
+}
+
+async function enableChatForward(page: Page): Promise<void> {
+  await enableFeatureSwitch(page, "chatForward");
 }
 
 async function mockSelectedFastModel(page: Page): Promise<void> {
@@ -496,6 +508,42 @@ async function mockResponsiveFollowupThread(
     selectedModel: null,
     threadId: responsiveFollowupThreadId,
     title: "Responsive follow-ups",
+  });
+}
+
+async function mockForwardLayoutThread(
+  page: Page,
+  agentId: string,
+): Promise<void> {
+  const createdAt = "2026-08-13T08:00:01Z";
+  const runId = "run-forward-layout";
+  await mockChatThread(page, {
+    agentId,
+    createdAt,
+    selectedModel: null,
+    threadId: forwardLayoutThreadId,
+    title: "Forward composer layout",
+    events: [
+      {
+        id: "msg-forward-layout-assistant",
+        threadId: forwardLayoutThreadId,
+        eventType: "output.message",
+        content: "Keep the forward composer within the modal.",
+        runId,
+        seqId: 1,
+        createdAt: "2026-08-13T08:00:00Z",
+      },
+      {
+        id: "msg-forward-layout-completed",
+        threadId: forwardLayoutThreadId,
+        eventType: "run.completed",
+        content: null,
+        runId,
+        runLifecycleEvent: "completed",
+        seqId: 2,
+        createdAt,
+      },
+    ],
   });
 }
 
@@ -1111,6 +1159,39 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await waitForAgentDraftClear(page, async () => {
     await clearComposerEditor(editor);
   });
+});
+
+test("forward composer stays inside the modal on narrow screens", async ({
+  page,
+}) => {
+  await enableChatForward(page);
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  const agentId = new URL(page.url()).pathname.match(
+    /^\/agents\/([^/]+)\/chat\/?$/,
+  )?.[1];
+  if (!agentId) {
+    throw new Error("Could not resolve the active agent from the chat URL");
+  }
+  await mockForwardLayoutThread(page, agentId);
+  await navigateToMockChatThread(page, forwardLayoutThreadId);
+
+  const assistantReply = page.getByText(
+    "Keep the forward composer within the modal.",
+    { exact: true },
+  );
+  await assistantReply.selectText();
+  await page.getByRole("button", { name: /^Forward\b/ }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Forward to" });
+  await dialog.getByRole("option").first().click();
+  const composer = dialog.locator(".zero-composer");
+
+  for (const width of [360, 320]) {
+    await page.setViewportSize({ width, height: 780 });
+    await expectInside(composer, dialog);
+  }
 });
 
 test("model change labels follow the divider at the right edge", async ({

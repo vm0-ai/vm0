@@ -9,6 +9,7 @@ import {
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./zero-sidebar-account";
 import { Link } from "../router/link.tsx";
+import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
@@ -25,6 +26,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
           }
         }}
       />
+      <CreditPurchaseConfirmDialog />
       <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
         <div className="flex-1" />
         <div className="p-2">

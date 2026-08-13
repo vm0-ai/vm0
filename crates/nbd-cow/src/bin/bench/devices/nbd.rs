@@ -6,133 +6,37 @@
 pub(crate) fn cleanup_stale_nbd_devices() {
     let max = nbd_cow::netlink::nbds_max();
     for i in 0..max {
-        let Some(candidate) = read_nbd_device_state(i) else {
+        let Some(candidate) = nbd_cow::orphan::observe(
+            i,
+            nbd_cow::orphan::NbdOrphanPolicy::DeadOrCurrentProcessOwnerWithNonZeroSize,
+        ) else {
             continue;
         };
-        if !nbd_cleanup_candidate(candidate) {
-            continue;
-        }
-
-        let claim = match nbd_cow::device_lock::try_acquire_device_claim(i) {
-            Ok(Some(claim)) => claim,
-            Ok(None) => continue,
-            Err(e) => {
-                eprintln!("  Skipping stale /dev/nbd{i} cleanup; lock failed: {e}");
-                continue;
+        match nbd_cow::orphan::disconnect(candidate) {
+            nbd_cow::orphan::NbdOrphanDisconnect::Disconnected(current) => {
+                match current.size_sectors() {
+                    Some(size) => eprintln!(
+                        "  Cleaned up stale /dev/nbd{i} (size={size}, pid={})",
+                        current.owner_tid()
+                    ),
+                    None => eprintln!(
+                        "  Cleaned up stale /dev/nbd{i} (pid={})",
+                        current.owner_tid()
+                    ),
+                }
             }
-        };
-
-        let Some(current) = read_nbd_device_state(i) else {
-            continue;
-        };
-        if !nbd_cleanup_candidate(current) {
-            continue;
+            nbd_cow::orphan::NbdOrphanDisconnect::Failed(error) => {
+                eprintln!("  Stale /dev/nbd{i} cleanup failed: {error}");
+            }
+            nbd_cow::orphan::NbdOrphanDisconnect::Locked
+            | nbd_cow::orphan::NbdOrphanDisconnect::Changed
+            | nbd_cow::orphan::NbdOrphanDisconnect::Live => {}
         }
-
-        eprintln!(
-            "  Cleaning up stale /dev/nbd{i} (size={}, pid={})...",
-            current.size, current.pid
-        );
-        let _ = nbd_cow::netlink::disconnect(i);
-        drop(claim);
     }
-}
-
-#[derive(Clone, Copy)]
-struct NbdDeviceState {
-    size: u64,
-    pid: u32,
-}
-
-fn read_nbd_device_state(index: u32) -> Option<NbdDeviceState> {
-    let size_path = format!("/sys/block/nbd{index}/size");
-    let pid_path = format!("/sys/block/nbd{index}/pid");
-    let size = std::fs::read_to_string(&size_path)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()?;
-    let pid = std::fs::read_to_string(&pid_path)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()?;
-    Some(NbdDeviceState { size, pid })
-}
-
-fn nbd_cleanup_candidate(state: NbdDeviceState) -> bool {
-    state.size != 0 && nbd_cleanup_candidate_owner(state.pid)
-}
-
-fn nbd_cleanup_candidate_owner(pid: u32) -> bool {
-    pid != 0
-        && (nbd_cow::is_our_thread(pid) || !std::path::Path::new(&format!("/proc/{pid}")).exists())
 }
 
 pub(crate) fn nbd_module_loaded() -> bool {
     std::fs::read_to_string("/proc/modules")
         .map(|s| s.lines().any(|l| l.starts_with("nbd ")))
         .unwrap_or(false)
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn nbd_cleanup_candidate_owner_requires_known_dead_or_current_owner() {
-        assert!(!nbd_cleanup_candidate_owner(0));
-        assert!(nbd_cleanup_candidate_owner(std::process::id()));
-        assert!(nbd_cleanup_candidate_owner(u32::MAX));
-    }
-
-    #[test]
-    fn nbd_cleanup_candidate_rejects_live_foreign_owner() {
-        struct ChildGuard(std::process::Child);
-
-        impl Drop for ChildGuard {
-            fn drop(&mut self) {
-                let _ = self.0.kill();
-                let _ = self.0.wait();
-            }
-        }
-
-        let mut child = ChildGuard(
-            std::process::Command::new("cat")
-                .stdin(std::process::Stdio::piped())
-                .spawn()
-                .expect("spawn live foreign owner"),
-        );
-        let pid = child.0.id();
-
-        assert_ne!(pid, std::process::id());
-        assert!(
-            child
-                .0
-                .try_wait()
-                .expect("check live foreign owner")
-                .is_none()
-        );
-        assert!(!nbd_cleanup_candidate_owner(pid));
-        assert!(!nbd_cleanup_candidate(NbdDeviceState { size: 1, pid }));
-        assert!(
-            child
-                .0
-                .try_wait()
-                .expect("recheck live foreign owner")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn nbd_cleanup_candidate_requires_nonzero_size_and_cleanup_owner() {
-        assert!(!nbd_cleanup_candidate(NbdDeviceState {
-            size: 0,
-            pid: std::process::id()
-        }));
-        assert!(!nbd_cleanup_candidate(NbdDeviceState { size: 1, pid: 0 }));
-        assert!(nbd_cleanup_candidate(NbdDeviceState {
-            size: 1,
-            pid: std::process::id()
-        }));
-    }
 }

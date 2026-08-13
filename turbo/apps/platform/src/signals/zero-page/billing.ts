@@ -17,6 +17,7 @@ import {
   zeroBillingRestoreContract,
   type BillingStatusResponse,
   type ConcurrencySubscriptionChangePreviewResponse,
+  type CreditPurchasePreviewResponse,
   type MemberUsagePack,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
@@ -261,6 +262,8 @@ export type ConcurrencyConfirmDialogState =
 
 const internalConcurrencyConfirmDialog$ =
   state<ConcurrencyConfirmDialogState | null>(null);
+const internalCreditPurchasePreview$ =
+  state<CreditPurchasePreviewResponse | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -283,6 +286,9 @@ export const concurrencyPurchaseDialogOpen$ = computed((get) => {
 });
 export const concurrencyConfirmDialog$ = computed((get) => {
   return get(internalConcurrencyConfirmDialog$);
+});
+export const creditPurchasePreview$ = computed((get) => {
+  return get(internalCreditPurchasePreview$);
 });
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
@@ -334,6 +340,9 @@ export const openConcurrencyConfirmDialog$ = command(
 );
 export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
   set(internalConcurrencyConfirmDialog$, null);
+});
+export const closeCreditPurchasePreview$ = command(({ set }) => {
+  set(internalCreditPurchasePreview$, null);
 });
 export const setConcurrencyChangeMode$ = command(
   ({ set }, mode: ConcurrencyChangeMode) => {
@@ -825,7 +834,7 @@ export const confirmUsagePackSubscriptionChange$ = command(
 
 export const startCreditCheckout$ = command(
   async (
-    { get },
+    { get, set },
     selection: CreditCheckoutSelection,
     newTab: boolean,
     signal: AbortSignal,
@@ -847,11 +856,16 @@ export const startCreditCheckout$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCreditCheckoutContract);
+    const savedBillingCreditPurchaseEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
       client.create({
         body: {
           credits: selection.credits,
           ...(selection.customAmount === true ? { customAmount: true } : {}),
+          ...(savedBillingCreditPurchaseEnabled
+            ? { previewExistingBilling: true }
+            : {}),
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
         },
@@ -860,11 +874,49 @@ export const startCreditCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (!("url" in result.body)) {
+      set(internalCreditPurchasePreview$, result.body);
+      return;
+    }
+    // Hosted Checkout is the canonical response when saved billing is absent.
+    // During rollout it also lets a switched-on app tolerate an API from before
+    // preview support for the ~2-day old-client window. Remove that rollout-only
+    // responsibility after #26842; the unavailable-billing path remains.
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const confirmCreditPurchase$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const preview = get(internalCreditPurchasePreview$);
+    if (!preview) {
+      throw new Error("Credit purchase preview is not available");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCreditCheckoutContract);
+    const result = await accept(
+      client.confirm({
+        body: { previewToken: preview.previewToken },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (result.body.status === "pending_payment") {
+      window.location.href = result.body.hostedInvoiceUrl;
+      return;
+    }
+    set(internalCreditPurchasePreview$, null);
+    set(reloadBillingStatus$);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.creditPurchaseConfirmed;
+      }),
+    );
   },
 );
 

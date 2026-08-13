@@ -347,7 +347,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Importation de modèle",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -809,6 +808,7 @@
       "confirm": "Confirmer",
       "credits": "crédits",
       "manage": "Gérer",
+      "preparing": "Préparation...",
       "redirecting": "Redirection...",
       "restore": "Restaurer",
       "retry": "Réessayer",
@@ -867,6 +867,9 @@
       "exchangeRate": "Les crédits n'expirent jamais. 1 USD = {{credits}} crédits.",
       "quickBuy": "Achat rapide",
       "quickBuyAmount": "Achat rapide {{amount}}",
+      "reviewDescription": "Confirmez ce paiement unique avec votre moyen de paiement enregistré.",
+      "reviewError": "Impossible de finaliser cet achat de crédits. Vérifiez vos informations de facturation et réessayez.",
+      "reviewTitle": "Vérifier l'achat de crédits",
       "title": "Acheter des crédits"
     },
     "downgrade": {
@@ -1048,6 +1051,7 @@
       "concurrencyChanged": "Modification de concurrence confirmée. Le nombre de créneaux sera mis à jour après le traitement de la modification par Stripe.",
       "concurrencyReduced": "La réduction de concurrence est prévue pour la prochaine date de facturation.",
       "concurrencyRestored": "Abonnement concurrentiel restauré.",
+      "creditPurchaseConfirmed": "Paiement confirmé. Les crédits apparaîtront une fois la facture traitée par Stripe.",
       "creditsAdded": "Crédits ajoutés. Vous pouvez continuer à discuter avec Zero.",
       "downgradeScheduledDate": "Rétrogradation programmée. Votre forfait actuel reste actif jusqu'au {{date}}.",
       "downgradeScheduledPeriod": "Rétrogradation programmée. Votre forfait actuel reste actif jusqu'à la fin de la période de facturation.",
@@ -1439,8 +1443,7 @@
       "search": "Rechercher des agents et des chats...",
       "sent": "Transfert réussi",
       "threads": "Chats",
-      "title": "Transférer vers",
-      "to": "Transférer vers"
+      "title": "Transférer vers"
     },
     "mail": {
       "bcc": "bcc",

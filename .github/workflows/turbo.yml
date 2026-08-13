@@ -2923,6 +2923,7 @@ jobs:
     needs:
       - prepare
       - deploy-api
+      - deploy-cli
       - deploy-runner-prepare
       - deploy-runner-start
       - cli-e2e-03-runner-prepare
@@ -2932,6 +2933,7 @@ jobs:
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
       needs.deploy-api.result == 'success' &&
+      needs.deploy-cli.result == 'success' &&
       needs.deploy-runner-prepare.result == 'success' &&
       needs.deploy-runner-start.result == 'success' &&
       needs.cli-e2e-03-runner-prepare.result == 'success' &&

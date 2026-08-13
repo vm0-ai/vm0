@@ -615,7 +615,6 @@ export {
   getInstructionsStorageName,
   getSkillStorageName,
   getCustomSkillStorageName,
-  getPresentationTemplateStorageName,
   getCustomConnectorSkillStorageName,
   getCustomConnectorSkillName,
   VOLUME_ORG_USER_ID,

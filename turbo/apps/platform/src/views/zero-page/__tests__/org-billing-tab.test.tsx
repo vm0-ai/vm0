@@ -13,6 +13,7 @@ import {
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
+  type CreditCheckoutRequest,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core";
@@ -193,8 +194,11 @@ function usagePackCatalogResponse() {
   };
 }
 
-function mockBillingStory(): void {
+function mockBillingStory(): {
+  readonly creditCheckoutRequest: () => CreditCheckoutRequest | null;
+} {
   let billingStatus = activeProBillingStatus();
+  let creditCheckoutRequest: CreditCheckoutRequest | null = null;
 
   context.mocks.data.org({
     id: "org_1",
@@ -218,11 +222,15 @@ function mockBillingStory(): void {
       return respond(200, billingStatus.autoRecharge);
     },
   );
-  context.mocks.api(zeroBillingCreditCheckoutContract.create, ({ respond }) => {
-    return respond(200, {
-      url: "https://billing.stripe.com/checkout/credit-purchase",
-    });
-  });
+  context.mocks.api(
+    zeroBillingCreditCheckoutContract.create,
+    ({ body, respond }) => {
+      creditCheckoutRequest = body;
+      return respond(200, {
+        url: "https://billing.stripe.com/checkout/credit-purchase",
+      });
+    },
+  );
   context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
     billingStatus = {
       ...billingStatus,
@@ -246,6 +254,11 @@ function mockBillingStory(): void {
     };
     return respond(200, { status: "restored" });
   });
+  return {
+    creditCheckoutRequest: () => {
+      return creditCheckoutRequest;
+    },
+  };
 }
 
 async function openBillingTab(
@@ -3305,9 +3318,95 @@ describe("organization billing settings", () => {
     expect(successToast).toHaveBeenCalledTimes(1);
   });
 
+  it("previews and confirms a saved-billing credit purchase in the app", async () => {
+    const checkoutReady = createDeferredPromise<void>(context.signal);
+    let startRequest: CreditCheckoutRequest | null = null;
+    let confirmedPreviewToken: string | null = null;
+    let billingStatusRequests = 0;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Credit Preview Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingStatusRequests += 1;
+      return respond(200, {
+        ...activeProBillingStatus(),
+        canBuyCredits: true,
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      async ({ body, respond }) => {
+        startRequest = body;
+        await checkoutReady.promise;
+        return respond(200, {
+          status: "preview",
+          credits: 20_000,
+          amountCents: 1800,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: "credit-preview-token",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.confirm,
+      ({ body, respond }) => {
+        confirmedPreviewToken = body.previewToken;
+        return respond(200, {
+          status: "completed",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    const locationBeforePurchase = window.location.href;
+    click(screen.getByText("Quick buy $20.00"));
+
+    await waitFor(() => {
+      expect(buttonByText("Preparing...")).toBeDisabled();
+    });
+    expect(queryButtonByText("Redirecting...")).toBeUndefined();
+    checkoutReady.resolve(undefined);
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review credit purchase",
+    });
+    expect(
+      within(reviewDialog).getByText(
+        "Confirm this one-time charge with your saved payment method.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$18.00")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("+20,000")).toBeInTheDocument();
+    expect(startRequest).toMatchObject({
+      credits: 20_000,
+      previewExistingBilling: true,
+    });
+    expect(window.location.href).toBe(locationBeforePurchase);
+
+    click(buttonByText("Confirm", reviewDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Review credit purchase" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(confirmedPreviewToken).toBe("credit-preview-token");
+    expect(billingStatusRequests).toBeGreaterThan(1);
+    expect(window.location.href).toBe(locationBeforePurchase);
+  });
+
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {
-    mockBillingStory();
-    await openBillingTab();
+    const billingStory = mockBillingStory();
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: false,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
@@ -3424,6 +3523,12 @@ describe("organization billing settings", () => {
         "https://billing.stripe.com/checkout/credit-purchase",
       );
     });
+    expect(billingStory.creditCheckoutRequest()).not.toHaveProperty(
+      "previewExistingBilling",
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Review credit purchase" }),
+    ).not.toBeInTheDocument();
   });
 
   it("schedules and restores a team plan downgrade from the pricing page", async () => {
