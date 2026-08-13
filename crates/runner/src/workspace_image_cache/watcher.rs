@@ -86,13 +86,15 @@ impl WorkspaceCacheWatcher {
             cache.workspace_image_cache_dir(),
             DirMode::Private,
             "workspace image cache root",
-        )?;
+        )
+        .map_err(|error| watcher_io_error("prepare root", error.kind()))?;
         let inotify = Inotify::init(InitFlags::IN_CLOEXEC | InitFlags::IN_NONBLOCK)
             .map_err(|error| watcher_error("initialize", error))?;
         let root_watch = inotify
             .add_watch(cache.workspace_image_cache_dir(), ROOT_WATCH_FLAGS)
             .map_err(|error| watcher_error("watch root", error))?;
-        let inotify = AsyncFd::new(AsyncInotify(inotify))?;
+        let inotify = AsyncFd::new(AsyncInotify(inotify))
+            .map_err(|error| watcher_io_error("register descriptor", error.kind()))?;
         let mut watcher = Self {
             inotify,
             root_watch,
@@ -107,7 +109,11 @@ impl WorkspaceCacheWatcher {
     /// Waits for and coalesces all currently readable relevant mutations.
     pub(crate) async fn next_change(&mut self) -> RunnerResult<WorkspaceCacheChange> {
         loop {
-            let mut ready = self.inotify.readable().await?;
+            let mut ready = self
+                .inotify
+                .readable()
+                .await
+                .map_err(|error| watcher_io_error("wait for events", error.kind()))?;
             ready.clear_ready();
             drop(ready);
 
@@ -224,12 +230,18 @@ impl WorkspaceCacheWatcher {
         if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
             return Ok(());
         }
-        for entry in std::fs::read_dir(self.cache.workspace_image_cache_dir())? {
+        let entries = std::fs::read_dir(self.cache.workspace_image_cache_dir())
+            .map_err(|error| watcher_io_error("scan entries", error.kind()))?;
+        for entry in entries {
             if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
                 break;
             }
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
+            let entry = entry.map_err(|error| watcher_io_error("read entry", error.kind()))?;
+            if !entry
+                .file_type()
+                .map_err(|error| watcher_io_error("read entry type", error.kind()))?
+                .is_dir()
+            {
                 continue;
             }
             let Some(cache_key) = entry.file_name().to_str().map(str::to_owned) else {
@@ -280,6 +292,10 @@ impl WorkspaceCacheWatcher {
 
 fn watcher_error(action: &str, error: Errno) -> RunnerError {
     RunnerError::Internal(format!("workspace cache watcher {action}: {error}"))
+}
+
+fn watcher_io_error(action: &str, kind: std::io::ErrorKind) -> RunnerError {
+    RunnerError::Internal(format!("workspace cache watcher {action}: {kind:?}"))
 }
 
 #[cfg(test)]
@@ -337,5 +353,24 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(change.committed_cache_keys, BTreeSet::from([cache_key]));
+    }
+
+    #[test]
+    fn setup_error_does_not_expose_cache_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(temp.path().join("runner"));
+        let cache = WorkspaceImageCache::new(paths);
+        let cache_root = cache.workspace_image_cache_dir().to_path_buf();
+        std::fs::create_dir_all(cache_root.parent().unwrap()).unwrap();
+        std::fs::write(&cache_root, b"not a directory").unwrap();
+
+        let error = match WorkspaceCacheWatcher::new(cache) {
+            Ok(_) => panic!("watcher setup should reject a non-directory cache root"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+
+        assert!(message.contains("workspace cache watcher prepare root"));
+        assert!(!message.contains(&cache_root.display().to_string()));
     }
 }
