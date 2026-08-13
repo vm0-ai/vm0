@@ -15,10 +15,10 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroFinanceCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { financeCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-finance-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "finance-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -59,7 +59,7 @@ describe("okou finance command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-zero-token");
-    for (const command of zeroFinanceCommand.commands) {
+    for (const command of financeCommand.commands) {
       command.setOptionValue("json", undefined);
       if (command.name() === "chart") {
         command.setOptionValue("range", "1y");
@@ -117,7 +117,7 @@ describe("okou finance command", () => {
       ),
     );
 
-    await zeroFinanceCommand.parseAsync([
+    await financeCommand.parseAsync([
       "node",
       "cli",
       example.operation,
@@ -144,7 +144,7 @@ describe("okou finance command", () => {
       ),
     );
 
-    await zeroFinanceCommand.parseAsync([
+    await financeCommand.parseAsync([
       "node",
       "cli",
       "chart",
@@ -177,7 +177,7 @@ describe("okou finance command", () => {
     );
 
     await expect(
-      zeroFinanceCommand.parseAsync([
+      financeCommand.parseAsync([
         "node",
         "cli",
         "chart",

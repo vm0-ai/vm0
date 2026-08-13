@@ -1,11 +1,11 @@
 import type {
-  ZeroFinanceChartRequest,
-  ZeroFinanceOperation,
-  ZeroFinanceProfileRequest,
-  ZeroFinanceQuoteRequest,
-  ZeroFinanceResponse,
-  ZeroFinanceSearchRequest,
-} from "@okouai/api-contracts/contracts/zero-finance";
+  FinanceChartRequest,
+  FinanceOperation,
+  FinanceProfileRequest,
+  FinanceQuoteRequest,
+  FinanceResponse,
+  FinanceSearchRequest,
+} from "@okouai/api-contracts/contracts/finance";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";
@@ -29,19 +29,19 @@ const MAX_APIDOJO_RESPONSE_BYTES = 8 * 1024 * 1024;
 type FinanceRequest =
   | {
       readonly operation: "search";
-      readonly body: ZeroFinanceSearchRequest;
+      readonly body: FinanceSearchRequest;
     }
   | {
       readonly operation: "profile";
-      readonly body: ZeroFinanceProfileRequest;
+      readonly body: FinanceProfileRequest;
     }
   | {
       readonly operation: "quote";
-      readonly body: ZeroFinanceQuoteRequest;
+      readonly body: FinanceQuoteRequest;
     }
   | {
       readonly operation: "chart";
-      readonly body: ZeroFinanceChartRequest;
+      readonly body: FinanceChartRequest;
     };
 
 interface AuthedFinanceArgs {
@@ -70,8 +70,8 @@ type FinanceProviderResult =
   | FinanceErrorResult
   | { readonly kind: "body"; readonly body: unknown };
 
-type ZeroFinanceCommandResponse =
-  | { readonly status: 200; readonly body: ZeroFinanceResponse }
+type FinanceCommandResponse =
+  | { readonly status: 200; readonly body: FinanceResponse }
   | FinanceErrorResponse
   | ManagedUsageErrorResponse;
 
@@ -200,10 +200,10 @@ function runIdForUsage(auth: AuthContext): string | undefined {
 }
 
 function successBody(
-  operation: ZeroFinanceOperation,
+  operation: FinanceOperation,
   result: unknown,
   creditsCharged: number,
-): ZeroFinanceResponse {
+): FinanceResponse {
   return {
     operation,
     provider: PROVIDER,
@@ -214,16 +214,16 @@ function successBody(
   };
 }
 
-export const zeroFinance$ = command(
+export const finance$ = command(
   async (
     { get, set },
     args: AuthedFinanceArgs,
     signal: AbortSignal,
-  ): Promise<ZeroFinanceCommandResponse> => {
+  ): Promise<FinanceCommandResponse> => {
     const apiKey = env("OKOU_FINANCE_APIDOJO_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Finance APIDojo provider is not configured",
+        "Okou Finance APIDojo provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -240,7 +240,7 @@ export const zeroFinance$ = command(
           provider: PROVIDER,
           category: BILLING_CATEGORY,
         },
-        label: "Zero Finance",
+        label: "Okou Finance",
       },
       providerSignal,
     );

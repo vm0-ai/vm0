@@ -341,7 +341,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "finance",
     description: "Query financial instruments through managed Okou finance",
     load: async () => {
-      return (await import("./commands/zero/finance")).zeroFinanceCommand;
+      return (await import("./commands/finance")).financeCommand;
     },
   },
   {

@@ -1,69 +1,69 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import chalk from "chalk";
 import {
-  ZERO_FINANCE_DEFAULT_INTERVAL,
-  ZERO_FINANCE_DEFAULT_RANGE,
-  zeroFinanceChartRequestSchema,
-  zeroFinanceIntervalSchema,
-  zeroFinanceProfileRequestSchema,
-  zeroFinanceQuoteRequestSchema,
-  zeroFinanceRangeSchema,
-  zeroFinanceSearchRequestSchema,
-  type ZeroFinanceResponse,
-  type ZeroFinanceInterval,
-  type ZeroFinanceRange,
-} from "@okouai/api-contracts/contracts/zero-finance";
+  FINANCE_DEFAULT_INTERVAL,
+  FINANCE_DEFAULT_RANGE,
+  financeChartRequestSchema,
+  financeIntervalSchema,
+  financeProfileRequestSchema,
+  financeQuoteRequestSchema,
+  financeRangeSchema,
+  financeSearchRequestSchema,
+  type FinanceResponse,
+  type FinanceInterval,
+  type FinanceRange,
+} from "@okouai/api-contracts/contracts/finance";
 
 import {
-  callZeroFinanceChart,
-  callZeroFinanceProfile,
-  callZeroFinanceQuote,
-  callZeroFinanceSearch,
-} from "../../../lib/api/domains/zero-finance";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+  callFinanceChart,
+  callFinanceProfile,
+  callFinanceQuote,
+  callFinanceSearch,
+} from "../../lib/api/domains/finance";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface JsonOption {
   readonly json?: boolean;
 }
 
 interface ChartOptions extends JsonOption {
-  readonly range: ZeroFinanceRange;
-  readonly interval: ZeroFinanceInterval;
+  readonly range: FinanceRange;
+  readonly interval: FinanceInterval;
 }
 
 function firstIssueMessage(
   result:
-    | ReturnType<typeof zeroFinanceSearchRequestSchema.safeParse>
-    | ReturnType<typeof zeroFinanceProfileRequestSchema.safeParse>
-    | ReturnType<typeof zeroFinanceQuoteRequestSchema.safeParse>
-    | ReturnType<typeof zeroFinanceChartRequestSchema.safeParse>,
+    | ReturnType<typeof financeSearchRequestSchema.safeParse>
+    | ReturnType<typeof financeProfileRequestSchema.safeParse>
+    | ReturnType<typeof financeQuoteRequestSchema.safeParse>
+    | ReturnType<typeof financeChartRequestSchema.safeParse>,
 ): string {
   return result.success
     ? "finance request is invalid"
     : (result.error.issues[0]?.message ?? "finance request is invalid");
 }
 
-function parseRange(value: string): ZeroFinanceRange {
-  const result = zeroFinanceRangeSchema.safeParse(value);
+function parseRange(value: string): FinanceRange {
+  const result = financeRangeSchema.safeParse(value);
   if (result.success) {
     return result.data;
   }
   throw new InvalidArgumentError(
-    `range must be one of: ${zeroFinanceRangeSchema.options.join(", ")}`,
+    `range must be one of: ${financeRangeSchema.options.join(", ")}`,
   );
 }
 
-function parseInterval(value: string): ZeroFinanceInterval {
-  const result = zeroFinanceIntervalSchema.safeParse(value);
+function parseInterval(value: string): FinanceInterval {
+  const result = financeIntervalSchema.safeParse(value);
   if (result.success) {
     return result.data;
   }
   throw new InvalidArgumentError(
-    `interval must be one of: ${zeroFinanceIntervalSchema.options.join(", ")}`,
+    `interval must be one of: ${financeIntervalSchema.options.join(", ")}`,
   );
 }
 
-function renderResponse(response: ZeroFinanceResponse, json?: boolean): void {
+function renderResponse(response: FinanceResponse, json?: boolean): void {
   if (json) {
     console.log(JSON.stringify(response));
     return;
@@ -82,11 +82,11 @@ const searchCommand = new Command()
   .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (query: string, options: JsonOption) => {
-      const request = zeroFinanceSearchRequestSchema.safeParse({ query });
+      const request = financeSearchRequestSchema.safeParse({ query });
       if (!request.success) {
         throw new InvalidArgumentError(firstIssueMessage(request));
       }
-      renderResponse(await callZeroFinanceSearch(request.data), options.json);
+      renderResponse(await callFinanceSearch(request.data), options.json);
     }),
   );
 
@@ -97,11 +97,11 @@ const profileCommand = new Command()
   .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (symbol: string, options: JsonOption) => {
-      const request = zeroFinanceProfileRequestSchema.safeParse({ symbol });
+      const request = financeProfileRequestSchema.safeParse({ symbol });
       if (!request.success) {
         throw new InvalidArgumentError(firstIssueMessage(request));
       }
-      renderResponse(await callZeroFinanceProfile(request.data), options.json);
+      renderResponse(await callFinanceProfile(request.data), options.json);
     }),
   );
 
@@ -112,11 +112,11 @@ const quoteCommand = new Command()
   .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (symbol: string, options: JsonOption) => {
-      const request = zeroFinanceQuoteRequestSchema.safeParse({ symbol });
+      const request = financeQuoteRequestSchema.safeParse({ symbol });
       if (!request.success) {
         throw new InvalidArgumentError(firstIssueMessage(request));
       }
-      renderResponse(await callZeroFinanceQuote(request.data), options.json);
+      renderResponse(await callFinanceQuote(request.data), options.json);
     }),
   );
 
@@ -126,18 +126,18 @@ const chartCommand = new Command()
   .argument("<symbol>", "Yahoo Finance symbol, such as AAPL or 0700.HK")
   .addOption(
     new Option("--range <range>", "Chart time range")
-      .default(ZERO_FINANCE_DEFAULT_RANGE)
+      .default(FINANCE_DEFAULT_RANGE)
       .argParser(parseRange),
   )
   .addOption(
     new Option("--interval <interval>", "Chart interval")
-      .default(ZERO_FINANCE_DEFAULT_INTERVAL)
+      .default(FINANCE_DEFAULT_INTERVAL)
       .argParser(parseInterval),
   )
   .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (symbol: string, options: ChartOptions) => {
-      const request = zeroFinanceChartRequestSchema.safeParse({
+      const request = financeChartRequestSchema.safeParse({
         symbol,
         range: options.range,
         interval: options.interval,
@@ -145,11 +145,11 @@ const chartCommand = new Command()
       if (!request.success) {
         throw new InvalidArgumentError(firstIssueMessage(request));
       }
-      renderResponse(await callZeroFinanceChart(request.data), options.json);
+      renderResponse(await callFinanceChart(request.data), options.json);
     }),
   );
 
-export const zeroFinanceCommand = new Command()
+export const financeCommand = new Command()
   .name("finance")
   .description("Query financial instruments through managed Okou Finance")
   .addCommand(searchCommand)
