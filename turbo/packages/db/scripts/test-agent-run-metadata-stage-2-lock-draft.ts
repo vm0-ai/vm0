@@ -3,14 +3,29 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 
-async function main(): Promise<void> {
+const expansionMigration = "0919_clammy_mastermind";
+const testDatabase = "migration_agent_run_metadata_stage_2_lock_draft";
+
+export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
+  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const draftPath = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
+    scriptDirectory,
     "agent-run-metadata-stage-2-draft.sql",
   );
+  const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
+  const adminUrl = new URL(databaseUrl);
+  adminUrl.pathname = "/postgres";
+  const testUrl = new URL(databaseUrl);
+  testUrl.pathname = `/${testDatabase}`;
+
+  const admin = new Client({ connectionString: adminUrl.toString() });
+  await admin.connect();
+  await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
+  await admin.query(`CREATE DATABASE "${testDatabase}"`);
 
   const draft = await fs.readFile(draftPath, "utf8");
   const locatedBackfillStatement = draft
@@ -69,7 +84,7 @@ async function main(): Promise<void> {
   assert.doesNotMatch(draft, /\bLOCK\s+TABLE\b/iu);
 
   async function connect(): Promise<Client> {
-    const client = new Client({ connectionString: databaseUrl });
+    const client = new Client({ connectionString: testUrl.toString() });
     await client.connect();
     return client;
   }
@@ -269,6 +284,11 @@ async function main(): Promise<void> {
   }
 
   const setup = await connect();
+  await applyMigrationsFromDirectoryUpToTag(
+    setup,
+    migrationsDirectory,
+    expansionMigration,
+  );
   try {
     {
       const ids = await seed(setup, 1);
@@ -435,12 +455,16 @@ async function main(): Promise<void> {
     }
   } finally {
     await setup.end();
+    await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
+    await admin.end();
   }
 
   console.log("stage2 lock probe passed");
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
+  validateAgentRunMetadataStage2LockDraft().catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
