@@ -4051,8 +4051,8 @@ function RunSectionDividerRow({
 // between two stretches of work, and drawing one under the burst cut the
 // acknowledgement away from the very messages it is about — the label ended up
 // reading as the start of something else rather than the closing line of what
-// the user just sent. It closes to MESSAGE_STACK_GAP for the same reason: the
-// burst and its acknowledgement are one block.
+// the user just sent. It sits one stack gap under the burst for the same
+// reason: the burst and its acknowledgement are one block.
 function SteerAcknowledgementRow({ count }: { count: number }) {
   const { t } = useTranslation();
   const sweepRef = useSet(steerAcknowledgementRef$);
