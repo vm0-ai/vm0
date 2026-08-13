@@ -9,7 +9,7 @@ import {
   type GenerationTemplateRequest,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroMorningBriefContract } from "@okouai/api-contracts/contracts/zero-morning-brief";
+import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
@@ -54,7 +54,7 @@ import { cronExecuteMorningBriefsRoutes } from "../cron-execute-morning-briefs";
 import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsubscribe";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
-import { zeroMorningBriefRoutes } from "../zero-morning-brief";
+import { morningBriefRoutes } from "../morning-brief";
 import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
 
 const TEST_APP_ROUTES = Object.freeze([
@@ -62,7 +62,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...emailMorningBriefUnsubscribeRoutes,
   ...zeroChatThreadRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroMorningBriefRoutes,
+  ...morningBriefRoutes,
   ...zeroUserPreferencesRoutes,
 ]);
 
@@ -237,8 +237,8 @@ function preferencesClient() {
 }
 
 function morningBriefTriggerClient() {
-  return setupApp({ context, routes: zeroMorningBriefRoutes })(
-    zeroMorningBriefContract,
+  return setupApp({ context, routes: morningBriefRoutes })(
+    morningBriefContract,
   );
 }
 

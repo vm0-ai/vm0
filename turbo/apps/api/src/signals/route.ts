@@ -28,7 +28,7 @@ import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
-import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
+import { morningBriefRoutes } from "./routes/morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
@@ -114,7 +114,7 @@ import { orgLogoRoutes } from "./routes/org-logo";
 import { zeroOrgMembersRoutes } from "./routes/zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "./routes/zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "./routes/zero-org-read";
-import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
+import { pushSubscriptionsRoutes } from "./routes/push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { realtimeTokenRoutes } from "./routes/realtime-token";
 import { imageRecognitionRoutes } from "./routes/image-recognition";
@@ -189,8 +189,8 @@ import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
 import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
-import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
-import { zeroWebFileUrlRoutes } from "./routes/zero-web-file-url";
+import { webDownloadRoutes } from "./routes/web-download";
+import { webFileUrlRoutes } from "./routes/web-file-url";
 
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
@@ -245,7 +245,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
-  ...zeroMorningBriefRoutes,
+  ...morningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...agentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
@@ -312,8 +312,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVoiceIoQuotaRoutes,
   ...zeroVoiceIoSpeechRoutes,
   ...zeroVoiceIoSttRoutes,
-  ...zeroWebDownloadRoutes,
-  ...zeroWebFileUrlRoutes,
+  ...webDownloadRoutes,
+  ...webFileUrlRoutes,
   ...zeroQueuePositionRoutes,
   ...realtimeTokenRoutes,
   ...imageRecognitionRoutes,
@@ -329,7 +329,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroOrgMembersRoutes,
   ...zeroOrgMembershipRequestsRoutes,
   ...zeroOrgReadRoutes,
-  ...zeroPushSubscriptionsRoutes,
+  ...pushSubscriptionsRoutes,
   ...zeroUserPermissionGrantsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,

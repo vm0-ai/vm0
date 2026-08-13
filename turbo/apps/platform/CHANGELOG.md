@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.747.1](https://github.com/vm0-ai/vm0/compare/app-v0.747.0...app-v0.747.1) (2026-08-13)
+
+
+### Refactoring
+
+* **morning-brief:** neutralize manual trigger shell ([#27027](https://github.com/vm0-ai/vm0/issues/27027)) ([ed36ad6](https://github.com/vm0-ai/vm0/commit/ed36ad6fded5ea236b41ce87eb0af8b36aa5b048))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.7
+    * @okouai/core bumped to 8.559.1
+
 ## [0.747.0](https://github.com/vm0-ai/vm0/compare/app-v0.746.0...app-v0.747.0) (2026-08-13)
 
 

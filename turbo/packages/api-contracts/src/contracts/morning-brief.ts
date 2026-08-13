@@ -17,7 +17,7 @@ const triggerMorningBriefResponseSchema = z.object({
  * Testing entry point gated by the manualMorningBrief feature switch:
  * immediately runs the collect → agent-run → email pipeline for the caller.
  */
-export const zeroMorningBriefContract = c.router({
+export const morningBriefContract = c.router({
   trigger: {
     method: "POST",
     path: "/api/okou/morning-brief/trigger",
@@ -34,4 +34,4 @@ export const zeroMorningBriefContract = c.router({
   },
 });
 
-export type ZeroMorningBriefContract = typeof zeroMorningBriefContract;
+export type MorningBriefContract = typeof morningBriefContract;

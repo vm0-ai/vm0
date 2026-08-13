@@ -44,7 +44,7 @@ import { zeroMeModelProvidersUpsertRoutes } from "../../zero-me-model-providers-
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { orgLogoRoutes } from "../../org-logo";
-import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
+import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import { zeroWorkflowsRoutes } from "../../zero-workflows";
 
@@ -254,7 +254,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroPushSubscriptionsRoutes })(
+        setupApp({ context, routes: pushSubscriptionsRoutes })(
           pushSubscriptionsContract,
         ).register({
           headers: authenticate(context, actor),

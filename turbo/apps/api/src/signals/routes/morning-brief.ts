@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroMorningBriefContract } from "@okouai/api-contracts/contracts/zero-morning-brief";
+import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -42,9 +42,9 @@ const triggerMorningBriefInner$ = command(
   },
 );
 
-export const zeroMorningBriefRoutes: readonly RouteEntry[] = [
+export const morningBriefRoutes: readonly RouteEntry[] = [
   {
-    route: zeroMorningBriefContract.trigger,
+    route: morningBriefContract.trigger,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       triggerMorningBriefInner$,
