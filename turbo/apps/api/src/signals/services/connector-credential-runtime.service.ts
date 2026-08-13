@@ -1,9 +1,9 @@
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { refreshConnectorAuthProviderAccessTokenWithMethod } from "@vm0/connectors/auth-providers";
-import { resolveConnectorAuthClient } from "@vm0/connectors/connector-auth-method";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { refreshConnectorAuthProviderAccessTokenWithMethod } from "@okouai/connectors/auth-providers";
+import { resolveConnectorAuthClient } from "@okouai/connectors/connector-auth-method";
+import { connectors } from "@okouai/db/schema/connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 

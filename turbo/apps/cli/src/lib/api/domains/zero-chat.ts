@@ -1,4 +1,4 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   type ChatEventSendBody,
   chatEventsContract,
@@ -13,9 +13,9 @@ import {
   type ChatThreadMetadata,
   type ChatThreadSnapshotProjection,
   type ChatSearchResponse,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {

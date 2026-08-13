@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ChatThreadSnapshotProjection } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadSnapshotProjection } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   replayChatThreadEvents,
   type ReplayChatThreadEvent,
-} from "@vm0/core/chat-thread-event-replay";
+} from "@okouai/core/chat-thread-event-replay";
 
 function snapshotThread(
   params: Partial<ChatThreadSnapshotProjection> & {

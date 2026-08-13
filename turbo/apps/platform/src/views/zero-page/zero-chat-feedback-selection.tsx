@@ -2,13 +2,13 @@ import type { CSSProperties } from "react";
 import { Copy, Forward, MessageCircle } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getShortcutParts,
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";

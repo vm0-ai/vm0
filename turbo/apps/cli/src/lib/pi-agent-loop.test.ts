@@ -1,8 +1,8 @@
-import { CANONICAL_PI_SESSION_DATABASE_PATH } from "@vm0/api-contracts/contracts/runners";
+import { CANONICAL_PI_SESSION_DATABASE_PATH } from "@okouai/api-contracts/contracts/runners";
 import {
   runPiAgentSession,
   type PiAssistantMessage,
-} from "@vm0/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/node";
 import { describe, expect, it } from "vitest";
 
 import {

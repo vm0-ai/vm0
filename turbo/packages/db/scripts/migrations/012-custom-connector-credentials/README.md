@@ -41,7 +41,7 @@ job was removed after the reports were recorded.
 Run from `turbo/`:
 
 ```bash
-pnpm --filter @vm0/db exec tsx \
+pnpm --filter @okouai/db exec tsx \
   scripts/migrations/012-custom-connector-credentials/backfill.ts \
   --batch-size 100 \
   --report-path ./custom-connector-credential-backfill.json
@@ -56,7 +56,7 @@ dry-run from the beginning before its result can be treated as ready.
 resume after the last completed row with the report's cursor:
 
 ```bash
-pnpm --filter @vm0/db exec tsx \
+pnpm --filter @okouai/db exec tsx \
   scripts/migrations/012-custom-connector-credentials/backfill.ts \
   --cursor 'values:00000000-0000-4000-8000-000000000000' \
   --batch-size 100 \

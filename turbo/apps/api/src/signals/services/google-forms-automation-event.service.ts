@@ -9,17 +9,17 @@ import {
   googleFormsResponseSubmittedEventConfigSchema,
   type GoogleFormsResponseSubmittedEventConfig,
   type GoogleFormsResponseSubmittedEventCreateConfig,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   googleFormsAutomationCursors,
   googleFormsProcessedEvents,
   googleFormsWatchStates,
-} from "@vm0/db/schema/google-forms-event";
+} from "@okouai/db/schema/google-forms-event";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";

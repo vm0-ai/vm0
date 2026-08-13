@@ -3,16 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroBillingStatusContract,
   zeroBillingUsagePackCreditsContract,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,

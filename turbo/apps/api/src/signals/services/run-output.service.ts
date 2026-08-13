@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 
 import type { ReadonlyDb } from "../external/db";
 

@@ -2,9 +2,9 @@ import { command, createStore } from "ccstate";
 import {
   getPresentationTemplateStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { presentationTemplates } from "@vm0/db/schema/presentation-template";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/core/storage-names";
+import { presentationTemplates } from "@okouai/db/schema/presentation-template";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { and, eq, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";

@@ -2,7 +2,7 @@
 // CORS owner and wraps hono's cors helper into a single middleware.
 import { cors } from "hono/cors";
 import type { MiddlewareHandler } from "hono";
-import { CLIENT_HEADER_NAMES } from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_HEADER_NAMES } from "@okouai/api-contracts/contracts/client-headers";
 
 import { safeUrlParse } from "../signals/utils";
 import { env } from "./env";

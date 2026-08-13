@@ -1,8 +1,8 @@
 import { computed, type Computed } from "ccstate";
-import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
-import { userCache } from "@vm0/db/schema/user-cache";
+import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
+import { userCache } from "@okouai/db/schema/user-cache";
 import { and, asc, desc, eq, or, type SQL } from "drizzle-orm";
 
 import { db$, type Db, type ReadonlyDb } from "../external/db";

@@ -2,7 +2,7 @@ import { computed } from "ccstate";
 import {
   healthContract,
   type HealthRouteResponse,
-} from "@vm0/api-contracts/contracts";
+} from "@okouai/api-contracts/contracts";
 
 import type { RouteEntry } from "../route-entry";
 

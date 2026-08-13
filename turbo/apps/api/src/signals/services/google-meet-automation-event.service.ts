@@ -3,16 +3,16 @@ import { OAuth2Client } from "google-auth-library";
 import { command } from "ccstate";
 import { and, eq, lte, or } from "drizzle-orm";
 import { z } from "zod";
-import { googleMeetTranscriptGeneratedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
+import { googleMeetTranscriptGeneratedEventConfigSchema } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   googleWorkspaceEventSubscriptionStates,
   googleWorkspaceProcessedEvents,
-} from "@vm0/db/schema/google-workspace-event";
+} from "@okouai/db/schema/google-workspace-event";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";

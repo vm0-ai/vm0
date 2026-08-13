@@ -9,8 +9,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { ExportArtifactUrls } from "@vm0/db/jsonb-contracts/export-job";
-export type { ExportArtifactUrl } from "@vm0/db/jsonb-contracts/export-job";
+import type { ExportArtifactUrls } from "@okouai/db/jsonb-contracts/export-job";
+export type { ExportArtifactUrl } from "@okouai/db/jsonb-contracts/export-job";
 
 /**
  * Export Jobs table

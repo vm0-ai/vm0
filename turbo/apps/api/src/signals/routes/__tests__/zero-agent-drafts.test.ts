@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
-import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
-import type { UserMessageInputDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
+import { zeroAgentDraftContract } from "@okouai/api-contracts/contracts/zero-agents";
+import type { UserMessageInputDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

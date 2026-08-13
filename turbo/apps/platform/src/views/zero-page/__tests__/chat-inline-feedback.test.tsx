@@ -4,13 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,

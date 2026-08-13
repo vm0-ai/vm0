@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
+import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
 
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";

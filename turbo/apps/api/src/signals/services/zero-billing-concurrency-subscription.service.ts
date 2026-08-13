@@ -4,9 +4,9 @@ import { command } from "ccstate";
 import type {
   ConcurrencySubscriptionChangePreviewResponse,
   ConcurrencySubscriptionChangeResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
 
 import {

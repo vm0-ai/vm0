@@ -50,7 +50,7 @@ Recording permissions are not reset by ad-hoc signatures.
 The desktop build compiles both Electron entrypoints and the Swift native helper:
 
 ```bash
-pnpm -F @vm0/desktop build
+pnpm -F @okouai/desktop build
 ```
 
 Create a macOS artifact with:
@@ -67,7 +67,7 @@ Build the independent Okou identity with:
 ```bash
 VM0_DESKTOP_PRODUCT=okou \
 VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
-pnpm -F @vm0/desktop make
+pnpm -F @okouai/desktop make
 ```
 
 That build creates `Okou.app` with bundle ID and callback scheme
@@ -87,9 +87,9 @@ is also the path included in packaged macOS artifacts.
 Point it at a local or staging platform URL with:
 
 ```bash
-VM0_DESKTOP_PLATFORM_URL=https://staging-app.omby.ai pnpm -F @vm0/desktop dev:packaged
-VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged
-VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=https://staging-app.omby.ai pnpm -F @okouai/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @okouai/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @okouai/desktop dev:packaged
 ```
 
 The desktop app does not start platform/web/api/proxy services itself. Start the

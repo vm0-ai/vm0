@@ -1,6 +1,6 @@
 import { Plug } from "lucide-react";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { cn } from "@vm0/ui";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 function ConnectorIconFallback({

@@ -3,7 +3,7 @@ import {
   presentationImagesContract,
   type PresentationImageAsset,
   type PresentationImageResolveItem,
-} from "@vm0/api-contracts/contracts/presentation-images";
+} from "@okouai/api-contracts/contracts/presentation-images";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";

@@ -1,5 +1,5 @@
 import { AppWindow } from "lucide-react";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 

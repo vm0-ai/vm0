@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

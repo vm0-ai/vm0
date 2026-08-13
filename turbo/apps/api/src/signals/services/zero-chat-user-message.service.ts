@@ -6,12 +6,12 @@ import type {
   UserMessageInputDocument,
   UserMessageInputPart,
   UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   isChatUserMessageEventType,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
-import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+} from "@okouai/api-contracts/contracts/chat-events";
+import { parseAvatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 
 interface UserMessageProjection {
   readonly agentPrompt: string;

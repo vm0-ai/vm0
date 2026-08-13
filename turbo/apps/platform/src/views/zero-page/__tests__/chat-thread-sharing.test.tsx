@@ -1,5 +1,5 @@
-import { sharedThreadsContract } from "@vm0/api-contracts/contracts/shared-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";

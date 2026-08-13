@@ -1,5 +1,5 @@
-import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
-import { CLIENT_PRODUCT_HEADER } from "@vm0/api-contracts/contracts/client-headers";
+import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
+import { CLIENT_PRODUCT_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import { command, computed, state } from "ccstate";
 import type { Context } from "hono";
 import { RedirectStatusCode } from "hono/utils/http-status";

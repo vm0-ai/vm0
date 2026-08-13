@@ -1,16 +1,16 @@
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
+import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
+import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import {
   chatEvents,
   type ChatEventUserMessage,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
 import {
   and,
   asc,

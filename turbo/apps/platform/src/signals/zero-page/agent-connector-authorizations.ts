@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { withCleanup } from "../utils.ts";

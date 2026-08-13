@@ -1,6 +1,6 @@
 /** Canonical ChatEvent route adapter. */
 import { command } from "ccstate";
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";

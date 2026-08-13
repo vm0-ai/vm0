@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-runtime-state";
+} from "@okouai/api-contracts/contracts/test-runtime-state";
 import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";

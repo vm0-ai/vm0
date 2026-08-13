@@ -8,7 +8,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
+} from "@okouai/ui/components/ui/select";
 
 import {
   isSupportedLocale,

@@ -2,7 +2,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadEventsContract,
   type ChatThreadArtifactFile,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   act,
   createEvent,
@@ -12,7 +12,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { logsListContract } from "@vm0/api-contracts/contracts/logs";
+import { logsListContract } from "@okouai/api-contracts/contracts/logs";
 import { HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";

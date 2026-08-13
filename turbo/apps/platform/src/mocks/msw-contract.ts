@@ -18,7 +18,7 @@ import type {
   ServerInferRequest,
   ServerInferResponseBody,
   ServerInferResponses,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import { http, HttpResponse, type HttpHandler, type PathParams } from "msw";
 import { delay } from "signal-timers";
 import { createDeferredPromise } from "../signals/utils.ts";

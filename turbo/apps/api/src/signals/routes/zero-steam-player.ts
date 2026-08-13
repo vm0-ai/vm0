@@ -1,5 +1,5 @@
-import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
-import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import { zeroSteamPlayerContract } from "@okouai/api-contracts/contracts/zero-steam-player";
+import { createErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

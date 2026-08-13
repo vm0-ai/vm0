@@ -1,13 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadMarkReadContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroBrowserContract } from "@okouai/api-contracts/contracts/zero-browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";

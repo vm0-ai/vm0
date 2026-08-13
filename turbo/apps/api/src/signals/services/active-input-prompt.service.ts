@@ -1,10 +1,10 @@
-import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
+import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
   chatEvents,
   type ChatEventUserMessage,
-} from "@vm0/db/schema/chat-event";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/db/schema/chat-event";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";

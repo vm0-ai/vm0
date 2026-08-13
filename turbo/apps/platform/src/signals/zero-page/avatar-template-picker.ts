@@ -5,7 +5,7 @@ import {
   type ZeroAvatarVideoAvatarsQuery,
   type ZeroAvatarVideoVoice,
   type ZeroAvatarVideoVoicesQuery,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import { accept } from "../../lib/accept.ts";

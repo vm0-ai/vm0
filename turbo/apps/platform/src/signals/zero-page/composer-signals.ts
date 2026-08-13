@@ -1,9 +1,9 @@
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import {

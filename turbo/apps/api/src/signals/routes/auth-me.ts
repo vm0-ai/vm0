@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
-import { userCache } from "@vm0/db/schema/user-cache";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
+import { userCache } from "@okouai/db/schema/user-cache";
 import { eq } from "drizzle-orm";
 
 import { authContext$ } from "../auth/auth-context";

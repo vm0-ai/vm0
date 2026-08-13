@@ -12,7 +12,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import type {
   ChatForwardComposerState,
@@ -34,7 +34,7 @@ import {
   chatListQuery$,
   setChatListQuery$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 

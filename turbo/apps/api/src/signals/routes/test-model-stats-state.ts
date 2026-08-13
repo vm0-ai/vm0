@@ -2,9 +2,9 @@ import { command } from "ccstate";
 import {
   testModelStatsStateContract,
   type TestModelStatsStateActionBody,
-} from "@vm0/api-contracts/contracts/test-model-stats-state";
-import { modelStat } from "@vm0/db/schema/model-stat";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
+} from "@okouai/api-contracts/contracts/test-model-stats-state";
+import { modelStat } from "@okouai/db/schema/model-stat";
+import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import { and, asc, count, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 

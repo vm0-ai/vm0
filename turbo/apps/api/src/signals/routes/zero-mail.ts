@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 
 import { conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";

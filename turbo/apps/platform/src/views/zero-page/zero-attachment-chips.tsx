@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import { Button, Dialog, DialogContent, cn } from "@vm0/ui";
+import { Button, Dialog, DialogContent, cn } from "@okouai/ui";
 import {
   useGet,
   useLastLoadable,
@@ -23,7 +23,7 @@ import {
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type { ZeroChatAttachment } from "../../signals/zero-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";

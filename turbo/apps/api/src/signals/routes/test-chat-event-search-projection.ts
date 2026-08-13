@@ -1,4 +1,4 @@
-import { testChatEventSearchProjectionContract } from "@vm0/api-contracts/contracts/test-chat-event-search-projection";
+import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";

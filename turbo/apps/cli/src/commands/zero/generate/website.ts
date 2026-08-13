@@ -7,7 +7,7 @@ import {
   findTemplate,
   listDesignSystems,
   listTemplates,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import {
   canonicalizeRegistryId,
   formatRegistryListing,

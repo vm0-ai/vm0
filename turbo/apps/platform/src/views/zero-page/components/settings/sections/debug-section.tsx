@@ -2,7 +2,7 @@ import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Bug } from "lucide-react";
-import { Switch } from "@vm0/ui/components/ui/switch";
+import { Switch } from "@okouai/ui/components/ui/switch";
 
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";

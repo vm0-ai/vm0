@@ -33,6 +33,7 @@ const EVENT_DELIVERY_LARGE_EVENT_BYTES: usize = 2 * 1024 * 1024;
 const SECONDARY_THREAD_ID: &str = "00000000-0000-4000-8000-000000000def";
 const SECONDARY_ITEM_STARTED_AT_MS: u64 = 1_700_000_000_000;
 const SHELL_PROMPT_PREFIX: &str = "@shell@\n";
+const SHELL_PROMPT_END_SEPARATOR: &str = "\n@end-shell@";
 const CHECKPOINTED_SHELL_PROMPT_PREFIX: &str = "@shell-checkpoint@\n";
 const CHECKPOINTED_SHELL_SEPARATOR: &str = "\n@continue@\n";
 
@@ -661,7 +662,13 @@ fn mock_turn_output<'a>(inputs: impl IntoIterator<Item = &'a str>) -> io::Result
             continuation_script: continuation_script.to_string(),
         });
     }
-    if let Some(script) = prompt.strip_prefix(SHELL_PROMPT_PREFIX) {
+    if let Some(script_with_suffix) = prompt.strip_prefix(SHELL_PROMPT_PREFIX) {
+        let Some((script, _)) = script_with_suffix.split_once(SHELL_PROMPT_END_SEPARATOR) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "shell prompt is missing @end-shell@ separator",
+            ));
+        };
         return shell_response_text(script).map(MockTurnOutput::Complete);
     }
     Ok(MockTurnOutput::Complete(format!(

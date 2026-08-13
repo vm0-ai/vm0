@@ -1,7 +1,7 @@
 import { computed } from "ccstate";
 
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 
 import type { ReadonlyDb } from "../external/db";
 import {

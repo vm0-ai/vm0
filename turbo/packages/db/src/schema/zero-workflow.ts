@@ -14,8 +14,8 @@ import {
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
-import type { ZeroAutomationEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
-export type { ZeroAutomationEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
+import type { ZeroAutomationEventConfig } from "@okouai/db/jsonb-contracts/zero-workflow";
+export type { ZeroAutomationEventConfig } from "@okouai/db/jsonb-contracts/zero-workflow";
 
 /**
  * Zero workflow visibility.

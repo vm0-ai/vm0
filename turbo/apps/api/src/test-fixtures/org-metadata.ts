@@ -14,9 +14,9 @@
  * reading existing rows. This module is the narrow test-boundary exception
  * for those persisted states.
  */
-import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgTierSchema } from "@okouai/api-contracts/contracts/orgs";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 

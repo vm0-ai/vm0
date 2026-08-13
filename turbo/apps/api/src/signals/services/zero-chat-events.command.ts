@@ -1,7 +1,7 @@
 /** Canonical ChatEvent write commands. */
 import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
-import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
   resolveChatEventRecommendedFollowups,
@@ -9,18 +9,18 @@ import {
   type CodexServiceTier,
   type GenerationTemplateRequest,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { agentRuns } from "@vm0/db/schema/agent-run";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { computerUseHosts } from "@okouai/db/schema/computer-use-host";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -120,8 +120,8 @@ import {
   type WebChatSessionPromptContext,
 } from "./zero-web-chat-session-prompt.service";
 import { bestEffort } from "../utils";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 

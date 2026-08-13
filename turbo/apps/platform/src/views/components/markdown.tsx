@@ -1,5 +1,5 @@
 import "@uiw/react-markdown-preview/markdown.css";
-import { CopyButton, cn } from "@vm0/ui";
+import { CopyButton, cn } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";

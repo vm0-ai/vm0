@@ -2,12 +2,12 @@ import {
   zeroBillingStatusContract,
   zeroBillingUsagePackCreditsContract,
   type UsagePackCreditsResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   zeroUsageRecordContract,
   type UsageRecordRow,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-usage-record";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";

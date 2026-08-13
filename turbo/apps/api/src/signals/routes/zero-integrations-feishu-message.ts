@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { integrationsFeishuMessageContract } from "@vm0/api-contracts/contracts/integrations";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+import { integrationsFeishuMessageContract } from "@okouai/api-contracts/contracts/integrations";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

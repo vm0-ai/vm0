@@ -8,8 +8,8 @@ import {
   initClient,
   type ServerInferRequest,
   type ServerInferResponseBody,
-} from "@vm0/api-contracts/contracts/trpc-contract";
-import { zeroPresentationTemplatesContract } from "@vm0/api-contracts/contracts/zero-presentation-templates";
+} from "@okouai/api-contracts/contracts/trpc-contract";
+import { zeroPresentationTemplatesContract } from "@okouai/api-contracts/contracts/zero-presentation-templates";
 
 import {
   ApiRequestError,

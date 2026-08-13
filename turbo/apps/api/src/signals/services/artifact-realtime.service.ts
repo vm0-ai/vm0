@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";

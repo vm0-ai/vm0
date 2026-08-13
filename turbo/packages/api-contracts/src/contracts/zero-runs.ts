@@ -4,7 +4,7 @@ import { apiErrorSchema } from "./errors";
 import {
   executionFirewallBuiltinEntrySchema,
   networkPoliciesSchema,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import {
   getRunResponseSchema,
   cancelRunResponseSchema,

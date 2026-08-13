@@ -1,5 +1,5 @@
 {
-  "extends": "@vm0/typescript-config/base.json",
+  "extends": "@okouai/typescript-config/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "declaration": false,
