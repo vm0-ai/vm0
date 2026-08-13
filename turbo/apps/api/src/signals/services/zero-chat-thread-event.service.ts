@@ -142,6 +142,12 @@ export async function getChatThreadSnapshot(
           serviceTier: thread.serviceTier ?? null,
           computerUseHostId: thread.computerUseHostId ?? null,
           cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
+          // Rollout fallback: snapshot rows compacted before this migration
+          // carry no selectedVideoModel key. Bounded by the compaction
+          // staleness cutoff (CHAT_THREAD_SNAPSHOT_STALE_MS, 24h) plus batch
+          // drain, not by a deploy window. Remove once every snapshot row has
+          // been recompacted. Follow-up:
+          // https://github.com/vm0-ai/vm0/issues/26765
           selectedVideoModel: thread.selectedVideoModel ?? null,
         };
       }) ?? [],
