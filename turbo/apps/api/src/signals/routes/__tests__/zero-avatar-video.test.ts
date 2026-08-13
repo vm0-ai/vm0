@@ -22,7 +22,7 @@ import {
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
-import { zeroArtifactCatalogRoutes } from "../zero-artifact-catalog";
+import { artifactCatalogRoutes } from "../artifact-catalog";
 import { zeroAvatarVideoRoutes } from "../zero-avatar-video";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
@@ -68,7 +68,7 @@ function createAvatarVideoTestApp(
     signal: context.signal,
     routes: [
       ...zeroAvatarVideoRoutes,
-      ...zeroArtifactCatalogRoutes,
+      ...artifactCatalogRoutes,
       ...zeroBuiltInGenerationRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,

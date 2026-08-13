@@ -59,7 +59,7 @@ import { webhooksStripeAutomationEventsRoutes } from "./routes/webhooks-stripe-a
 import { agentDraftRoutes } from "./routes/agent-draft";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
-import { zeroArtifactCatalogRoutes } from "./routes/zero-artifact-catalog";
+import { artifactCatalogRoutes } from "./routes/artifact-catalog";
 import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
@@ -98,7 +98,7 @@ import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { imageShareXRoutes } from "./routes/image-share-x";
-import { zeroLogsRoutes } from "./routes/zero-logs";
+import { logsRoutes } from "./routes/logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
 import { mapsRoutes } from "./routes/maps";
 import { zeroMcpConnectorsRoutes } from "./routes/zero-mcp-connectors";
@@ -250,7 +250,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
-  ...zeroArtifactCatalogRoutes,
+  ...artifactCatalogRoutes,
   ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,
@@ -291,7 +291,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...imageShareXRoutes,
   ...zeroAvatarVideoRoutes,
   ...zeroVideoIoGenerateRoutes,
-  ...zeroLogsRoutes,
+  ...logsRoutes,
   ...zeroMailRoutes,
   ...mapsRoutes,
   ...zeroMcpConnectorsRoutes,

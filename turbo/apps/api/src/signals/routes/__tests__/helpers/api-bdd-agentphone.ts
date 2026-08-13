@@ -29,7 +29,7 @@ import { createZeroRouteMocks } from "./zero-route-test";
 import { zeroIntegrationsPhoneUploadCompleteRoutes } from "../../zero-integrations-phone-upload-complete";
 import { zeroIntegrationsPhoneUploadInitRoutes } from "../../zero-integrations-phone-upload-init";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
-import { zeroLogsRoutes } from "../../zero-logs";
+import { logsRoutes } from "../../logs";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 
@@ -37,7 +37,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneUploadCompleteRoutes,
   ...zeroIntegrationsPhoneUploadInitRoutes,
-  ...zeroLogsRoutes,
+  ...logsRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
 ]);
@@ -333,11 +333,11 @@ export function createAgentPhoneBddApi(context: TestContext) {
 
     /**
      * Read a run's agent session id through the public activity-detail API
-     * (GET /api/zero/logs/:id) — the only session projection visible without
+     * (GET /api/okou/logs/:id) — the only session projection visible without
      * checkpoints.
      */
     async readRunSessionId(actor: ApiTestUser, runId: string): Promise<string> {
-      const client = setupApp({ context, routes: zeroLogsRoutes })(
+      const client = setupApp({ context, routes: logsRoutes })(
         logsByIdContract,
       );
       const response = await accept(

@@ -134,7 +134,7 @@ interface LogsListData {
   filters: LogsFilters;
 }
 
-export function zeroLogsList(
+export function logsList(
   params: LogsListParams,
 ): Computed<Promise<LogsListData>> {
   return computed(async (get): Promise<LogsListData> => {
@@ -363,7 +363,7 @@ function extractArtifact(runResult: RunResult | null): {
   return { name, version };
 }
 
-export function zeroLogDetail(
+export function logDetail(
   params: LogDetailParams,
 ): Computed<Promise<LogDetail | null>> {
   return computed(async (get): Promise<LogDetail | null> => {

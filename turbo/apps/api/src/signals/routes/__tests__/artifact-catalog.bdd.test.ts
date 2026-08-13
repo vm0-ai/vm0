@@ -9,7 +9,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { RouteEntry } from "../../route-entry";
-import { zeroArtifactCatalogRoutes } from "../zero-artifact-catalog";
+import { artifactCatalogRoutes } from "../artifact-catalog";
 import { zeroSharedThreadRoutes } from "../zero-shared-threads";
 import {
   createBddApi,
@@ -38,7 +38,7 @@ const host = createHostMapsBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const sharedThreadTestRoutes: readonly RouteEntry[] = [
-  ...zeroArtifactCatalogRoutes,
+  ...artifactCatalogRoutes,
   ...zeroSharedThreadRoutes,
 ];
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
