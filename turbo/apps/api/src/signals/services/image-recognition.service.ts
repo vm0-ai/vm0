@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  ZERO_RECOGNITION_MAX_TEXT_CHARS,
-  zeroRecognitionImageMimeTypeSchema,
-  type ZeroRecognitionRequest,
-  type ZeroRecognitionResponse,
-} from "@okouai/api-contracts/contracts/zero-recognition";
+  IMAGE_RECOGNITION_MAX_FILE_BYTES,
+  IMAGE_RECOGNITION_MAX_TEXT_CHARS,
+  imageRecognitionMimeTypeSchema,
+  type ImageRecognitionRequest,
+  type ImageRecognitionResponse,
+} from "@okouai/api-contracts/contracts/image-recognition";
 import { command } from "ccstate";
 
 import { insufficientCredits, notConfigured, notFound } from "../../lib/error";
@@ -30,15 +30,15 @@ import {
   recordOpenRouterUsage$,
 } from "./openrouter-usage.service";
 
-const ZERO_RECOGNITION_MODEL = "xiaomi/mimo-v2.5";
-const ZERO_RECOGNITION_OPERATION = "image-recognition";
-const ZERO_RECOGNITION_MAX_TOKENS = 8192;
+const IMAGE_RECOGNITION_MODEL = "xiaomi/mimo-v2.5";
+const IMAGE_RECOGNITION_OPERATION = "image-recognition";
+const IMAGE_RECOGNITION_MAX_TOKENS = 8192;
 
 type RecognitionAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
 
 interface RecognitionArgs {
   readonly auth: RecognitionAuth;
-  readonly body: ZeroRecognitionRequest;
+  readonly body: ImageRecognitionRequest;
 }
 
 function recognitionError<Status extends number>(
@@ -134,9 +134,7 @@ function validateArtifact(artifact: ResolvedArtifactObject | null) {
   if (artifact === null) {
     return notFound("Uploaded image not found");
   }
-  if (
-    !zeroRecognitionImageMimeTypeSchema.safeParse(artifact.contentType).success
-  ) {
+  if (!imageRecognitionMimeTypeSchema.safeParse(artifact.contentType).success) {
     return recognitionError(
       400,
       "UNSUPPORTED_IMAGE_TYPE",
@@ -146,7 +144,7 @@ function validateArtifact(artifact: ResolvedArtifactObject | null) {
   if (artifact.size <= 0) {
     return recognitionError(400, "EMPTY_IMAGE", "Image file must not be empty");
   }
-  if (artifact.size > ZERO_RECOGNITION_MAX_FILE_BYTES) {
+  if (artifact.size > IMAGE_RECOGNITION_MAX_FILE_BYTES) {
     return recognitionError(
       413,
       "IMAGE_TOO_LARGE",
@@ -156,7 +154,7 @@ function validateArtifact(artifact: ResolvedArtifactObject | null) {
   return artifact;
 }
 
-export const zeroRecognition$ = command(
+export const imageRecognition$ = command(
   async ({ get, set }, args: RecognitionArgs, signal: AbortSignal) => {
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
@@ -189,8 +187,8 @@ export const zeroRecognition$ = command(
     const missingPricing = await set(
       checkOpenRouterUsagePricing$,
       {
-        provider: ZERO_RECOGNITION_MODEL,
-        operation: ZERO_RECOGNITION_OPERATION,
+        provider: IMAGE_RECOGNITION_MODEL,
+        operation: IMAGE_RECOGNITION_OPERATION,
       },
       requestSignal,
     );
@@ -207,9 +205,9 @@ export const zeroRecognition$ = command(
     const operationId = randomUUID();
     const generated = await settle(
       generateTextWithUsage(
-        ZERO_RECOGNITION_MODEL,
+        IMAGE_RECOGNITION_MODEL,
         [{ role: "user", content }],
-        ZERO_RECOGNITION_MAX_TOKENS,
+        IMAGE_RECOGNITION_MAX_TOKENS,
         {},
         requestSignal,
       ),
@@ -221,7 +219,7 @@ export const zeroRecognition$ = command(
     if (generated.value === null) {
       return notConfigured("Image recognition is not configured");
     }
-    if (generated.value.text.length > ZERO_RECOGNITION_MAX_TEXT_CHARS) {
+    if (generated.value.text.length > IMAGE_RECOGNITION_MAX_TEXT_CHARS) {
       return recognitionError(
         502,
         "IMAGE_RECOGNITION_FAILED",
@@ -243,8 +241,8 @@ export const zeroRecognition$ = command(
         orgId: args.auth.orgId,
         userId: args.auth.userId,
         runId: args.auth.runId,
-        provider: ZERO_RECOGNITION_MODEL,
-        operation: ZERO_RECOGNITION_OPERATION,
+        provider: IMAGE_RECOGNITION_MODEL,
+        operation: IMAGE_RECOGNITION_OPERATION,
         operationId,
         usage: generated.value.usage,
       },
@@ -262,7 +260,7 @@ export const zeroRecognition$ = command(
       throw new Error("Failed to settle image recognition usage");
     }
 
-    const body: ZeroRecognitionResponse = {
+    const body: ImageRecognitionResponse = {
       text: generated.value.text,
       metadata: { creditsCharged: settlement.creditsCharged },
     };

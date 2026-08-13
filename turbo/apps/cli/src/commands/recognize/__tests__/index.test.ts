@@ -4,14 +4,14 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  ZERO_RECOGNITION_MAX_PROMPT_CHARS,
-} from "@okouai/api-contracts/contracts/zero-recognition";
+  IMAGE_RECOGNITION_MAX_FILE_BYTES,
+  IMAGE_RECOGNITION_MAX_PROMPT_CHARS,
+} from "@okouai/api-contracts/contracts/image-recognition";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroRecognizeCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { recognizeCommand } from "../index";
 
 const PREPARE_URL = "http://localhost:3000/api/okou/uploads/prepare";
 const COMPLETE_URL = "http://localhost:3000/api/okou/uploads/complete";
@@ -71,7 +71,7 @@ describe("okou recognize command", () => {
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
-    tempDir = join(tmpdir(), `zero-recognize-${randomUUID()}`);
+    tempDir = join(tmpdir(), `image-recognition-${randomUUID()}`);
     mkdirSync(tempDir, { recursive: true });
   });
 
@@ -104,7 +104,7 @@ describe("okou recognize command", () => {
       }),
     );
 
-    await zeroRecognizeCommand.parseAsync([
+    await recognizeCommand.parseAsync([
       "node",
       "okou",
       "--file",
@@ -129,7 +129,7 @@ describe("okou recognize command", () => {
     writeFileSync(empty, Buffer.alloc(0));
     writeFileSync(unsupported, "gif");
     writeFileSync(oversized, "x");
-    truncateSync(oversized, ZERO_RECOGNITION_MAX_FILE_BYTES + 1);
+    truncateSync(oversized, IMAGE_RECOGNITION_MAX_FILE_BYTES + 1);
     let networkCalled = false;
     server.use(
       http.post(PREPARE_URL, () => {
@@ -159,14 +159,14 @@ describe("okou recognize command", () => {
       },
       {
         file: unsupported,
-        prompt: "x".repeat(ZERO_RECOGNITION_MAX_PROMPT_CHARS + 1),
+        prompt: "x".repeat(IMAGE_RECOGNITION_MAX_PROMPT_CHARS + 1),
         message: "characters or fewer",
       },
     ] as const;
 
     for (const input of invalidInputs) {
       mockConsoleError.mockClear();
-      await zeroRecognizeCommand.parseAsync([
+      await recognizeCommand.parseAsync([
         "node",
         "okou",
         "--file",
@@ -201,7 +201,7 @@ describe("okou recognize command", () => {
       }),
     );
 
-    await zeroRecognizeCommand.parseAsync([
+    await recognizeCommand.parseAsync([
       "node",
       "okou",
       "--file",
@@ -221,7 +221,7 @@ describe("okou recognize command", () => {
   });
 
   it("exposes no model, retry, JSON, or billing options", () => {
-    const optionNames = zeroRecognizeCommand.options.map((option) => {
+    const optionNames = recognizeCommand.options.map((option) => {
       return option.attributeName();
     });
     expect(optionNames).toStrictEqual(["file", "prompt"]);
@@ -229,13 +229,13 @@ describe("okou recognize command", () => {
 
   it("uses Okou branding in recognition help", () => {
     let helpOutput = "";
-    zeroRecognizeCommand.configureOutput({
+    recognizeCommand.configureOutput({
       writeOut: (text: string) => {
         helpOutput += text;
       },
     });
 
-    zeroRecognizeCommand.outputHelp();
+    recognizeCommand.outputHelp();
 
     expect(helpOutput).toContain("Uses a fixed Okou-managed recognition model");
   });

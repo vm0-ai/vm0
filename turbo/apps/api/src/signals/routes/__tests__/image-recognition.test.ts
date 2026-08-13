@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  zeroRecognitionContract,
-} from "@okouai/api-contracts/contracts/zero-recognition";
+  IMAGE_RECOGNITION_MAX_FILE_BYTES,
+  imageRecognitionContract,
+} from "@okouai/api-contracts/contracts/image-recognition";
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
@@ -25,7 +25,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { readUsageStorageCounts$ } from "./helpers/usage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroRecognitionRoutes } from "../zero-recognition";
+import { imageRecognitionRoutes } from "../image-recognition";
 import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
@@ -145,9 +145,9 @@ function requestRecognition(args: {
   };
   return setupApp({
     context,
-    routes: zeroRecognitionRoutes,
+    routes: imageRecognitionRoutes,
     usagePricingResolution: args.usagePricingResolution,
-  })(zeroRecognitionContract).recognize({
+  })(imageRecognitionContract).recognize({
     headers,
     body: {
       fileId: args.fileId,
@@ -343,7 +343,7 @@ describe("POST /api/zero/recognize", () => {
         userId: actor.userId,
         id: oversizedId,
         filename: "large.webp",
-        size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+        size: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
       },
     ]);
     const token = zeroToken(actor);
