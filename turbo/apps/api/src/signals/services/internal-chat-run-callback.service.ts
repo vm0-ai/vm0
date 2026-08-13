@@ -4862,9 +4862,9 @@ async function handleChatInternalCallback(
     return { success: true };
   }
 
-  // Goal continuation runs after this callback is acknowledged and may pause a
-  // failed goal before the background notification step starts. Snapshot the
-  // goal state here so the Push decision reflects the moment the run ended.
+  // Terminal goal handling below may pause a failed goal before background
+  // notifications start. Snapshot first so the Push decision reflects the
+  // moment the run ended.
   const suppressWebPushForActiveGoal = await runHasActiveGoal(
     args.db,
     args.callback.runId,
@@ -4876,11 +4876,11 @@ async function handleChatInternalCallback(
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
-  // this HTTP response. So acknowledge immediately and run the heavy terminal
-  // processing (message persistence, LLM generation, and push delivery) in the
-  // background, mirroring webhooks-agent-complete. Use a
-  // detached signal so request cancellation cannot interrupt the idempotency
-  // marker -> queued auto-send sequence after the callback is acknowledged.
+  // this HTTP response. After the durable goal action above, acknowledge before
+  // running heavy terminal processing (message persistence, LLM generation,
+  // and push delivery) in the background, mirroring webhooks-agent-complete.
+  // Use a detached signal so request cancellation cannot interrupt the
+  // idempotency marker -> queued auto-send sequence after acknowledgement.
   const backgroundSignal = new AbortController().signal;
   waitUntil(
     tapError(

@@ -132,7 +132,8 @@ const dispatchInternalCallback$ = command(
         };
       }
       case "chat": {
-        const result = await set(
+        const db = set(writeDb$);
+        return await set(
           handleChatInternalCallback$,
           {
             callback: input.envelope,
@@ -153,7 +154,7 @@ const dispatchInternalCallback$ = command(
                     set(
                       handleTerminalGoalContinuation$,
                       {
-                        db: set(writeDb$),
+                        db,
                         runId,
                       },
                       inputSignal,
@@ -170,7 +171,6 @@ const dispatchInternalCallback$ = command(
           },
           signal,
         );
-        return result;
       }
       case "github:chat": {
         return {
@@ -449,13 +449,13 @@ export const dispatchRunCallbacks$ = command(
     signal.throwIfAborted();
 
     const results: DispatchResult[] = [];
-    let terminalGoalHandledByChatCallback = false;
+    let terminalGoalOwnedByChatCallback = false;
     for (const callback of callbacks) {
       const internalKind = internalRunCallbackKindForRecord(callback);
       const handleTerminalGoal: boolean =
         redriveChatCallbackId === undefined &&
         internalKind === "chat" &&
-        !terminalGoalHandledByChatCallback;
+        !terminalGoalOwnedByChatCallback;
       const dispatchResult: DispatchResult = internalKind
         ? await set(
             dispatchSingleInternalCallback$,
@@ -482,12 +482,12 @@ export const dispatchRunCallbacks$ = command(
           });
       signal.throwIfAborted();
       results.push(dispatchResult);
-      terminalGoalHandledByChatCallback ||=
+      terminalGoalOwnedByChatCallback ||=
         handleTerminalGoal && dispatchResult.success;
     }
     if (
       redriveChatCallbackId === undefined &&
-      !terminalGoalHandledByChatCallback
+      !terminalGoalOwnedByChatCallback
     ) {
       await tapError(
         set(
