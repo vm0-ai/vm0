@@ -5,7 +5,7 @@ import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cr
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
 import { runnersBuiltinFirewallsResolveContract } from "@okouai/api-contracts/contracts/runners";
-import { zeroSteamPlayerContract } from "@okouai/api-contracts/contracts/zero-steam-player";
+import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
@@ -96,7 +96,7 @@ import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
 import { zeroConnectorCheckRoutes } from "../zero-connector-check";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
-import { zeroSteamPlayerRoutes } from "../zero-steam-player";
+import { steamPlayerRoutes } from "../steam-player";
 import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { zeroWorkflowsRoutes } from "../zero-workflows";
@@ -110,7 +110,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroConnectorCheckRoutes,
   ...zeroConnectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
-  ...zeroSteamPlayerRoutes,
+  ...steamPlayerRoutes,
   ...zeroUserPermissionGrantsRoutes,
   ...zeroWorkflowAutomationsRoutes,
   ...zeroWorkflowsRoutes,
@@ -3625,8 +3625,8 @@ describe("connector catalog valid lifecycle", () => {
     );
     mockSteamPlayerApisForCatalog();
     const player = await accept(
-      setupApp({ context, routes: zeroSteamPlayerRoutes })(
-        zeroSteamPlayerContract,
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
       ).getPlayer({ headers }),
       [200],
     );

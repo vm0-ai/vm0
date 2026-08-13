@@ -1,4 +1,4 @@
-import { zeroSteamPlayerContract } from "@okouai/api-contracts/contracts/zero-steam-player";
+import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import { createErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import { command } from "ccstate";
 
@@ -49,9 +49,9 @@ const getSteamPlayerInner$ = command(
   },
 );
 
-export const zeroSteamPlayerRoutes: readonly RouteEntry[] = [
+export const steamPlayerRoutes: readonly RouteEntry[] = [
   {
-    route: zeroSteamPlayerContract.getPlayer,
+    route: steamPlayerContract.getPlayer,
     handler: authRoute(connectorReadAuth, getSteamPlayerInner$),
   },
 ];
