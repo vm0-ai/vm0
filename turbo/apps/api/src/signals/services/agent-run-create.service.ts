@@ -269,6 +269,7 @@ import {
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
+import { resolveVideoModelForRun } from "./zero-video-model.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -5704,6 +5705,7 @@ interface LaunchRunRowsArgs {
   readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly zeroRunModelPin: ZeroRunModelPin | undefined;
+  readonly selectedVideoModel: string;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly chatThreadId: string | undefined;
   readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -5769,6 +5771,7 @@ function launchZeroRunValues(
     ...(metadata.codexServiceTier === undefined
       ? {}
       : { codexServiceTier: metadata.codexServiceTier }),
+    selectedVideoModel: args.selectedVideoModel,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   };
@@ -6566,6 +6569,7 @@ function preparedLaunchRowsArgs(args: {
     sessionStorageMounts: args.commit.launch.sessionStorageMounts,
     modelProvider: args.commit.context.modelProvider,
     zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
+    selectedVideoModel: args.commit.context.selectedVideoModel,
     callbackRows: args.commit.callbackRows,
     chatThreadId: args.commit.createArgs.chatThreadId,
     zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
@@ -7015,6 +7019,7 @@ async function commitFailedLaunch(args: {
         sessionStorageMounts: undefined,
         modelProvider: args.context.modelProvider,
         zeroRunModelPin: args.createArgs.zeroRunModelPin,
+        selectedVideoModel: args.context.selectedVideoModel,
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
@@ -7569,6 +7574,8 @@ interface PreparedRunContext {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly imageRecognitionAvailable: boolean;
+  /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
+  readonly selectedVideoModel: string;
 }
 
 function isPiSandboxEnabledForRun(
@@ -8565,6 +8572,14 @@ function prepareRunContext(
       const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
+      const selectedVideoModel = await resolveVideoModelForRun({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        chatThreadId: args.chatThreadId,
+      });
+      signal.throwIfAborted();
+
       const outputMetadata = await timing.measure(
         "api_dispatch_prepare_context_prepare_output_metadata",
         "nested",
@@ -8601,6 +8616,7 @@ function prepareRunContext(
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
+        selectedVideoModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({
           includeZeroTokenSecret: args.includeZeroTokenSecret,
           selectedModel:

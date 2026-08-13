@@ -12,6 +12,7 @@ import {
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import {
   chatEventsContract,
   chatThreadsContract,
@@ -51,6 +52,11 @@ import { server } from "../../../mocks/server";
 import { backdateRunStartedAtFixture } from "../../../test-fixtures/agent-runs";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
+import {
+  readRunVideoModelFixture,
+  setOrgMemberVideoModelFixture,
+} from "../../../test-fixtures/run-video-model";
 import {
   createBddApi,
   expectApiError,
@@ -10283,5 +10289,134 @@ describe("CHAT-02: shared user message queue", () => {
     const followUp = await api.readRun(actor, fired.runId);
     expect(followUp.prompt).toContain("queue-first fires after cancel");
     await cancelChatRun(actor, fired.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: run video model snapshot", () => {
+  it("resolves the thread pin, then the member default, then the catalog default", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an entitled chat actor to own an org");
+    }
+
+    const unpinned = await sendChatRun(actor, {
+      agentId,
+      prompt: "video model falls back to the catalog default",
+    });
+    await expect(readRunVideoModelFixture(unpinned.runId)).resolves.toBe(
+      DEFAULT_VIDEO_MODEL,
+    );
+    await cancelChatRun(actor, unpinned.runId);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    const memberDefault = await sendChatRun(actor, {
+      agentId,
+      threadId: unpinned.threadId,
+      prompt: "video model comes from the member default",
+    });
+    await expect(readRunVideoModelFixture(memberDefault.runId)).resolves.toBe(
+      "MiniMax-H3",
+    );
+    await cancelChatRun(actor, memberDefault.runId);
+
+    await setChatThreadVideoModelFixture(
+      unpinned.threadId,
+      "fal-ai/veo3.1/fast",
+    );
+    const threadPinned = await sendChatRun(actor, {
+      agentId,
+      threadId: unpinned.threadId,
+      prompt: "video model comes from the thread pin",
+    });
+    await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
+      "fal-ai/veo3.1/fast",
+    );
+    await cancelChatRun(actor, threadPinned.runId);
+  }, 90_000);
+
+  it("keeps falling back past video models the catalog no longer lists", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an entitled chat actor to own an org");
+    }
+    // Persisted pins are projected out of jsonb without being re-validated, so
+    // a run can start against an id that has since left the catalog.
+    const retiredVideoModel = "dreamina-seedance-1-0-retired";
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor run that creates the thread",
+    });
+    await cancelChatRun(actor, anchor.runId);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "seedance-1-5-pro-251215",
+    });
+    await setChatThreadVideoModelFixture(anchor.threadId, retiredVideoModel);
+    const retiredThreadPin = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "retired thread pin falls through to the member default",
+    });
+    await expect(
+      readRunVideoModelFixture(retiredThreadPin.runId),
+    ).resolves.toBe("seedance-1-5-pro-251215");
+    await cancelChatRun(actor, retiredThreadPin.runId);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: retiredVideoModel,
+    });
+    const retiredEverywhere = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "two retired pins fall through to the catalog default",
+    });
+    await expect(
+      readRunVideoModelFixture(retiredEverywhere.runId),
+    ).resolves.toBe(DEFAULT_VIDEO_MODEL);
+    await cancelChatRun(actor, retiredEverywhere.runId);
+  }, 90_000);
+
+  it("snapshots a video model onto runs that own no chat thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an entitled chat actor to own an org");
+    }
+
+    // Non-chat triggers such as telegram leave chat_thread_id null. Those runs
+    // have no thread layer to read and must still resolve rather than fail.
+    const withoutPreference = await api.createRun(actor, {
+      agentId,
+      prompt: "threadless run without any video model preference",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(
+      readRunVideoModelFixture(withoutPreference.runId),
+    ).resolves.toBe(DEFAULT_VIDEO_MODEL);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    const withMemberDefault = await api.createRun(actor, {
+      agentId,
+      prompt: "threadless run picks up the member default",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(
+      readRunVideoModelFixture(withMemberDefault.runId),
+    ).resolves.toBe("MiniMax-H3");
   }, 90_000);
 });
