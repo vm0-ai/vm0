@@ -2,14 +2,14 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
-import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
+import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import type { RouteEntry } from "../../../route-entry";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
-import { zeroMapsRoutes } from "../../zero-maps";
+import { mapsRoutes } from "../../maps";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -50,7 +50,7 @@ interface OsmRenderBody extends OsmAreaBody {
 
 const mapsBillingRoutes: readonly RouteEntry[] = [
   ...zeroBillingStatusRoutes,
-  ...zeroMapsRoutes,
+  ...mapsRoutes,
 ];
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -99,7 +99,7 @@ export function createMapsBillingApi(context: TestContext) {
       body: { readonly address: string; readonly region?: string },
       statuses: readonly MapsStatus[],
     ) {
-      const client = mapsBillingApp(context)(zeroMapsContract);
+      const client = mapsBillingApp(context)(mapsContract);
       return await accept(
         client.geocode({ headers: authenticate(context, actor), body }),
         statuses,
@@ -111,7 +111,7 @@ export function createMapsBillingApi(context: TestContext) {
       body: { readonly lat: number; readonly lng: number },
       statuses: readonly MapsStatus[],
     ) {
-      const client = mapsBillingApp(context)(zeroMapsContract);
+      const client = mapsBillingApp(context)(mapsContract);
       return await accept(
         client.reverseGeocode({ headers: authenticate(context, actor), body }),
         statuses,
@@ -128,7 +128,7 @@ export function createMapsBillingApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = mapsBillingApp(context)(zeroMapsContract);
+      const client = mapsBillingApp(context)(mapsContract);
       return await accept(
         client.directions({ headers: authenticate(context, actor), body }),
         statuses,
@@ -147,7 +147,7 @@ export function createMapsBillingApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = mapsBillingApp(context)(zeroMapsContract);
+      const client = mapsBillingApp(context)(mapsContract);
       return await accept(
         client.placesSearch({ headers: authenticate(context, actor), body }),
         statuses,
@@ -162,7 +162,7 @@ export function createMapsBillingApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = mapsBillingApp(context)(zeroMapsContract);
+      const client = mapsBillingApp(context)(mapsContract);
       return await accept(
         client.placesDetails({ headers: authenticate(context, actor), body }),
         statuses,
@@ -174,7 +174,7 @@ export function createMapsBillingApi(context: TestContext) {
       body: OsmAreaBody,
       statuses: readonly MapsStatus[],
     ) {
-      const client = mapsBillingApp(context)(zeroMapsContract);
+      const client = mapsBillingApp(context)(mapsContract);
       return await accept(
         client.osmDownload({ headers: authenticate(context, actor), body }),
         statuses,
@@ -186,7 +186,7 @@ export function createMapsBillingApi(context: TestContext) {
       body: OsmRenderBody,
       statuses: readonly MapsStatus[],
     ) {
-      const client = mapsBillingApp(context)(zeroMapsContract);
+      const client = mapsBillingApp(context)(mapsContract);
       return await accept(
         client.osmRender({ headers: authenticate(context, actor), body }),
         statuses,

@@ -1,4 +1,4 @@
-import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
+import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -6,24 +6,21 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
-  zeroMapsDirections$,
-  zeroMapsGeocode$,
-  zeroMapsPlacesDetails$,
-  zeroMapsPlacesSearch$,
-  zeroMapsReverseGeocode$,
-} from "../services/zero-maps.service";
-import {
-  zeroMapsOsmDownload$,
-  zeroMapsOsmRender$,
-} from "../services/zero-maps-osm.service";
+  mapsDirections$,
+  mapsGeocode$,
+  mapsPlacesDetails$,
+  mapsPlacesSearch$,
+  mapsReverseGeocode$,
+} from "../services/maps.service";
+import { mapsOsmDownload$, mapsOsmRender$ } from "../services/maps-osm.service";
 
-const geocodeBody$ = bodyResultOf(zeroMapsContract.geocode);
-const reverseGeocodeBody$ = bodyResultOf(zeroMapsContract.reverseGeocode);
-const directionsBody$ = bodyResultOf(zeroMapsContract.directions);
-const placesSearchBody$ = bodyResultOf(zeroMapsContract.placesSearch);
-const placesDetailsBody$ = bodyResultOf(zeroMapsContract.placesDetails);
-const osmDownloadBody$ = bodyResultOf(zeroMapsContract.osmDownload);
-const osmRenderBody$ = bodyResultOf(zeroMapsContract.osmRender);
+const geocodeBody$ = bodyResultOf(mapsContract.geocode);
+const reverseGeocodeBody$ = bodyResultOf(mapsContract.reverseGeocode);
+const directionsBody$ = bodyResultOf(mapsContract.directions);
+const placesSearchBody$ = bodyResultOf(mapsContract.placesSearch);
+const placesDetailsBody$ = bodyResultOf(mapsContract.placesDetails);
+const osmDownloadBody$ = bodyResultOf(mapsContract.osmDownload);
+const osmRenderBody$ = bodyResultOf(mapsContract.osmRender);
 
 const geocodeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -32,7 +29,7 @@ const geocodeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  return await set(zeroMapsGeocode$, { auth, body: bodyResult.data }, signal);
+  return await set(mapsGeocode$, { auth, body: bodyResult.data }, signal);
 });
 
 const reverseGeocodeInner$ = command(
@@ -44,7 +41,7 @@ const reverseGeocodeInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroMapsReverseGeocode$,
+      mapsReverseGeocode$,
       { auth, body: bodyResult.data },
       signal,
     );
@@ -58,11 +55,7 @@ const directionsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  return await set(
-    zeroMapsDirections$,
-    { auth, body: bodyResult.data },
-    signal,
-  );
+  return await set(mapsDirections$, { auth, body: bodyResult.data }, signal);
 });
 
 const placesSearchInner$ = command(
@@ -74,7 +67,7 @@ const placesSearchInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroMapsPlacesSearch$,
+      mapsPlacesSearch$,
       { auth, body: bodyResult.data },
       signal,
     );
@@ -90,7 +83,7 @@ const placesDetailsInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroMapsPlacesDetails$,
+      mapsPlacesDetails$,
       { auth, body: bodyResult.data },
       signal,
     );
@@ -104,11 +97,7 @@ const osmDownloadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  return await set(
-    zeroMapsOsmDownload$,
-    { auth, body: bodyResult.data },
-    signal,
-  );
+  return await set(mapsOsmDownload$, { auth, body: bodyResult.data }, signal);
 });
 
 const osmRenderInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -118,7 +107,7 @@ const osmRenderInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  return await set(zeroMapsOsmRender$, { auth, body: bodyResult.data }, signal);
+  return await set(mapsOsmRender$, { auth, body: bodyResult.data }, signal);
 });
 
 const mapsAuth = {
@@ -127,33 +116,33 @@ const mapsAuth = {
   requiredCapability: "maps:read",
 } as const;
 
-export const zeroMapsRoutes: readonly RouteEntry[] = [
+export const mapsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroMapsContract.geocode,
+    route: mapsContract.geocode,
     handler: authRoute(mapsAuth, geocodeInner$),
   },
   {
-    route: zeroMapsContract.reverseGeocode,
+    route: mapsContract.reverseGeocode,
     handler: authRoute(mapsAuth, reverseGeocodeInner$),
   },
   {
-    route: zeroMapsContract.directions,
+    route: mapsContract.directions,
     handler: authRoute(mapsAuth, directionsInner$),
   },
   {
-    route: zeroMapsContract.placesSearch,
+    route: mapsContract.placesSearch,
     handler: authRoute(mapsAuth, placesSearchInner$),
   },
   {
-    route: zeroMapsContract.placesDetails,
+    route: mapsContract.placesDetails,
     handler: authRoute(mapsAuth, placesDetailsInner$),
   },
   {
-    route: zeroMapsContract.osmDownload,
+    route: mapsContract.osmDownload,
     handler: authRoute(mapsAuth, osmDownloadInner$),
   },
   {
-    route: zeroMapsContract.osmRender,
+    route: mapsContract.osmRender,
     handler: authRoute(mapsAuth, osmRenderInner$),
   },
 ];

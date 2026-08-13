@@ -5,10 +5,10 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
-import { zeroMapsCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { mapsCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-maps-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "maps-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -61,7 +61,7 @@ describe("okou maps command", () => {
       ),
     );
 
-    await zeroMapsCommand.parseAsync([
+    await mapsCommand.parseAsync([
       "node",
       "cli",
       "directions",
@@ -105,7 +105,7 @@ describe("okou maps command", () => {
       ),
     );
 
-    await zeroMapsCommand.parseAsync([
+    await mapsCommand.parseAsync([
       "node",
       "cli",
       "places",
@@ -140,7 +140,7 @@ describe("okou maps command", () => {
       ),
     );
 
-    await zeroMapsCommand.parseAsync([
+    await mapsCommand.parseAsync([
       "node",
       "cli",
       "places",
@@ -177,7 +177,7 @@ describe("okou maps command", () => {
       ),
     );
 
-    await zeroMapsCommand.parseAsync([
+    await mapsCommand.parseAsync([
       "node",
       "cli",
       "places",
@@ -241,7 +241,7 @@ describe("okou maps command", () => {
       ),
     );
 
-    await zeroMapsCommand.parseAsync([
+    await mapsCommand.parseAsync([
       "node",
       "cli",
       "osm",
@@ -308,7 +308,7 @@ describe("okou maps command", () => {
       ),
     );
 
-    await zeroMapsCommand.parseAsync([
+    await mapsCommand.parseAsync([
       "node",
       "cli",
       "osm",
@@ -348,7 +348,7 @@ describe("okou maps command", () => {
   });
 
   it("documents Enterprise fieldsets in places help output", () => {
-    const placesCommand = zeroMapsCommand.commands.find((command) => {
+    const placesCommand = mapsCommand.commands.find((command) => {
       return command.name() === "places";
     });
     if (!placesCommand) {
@@ -389,7 +389,7 @@ describe("okou maps command", () => {
       }),
     );
 
-    await zeroMapsCommand.parseAsync([
+    await mapsCommand.parseAsync([
       "node",
       "cli",
       "geocode",
@@ -409,7 +409,7 @@ describe("okou maps command", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
 
     await expect(
-      zeroMapsCommand.parseAsync([
+      mapsCommand.parseAsync([
         "node",
         "cli",
         "geocode",

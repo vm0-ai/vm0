@@ -3,11 +3,8 @@ import { dirname } from "node:path";
 
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
-import {
-  callZeroMaps,
-  type ZeroMapsResponse,
-} from "../../../lib/api/domains/zero-maps";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { callMaps, type MapsResponse } from "../../lib/api/domains/maps";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const TRAVEL_MODES = ["driving", "walking", "bicycling", "transit"] as const;
 const PLACE_SEARCH_FIELDSETS = ["pro", "enterprise"] as const;
@@ -271,7 +268,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function resultRecord(response: ZeroMapsResponse): Record<string, unknown> {
+function resultRecord(response: MapsResponse): Record<string, unknown> {
   if (!isRecord(response.result)) {
     throw new Error("Okou Maps response did not include an object result");
   }
@@ -304,7 +301,7 @@ async function writeOutputFile(
 
 async function writeOsmGeoJson(
   outputPath: string,
-  response: ZeroMapsResponse,
+  response: MapsResponse,
 ): Promise<void> {
   const result = resultRecord(response);
   if (!("geojson" in result)) {
@@ -318,7 +315,7 @@ async function writeOsmGeoJson(
 
 async function writeOsmPng(
   outputPath: string,
-  response: ZeroMapsResponse,
+  response: MapsResponse,
 ): Promise<void> {
   const result = resultRecord(response);
   const image = result.image;
@@ -330,7 +327,7 @@ async function writeOsmPng(
   await writeOutputFile(outputPath, Buffer.from(image.base64, "base64"));
 }
 
-function renderMapsMetadata(response: ZeroMapsResponse): void {
+function renderMapsMetadata(response: MapsResponse): void {
   if (response.provider) {
     console.log(chalk.dim(`  Provider: ${response.provider}`));
   }
@@ -345,7 +342,7 @@ function renderMapsMetadata(response: ZeroMapsResponse): void {
   }
 }
 
-function renderMapsResponse(label: string, response: ZeroMapsResponse): void {
+function renderMapsResponse(label: string, response: MapsResponse): void {
   console.log(chalk.green(`✓ ${label}`));
   renderMapsMetadata(response);
 
@@ -355,7 +352,7 @@ function renderMapsResponse(label: string, response: ZeroMapsResponse): void {
 
 function renderOsmFileResponse(
   label: string,
-  response: ZeroMapsResponse,
+  response: MapsResponse,
   outputPath: string,
 ): void {
   console.log(chalk.green(`✓ ${label}`));
@@ -386,7 +383,7 @@ async function runMapsRequest(
   payload: Record<string, unknown>,
   options: JsonOption,
 ): Promise<void> {
-  const response = await callZeroMaps(endpoint, payload);
+  const response = await callMaps(endpoint, payload);
 
   if (options.json) {
     console.log(JSON.stringify(response));
@@ -557,10 +554,7 @@ const osmDownloadCommand = new Command()
   .option("--json", "Print the raw maps response as JSON")
   .action(
     withErrorHandler(async (options: OsmAreaOptions) => {
-      const response = await callZeroMaps(
-        "osm/download",
-        osmAreaPayload(options),
-      );
+      const response = await callMaps("osm/download", osmAreaPayload(options));
       if (options.output) {
         await writeOsmGeoJson(options.output, response);
       }
@@ -637,7 +631,7 @@ const osmRenderCommand = new Command()
   .option("--json", "Print the raw maps response as JSON")
   .action(
     withErrorHandler(async (options: OsmRenderOptions) => {
-      const response = await callZeroMaps("osm/render", {
+      const response = await callMaps("osm/render", {
         ...osmAreaPayload(options),
         width: options.width,
         height: options.height,
@@ -666,7 +660,7 @@ const placesCommand = new Command()
   .addCommand(placesSearchCommand)
   .addCommand(placesDetailsCommand);
 
-export const zeroMapsCommand = new Command()
+export const mapsCommand = new Command()
   .name("maps")
   .description("Use managed Okou maps services")
   .addCommand(geocodeCommand)
@@ -689,6 +683,6 @@ Examples:
 
 Notes:
   - Authenticates via OKOU_TOKEN (requires maps:read capability) or a CLI token
-  - Google Maps and OpenStreetMap calls and credit billing happen on the vm0 API server
+  - Google Maps and OpenStreetMap calls and credit billing happen on the Okou API server
   - Use --fields essentials for place details unless paid fields are required`,
   );

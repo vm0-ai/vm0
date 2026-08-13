@@ -1,8 +1,5 @@
-import { chatEvents } from "@okouai/db/schema/chat-event";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { and, asc, eq, isNotNull } from "drizzle-orm";
 
 import { badRequestMessage } from "../../lib/error";
 import type { Db } from "../external/db";
@@ -11,38 +8,16 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   resolvePersistedChatThreadModel,
   type ResolvedPersistedChatThreadModel,
 } from "./zero-chat-thread-model.service";
 
-async function getFirstRunSelectedModel(
-  db: Db,
-  threadId: string,
-): Promise<string | null> {
-  const [run] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(chatEvents)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatEvents.runId))
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, threadId),
-        chatEventTypeIn(["input.prompt"]),
-        isNotNull(chatEvents.runId),
-        isNotNull(zeroRuns.selectedModel),
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId))
-    .limit(1);
-  return run?.selectedModel ?? null;
-}
-
 /**
- * Resolve a chat-derived run against the current workspace model policy.
- * Legacy threads without a stored model may use their first run as the sticky
- * preference before normal workspace-default recovery applies.
+ * Resolve a chat-derived run against the current canonical model policy.
+ * Legacy threads without a stored model use the current canonical default and
+ * persist that selection before the run is created.
  */
 export async function resolveRunChatThreadModelContext(params: {
   readonly db: Db;
@@ -52,16 +27,16 @@ export async function resolveRunChatThreadModelContext(params: {
 }): Promise<
   ResolvedPersistedChatThreadModel | ReturnType<typeof badRequestMessage>
 > {
-  const [fallbackSelectedModel, featureSwitchContext] = await Promise.all([
-    getFirstRunSelectedModel(params.db, params.threadId),
-    loadUserFeatureSwitchContext(params.db, params.orgId, params.userId),
-  ]);
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
   const resolved = await resolvePersistedChatThreadModel({
     db: params.db,
     orgId: params.orgId,
     userId: params.userId,
     threadId: params.threadId,
-    fallbackSelectedModel,
     persistRequestedCodexServiceTier: false,
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,

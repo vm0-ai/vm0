@@ -49,6 +49,7 @@ mod metadata;
 mod path_safety;
 mod sidecar;
 mod types;
+mod watcher;
 
 #[cfg(test)]
 mod tests;
@@ -70,6 +71,7 @@ pub(crate) use types::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarPromotionSource,
     WorkspaceSessionHistorySidecarRepresentation,
 };
+pub(crate) use watcher::{WorkspaceCacheChange, WorkspaceCacheWatcher};
 
 const CACHE_FORMAT_VERSION: u32 = 2;
 const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";

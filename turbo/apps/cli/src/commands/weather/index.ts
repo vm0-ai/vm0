@@ -2,10 +2,10 @@ import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
 import {
-  callZeroWeather,
-  type ZeroWeatherResponse,
-} from "../../../lib/api/domains/zero-weather";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+  callWeather,
+  type WeatherResponse,
+} from "../../lib/api/domains/weather";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const WEATHER_UNITS = ["metric", "imperial"] as const;
 const WEATHER_LANGUAGE_CODE = "en";
@@ -336,7 +336,7 @@ function formatLocalTime(
   }).format(date);
 }
 
-function renderSource(response: ZeroWeatherResponse): void {
+function renderSource(response: WeatherResponse): void {
   if (response.attribution) {
     console.log(chalk.dim(response.attribution));
   }
@@ -634,10 +634,7 @@ function renderReadableWeatherResult(
   }
 }
 
-function renderWeatherResponse(
-  label: string,
-  response: ZeroWeatherResponse,
-): void {
+function renderWeatherResponse(label: string, response: WeatherResponse): void {
   console.log(chalk.green(`✓ ${label}`));
   renderReadableWeatherResult(response.operation, response.result);
   renderSource(response);
@@ -654,7 +651,7 @@ async function runWeatherRequest(
   payload: Record<string, unknown>,
   options: JsonOption,
 ): Promise<void> {
-  const response = await callZeroWeather(endpoint, payload);
+  const response = await callWeather(endpoint, payload);
   if (options.json) {
     console.log(JSON.stringify(response));
     return;
@@ -793,7 +790,7 @@ const airQualityCommand = new Command()
   .description("Get current air quality")
   .addCommand(airQualityCurrentCommand);
 
-export const zeroWeatherCommand = new Command()
+export const weatherCommand = new Command()
   .name("weather")
   .description("Use managed Okou weather and air quality services")
   .addCommand(currentCommand)
