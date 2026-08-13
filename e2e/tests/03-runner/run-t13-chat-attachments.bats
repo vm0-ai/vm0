@@ -112,11 +112,17 @@ EOF
     local continuation_prompt
     continuation_prompt=$(cat <<'EOF'
 set -euo pipefail
-grep -F '__CONTENT_MARKER__' /tmp/runner-content.txt
-test ! -s /tmp/runner-empty.txt
+# Continuation can restore session history in a fresh sandbox, so re-download
+# the attachments instead of depending on runner-local files from the first run.
+npx --yes --package="${CLI_PKG_URL}" okou web download-file '__CONTENT_ID__' -o /tmp/runner-content-continuation.txt
+npx --yes --package="${CLI_PKG_URL}" okou web download-file '__EMPTY_ID__' -o /tmp/runner-empty-continuation.txt
+grep -F '__CONTENT_MARKER__' /tmp/runner-content-continuation.txt
+test ! -s /tmp/runner-empty-continuation.txt
 printf '__CONTINUATION_MARKER__\n'
 EOF
 )
+    continuation_prompt=${continuation_prompt//__CONTENT_ID__/$content_id}
+    continuation_prompt=${continuation_prompt//__EMPTY_ID__/$empty_id}
     continuation_prompt=${continuation_prompt//__CONTENT_MARKER__/$content_marker}
     continuation_prompt=${continuation_prompt//__CONTINUATION_MARKER__/$continuation_marker}
     run runner_e2e_continue_chat_run \
