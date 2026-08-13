@@ -13,6 +13,11 @@ ALTER TABLE "agent_runs" ADD COLUMN "api_started_at" timestamp;--> statement-bre
 ALTER TABLE "agent_runs" ADD COLUMN "first_assistant_event_acknowledged_at" timestamp;--> statement-breakpoint
 ALTER TABLE "agent_runs" ADD COLUMN "summary" text;--> statement-breakpoint
 ALTER TABLE "agent_runs" ADD COLUMN "trigger_brief" text;--> statement-breakpoint
+-- DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
+-- Pre-stage-3 API revisions and callbacks write metadata only to zero_runs,
+-- while the expanded schema requires parity in agent_runs. Remove in #26924
+-- stage 4 only after the stage-3 writer is fully promoted, all pre-stage-3
+-- writers and callbacks are drained, and the rollback window has closed.
 CREATE FUNCTION "sync_zero_run_metadata_to_agent_runs"() RETURNS trigger AS $$
 BEGIN
 	UPDATE "agent_runs" AS "agent_run"
