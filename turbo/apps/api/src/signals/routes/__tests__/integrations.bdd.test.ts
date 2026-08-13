@@ -1486,23 +1486,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         ]),
       },
     });
-    if (!listedMessage) {
-      throw new Error("Expected a canonical Slack input message");
-    }
-
-    const fetchedMessage = await chat.getThreadEvent(
-      actor,
-      chatThreadId,
-      listedMessage.id,
-    );
-    expect(fetchedMessage).toMatchObject({
-      id: listedMessage.id,
-      userMessage: {
-        parts: expect.arrayContaining([
-          expect.objectContaining({ type: "file", fileId: assetId }),
-        ]),
-      },
-    });
     expect(context.mocks.slack.fetchFile).not.toHaveBeenCalled();
   });
 

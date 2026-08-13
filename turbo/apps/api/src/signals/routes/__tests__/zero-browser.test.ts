@@ -7,7 +7,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-browser";
 import {
   chatThreadComputerUseHostContract,
-  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
@@ -31,6 +30,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   setBrowserTabSnapshotAsPreviousApi,
   setComputerUseHostAsPreviousApi,
@@ -101,12 +101,6 @@ function chatThreadsClient() {
 function chatThreadComputerUseHostClient() {
   return setupApp({ context, routes: zeroChatThreadComputerUseHostRoutes })(
     chatThreadComputerUseHostContract,
-  );
-}
-
-function chatThreadEventsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadEventsContract,
   );
 }
 
@@ -2550,16 +2544,12 @@ describe("okou browser route", () => {
     );
     expect(stillActive.body.browser.status).toBe("active");
 
-    const events = await accept(
-      chatThreadEventsClient().list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: first.threadId },
-        query: { limit: 50 },
-      }),
-      [200],
-    );
+    const events = await readProjectedChatEvents(context, {
+      threadId: first.threadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
     expect(
-      events.body.events.flatMap((event) => {
+      events.flatMap((event) => {
         return event.eventType === "browser.open" ||
           event.eventType === "browser.close"
           ? [

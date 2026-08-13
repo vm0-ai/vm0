@@ -229,29 +229,6 @@ describe("chat event snapshot read endpoints", () => {
       range: { start: 4, end: 13 },
     });
 
-    const canonicalEvents = await accept(
-      eventsClient().list({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: {},
-      }),
-      [200],
-    );
-    const canonicalInput = canonicalEvents.body.events.find((event) => {
-      return event.eventType === "input.prompt";
-    });
-    if (canonicalInput?.eventType !== "input.prompt") {
-      throw new Error("Expected the canonical feedback input");
-    }
-    expect(
-      canonicalInput.userMessage.parts.find((part) => {
-        return part.type === "feedback";
-      }),
-    ).toMatchObject({
-      eventId: "snapshot-feedback-source-event",
-      range: { start: 4, end: 13 },
-    });
-
     // Unsupported heads fail closed instead of entering a rewrite fallback.
     await setChatEventSnapshotHeadVersion(context, threadId, 2);
     await accept(
@@ -278,7 +255,7 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
-  it("serves raw rows whose projection matches the events endpoint", async () => {
+  it("serves projectable raw rows from sequence cursors", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Row parity agent",
@@ -294,15 +271,15 @@ describe("chat event snapshot read endpoints", () => {
       prompt: `${marker} second`,
     });
 
-    const events = await accept(
-      eventsClient().list({
+    const fromStart = await accept(
+      eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: {},
+        query: { sinceSeqId: 0 },
       }),
       [200],
     );
-    const firstSeqId = events.body.events[0]?.seqId;
+    const firstSeqId = fromStart.body.rows[0]?.seqId;
     if (firstSeqId === undefined) {
       throw new Error("Expected seeded chat events");
     }
@@ -328,30 +305,28 @@ describe("chat event snapshot read endpoints", () => {
     const projected = rows.body.rows.map((row) => {
       return chatEventFromRow(row);
     });
-    const expected = events.body.events.filter((event) => {
-      return event.seqId > firstSeqId;
-    });
-    // Compare wire shapes: drop the projection's explicit-undefined optional
-    // keys the same way JSON serialization does for the HTTP response.
-    const wireShape = projected.map((event) => {
-      return Object.fromEntries(
-        Object.entries(event).filter(([, value]) => {
-          return value !== undefined;
-        }),
-      );
-    });
-    expect(wireShape).toStrictEqual(expected);
-
-    // Cold start for a thread the archiver has not reached yet: nothing was
-    // archived away, so seq 0 reads the thread from its first event.
-    const fromStart = await accept(
-      eventsClient().rows({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: { sinceSeqId: 0 },
+    expect(projected).toHaveLength(rows.body.rows.length);
+    expect(rows.body.rows).toStrictEqual(
+      fromStart.body.rows.filter((row) => {
+        return row.seqId > firstSeqId;
       }),
-      [200],
     );
+    expect(projected).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "input.prompt",
+          userMessage: expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: `${marker} second`,
+              }),
+            ]),
+          }),
+        }),
+      ]),
+    );
+
     expect(fromStart.body.rows[0]?.seqId).toBe(firstSeqId);
     expect(fromStart.body.rows).toHaveLength(rows.body.rows.length + 1);
 

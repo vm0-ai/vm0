@@ -1,10 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
-import {
-  chatThreadEventsContract,
-  chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -25,6 +22,7 @@ import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
@@ -1050,17 +1048,11 @@ describe("Teams chat callbacks", () => {
     if (!createdThread) {
       throw new Error("Expected the canonical Teams chat thread");
     }
-    const threadMessages = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: createdThread.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
-    expect(threadMessages.body.events).toContainEqual(
+    const threadMessages = await readProjectedChatEvents(context, {
+      threadId: createdThread.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(threadMessages).toContainEqual(
       expect.objectContaining({
         eventType: "input.prompt",
         content: null,
@@ -1132,17 +1124,11 @@ describe("Teams chat callbacks", () => {
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
-    const completedThreadMessages = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: createdThread.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
-    expect(completedThreadMessages.body.events).toContainEqual(
+    const completedThreadMessages = await readProjectedChatEvents(context, {
+      threadId: createdThread.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(completedThreadMessages).toContainEqual(
       expect.objectContaining({
         eventType: "output.message",
         content: "Task completed successfully.",

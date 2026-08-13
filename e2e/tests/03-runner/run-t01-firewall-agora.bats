@@ -66,7 +66,7 @@ EOF
     assert_success
     public_surfaces+="$output"$'\n'
 
-    run runner_api_curl "/api/okou/chat-threads/${THREAD_ID}/events?limit=50"
+    run runner_chat_event_rows "$THREAD_ID"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'

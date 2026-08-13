@@ -23,7 +23,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
-  chatThreadEventsContract,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -104,10 +103,6 @@ const BENCH_CONNECTOR_CATALOG_KEY =
 const chatThreadClient = setupApp({ context, routes: zeroChatThreadRoutes })(
   chatThreadByIdContract,
 );
-const chatThreadEventsClient = setupApp({
-  context,
-  routes: zeroChatThreadRoutes,
-})(chatThreadEventsContract);
 const connectorsClient = setupApp({ context, routes: zeroConnectorsRoutes })(
   zeroConnectorsMainContract,
 );
@@ -888,22 +883,6 @@ describe("bench side-effect-free GET API routes", () => {
       const fixture = await ensureSeeded();
       const response = await chatThreadClient.get({
         params: { id: fixture.threadId },
-        headers: authHeaders,
-      });
-      if (response.status !== 200) {
-        throw new Error(`unexpected status ${String(response.status)}`);
-      }
-    },
-    benchOptions,
-  );
-
-  bench(
-    "GET /api/okou/chat-threads/:threadId/events",
-    async () => {
-      const fixture = await ensureSeeded();
-      const response = await chatThreadEventsClient.list({
-        params: { threadId: fixture.threadId },
-        query: { limit: 50 },
         headers: authHeaders,
       });
       if (response.status !== 200) {

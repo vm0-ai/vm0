@@ -75,7 +75,7 @@ async def test_streamed_api_allow_injects_runner_preview_bypass_before_body(
         client_ip="10.200.0.5",
         host="preview-api.vm6.ai",
         method="POST",
-        path="/api/zero/chat-threads/thread-id/events",
+        path="/api/zero/chat/events",
         request_headers=headers(
             ("Host", "preview-api.vm6.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),

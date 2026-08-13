@@ -529,11 +529,6 @@ const malformedChatThreadIdRequests = [
   },
   {
     method: "GET",
-    path: "/api/zero/chat-threads/:id/events",
-    paramName: "threadId",
-  },
-  {
-    method: "GET",
     path: "/api/zero/chat-threads/:id/artifacts",
     paramName: "threadId",
   },
@@ -1871,7 +1866,7 @@ describe("CHAT-01 chat thread read state", () => {
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
   }, 120_000);
 
-  it("pages thread events with since and before cursors", async () => {
+  it("tails thread event rows after a sequence cursor", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(owner, {
@@ -1923,7 +1918,7 @@ describe("CHAT-01 chat thread read state", () => {
     expect(new Set(seqIds).size).toBe(seqIds.length);
     const [
       firstQueuedUserMessage,
-      firstReplacementMessage,
+      ,
       firstAssistantMessage,
       secondQueuedUserMessage,
       secondReplacementMessage,
@@ -1931,7 +1926,6 @@ describe("CHAT-01 chat thread read state", () => {
     ] = full.events;
     if (
       !firstQueuedUserMessage ||
-      !firstReplacementMessage ||
       !firstAssistantMessage ||
       !secondQueuedUserMessage ||
       !secondReplacementMessage ||
@@ -1940,14 +1934,10 @@ describe("CHAT-01 chat thread read state", () => {
       throw new Error("Expected six messages across the two sends");
     }
     const firstQueuedUser = firstQueuedUserMessage.id;
-    const firstReplacement = firstReplacementMessage.id;
-    const firstAssistant = firstAssistantMessage.id;
     const secondQueuedUser = secondQueuedUserMessage.id;
     const secondReplacement = secondReplacementMessage.id;
     const secondAssistant = secondAssistantMessage.id;
     const firstAssistantSeqId = firstAssistantMessage.seqId;
-    const secondQueuedUserSeqId = secondQueuedUserMessage.seqId;
-    const secondAssistantSeqId = secondAssistantMessage.seqId;
     expect(full.events[1]).toMatchObject({
       eventType: "input.rejected",
       error: "insufficient_credits",
@@ -1959,18 +1949,7 @@ describe("CHAT-01 chat thread read state", () => {
       revokesEventId: secondQueuedUser,
     });
 
-    // Latest page overflow: only the newest rows, with history behind them.
-    const latest = await chat.listThreadEvents(owner, threadId, {
-      limit: 2,
-    });
-    expect(
-      latest.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([secondReplacement, secondAssistant]);
-    expect(latest.events[0]?.seqId).toBeGreaterThan(1);
-
-    // Forward pagination strictly after the cursor.
+    // Raw-row tailing is strictly after the cursor.
     const since = await chat.listThreadEvents(owner, threadId, {
       sinceSeqId: firstAssistantSeqId,
     });
@@ -1979,27 +1958,6 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
-    // Backward pagination strictly before the cursor.
-    const before = await chat.listThreadEvents(owner, threadId, {
-      beforeSeqId: secondQueuedUserSeqId,
-      limit: 3,
-    });
-    expect(
-      before.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
-    expect(before.events[0]?.seqId).toBe(1);
-    const beforeOverflow = await chat.listThreadEvents(owner, threadId, {
-      beforeSeqId: secondAssistantSeqId,
-      limit: 2,
-    });
-    expect(
-      beforeOverflow.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([secondQueuedUser, secondReplacement]);
-    expect(beforeOverflow.events[0]?.seqId).toBeGreaterThan(1);
   }, 30_000);
 
   it("serializes concurrent message sequence writes through commit", async () => {

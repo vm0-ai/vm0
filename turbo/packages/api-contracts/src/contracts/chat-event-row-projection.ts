@@ -15,10 +15,9 @@ function requiredRowField<T>(
 /**
  * Projects one canonical row into the public ChatEvent response shape. This
  * projection must stay field-for-field equivalent to the API's own row
- * projection, and the API test suite pins that parity by comparing this
- * function's output for /event-rows against the /events response of the same
- * thread. A control.interrupt target is emitted as interruptsRunId, never as
- * run ownership.
+ * projection, and the contract test suite pins every supported event type. A
+ * control.interrupt target is emitted as interruptsRunId, never as run
+ * ownership.
  */
 export function chatEventFromRow(row: ChatEventRowV4): ChatEvent {
   const payload = row.payload;
