@@ -10,7 +10,6 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { modelProviderCredentialScopeSchema } from "@okouai/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -171,10 +170,7 @@ import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
-import {
-  resolveModelFirstProviderAdmission,
-  type ModelFirstPin,
-} from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   chatEventTextCondition,
   chatEventTypeIn,
@@ -2537,85 +2533,6 @@ type QueuedMessageModelRouteResolution =
   | { readonly route: QueuedMessageModelRoute }
   | { readonly error: QueuedMessageModelRouteError };
 
-function persistedModelProviderCredentialScope(
-  value: string | null,
-): ModelFirstPin["modelProviderCredentialScope"] {
-  if (value === null) {
-    return null;
-  }
-  const parsed = modelProviderCredentialScopeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-}): Promise<QueuedMessageModelRouteResolution | null> {
-  const [thread] = await args.db
-    .select({ selectedModel: chatThreads.selectedModel })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, args.threadId))
-    .limit(1);
-  if (!thread || thread.selectedModel !== null) {
-    return null;
-  }
-
-  const [firstRun] = await args.db
-    .select({
-      modelProviderId: zeroRuns.modelProviderId,
-      modelProviderType: zeroRuns.modelProvider,
-      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-      selectedModel: zeroRuns.selectedModel,
-    })
-    .from(chatEvents)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatEvents.runId))
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, args.threadId),
-        chatEventTypeIn(["input.prompt"]),
-        isNotNull(chatEvents.runId),
-        eq(zeroRuns.triggerSource, "slack"),
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId))
-    .limit(1);
-  const modelPin: ModelFirstPin = firstRun
-    ? {
-        modelProviderId: firstRun.modelProviderId,
-        modelProviderType: firstRun.modelProviderType,
-        modelProviderCredentialScope: persistedModelProviderCredentialScope(
-          firstRun.modelProviderCredentialScope,
-        ),
-        selectedModel: firstRun.selectedModel,
-      }
-    : {
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
-        selectedModel: null,
-      };
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    modelPin,
-    requestedModelProvider: undefined,
-  });
-  if (providerAdmission.error) {
-    return { error: providerAdmission.error.body.error };
-  }
-  return {
-    route: {
-      modelPin,
-      effectiveModelProvider: providerAdmission.effectiveModelProvider,
-      cliAgentType: providerAdmission.cliAgentType,
-      codexServiceTier: undefined,
-    },
-  };
-}
-
 async function resolveQueuedMessageModelRoute(args: {
   readonly db: Db;
   readonly threadId: string;
@@ -2638,13 +2555,6 @@ async function resolveQueuedMessageModelRoute(args: {
     },
   );
   if ("status" in modelContext) {
-    if (args.contextType === "slack") {
-      const unpinnedRoute =
-        await resolveUnpinnedSlackQueuedMessageModelRoute(args);
-      if (unpinnedRoute) {
-        return unpinnedRoute;
-      }
-    }
     return { error: modelContext.body.error };
   }
   if (modelContext.providerAdmission.error) {
