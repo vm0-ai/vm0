@@ -489,6 +489,9 @@ describe("Stripe automation event webhook", () => {
     const scenario = await setupScenario({
       billingReasons: ["subscription_cycle"],
     });
+    await connectors.updateFeatureSwitches(scenario.actor, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
     expect((await readStripeAutomation(scenario)).health).toStrictEqual({
       lastMatchingEventReceivedAt: null,
       lastDeliveryStatus: null,
@@ -556,8 +559,8 @@ describe("Stripe automation event webhook", () => {
     if (!input) {
       throw new Error("Expected one Stripe automation input event");
     }
-    expect(chatEventDisplayText(input)).toContain(
-      "Stripe event evt_workflow_once paid invoice in_workflow_once",
+    expect(chatEventDisplayText(input)).toBe(
+      'Stripe invoice "in_workflow_once" was paid.',
     );
     expect(context.mocks.stripe.invoices.list).not.toHaveBeenCalled();
   });
