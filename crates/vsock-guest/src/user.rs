@@ -29,8 +29,8 @@ enum TargetIdentity {
 }
 
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
-pub(crate) fn sandbox_user_name() -> &'static str {
-    SANDBOX_USER
+pub(crate) fn sandbox_user_home() -> io::Result<PathBuf> {
+    cached_system_user_credentials().map(|credentials| credentials.home.clone())
 }
 
 pub(crate) fn sandbox_user_gid() -> io::Result<libc::gid_t> {
@@ -47,7 +47,25 @@ pub(crate) fn sandbox_user_gid() -> io::Result<libc::gid_t> {
     }
 }
 
-pub(crate) fn apply_write_file_identity(command: &mut Command, sudo: bool) -> io::Result<()> {
+pub(crate) fn shell_command_uid(sudo: bool) -> io::Result<libc::uid_t> {
+    if sudo {
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        return Ok(unsafe { libc::geteuid() });
+    }
+
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    {
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        Ok(unsafe { libc::geteuid() })
+    }
+
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
+    {
+        cached_system_user_credentials().map(|credentials| credentials.uid as libc::uid_t)
+    }
+}
+
+pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::Result<()> {
     #[cfg(any(debug_assertions, feature = "test-support"))]
     let _ = command;
     match target_identity(sudo)? {
@@ -120,7 +138,7 @@ fn apply_credentials(command: &mut Command, credentials: UserCredentials) -> io:
         let _ = command;
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            "write_file user credential drop requires Unix",
+            "sandbox user credential drop requires Unix",
         ));
     }
 

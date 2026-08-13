@@ -111,6 +111,7 @@ fn build_runtime(
         config,
         paths,
         http,
+        workload_containment: None,
     })
 }
 
