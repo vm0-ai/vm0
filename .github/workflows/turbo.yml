@@ -988,11 +988,16 @@ jobs:
           # NEON_PROJECT_ID resolves to the Neon TEST project, never production.
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo "main push: pre-migrating test project default (parent) branch"
-            PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
-            if [ -z "$PARENT_DATABASE_URL" ]; then
-              PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+            if ! PARENT_MIGRATION_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner); then
+              echo "::error::Failed to resolve direct test parent migration database URL"
+              exit 1
             fi
-            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @okouai/db db:migrate)
+            if [ -z "$PARENT_MIGRATION_DATABASE_URL" ]; then
+              echo "::error::Direct test parent migration database URL is empty"
+              exit 1
+            fi
+            echo "::add-mask::$PARENT_MIGRATION_DATABASE_URL"
+            (cd turbo && DATABASE_URL="$PARENT_MIGRATION_DATABASE_URL" pnpm -F @okouai/db db:migrate)
           fi
 
           BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
@@ -1010,16 +1015,32 @@ jobs:
             neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
           fi
 
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
-          if [ -z "$DATABASE_URL" ]; then
-            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+          if ! RUNTIME_DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled); then
+            echo "::error::Failed to resolve pooled preview database URL"
+            exit 1
+          fi
+          if [ -z "$RUNTIME_DATABASE_URL" ]; then
+            echo "::error::Pooled preview database URL is empty"
+            exit 1
           fi
 
-          cd turbo
-          DATABASE_URL="$DATABASE_URL" pnpm -F @okouai/db db:migrate
-          ENV=preview DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
+          if ! MIGRATION_DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner); then
+            echo "::error::Failed to resolve direct preview migration database URL"
+            exit 1
+          fi
+          if [ -z "$MIGRATION_DATABASE_URL" ]; then
+            echo "::error::Direct preview migration database URL is empty"
+            exit 1
+          fi
 
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::$RUNTIME_DATABASE_URL"
+          echo "::add-mask::$MIGRATION_DATABASE_URL"
+
+          cd turbo
+          DATABASE_URL="$MIGRATION_DATABASE_URL" pnpm -F @okouai/db db:migrate
+          ENV=preview DATABASE_URL="$RUNTIME_DATABASE_URL" pnpm -F api db:dev-seed
+
+          echo "database-url=$RUNTIME_DATABASE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Resolve API deploy environment
         id: api-deploy-env

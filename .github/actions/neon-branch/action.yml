@@ -30,7 +30,7 @@ inputs:
 
 outputs:
   database-url:
-    description: "Database connection URL for the branch"
+    description: "Pooled database connection URL for branch runtime traffic"
     value: ${{ steps.branch.outputs.database-url }}
   console-url:
     description: "Neon console URL for the branch"
@@ -97,14 +97,28 @@ runs:
           exit 1
         fi
 
-        DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --role-name "$INPUT_ROLE_NAME" --pooled)
-        if [ -z "$DATABASE_URL" ]; then
-          echo "Error: Failed to get database URL from neonctl"
-          echo "Attempting without --pooled flag..."
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --role-name "$INPUT_ROLE_NAME")
+        if ! RUNTIME_DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --role-name "$INPUT_ROLE_NAME" --pooled); then
+          echo "::error::Failed to resolve pooled branch database URL"
+          exit 1
         fi
-        echo "DATABASE_URL value: $DATABASE_URL"
-        echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
+        if [ -z "$RUNTIME_DATABASE_URL" ]; then
+          echo "::error::Pooled branch database URL is empty"
+          exit 1
+        fi
+
+        if ! MIGRATION_DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --role-name "$INPUT_ROLE_NAME"); then
+          echo "::error::Failed to resolve direct branch migration database URL"
+          exit 1
+        fi
+        if [ -z "$MIGRATION_DATABASE_URL" ]; then
+          echo "::error::Direct branch migration database URL is empty"
+          exit 1
+        fi
+
+        echo "::add-mask::$RUNTIME_DATABASE_URL"
+        echo "::add-mask::$MIGRATION_DATABASE_URL"
+        echo "database-url=$RUNTIME_DATABASE_URL" >> "$GITHUB_OUTPUT"
+        echo "migration-database-url=$MIGRATION_DATABASE_URL" >> "$GITHUB_OUTPUT"
         echo "Neon branch ready: $BRANCH_NAME"
 
         # Get branch ID for console URL
@@ -117,16 +131,11 @@ runs:
       if: inputs.action == 'create'
       shell: bash
       env:
-        DATABASE_URL: ${{ steps.branch.outputs.database-url }}
+        DATABASE_URL: ${{ steps.branch.outputs.migration-database-url }}
       run: |
-        if [ -n "$DATABASE_URL" ]; then
-          echo "Running database migrations..."
-          echo "Migration output:"
-          cd turbo && pnpm -F @okouai/db db:migrate 2>&1
-          echo "Migration complete"
-        else
-          echo "No database URL provided, skipping migrations"
-        fi
+        echo "Running database migrations..."
+        cd turbo && pnpm -F @okouai/db db:migrate
+        echo "Migration complete"
 
     - name: Delete Neon Branch
       if: inputs.action == 'cleanup'

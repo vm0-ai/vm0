@@ -1055,13 +1055,34 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
 
-      - name: Get Production Database URL
-        id: get-db-url
+      - name: Get Production Database URLs
+        id: get-db-urls
         run: |
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+          if ! RUNTIME_DATABASE_URL=$(neonctl connection-string production --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled); then
+            echo "::error::Failed to resolve pooled production database URL"
+            exit 1
+          fi
+          if [ -z "$RUNTIME_DATABASE_URL" ]; then
+            echo "::error::Pooled production database URL is empty"
+            exit 1
+          fi
+
+          if ! MIGRATION_DATABASE_URL=$(neonctl connection-string production --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner); then
+            echo "::error::Failed to resolve direct production migration database URL"
+            exit 1
+          fi
+          if [ -z "$MIGRATION_DATABASE_URL" ]; then
+            echo "::error::Direct production migration database URL is empty"
+            exit 1
+          fi
+
+          echo "::add-mask::$RUNTIME_DATABASE_URL"
+          echo "::add-mask::$MIGRATION_DATABASE_URL"
+          echo "runtime-database-url=$RUNTIME_DATABASE_URL" >> "$GITHUB_OUTPUT"
+          echo "migration-database-url=$MIGRATION_DATABASE_URL" >> "$GITHUB_OUTPUT"
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
 
       - name: Fetch production Doppler OAuth config
         id: doppler-oauth
@@ -1121,7 +1142,7 @@ jobs:
         with:
           app: api
           environment: production
-          database-url: ${{ steps.get-db-url.outputs.database-url }}
+          database-url: ${{ steps.get-db-urls.outputs.runtime-database-url }}
           web-url: https://www.vm0.ai
           app-url: https://app.vm0.ai
           api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
@@ -1167,7 +1188,7 @@ jobs:
           echo "Running production migrations on production"
           cd turbo && pnpm -F @okouai/db db:migrate
         env:
-          DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
+          DATABASE_URL: ${{ steps.get-db-urls.outputs.migration-database-url }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
 

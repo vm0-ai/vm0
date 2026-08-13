@@ -58,15 +58,22 @@ runs:
           exit 1
         fi
 
-        DATABASE_URL=$(neonctl connection-string "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
-        echo "::add-mask::$DATABASE_URL"
-        echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+        if ! MIGRATION_DATABASE_URL=$(neonctl connection-string "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner); then
+          echo "::error::Failed to resolve direct migration smoke database URL"
+          exit 1
+        fi
+        if [ -z "$MIGRATION_DATABASE_URL" ]; then
+          echo "::error::Direct migration smoke database URL is empty"
+          exit 1
+        fi
+        echo "::add-mask::$MIGRATION_DATABASE_URL"
+        echo "migration-database-url=$MIGRATION_DATABASE_URL" >> "$GITHUB_OUTPUT"
 
     - name: Run Production Migration Smoke Test
       shell: bash
       working-directory: turbo
       env:
-        DATABASE_URL: ${{ steps.create-migration-smoke-branch.outputs.database-url }}
+        DATABASE_URL: ${{ steps.create-migration-smoke-branch.outputs.migration-database-url }}
       run: pnpm -F @okouai/db db:migrate
 
     - name: Delete Production Migration Smoke Branch
