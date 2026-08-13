@@ -49,6 +49,14 @@ export interface ChatAgentRunSourceAnnotation {
   readonly titleSnapshot: string;
 }
 
+export function agentRunSourceTitleSnapshot(title: string | null): string {
+  const normalizedTitle = title?.trim();
+  if (!normalizedTitle || normalizedTitle.toLowerCase() === "now") {
+    return "New thread";
+  }
+  return normalizedTitle;
+}
+
 function chatAgentRunSourceHref(
   source: Pick<ChatAgentRunSourceAnnotation, "runId" | "threadId">,
 ): string {
