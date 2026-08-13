@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.738.2](https://github.com/vm0-ai/vm0/compare/app-v0.738.1...app-v0.738.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **app:** allow crawlers to observe noindex ([#26750](https://github.com/vm0-ai/vm0/issues/26750)) ([505aae7](https://github.com/vm0-ai/vm0/commit/505aae73170efd5b484599eb7d433f404f5c3d2f))
+
+
+### Refactoring
+
+* remove feedback location rollout compatibility ([#26752](https://github.com/vm0-ai/vm0/issues/26752)) ([4a65c75](https://github.com/vm0-ai/vm0/commit/4a65c75f8c3b2256b6dbbbb6a4150888436539b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.2
+    * @vm0/core bumped to 8.552.2
+
 ## [0.738.1](https://github.com/vm0-ai/vm0/compare/app-v0.738.0...app-v0.738.1) (2026-08-12)
 
 
