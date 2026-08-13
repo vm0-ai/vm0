@@ -197,7 +197,7 @@ export const connectorRuntimeTargetSchema = z.discriminatedUnion("kind", [
 
 export const connectorRuntimeCustomTargetRegistrationSchema =
   connectorRuntimeCustomTargetSchema.extend({
-    baseUrlVars: z.record(z.string(), z.string()).optional(),
+    baseUrlVars: z.record(z.string(), z.string()),
   });
 
 export const connectorRuntimeBuiltinTargetRegistrationSchema =
@@ -214,7 +214,9 @@ export const connectorRuntimeTargetRegistrationSchema = z.discriminatedUnion(
 );
 
 export function connectorRuntimeTargetKey(
-  target: z.infer<typeof connectorRuntimeTargetRegistrationSchema>,
+  target:
+    | z.infer<typeof connectorRuntimeTargetSchema>
+    | z.infer<typeof connectorRuntimeTargetRegistrationSchema>,
 ): string {
   return target.kind === "builtin"
     ? `builtin:${target.connectorSlug}`
