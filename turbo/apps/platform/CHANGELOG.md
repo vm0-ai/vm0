@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.743.0](https://github.com/vm0-ai/vm0/compare/app-v0.742.1...app-v0.743.0) (2026-08-13)
+
+
+### Features
+
+* **app:** route Okou production API traffic ([#26856](https://github.com/vm0-ai/vm0/issues/26856)) ([b925ece](https://github.com/vm0-ai/vm0/commit/b925ece93dd63d7a746f341d265d74f4ead2311d))
+
+
+### Bug Fixes
+
+* **platform:** render 100 initial sidebar threads ([#26943](https://github.com/vm0-ai/vm0/issues/26943)) ([2defbb0](https://github.com/vm0-ai/vm0/commit/2defbb00fb242c909fdc71bd397e6fd7f6fd8f91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.2
+    * @okouai/core bumped to 8.556.0
+
 ## [0.742.1](https://github.com/vm0-ai/vm0/compare/app-v0.742.0...app-v0.742.1) (2026-08-13)
 
 

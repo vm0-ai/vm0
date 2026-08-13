@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.73.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.2...guest-agent-v0.73.3) (2026-08-13)
+
+
+### Refactoring
+
+* **rust:** share active-input control payload contract ([#26950](https://github.com/vm0-ai/vm0/issues/26950)) ([403bfd8](https://github.com/vm0-ai/vm0/commit/403bfd8f08fcd272d7c39df9149b1aa9124dca42))
+
 ## [0.73.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.1...guest-agent-v0.73.2) (2026-08-13)
 
 
