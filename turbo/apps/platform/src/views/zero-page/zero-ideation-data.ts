@@ -1,5 +1,5 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 interface UseCase {
   readonly id: string;

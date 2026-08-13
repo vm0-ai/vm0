@@ -3,15 +3,15 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 

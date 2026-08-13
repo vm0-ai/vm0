@@ -1,7 +1,7 @@
 import {
   zeroIntegrationsAgentPhoneContract,
   type AgentPhoneLinkStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
+} from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
 import { mockApi } from "../msw-contract.ts";
 
 let mockAgentPhoneStatus: AgentPhoneLinkStatusResponse = {

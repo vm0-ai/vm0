@@ -5,9 +5,9 @@ import {
   type ConnectorRuntimeSyncResult,
   type ConnectorRuntimeTarget,
   type ConnectorRuntimeTargetRegistration,
-} from "@vm0/api-contracts/contracts/runners";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+} from "@okouai/api-contracts/contracts/runners";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -170,12 +170,9 @@ async function resolveCustomTarget(args: {
     return customUnresolvedResult(target, "permission-bundle-unavailable");
   }
 
-  const baseUrlVarsByConnectorId =
-    args.registration.baseUrlVars === undefined
-      ? undefined
-      : new Map([
-          [target.customConnectorId, args.registration.baseUrlVars] as const,
-        ]);
+  const baseUrlVarsByConnectorId = new Map([
+    [target.customConnectorId, args.registration.baseUrlVars] as const,
+  ]);
 
   const context = await buildCustomConnectorRuntimeContext({
     rows: [row],
@@ -199,11 +196,7 @@ async function resolveCustomTarget(args: {
       candidate.customConnectorId === target.customConnectorId
     );
   });
-  if (
-    !state ||
-    resolvedTarget?.kind !== "custom" ||
-    resolvedTarget.baseUrlVars === undefined
-  ) {
+  if (!state || resolvedTarget?.kind !== "custom") {
     return customUnresolvedResult(target, "runtime-configuration-unavailable");
   }
   return {
@@ -289,9 +282,6 @@ export async function resolveConnectorRuntimeTargets(args: {
     targetCount: args.targets.length,
     builtinTargetCount: builtinConnectorSlugs.length,
     customTargetCount: customConnectorIds.length,
-    customPinnedTargetCount: args.targets.filter((target) => {
-      return target.kind === "custom" && target.baseUrlVars !== undefined;
-    }).length,
     availableCount: stateCounts.available,
     absentCount: stateCounts.absent,
     unresolvedCount: stateCounts.unresolved,

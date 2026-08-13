@@ -4,8 +4,8 @@ import {
   type ChatEvent,
   type ChatRecommendedFollowup,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown

@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { zeroBillingCreditCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { zeroBillingCreditCheckoutContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";

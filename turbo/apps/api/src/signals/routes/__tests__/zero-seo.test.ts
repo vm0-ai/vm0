@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroSeoContract } from "@vm0/api-contracts/contracts/zero-seo";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroSeoContract } from "@okouai/api-contracts/contracts/zero-seo";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 

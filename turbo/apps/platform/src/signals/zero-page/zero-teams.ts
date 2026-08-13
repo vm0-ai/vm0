@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroTeamsConnectContract,
   type TeamsConnectStatus,
-} from "@vm0/api-contracts/contracts/zero-teams-connect";
+} from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";

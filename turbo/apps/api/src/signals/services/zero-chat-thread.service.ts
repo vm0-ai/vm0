@@ -2,7 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -17,29 +17,29 @@ import {
   type ZeroIndicators,
   persistedAttachmentSchema,
   zeroIndicatorSchema,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
-} from "@vm0/api-contracts/contracts/zero-host";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatEventSearchDocs } from "@vm0/db/schema/chat-event-search";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
+} from "@okouai/api-contracts/contracts/zero-host";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSearchDocs } from "@okouai/db/schema/chat-event-search";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/run-uploaded-file";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import {
   and,
@@ -69,6 +69,7 @@ import {
   pgIntegerDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
+import { now } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   canonicalChatEventContent,
@@ -317,6 +318,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+const INDICATOR_UNREAD_LIMIT = 50;
+const INDICATOR_UNREAD_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const zeroIndicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
 
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
@@ -496,8 +499,10 @@ export function zeroChatThreadUnreadThreadIds(args: {
 
 /**
  * Active and unread indicators for the user's agents and threads in the
- * current organization. Active threads are computed once and reused to keep
- * unread classification and indicator precedence within one database snapshot.
+ * current organization. Active threads are complete; unread threads are the
+ * latest 50 terminal markers from the last seven days. Active threads are
+ * computed once and reused to keep unread classification and indicator
+ * precedence within one database snapshot.
  */
 export function zeroChatIndicators(args: {
   readonly userId: string;
@@ -505,6 +510,7 @@ export function zeroChatIndicators(args: {
 }): Computed<Promise<ZeroIndicators>> {
   return computed(async (get): Promise<ZeroIndicators> => {
     const db = get(db$);
+    const unreadCutoff = new Date(now() - INDICATOR_UNREAD_LOOKBACK_MS);
     const activeThreads = db.$with("active_threads").as(
       db
         .selectDistinct({
@@ -539,13 +545,21 @@ export function zeroChatIndicators(args: {
             eq(chatThreads.userId, args.userId),
             eq(zeroAgents.orgId, args.orgId),
             isNull(activeThreads.threadId),
+            gte(chatThreads.lastMessageAt, unreadCutoff),
+            or(
+              isNull(chatThreads.lastReadAt),
+              gt(chatThreads.lastMessageAt, chatThreads.lastReadAt),
+            ),
+            gte(lastRunFinish.createdAt, unreadCutoff),
             or(
               isNull(chatThreads.lastReadAt),
               gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
             ),
             noActiveGoalsForCurrentThreadCondition(db),
           ),
-        ),
+        )
+        .orderBy(desc(lastRunFinish.createdAt), desc(chatThreads.id))
+        .limit(INDICATOR_UNREAD_LIMIT),
     );
     const indicatorRows = db.$with("indicator_rows").as(
       unionAll(

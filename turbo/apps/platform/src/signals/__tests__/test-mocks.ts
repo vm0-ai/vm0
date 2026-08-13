@@ -1,4 +1,4 @@
-import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
+import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
 import { vi } from "vitest";
 
 import {

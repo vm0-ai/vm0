@@ -1,4 +1,4 @@
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,

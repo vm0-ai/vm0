@@ -3,7 +3,7 @@ import {
   type TestEmailOutboxStateActionBody,
   type TestEmailOutboxStateActionResponse,
   type TestEmailOutboxStateItem,
-} from "@vm0/api-contracts/contracts/test-email-outbox-state";
+} from "@okouai/api-contracts/contracts/test-email-outbox-state";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

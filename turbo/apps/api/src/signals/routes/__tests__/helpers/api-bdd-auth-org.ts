@@ -4,16 +4,16 @@ import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
+} from "@okouai/api-contracts/contracts/cli-auth";
 import {
   type ComposeListItem,
   type ComposeResponse,
   agentComposeApiContentSchema,
-} from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/composes";
 import type {
   OrgResponse,
   UpdateOrgRequest,
-} from "@vm0/api-contracts/contracts/orgs";
+} from "@okouai/api-contracts/contracts/orgs";
 import type {
   InviteOrgMemberRequest,
   MembershipRequestAction,
@@ -21,25 +21,25 @@ import type {
   OrgMessageResponse,
   RemoveOrgMemberRequest,
   UpdateOrgMemberRoleRequest,
-} from "@vm0/api-contracts/contracts/org-members";
+} from "@okouai/api-contracts/contracts/org-members";
 import {
   onboardingCompleteContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
-} from "@vm0/api-contracts/contracts/onboarding";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
+} from "@okouai/api-contracts/contracts/onboarding";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
-} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   type ZeroAgentMetadataRequest,
   type ZeroAgentRequest,
   type ZeroAgentResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
@@ -47,28 +47,28 @@ import {
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroOrgContract,
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+} from "@okouai/api-contracts/contracts/zero-org";
+import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
+} from "@okouai/api-contracts/contracts/zero-org-members";
 import {
   zeroTeamContract,
   type TeamComposeItem,
-} from "@vm0/api-contracts/contracts/zero-team";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-team";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 

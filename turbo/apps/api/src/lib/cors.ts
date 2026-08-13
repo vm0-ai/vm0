@@ -2,7 +2,7 @@
 // CORS owner and wraps hono's cors helper into a single middleware.
 import { cors } from "hono/cors";
 import type { MiddlewareHandler } from "hono";
-import { CLIENT_HEADER_NAMES } from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_HEADER_NAMES } from "@okouai/api-contracts/contracts/client-headers";
 
 import { safeUrlParse } from "../signals/utils";
 import { env } from "./env";
@@ -19,7 +19,7 @@ const STATIC_ALLOWED_ORIGINS = Object.freeze(
 );
 const OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
 
-function getAllowedOrigin(origin: string | undefined): string | null {
+export function allowedCorsOrigin(origin: string | undefined): string | null {
   if (!origin) {
     return null;
   }
@@ -76,7 +76,7 @@ function getAllowedOrigin(origin: string | undefined): string | null {
 
 export const corsMiddleware: MiddlewareHandler = cors({
   origin: (origin) => {
-    return getAllowedOrigin(origin);
+    return allowedCorsOrigin(origin);
   },
   credentials: true,
   allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],

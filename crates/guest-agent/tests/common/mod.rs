@@ -948,7 +948,7 @@ pub unsafe fn setup_codex_app_server_env(
         } else {
             std::env::remove_var("MOCK_CODEX_APP_SERVER_SCENARIO");
         }
-        std::env::set_var("VM0_RUN_ID", config.run_id);
+        std::env::set_var(guest_contracts::env::RUN_ID_ENV, config.run_id);
         std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
@@ -1073,7 +1073,7 @@ pub unsafe fn setup_env(
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "post-result-reap-test".to_string());
-        std::env::set_var("VM0_RUN_ID", &run_id);
+        std::env::set_var(guest_contracts::env::RUN_ID_ENV, &run_id);
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(workdir, &run_id)
             .map_err(|error| format!("resolve runtime dir: {error}"))?;
         set_run_payload_file_env_for_test(

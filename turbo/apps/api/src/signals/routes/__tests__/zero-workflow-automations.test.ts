@@ -4,12 +4,12 @@ import {
   cronRenewGmailWatchesContract,
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGoogleFormsWatchesContract,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/cron";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";

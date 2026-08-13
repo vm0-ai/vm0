@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { cronCompactUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronCompactUsageEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";

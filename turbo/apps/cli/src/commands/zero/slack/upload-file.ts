@@ -6,7 +6,7 @@ import chalk from "chalk";
 import type {
   SlackUploadInitResponse,
   SlackUploadMaterializeResponse,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 import {
   completeSlackFileUpload,
   initSlackFileUpload,

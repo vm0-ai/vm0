@@ -4,25 +4,30 @@ import { HttpResponse, http } from "msw";
 import {
   cronCompactChatThreadSnapshotsContract,
   cronProjectChatEventSearchContract,
-} from "@vm0/api-contracts/contracts/cron";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { testCronCleanupSandboxesStateContract } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+} from "@okouai/api-contracts/contracts/cron";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   chatThreadsContract,
   type ChatEvent,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import {
+  clearMockNow,
+  mockNow,
+  now,
+  withMockNowForTest,
+} from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -39,6 +44,7 @@ import {
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
+  setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
@@ -1013,6 +1019,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "claude-sonnet-5",
       { eventId: modelSelectionEventId },
     );
+    await setChatThreadVideoModelFixture(liveThread.id, "fal-ai/veo3.1/fast");
 
     const incrementalSnapshotAt = initialSnapshotAt + 1000;
     mockNow(incrementalSnapshotAt);
@@ -1044,6 +1051,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         title: "Renamed compact title",
         renamedAt: expect.any(String),
         selectedModel: "claude-sonnet-5",
+        // The compaction projection is hand-written SQL, so a column missing
+        // from it survives every read until compaction runs and drops it.
+        selectedVideoModel: "fal-ai/veo3.1/fast",
       }),
     ]);
 
@@ -1722,6 +1732,97 @@ describe("CHAT-01 chat thread read state", () => {
       },
     });
   }, 120_000);
+
+  it("limits unified unread indicators to seven days without limiting active threads", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Bounded indicator window agent",
+    );
+    const currentTime = now();
+
+    await withMockNowForTest(currentTime, async () => {
+      mockNow(currentTime - 7 * DAY_MS - 1);
+      const expiredRun = await completeChatRunInThread(actor, runnerGroup, {
+        agentId,
+        prompt: "expired unread indicator",
+      });
+
+      mockNow(currentTime);
+      const recentRun = await completeChatRunInThread(actor, runnerGroup, {
+        agentId,
+        prompt: "recent unread indicator",
+      });
+
+      mockNow(currentTime - 7 * DAY_MS - 1);
+      const activeRun = await sendChatRun(actor, {
+        agentId,
+        prompt: "old active indicator",
+      });
+
+      mockNow(currentTime);
+      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
+        new Set([expiredRun.threadId, recentRun.threadId]),
+      );
+      await expect(chat.listIndicators(actor)).resolves.toStrictEqual({
+        agents: { [agentId]: "active" },
+        threads: {
+          [recentRun.threadId]: "unread",
+          [activeRun.threadId]: "active",
+        },
+      });
+    });
+  }, 120_000);
+
+  it("returns the 50 newest unread indicators across the organization", async () => {
+    const {
+      actor,
+      agentId: agentA,
+      runnerGroup,
+    } = await entitledChatActor("Bounded indicator agent A");
+    const agentB = (
+      await bdd.createAgent(actor, {
+        displayName: "Bounded indicator agent B",
+        visibility: "private",
+      })
+    ).agentId;
+    const firstCompletedAt = now() - 60_000;
+
+    await withMockNowForTest(firstCompletedAt, async () => {
+      const runs: { readonly runId: string; readonly threadId: string }[] = [];
+      for (let index = 0; index < 51; index += 1) {
+        mockNow(firstCompletedAt + index * 1000);
+        runs.push(
+          await completeChatRunInThread(actor, runnerGroup, {
+            agentId: index % 2 === 0 ? agentA : agentB,
+            prompt: `bounded unread indicator ${index}`,
+          }),
+        );
+      }
+
+      mockNow(firstCompletedAt + 60_000);
+      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
+        new Set(
+          runs.map((run) => {
+            return run.threadId;
+          }),
+        ),
+      );
+
+      const indicators = await chat.listIndicators(actor);
+      expect(indicators.agents).toStrictEqual({
+        [agentA]: "unread",
+        [agentB]: "unread",
+      });
+      expect(Object.keys(indicators.threads)).toHaveLength(50);
+      const oldestRun = runs[0];
+      if (!oldestRun) {
+        throw new Error("Expected an oldest completed run");
+      }
+      expect(indicators.threads).not.toHaveProperty(oldestRun.threadId);
+      for (const run of runs.slice(1)) {
+        expect(indicators.threads[run.threadId]).toBe("unread");
+      }
+    });
+  }, 240_000);
 
   it("excludes unread chat threads that have active runs or goals", async () => {
     const {

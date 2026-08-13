@@ -3,7 +3,7 @@ import { once } from "node:events";
 import {
   ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
   ZERO_BROWSER_SCREEN_WIDTH,
-} from "@vm0/api-contracts/contracts/zero-browser";
+} from "@okouai/api-contracts/contracts/zero-browser";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

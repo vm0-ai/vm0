@@ -1239,7 +1239,7 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(err.contains("VM0_RUN_ID is required"));
+        assert!(err.contains("OKOU_RUN_ID is required"));
     }
 
     #[test]

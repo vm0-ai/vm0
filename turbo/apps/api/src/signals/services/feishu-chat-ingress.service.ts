@@ -1,11 +1,11 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   feishuChatIngress,
   type FeishuChatIngressStatus,
-} from "@vm0/db/schema/feishu-chat-ingress";
-import { feishuChatThreadRoutes } from "@vm0/db/schema/feishu-chat-thread-route";
-import { feishuOrgEvents } from "@vm0/db/schema/feishu-org-event";
+} from "@okouai/db/schema/feishu-chat-ingress";
+import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
+import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";

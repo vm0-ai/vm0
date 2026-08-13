@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -30,7 +30,7 @@ import {
 } from "../services/zero-goal.service";
 import type { RouteEntry } from "../route-entry";
 import type { AuthContext } from "../../types/auth";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 
 const log = logger("ZeroGoals");
 

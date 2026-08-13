@@ -1,8 +1,8 @@
 import { command } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
-import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

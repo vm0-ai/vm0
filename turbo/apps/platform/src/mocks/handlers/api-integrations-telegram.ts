@@ -5,7 +5,7 @@ import {
   type TelegramLinkStatusResponse,
   type TelegramListResponse,
   type TelegramSetupStatus,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { mockApi } from "../msw-contract.ts";
 
 type TelegramConnectedUser = NonNullable<TelegramBot["connectedUser"]>;

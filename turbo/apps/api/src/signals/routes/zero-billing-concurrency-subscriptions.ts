@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingConcurrencySubscriptionContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingConcurrencySubscriptionContract } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { optionalEnv } from "../../lib/env";
@@ -68,6 +68,11 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
         case "canceling": {
           return badRequestMessage(
             "Restore the concurrency subscription before changing slots",
+          );
+        }
+        case "invalid_quantity": {
+          return badRequestMessage(
+            "Concurrency quantity cannot exceed 1000 slots",
           );
         }
         case "no_change": {
@@ -291,7 +296,11 @@ const cancelConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return notFound("Concurrency subscription not found");
+      return result.reason === "not_found"
+        ? notFound("Concurrency subscription not found")
+        : conflict(
+            "Complete the pending subscription update before canceling concurrency",
+          );
     }
 
     return {

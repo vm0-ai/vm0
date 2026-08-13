@@ -1,4 +1,4 @@
-import { zeroTranslationRequestSchema } from "@vm0/api-contracts/contracts/zero-translation";
+import { zeroTranslationRequestSchema } from "@okouai/api-contracts/contracts/zero-translation";
 import { Command, InvalidArgumentError } from "commander";
 
 import { callZeroTranslation } from "../../../lib/api/domains/zero-translation";

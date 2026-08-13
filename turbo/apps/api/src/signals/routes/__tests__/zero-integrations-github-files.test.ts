@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   integrationsGithubUploadCompleteContract,
   integrationsGithubUploadInitContract,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 
 import { createApp } from "../../../app-factory";
 import { accept, testContext } from "../../../__tests__/test-context";

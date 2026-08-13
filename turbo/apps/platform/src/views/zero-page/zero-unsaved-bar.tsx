@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { Pencil, Loader2 } from "lucide-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 
 interface ZeroUnsavedBarProps {
   onDiscard: () => void;

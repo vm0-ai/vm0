@@ -18,7 +18,7 @@ import {
   FlaskConical,
   Coins,
 } from "lucide-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Button,
   DropdownMenu,
@@ -29,7 +29,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,

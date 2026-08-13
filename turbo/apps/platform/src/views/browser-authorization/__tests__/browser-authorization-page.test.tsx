@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { zeroBrowserAuthorizationRequestsContract } from "@vm0/api-contracts/contracts/zero-browser";
+import { zeroBrowserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-browser";
 import { describe, expect, it } from "vitest";
 
 import {

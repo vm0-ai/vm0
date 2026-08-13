@@ -12,11 +12,11 @@ import type {
   RunnerAdmittableProfiles,
   RunnerHeldSandboxStates,
   RunnerHeldWorkspaceStates,
-} from "@vm0/db/jsonb-contracts/runner-state";
+} from "@okouai/db/jsonb-contracts/runner-state";
 export type {
   RunnerHeldSandboxState,
   RunnerHeldWorkspaceState,
-} from "@vm0/db/jsonb-contracts/runner-state";
+} from "@okouai/db/jsonb-contracts/runner-state";
 
 export const runnerState = pgTable(
   "runner_state",

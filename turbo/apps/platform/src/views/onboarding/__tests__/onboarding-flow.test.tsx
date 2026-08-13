@@ -5,17 +5,17 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/core";
+import { zeroBillingCheckoutContract } from "@okouai/api-contracts/contracts/zero-billing";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 
 import {
   click,

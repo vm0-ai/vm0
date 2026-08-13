@@ -7,7 +7,7 @@ import {
   zeroWeatherContract,
   type ZeroAirQualityResponse,
   type ZeroWeatherConditionsResponse,
-} from "@vm0/api-contracts/contracts/zero-weather";
+} from "@okouai/api-contracts/contracts/zero-weather";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

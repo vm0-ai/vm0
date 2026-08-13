@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
   getShortcutParts,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 interface ShortcutEntry {

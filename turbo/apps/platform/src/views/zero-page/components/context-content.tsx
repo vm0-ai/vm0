@@ -5,8 +5,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@vm0/ui";
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/ui";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
 import { useTranslation } from "react-i18next";
 
 function SectionHeader({ title }: { title: string }) {

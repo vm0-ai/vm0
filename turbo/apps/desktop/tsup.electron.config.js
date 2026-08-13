@@ -17,7 +17,7 @@ module.exports = defineConfig({
   noExternal: [
     "update-electron-app",
     "@sentry/electron",
-    /^@vm0\//,
+    /^@okouai\//,
     /^@modelcontextprotocol\/sdk\//,
   ],
   define: {

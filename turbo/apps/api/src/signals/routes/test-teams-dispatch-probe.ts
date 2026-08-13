@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import {
   testTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeBody,
-} from "@vm0/api-contracts/contracts/test-teams-dispatch-probe";
-import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
+} from "@okouai/api-contracts/contracts/test-teams-dispatch-probe";
+import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/zero-teams-bot";
 
 import { now } from "../../lib/time";
 import { request$ } from "../context/hono";

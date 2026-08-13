@@ -22,7 +22,7 @@ this policy. Authoritative sources:
 ``request_classification.py`` validates concrete request destinations before
 credentials are used; it may defer an ordinary hostname during header
 processing, but request processing must later validate concrete endpoint
-evidence. ``auth_base_forwarder.py`` validates every resolved address before
+evidence. ``auth_base_transport.py`` validates every resolved address before
 connecting. A hostname classification is therefore a deferral, never proof
 that its eventual address is public.
 

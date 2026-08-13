@@ -5,7 +5,7 @@ import type {
   ZeroMapsPlacesSearchRequest,
   ZeroMapsResponse,
   ZeroMapsReverseGeocodeRequest,
-} from "@vm0/api-contracts/contracts/zero-maps";
+} from "@okouai/api-contracts/contracts/zero-maps";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";

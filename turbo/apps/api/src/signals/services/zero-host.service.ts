@@ -5,14 +5,14 @@ import type {
   HostedSiteFilesResponse,
   HostedSiteDeploymentsResponse,
   HostedSitePrepareRequest,
-} from "@vm0/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/zero-host";
 import {
   hostedDeployments,
   hostedSites,
   type HostedSiteManifest,
   type HostedSiteManifestFile,
-} from "@vm0/db/schema/hosted-site";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/hosted-site";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";

@@ -6,28 +6,28 @@ import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
+} from "@okouai/api-contracts/contracts/cli-auth";
 import {
   agentComposeApiContentSchema,
   type ZeroCapability,
-} from "@vm0/api-contracts/contracts/composes";
-import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/composes";
+import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
   cronProcessUsageEventsContract,
   cronTelegramCleanupContract,
-} from "@vm0/api-contracts/contracts/cron";
-import { testBillingReconciliationStateContract } from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
+} from "@okouai/api-contracts/contracts/cron";
+import { testBillingReconciliationStateContract } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
 import {
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
@@ -36,7 +36,7 @@ import {
   runnersPollContract,
   type CanonicalStorageManifest,
   type StorageManifest,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import {
   zeroRunsCancelContract,
   zeroRunCreateBodySchema,
@@ -44,8 +44,8 @@ import {
   zeroRunRunnerContract,
   zeroRunsByIdContract,
   zeroRunsQueueContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-runs";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -415,6 +415,9 @@ export function createRunsApi(context: TestContext) {
               has_more: false,
               data: [
                 {
+                  price: {
+                    id: tier === "team" ? "price_bdd_team" : "price_bdd_pro",
+                  },
                   parent: { type: "subscription_item_details" },
                   period: {
                     start: periodEndUnix - 30 * 86_400,

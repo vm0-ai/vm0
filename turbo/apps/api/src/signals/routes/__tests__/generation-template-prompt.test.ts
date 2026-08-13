@@ -5,11 +5,11 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
-} from "@vm0/core";
+} from "@okouai/core";
 import {
   findImageStyle,
   findWebsiteTemplatePackage,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,
@@ -387,6 +387,12 @@ describe("buildGenerationTemplatePrompt", () => {
       "use `seedream4` by default unless the user specifies another image model",
     );
     expect(result.prompt).toContain(
+      "Keep at most 3 image generations in flight at once",
+    );
+    expect(result.prompt).toContain(
+      "Embed the `Embed this URL in HTML` value returned by the generator",
+    );
+    expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/render.mjs`,
     );
     expect(result.prompt).toContain("okou host <output-dir> --site <slug>");
@@ -452,6 +458,8 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain("resolve-images.mjs");
     expect(result.prompt).not.toContain("use `seedream4` by default");
+    expect(result.prompt).not.toContain("Keep at most 3 image generations");
+    expect(result.prompt).not.toContain("Embed this URL in HTML");
   });
 
   it("rejects unknown workflow templates", () => {

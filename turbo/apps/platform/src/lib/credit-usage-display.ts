@@ -1,4 +1,4 @@
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import { i18n } from "../i18n/index.ts";
 
 const USAGE_DISPLAY_NAMES = {

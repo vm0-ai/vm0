@@ -1,7 +1,7 @@
 import type {
   TestModelStatsStateActionBody,
   TestModelStatsStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-model-stats-state";
+} from "@okouai/api-contracts/contracts/test-model-stats-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";

@@ -46,7 +46,7 @@ export default defineConfig({
     ].join("\n"),
   },
   // Resolve packages from the CLI's node_modules when bundling workspace deps
-  // (e.g. @vm0/core imports zod, which lives in apps/cli/node_modules)
+  // (e.g. @okouai/core imports zod, which lives in apps/cli/node_modules)
   esbuildOptions(options) {
     options.nodePaths = [resolve("node_modules")];
   },

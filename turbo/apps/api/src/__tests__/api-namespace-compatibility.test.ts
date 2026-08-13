@@ -1,4 +1,4 @@
-import { apiNamespaceAliasPaths } from "@vm0/api-contracts/contracts/api-namespaces";
+import { apiNamespaceAliasPaths } from "@okouai/api-contracts/contracts/api-namespaces";
 
 import { ROUTES } from "../signals/route";
 import {

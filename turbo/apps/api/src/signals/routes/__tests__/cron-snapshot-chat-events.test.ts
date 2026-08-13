@@ -1,18 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
-import {
-  cronProjectChatEventSearchContract,
-  cronSnapshotChatEventsContract,
-} from "@vm0/api-contracts/contracts/cron";
+import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
+import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
+import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { createDeferredPromise } from "../../utils";
-import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
+import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
+import { testChatEventSnapshotRoutes } from "../test-chat-event-snapshot";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -33,7 +33,6 @@ const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
-const CRON_SECRET = "test-cron-secret";
 const RETIRED_ARCHIVE_SCHEMA_VERSION = 1;
 const PREVIOUS_ARCHIVE_SCHEMA_VERSION = 4;
 const OBJECT_KEY_PATTERN =
@@ -47,25 +46,36 @@ function snapshotCronClient() {
   );
 }
 
-async function runSnapshotCron() {
+async function runSnapshotCron(
+  chatThreadIds: readonly string[],
+  r2ObjectKeys: readonly string[] = [],
+) {
+  const client = setupApp({
+    context,
+    routes: testChatEventSnapshotRoutes,
+  })(testChatEventSnapshotContract);
   const response = await accept(
-    snapshotCronClient().snapshot({
-      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    client.snapshot({
+      body: {
+        chat_thread_ids: [...chatThreadIds],
+        r2_object_keys: [...r2ObjectKeys],
+      },
     }),
     [200],
   );
   return response.body;
 }
 
-async function projectChatEventSearch(): Promise<void> {
+async function projectChatEventSearch(...chatThreadIds: readonly string[]) {
   const client = setupApp({
     context,
-    routes: cronProjectChatEventSearchRoutes,
-  })(cronProjectChatEventSearchContract);
-  await accept(
-    client.project({ headers: { authorization: `Bearer ${CRON_SECRET}` } }),
+    routes: testChatEventSearchProjectionRoutes,
+  })(testChatEventSearchProjectionContract);
+  const response = await accept(
+    client.project({ body: { chat_thread_ids: [...chatThreadIds] } }),
     [200],
   );
+  return response.body;
 }
 
 async function sendNoCreditMessage(
@@ -160,10 +170,6 @@ describe("cron snapshot chat events", () => {
   beforeEach(() => {
     installFakeChatEventR2(context, recordedPuts);
     recordedPuts.length = 0;
-    // Drain every candidate thread in the shared test database in one pass so
-    // assertions about this file's threads never depend on batch ordering.
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "10000");
-    mockOptionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE", "10000");
   });
 
   it("requires the cron secret", async () => {
@@ -193,9 +199,9 @@ describe("cron snapshot chat events", () => {
       threadId,
       prompt: `${marker} second`,
     });
-    await projectChatEventSearch();
+    await projectChatEventSearch(threadId);
 
-    const first = await runSnapshotCron();
+    const first = await runSnapshotCron([threadId]);
     expect(first.success).toBeTruthy();
     expect(first.snapshots).toBeGreaterThanOrEqual(1);
 
@@ -214,7 +220,7 @@ describe("cron snapshot chat events", () => {
     expect(firstHead.object_key).toBe(firstPut.key);
 
     // Nothing new to archive: the same pass again must not touch the thread.
-    await runSnapshotCron();
+    await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(1);
 
     // A new Postgres tail beyond the projected watermark triggers another
@@ -225,8 +231,8 @@ describe("cron snapshot chat events", () => {
       threadId,
       prompt: `${marker} third`,
     });
-    await projectChatEventSearch();
-    const second = await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    const second = await runSnapshotCron([threadId]);
     expect(second.success).toBeTruthy();
 
     const secondPuts = putsForThread(threadId);
@@ -245,8 +251,33 @@ describe("cron snapshot chat events", () => {
     expect(secondHead.archive_schema_version).toBe(5);
     expect(secondHead.object_key).toBe(secondPut.key);
 
-    await runSnapshotCron();
+    await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(2);
+  }, 60_000);
+
+  it("limits projection and snapshots to explicitly owned threads", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Scoped snapshot agent",
+    });
+    const ownedThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `scoped-snapshot-owned-${randomUUID()}`,
+    });
+    const unownedThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `scoped-snapshot-unowned-${randomUUID()}`,
+    });
+
+    const projection = await projectChatEventSearch(ownedThreadId);
+    expect(projection.threads).toBe(1);
+    const snapshot = await runSnapshotCron([ownedThreadId]);
+    expect(snapshot.snapshots).toBe(1);
+    expect(putsForThread(ownedThreadId)).toHaveLength(1);
+    expect(putsForThread(unownedThreadId)).toHaveLength(0);
+
+    const unownedRows = await chat.listThreadEventRows(owner, unownedThreadId);
+    expect(unownedRows.length).toBeGreaterThan(0);
   }, 60_000);
 
   it("publishes sparse indexed coverage and tails later rows", async () => {
@@ -266,8 +297,8 @@ describe("cron snapshot chat events", () => {
     const coveredSeqId = lastPhysicalRow.seqId + 1;
 
     await advanceChatEventSequenceAsPreviousApi(context, threadId, 1);
-    await projectChatEventSearch();
-    const result = await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    const result = await runSnapshotCron([threadId]);
     expect(result.success).toBeTruthy();
 
     const put = putsForThread(threadId)[0];
@@ -307,8 +338,8 @@ describe("cron snapshot chat events", () => {
       agentId: agent.agentId,
       prompt: `version-only-${randomUUID()}`,
     });
-    await projectChatEventSearch();
-    await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
 
     const firstPut = putsForThread(threadId)[0];
     if (firstPut === undefined) {
@@ -321,7 +352,7 @@ describe("cron snapshot chat events", () => {
       PREVIOUS_ARCHIVE_SCHEMA_VERSION,
     );
 
-    const rebuilt = await runSnapshotCron();
+    const rebuilt = await runSnapshotCron([threadId]);
     expect(rebuilt.success).toBeTruthy();
     expect(rebuilt.nonV4SnapshotHeads).toBe(0);
     expect(putsForThread(threadId)).toHaveLength(2);
@@ -333,7 +364,7 @@ describe("cron snapshot chat events", () => {
     expect(rebuiltHead.object_key).toBe(firstPut.key);
     expect(rebuiltHead.snapshot_count).toBe(firstHead.snapshot_count);
 
-    await runSnapshotCron();
+    await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
@@ -347,8 +378,8 @@ describe("cron snapshot chat events", () => {
       agentId: agent.agentId,
       prompt: `corruption-${randomUUID()}`,
     });
-    await projectChatEventSearch();
-    await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
 
     const headPut = putsForThread(threadId)[0];
     if (headPut === undefined) {
@@ -367,8 +398,8 @@ describe("cron snapshot chat events", () => {
       threadId,
       prompt: `corruption-tail-${randomUUID()}`,
     });
-    await projectChatEventSearch();
-    const rebuilt = await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    const rebuilt = await runSnapshotCron([threadId]);
     expect(rebuilt.success).toBeTruthy();
     expect(rebuilt.unreadableParents).toBeGreaterThanOrEqual(1);
     expect(putsForThread(threadId)).toHaveLength(2);
@@ -389,8 +420,8 @@ describe("cron snapshot chat events", () => {
         });
       }),
     );
-    await projectChatEventSearch();
-    await runSnapshotCron();
+    await projectChatEventSearch(...threadIds);
+    await runSnapshotCron(threadIds);
 
     const retiredObjectKeys: string[] = [];
     for (const threadId of threadIds) {
@@ -411,7 +442,7 @@ describe("cron snapshot chat events", () => {
     }
 
     mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "1");
-    const firstPass = await runSnapshotCron();
+    const firstPass = await runSnapshotCron(threadIds);
     expect(firstPass).toMatchObject({
       snapshots: 1,
       nonV4SnapshotHeads: 0,
@@ -423,7 +454,7 @@ describe("cron snapshot chat events", () => {
       expect(readFakeChatEventObject(objectKey)).toBeUndefined();
     }
 
-    const secondPass = await runSnapshotCron();
+    const secondPass = await runSnapshotCron(threadIds);
     expect(secondPass).toMatchObject({
       snapshots: 1,
       nonV4SnapshotHeads: 0,
@@ -443,8 +474,8 @@ describe("cron snapshot chat events", () => {
       agentId: agent.agentId,
       prompt: `snapshot-cas-${randomUUID()}`,
     });
-    await projectChatEventSearch();
-    await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
     const parentHead = await readChatEventSnapshotHead(context, threadId);
 
     await sendNoCreditMessage(owner, {
@@ -452,7 +483,7 @@ describe("cron snapshot chat events", () => {
       threadId,
       prompt: `snapshot-cas-tail-${randomUUID()}`,
     });
-    await projectChatEventSearch();
+    await projectChatEventSearch(threadId);
 
     const publicationGate = createDeferredPromise<void>(context.signal);
     let arrivals = 0;
@@ -467,11 +498,12 @@ describe("cron snapshot chat events", () => {
       await publicationGate.promise;
     });
 
-    await Promise.all([runSnapshotCron(), runSnapshotCron()]);
+    await Promise.all([
+      runSnapshotCron([threadId]),
+      runSnapshotCron([threadId]),
+    ]);
     expect(arrivals).toBe(2);
     const head = await readChatEventSnapshotHead(context, threadId);
-    // Cron result counts cover every candidate in the shared test database;
-    // the persisted generation count scopes the CAS assertion to this thread.
     expect(head.snapshot_count).toBe(parentHead.snapshot_count + 1);
     expect(head.archive_schema_version).toBe(5);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);

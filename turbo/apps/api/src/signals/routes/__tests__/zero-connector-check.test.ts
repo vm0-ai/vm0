@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   type ConnectorCheckRequest,
   zeroConnectorCheckContract,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/zero-connector-check";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -844,7 +844,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     });
   });
 
-  it("diagnoses sanitized inline entries without exposing their source snapshot", async () => {
+  it("diagnoses historical and execution inline entries without exposing their source snapshot", async () => {
     const actor = bdd.user();
     const runId = await createOwnedRun(actor);
     await seedZeroMembership(actor);
@@ -869,10 +869,21 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
             ],
           },
           {
+            kind: "inline",
             name: "github",
             apis: [
               {
+                id: "github:inline:0",
                 base: inlineBase,
+                hostPolicy: { kind: "publicDestination" },
+                auth: {
+                  headerEntries: [
+                    {
+                      name: "Authorization",
+                      value: `Bearer \${{ secrets.GITHUB_TOKEN }}`,
+                    },
+                  ],
+                },
                 permissions: [
                   {
                     name: "issues.write",
@@ -948,6 +959,8 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       '"ask":',
       "repository.read",
       "unknown-non-connector",
+      "Authorization",
+      "secrets.GITHUB_TOKEN",
     ]) {
       expect(serialized).not.toContain(forbidden);
     }

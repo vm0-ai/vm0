@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

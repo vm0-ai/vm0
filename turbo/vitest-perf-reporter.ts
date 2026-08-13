@@ -5,7 +5,7 @@
  * Enable by setting VITEST_PERF=1 before running vitest:
  *
  *   VITEST_PERF=1 pnpm test
- *   VITEST_PERF=1 pnpm -F @vm0/api exec vitest run
+ *   VITEST_PERF=1 pnpm -F @okouai/api exec vitest run
  *   pnpm test:perf
  */
 import type { Reporter, TestRunEndReason } from "vitest/reporters";

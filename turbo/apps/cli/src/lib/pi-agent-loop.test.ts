@@ -1,8 +1,8 @@
-import { CANONICAL_PI_SESSION_DATABASE_PATH } from "@vm0/api-contracts/contracts/runners";
+import { CANONICAL_PI_SESSION_DATABASE_PATH } from "@okouai/api-contracts/contracts/runners";
 import {
   runPiAgentSession,
   type PiAssistantMessage,
-} from "@vm0/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/node";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,6 +27,21 @@ const CONFIG: PiSandboxAgentConfig = {
   },
   databasePath: CANONICAL_PI_SESSION_DATABASE_PATH,
 };
+
+function piEnv(runIdEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...runIdEnv,
+    OKOU_PI_SESSION_ID: SESSION_ID,
+    OKOU_PI_SYSTEM_PROMPT: CONFIG.systemPrompt,
+    OKOU_PI_MODEL_CONFIG: JSON.stringify({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-v4-flash",
+      apiKeyEnv: "OPENAI_API_KEY",
+    }),
+    OPENAI_API_KEY: "test-api-key",
+  };
+}
 
 const ZERO_USAGE = {
   input: 5,
@@ -72,21 +87,36 @@ class FakeIo implements PiAgentLoopIo {
 }
 
 describe("sandbox Pi agent loop", () => {
-  it("resolves the Chat Thread session and model credential from runner env", () => {
+  it("resolves the Pi session and model credential from canonical runner env", () => {
     expect(
-      piSandboxAgentConfigFromEnv({
-        VM0_RUN_ID: RUN_ID,
-        VM0_PI_SESSION_ID: SESSION_ID,
-        VM0_PI_SYSTEM_PROMPT: CONFIG.systemPrompt,
-        VM0_PI_MODEL_CONFIG: JSON.stringify({
-          provider: "deepseek",
-          baseUrl: "https://api.deepseek.com/",
-          model: "deepseek-v4-flash",
-          apiKeyEnv: "OPENAI_API_KEY",
+      piSandboxAgentConfigFromEnv(
+        piEnv({
+          OKOU_RUN_ID: RUN_ID,
         }),
-        OPENAI_API_KEY: "test-api-key",
-      }),
+      ),
     ).toEqual(CONFIG);
+  });
+
+  it("uses the canonical name when the run id is missing", () => {
+    expect(() => {
+      return piSandboxAgentConfigFromEnv(piEnv({}));
+    }).toThrowError("OKOU_RUN_ID is required for Pi execution");
+  });
+
+  it("names the canonical variable without exposing invalid model config", () => {
+    const invalidModelConfig = "credential-like-model-config{";
+    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+    env.OKOU_PI_MODEL_CONFIG = invalidModelConfig;
+
+    expect(() => {
+      return piSandboxAgentConfigFromEnv(env);
+    }).toThrowError("OKOU_PI_MODEL_CONFIG must contain valid JSON");
+    try {
+      piSandboxAgentConfigFromEnv(env);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).not.toContain(invalidModelConfig);
+    }
   });
 
   it("runs one native SQLite turn and emits only the chat projection", async () => {

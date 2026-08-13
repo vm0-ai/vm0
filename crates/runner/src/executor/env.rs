@@ -683,7 +683,7 @@ impl HostEnv {
 
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
     // The entire VM0_ namespace is runner-owned, including retired keys such
-    // as VM0_WORKING_DIR. Non-VM0 keys must stay explicit.
+    // as VM0_WORKING_DIR. Canonical keys outside it must stay explicit.
     guest_contracts::env::is_runner_owned_env_key(key)
 }
 

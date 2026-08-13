@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import type {
   CustomConnectorResponse,
   CustomConnectorValueInput,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   Button,
   Dialog,
@@ -11,8 +11,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui";
-import { Input } from "@vm0/ui/components/ui/input";
+} from "@okouai/ui";
+import { Input } from "@okouai/ui/components/ui/input";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";

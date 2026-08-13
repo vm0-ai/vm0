@@ -1,10 +1,10 @@
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
-} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { systemStoragePresignedUrlCache } from "@okouai/db/schema/system-storage-presigned-url-cache";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 

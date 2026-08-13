@@ -1,7 +1,7 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 
 import { badRequestMessage } from "../../lib/error";

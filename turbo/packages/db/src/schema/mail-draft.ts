@@ -6,7 +6,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ZeroMailDraftStatus } from "@vm0/api-contracts/contracts/zero-mail";
+import type { ZeroMailDraftStatus } from "@okouai/api-contracts/contracts/zero-mail";
 import { chatThreads } from "./chat-thread";
 import { connectors } from "./connector";
 

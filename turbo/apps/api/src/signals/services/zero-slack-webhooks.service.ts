@@ -1,16 +1,16 @@
 import { command, computed, type Computed } from "ccstate";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { slackUserAgentPreferences } from "@okouai/db/schema/slack-user-agent-preference";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, desc, eq, or } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";

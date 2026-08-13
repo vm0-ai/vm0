@@ -1,13 +1,13 @@
 import type {
   OrgInvitationPurchasePreviewResponse,
   OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
-import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/org-members";
+import type { UsagePackUsd } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   usagePackAllocations,
   usagePackInvitationPurchases,
   usagePackSubscriptions,
-} from "@vm0/db/schema/usage-pack-subscription";
+} from "@okouai/db/schema/usage-pack-subscription";
 import {
   and,
   desc,
