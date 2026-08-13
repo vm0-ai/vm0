@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.445.3](https://github.com/vm0-ai/vm0/compare/api-v1.445.2...api-v1.445.3) (2026-08-13)
+
+
+### Refactoring
+
+* **api:** neutralize web push module names ([#27028](https://github.com/vm0-ai/vm0/issues/27028)) ([4db851a](https://github.com/vm0-ai/vm0/commit/4db851a12f168bf450082da90a698b1460719b21))
+* **api:** rename platform realtime token route shell ([#27023](https://github.com/vm0-ai/vm0/issues/27023)) ([d3505a0](https://github.com/vm0-ai/vm0/commit/d3505a077b47dd8c2521f325dc9097fc7e04a83d))
+* **morning-brief:** neutralize manual trigger shell ([#27027](https://github.com/vm0-ai/vm0/issues/27027)) ([ed36ad6](https://github.com/vm0-ai/vm0/commit/ed36ad6fded5ea236b41ce87eb0af8b36aa5b048))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.7
+    * @okouai/core bumped to 8.559.1
+    * @okouai/db bumped to 1.198.8
+    * @okouai/pi-agent-runtime bumped to 1.4.15
+
 ## [1.445.2](https://github.com/vm0-ai/vm0/compare/api-v1.445.1...api-v1.445.2) (2026-08-13)
 
 
