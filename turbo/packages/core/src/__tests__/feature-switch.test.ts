@@ -153,7 +153,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      false,
+      true,
     );
   });
 
