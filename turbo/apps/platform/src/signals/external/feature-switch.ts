@@ -7,6 +7,7 @@ import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
 import {
   featureSwitchCacheState$,
   setFeatureSwitchLocalStorage$,
@@ -98,6 +99,10 @@ export const reloadFeatureSwitch$ = command(
       result.body.effectiveSwitches,
     );
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+    set(writeConnectionDiagnostic$, {
+      action: "set-enabled",
+      enabled: combined[FeatureSwitchKey.ZeroDebug],
+    });
   },
 );
 

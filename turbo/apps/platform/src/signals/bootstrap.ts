@@ -82,6 +82,7 @@ import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
+import { setupConnectionDiagnostics$ } from "./connection-diagnostics.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 import { captureInvitationRedirect$ } from "./invitation-redirect.ts";
 
@@ -453,6 +454,7 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
+      set(setupConnectionDiagnostics$, signal),
       set(setupRoutes$, signal),
       set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
