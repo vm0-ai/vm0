@@ -4356,7 +4356,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
   return (
     <div
       data-chat-skeleton
-      className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
+      className="zero-chat-skeleton-reveal absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
     >
       <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
         <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
