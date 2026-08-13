@@ -651,10 +651,11 @@ function CreditBalanceChart({
         </div>
       ) : null}
 
-      {total > 0 && segments.length > 1 && (
+      {total > 0 && segments.length > 0 && (
         // Gapped segments so the composition never reads as the filled progress
-        // meter the usage allowance rows use right above it. A lone segment is
-        // always the whole balance, so it would only add that confusion back.
+        // meter the usage allowance rows use right above it. A single category
+        // still draws its bar: the card keeps one shape no matter how the
+        // balance is made up.
         <TooltipProvider delayDuration={100}>
           <div className="mt-4 flex h-2 w-full gap-[3px]">
             {segments.map((s) => {

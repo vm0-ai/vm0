@@ -281,6 +281,26 @@ describe("organization usage settings", () => {
     expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
   });
 
+  it("draws the composition bar even when one category holds the balance", async () => {
+    mockUsageStory();
+    mockBillingStatus({
+      creditBreakdown: [
+        {
+          category: "payAsYouGo",
+          label: "Purchased credits",
+          credits: 12_000,
+        },
+      ],
+    });
+    await openCreditBalance();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("credit-balance-segment-payAsYouGo"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("shows workspace member usage in the credit usage section", async () => {
     mockUsageStory();
     await openCreditUsage();
