@@ -56,15 +56,9 @@ pub(super) fn rootfs_script_command(script: &Path) -> tokio::process::Command {
     cmd.process_group(0);
     cmd.kill_on_drop(true);
 
-    // SAFETY: `set_pdeathsig` calls `prctl(PR_SET_PDEATHSIG)`, which is
-    // async-signal-safe. It narrows the window where a parent runner crash
-    // releases flocks while a rootfs script keeps mutating staging files.
-    unsafe {
-        cmd.pre_exec(|| {
-            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
-                .map_err(std::io::Error::from)
-        });
-    }
+    // Prevent scripts from continuing to mutate staging files after a runner
+    // crash releases the associated locks.
+    crate::parent_death::configure_parent_death_signal(&mut cmd);
 
     cmd
 }
