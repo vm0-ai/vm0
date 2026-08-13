@@ -608,7 +608,6 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
     });
 
     await waitFor(() => {
