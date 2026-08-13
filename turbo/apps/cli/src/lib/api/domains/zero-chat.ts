@@ -1,4 +1,4 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   type ChatEventSendBody,
   chatEventsContract,
@@ -13,9 +13,9 @@ import {
   type ChatThreadMetadata,
   type ChatThreadSnapshotProjection,
   type ChatSearchResponse,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
@@ -34,11 +34,6 @@ interface ZeroChatEventSnapshotDownload {
 type ZeroChatEventRowsPage =
   | { readonly kind: "rows"; readonly rows: readonly ChatEventRowV4[] }
   | { readonly kind: "expired" };
-
-interface ZeroQueuedChatEvent {
-  readonly eventId: string;
-  readonly seqId: number;
-}
 
 function requireSupportedModel(model: string) {
   if (!isSupportedRunModel(model)) {
@@ -246,20 +241,6 @@ export async function listZeroChatEventRows(options: {
     return { kind: "expired" };
   }
   handleError(result, "Failed to list chat event rows");
-}
-
-export async function listZeroQueuedChatEvents(options: {
-  readonly threadId: string;
-}): Promise<readonly ZeroQueuedChatEvent[]> {
-  const config = await getClientConfig();
-  const client = initClient(chatThreadEventsContract, config);
-  const result = await client.queued({
-    params: { threadId: options.threadId },
-  });
-  if (result.status === 200) {
-    return result.body.events;
-  }
-  handleError(result, "Failed to list queued chat events");
 }
 
 export async function updateZeroChatThreadModelSelection(options: {

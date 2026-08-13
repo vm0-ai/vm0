@@ -1,12 +1,12 @@
 import { command } from "ccstate";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   findWebsiteTemplateItem,
   findVideoTemplateItem,
-} from "@vm0/core";
+} from "@okouai/core";
 import { i18n } from "../../i18n/index.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";

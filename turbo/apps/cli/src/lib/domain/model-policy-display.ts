@@ -2,7 +2,7 @@ import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
   type OrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 
 type ModelProviderRouteKind = "built-in" | "api key" | "subscription";
 

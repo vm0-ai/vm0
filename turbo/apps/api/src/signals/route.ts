@@ -118,7 +118,7 @@ import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
 import { zeroRecognitionRoutes } from "./routes/zero-recognition";
-import { zeroTranslationRoutes } from "./routes/zero-translation";
+import { translationRoutes } from "./routes/translation";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
@@ -170,7 +170,7 @@ import { zeroFeishuBrowserConnectRoutes } from "./routes/zero-feishu-browser-con
 import { zeroFeishuConnectRoutes } from "./routes/zero-feishu-connect";
 import { zeroFeishuEventsRoutes } from "./routes/zero-feishu-events";
 import { zeroFeishuOauthRoutes } from "./routes/zero-feishu-oauth";
-import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
+import { steamPlayerRoutes } from "./routes/steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
@@ -179,7 +179,6 @@ import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
-import { zeroPresentationTemplatesRoutes } from "./routes/zero-presentation-templates";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
@@ -318,7 +317,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroQueuePositionRoutes,
   ...zeroRealtimeTokenRoutes,
   ...zeroRecognitionRoutes,
-  ...zeroTranslationRoutes,
+  ...translationRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
@@ -371,7 +370,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsTeamsUploadCompleteRoutes,
   ...zeroIntegrationsTeamsUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
-  ...zeroSteamPlayerRoutes,
+  ...steamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,
@@ -380,7 +379,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
-  ...zeroPresentationTemplatesRoutes,
   ...registryResourceDownloadRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,

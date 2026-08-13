@@ -10,7 +10,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Input, Switch } from "@vm0/ui";
+import { Input, Switch } from "@okouai/ui";
 import {
   autoRechargeConfig$,
   autoRechargeDirty$,

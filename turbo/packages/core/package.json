@@ -1,6 +1,6 @@
 {
-  "name": "@vm0/core",
-  "version": "8.553.2",
+  "name": "@okouai/core",
+  "version": "8.555.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -25,8 +25,8 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",
@@ -34,7 +34,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@vm0/api-contracts": "workspace:*",
+    "@okouai/api-contracts": "workspace:*",
     "yaml": "^2.8.1"
   }
 }

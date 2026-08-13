@@ -309,7 +309,9 @@ async def test_sigv4_request_target_inspection_boundary(
         content_length="0",
         content_hash="UNSIGNED-PAYLOAD",
     )
-    flow.request.path = "/" + "a" * (target_size - 1)
+    target_prefix = "/?padding="
+    flow.request.path = target_prefix + "a" * (target_size - len(target_prefix))
+    assert len(flow.request.data.path) == target_size
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (

@@ -430,6 +430,78 @@ mod tests {
     }
 
     #[test]
+    fn manifest_rejects_fields_for_wrong_mount_category() {
+        for (name, invalid_mount, expected_error, valid_mount) in [
+            (
+                "writeback extractPath",
+                json!({
+                    "mountPath": "/workspace",
+                    "extractPath": "/run/storage-instructions/0",
+                    "writeback": true
+                }),
+                "writeback storage mount cannot contain instruction normalization fields",
+                json!({
+                    "mountPath": "/data",
+                    "extractPath": "/run/storage-instructions/0"
+                }),
+            ),
+            (
+                "writeback instructionsTargetFilename",
+                json!({
+                    "mountPath": "/workspace",
+                    "instructionsTargetFilename": "AGENTS.md",
+                    "writeback": true
+                }),
+                "writeback storage mount cannot contain instruction normalization fields",
+                json!({
+                    "mountPath": "/data",
+                    "instructionsTargetFilename": "AGENTS.md"
+                }),
+            ),
+            (
+                "read-only empty",
+                json!({
+                    "mountPath": "/data",
+                    "empty": true
+                }),
+                "read-only storage mount cannot be empty",
+                json!({
+                    "mountPath": "/workspace",
+                    "empty": true,
+                    "writeback": true
+                }),
+            ),
+            (
+                "read-only missingRootPolicy",
+                json!({
+                    "mountPath": "/data",
+                    "missingRootPolicy": "preserveParentVersion"
+                }),
+                "read-only storage mount cannot contain missingRootPolicy",
+                json!({
+                    "mountPath": "/workspace",
+                    "missingRootPolicy": "preserveParentVersion",
+                    "writeback": true
+                }),
+            ),
+        ] {
+            let result = serde_json::from_value::<Manifest>(json!({
+                "storageMounts": [invalid_mount]
+            }));
+            let error = result.unwrap_err().to_string();
+            assert!(
+                error.contains(expected_error),
+                "{name}: expected {expected_error:?} in {error:?}"
+            );
+
+            let result = serde_json::from_value::<Manifest>(json!({
+                "storageMounts": [valid_mount]
+            }));
+            assert!(result.is_ok(), "{name}: valid control failed: {result:?}");
+        }
+    }
+
+    #[test]
     fn manifest_rejects_legacy_representations() {
         for value in [
             json!({ "storages": [], "artifacts": [] }),

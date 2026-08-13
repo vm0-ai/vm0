@@ -12,7 +12,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import type {
   ChatForwardComposerState,
@@ -34,7 +34,7 @@ import {
   chatListQuery$,
   setChatListQuery$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 
@@ -192,8 +192,8 @@ function ForwardComposerSurface({
   readonly composer: ComposerSignals;
 }) {
   return (
-    <div className="px-5 pb-5 pt-4" data-chat-composer>
-      <ZeroChatComposer signals={composer} />
+    <div className="w-full min-w-0 px-5 pb-5 pt-4" data-chat-composer>
+      <ZeroChatComposer signals={composer} showPendingItems={false} />
     </div>
   );
 }
@@ -206,7 +206,7 @@ function ForwardComposer({
   const ready = useGet(state.ready$);
   const setLifecycleRef = useSet(state.setLifecycleRef$);
   return (
-    <div ref={setLifecycleRef}>
+    <div ref={setLifecycleRef} className="min-w-0">
       {ready ? (
         <ForwardComposerSurface composer={state.composer} />
       ) : (
@@ -297,12 +297,7 @@ export function ChatForwardDialog({
         {target ? null : <ForwardContent text={selection.quote} />}
         {target && composerState ? (
           <>
-            <div className="flex items-center gap-2 px-5 pt-4 text-sm text-muted-foreground">
-              <span>
-                {t(($) => {
-                  return $.chat.forward.to;
-                })}
-              </span>
+            <div className="px-5 pt-4">
               <ForwardTargetContent target={target} />
             </div>
             <ForwardComposer state={composerState} />

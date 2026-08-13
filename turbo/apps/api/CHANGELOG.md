@@ -1,5 +1,102 @@
 # Changelog
 
+## [1.444.1](https://github.com/vm0-ai/vm0/compare/api-v1.444.0...api-v1.444.1) (2026-08-13)
+
+
+### Refactoring
+
+* **chat:** read search from durable message projection ([#26907](https://github.com/vm0-ai/vm0/issues/26907)) ([1861a16](https://github.com/vm0-ai/vm0/commit/1861a16c8de848af60a49f424f78b61c79daca21))
+* **core:** canonicalize seed modules and onboarding copy ([#26900](https://github.com/vm0-ai/vm0/issues/26900)) ([929d020](https://github.com/vm0-ai/vm0/commit/929d0207440b7cccb8051d17890d8096cbd96ea1))
+* **translation:** neutralize managed translation naming ([#26932](https://github.com/vm0-ai/vm0/issues/26932)) ([8c18ee2](https://github.com/vm0-ai/vm0/commit/8c18ee2adec75865f92365c7e074d1b36177a718)), closes [#26873](https://github.com/vm0-ai/vm0/issues/26873)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.1
+    * @okouai/core bumped to 8.555.1
+    * @okouai/db bumped to 1.198.2
+    * @okouai/pi-agent-runtime bumped to 1.4.9
+
+## [1.444.0](https://github.com/vm0-ai/vm0/compare/api-v1.443.0...api-v1.444.0) (2026-08-13)
+
+
+### Features
+
+* **api:** add member default video model ([#26841](https://github.com/vm0-ai/vm0/issues/26841)) ([4690e37](https://github.com/vm0-ai/vm0/commit/4690e379ae93f4103dbc41267d4a925a1bd45fb1))
+* **api:** add per-thread video model endpoint ([#26831](https://github.com/vm0-ai/vm0/issues/26831)) ([d12287f](https://github.com/vm0-ai/vm0/commit/d12287ff2412e1f37fd531a8ea3ac373dc61a66b))
+* confirm saved-billing credit purchases in app ([#26806](https://github.com/vm0-ai/vm0/issues/26806)) ([135585d](https://github.com/vm0-ai/vm0/commit/135585db4ea65e2c93cd37c7053012d268eedf86))
+
+
+### Refactoring
+
+* **connectors:** reuse shared oauth state primitives ([#26865](https://github.com/vm0-ai/vm0/issues/26865)) ([82e9c6c](https://github.com/vm0-ai/vm0/commit/82e9c6cfdd3aa2e87498e1a11c70beea80b220be))
+* remove sandbox presentation import pipeline ([#26646](https://github.com/vm0-ai/vm0/issues/26646)) ([54601f1](https://github.com/vm0-ai/vm0/commit/54601f1aedeb78825f2e8c63760b9c94b41009c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.0
+    * @okouai/core bumped to 8.555.0
+    * @okouai/db bumped to 1.198.1
+    * @okouai/pi-agent-runtime bumped to 1.4.8
+
+## [1.443.0](https://github.com/vm0-ai/vm0/compare/api-v1.442.0...api-v1.443.0) (2026-08-13)
+
+
+### Features
+
+* **api:** add request public brand context ([#26838](https://github.com/vm0-ai/vm0/issues/26838)) ([76ead74](https://github.com/vm0-ai/vm0/commit/76ead74ddf66738fd49db66fa60977c098da9a22))
+* **db:** add video model columns and thread event kind ([#26807](https://github.com/vm0-ai/vm0/issues/26807)) ([683a9e7](https://github.com/vm0-ai/vm0/commit/683a9e748792feba0ea6d7ed3eea1d1f63665a47))
+* serve generated images through the cdn image transform ([#26809](https://github.com/vm0-ai/vm0/issues/26809)) ([3a150bf](https://github.com/vm0-ai/vm0/commit/3a150bf44d50bc92439214761e483d8fdc022d37))
+
+
+### Bug Fixes
+
+* **api:** preserve firewall execution metadata in run context ([#26840](https://github.com/vm0-ai/vm0/issues/26840)) ([0bb6240](https://github.com/vm0-ai/vm0/commit/0bb624045ceeb53bbad3e386da0ffda21f812e9e))
+* **connectors:** require pinned custom runtime registrations ([#26854](https://github.com/vm0-ai/vm0/issues/26854)) ([7a80c6c](https://github.com/vm0-ai/vm0/commit/7a80c6c506db436956c7a8e23dafa7d6c9014955))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.328.0
+    * @okouai/core bumped to 8.554.0
+    * @okouai/db bumped to 1.198.0
+    * @okouai/pi-agent-runtime bumped to 1.4.7
+
+## [1.442.0](https://github.com/vm0-ai/vm0/compare/api-v1.441.2...api-v1.442.0) (2026-08-13)
+
+
+### Features
+
+* **api:** show source run on chat-run-finished automations ([#26805](https://github.com/vm0-ai/vm0/issues/26805)) ([e52c30d](https://github.com/vm0-ai/vm0/commit/e52c30d572c8d477e2bbb5f63753825e32f7cdfc))
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+
+### Performance Improvements
+
+* **api:** bound unified unread indicators ([#26816](https://github.com/vm0-ai/vm0/issues/26816)) ([b036c02](https://github.com/vm0-ai/vm0/commit/b036c02de532c72c678d636dfc47885bf025e0c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.327.3
+    * @okouai/connectors bumped to 1.205.2
+    * @okouai/core bumped to 8.553.3
+    * @okouai/db bumped to 1.197.9
+    * @okouai/pi-agent-runtime bumped to 1.4.6
+
 ## [1.441.2](https://github.com/vm0-ai/vm0/compare/api-v1.441.1...api-v1.441.2) (2026-08-13)
 
 

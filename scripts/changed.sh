@@ -2,7 +2,7 @@
 # Check which turbo packages need to be rebuilt by comparing task hashes
 # Usage: changed.sh [base-ref]
 # Output: JSON object with package names as keys and boolean values (true = changed)
-# Example output: {"@vm0/okou-cli": true, "@vm0/web": false}
+# Example output: {"@okouai/cli": true, "@okouai/web": false}
 
 set -e
 

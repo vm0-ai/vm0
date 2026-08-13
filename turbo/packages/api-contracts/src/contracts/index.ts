@@ -141,17 +141,17 @@ export {
   type ZeroRecognitionResponse,
 } from "./zero-recognition";
 export {
-  ZERO_TRANSLATION_MAX_LANGUAGE_CHARS,
-  ZERO_TRANSLATION_MAX_RESULT_TEXT_CHARS,
-  ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
-  zeroTranslationContract,
-  zeroTranslationLanguageSchema,
-  zeroTranslationRequestSchema,
-  zeroTranslationResponseSchema,
-  type ZeroTranslationContract,
-  type ZeroTranslationRequest,
-  type ZeroTranslationResponse,
-} from "./zero-translation";
+  TRANSLATION_MAX_LANGUAGE_CHARS,
+  TRANSLATION_MAX_RESULT_TEXT_CHARS,
+  TRANSLATION_MAX_SOURCE_TEXT_CHARS,
+  translationContract,
+  translationLanguageSchema,
+  translationRequestSchema,
+  translationResponseSchema,
+  type TranslationContract,
+  type TranslationRequest,
+  type TranslationResponse,
+} from "./translation";
 export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
@@ -789,17 +789,17 @@ export {
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
   validateBaseUrl,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 export {
   collectAndValidatePermissions,
   validateRule,
-} from "@vm0/connectors/firewall-expander";
+} from "@okouai/connectors/firewall-expander";
 
 export {
   matchFirewallPath,
   findMatchingPermissions,
-} from "@vm0/connectors/firewall-rule-matcher";
+} from "@okouai/connectors/firewall-rule-matcher";
 
 export {
   userPreferencesResponseSchema,
@@ -920,12 +920,12 @@ export {
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
   zeroWorkflowAutomationsContract,
-  type ZeroWorkflowVisibility,
+  type WorkflowVisibility,
   type WorkflowFileEntry,
   type WorkflowFileMetadata,
-  type ZeroWorkflowAutomationKind,
-  type ZeroAutomationEventType,
-  type ZeroWorkflowScheduleType,
+  type WorkflowAutomationKind,
+  type WorkflowAutomationEventType,
+  type WorkflowScheduleType,
   type GmailNewMessageEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailAutomationEventConfig,
@@ -1726,18 +1726,6 @@ export {
   type ZeroUploadsContract,
   type UploadPrepareResponse,
 } from "./zero-uploads";
-export {
-  MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
-  MAX_PRESENTATION_TEMPLATE_PAGES,
-  PRESENTATION_TEMPLATE_CONVERSION_TIMEOUT_SECONDS,
-  MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES,
-  presentationTemplateStatusSchema,
-  presentationTemplateImportErrorCodeSchema,
-  presentationTemplatePreflightErrorCodeSchema,
-  zeroPresentationTemplatesContract,
-  type PresentationTemplateSummary,
-  type ZeroPresentationTemplatesContract,
-} from "./zero-presentation-templates";
 export {
   zeroGoalsContract,
   zeroGoalCreateRequestSchema,

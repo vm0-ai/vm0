@@ -9,7 +9,7 @@ import {
 // graph; unusual metaprogramming and cross-file type inference are out of scope.
 
 const DRIZZLE_MODULE_PREFIX = "drizzle-orm";
-const SCHEMA_MODULE_PREFIX = "@vm0/db/schema/";
+const SCHEMA_MODULE_PREFIX = "@okouai/db/schema/";
 const DATABASE_NAMES = new Set([
   "database",
   "db",
@@ -558,7 +558,7 @@ export function isSchemaTableExpression(
   const imported = importReference(sourceCode, object);
   return (
     imported?.importedName === "*" &&
-    (imported.source === "@vm0/db" ||
+    (imported.source === "@okouai/db" ||
       imported.source.startsWith(SCHEMA_MODULE_PREFIX))
   );
 }

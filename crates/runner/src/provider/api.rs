@@ -12,7 +12,7 @@ use api_contracts::generated::{
     constants::runners::{
         CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
-    routes,
+    decode_paths, routes,
     types::runners::runs::active_inputs::{
         receipt::Response as ActiveInputReceiptResponse,
         reserve::Response as ActiveInputReserveResponse,
@@ -1303,7 +1303,46 @@ async fn check_api_status(resp: Response, label: &'static str) -> RunnerResult<R
     Ok(resp)
 }
 
-async fn decode_api_json<T: DeserializeOwned>(resp: Response, label: &str) -> RunnerResult<T> {
+trait ApiDecodePath: DeserializeOwned {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema;
+}
+
+impl ApiDecodePath for ActiveInputReserveResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::runs::by_run_id::active_inputs::reserve::RESPONSE;
+}
+
+impl ApiDecodePath for ActiveInputReceiptResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id::receipt::RESPONSE;
+}
+
+impl ApiDecodePath for PollResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::poll::RESPONSE;
+}
+
+impl ApiDecodePath for ExecutionContext {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::jobs::by_id::claim::RESPONSE;
+}
+
+impl ApiDecodePath for ably_subscriber::TokenRequest {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::realtime::token::RESPONSE;
+}
+
+impl ApiDecodePath for ConnectorRuntimeSyncBatchResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::runs::by_run_id::connector_runtime::sync::RESPONSE;
+}
+
+impl ApiDecodePath for BuiltinFirewallCatalog {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::builtin_firewalls::resolve::RESPONSE;
+}
+
+async fn decode_api_json<T: ApiDecodePath>(resp: Response, label: &str) -> RunnerResult<T> {
     let body = resp
         .bytes()
         .await
@@ -1325,19 +1364,26 @@ fn api_status_error(label: &'static str, status: StatusCode, body: &str) -> Runn
     }))
 }
 
-fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
+fn decode_api_json_bytes<T: ApiDecodePath>(body: &[u8]) -> Result<T, String> {
     let mut deserializer = serde_json::Deserializer::from_slice(body);
-    let value = serde_path_to_error::deserialize(&mut deserializer)
-        .map_err(|e| format_json_decode_error(format_json_decode_path(e.path()), e.inner()))?;
+    let value = serde_path_to_error::deserialize(&mut deserializer).map_err(|e| {
+        format_json_decode_error(
+            format_json_decode_path(e.path(), T::DECODE_PATH_SCHEMA),
+            e.inner(),
+        )
+    })?;
     deserializer
         .end()
         .map_err(|e| format_json_decode_error(".".to_string(), &e))?;
     Ok(value)
 }
 
-fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
+fn format_json_decode_path(
+    path: &serde_path_to_error::Path,
+    schema: &'static api_contracts::DecodePathSchema,
+) -> String {
     let mut formatted = String::new();
-    let mut redact_next_map_key = false;
+    let mut cursor = schema.root();
 
     for segment in path {
         match segment {
@@ -1345,18 +1391,23 @@ fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
                 formatted.push('[');
                 formatted.push_str(&index.to_string());
                 formatted.push(']');
+                cursor = cursor.sequence_item();
             }
             serde_path_to_error::Segment::Map { key } => {
-                push_json_path_map_segment(&mut formatted, key, redact_next_map_key);
-                redact_next_map_key = !redact_next_map_key && is_dynamic_json_map_field(key);
+                let (segment, next_cursor) = match cursor.map_segment(key) {
+                    api_contracts::DecodePathMapSegment::Field(next) => (key.as_str(), next),
+                    api_contracts::DecodePathMapSegment::DynamicKey(next) => ("<map-key>", next),
+                    api_contracts::DecodePathMapSegment::Unknown(next) => ("<field>", next),
+                };
+                push_json_path_segment(&mut formatted, segment);
+                cursor = next_cursor;
             }
             serde_path_to_error::Segment::Enum { .. } => {
                 push_json_path_segment(&mut formatted, "<variant>");
-                redact_next_map_key = false;
             }
             serde_path_to_error::Segment::Unknown => {
                 push_json_path_segment(&mut formatted, "?");
-                redact_next_map_key = false;
+                cursor = cursor.unknown();
             }
         }
     }
@@ -1368,139 +1419,11 @@ fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
     }
 }
 
-fn push_json_path_map_segment(formatted: &mut String, key: &str, redact: bool) {
-    let segment = if redact {
-        "<map-key>"
-    } else if is_static_json_field(key) {
-        key
-    } else {
-        "<field>"
-    };
-    push_json_path_segment(formatted, segment);
-}
-
 fn push_json_path_segment(formatted: &mut String, segment: &str) {
     if !formatted.is_empty() {
         formatted.push('.');
     }
     formatted.push_str(segment);
-}
-
-fn is_dynamic_json_map_field(field: &str) -> bool {
-    matches!(
-        field,
-        "vars"
-            | "environment"
-            | "secretConnectorMap"
-            | "secretConnectorMetadataMap"
-            | "baseUrlVars"
-            | "headers"
-            | "query"
-            | "networkPolicies"
-            | "featureFlags"
-    )
-}
-
-// serde_path_to_error reports both struct fields and runtime map keys as Map
-// segments, so only known response schema fields are safe to print verbatim.
-fn is_static_json_field(field: &str) -> bool {
-    matches!(
-        field,
-        "allow"
-            | "allowNonDefaultPort"
-            | "apiStartTime"
-            | "apis"
-            | "archiveSize"
-            | "archiveUrl"
-            | "artifacts"
-            | "ask"
-            | "auth"
-            | "accessKeyId"
-            | "awsSigv4"
-            | "base"
-            | "baseUrlVars"
-            | "billableFirewalls"
-            | "cached"
-            | "capability"
-            | "catalogDigest"
-            | "catalogVersion"
-            | "captureNetworkBodies"
-            | "cliAgentType"
-            | "cliAgentSessionId"
-            | "clientId"
-            | "realAgentInPreview"
-            | "deny"
-            | "description"
-            | "disallowedTools"
-            | "encodedSize"
-            | "encoding"
-            | "encryptedSecrets"
-            | "empty"
-            | "environment"
-            | "experimentalProfile"
-            | "expires"
-            | "exactHosts"
-            | "featureFlags"
-            | "firewall"
-            | "firewalls"
-            | "headers"
-            | "hash"
-            | "historyRef"
-            | "hostPolicy"
-            | "heldSandboxStates"
-            | "heldWorkspaceStates"
-            | "instructionsTargetFilename"
-            | "issued"
-            | "job"
-            | "keyName"
-            | "kind"
-            | "mac"
-            | "metadataKey"
-            | "missingRootPolicy"
-            | "modelUsageProvider"
-            | "mountPath"
-            | "name"
-            | "networkPolicies"
-            | "nonce"
-            | "permissions"
-            | "prompt"
-            | "query"
-            | "rawSize"
-            | "resumeSession"
-            | "rules"
-            | "runId"
-            | "sandboxToken"
-            | "secretConnectorMap"
-            | "secretConnectorMetadataMap"
-            | "secretAccessKey"
-            | "secretValues"
-            | "sessionToken"
-            | "sessionHistory"
-            | "sessionId"
-            | "settings"
-            | "size"
-            | "sourceType"
-            | "sourceUserId"
-            | "storageManifest"
-            | "storageId"
-            | "storageMounts"
-            | "storages"
-            | "suffixes"
-            | "timestamp"
-            | "token"
-            | "lastCompletedAt"
-            | "tools"
-            | "ttl"
-            | "unknownPolicy"
-            | "url"
-            | "userTimezone"
-            | "vars"
-            | "vasStorageId"
-            | "vasStorageName"
-            | "vasVersionId"
-            | "versionId"
-            | "writeback"
-    )
 }
 
 fn format_json_decode_error(mut path: String, error: &serde_json::Error) -> String {
@@ -1619,6 +1542,35 @@ mod tests {
             .unwrap(),
             "runner-token".to_string(),
         )
+    }
+
+    async fn claim_decode_error(
+        server: &MockServer,
+        run_id: RunId,
+        body: serde_json::Value,
+    ) -> String {
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(body);
+            })
+            .await;
+        let api = api_client_for_server(server);
+        let error = api
+            .claim_for_test(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+        mock.assert_async().await;
+        mock.delete_async().await;
+
+        let ClaimApiError::ResponseDecode(message) = error else {
+            panic!("expected ClaimApiError::ResponseDecode");
+        };
+        message
     }
 
     #[test]
@@ -3705,6 +3657,213 @@ mod tests {
             !message.contains("claim-sandbox-token"),
             "decode error must not include response body values, got: {message}"
         );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_uses_current_codex_and_pi_schema_fields() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let codex_error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "codexRuntimeConfig": {
+                    "providerId": 123,
+                    "name": "provider",
+                    "baseUrl": "https://api.example.com",
+                    "envKey": "OPENAI_API_KEY",
+                    "wireApi": "responses",
+                    "supportsWebsockets": false
+                }
+            }),
+        )
+        .await;
+        assert!(
+            codex_error.contains("failed at codexRuntimeConfig.providerId"),
+            "unexpected Codex decode error: {codex_error}"
+        );
+        assert!(!codex_error.contains("claim-sandbox-token"));
+
+        let pi_error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "pi",
+                "connectorRuntimeTargets": [],
+                "piSystemPrompt": "system prompt",
+                "piSessionId": "00000000-0000-0000-0000-000000000001",
+                "piModelConfig": {
+                    "provider": "openai",
+                    "baseUrl": "https://api.example.com",
+                    "model": "gpt-5",
+                    "apiKeyEnv": 123
+                }
+            }),
+        )
+        .await;
+        assert!(
+            pi_error.contains("failed at piModelConfig.apiKeyEnv"),
+            "unexpected Pi decode error: {pi_error}"
+        );
+        assert!(!pi_error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_redacts_policy_refresh_key_then_resumes_static_field() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "networkPolicyRefreshes": {
+                    "secret-connector-name": {
+                        "nextRefreshAt": 123
+                    }
+                }
+            }),
+        )
+        .await;
+
+        assert!(
+            error.contains("failed at networkPolicyRefreshes.<map-key>.nextRefreshAt"),
+            "unexpected typed map decode error: {error}"
+        );
+        assert!(!error.contains("secret-connector-name"));
+        assert!(!error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_redacts_colliding_dynamic_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "environment": {"prompt": 123}
+            }),
+        )
+        .await;
+
+        assert!(
+            error.contains("failed at environment.<map-key>"),
+            "unexpected colliding key decode error: {error}"
+        );
+        assert!(!error.contains("environment.prompt"));
+        assert!(!error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_redacts_codex_header_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "codexRuntimeConfig": {
+                    "providerId": "provider",
+                    "name": "provider",
+                    "baseUrl": "https://api.example.com",
+                    "envKey": "OPENAI_API_KEY",
+                    "httpHeaders": {"secret-header-name": 123},
+                    "wireApi": "responses",
+                    "supportsWebsockets": false
+                }
+            }),
+        )
+        .await;
+
+        assert!(
+            error.contains("failed at codexRuntimeConfig.httpHeaders.<map-key>"),
+            "unexpected Codex header decode error: {error}"
+        );
+        assert!(!error.contains("secret-header-name"));
+        assert!(!error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_decode_path_uses_poll_response_schema() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).json_body(serde_json::json!({
+                    "job": {"runId": 123, "experimentalProfile": "vm0/default"}
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let error = api
+            .poll(TEST_RUNNER_ID, "default", &[], &[], PollReason::Immediate)
+            .await
+            .unwrap_err();
+        let RunnerError::Api(error) = error else {
+            panic!("expected RunnerError::Api");
+        };
+
+        assert!(
+            error.contains("failed at job.runId"),
+            "unexpected poll decode error: {error}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_builtin_catalog_decode_path_redacts_firewall_map_keys() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::builtin_firewalls::resolve::RESOLVE.path);
+                then.status(200).json_body(serde_json::json!({
+                    "catalogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "catalogVersion": "test-catalog",
+                    "firewalls": {
+                        "secret-firewall-name": {
+                            "name": "github",
+                            "apis": [{"base": 123, "auth": {"headers": {}}}]
+                        }
+                    }
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let error = api.resolve_builtin_firewall_catalog().await.unwrap_err();
+        let RunnerError::Api(error) = error else {
+            panic!("expected RunnerError::Api");
+        };
+
+        assert!(
+            error.contains("failed at firewalls.<map-key>.apis[0].base"),
+            "unexpected builtin catalog decode error: {error}"
+        );
+        assert!(!error.contains("secret-firewall-name"));
         mock.assert_async().await;
     }
 

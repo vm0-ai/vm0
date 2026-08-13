@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { timestampQueryNumberSchema } from "./base";
-import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
+import { firewallPoliciesSchema } from "@okouai/connectors/firewall-types";
 import {
   modelProviderTypeSchema,
   type ModelProviderType,
@@ -548,10 +548,12 @@ const networkLogEntrySchema = z.object({
   error: z.string().optional(),
   // Capture-only fields (opt-in via captureNetworkBodies)
   request_headers: z.record(z.string(), z.string()).optional(),
+  request_headers_truncated: z.boolean().optional(),
   request_body: z.string().optional(),
   request_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   request_body_truncated: z.boolean().optional(),
   response_headers: z.record(z.string(), z.string()).optional(),
+  response_headers_truncated: z.boolean().optional(),
   response_body: z.string().optional(),
   response_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   response_body_truncated: z.boolean().optional(),

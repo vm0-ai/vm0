@@ -869,6 +869,8 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
+        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {

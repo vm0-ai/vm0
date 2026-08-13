@@ -2,14 +2,14 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
-import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowWebhookDeliveries,
-  zeroWorkflowWebhookAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  workflowWebhookDeliveries,
+  workflowWebhookAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { env } from "../../lib/env";
 import { verifyCallbackRequest } from "../../lib/event-consumer/verify-signature";
 import { testOverride } from "../../lib/singleton";
@@ -40,7 +40,7 @@ export const WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES = 1_000_000;
 const WORKFLOW_WEBHOOK_BODY_PREVIEW_CHARS = 16_000;
 const WORKFLOW_WEBHOOK_RATE_LIMIT_PER_MINUTE = 10;
 
-type WebhookAutomationRow = typeof zeroWorkflowWebhookAutomations.$inferSelect;
+type WebhookAutomationRow = typeof workflowWebhookAutomations.$inferSelect;
 
 export function defaultWebhookReceivedEventConfig(): WebhookReceivedEventConfig {
   return {
@@ -129,8 +129,8 @@ export async function buildWorkflowWebhookSummaryFields(
 }> {
   const [webhook] = await db
     .select()
-    .from(zeroWorkflowWebhookAutomations)
-    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id))
+    .from(workflowWebhookAutomations)
+    .where(eq(workflowWebhookAutomations.automationId, args.automation.id))
     .limit(1);
   if (!webhook) {
     throw new Error(
@@ -159,8 +159,8 @@ export async function revealWorkflowWebhookSecretFields(
 ): Promise<{ readonly webhookUrl: string; readonly webhookSecret: string }> {
   const [webhook] = await db
     .select()
-    .from(zeroWorkflowWebhookAutomations)
-    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id))
+    .from(workflowWebhookAutomations)
+    .where(eq(workflowWebhookAutomations.automationId, args.automation.id))
     .limit(1);
   if (!webhook) {
     throw new Error(
@@ -331,47 +331,41 @@ async function loadWebhookAutomationForToken(
   const [row] = await args.db
     .select({
       automation: workflowAutomationColumns(),
-      webhook: zeroWorkflowWebhookAutomations,
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      webhook: workflowWebhookAutomations,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowWebhookAutomations)
+    .from(workflowWebhookAutomations)
     .innerJoin(
-      zeroWorkflowAutomations,
-      eq(
-        zeroWorkflowWebhookAutomations.automationId,
-        zeroWorkflowAutomations.id,
-      ),
+      workflowAutomations,
+      eq(workflowWebhookAutomations.automationId, workflowAutomations.id),
     )
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
         eq(
-          zeroWorkflowWebhookAutomations.tokenHash,
+          workflowWebhookAutomations.tokenHash,
           hashWorkflowWebhookToken(args.token),
         ),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.eventType, "webhook-received"),
-        eq(zeroWorkflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, "webhook-received"),
+        eq(workflowAutomations.enabled, true),
       ),
     )
     .limit(1);
@@ -428,13 +422,13 @@ async function rateLimitExceeded(args: {
   readonly currentTime: Date;
 }): Promise<boolean> {
   const recent = await args.db
-    .select({ id: zeroWorkflowWebhookDeliveries.id })
-    .from(zeroWorkflowWebhookDeliveries)
+    .select({ id: workflowWebhookDeliveries.id })
+    .from(workflowWebhookDeliveries)
     .where(
       and(
-        eq(zeroWorkflowWebhookDeliveries.automationId, args.automationId),
+        eq(workflowWebhookDeliveries.automationId, args.automationId),
         gte(
-          zeroWorkflowWebhookDeliveries.receivedAt,
+          workflowWebhookDeliveries.receivedAt,
           new Date(args.currentTime.getTime() - 60_000),
         ),
       ),
@@ -479,7 +473,7 @@ async function insertWebhookDelivery(
   },
 ): Promise<{ readonly id: string } | null> {
   const [delivery] = await db
-    .insert(zeroWorkflowWebhookDeliveries)
+    .insert(workflowWebhookDeliveries)
     .values({
       automationId: args.automationId,
       deliveryKey: args.deliveryKey,
@@ -489,7 +483,7 @@ async function insertWebhookDelivery(
       createdAt: args.currentTime,
     })
     .onConflictDoNothing()
-    .returning({ id: zeroWorkflowWebhookDeliveries.id });
+    .returning({ id: workflowWebhookDeliveries.id });
   return delivery ?? null;
 }
 
@@ -498,8 +492,8 @@ async function deleteWebhookDelivery(
   deliveryId: string,
 ): Promise<void> {
   await db
-    .delete(zeroWorkflowWebhookDeliveries)
-    .where(eq(zeroWorkflowWebhookDeliveries.id, deliveryId));
+    .delete(workflowWebhookDeliveries)
+    .where(eq(workflowWebhookDeliveries.id, deliveryId));
 }
 
 async function recordWebhookDeliveryDispatched(
@@ -514,14 +508,14 @@ async function recordWebhookDeliveryDispatched(
   },
 ): Promise<void> {
   await db
-    .update(zeroWorkflowWebhookDeliveries)
+    .update(workflowWebhookDeliveries)
     .set({ status: "dispatched", runId: args.runId })
-    .where(eq(zeroWorkflowWebhookDeliveries.id, args.deliveryId));
+    .where(eq(workflowWebhookDeliveries.id, args.deliveryId));
 
   await db
-    .update(zeroWorkflowWebhookAutomations)
+    .update(workflowWebhookAutomations)
     .set({ lastReceivedAt: args.currentTime, updatedAt: args.currentTime })
-    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automationId));
+    .where(eq(workflowWebhookAutomations.automationId, args.automationId));
 }
 
 function workflowWebhookRunError(): DispatchWorkflowWebhookResult {

@@ -347,7 +347,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Importação de modelo",
       "test": "Teste",
       "web": "Web",
       "webhook": "Webhook"
@@ -809,6 +808,7 @@
       "confirm": "Confirmar",
       "credits": "créditos",
       "manage": "Gerenciar",
+      "preparing": "Preparando...",
       "redirecting": "Redirecionando...",
       "restore": "Restaurar",
       "retry": "Tentar novamente",
@@ -867,6 +867,9 @@
       "exchangeRate": "Os créditos nunca expiram. 1 USD = {{credits}} créditos.",
       "quickBuy": "Compra rápida",
       "quickBuyAmount": "Compra rápida de {{amount}}",
+      "reviewDescription": "Confirme esta cobrança única com sua forma de pagamento salva.",
+      "reviewError": "Não foi possível concluir esta compra de créditos. Revise seus dados de cobrança e tente novamente.",
+      "reviewTitle": "Revisar compra de créditos",
       "title": "Comprar créditos"
     },
     "downgrade": {
@@ -1043,6 +1046,7 @@
       "concurrencyChanged": "Alteração de simultaneidade confirmada. A quantidade de vagas será atualizada depois que a Stripe processar a alteração.",
       "concurrencyReduced": "A redução de simultaneidade está programada para a próxima data de cobrança.",
       "concurrencyRestored": "Assinatura de simultaneidade restaurada.",
+      "creditPurchaseConfirmed": "Pagamento confirmado. Os créditos aparecerão depois que a Stripe processar a fatura.",
       "creditsAdded": "Créditos adicionados. Você pode continuar conversando com o Zero.",
       "downgradeScheduledDate": "Downgrade agendado. Seu plano atual permanece ativo até {{date}}.",
       "downgradeScheduledPeriod": "Downgrade agendado. Seu plano atual permanece ativo até o fim do período de cobrança.",
@@ -1434,8 +1438,7 @@
       "search": "Buscar agentes e conversas...",
       "sent": "Encaminhado com sucesso",
       "threads": "Conversas",
-      "title": "Encaminhar para",
-      "to": "Encaminhar para"
+      "title": "Encaminhar para"
     },
     "mail": {
       "bcc": "cco",
@@ -4632,6 +4635,7 @@
       "imageRecognize": "Reconhecimento de imagem",
       "maps": "Mapas",
       "peopleSearch": "Pesquisa de pessoas",
+      "seo": "SEO",
       "translation": "Tradução",
       "usage": "Uso",
       "weather": "Clima",
@@ -4653,12 +4657,17 @@
       "yesterday": "Ontem"
     },
     "records": {
-      "emptyBillingPeriod": "Nenhum uso neste período de cobrança.",
-      "emptyRange": "Nenhum uso neste período.",
+      "empty": {
+        "billingPeriodTitle": "Nenhum uso neste período de cobrança",
+        "description": "Os créditos que você gasta em chats, automações e canais aparecem aqui.",
+        "noBillingPeriodDescription": "O uso da equipe aparece assim que um período de cobrança começa.",
+        "noBillingPeriodTitle": "Nenhum período de cobrança ativo",
+        "rangeTitle": "Nenhum uso neste período",
+        "teamDescription": "Os créditos que sua equipe gasta em chats, automações e canais aparecem aqui."
+      },
       "loadError": "Não foi possível carregar seu uso.",
       "loadMore": "Carregar mais",
       "myUsage": "Meu uso",
-      "noActiveBillingPeriod": "Nenhum período de cobrança ativo.",
       "teamLoadError": "Não foi possível carregar o uso da equipe.",
       "teamUsage": "Uso da equipe",
       "untitled": "(sem título)"

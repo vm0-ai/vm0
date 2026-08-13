@@ -120,7 +120,8 @@ export function createAuthRecovery(
 }
 
 /**
- * Route visibility, focus, and realtime reconnect through one catch-up task.
+ * Route visibility, focus, network restoration, and realtime reconnect through
+ * one catch-up task.
  */
 export const setupAuthCatchUp$ = command(
   ({ get, set }, authRecovery: AuthRecovery, signal: AbortSignal): void => {
@@ -208,6 +209,7 @@ export const setupAuthCatchUp$ = command(
       signal,
     });
     window.addEventListener("focus", requestCatchUp, { signal });
+    window.addEventListener("online", requestCatchUp, { signal });
   },
 );
 

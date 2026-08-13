@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
-import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
-import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
+import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 

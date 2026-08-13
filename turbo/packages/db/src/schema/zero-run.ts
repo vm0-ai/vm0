@@ -10,10 +10,10 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
-import { zeroWorkflowAutomations } from "./zero-workflow";
+import { workflowAutomations } from "./workflow";
 import { threadGoals } from "./thread-goal";
 
 /**
@@ -37,7 +37,7 @@ export const zeroRuns = pgTable(
     // Canonical run provenance for the Automation that started this run.
     workflowAutomationId: uuid("workflow_automation_id").references(
       (): AnyPgColumn => {
-        return zeroWorkflowAutomations.id;
+        return workflowAutomations.id;
       },
       { onDelete: "set null" },
     ),
@@ -58,6 +58,12 @@ export const zeroRuns = pgTable(
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),
+    /**
+     * Built-in video model resolved when this run started. Snapshotted rather
+     * than read live from the thread so changing the thread pin mid-run cannot
+     * change what the in-flight run generates.
+     */
+    selectedVideoModel: varchar("selected_video_model", { length: 255 }),
     // Chat thread this run belongs to (null for non-chat triggers like telegram)
     chatThreadId: uuid("chat_thread_id").references(
       () => {

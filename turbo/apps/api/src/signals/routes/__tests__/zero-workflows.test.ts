@@ -5,7 +5,7 @@ import { HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
-} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
+} from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
@@ -13,13 +13,13 @@ import {
   zeroWorkflowVisibilityContract,
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
+} from "@okouai/core/storage-names";
+import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
@@ -449,7 +449,7 @@ function expectZeroPreCreateSource(runId: string, source: string): void {
   );
 }
 
-describe("zero workflows", () => {
+describe("workflows", () => {
   it("lets any public workflow viewer detect connector readiness", async () => {
     const owner = user({ orgId: STAFF_ORG_ID });
     const viewer = user({

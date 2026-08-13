@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 // The bootstrap entry must stay trivially safe to load so the auto-updater
 // survives main-bundle load failures (see src/bootstrap.ts). This test walks
 // the static value-import graph from bootstrap.ts and rejects any module
-// outside the allowlist below — most importantly anything under `@vm0/*`.
+// outside the allowlist below — most importantly anything under `@okouai/*`.
 // scripts/check-bootstrap-bundle.mjs re-checks the built bundle.
 
 const ALLOWED_PACKAGES = new Set([

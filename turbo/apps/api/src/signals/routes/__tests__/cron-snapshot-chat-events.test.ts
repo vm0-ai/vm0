@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
-import { cronSnapshotChatEventsContract } from "@vm0/api-contracts/contracts/cron";
-import { testChatEventSearchProjectionContract } from "@vm0/api-contracts/contracts/test-chat-event-search-projection";
-import { testChatEventSnapshotContract } from "@vm0/api-contracts/contracts/test-chat-event-snapshot";
+import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
+import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
+import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

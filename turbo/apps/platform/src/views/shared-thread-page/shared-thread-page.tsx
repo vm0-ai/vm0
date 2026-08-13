@@ -1,7 +1,7 @@
 import type {
   SharedMessage,
   SharedThreadResponse,
-} from "@vm0/api-contracts/contracts/shared-threads";
+} from "@okouai/api-contracts/contracts/shared-threads";
 import type { Root } from "hast";
 import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";

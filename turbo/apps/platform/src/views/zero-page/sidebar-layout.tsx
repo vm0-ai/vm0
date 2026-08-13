@@ -7,9 +7,9 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Menu, Package, Share2, UserPlus } from "lucide-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { Button, cn } from "@vm0/ui";
+import { Button, cn } from "@okouai/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
@@ -45,6 +45,7 @@ import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConcurrencyConfirmDialog } from "./components/org-manage/org-billing-tab.tsx";
+import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -337,6 +338,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
       <ConcurrencyConfirmDialog />
+      <CreditPurchaseConfirmDialog />
       <QueueDrawer />
       <ZeroSidebar />
       <div

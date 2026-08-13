@@ -1,17 +1,17 @@
 import { posix } from "node:path";
 
 import type { Computed } from "ccstate";
-import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
-import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
-import { storageVersions } from "@vm0/db/schema/storage";
-import type { PersistedStorageMount } from "@vm0/db/types";
+import type { RunSkillSnapshot } from "@okouai/api-contracts/contracts/runners";
+import { MEMORY_ARTIFACT_NAME } from "@okouai/core/storage-names";
+import { storageVersions } from "@okouai/db/schema/storage";
+import type { PersistedStorageMount } from "@okouai/db/types";
 import {
   ExecutionError,
   FileError,
   type ExecutionEnv,
   type FileInfo,
   type Result,
-} from "@vm0/pi-agent-runtime";
+} from "@okouai/pi-agent-runtime";
 import { inArray } from "drizzle-orm";
 
 import { env } from "../../lib/env";

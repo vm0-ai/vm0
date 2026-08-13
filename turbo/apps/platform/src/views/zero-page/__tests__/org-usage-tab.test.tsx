@@ -1,11 +1,11 @@
-import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -238,7 +238,7 @@ describe("organization usage settings", () => {
     expect(screen.queryByText("Team usage")).toBeNull();
   });
 
-  it("moves between the balance and the usage records through the section links", async () => {
+  it("moves from the balance to the usage records through the section link", async () => {
     mockUsageStory();
     await openCreditBalance();
 
@@ -254,13 +254,7 @@ describe("organization usage settings", () => {
         screen.getByRole("heading", { name: "Credit usage" }),
       ).toBeInTheDocument();
     });
-    click(screen.getByTestId("usage-records-see-balance"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Credit balance" }),
-      ).toBeInTheDocument();
-    });
+    expect(screen.queryByTestId("usage-records-see-balance")).toBeNull();
   });
 
   it("sends the buy credits action to the billing section", async () => {

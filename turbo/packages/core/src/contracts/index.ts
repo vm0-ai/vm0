@@ -1,1 +1,1 @@
-export * from "@vm0/api-contracts/contracts";
+export * from "@okouai/api-contracts/contracts";

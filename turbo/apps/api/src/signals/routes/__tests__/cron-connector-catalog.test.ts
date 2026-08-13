@@ -1,30 +1,30 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
-import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
-import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
-import { runnersBuiltinFirewallsResolveContract } from "@vm0/api-contracts/contracts/runners";
-import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cron";
+import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
+import { runnersBuiltinFirewallsResolveContract } from "@okouai/api-contracts/contracts/runners";
+import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
-} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
+} from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsSearchContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroConnectorCheckContract } from "@vm0/api-contracts/contracts/zero-connector-check";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorCheckContract } from "@okouai/api-contracts/contracts/zero-connector-check";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
 import { HttpResponse, http } from "msw";
 import {
   afterEach,
@@ -96,7 +96,7 @@ import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
 import { zeroConnectorCheckRoutes } from "../zero-connector-check";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
-import { zeroSteamPlayerRoutes } from "../zero-steam-player";
+import { steamPlayerRoutes } from "../steam-player";
 import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { zeroWorkflowsRoutes } from "../zero-workflows";
@@ -110,7 +110,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroConnectorCheckRoutes,
   ...zeroConnectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
-  ...zeroSteamPlayerRoutes,
+  ...steamPlayerRoutes,
   ...zeroUserPermissionGrantsRoutes,
   ...zeroWorkflowAutomationsRoutes,
   ...zeroWorkflowsRoutes,
@@ -3625,8 +3625,8 @@ describe("connector catalog valid lifecycle", () => {
     );
     mockSteamPlayerApisForCatalog();
     const player = await accept(
-      setupApp({ context, routes: zeroSteamPlayerRoutes })(
-        zeroSteamPlayerContract,
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
       ).getPlayer({ headers }),
       [200],
     );

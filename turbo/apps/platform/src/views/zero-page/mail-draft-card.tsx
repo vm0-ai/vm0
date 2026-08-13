@@ -2,11 +2,12 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
-} from "@vm0/api-contracts/contracts/zero-mail";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { cn } from "@vm0/ui";
+} from "@okouai/api-contracts/contracts/zero-mail";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 
 import { i18n } from "../../i18n/index.ts";
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
@@ -22,6 +23,17 @@ interface MailDraftCardProps {
 }
 
 const MAIL_DRAFT_CARD_HEIGHT_CLASS = "h-[76px]";
+
+function MailDraftCardShell({ children }: { readonly children: ReactNode }) {
+  return (
+    <div
+      data-testid="mail-draft-card-shell"
+      className={cn("w-full max-w-xl", MAIL_DRAFT_CARD_HEIGHT_CLASS)}
+    >
+      {children}
+    </div>
+  );
+}
 
 function statusLabel(status: ZeroMailDraftStatus): string {
   switch (status) {
@@ -47,10 +59,7 @@ function MailDraftCardSkeleton() {
   return (
     <div
       data-testid="mail-draft-card-loading"
-      className={cn(
-        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3",
-        MAIL_DRAFT_CARD_HEIGHT_CLASS,
-      )}
+      className="flex h-full w-full items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3"
     >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
         <Loader2 className="animate-spin text-muted-foreground" size={16} />
@@ -162,10 +171,7 @@ function DeletedMailDraftCard({
       )}
       data-mail-draft-card
       data-mail-draft-status="deleted"
-      className={cn(
-        "flex w-full max-w-xl cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70",
-        MAIL_DRAFT_CARD_HEIGHT_CLASS,
-      )}
+      className="flex h-full w-full cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
     >
       <MailDraftCardContent
         draft={draft}
@@ -186,7 +192,11 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
     useGmailReconnect(reloadDraft);
 
   if (draftLoadable.state === "loading") {
-    return <MailDraftCardSkeleton />;
+    return (
+      <MailDraftCardShell>
+        <MailDraftCardSkeleton />
+      </MailDraftCardShell>
+    );
   }
   if (draftLoadable.state === "hasError" || draftLoadable.data === null) {
     return null;
@@ -214,64 +224,66 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
 
   if (deleted) {
     return (
-      <DeletedMailDraftCard
-        draft={draft}
-        gmailIcon={connectorIcon}
-        subject={subject}
-      />
+      <MailDraftCardShell>
+        <DeletedMailDraftCard
+          draft={draft}
+          gmailIcon={connectorIcon}
+          subject={subject}
+        />
+      </MailDraftCardShell>
     );
   }
 
   if (needsReconnect) {
     return (
+      <MailDraftCardShell>
+        <button
+          type="button"
+          disabled={reconnectDisabled}
+          onClick={reconnect}
+          aria-label={t(
+            ($) => {
+              return $.chat.mail.reconnectToAccess;
+            },
+            {
+              subject,
+            },
+          )}
+          data-mail-draft-card
+          data-mail-draft-status={draft.status}
+          className="flex h-full w-full items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
+        >
+          {content}
+        </button>
+      </MailDraftCardShell>
+    );
+  }
+
+  return (
+    <MailDraftCardShell>
       <button
         type="button"
-        disabled={reconnectDisabled}
-        onClick={reconnect}
         aria-label={t(
           ($) => {
-            return $.chat.mail.reconnectToAccess;
+            return $.chat.mail.openEmail;
           },
           {
+            status: statusLabel(draft.status).toLocaleLowerCase(
+              i18n.resolvedLanguage,
+            ),
             subject,
           },
         )}
         data-mail-draft-card
         data-mail-draft-status={draft.status}
+        onClick={openDraft}
         className={cn(
-          "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70",
-          MAIL_DRAFT_CARD_HEIGHT_CLASS,
+          "flex h-full w-full items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          selected ? "border-ring/60 bg-muted/20" : "border-border/70",
         )}
       >
         {content}
       </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      aria-label={t(
-        ($) => {
-          return $.chat.mail.openEmail;
-        },
-        {
-          status: statusLabel(draft.status).toLocaleLowerCase(
-            i18n.resolvedLanguage,
-          ),
-          subject,
-        },
-      )}
-      data-mail-draft-card
-      data-mail-draft-status={draft.status}
-      onClick={openDraft}
-      className={cn(
-        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        MAIL_DRAFT_CARD_HEIGHT_CLASS,
-        selected ? "border-ring/60 bg-muted/20" : "border-border/70",
-      )}
-    >
-      {content}
-    </button>
+    </MailDraftCardShell>
   );
 }

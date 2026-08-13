@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 
 type ArtifactThumbnailImageProps = {

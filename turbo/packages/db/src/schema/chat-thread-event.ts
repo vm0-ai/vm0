@@ -12,7 +12,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { sql } from "drizzle-orm";
 
 export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
@@ -24,6 +24,7 @@ export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
   "model_selection_updated",
   "service_tier_updated",
   "computer_use_host_updated",
+  "video_model_updated",
   "sort_touched",
 ]);
 
@@ -62,6 +63,7 @@ export const chatThreadEvents = pgTable(
     cloudBrowserEnabled: boolean("cloud_browser_enabled")
       .default(false)
       .notNull(),
+    selectedVideoModel: varchar("selected_video_model", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

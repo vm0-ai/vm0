@@ -1,8 +1,8 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Button, Input } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { Button, Input } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import {
@@ -208,12 +208,12 @@ export function BuyCreditsSection() {
   const setSelection = useSet(setBuyCreditsSelection$);
   const setCustomDollars = useSet(setBuyCreditsCustomDollars$);
 
-  const redirecting = checkoutLoadable.state === "loading";
+  const preparing = checkoutLoadable.state === "loading";
   const buyDollars = resolveBuyDollars(selection, customDollars);
   const buyInvalid = buyDollars === null;
-  const buyLabel = redirecting
+  const buyLabel = preparing
     ? t(($) => {
-        return $.billing.common.redirecting;
+        return $.billing.common.preparing;
       })
     : buyDollars === null
       ? t(($) => {
@@ -292,7 +292,7 @@ export function BuyCreditsSection() {
             className={`h-9 px-4 text-sm font-medium ${
               buyInvalid ? "opacity-60" : ""
             }`}
-            disabled={redirecting}
+            disabled={preparing}
             aria-disabled={buyInvalid}
             onClick={handleBuy}
           >

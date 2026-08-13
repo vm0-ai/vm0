@@ -333,7 +333,6 @@
       "slack": "Slack",
       "teams": "チーム",
       "telegram": "Telegram",
-      "templateImport": "テンプレートのインポート",
       "test": "テスト",
       "web": "ウェブ",
       "webhook": "Webhook"
@@ -790,6 +789,7 @@
       "confirm": "確認する",
       "credits": "クレジット",
       "manage": "管理",
+      "preparing": "準備中...",
       "redirecting": "リダイレクト中...",
       "restore": "復元",
       "retry": "再試行",
@@ -846,6 +846,9 @@
       "exchangeRate": "クレジットに有効期限はありません。 1 USD = {{credits}} クレジット。",
       "quickBuy": "すぐに購入",
       "quickBuyAmount": "クイック購入 {{amount}}",
+      "reviewDescription": "保存済みのお支払い方法で今回の請求を確定します。",
+      "reviewError": "クレジットの購入を完了できませんでした。請求情報を確認して、もう一度お試しください。",
+      "reviewTitle": "クレジット購入を確認",
       "title": "クレジットを購入する"
     },
     "downgrade": {
@@ -1022,6 +1025,7 @@
       "concurrencyChanged": "同時実行数の変更を確定しました。Stripe の処理後にスロット数が更新されます。",
       "concurrencyReduced": "同時実行数の削減は次回の請求日に予定されています。",
       "concurrencyRestored": "同時実行サブスクリプションが復元されました。",
+      "creditPurchaseConfirmed": "支払いが確認されました。Stripe による請求書の処理後にクレジットが反映されます。",
       "creditsAdded": "クレジットが追加されました。 Zero とのチャットを続けることができます。",
       "downgradeScheduledDate": "ダウングレードが予定されています。現在のプランは {{date}} まで有効です。",
       "downgradeScheduledPeriod": "ダウングレードが予定されています。現在のプランは、請求期間が終了するまで有効のままです。",
@@ -1405,8 +1409,7 @@
       "search": "エージェントとチャットを検索...",
       "sent": "転送しました",
       "threads": "チャット",
-      "title": "転送先",
-      "to": "転送先"
+      "title": "転送先"
     },
     "mail": {
       "bcc": "BCC",
@@ -4579,6 +4582,7 @@
       "imageRecognize": "画像認識",
       "maps": "地図",
       "peopleSearch": "人物検索",
+      "seo": "SEO",
       "translation": "翻訳",
       "usage": "使用量",
       "weather": "天気",
@@ -4600,12 +4604,17 @@
       "yesterday": "昨日"
     },
     "records": {
-      "emptyBillingPeriod": "この請求期間の利用はありません。",
-      "emptyRange": "この期間の利用はありません。",
+      "empty": {
+        "billingPeriodTitle": "この請求期間の利用はありません",
+        "description": "チャット、オートメーション、チャネルで使ったクレジットがここに表示されます。",
+        "noBillingPeriodDescription": "請求期間が始まるとチームの利用状況が表示されます。",
+        "noBillingPeriodTitle": "有効な請求期間はありません",
+        "rangeTitle": "この期間の利用はありません",
+        "teamDescription": "チームがチャット、オートメーション、チャネルで使ったクレジットがここに表示されます。"
+      },
       "loadError": "使用量を読み込めませんでした。",
       "loadMore": "さらに読み込む",
       "myUsage": "自分の使用量",
-      "noActiveBillingPeriod": "有効な請求期間はありません。",
       "teamLoadError": "チームの使用量を読み込めませんでした。",
       "teamUsage": "チームの使用量",
       "untitled": "(無題)"

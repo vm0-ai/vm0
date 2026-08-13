@@ -28,6 +28,7 @@ from mitmproxy.test import tflow, tutils
 import anthropic_accounting
 import auth
 import auth_base_forwarder
+import auth_base_transport
 import aws_sigv4_body_admission
 import builtin_connector_diagnostics
 import claude_output_timing
@@ -60,6 +61,7 @@ def _reset_module_state() -> Iterator[None]:
     reset them around each case to avoid cross-test callbacks.
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    auth_base_transport.reset_transport_state_for_tests()
     firewall_auth_client.reset_transport_state_for_tests()
     aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
@@ -87,6 +89,7 @@ def _reset_module_state() -> Iterator[None]:
     codex_output_timing.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    auth_base_transport.reset_transport_state_for_tests()
     firewall_auth_client.reset_transport_state_for_tests()
     aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
@@ -543,6 +546,8 @@ def registry_file(tmp_path):
         "vms": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
+                "billableFirewalls": [],
+                "cliAgentType": "claude-code",
                 "sandboxToken": "tok-xyz",
                 "registeredAt": 1700000000000,
                 "networkLogPath": str(tmp_path / "network.jsonl"),
@@ -550,6 +555,8 @@ def registry_file(tmp_path):
             },
             "10.200.0.2": {
                 "runId": "run-def-456",
+                "billableFirewalls": [],
+                "cliAgentType": "claude-code",
                 "sandboxToken": "tok-abc",
                 "registeredAt": 1700000000000,
                 "networkLogPath": str(tmp_path / "network-2.jsonl"),

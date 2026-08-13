@@ -1,5 +1,5 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { workflowUserAutomationThreads } from "@vm0/db/schema/zero-workflow";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { workflowUserAutomationThreads } from "@okouai/db/schema/workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";

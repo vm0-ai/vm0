@@ -1,4 +1,4 @@
-import { zeroFeishuEventsContract } from "@vm0/api-contracts/contracts/zero-feishu-events";
+import { zeroFeishuEventsContract } from "@okouai/api-contracts/contracts/zero-feishu-events";
 
 import type { RouteEntry } from "../route-entry";
 import { handleZeroFeishuEvents$ } from "../services/zero-feishu-webhooks.service";

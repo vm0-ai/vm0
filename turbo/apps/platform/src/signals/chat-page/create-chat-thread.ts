@@ -7,8 +7,8 @@ import {
   type State,
 } from "ccstate";
 import { delay, timeout } from "signal-timers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
 import { onRef, onRejection, resetSignal, setLoop, settle } from "../utils.ts";
@@ -60,14 +60,14 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
   type UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
@@ -427,14 +427,6 @@ function createThreadTitleParts(threadMeta$: Computed<ThreadMeta | null>) {
     return get(threadTitleParts$).text;
   });
   return { threadTitle$, threadTitleEmoji$, threadTitleText$ };
-}
-
-function createThreadSettledInServer(threadId: string) {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  return computed((get): boolean => {
-    return !get(optimisticCreateUnsettled$);
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2251,8 +2243,8 @@ function createChatThreadMessagePipeline(
     },
     ownerSignal,
   );
-  const chatSkeletonVisible$ = computed((get): boolean => {
-    return !get(initialEventsReady$);
+  const initialEventsReadyView$ = computed((get): boolean => {
+    return get(initialEventsReady$);
   });
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
@@ -2290,7 +2282,7 @@ function createChatThreadMessagePipeline(
     scroll,
     sidebar: effects.sidebar,
     ...lifecycle,
-    chatSkeletonVisible$,
+    initialEventsReady$: initialEventsReadyView$,
     ...assistantErrorRecovery,
     ...projections,
     ...resources.publicSignals,
@@ -3610,7 +3602,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
     readyScrollAfterRenderRequest$: events.readyScrollAfterRenderRequest$,
-    chatSkeletonVisible$: events.chatSkeletonVisible$,
+    initialEventsReady$: events.initialEventsReady$,
     assistantErrorRecovery$: events.assistantErrorRecovery$,
     retryAssistantError$: events.retryAssistantError$,
     resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
@@ -3861,7 +3853,6 @@ function createChatPanelSignalsWithDraft(
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
-  const threadSettledInServer$ = createThreadSettledInServer(threadId);
   const container = createChatThreadContainerSignals();
   const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
@@ -3906,7 +3897,6 @@ function createChatPanelSignalsWithDraft(
     threadDraft$,
     threadMeta$,
     ...threadTitle,
-    threadSettledInServer$,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
     scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,

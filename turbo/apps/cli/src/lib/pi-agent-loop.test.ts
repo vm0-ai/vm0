@@ -1,8 +1,8 @@
-import { CANONICAL_PI_SESSION_DATABASE_PATH } from "@vm0/api-contracts/contracts/runners";
+import { CANONICAL_PI_SESSION_DATABASE_PATH } from "@okouai/api-contracts/contracts/runners";
 import {
   runPiAgentSession,
   type PiAssistantMessage,
-} from "@vm0/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/node";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -87,17 +87,7 @@ class FakeIo implements PiAgentLoopIo {
 }
 
 describe("sandbox Pi agent loop", () => {
-  it("accepts the legacy VM0 run id from an old guest", () => {
-    expect(
-      piSandboxAgentConfigFromEnv(
-        piEnv({
-          VM0_RUN_ID: RUN_ID,
-        }),
-      ),
-    ).toEqual(CONFIG);
-  });
-
-  it("accepts the canonical OKOU run id from a new guest", () => {
+  it("resolves the Pi session and model credential from canonical runner env", () => {
     expect(
       piSandboxAgentConfigFromEnv(
         piEnv({
@@ -105,43 +95,6 @@ describe("sandbox Pi agent loop", () => {
         }),
       ),
     ).toEqual(CONFIG);
-  });
-
-  it("accepts equal canonical and legacy run ids from a new guest", () => {
-    expect(
-      piSandboxAgentConfigFromEnv(
-        piEnv({
-          OKOU_RUN_ID: RUN_ID,
-          VM0_RUN_ID: RUN_ID,
-        }),
-      ),
-    ).toEqual(CONFIG);
-  });
-
-  it("fails closed without exposing mismatched run ids", () => {
-    const canonicalRunId = "canonical-sensitive-run-id";
-    const legacyRunId = "legacy-sensitive-run-id";
-
-    expect(() => {
-      return piSandboxAgentConfigFromEnv(
-        piEnv({
-          OKOU_RUN_ID: canonicalRunId,
-          VM0_RUN_ID: legacyRunId,
-        }),
-      );
-    }).toThrowError("Pi run identity environment mismatch");
-    try {
-      piSandboxAgentConfigFromEnv(
-        piEnv({
-          OKOU_RUN_ID: canonicalRunId,
-          VM0_RUN_ID: legacyRunId,
-        }),
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      expect(message).not.toContain(canonicalRunId);
-      expect(message).not.toContain(legacyRunId);
-    }
   });
 
   it("uses the canonical name when the run id is missing", () => {

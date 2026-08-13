@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.11.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.0...guest-contracts-v0.11.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.10.0...guest-contracts-v0.11.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate pi child environment to okou ([#26810](https://github.com/vm0-ai/vm0/issues/26810)) ([9c54e70](https://github.com/vm0-ai/vm0/commit/9c54e70777750b608dad06fde2a44a5a08f9796b))
+
+
+### Refactoring
+
+* **guest:** centralize private file replacement ([#26786](https://github.com/vm0-ai/vm0/issues/26786)) ([b12cef8](https://github.com/vm0-ai/vm0/commit/b12cef89edbcdf0f9748dba40f3ebe99bfb3fbe5))
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.9.2...guest-contracts-v0.10.0) (2026-08-13)
 
 

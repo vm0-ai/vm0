@@ -2,12 +2,12 @@ import { command, computed, state } from "ccstate";
 import {
   type UserPreferenceChangedPayload,
   userPreferenceChangedPayloadSchema,
-} from "@vm0/api-contracts/contracts/realtime";
+} from "@okouai/api-contracts/contracts/realtime";
 import {
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
   zeroUserModelPreferenceContract,
-} from "@vm0/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
@@ -75,7 +75,12 @@ const reloadUserModelPreferenceFromRealtime$ = command(({ set }) => {
 
 const handleUserPreferenceChanged$ = command(
   ({ set }, payload: unknown): boolean => {
-    if (payloadRequestsKindsReloadFor(payload, ["defaultModel"])) {
+    if (
+      payloadRequestsKindsReloadFor(payload, [
+        "defaultModel",
+        "defaultVideoModel",
+      ])
+    ) {
       set(reloadUserModelPreference$);
     }
     return false;

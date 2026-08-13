@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
+import { runBuiltInAdmissions } from "@okouai/db/schema/run-built-in-admission";
 import { and, count, eq, lte, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
@@ -48,8 +48,7 @@ function runConcurrencyLimit(): RunBuiltInAdmissionError {
     status: 429,
     body: {
       error: {
-        message:
-          "This run has too many built-in generations in progress. Wait for one to finish and try again.",
+        message: `This run already has ${String(RUN_BUILT_IN_MAX_IN_FLIGHT)} built-in generations in progress, which is the limit. Keep at most ${String(RUN_BUILT_IN_MAX_IN_FLIGHT)} in flight and start the next one only after an earlier one finishes.`,
         code: "BUILT_IN_RUN_CONCURRENCY_LIMIT",
       },
     },

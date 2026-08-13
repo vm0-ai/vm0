@@ -9,7 +9,7 @@ import {
   type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { mockApi } from "../msw-contract.ts";
 import {

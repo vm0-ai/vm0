@@ -11,8 +11,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@vm0/ui";
-import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/ui";
+import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import { useTranslation } from "react-i18next";
 import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
@@ -904,10 +904,12 @@ const networkLogDetailFields = {
   error: detailField("error", "error"),
   // CapturedBodySections renders these fields below the detail grid.
   request_headers: null,
+  request_headers_truncated: null,
   request_body: null,
   request_body_encoding: null,
   request_body_truncated: null,
   response_headers: null,
+  response_headers_truncated: null,
   response_body: null,
   response_body_encoding: null,
   response_body_truncated: null,

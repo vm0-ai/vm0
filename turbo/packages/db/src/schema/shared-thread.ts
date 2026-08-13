@@ -6,7 +6,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { SharedThreadMessages } from "@vm0/db/jsonb-contracts/shared-thread";
+import type { SharedThreadMessages } from "@okouai/db/jsonb-contracts/shared-thread";
 
 import { chatThreads } from "./chat-thread";
 

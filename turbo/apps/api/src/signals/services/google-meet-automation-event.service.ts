@@ -3,16 +3,16 @@ import { OAuth2Client } from "google-auth-library";
 import { command } from "ccstate";
 import { and, eq, lte, or } from "drizzle-orm";
 import { z } from "zod";
-import { googleMeetTranscriptGeneratedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
+import { googleMeetTranscriptGeneratedEventConfigSchema } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   googleWorkspaceEventSubscriptionStates,
   googleWorkspaceProcessedEvents,
-} from "@vm0/db/schema/google-workspace-event";
+} from "@okouai/db/schema/google-workspace-event";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -1176,38 +1176,35 @@ async function loadGoogleMeetEventAutomations(
   const automationRows = await args.db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.state.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.state.userId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "event"),
+        eq(workflowAutomations.orgId, args.state.orgId),
+        eq(workflowAutomations.ownerUserId, args.state.userId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
         eq(
-          zeroWorkflowAutomations.eventType,
+          workflowAutomations.eventType,
           GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE,
         ),
       ),
@@ -1522,16 +1519,16 @@ async function repairEnabledGoogleMeetAutomations(
 ): Promise<{ readonly repaired: number; readonly failed: number }> {
   const automationRows = await args.db
     .select({
-      orgId: zeroWorkflowAutomations.orgId,
-      userId: zeroWorkflowAutomations.ownerUserId,
+      orgId: workflowAutomations.orgId,
+      userId: workflowAutomations.ownerUserId,
     })
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "event"),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
         eq(
-          zeroWorkflowAutomations.eventType,
+          workflowAutomations.eventType,
           GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE,
         ),
       ),

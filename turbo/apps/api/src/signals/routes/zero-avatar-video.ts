@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
-import { zeroAvatarVideoContract } from "@vm0/api-contracts/contracts/zero-avatar-video";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroAvatarVideoContract } from "@okouai/api-contracts/contracts/zero-avatar-video";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";

@@ -1,9 +1,9 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   zeroBillingStatusContract,
   zeroBillingCreditCheckoutContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -33,7 +33,10 @@ export async function createZeroCreditCheckout(body: {
 
   const result = await client.create({ body });
   if (result.status === 200) {
-    return result.body;
+    if ("url" in result.body) {
+      return result.body;
+    }
+    throw new Error("Credit checkout unexpectedly returned a preview");
   }
   handleError(result, "Failed to create credit checkout");
 }

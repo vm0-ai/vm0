@@ -1,4 +1,4 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import type {
   ComputerUseAuthorizationRequestCreateResponse,
   ComputerUseCommandCreateResponse,
@@ -6,15 +6,15 @@ import type {
   ComputerUseHost,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import type { ComputerUseAnyPluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
+import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
 import {
   zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHostsContract,
   zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import {
   ApiRequestError,
   getBaseUrl,

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.0...guest-mock-codex-v0.8.1) (2026-08-13)
+
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.4...guest-mock-codex-v0.8.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate pi child environment to okou ([#26810](https://github.com/vm0-ai/vm0/issues/26810)) ([9c54e70](https://github.com/vm0-ai/vm0/commit/9c54e70777750b608dad06fde2a44a5a08f9796b))
+
 ## [0.7.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.3...guest-mock-codex-v0.7.4) (2026-08-13)
 
 ## [0.7.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.2...guest-mock-codex-v0.7.3) (2026-08-12)

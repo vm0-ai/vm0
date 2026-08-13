@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.37.210](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.209...sandbox-fc-v0.37.210) (2026-08-13)
+
+
+### Documentation
+
+* **sandbox-fc:** correct prewarm credential comment ([#26927](https://github.com/vm0-ai/vm0/issues/26927)) ([63f3634](https://github.com/vm0-ai/vm0/commit/63f363433df8c4586fb4bbf4fde0b10d6a247227))
+
+## [0.37.209](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.208...sandbox-fc-v0.37.209) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+* **sandbox-fc:** reject symlinked snapshot markers ([#26870](https://github.com/vm0-ai/vm0/issues/26870)) ([af592c8](https://github.com/vm0-ai/vm0/commit/af592c83fd864a16f9faad0f9c36f4ae85bb6ff6))
+
+## [0.37.208](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.207...sandbox-fc-v0.37.208) (2026-08-13)
+
 ## [0.37.207](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.206...sandbox-fc-v0.37.207) (2026-08-13)
 
 ## [0.37.206](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.205...sandbox-fc-v0.37.206) (2026-08-12)

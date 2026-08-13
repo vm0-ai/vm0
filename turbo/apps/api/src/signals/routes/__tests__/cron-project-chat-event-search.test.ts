@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { cronProjectChatEventSearchContract } from "@vm0/api-contracts/contracts/cron";
-import { testChatEventSearchProjectionContract } from "@vm0/api-contracts/contracts/test-chat-event-search-projection";
+import { cronProjectChatEventSearchContract } from "@okouai/api-contracts/contracts/cron";
+import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

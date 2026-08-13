@@ -347,7 +347,6 @@
       "slack": "Slack",
       "teams": "Microsoft Teams",
       "telegram": "Telegram",
-      "templateImport": "Importazione modello",
       "test": "Test",
       "web": "Rete",
       "webhook": "Webhook"
@@ -809,6 +808,7 @@
       "confirm": "Conferma",
       "credits": "crediti",
       "manage": "Gestisci",
+      "preparing": "Preparazione...",
       "redirecting": "Reindirizzamento...",
       "restore": "Ripristina",
       "retry": "Riprova",
@@ -867,6 +867,9 @@
       "exchangeRate": "I crediti non scadono mai. 1 USD = {{credits}} crediti.",
       "quickBuy": "Acquisto veloce",
       "quickBuyAmount": "Acquisto veloce {{amount}}",
+      "reviewDescription": "Conferma questo addebito una tantum con il metodo di pagamento salvato.",
+      "reviewError": "Impossibile completare questo acquisto di crediti. Controlla i dati di fatturazione e riprova.",
+      "reviewTitle": "Rivedi l'acquisto di crediti",
       "title": "Acquista crediti"
     },
     "downgrade": {
@@ -1043,6 +1046,7 @@
       "concurrencyChanged": "Modifica della concorrenza confermata. Il numero di slot verrà aggiornato dopo l'elaborazione della modifica da parte di Stripe.",
       "concurrencyReduced": "La riduzione della concorrenza è programmata per la prossima data di fatturazione.",
       "concurrencyRestored": "Sottoscrizione simultanea ripristinata.",
+      "creditPurchaseConfirmed": "Pagamento confermato. I crediti appariranno dopo che Stripe avrà elaborato la fattura.",
       "creditsAdded": "Crediti aggiunti. Puoi continuare a chattare con Zero.",
       "downgradeScheduledDate": "Downgrade programmato. Il tuo piano attuale rimane attivo fino al {{date}}.",
       "downgradeScheduledPeriod": "Downgrade programmato. Il tuo piano attuale rimane attivo fino al termine del periodo di fatturazione.",
@@ -1434,8 +1438,7 @@
       "search": "Cerca agenti e chat...",
       "sent": "Inoltrato correttamente",
       "threads": "Chat",
-      "title": "Inoltra a",
-      "to": "Inoltra a"
+      "title": "Inoltra a"
     },
     "mail": {
       "bcc": "bcc",
@@ -4632,6 +4635,7 @@
       "imageRecognize": "Riconoscimento immagini",
       "maps": "Mappe",
       "peopleSearch": "Ricerca persone",
+      "seo": "SEO",
       "translation": "Traduzione",
       "usage": "Utilizzo",
       "weather": "Meteo",
@@ -4653,12 +4657,17 @@
       "yesterday": "Ieri"
     },
     "records": {
-      "emptyBillingPeriod": "Nessun utilizzo in questo periodo di fatturazione.",
-      "emptyRange": "Nessun utilizzo in questo intervallo di tempo.",
+      "empty": {
+        "billingPeriodTitle": "Nessun utilizzo in questo periodo di fatturazione",
+        "description": "I crediti che spendi in chat, automazioni e canali compaiono qui.",
+        "noBillingPeriodDescription": "L'utilizzo del team compare all'inizio di un periodo di fatturazione.",
+        "noBillingPeriodTitle": "Nessun periodo di fatturazione attivo",
+        "rangeTitle": "Nessun utilizzo in questo intervallo di tempo",
+        "teamDescription": "I crediti che il tuo team spende in chat, automazioni e canali compaiono qui."
+      },
       "loadError": "Impossibile caricare il tuo utilizzo.",
       "loadMore": "Carica di più",
       "myUsage": "Il mio utilizzo",
-      "noActiveBillingPeriod": "Nessun periodo di fatturazione attivo.",
       "teamLoadError": "Impossibile caricare l'utilizzo del team.",
       "teamUsage": "Utilizzo del team",
       "untitled": "(senza titolo)"

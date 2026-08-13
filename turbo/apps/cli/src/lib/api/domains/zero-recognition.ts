@@ -2,8 +2,8 @@ import {
   zeroRecognitionContract,
   type ZeroRecognitionRequest,
   type ZeroRecognitionResponse,
-} from "@vm0/api-contracts/contracts/zero-recognition";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/zero-recognition";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 

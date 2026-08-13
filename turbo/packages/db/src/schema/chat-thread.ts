@@ -11,13 +11,13 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
   ChatThreadDraftUserMessage,
-} from "@vm0/db/jsonb-contracts/chat-thread";
+} from "@okouai/db/jsonb-contracts/chat-thread";
 import { agentRuns, agentSessions } from "./agent-run-session-conversation";
 
 /**
@@ -98,6 +98,13 @@ export const chatThreads = pgTable(
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),
+    /**
+     * Per-thread built-in video generation model pin. Null falls through to the
+     * member default and then to the system default. Generation parameters such
+     * as aspect ratio and resolution stay per generation and are never pinned
+     * here, so one thread can still produce more than one format.
+     */
+    selectedVideoModel: varchar("selected_video_model", { length: 255 }),
     computerUseHostId: uuid("computer_use_host_id").references(
       () => {
         return computerUseHosts.id;

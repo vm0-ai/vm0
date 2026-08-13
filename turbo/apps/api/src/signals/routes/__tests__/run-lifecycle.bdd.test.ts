@@ -6,26 +6,27 @@ import {
   getVm0ConcreteProviderType,
   type ModelProviderType,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   type ConnectorRuntimeSyncResult,
+  type ExecutionContext,
   type Job as RunnerJob,
-} from "@vm0/api-contracts/contracts/runners";
-import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
+} from "@okouai/api-contracts/contracts/runners";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
-} from "@vm0/core/storage-names";
+} from "@okouai/core/storage-names";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
   type FirewallApi,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -430,8 +431,6 @@ const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
   "custom_connector_runtime_missing_required_count_bucket",
   "custom_connector_runtime_no_auth_injection_count_bucket",
   "custom_connector_runtime_invalid_prefix_count_bucket",
-  "custom_connector_runtime_pinned_routing_count_bucket",
-  "custom_connector_runtime_unpinned_routing_count_bucket",
 ] as const;
 const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_builtin_permission_indexes",
@@ -628,6 +627,24 @@ type AvailableCustomConnectorRuntime = Extract<
   ConnectorRuntimeSyncResult,
   { readonly state: "available"; readonly target: { readonly kind: "custom" } }
 >;
+
+function customConnectorRuntimeRegistration(
+  context: ExecutionContext,
+  customConnectorId: string,
+): Extract<
+  ExecutionContext["connectorRuntimeTargets"][number],
+  { readonly kind: "custom" }
+> {
+  const registration = context.connectorRuntimeTargets.find((target) => {
+    return (
+      target.kind === "custom" && target.customConnectorId === customConnectorId
+    );
+  });
+  if (!registration || registration.kind !== "custom") {
+    throw new Error("Expected a custom connector runtime registration");
+  }
+  return registration;
+}
 
 function availableCustomConnectorRuntime(
   result: ConnectorRuntimeSyncResult | undefined,
@@ -3818,13 +3835,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("selects same-thread reuse preferences from runner heartbeats", async () => {
+  it("validates same-thread reuse heartbeat inventory shapes", async () => {
     const {
       reuseRunnerId,
       api,
       cliAgentSessionId,
-      first,
-      heartbeatHolder,
       nextReuseSnapshotSequence,
       pollFollowUp,
       reuseKey,
@@ -3907,6 +3922,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "noPreference",
       reason: "noViableHolder",
     });
+  });
+
+  it("selects workspace and reusable-sandbox preferences from runner heartbeats", async () => {
+    const {
+      reuseRunnerId,
+      api,
+      cliAgentSessionId,
+      heartbeatHolder,
+      nextReuseSnapshotSequence,
+      pollFollowUp,
+      reuseKey,
+      runnerGroup,
+    } = await setupSameThreadReuseScenario();
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reuseRunnerId,
@@ -4002,6 +4030,40 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       mode: "stopping",
     });
 
+    for (const { runId, resolution, tier } of [
+      {
+        runId: reusableOverWorkspace.run.runId,
+        resolution: "matching_reusable_sandbox",
+        tier: "reusableSandbox",
+      },
+      {
+        runId: capableWorkspaceHolder.run.runId,
+        resolution: "matching_workspace_cache",
+        tier: "workspaceCache",
+      },
+    ]) {
+      for (const actionType of [
+        "runner_notification_affinity_lookup",
+        "runner_poll_pending_job_lookup",
+      ]) {
+        const events = sandboxOperationEventsForRunByAction(runId, actionType);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toStrictEqual(
+          expect.objectContaining({
+            runner_preference_resolution: resolution,
+            runner_preference_decision_kind: "preference",
+            runner_preference_tier: tier,
+            reuse_key_kind: "thread",
+          }),
+        );
+      }
+    }
+  });
+
+  it("selects reusable-sandbox preferences by profile and history generation", async () => {
+    const { reuseRunnerId, first, heartbeatHolder, pollFollowUp } =
+      await setupSameThreadReuseScenario();
+
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [{ profile: "vm0/large", workspaceAffinityVersion: 1 }],
@@ -4053,35 +4115,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       tier: "exactSandbox",
       expiresAt: expect.any(String),
     });
-
-    for (const { runId, resolution, tier } of [
-      {
-        runId: reusableOverWorkspace.run.runId,
-        resolution: "matching_reusable_sandbox",
-        tier: "reusableSandbox",
-      },
-      {
-        runId: capableWorkspaceHolder.run.runId,
-        resolution: "matching_workspace_cache",
-        tier: "workspaceCache",
-      },
-    ]) {
-      for (const actionType of [
-        "runner_notification_affinity_lookup",
-        "runner_poll_pending_job_lookup",
-      ]) {
-        const events = sandboxOperationEventsForRunByAction(runId, actionType);
-        expect(events).toHaveLength(1);
-        expect(events[0]).toStrictEqual(
-          expect.objectContaining({
-            runner_preference_resolution: resolution,
-            runner_preference_decision_kind: "preference",
-            runner_preference_tier: tier,
-            reuse_key_kind: "thread",
-          }),
-        );
-      }
-    }
   });
 
   it("prefers the live finalizing source before generic reuse without renewing its deadline", async () => {
@@ -5850,7 +5883,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain("okou chat send");
     expect(appendSystemPrompt).toContain("okou chat cancel");
-    expect(appendSystemPrompt).not.toContain("okou chat queued");
     await api.requestCancelRun(actor, run.runId, [200]);
 
     await upsertOrgPlanEntitlementFixture({
@@ -9482,7 +9514,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const expiredClaim = await api.claimRunnerJob(expiredRun.runId);
     expect(expiredClaim.connectorRuntimeTargets).toContainEqual(target);
     const [runtimeResult] = await api.syncConnectorRuntime(expiredRun.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(expiredClaim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: authBody } = customConnectorRuntimeAuthBody(
@@ -9619,7 +9651,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "Bearer custom-oauth-initial-access-token",
     );
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(claim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
@@ -9859,7 +9891,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(firstRun.runId);
     const [runtimeResult] = await api.syncConnectorRuntime(firstRun.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(claim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
@@ -9885,7 +9917,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const [reconnectRuntimeResult] = await api.syncConnectorRuntime(
       firstRun.runId,
-      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+      { targets: [customConnectorRuntimeRegistration(claim, custom.id)] },
     );
     const reconnectRuntime = availableCustomConnectorRuntime(
       reconnectRuntimeResult,
@@ -9928,7 +9960,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const [secondRuntimeResult] = await api.syncConnectorRuntime(
       secondRun.runId,
-      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+      {
+        targets: [customConnectorRuntimeRegistration(secondClaim, custom.id)],
+      },
     );
     const secondRuntime = availableCustomConnectorRuntime(secondRuntimeResult);
     const { body: secondAuthBody } = customConnectorRuntimeAuthBody(
@@ -10237,6 +10271,42 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(customApi.auth?.query?.scope).toBe(
       `\${{ secrets.${scopeVariableKey} }}`,
     );
+    const runContextSnapshot = runContextSnapshotForRun(run.runId);
+    expect(runContextSnapshot.firewalls).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "inline",
+          name: internalName,
+          customConnectorId: saved.connector.id,
+          apis: expect.arrayContaining([
+            expect.objectContaining({
+              base: `https://xn--mnich-kva.${rand}.test/v1/`,
+              auth: {
+                headerEntries: [
+                  {
+                    name: "Authorization",
+                    value: `Bearer \${{ secrets.${secretKey} }}`,
+                  },
+                ],
+                queryEntries: [
+                  {
+                    name: "tenant",
+                    value: `\${{ secrets.${variableKey} }}`,
+                  },
+                  {
+                    name: "scope",
+                    value: `\${{ secrets.${scopeVariableKey} }}`,
+                  },
+                ],
+              },
+            }),
+          ]),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(runContextSnapshot)).not.toContain(
+      "runtime-proposal-secret",
+    );
 
     const authBody = {
       encryptedSecrets: fw.encryptedSecretsBody({}),
@@ -10453,7 +10523,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { api: runtimeApi, body: runtimeAuthBody } =
@@ -10781,7 +10851,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const saved = await connectors.saveCustomConnectorProposal(actor, {
       proposal: {
         operation: "create",
-        displayName: "BDD Unpinned Recovery Runtime",
+        displayName: "BDD Full Recovery Runtime",
         prefixTemplates: [
           `https://{{variables.subdomain}}.${rand}.recovery.test/v1/`,
         ],
@@ -10978,7 +11048,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     expect(runtime.firewall.customConnectorId).toBe(saved.connector.id);
@@ -11074,6 +11144,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     ).toContain("zendesk");
     expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
+      kind: "builtin",
+      name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    });
+    expect(runContextSnapshotForRun(run.runId).firewalls).toContainEqual({
       kind: "builtin",
       name: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
@@ -12437,7 +12512,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       appendSystemPrompt.indexOf("- Cross-thread chat run completion:"),
     );
     expect(appendSystemPrompt).toContain("okou upgrade pro");
-    expect(appendSystemPrompt).not.toContain("okou chat queued");
     expect(appendSystemPrompt).not.toContain(
       "`okou browser use` creates, reuses, or resumes a remote browser",
     );
@@ -15006,6 +15080,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             latency_ms: 12,
             request_size: 100,
             response_size: 256,
+            request_headers: { accept: "application/json" },
+            request_headers_truncated: true,
+            response_headers: { server: "***" },
+            response_headers_truncated: true,
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
@@ -15081,6 +15159,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         url: "[truncated]",
         url_truncated: true,
         url_original_char_count: 1_000_001,
+        request_headers: { accept: "application/json" },
+        request_headers_truncated: true,
+        response_headers: { server: "***" },
+        response_headers_truncated: true,
         model_catalog_cache_status: "model_catalog_cold_stored",
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,

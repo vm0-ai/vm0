@@ -35,6 +35,7 @@ mod network_log_manager;
 mod network_log_process;
 mod network_logs;
 mod org_name;
+mod parent_death;
 mod paths;
 mod prefetch;
 mod private_fs;
@@ -367,6 +368,23 @@ mod tests {
             normalized_help
                 .contains("gc Clean up unused runner resources, artifacts, logs, and caches")
         );
+    }
+
+    #[test]
+    fn service_drain_help_describes_bounded_coordination() {
+        let error = Cli::try_parse_from(["runner", "service", "--help"])
+            .err()
+            .expect("service --help should exit through clap");
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let normalized_help = error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(normalized_help.contains(
+            "drain Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)"
+        ));
     }
 
     #[tokio::test]

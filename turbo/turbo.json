@@ -128,7 +128,6 @@
     "AGENTPHONE_WEBHOOK_SECRET",
 
     "OKOU_RUN_ID",
-    "VM0_RUN_ID",
     "OKOU_AGENT_ID",
     "ZERO_AGENT_ID",
     "ZERO_WORKFLOW_ID",
@@ -316,7 +315,7 @@
         ".source/**"
       ]
     },
-    "@vm0/app#build": {
+    "@okouai/app#build": {
       "dependsOn": ["^build"],
       "env": ["VITE_GIT_COMMIT_SHA"],
       "inputs": [

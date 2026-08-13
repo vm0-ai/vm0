@@ -392,6 +392,10 @@ jobs:
           HOME=/root USER=root LOGNAME=root \
             cargo test -p vsock-guest --release --no-default-features \
               --test production_identity -- \
+              --ignored --exact production_exec_identity_matches_sandbox_user
+          HOME=/root USER=root LOGNAME=root \
+            cargo test -p vsock-guest --release --no-default-features \
+              --test production_identity -- \
               --ignored --exact production_env_script_remains_until_operation_cleanup
 
   coverage:
@@ -466,8 +470,8 @@ jobs:
       - name: Check API Contracts Bindings
         working-directory: turbo
         run: |
-          pnpm -F @vm0/api-contracts generate:rust
-          pnpm -F @vm0/api-contracts generate:python
+          pnpm -F @okouai/api-contracts generate:rust
+          pnpm -F @okouai/api-contracts generate:python
           git diff --exit-code -- \
             ../crates/api-contracts/src/generated \
             ../crates/runner/mitm-addon/src/generated

@@ -4,13 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -460,6 +460,7 @@ describe("chat inline feedback", () => {
     await user.keyboard("{ArrowDown}{Enter}");
 
     const feedbackNote = await findForwardFeedbackNote(dialog);
+    expect(within(dialog).getAllByText("Forward to")).toHaveLength(1);
     expect(within(dialog).getByText("Launch ownership")).toBeInTheDocument();
     expect(within(dialog).queryByText("Content")).toBeNull();
     expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);
@@ -492,6 +493,119 @@ describe("chat inline feedback", () => {
     );
     expect(successToast).toHaveBeenCalledWith("Forwarded successfully");
     successToast.mockRestore();
+  });
+
+  it("hides target pending items from the forward composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sourceRunId = "d0000000-0000-4000-a000-000000000706";
+    const targetThreadId = "b0000000-0000-4000-a000-000000000706";
+    const selectedContent = "Summarize the rollout blockers.";
+    const queuedContent = "Review the queued rollout update";
+    const automationContent = "Process the pending rollout automation";
+    const goalContent = "Keep the rollout on schedule";
+
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward pending items source",
+      chatEvents: [
+        {
+          id: "msg-forward-pending-user",
+          role: "user",
+          content: "Review the rollout",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T12:00:00Z",
+        },
+        {
+          id: "msg-forward-pending-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T12:00:01Z",
+        },
+        {
+          id: "msg-forward-pending-queued",
+          role: "user",
+          content: queuedContent,
+          runId: undefined,
+          createdAt: "2026-08-12T12:00:02Z",
+        },
+        {
+          id: "msg-forward-pending-automation",
+          eventType: "input.automation",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "rollout-review",
+                automationBrief: automationContent,
+              },
+            ],
+          },
+          runId: undefined,
+          createdAt: "2026-08-12T12:00:03Z",
+        },
+        {
+          id: "msg-forward-pending-goal",
+          eventType: "goal.open",
+          role: "assistant",
+          content: goalContent,
+          runId: undefined,
+          createdAt: "2026-08-12T12:00:04Z",
+        },
+      ],
+      activeRunIds: [sourceRunId],
+    });
+    lifecycle.setThreadList([
+      {
+        id: FEEDBACK_THREAD_ID,
+        title: "Forward pending items source",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T11:00:00Z",
+        updatedAt: "2026-08-12T12:00:00Z",
+      },
+      {
+        id: targetThreadId,
+        title: "Rollout review",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T10:00:00Z",
+        updatedAt: "2026-08-12T11:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
+
+    const assistantReply = await screen.findByText(selectedContent);
+    await screen.findByText(queuedContent);
+    await screen.findByText(automationContent);
+    expect(screen.getByLabelText("Active goal")).toHaveTextContent(goalContent);
+    selectTextForInlineFeedback(assistantReply);
+    await user.click(await screen.findByText("Forward"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    await fill(
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
+      "Rollout review",
+    );
+    await user.keyboard("{ArrowDown}{Enter}");
+    await findForwardFeedbackNote(dialog);
+    await waitForDeferredSelectionCapture();
+
+    expect(within(dialog).queryByText(queuedContent)).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(automationContent),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(goalContent)).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Queued message")).toBeNull();
+    expect(
+      within(dialog).queryByLabelText("Pending automation event"),
+    ).toBeNull();
+    expect(within(dialog).queryByLabelText("Active goal")).toBeNull();
   });
 
   it("opens the forward dialog from the keyboard shortcut", async () => {

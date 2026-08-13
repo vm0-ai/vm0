@@ -2,11 +2,11 @@ import { command, computed } from "ccstate";
 import {
   hasAuthMethods,
   type ModelProviderResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/zero-model-providers";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

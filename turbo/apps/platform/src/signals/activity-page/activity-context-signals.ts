@@ -2,7 +2,7 @@ import { computed } from "ccstate";
 import {
   zeroRunContextContract,
   type RunContextResponse,
-} from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";

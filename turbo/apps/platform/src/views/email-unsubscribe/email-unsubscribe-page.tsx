@@ -1,6 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { brandName$ } from "../../signals/branding.ts";

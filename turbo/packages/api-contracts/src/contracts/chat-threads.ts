@@ -150,6 +150,16 @@ const chatThreadSnapshotProjectionSchema = z.object({
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
+  // Rollout fallback. Optional so a payload without the field still parses:
+  // from an API deployed before this change (DB/API skew, observed max ~102min)
+  // and from IndexedDB rows an older bundle wrote (old web clients, ~2d).
+  // Loose rather than the catalog enum so a pin whose model later leaves the
+  // catalog still parses; the strict enum applies on the write path.
+  // Remove once the client floor passes the build that introduced the field and
+  // cached rows have resynced, together with the two `?? null` reads in
+  // zero-chat-thread-event.service.ts and chat-thread-event-replay.ts.
+  // Follow-up: https://github.com/vm0-ai/vm0/issues/26765
+  selectedVideoModel: z.string().nullable().optional(),
 });
 
 const chatThreadEventSchema = z.object({
@@ -165,6 +175,7 @@ const chatThreadEventSchema = z.object({
     "model_selection_updated",
     "service_tier_updated",
     "computer_use_host_updated",
+    "video_model_updated",
     "sort_touched",
   ]),
   chatThreadId: z.string().uuid(),
@@ -174,6 +185,7 @@ const chatThreadEventSchema = z.object({
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
+  selectedVideoModel: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 
@@ -866,6 +878,19 @@ const chatThreadCreateBodySchema = z.object({
   title: z.string().optional(),
 });
 
+/**
+ * Built-in video model pinned to a chat thread. Unlike the run model this
+ * carries no provider routing, no service tier, and no org policy row: every
+ * catalog model is selectable by every workspace.
+ */
+const videoModelRequestSchema = z.enum(VIDEO_MODEL_IDS);
+
+const chatThreadVideoModelUpdateBodySchema = z.object({
+  /** Video model id, or null to fall back to the member and system defaults. */
+  model: videoModelRequestSchema.nullable(),
+  eventId: chatThreadEventIdSchema.optional(),
+});
+
 const chatThreadModelSelectionUpdateBodySchema = z.object({
   /**
    * Selected model id, or null to clear the thread's selected model.
@@ -1330,6 +1355,28 @@ export const chatThreadModelSelectionContract = c.router({
 });
 
 /**
+ * Update a chat thread's video model pin. Separate from the model-selection
+ * route because it shares none of its provider, tier, or policy resolution.
+ */
+export const chatThreadVideoModelContract = c.router({
+  update: {
+    method: "POST",
+    path: "/api/okou/chat-threads/:id/video-model",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: chatThreadVideoModelUpdateBodySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update a chat thread video model",
+  },
+});
+
+/**
  * Update a chat thread's Computer Use host binding. Kept separate from
  * `chatThreadByIdContract.patch`, which intentionally remains draft-only.
  */
@@ -1438,8 +1485,11 @@ export const chatEventsContract = c.router({
 
 /**
  * Single chat message in a search result.
- * `content` is guaranteed non-null because the search route filters out
- * placeholder rows where content is NULL.
+ * `(chatThreadId, seqId)` is the stable identity and `runId` carries optional
+ * run ownership. `messageId` and `sequenceNumber` bridge old Platform/App
+ * clients for the ~2-day client-skew window. #26921 migrates current clients
+ * to the stable identity and removes these fields after that deployment has
+ * aged past 2 days.
  */
 const chatSearchMessageSchema = z.object({
   messageId: z.string(),

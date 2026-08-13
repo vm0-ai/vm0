@@ -14,10 +14,10 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
-import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import { chatThreadSnapshots } from "@okouai/db/schema/chat-thread-snapshot";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { z } from "zod";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { optionalEnv } from "../../lib/env";
@@ -156,7 +156,8 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
               ELSE NULL
             END,
             'computerUseHostId', thread.computer_use_host_id,
-            'cloudBrowserEnabled', thread.cloud_browser_enabled
+            'cloudBrowserEnabled', thread.cloud_browser_enabled,
+            'selectedVideoModel', thread.selected_video_model
           )
           ORDER BY
             ${asc(isNull(thread.pinnedAt))},

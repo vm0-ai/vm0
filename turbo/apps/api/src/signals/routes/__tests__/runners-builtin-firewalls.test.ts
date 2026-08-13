@@ -1,12 +1,12 @@
 import {
   runnersBuiltinFirewallsResolveContract,
   type RunnerBuiltinFirewallsResolveResponse,
-} from "@vm0/api-contracts/contracts/runners";
-import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
+} from "@okouai/api-contracts/contracts/runners";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
 import {
   createRunnerRuntimeFirewallCatalog,
   projectRunnerRuntimeFirewall,
-} from "@vm0/connectors/firewall-metadata/runner-runtime-catalog";
+} from "@okouai/connectors/firewall-metadata/runner-runtime-catalog";
 import { describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

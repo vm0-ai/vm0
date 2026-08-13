@@ -7,17 +7,17 @@ import type {
   ZeroBankingTransaction,
   ZeroBankingTransactionsRequest,
   ZeroBankingTransactionsResponse,
-} from "@vm0/api-contracts/contracts/zero-banking";
+} from "@okouai/api-contracts/contracts/zero-banking";
 import {
   bankingAccessAuditEvents,
   bankingAccounts,
   bankingAgentEnablements,
   bankingConnections,
   type BankingOperationScope,
-} from "@vm0/db/schema/banking";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/banking";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import {
   and,

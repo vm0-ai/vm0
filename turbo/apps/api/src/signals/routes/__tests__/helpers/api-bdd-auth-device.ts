@@ -1,36 +1,36 @@
 import { Buffer } from "node:buffer";
 
 import type { z } from "zod";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
+} from "@okouai/api-contracts/contracts/cli-auth";
 import {
   cliAuthTestCodexOauthContract,
   cliAuthTestConnectorContract,
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth-test";
-import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/cli-auth-test";
+import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   type DesktopAuthCallbackScheme,
   desktopAuthConsumeContract,
   desktopAuthHandoffContract,
-} from "@vm0/api-contracts/contracts/desktop-auth";
-import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+} from "@okouai/api-contracts/contracts/desktop-auth";
+import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import {
   type ClaudeCodeDeviceAuthScope,
   zeroClaudeCodeDeviceAuthContract,
-} from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+} from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
 import {
   type CodexDeviceAuthScope,
   zeroCodexDeviceAuthContract,
-} from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/zero-codex-device-auth";
+import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { http, HttpResponse } from "msw";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";

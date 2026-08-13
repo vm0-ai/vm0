@@ -14,8 +14,8 @@ import {
   integrationsSlackUploadCompleteContract,
   integrationsSlackUploadInitContract,
   integrationsSlackUploadMaterializeContract,
-} from "@vm0/api-contracts/contracts/integrations";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/integrations";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

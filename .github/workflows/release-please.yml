@@ -238,7 +238,7 @@ jobs:
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --strict-peer-dependencies --filter @vm0/desktop...
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies --filter @okouai/desktop...
 
       - name: Verify Desktop release inputs
         env:
@@ -913,7 +913,7 @@ jobs:
             echo "::error::CF_ACCOUNT_ID must be configured as a GitHub Actions variable or secret"
             exit 1
           fi
-          CLOUDFLARE_API_TOKEN="$CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN" pnpm -F @vm0/host-worker run deploy
+          CLOUDFLARE_API_TOKEN="$CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN" pnpm -F @okouai/host-worker run deploy
 
       - name: Calculate duration
         id: duration
@@ -1031,7 +1031,7 @@ jobs:
 
       - name: Build Runtime API Schema
         working-directory: turbo
-        run: pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out "$GITHUB_WORKSPACE/turbo/runtime-api-schema.json"
+        run: pnpm --filter @okouai/api-contracts run build:runtime-api-schema -- --out "$GITHUB_WORKSPACE/turbo/runtime-api-schema.json"
 
       - name: Upload Runtime API Schema Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1165,7 +1165,7 @@ jobs:
         if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
         run: |
           echo "Running production migrations on production"
-          cd turbo && pnpm -F @vm0/db db:migrate
+          cd turbo && pnpm -F @okouai/db db:migrate
         env:
           DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -1570,7 +1570,7 @@ jobs:
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
         working-directory: turbo
         run: |
-          pnpm --filter @vm0/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
+          pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
 
       - name: Deploy Cloudflare Pages production
         id: deploy-pages

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
+import { MEMORY_ARTIFACT_NAME } from "@okouai/core/storage-names";
 
 import type { TestContext } from "../../../../__tests__/test-context";
 import { readStorageS3PrefixFixture } from "../../../../test-fixtures/storage";

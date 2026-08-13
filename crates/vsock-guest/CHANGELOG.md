@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.79](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.78...vsock-guest-v0.19.79) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
+## [0.19.78](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.77...vsock-guest-v0.19.78) (2026-08-13)
+
 ## [0.19.77](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.76...vsock-guest-v0.19.77) (2026-08-13)
 
 ## [0.19.76](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.75...vsock-guest-v0.19.76) (2026-08-12)

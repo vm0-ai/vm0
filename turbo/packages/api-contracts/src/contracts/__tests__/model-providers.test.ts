@@ -44,7 +44,7 @@ import {
   modelProviderFrameworkSchema,
   type ModelProviderType,
 } from "../model-providers";
-import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
+import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
 
 describe("model-first canonical catalog", () => {
   it("recognizes GPT 5.6 Codex fast mode models", () => {

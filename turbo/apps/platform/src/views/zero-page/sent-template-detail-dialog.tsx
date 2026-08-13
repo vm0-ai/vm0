@@ -6,13 +6,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { findVideoTemplateItem, r2ImageTransformUrl } from "@vm0/core";
+} from "@okouai/ui/components/ui/dialog";
+import { findVideoTemplateItem, r2ImageTransformUrl } from "@okouai/core";
 import {
   VIDEO_MODEL_CONFIGS,
   resolveVideoGenerationOptions,
-} from "@vm0/core/video-model-catalog";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/core/video-model-catalog";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   closeSentTemplateDetail$,
   sentTemplateDetail$,
