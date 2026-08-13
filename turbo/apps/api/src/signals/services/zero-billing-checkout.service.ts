@@ -5,7 +5,8 @@ import type {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
-import { and, eq } from "drizzle-orm";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -93,21 +94,59 @@ type PreviewInitialConcurrencyPurchaseResult =
 
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
+const ACTIVE_USAGE_ALLOWANCE_STATUSES = [
+  "active",
+  "manual_active",
+  "trialing",
+  "past_due",
+  "unpaid",
+] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 
-async function orgPlanSubscriptionId(
+async function orgConcurrencyBillingSubscriptionId(
   db: ReadonlyDb,
   orgId: string,
 ): Promise<string | null> {
   const [plan] = await db
     .select({
+      planKey: orgPlanEntitlements.planKey,
       stripeSubscriptionId: orgPlanEntitlements.stripeSubscriptionId,
     })
     .from(orgPlanEntitlements)
     .where(eq(orgPlanEntitlements.orgId, orgId))
     .limit(1);
-  return plan?.stripeSubscriptionId ?? null;
+  if (plan?.stripeSubscriptionId) {
+    return plan.stripeSubscriptionId;
+  }
+  if (plan?.planKey !== "custom") {
+    return null;
+  }
+
+  // Forever Custom Atom grants do not have a Plan subscription. Their usage
+  // allowance subscription owns the recurring billing cycle instead.
+  const currentTime = nowDate();
+  const [allowance] = await db
+    .select({
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(
+      and(
+        eq(orgUsageAllowanceEntitlements.orgId, orgId),
+        inArray(orgUsageAllowanceEntitlements.status, [
+          ...ACTIVE_USAGE_ALLOWANCE_STATUSES,
+        ]),
+        isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
+        lte(orgUsageAllowanceEntitlements.effectiveAt, currentTime),
+        or(
+          isNull(orgUsageAllowanceEntitlements.expiresAt),
+          gt(orgUsageAllowanceEntitlements.expiresAt, currentTime),
+        ),
+      ),
+    )
+    .limit(1);
+  return allowance?.stripeSubscriptionId ?? null;
 }
 
 function legacyPriceIdsForTier(
@@ -546,7 +585,7 @@ export const previewInitialConcurrencyPurchase$ = command(
     },
     signal: AbortSignal,
   ): Promise<PreviewInitialConcurrencyPurchaseResult> => {
-    const subscriptionId = await orgPlanSubscriptionId(
+    const subscriptionId = await orgConcurrencyBillingSubscriptionId(
       set(writeDb$),
       args.orgId,
     );
@@ -606,7 +645,7 @@ export const startConcurrencyPurchase$ = command(
       };
     }
 
-    const subscriptionId = await orgPlanSubscriptionId(
+    const subscriptionId = await orgConcurrencyBillingSubscriptionId(
       set(writeDb$),
       args.orgId,
     );
