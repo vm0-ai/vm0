@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io::{self, IoSlice};
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
@@ -18,6 +19,8 @@ use bitvec::prelude::*;
 use crate::error::{NbdCowError, Result};
 
 mod bitmap;
+
+const MAX_WRITE_IOVECS: usize = libc::UIO_MAXIOV as usize;
 
 #[cfg(test)]
 pub(crate) use bitmap::bitmap_tmp_path_for;
@@ -360,8 +363,9 @@ impl CowLayer {
 
     /// Flush the write buffer to the COW file.
     ///
-    /// BTreeMap iterates in key order, giving sequential I/O for free.
-    /// On I/O failure, unwritten blocks are restored to the buffer so no data is lost.
+    /// Adjacent blocks are submitted in bounded positioned batches. On I/O
+    /// failure, the first incomplete block and all later blocks are restored
+    /// to the buffer so no data is lost.
     pub fn flush(&mut self) -> Result<()> {
         if self.write_buffer.is_empty() {
             return Ok(());
@@ -372,35 +376,81 @@ impl CowLayer {
             .cow_fd
             .take()
             .ok_or_else(|| NbdCowError::Io(std::io::Error::other("cow_fd missing after ensure")))?;
-        let result = self.flush_buffered(|offset, data| cow_fd.write_all_at(data, offset));
+        let result =
+            self.flush_buffered(|offset, buffers| write_block_batch_at(&cow_fd, offset, buffers));
         self.cow_fd = Some(cow_fd);
         result
     }
 
-    /// Drain `write_buffer` through `write_fn`. On failure, restores the failed
-    /// block and all unprocessed blocks to `write_buffer`, recomputes
-    /// `buffer_bytes`, and returns the error. Dirty bits are set only for blocks
-    /// the writer accepted.
+    /// Drain `write_buffer` through `write_fn` in contiguous batches. The
+    /// writer returns the number of bytes accepted from the concatenated
+    /// buffers. On failure, restores the first incomplete block and all
+    /// unprocessed blocks to `write_buffer`, recomputes `buffer_bytes`, and
+    /// returns the error. Dirty bits are set only for complete blocks.
     ///
-    /// The writer boundary is a closure so tests can cover partial-success-then-fail
-    /// at arbitrary index, which real-I/O injection (/dev/full, file seals,
-    /// RLIMIT_FSIZE) cannot reproduce.
+    /// The writer boundary is a closure so tests can cover short writes and
+    /// partial-success-then-fail at arbitrary byte offsets, which real-I/O
+    /// injection (/dev/full, file seals, RLIMIT_FSIZE) cannot reproduce.
     fn flush_buffered<W>(&mut self, mut write_fn: W) -> Result<()>
     where
-        W: FnMut(u64, &[u8]) -> std::io::Result<()>,
+        W: FnMut(u64, &[IoSlice<'_>]) -> io::Result<usize>,
     {
         let block_size = self.block_size;
-        let mut blocks = std::mem::take(&mut self.write_buffer).into_iter();
+        let mut blocks = std::mem::take(&mut self.write_buffer)
+            .into_iter()
+            .peekable();
+        let mut batch: Vec<(u64, Vec<u8>)> = Vec::new();
 
-        while let Some((block_idx, block_data)) = blocks.next() {
-            let offset = block_idx * block_size as u64;
-            if let Err(e) = write_fn(offset, &block_data) {
-                self.write_buffer.insert(block_idx, block_data);
-                self.write_buffer.extend(blocks);
-                self.buffer_bytes = self.write_buffer.len() * block_size;
-                return Err(e.into());
+        while let Some(first_block) = blocks.next() {
+            let first_block_idx = first_block.0;
+            let mut previous_block_idx = first_block_idx;
+            batch.push(first_block);
+            while batch.len() < MAX_WRITE_IOVECS {
+                let Some(next_block_idx) = blocks.peek().map(|(block_idx, _)| *block_idx) else {
+                    break;
+                };
+                if previous_block_idx.checked_add(1) != Some(next_block_idx) {
+                    break;
+                }
+                let Some(next_block) = blocks.next() else {
+                    break;
+                };
+                previous_block_idx = next_block_idx;
+                batch.push(next_block);
             }
-            self.set_dirty(block_idx);
+
+            let offset = first_block_idx * block_size as u64;
+            let batch_result = if let [(_, block_data)] = batch.as_slice() {
+                let mut single_buffer = [IoSlice::new(block_data)];
+                write_block_slices(offset, block_size, &mut single_buffer, &mut write_fn)
+            } else {
+                let mut buffers: Vec<IoSlice<'_>> = batch
+                    .iter()
+                    .map(|(_, block_data)| IoSlice::new(block_data))
+                    .collect();
+                write_block_slices(offset, block_size, buffers.as_mut_slice(), &mut write_fn)
+            };
+
+            match batch_result {
+                Ok(()) => {
+                    for (block_idx, _) in &batch {
+                        self.set_dirty(*block_idx);
+                    }
+                    batch.clear();
+                }
+                Err((error, first_incomplete_block)) => {
+                    for (position, (block_idx, block_data)) in batch.into_iter().enumerate() {
+                        if position < first_incomplete_block {
+                            self.set_dirty(block_idx);
+                        } else {
+                            self.write_buffer.insert(block_idx, block_data);
+                        }
+                    }
+                    self.write_buffer.extend(blocks);
+                    self.buffer_bytes = self.write_buffer.len() * block_size;
+                    return Err(error.into());
+                }
+            }
         }
 
         self.buffer_bytes = 0;
@@ -558,6 +608,55 @@ impl CowLayer {
     pub(crate) fn save_bitmap(&self, path: &Path) -> Result<()> {
         bitmap::save_bitmap(&self.dirty, path)
     }
+}
+
+fn write_block_slices<W>(
+    mut offset: u64,
+    block_size: usize,
+    buffers: &mut [IoSlice<'_>],
+    write_fn: &mut W,
+) -> std::result::Result<(), (io::Error, usize)>
+where
+    W: FnMut(u64, &[IoSlice<'_>]) -> io::Result<usize>,
+{
+    let mut remaining = buffers;
+    let mut completed_bytes = 0;
+
+    loop {
+        let written = match write_fn(offset, remaining) {
+            Ok(0) => {
+                return Err((
+                    io::Error::new(io::ErrorKind::WriteZero, "failed to flush COW write batch"),
+                    completed_bytes / block_size,
+                ));
+            }
+            Ok(written) => written,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err((error, completed_bytes / block_size)),
+        };
+
+        completed_bytes += written;
+        offset += written as u64;
+        IoSlice::advance_slices(&mut remaining, written);
+        if remaining.is_empty() {
+            return Ok(());
+        }
+    }
+}
+
+fn write_block_batch_at(cow_fd: &File, offset: u64, buffers: &[IoSlice<'_>]) -> io::Result<usize> {
+    if let [buffer] = buffers {
+        cow_fd.write_all_at(buffer, offset)?;
+        return Ok(buffer.len());
+    }
+
+    let offset = libc::off_t::try_from(offset).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("COW write offset {offset} exceeds off_t"),
+        )
+    })?;
+    nix::sys::uio::pwritev(cow_fd, buffers, offset).map_err(io::Error::from)
 }
 
 #[cfg(test)]

@@ -1,7 +1,9 @@
+import { nowDate } from "./time";
+
 const CONNECTOR_OAUTH_STATE_COOKIE_NAME = "connector_oauth_state";
 const CONNECTOR_OAUTH_PKCE_COOKIE_NAME = "connector_oauth_pkce";
 const CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
-export const CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS = 15 * 60;
+const CONNECTOR_OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
 
 const CONNECTOR_OAUTH_REDIRECT_STATUS = 307;
 
@@ -11,6 +13,10 @@ export function generateConnectorOAuthState(): string {
   return Array.from(array, (byte) => {
     return byte.toString(16).padStart(2, "0");
   }).join("");
+}
+
+export function connectorOAuthStateExpiresAt(): Date {
+  return new Date(nowDate().getTime() + CONNECTOR_OAUTH_STATE_TTL_MS);
 }
 
 function buildDeleteConnectorOAuthCookieHeader(name: string): string {

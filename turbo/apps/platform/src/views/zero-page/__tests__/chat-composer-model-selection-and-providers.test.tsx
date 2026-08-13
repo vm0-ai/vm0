@@ -293,6 +293,49 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Opus 4.8");
   });
 
+  it("reloads the member default when the push carries only the video kind", async () => {
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedVideoModel: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectComposerModel("Claude Fable 5");
+
+    // A sibling session changed the video default, so the push carries that
+    // kind alone. The preference is one resource, so it still has to refetch.
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-opus-4-8",
+      serviceTier: null,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-03-10T00:01:00Z",
+    });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultVideoModel"],
+      });
+    });
+
+    await waitFor(async () => {
+      await expect(
+        context.store.get(userModelPreference$),
+      ).resolves.toMatchObject({
+        selectedModel: "claude-opus-4-8",
+        selectedVideoModel: "fal-ai/veo3.1/fast",
+      });
+    });
+    await expectComposerModel("Claude Opus 4.8");
+  });
+
   it("offers to make a temporary new-chat model choice the default below the composer", async () => {
     const user = userEvent.setup({ delay: null });
     let preference: UserModelPreferenceResponse = {

@@ -47,7 +47,7 @@ if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 1 ]]; then
   fail "the default mock runner account must remain on limited-free"
 fi
 
-ruby -ryaml - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
+ruby -ryaml -ropen3 -rtempfile - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
@@ -362,21 +362,102 @@ unless runner.fetch("steps").any? do |step|
   raise "every runner shard must upload its JUnit report"
 end
 
-cleanup_step = account_cleanup.fetch("steps").find do |step|
-  step["name"] == "Cleanup runner E2E accounts"
+cleanup_steps = account_cleanup.fetch("steps")
+cleanup_scope_step = cleanup_steps.find do |step|
+  step["id"] == "cleanup-scope"
 end
-raise "missing runner E2E account cleanup" unless cleanup_step
+raise "missing runner E2E cleanup scope" unless cleanup_scope_step
 unless account_cleanup.fetch("if").include?("always()")
   raise "runner E2E account cleanup must run after shard failures"
 end
 unless Array(account_cleanup["needs"]).include?("cli-e2e-03-runner")
   raise "runner E2E account cleanup must wait for every shard"
 end
-unless cleanup_step.fetch("run").end_with?("runner-account.ts cleanup")
-  raise "runner E2E account cleanup must use the shared lifecycle entry point"
-end
 if account_cleanup.fetch("if").include?("!= 'cancelled'")
   raise "runner E2E cleanup must run after cancelled account preparation"
+end
+
+unless cleanup_scope_step.dig("env", "PREPARE_RESULT") ==
+    "${{ needs.cli-e2e-03-runner-prepare.result }}" &&
+    cleanup_scope_step.dig("env", "RUNNER_RESULT") ==
+      "${{ needs.cli-e2e-03-runner.result }}"
+  raise "runner cleanup scope must use exact upstream results"
+end
+resolve_cleanup_scope = lambda do |prepare_result, runner_result|
+  Tempfile.create("runner-cleanup-scope") do |output|
+    stdout, stderr, status = Open3.capture3(
+      {
+        "GITHUB_OUTPUT" => output.path,
+        "PREPARE_RESULT" => prepare_result,
+        "RUNNER_RESULT" => runner_result,
+      },
+      "bash",
+      "-c",
+      cleanup_scope_step.fetch("run"),
+    )
+    unless status.success?
+      raise "runner cleanup scope script failed: #{stdout}#{stderr}"
+    end
+    scope_line = File.readlines(output.path, chomp: true).find do |line|
+      line.start_with?("scope=")
+    end
+    raise "runner cleanup scope script did not emit a scope" unless scope_line
+    scope_line.delete_prefix("scope=")
+  end
+end
+{
+  ["failure", "skipped"] => "generation",
+  ["cancelled", "success"] => "generation",
+  ["success", "success"] => "run",
+  ["success", "failure"] => "retain",
+  ["success", "cancelled"] => "retain",
+  ["success", "skipped"] => "retain",
+}.each do |results, expected_scope|
+  actual_scope = resolve_cleanup_scope.call(*results)
+  unless actual_scope == expected_scope
+    raise "#{results.join('/')} must select #{expected_scope}, got #{actual_scope}"
+  end
+end
+
+retain_step = cleanup_steps.find do |step|
+  step["name"] == "Retain runner E2E accounts for failed-job rerun"
+end
+unless retain_step &&
+    retain_step["if"] == "steps.cleanup-scope.outputs.scope == 'retain'" &&
+    retain_step.fetch("run").include?("successful rerun or fallback cleanup")
+  raise "failed runner work must retain reusable accounts explicitly"
+end
+
+conditional_setup_steps = [
+  cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/checkout@") },
+  cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/setup-node@") },
+  cleanup_steps.find { |step| step["name"] == "Install pnpm" },
+  cleanup_steps.find { |step| step["name"] == "Install E2E dependencies" },
+]
+unless conditional_setup_steps.all? do |step|
+    step && step["if"] == "steps.cleanup-scope.outputs.scope != 'retain'"
+  end
+  raise "retained accounts must skip checkout and dependency setup"
+end
+
+generation_cleanup_step = cleanup_steps.find do |step|
+  step["name"] == "Cleanup current runner E2E generation"
+end
+run_cleanup_step = cleanup_steps.find do |step|
+  step["name"] == "Cleanup runner E2E workflow run"
+end
+unless generation_cleanup_step &&
+    generation_cleanup_step["if"] ==
+      "steps.cleanup-scope.outputs.scope == 'generation'" &&
+    generation_cleanup_step.fetch("run").end_with?(
+      "runner-account.ts cleanup-generation",
+    )
+  raise "incomplete preparation must reconcile only the current generation"
+end
+unless run_cleanup_step &&
+    run_cleanup_step["if"] == "steps.cleanup-scope.outputs.scope == 'run'" &&
+    run_cleanup_step.fetch("run").end_with?("runner-account.ts cleanup-run")
+  raise "successful runner work must reconcile the exact workflow run"
 end
 %w[
   E2E_RUNNER_ORGANIZATION_ID
@@ -384,7 +465,9 @@ end
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
   E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID
 ].each do |environment_name|
-  if cleanup_step.fetch("env", {}).key?(environment_name)
+  if [generation_cleanup_step, run_cleanup_step].any? do |step|
+      step.fetch("env", {}).key?(environment_name)
+    end
     raise "runner E2E cleanup must not depend on #{environment_name}"
   end
 end

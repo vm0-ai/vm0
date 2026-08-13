@@ -68,19 +68,44 @@ unless runner_condition.include?("always()") &&
     !runner_condition.include?("!= 'cancelled'")
   raise "runner cleanup must remain eligible after cancelled preparation"
 end
-runner_cleanup_step = runner_cleanup.fetch("steps").find do |step|
-  step["name"] == "Cleanup runner E2E accounts"
+runner_cleanup_steps = runner_cleanup.fetch("steps")
+runner_scope_step = runner_cleanup_steps.find do |step|
+  step["id"] == "cleanup-scope"
 end
-raise "missing runner E2E account finalizer" unless runner_cleanup_step
-unless runner_cleanup_step.fetch("run").end_with?("runner-account.ts cleanup")
-  raise "runner cleanup must use generation reconciliation"
+raise "missing runner E2E cleanup scope" unless runner_scope_step
+unless runner_scope_step.dig("env", "PREPARE_RESULT") ==
+    "${{ needs.cli-e2e-03-runner-prepare.result }}" &&
+    runner_scope_step.dig("env", "RUNNER_RESULT") ==
+      "${{ needs.cli-e2e-03-runner.result }}"
+  raise "runner cleanup scope must use exact upstream results"
+end
+runner_generation_cleanup = runner_cleanup_steps.find do |step|
+  step["name"] == "Cleanup current runner E2E generation"
+end
+runner_run_cleanup = runner_cleanup_steps.find do |step|
+  step["name"] == "Cleanup runner E2E workflow run"
+end
+unless runner_generation_cleanup&.fetch("run", "")&.end_with?(
+    "runner-account.ts cleanup-generation",
+  ) && runner_generation_cleanup["if"] ==
+    "steps.cleanup-scope.outputs.scope == 'generation'"
+  raise "failed preparation must reconcile only its current generation"
+end
+unless runner_run_cleanup&.fetch("run", "")&.end_with?(
+    "runner-account.ts cleanup-run",
+  ) && runner_run_cleanup["if"] ==
+    "steps.cleanup-scope.outputs.scope == 'run'"
+  raise "successful runner work must reconcile its exact workflow run"
 end
 legacy_output_environment = %w[
   E2E_RUNNER_ORGANIZATION_ID
   E2E_RUNNER_CODEX_ORGANIZATION_ID
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
 ]
-if legacy_output_environment.any? { |name| runner_cleanup_step.fetch("env", {}).key?(name) }
+runner_account_cleanup_steps = [runner_generation_cleanup, runner_run_cleanup]
+if runner_account_cleanup_steps.any? do |step|
+    legacy_output_environment.any? { |name| step.fetch("env", {}).key?(name) }
+  end
   raise "runner cleanup must not depend on complete preparation outputs"
 end
 
@@ -121,13 +146,32 @@ unless stale_checkout.dig("with", "ref") == "${{ github.event.repository.default
     stale_checkout.dig("with", "persist-credentials") == false
   raise "stale Clerk cleanup must execute credential-free default-branch code"
 end
-stale_step = stale_cleanup.fetch("steps").find do |step|
-  step["name"] == "Delete stale marked Clerk test resources"
+stale_non_runner_step = stale_cleanup.fetch("steps").find do |step|
+  step["name"] == "Delete stale non-runner Clerk test resources"
 end
-raise "missing stale Clerk cleanup command" unless stale_step
-unless stale_step.fetch("run").include?("cleanup-stale --older-than-hours 6") &&
-    stale_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
-  raise "stale Clerk cleanup must retain the six-hour marker gate and dry-run"
+stale_runner_step = stale_cleanup.fetch("steps").find do |step|
+  step["name"] == "Delete stale runner Clerk test resources"
+end
+raise "missing non-runner stale Clerk cleanup command" unless stale_non_runner_step
+raise "missing runner stale Clerk cleanup command" unless stale_runner_step
+unless stale_non_runner_step.fetch("run").include?(
+    "cleanup-stale browser,playwright,paid-onboarding --older-than-hours 6",
+  ) && stale_non_runner_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
+  raise "non-runner Clerk resources must retain the six-hour stale policy"
+end
+unless stale_runner_step.fetch("run").include?(
+    "cleanup-stale runner,runner-real-codex,runner-real-claude,runner-mock-claude --older-than-hours 30",
+  ) && stale_runner_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
+  raise "runner resources must outlive the one-day token artifact"
+end
+runner_token_upload = turbo_jobs.fetch("cli-e2e-03-runner-prepare").fetch("steps").find do |step|
+  step["name"] == "Upload runner E2E API tokens"
+end
+raise "missing runner token artifact upload" unless runner_token_upload
+artifact_retention_hours = runner_token_upload.dig("with", "retention-days").to_i * 24
+runner_stale_hours = stale_runner_step.fetch("run")[/--older-than-hours (\d+)/, 1]&.to_i
+unless runner_stale_hours && runner_stale_hours > artifact_retention_hours
+  raise "runner stale cleanup must start after token artifact expiry"
 end
 
 cleanup_sources = [File.read(ARGV.fetch(1)), File.read(ARGV.fetch(2))].join("\n")
