@@ -10,6 +10,7 @@ import {
   seedAcceptedAgentOnlyRows,
   seedAcceptedCallbacks,
   seedAgentRunFixtureParents,
+  targetMetadataColumns,
 } from "./agent-run-metadata-stage-2-test-fixtures";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 
@@ -28,6 +29,156 @@ interface MutationState {
   readonly relationFileNode: string;
   readonly zeroDigest: string;
 }
+
+interface ShapeDrift {
+  readonly column: string;
+  readonly drift: string;
+  readonly restore: string;
+}
+
+const acceptedLifecycleShapeDrifts: readonly ShapeDrift[] = [
+  {
+    column: "status",
+    drift: `"status" = 'completed'`,
+    restore: `"status" = 'failed'`,
+  },
+  {
+    column: "created_at:lower",
+    drift: `"created_at" = timestamp '2026-03-29 23:59:59.999999'`,
+    restore: `"created_at" = timestamp '2026-04-01 00:00:00'`,
+  },
+  {
+    column: "created_at:upper",
+    drift: `"created_at" = timestamp '2026-04-09 00:00:00'`,
+    restore: `"created_at" = timestamp '2026-04-01 00:00:00'`,
+  },
+  {
+    column: "started_at",
+    drift: `"started_at" = timestamp '2026-04-01 00:01:00'`,
+    restore: `"started_at" = NULL`,
+  },
+  {
+    column: "sandbox_id",
+    drift: `"sandbox_id" = 'stage2-shape-drift'`,
+    restore: `"sandbox_id" = NULL`,
+  },
+  {
+    column: "last_event_sequence",
+    drift: `"last_event_sequence" = 1`,
+    restore: `"last_event_sequence" = NULL`,
+  },
+];
+
+const acceptedMetadataShapeDrifts: readonly ShapeDrift[] = [
+  {
+    column: "trigger_source",
+    drift: `"trigger_source" = 'chat'`,
+    restore: `"trigger_source" = NULL`,
+  },
+  {
+    column: "autonomy_budget",
+    drift: `"autonomy_budget" = 1`,
+    restore: `"autonomy_budget" = NULL`,
+  },
+  {
+    column: "workflow_automation_id",
+    drift: `"workflow_automation_id" = '00000000-0000-4000-8000-000000092491'`,
+    restore: `"workflow_automation_id" = NULL`,
+  },
+  {
+    column: "goal_id",
+    drift: `"goal_id" = '00000000-0000-4000-8000-000000092492'`,
+    restore: `"goal_id" = NULL`,
+  },
+  {
+    column: "model_provider",
+    drift: `"model_provider" = 'stage2-provider'`,
+    restore: `"model_provider" = NULL`,
+  },
+  {
+    column: "model_provider_id",
+    drift: `"model_provider_id" = '00000000-0000-4000-8000-000000092493'`,
+    restore: `"model_provider_id" = NULL`,
+  },
+  {
+    column: "model_provider_credential_scope",
+    drift: `"model_provider_credential_scope" = 'org'`,
+    restore: `"model_provider_credential_scope" = NULL`,
+  },
+  {
+    column: "selected_model",
+    drift: `"selected_model" = 'stage2-model'`,
+    restore: `"selected_model" = NULL`,
+  },
+  {
+    column: "codex_service_tier",
+    drift: `"codex_service_tier" = 'priority'`,
+    restore: `"codex_service_tier" = NULL`,
+  },
+  {
+    column: "selected_video_model",
+    drift: `"selected_video_model" = 'stage2-video-model'`,
+    restore: `"selected_video_model" = NULL`,
+  },
+  {
+    column: "chat_thread_id",
+    drift: `"chat_thread_id" = '00000000-0000-4000-8000-000000092494'`,
+    restore: `"chat_thread_id" = NULL`,
+  },
+  {
+    column: "api_started_at",
+    drift: `"api_started_at" = timestamp '2026-04-01 00:02:00'`,
+    restore: `"api_started_at" = NULL`,
+  },
+  {
+    column: "first_assistant_event_acknowledged_at",
+    drift: `"first_assistant_event_acknowledged_at" = timestamp '2026-04-01 00:03:00'`,
+    restore: `"first_assistant_event_acknowledged_at" = NULL`,
+  },
+  {
+    column: "summary",
+    drift: `"summary" = 'stage2 summary drift'`,
+    restore: `"summary" = NULL`,
+  },
+  {
+    column: "trigger_brief",
+    drift: `"trigger_brief" = 'stage2 trigger brief drift'`,
+    restore: `"trigger_brief" = NULL`,
+  },
+];
+
+const callbackShapeDrifts: readonly ShapeDrift[] = [
+  {
+    column: "status",
+    drift: `"status" = 'pending'`,
+    restore: `"status" = 'delivered'`,
+  },
+  {
+    column: "attempts",
+    drift: `"attempts" = 2`,
+    restore: `"attempts" = 1`,
+  },
+  {
+    column: "last_attempt_at",
+    drift: `"last_attempt_at" = NULL`,
+    restore: `"last_attempt_at" = timestamp '2026-04-01 00:01:00'`,
+  },
+  {
+    column: "delivered_at",
+    drift: `"delivered_at" = NULL`,
+    restore: `"delivered_at" = timestamp '2026-04-01 00:02:00'`,
+  },
+  {
+    column: "last_error",
+    drift: `"last_error" = 'stage2 callback drift'`,
+    restore: `"last_error" = NULL`,
+  },
+  {
+    column: "internal_kind",
+    drift: `"internal_kind" = 'stage2-callback-drift'`,
+    restore: `"internal_kind" = NULL`,
+  },
+];
 
 export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -358,56 +509,69 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
     );
     await runPreflightSuccess(fixturePreflight);
 
-    await client.query(
-      `
-      UPDATE "agent_runs"
-      SET "status" = 'completed'
-      WHERE "id" = $1
-    `,
-      [acceptedAgentOnlyIds[0]],
+    assert.deepEqual(
+      acceptedLifecycleShapeDrifts.map(({ column }) => {
+        return column;
+      }),
+      [
+        "status",
+        "created_at:lower",
+        "created_at:upper",
+        "started_at",
+        "sandbox_id",
+        "last_event_sequence",
+      ],
     );
-    await expectPreflightFailure(
-      /Stage 2 preflight found 1 accepted lifecycle rows with shape drift/,
-      fixturePreflight,
+    assert.deepEqual(
+      acceptedMetadataShapeDrifts.map(({ column }) => {
+        return column;
+      }),
+      [...targetMetadataColumns],
     );
-    await client.query(
-      `
-      UPDATE "agent_runs"
-      SET "status" = 'failed'
-      WHERE "id" = $1
-    `,
-      [acceptedAgentOnlyIds[0]],
-    );
-
-    await client.query(
-      `
-      UPDATE "agent_runs"
-      SET "summary" = 'invented metadata'
-      WHERE "id" = $1
-    `,
-      [acceptedAgentOnlyIds[0]],
-    );
-    await expectPreflightFailure(
-      /Stage 2 preflight found 1 accepted lifecycle rows with shape drift/,
-      fixturePreflight,
-    );
-    await client.query(
-      `
-      UPDATE "agent_runs"
-      SET "summary" = NULL
-      WHERE "id" = $1
-    `,
-      [acceptedAgentOnlyIds[0]],
+    assert.deepEqual(
+      callbackShapeDrifts.map(({ column }) => {
+        return column;
+      }),
+      [
+        "status",
+        "attempts",
+        "last_attempt_at",
+        "delivered_at",
+        "last_error",
+        "internal_kind",
+      ],
     );
 
-    for (const callbackDrift of [
-      `"status" = 'pending'`,
-      `"attempts" = 2`,
-      `"last_error" = 'fixture error'`,
+    for (const shapeDrift of [
+      ...acceptedLifecycleShapeDrifts,
+      ...acceptedMetadataShapeDrifts,
     ]) {
+      await client.query(
+        `
+          UPDATE "agent_runs"
+          SET ${shapeDrift.drift}
+          WHERE "id" = $1
+        `,
+        [acceptedAgentOnlyIds[0]],
+      );
+      await expectPreflightFailure(
+        /Stage 2 preflight found 1 accepted lifecycle rows with shape drift/,
+        fixturePreflight,
+      );
+      await client.query(
+        `
+          UPDATE "agent_runs"
+          SET ${shapeDrift.restore}
+          WHERE "id" = $1
+        `,
+        [acceptedAgentOnlyIds[0]],
+      );
+    }
+
+    for (const shapeDrift of callbackShapeDrifts) {
       await client.query(`
         UPDATE "agent_run_callbacks"
-        SET ${callbackDrift}
+        SET ${shapeDrift.drift}
         WHERE "id" = (
           SELECT "id" FROM "agent_run_callbacks" ORDER BY "id" LIMIT 1
         )
@@ -420,10 +584,7 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
       );
       await client.query(`
         UPDATE "agent_run_callbacks"
-        SET
-          "status" = 'delivered',
-          "attempts" = 1,
-          "last_error" = NULL
+        SET ${shapeDrift.restore}
         WHERE "id" = (
           SELECT "id" FROM "agent_run_callbacks" ORDER BY "id" LIMIT 1
         )
