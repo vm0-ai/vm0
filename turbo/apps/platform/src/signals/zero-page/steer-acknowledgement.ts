@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { timeout } from "signal-timers";
 import { onRef } from "../utils.ts";
 
 // Keep in sync with the transition duration in views/css/index.css.
@@ -53,17 +54,18 @@ const sweepSteerAcknowledgementOnRef$ = command(
     el.style.width = `${String(incomingWidth)}px`;
     el.style.setProperty("--zero-steer-ack-sweep", "0%");
 
-    const timer = window.setTimeout(() => {
-      delete el.dataset.steerAcknowledgementSweeping;
-      // Drop back to the intrinsic width so later font or zoom changes keep the
-      // box on its text, and stop the spent wording from being selectable.
-      el.style.removeProperty("width");
-      outgoing.textContent = "";
-    }, STEER_ACKNOWLEDGEMENT_SWEEP_MS);
-
-    signal.addEventListener("abort", () => {
-      window.clearTimeout(timer);
-    });
+    timeout(
+      () => {
+        delete el.dataset.steerAcknowledgementSweeping;
+        // Drop back to the intrinsic width so later font or zoom changes keep
+        // the box on its text, and stop the spent wording from being
+        // selectable.
+        el.style.removeProperty("width");
+        outgoing.textContent = "";
+      },
+      STEER_ACKNOWLEDGEMENT_SWEEP_MS,
+      { signal },
+    );
   },
 );
 
