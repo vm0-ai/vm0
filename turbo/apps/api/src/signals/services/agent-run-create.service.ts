@@ -15,7 +15,6 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -171,6 +170,7 @@ import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
+  executionFirewallsToAxiomEntries,
   featureFlagsRecordToEntries,
   networkPoliciesRecordToEntries,
   type RunContextAxiomSnapshot,
@@ -5983,48 +5983,6 @@ function sanitizeEnvironment(
   return sanitized;
 }
 
-function sanitizedFirewallSnapshot(
-  firewall: Firewall,
-): Extract<RunContextResponse["firewalls"][number], { apis: unknown }> {
-  return {
-    name: firewall.name,
-    apis: firewall.apis.map((api) => {
-      return {
-        base: api.base,
-        permissions: api.permissions?.map((permission) => {
-          return {
-            name: permission.name,
-            description: permission.description,
-            rules: permission.rules,
-          };
-        }),
-      };
-    }),
-  };
-}
-
-function firewallSnapshotEntry(
-  entry: ExecutionFirewallEntry,
-): RunContextResponse["firewalls"][number] {
-  if (entry.kind === "inline") {
-    return sanitizedFirewallSnapshot(entry.firewall);
-  }
-  return entry.baseUrlVars
-    ? { kind: "builtin", name: entry.name, baseUrlVars: entry.baseUrlVars }
-    : { kind: "builtin", name: entry.name };
-}
-
-function firewallSnapshots(
-  firewalls: ExecutionFirewalls | null | undefined,
-): RunContextResponse["firewalls"] {
-  if (!firewalls) {
-    return [];
-  }
-  return firewalls.map((entry) => {
-    return firewallSnapshotEntry(entry);
-  });
-}
-
 function buildRunContextSnapshot(args: {
   readonly runId: string;
   readonly userId: string;
@@ -6048,7 +6006,7 @@ function buildRunContextSnapshot(args: {
     cliAgentType: storedContext.cliAgentType,
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
-    firewalls: firewallSnapshots(storedContext.firewalls),
+    firewalls: executionFirewallsToAxiomEntries(storedContext.firewalls),
     networkPolicyEntries: networkPoliciesRecordToEntries(
       storedContext.networkPolicies,
     ),

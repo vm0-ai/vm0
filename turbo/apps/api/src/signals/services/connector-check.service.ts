@@ -108,6 +108,10 @@ interface DecisionPermission {
 }
 
 type RunContextFirewall = RunContextResponse["firewalls"][number];
+type RunContextBuiltinFirewall = Extract<
+  RunContextFirewall,
+  { kind: "builtin" }
+>;
 type RunContextInlineFirewall = Extract<RunContextFirewall, { apis: unknown }>;
 type RunContextInlinePermission =
   RunContextInlineFirewall["apis"][number]["permissions"] extends
@@ -457,7 +461,7 @@ function configFromInlineRunContext(
 }
 
 function completeRunBaseUrlVars(
-  firewall: Exclude<RunContextFirewall, { apis: unknown }>,
+  firewall: RunContextBuiltinFirewall,
   requiredNames: readonly string[],
 ): Readonly<Record<string, string>> | null {
   if (requiredNames.length === 0) {

@@ -42,6 +42,25 @@ function byIdClient() {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runContextSnapshotForRun(runId: string): Record<string, unknown> {
+  for (const [dataset, events] of context.mocks.axiom.ingest.mock.calls) {
+    if (dataset !== "run-context" || !Array.isArray(events)) {
+      continue;
+    }
+    const snapshot = events.find((event) => {
+      return isRecord(event) && event.runId === runId;
+    });
+    if (isRecord(snapshot)) {
+      return snapshot;
+    }
+  }
+  throw new Error(`Expected a run-context snapshot for ${runId}`);
+}
+
 describe("custom model provider gateway routes", () => {
   it("requires authentication and admin access for mutations", async () => {
     const unauthenticated = await accept(
@@ -376,6 +395,29 @@ describe("custom model provider gateway routes", () => {
         ],
       },
     });
+    const runContextSnapshot = runContextSnapshotForRun(runId);
+    expect(runContextSnapshot.firewalls).toContainEqual({
+      kind: "inline",
+      name: firewallName,
+      apis: [
+        {
+          base: "https://gateway.example.com/anthropic/v1/messages",
+          hostPolicy: { kind: "publicDestination" },
+          auth: {
+            headerEntries: [
+              {
+                name: "Authorization",
+                value: `Bearer \${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+              },
+            ],
+          },
+          permissions: [],
+        },
+      ],
+    });
+    expect(JSON.stringify(runContextSnapshot)).not.toContain(
+      "runtime-gateway-secret",
+    );
     expect(claim.secretValues).not.toContain("runtime-gateway-secret");
 
     await runs.requestCancelRun(actor, runId, [200]);
