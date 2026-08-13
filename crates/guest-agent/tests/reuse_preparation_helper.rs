@@ -396,12 +396,12 @@ fn prepare_for_reuse_rejects_nested_workload_cgroup() -> TestResult {
 }
 
 #[test]
-fn prepare_for_reuse_rejects_workload_policy_mismatch() -> TestResult {
+fn prepare_for_reuse_rejects_stale_workload_pid_limit() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(
-        containment.base.join("exec-current/workload/cpu.max"),
-        b"max 100000\n",
+        containment.base.join("exec-current/workload/pids.max"),
+        b"2048\n",
     )?;
 
     let output = run_helper_with_containment(&request, &containment)?;

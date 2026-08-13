@@ -513,7 +513,7 @@ fn configure_resource_policy(
     write_cgroup_value(
         workload_path,
         PIDS_MAX_FILE,
-        &policy.pids_max.to_string(),
+        policy.pids_max,
         "configure workload pids.max",
     )?;
 

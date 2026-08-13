@@ -119,7 +119,7 @@ test "$(cat "$parent/control/memory.min")" = "$expected_control_memory_min"
 grep -Eq '^[0-9]+ [0-9]+$' "$parent/workload/cpu.max"
 grep -Eq '^[0-9]+$' "$parent/workload/memory.high"
 grep -Eq '^[0-9]+$' "$parent/workload/memory.max"
-grep -Eq '^[0-9]+$' "$parent/workload/pids.max"
+test "$(cat "$parent/workload/pids.max")" = max
 test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT:-}"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")
 if [ "$control_member_count" -ne 1 ]; then
@@ -568,8 +568,8 @@ relative = next(
     if line.startswith("0::")
 )
 workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
-# The production 2,048-process ceiling was exercised during calibration. A
-# smaller operation-local ceiling keeps this committed kernel-path smoke fast.
+# Production leaves are uncapped until representative workload task counts are
+# calibrated. This operation-local ceiling keeps the enforcement smoke fast.
 (workload / "pids.max").write_text("64")
 children = []
 while True:

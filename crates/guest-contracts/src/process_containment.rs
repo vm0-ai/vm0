@@ -63,8 +63,12 @@ pub const CONTROL_MEMORY_RESERVE_BYTES: u64 = 384 * 1024 * 1024;
 /// Additional distance between workload `memory.high` and `memory.max`.
 pub const WORKLOAD_MEMORY_HIGH_HEADROOM_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Maximum number of processes accepted in one workload leaf.
-pub const WORKLOAD_PIDS_MAX: u64 = 2048;
+/// Value written to workload `pids.max` while no production ceiling is calibrated.
+///
+/// The PID controller remains enabled for accounting and operation-local
+/// enforcement tests, but normal workloads are not capped by an arbitrary
+/// task count.
+pub const WORKLOAD_PIDS_MAX: &str = "max";
 
 /// Highest cgroup v2 CPU weight, assigned to a controlled operation and its
 /// Guest Agent leaf so concurrent ordinary execs cannot dominate it.
@@ -83,8 +87,8 @@ pub struct WorkloadResourcePolicy {
     pub memory_max_bytes: u64,
     /// Protected Guest Agent memory in bytes.
     pub control_memory_min_bytes: u64,
-    /// Workload process limit.
-    pub pids_max: u64,
+    /// Value written to the workload `pids.max` cgroup file.
+    pub pids_max: &'static str,
 }
 
 impl WorkloadResourcePolicy {
@@ -160,7 +164,7 @@ mod tests {
         assert_eq!(policy.memory_max_bytes, 3712 * 1024 * 1024);
         assert_eq!(policy.memory_high_bytes, 3456 * 1024 * 1024);
         assert_eq!(policy.control_memory_min_bytes, 384 * 1024 * 1024);
-        assert_eq!(policy.pids_max, 2048);
+        assert_eq!(policy.pids_max, "max");
     }
 
     #[test]
