@@ -62,14 +62,19 @@
     - name: Install Stripe CLI
       when: not stripe_cli_binary.stat.exists
       block:
+        - name: Detect Stripe CLI architecture
+          command: uname -m
+          register: stripe_cli_architecture
+          changed_when: false
+
         - name: Check Stripe CLI architecture support
           assert:
-            that: ansible_architecture in stripe_cli_assets
-            fail_msg: "Unsupported Stripe CLI architecture: {{ ansible_architecture }}"
+            that: stripe_cli_architecture.stdout in stripe_cli_assets
+            fail_msg: "Unsupported Stripe CLI architecture: {{ stripe_cli_architecture.stdout }}"
 
         - name: Select Stripe CLI release asset
           set_fact:
-            stripe_cli_asset: "{{ stripe_cli_assets[ansible_architecture] }}"
+            stripe_cli_asset: "{{ stripe_cli_assets[stripe_cli_architecture.stdout] }}"
 
         - name: Download verified Stripe CLI archive
           get_url:
