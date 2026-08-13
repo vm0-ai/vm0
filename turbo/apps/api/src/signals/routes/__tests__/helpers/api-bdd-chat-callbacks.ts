@@ -318,8 +318,8 @@ export function createChatCallbacksApi(context: TestContext) {
     },
 
     /**
-     * Stages output for the current /events DB projection. Run-context queries
-     * replay the snapshot the API itself ingested at run creation.
+     * Stages output for the canonical chat_events DB projection. Run-context
+     * queries replay the snapshot the API itself ingested at run creation.
      */
     mockChatOutputEvents(events: readonly Record<string, unknown>[]): void {
       stagedOutputEvents = events.map(webhookEventFromAxiomFixture);

@@ -18,7 +18,6 @@ import {
   chatEventResponse,
   chatEventSchema,
   chatEventsContract,
-  chatThreadEventsContract,
   parseChatFollowupsContent,
   resolveChatEventRecommendedFollowups,
   serializeChatFollowupsContent,
@@ -619,14 +618,8 @@ describe("ChatEvent folds", () => {
 });
 
 describe("ChatEvent HTTP contracts", () => {
-  it("uses event naming for canonical send and read routes", () => {
+  it("uses event naming for the canonical send route", () => {
     expect(chatEventsContract.send.path).toBe("/api/okou/chat/events");
-    expect(chatThreadEventsContract.list.path).toBe(
-      "/api/okou/chat-threads/:threadId/events",
-    );
-    expect(chatThreadEventsContract.get.path).toBe(
-      "/api/okou/chat-threads/:threadId/events/:eventId",
-    );
   });
 
   it("uses event ids in canonical write bodies", () => {

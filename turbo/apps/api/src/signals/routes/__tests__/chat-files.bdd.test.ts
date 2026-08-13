@@ -678,7 +678,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     );
   });
 
-  it("given an empty chat thread, when message list boundaries are requested, then only the owner sees zero messages", async () => {
+  it("given an empty chat thread, when event rows are requested, then only the owner sees zero rows", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatEventsContract,
-  chatThreadEventsContract,
   chatThreadComputerUseHostContract,
   chatThreadDraftSchema,
   chatThreadEventSchema,
@@ -160,20 +159,6 @@ describe("chat message response contract", () => {
           }),
         ],
       },
-    });
-  });
-});
-
-describe("chat event pagination request compatibility", () => {
-  it("accepts current sequence cursors", () => {
-    expect(
-      chatThreadEventsContract.list.query.safeParse({
-        sinceSeqId: "42",
-        limit: "20",
-      }),
-    ).toMatchObject({
-      success: true,
-      data: { sinceSeqId: 42, limit: 20 },
     });
   });
 });

@@ -42,10 +42,12 @@ Notes:
           return (a.displayName ?? "").length;
         }),
       );
+      const visibilityWidth = "VISIBILITY".length;
 
       const header = [
         "AGENT ID".padEnd(idWidth),
         "DISPLAY NAME".padEnd(displayWidth),
+        "VISIBILITY".padEnd(visibilityWidth),
       ].join("  ");
       console.log(chalk.dim(header));
 
@@ -53,6 +55,9 @@ Notes:
         const row = [
           agent.agentId.padEnd(idWidth),
           (agent.displayName ?? "-").padEnd(displayWidth),
+          // Commit-addressed CLI/backend responses may omit visibility. Remove
+          // after #26761 verifies producers and queued/active contexts have drained.
+          (agent.visibility ?? "-").padEnd(visibilityWidth),
         ].join("  ");
         console.log(row);
       }

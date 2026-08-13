@@ -9,10 +9,7 @@ import { Buffer } from "node:buffer";
 
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  chatThreadEventsContract,
-  chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
@@ -54,6 +51,7 @@ import {
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
@@ -2990,17 +2988,11 @@ describe("Feishu integration", () => {
       }),
       "Expected the canonical Feishu file chat thread",
     );
-    const threadEventsPage = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: chatThreadCreated.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
-    expect(threadEventsPage.body.events).toContainEqual(
+    const threadEventsPage = await readProjectedChatEvents(context, {
+      threadId: chatThreadCreated.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(threadEventsPage).toContainEqual(
       expect.objectContaining({
         content: null,
         userMessage: {
@@ -3201,17 +3193,11 @@ describe("Feishu integration", () => {
       }),
       "Expected the canonical Feishu chat thread",
     );
-    const threadMessages = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: chatThreadCreated.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
-    expect(threadMessages.body.events).toContainEqual(
+    const threadMessages = await readProjectedChatEvents(context, {
+      threadId: chatThreadCreated.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(threadMessages).toContainEqual(
       expect.objectContaining({
         content: null,
         userMessage: {
@@ -3282,32 +3268,24 @@ describe("Feishu integration", () => {
       history: `bdd feishu history ${run.id}`,
       assistantText: "Canonical Feishu answer",
     });
-    const claimedThreadMessages = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: chatThreadCreated.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
-    const claimedFeishuMessage = claimedThreadMessages.body.events.find(
-      (event) => {
-        return (
-          event.eventType === "input.prompt" &&
-          event.revokesEventId !== undefined &&
-          event.userMessage.parts.some((part) => {
-            return (
-              part.type === "source" &&
-              part.kind === "feishu" &&
-              part.href ===
-                "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm"
-            );
-          })
-        );
-      },
-    );
+    const claimedThreadMessages = await readProjectedChatEvents(context, {
+      threadId: chatThreadCreated.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    const claimedFeishuMessage = claimedThreadMessages.find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        event.revokesEventId !== undefined &&
+        event.userMessage.parts.some((part) => {
+          return (
+            part.type === "source" &&
+            part.kind === "feishu" &&
+            part.href ===
+              "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm"
+          );
+        })
+      );
+    });
     if (!claimedFeishuMessage?.revokesEventId) {
       throw new Error("Expected the claimed Feishu message");
     }
@@ -3847,17 +3825,11 @@ describe("Feishu integration", () => {
       }),
       "Expected the queued Feishu chat thread",
     );
-    const messages = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: thread.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
-    const original = messages.body.events.find((event) => {
+    const messages = await readProjectedChatEvents(context, {
+      threadId: thread.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    const original = messages.find((event) => {
       return event.id === queuedEvent.eventId;
     });
     if (!original || original.eventType !== "input.prompt") {
@@ -3868,7 +3840,7 @@ describe("Feishu integration", () => {
       type: "text",
       text: queuedPrompt,
     });
-    const replacements = messages.body.events.filter((event) => {
+    const replacements = messages.filter((event) => {
       return event.revokesEventId === queuedEvent.eventId;
     });
     expect(replacements).toStrictEqual([
@@ -3877,7 +3849,7 @@ describe("Feishu integration", () => {
         error: "insufficient_credits",
       }),
     ]);
-    const errors = messages.body.events.filter((event) => {
+    const errors = messages.filter((event) => {
       return (
         event.eventType === "output.error" &&
         event.error === "insufficient_credits"
@@ -3920,23 +3892,17 @@ describe("Feishu integration", () => {
         return messageContent(message).includes("Add credits");
       }),
     ).toHaveLength(1);
-    const afterReplay = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: thread.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
+    const afterReplay = await readProjectedChatEvents(context, {
+      threadId: thread.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
     expect(
-      afterReplay.body.events.filter((event) => {
+      afterReplay.filter((event) => {
         return event.revokesEventId === queuedEvent.eventId;
       }),
     ).toHaveLength(1);
     expect(
-      afterReplay.body.events.filter((event) => {
+      afterReplay.filter((event) => {
         return (
           event.eventType === "output.error" &&
           event.error === "insufficient_credits"
@@ -4010,18 +3976,12 @@ describe("Feishu integration", () => {
       assistantText: "Second Feishu task completed",
     });
 
-    const afterDeliveryFailure = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: thread.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
+    const afterDeliveryFailure = await readProjectedChatEvents(context, {
+      threadId: thread.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
     expect(
-      afterDeliveryFailure.body.events.filter((event) => {
+      afterDeliveryFailure.filter((event) => {
         return (
           event.eventType === "input.rejected" &&
           event.revokesEventId === failedDeliveryEvent.eventId &&
@@ -4030,7 +3990,7 @@ describe("Feishu integration", () => {
       }),
     ).toHaveLength(1);
     expect(
-      afterDeliveryFailure.body.events.filter((event) => {
+      afterDeliveryFailure.filter((event) => {
         return (
           event.eventType === "output.error" &&
           event.error === "insufficient_credits"

@@ -1,13 +1,6 @@
-import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
-
 import { safeUriComponentDecode } from "../utils";
 
 type LogOrder = "asc" | "desc";
-
-interface DecodedSequenceCursor {
-  readonly order: LogOrder;
-  readonly value: number;
-}
 
 interface DecodedTimeCursor {
   readonly order: LogOrder;
@@ -34,17 +27,6 @@ const TIME_CURSOR_APL_FIELD = "_vm0Cursor";
 
 function safeInteger(value: number | undefined): number | undefined {
   return value !== undefined && Number.isSafeInteger(value) ? value : undefined;
-}
-
-function sequenceNumberCursor(value: number | undefined): number | undefined {
-  const safeValue = safeInteger(value);
-  if (safeValue === undefined) {
-    return undefined;
-  }
-
-  return safeValue >= -1 && safeValue <= MAX_EVENT_SEQUENCE_NUMBER
-    ? safeValue
-    : undefined;
 }
 
 function isoTimestamp(value: number | undefined): string | null {
@@ -149,14 +131,6 @@ function timeCursorTieBreakerValue(rawValue: string): string | null {
   return decoded === null ? null : exactTimeCursorTieBreaker(decoded);
 }
 
-function encodeSequenceCursor(order: LogOrder, value: number): string | null {
-  if (sequenceNumberCursor(value) === undefined) {
-    return null;
-  }
-
-  return `sequence:${order}:${value}`;
-}
-
 function encodeTimeCursor(
   order: LogOrder,
   timestamp: string,
@@ -175,37 +149,6 @@ function encodeTimeCursor(
 
 function timeCursorInvariantFailure(reason: string): never {
   throw new Error(`Time pagination cursor invariant failed: ${reason}`);
-}
-
-function decodeSequenceCursor(
-  cursor: string | undefined,
-  expectedOrder: LogOrder,
-): DecodedSequenceCursor | null {
-  if (!cursor) {
-    return null;
-  }
-
-  const match = /^sequence:(asc|desc):(-?\d+)$/.exec(cursor);
-  if (!match) {
-    return null;
-  }
-
-  const order = match[1];
-  const rawValue = match[2];
-  if (
-    order !== expectedOrder ||
-    (order !== "asc" && order !== "desc") ||
-    rawValue === undefined
-  ) {
-    return null;
-  }
-
-  const value = Number(rawValue);
-  if (sequenceNumberCursor(value) === undefined) {
-    return null;
-  }
-
-  return { order, value };
 }
 
 function decodeTimeCursor(
@@ -241,41 +184,11 @@ function decodeTimeCursor(
   return { order, timestamp, tieBreaker };
 }
 
-export function sequenceCursorValue(
-  cursor: string | undefined,
-  order: LogOrder,
-): number | undefined {
-  return decodeSequenceCursor(cursor, order)?.value;
-}
-
 export function timeCursorBoundary(
   cursor: string | undefined,
   order: LogOrder,
 ): DecodedTimeCursor | undefined {
   return decodeTimeCursor(cursor, order) ?? undefined;
-}
-
-function buildSequencePaginationFilter(
-  params: Pick<TimePaginationParams, "since" | "cursor" | "order">,
-): string {
-  const cursorValue = sequenceCursorValue(params.cursor, params.order);
-  if (cursorValue !== undefined) {
-    const operator = params.order === "asc" ? ">" : "<";
-    return `| where sequenceNumber ${operator} ${cursorValue}`;
-  }
-
-  const since = sequenceNumberCursor(params.since);
-  return since !== undefined ? `| where sequenceNumber > ${since}` : "";
-}
-
-export function buildAgentEventPaginationFilters(
-  params: TimePaginationParams,
-): string {
-  return [timeFilter(params.sinceTime), buildSequencePaginationFilter(params)]
-    .filter((filter): filter is string => {
-      return filter !== null && filter.length > 0;
-    })
-    .join("\n");
 }
 
 export function buildTimePaginationFilters(
@@ -296,24 +209,6 @@ export function buildTimeCursorProjection(): string {
 
 export function buildTimePaginationOrder(order: LogOrder): string {
   return `| order by _time ${order}`;
-}
-
-export function nextSequenceCursor(
-  events: readonly { readonly sequenceNumber: number }[],
-  hasMore: boolean,
-  order: LogOrder,
-  previousCursorValue: number | undefined,
-): string | null {
-  if (!hasMore || events.length === 0) {
-    return null;
-  }
-
-  const lastEvent = events[events.length - 1];
-  if (!lastEvent || lastEvent.sequenceNumber === previousCursorValue) {
-    return null;
-  }
-
-  return encodeSequenceCursor(order, lastEvent.sequenceNumber);
 }
 
 export function nextTimeCursor<T extends TimedAxiomRecord>(

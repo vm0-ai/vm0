@@ -438,6 +438,54 @@ describe("FW-3: billable firewall lease", () => {
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
+  it("does not refresh an expired connector when billable auth is denied", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "stale-access",
+      refreshToken: "refresh-1",
+      expiresIn: -60,
+    });
+    let refreshRequests = 0;
+    fw.mockTestOauthTokenRefresh(() => {
+      refreshRequests += 1;
+      return fw.oauthTokenResponse({
+        accessToken: "should-not-refresh",
+        expiresIn: 3600,
+      });
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected firewall actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 20_000,
+    });
+
+    const denied = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({
+          TEST_OAUTH_TOKEN: "stale-access",
+        }),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+        },
+        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        firewallBillable: true,
+      },
+      [402],
+    );
+    if (denied.status !== 402) {
+      throw new Error("Expected billable connector auth to be denied");
+    }
+    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(refreshRequests).toBe(0);
+  });
+
   it("bounds billable auth expiry by the credit authorization lease", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();

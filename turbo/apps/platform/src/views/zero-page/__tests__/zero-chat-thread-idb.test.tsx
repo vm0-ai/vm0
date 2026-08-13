@@ -473,9 +473,6 @@ describe("okou chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
       return respond(200, { rows: [] });
     });
-    context.mocks.api(chatThreadEventsContract.list, () => {
-      throw new Error("projected events endpoint must not be called");
-    });
     const emptyThread = observeEmptyThreadMessage();
 
     setupChatPage();
@@ -570,9 +567,6 @@ describe("okou chat thread IndexedDB fallback", () => {
     });
     context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
       return respond(200, { rows: [] });
-    });
-    context.mocks.api(chatThreadEventsContract.list, () => {
-      throw new Error("projected events endpoint must not be called");
     });
     context.mocks.api(
       chatThreadMarkReadContract.markRead,
