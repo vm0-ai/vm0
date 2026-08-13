@@ -50,6 +50,25 @@ const trackFakeChatEventObject = createFixtureTracker(
 );
 
 const CRON_SECRET = "test-cron-secret";
+const R2_GC_SLOT_MS = 10 * 60 * 1000;
+const R2_GC_SHARD_GROUP_COUNT = 16 ** 2;
+
+function mockR2GcWindowForKey(key: string, after: Date): Date {
+  const prefixStart = "chat-events/".length;
+  const shardGroup = Number.parseInt(
+    key.slice(prefixStart, prefixStart + 2),
+    16,
+  );
+  const firstSlot = Math.ceil(after.getTime() / R2_GC_SLOT_MS);
+  const slotOffset =
+    (shardGroup -
+      (firstSlot % R2_GC_SHARD_GROUP_COUNT) +
+      R2_GC_SHARD_GROUP_COUNT) %
+    R2_GC_SHARD_GROUP_COUNT;
+  const aligned = new Date((firstSlot + slotOffset) * R2_GC_SLOT_MS);
+  mockNow(aligned);
+  return aligned;
+}
 
 function authenticate(actor: ApiTestUser) {
   createZeroRouteMocks(context).clerk.session(
@@ -127,7 +146,6 @@ describe("chat event snapshot read endpoints", () => {
     // assertions about this file's threads never depend on batch ordering.
     mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "10000");
     mockOptionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE", "10000");
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", "fff");
   });
 
   it("serves a presigned download only for a current-version head", async () => {
@@ -469,9 +487,10 @@ describe("chat event snapshot read endpoints", () => {
     const head = await readChatEventSnapshotHead(context, threadId);
     expect(readFakeChatEventObject(head.object_key)).toBeDefined();
 
-    const future = new Date(now() + 8 * 24 * 60 * 60 * 1000);
-    mockNow(future);
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", threadId.slice(0, 3));
+    const future = mockR2GcWindowForKey(
+      head.object_key,
+      new Date(now() + 8 * 24 * 60 * 60 * 1000),
+    );
     ageFakeChatEventObject(
       head.object_key,
       new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
@@ -487,14 +506,6 @@ describe("chat event snapshot read endpoints", () => {
       orphanKey,
       new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
     );
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", "true");
-    const orphanDryRun = await runSnapshotCron();
-    expect(orphanDryRun).toMatchObject({
-      r2ObjectsMeasured: 1,
-      r2ObjectsDeleted: 0,
-    });
-    expect(readFakeChatEventObject(orphanKey)).toBeDefined();
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", "false");
     const orphanGc = await runSnapshotCron();
     expect(orphanGc).toMatchObject({
       r2ObjectsMeasured: 1,
@@ -527,9 +538,10 @@ describe("chat event snapshot read endpoints", () => {
       writeFakeChatEventObject(key, Buffer.from("orphan"));
       await trackFakeChatEventObject(Promise.resolve(key));
     }
-    mockNow(new Date(now() + 8 * 24 * 60 * 60 * 1000));
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", shard);
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", "false");
+    mockR2GcWindowForKey(
+      `chat-events/${shard}`,
+      new Date(now() + 8 * 24 * 60 * 60 * 1000),
+    );
 
     const result = await runSnapshotCron();
 

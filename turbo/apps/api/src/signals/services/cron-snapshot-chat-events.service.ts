@@ -102,7 +102,7 @@ const gunzipAsync = promisify(gunzip);
  */
 const DEFAULT_THREAD_BATCH_SIZE = 1000;
 const EVENT_PAGE_SIZE = 1000;
-const DEFAULT_R2_GC_GRACE_HOURS = 24 * 7;
+const R2_GC_GRACE_HOURS = 24 * 7;
 const R2_GC_SHARDS_PER_RUN = 16;
 const R2_GC_SHARD_COUNT = 16 ** 3;
 const R2_GC_PAGE_SIZE = 1000;
@@ -142,32 +142,6 @@ function chatEventSnapshotThreadBatchSize(): number {
     );
   }
   return parsed;
-}
-
-function positiveIntegerEnv(name: string, fallback: number): number {
-  const raw = optionalEnv(name);
-  if (raw === undefined) {
-    return fallback;
-  }
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive integer`);
-  }
-  return parsed;
-}
-
-function booleanEnv(name: string, fallback = false): boolean {
-  const raw = optionalEnv(name);
-  if (raw === undefined) {
-    return fallback;
-  }
-  if (raw === "true") {
-    return true;
-  }
-  if (raw === "false") {
-    return false;
-  }
-  throw new Error(`${name} must be true or false`);
 }
 
 function hoursBefore(now: Date, hours: number): Date {
@@ -561,15 +535,6 @@ const deleteRetiredSnapshotVersions$ = command(
 );
 
 function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
-  const override = optionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD");
-  if (override !== undefined) {
-    if (!/^[0-9a-f]{3}$/u.test(override)) {
-      throw new Error(
-        "CHAT_EVENT_SNAPSHOT_GC_SHARD must be three lowercase hex digits",
-      );
-    }
-    return [`chat-events/${override}`];
-  }
   const slot = Math.floor(now.getTime() / R2_GC_SLOT_MS);
   const first = (slot * R2_GC_SHARDS_PER_RUN) % R2_GC_SHARD_COUNT;
   return Array.from({ length: R2_GC_SHARDS_PER_RUN }, (_, offset) => {
@@ -610,14 +575,7 @@ async function collectR2SnapshotGarbage(
   signal: AbortSignal,
 ): Promise<R2GcStats> {
   const now = nowDate();
-  const olderThan = hoursBefore(
-    now,
-    positiveIntegerEnv(
-      "CHAT_EVENT_SNAPSHOT_GC_GRACE_HOURS",
-      DEFAULT_R2_GC_GRACE_HOURS,
-    ),
-  );
-  const dryRun = booleanEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", true);
+  const olderThan = hoursBefore(now, R2_GC_GRACE_HOURS);
   let scanned = 0;
   let measured = 0;
   let deleted = 0;
@@ -682,7 +640,7 @@ async function collectR2SnapshotGarbage(
       bytesMeasured += garbage.reduce((total, object) => {
         return total + object.size;
       }, 0);
-      if (dryRun || garbage.length === 0) {
+      if (garbage.length === 0) {
         continue;
       }
 
