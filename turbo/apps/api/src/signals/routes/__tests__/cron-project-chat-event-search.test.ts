@@ -12,7 +12,6 @@ import {
   insertSearchablePromptFixture,
   readChatEventSearchProjectionFixture,
   rejectSearchablePromptFixture,
-  resetDurableChatEventSearchProjectionFixture,
 } from "../../../test-fixtures/chat-event-search";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -39,22 +38,13 @@ async function projectChatEventSearch() {
   return response.body;
 }
 
-async function projectOwnedChatEventSearch(
-  chatThreadIds: readonly string[],
-  options: { readonly simulateDurableSchemaUnavailable?: boolean } = {},
-) {
+async function projectOwnedChatEventSearch(chatThreadIds: readonly string[]) {
   const client = setupApp({
     context,
     routes: testChatEventSearchProjectionRoutes,
   })(testChatEventSearchProjectionContract);
   const response = await accept(
-    client.project({
-      body: {
-        chat_thread_ids: [...chatThreadIds],
-        simulate_durable_schema_unavailable:
-          options.simulateDurableSchemaUnavailable,
-      },
-    }),
+    client.project({ body: { chat_thread_ids: [...chatThreadIds] } }),
     [200],
   );
   return response.body;
@@ -71,7 +61,7 @@ async function createProjectionThread(): Promise<string> {
 }
 
 describe("GET /api/cron/project-chat-event-search", () => {
-  it("dual-projects only non-empty visible user and assistant messages", async () => {
+  it("projects only non-empty visible user and assistant messages", async () => {
     const chatThreadId = await createProjectionThread();
     const promptText = `durable prompt ${randomUUID()}`;
     const assistantText = `durable assistant ${randomUUID()}`;
@@ -87,32 +77,15 @@ describe("GET /api/cron/project-chat-event-search", () => {
 
     const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();
-    expect(tick.durableProjectionAvailable).toBeTruthy();
-    expect(tick.durableThreads).toBeGreaterThanOrEqual(1);
-    expect(tick.durableIndexedMessages).toBeGreaterThanOrEqual(2);
-    expect(tick.convergence.eligibleThreads).toBeGreaterThanOrEqual(
-      tick.convergence.legacyCaughtUpThreads,
-    );
+    expect(tick.threads).toBeGreaterThanOrEqual(1);
+    expect(tick.indexedEvents).toBeGreaterThanOrEqual(2);
     expect(tick.convergence.eligibleThreads).toBeGreaterThanOrEqual(
       tick.convergence.durableCaughtUpThreads,
     );
-    expect(tick.convergence.legacyCaughtUpThreads).toBeGreaterThanOrEqual(1);
     expect(tick.convergence.durableCaughtUpThreads).toBeGreaterThanOrEqual(1);
 
     const projection = await readChatEventSearchProjectionFixture(chatThreadId);
-    expect(
-      projection.legacyDocs
-        .map((doc) => {
-          return [doc.role, doc.text];
-        })
-        .sort(),
-    ).toStrictEqual(
-      [
-        ["assistant", assistantText],
-        ["user", promptText],
-      ].sort(),
-    );
-    expect(projection.durableMessages).toStrictEqual([
+    expect(projection.messages).toStrictEqual([
       {
         seqId: expect.any(Number),
         runId: null,
@@ -126,49 +99,45 @@ describe("GET /api/cron/project-chat-event-search", () => {
         text: assistantText,
       },
     ]);
-    expect(projection.legacyIndexedSeqId).toBe(projection.lastChatEventSeqId);
-    expect(projection.durableIndexedSeqId).toBe(projection.lastChatEventSeqId);
+    expect(projection.indexedSeqId).toBe(projection.lastChatEventSeqId);
   });
 
-  it("backfills the durable projection from zero independently and idempotently", async () => {
+  it("serializes overlapping projection ticks idempotently", async () => {
     const chatThreadId = await createProjectionThread();
+    const assistantText = `overlap assistant ${randomUUID()}`;
     await insertChatSearchProjectionCoverageFixture({
       chatThreadId,
-      promptText: `backfill prompt ${randomUUID()}`,
-      assistantText: `backfill assistant ${randomUUID()}`,
-      errorText: `backfill error ${randomUUID()}`,
-      terminalText: `backfill terminal ${randomUUID()}`,
+      promptText: `overlap prompt ${randomUUID()}`,
+      assistantText,
+      errorText: `overlap error ${randomUUID()}`,
+      terminalText: `overlap terminal ${randomUUID()}`,
     });
-    await projectOwnedChatEventSearch([chatThreadId]);
-    const established =
-      await readChatEventSearchProjectionFixture(chatThreadId);
 
-    await resetDurableChatEventSearchProjectionFixture(chatThreadId);
-    const rolloutStart =
-      await readChatEventSearchProjectionFixture(chatThreadId);
-    expect(rolloutStart.legacyIndexedSeqId).toBe(
-      rolloutStart.lastChatEventSeqId,
-    );
-    expect(rolloutStart.durableIndexedSeqId).toBeNull();
-    expect(rolloutStart.durableMessages).toStrictEqual([]);
-
-    await Promise.all([
+    const ticks = await Promise.all([
       projectOwnedChatEventSearch([chatThreadId]),
       projectOwnedChatEventSearch([chatThreadId]),
     ]);
 
-    const backfilled = await readChatEventSearchProjectionFixture(chatThreadId);
-    expect(backfilled.legacyIndexedSeqId).toBe(established.legacyIndexedSeqId);
-    expect(backfilled.durableIndexedSeqId).toBe(backfilled.lastChatEventSeqId);
-    expect(backfilled.durableMessages).toStrictEqual(
-      established.durableMessages,
-    );
+    expect(
+      ticks.reduce((total, tick) => {
+        return total + tick.indexedEvents;
+      }, 0),
+    ).toBe(2);
+    const projection = await readChatEventSearchProjectionFixture(chatThreadId);
+    expect(projection.indexedSeqId).toBe(projection.lastChatEventSeqId);
+    expect(
+      projection.messages.filter((message) => {
+        return message.text === assistantText;
+      }),
+    ).toHaveLength(1);
   });
 
-  it("keeps bounded rollout batches focused on serving projection lag", async () => {
-    const servingThreadId = await createProjectionThread();
-    const backfillThreadId = await createProjectionThread();
-    for (const chatThreadId of [servingThreadId, backfillThreadId]) {
+  it("bounds each projection tick to the configured thread batch", async () => {
+    const threadIds = [
+      await createProjectionThread(),
+      await createProjectionThread(),
+    ];
+    for (const chatThreadId of threadIds) {
       await insertChatSearchProjectionCoverageFixture({
         chatThreadId,
         promptText: `bounded prompt ${randomUUID()}`,
@@ -177,39 +146,34 @@ describe("GET /api/cron/project-chat-event-search", () => {
         terminalText: `bounded terminal ${randomUUID()}`,
       });
     }
-    await projectOwnedChatEventSearch([servingThreadId, backfillThreadId]);
-    await resetDurableChatEventSearchProjectionFixture(backfillThreadId);
-    const tail = await insertSearchablePromptFixture({
-      chatThreadId: servingThreadId,
-      text: `serving tail ${randomUUID()}`,
-    });
+    const [selectedThreadId, deferredThreadId] = [...threadIds].sort();
+    if (!selectedThreadId || !deferredThreadId) {
+      throw new Error("Expected two bounded projection threads");
+    }
 
     mockOptionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE", "1");
-    const tick = await projectOwnedChatEventSearch([
-      servingThreadId,
-      backfillThreadId,
-    ]);
+    const tick = await projectOwnedChatEventSearch(threadIds);
 
     expect(tick.threads).toBe(1);
-    expect(tick.indexedEvents).toBe(1);
-    expect(tick.durableThreads).toBe(1);
-    expect(tick.durableIndexedMessages).toBe(1);
-    const serving = await readChatEventSearchProjectionFixture(servingThreadId);
-    expect(serving.legacyIndexedSeqId).toBe(tail.seqId);
-    expect(serving.durableIndexedSeqId).toBe(tail.seqId);
-    const backfill =
-      await readChatEventSearchProjectionFixture(backfillThreadId);
-    expect(backfill.durableIndexedSeqId).toBeNull();
+    expect(tick.indexedEvents).toBe(2);
+    const selected =
+      await readChatEventSearchProjectionFixture(selectedThreadId);
+    expect(selected.indexedSeqId).toBe(selected.lastChatEventSeqId);
+    expect(selected.messages).toHaveLength(2);
+    const deferred =
+      await readChatEventSearchProjectionFixture(deferredThreadId);
+    expect(deferred.indexedSeqId).toBeNull();
+    expect(deferred.messages).toStrictEqual([]);
   });
 
-  it("deletes a later-revoked durable message by thread and sequence", async () => {
+  it("deletes a later-revoked message by thread and sequence", async () => {
     const chatThreadId = await createProjectionThread();
     const text = `revoked durable prompt ${randomUUID()}`;
     const target = await insertSearchablePromptFixture({ chatThreadId, text });
     await projectOwnedChatEventSearch([chatThreadId]);
 
     const before = await readChatEventSearchProjectionFixture(chatThreadId);
-    expect(before.durableMessages).toStrictEqual([
+    expect(before.messages).toStrictEqual([
       {
         seqId: target.seqId,
         runId: null,
@@ -225,13 +189,9 @@ describe("GET /api/cron/project-chat-event-search", () => {
     });
     const tick = await projectOwnedChatEventSearch([chatThreadId]);
     expect(tick.deletedDocs).toBeGreaterThanOrEqual(1);
-    expect(tick.durableDeletedMessages).toBeGreaterThanOrEqual(1);
 
     const after = await readChatEventSearchProjectionFixture(chatThreadId);
-    expect(after.legacyDocs).toStrictEqual([
-      { eventId: replacement.id, role: "user", text },
-    ]);
-    expect(after.durableMessages).toStrictEqual([
+    expect(after.messages).toStrictEqual([
       {
         seqId: replacement.seqId,
         runId: null,
@@ -239,42 +199,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
         text,
       },
     ]);
-    expect(after.durableMessages[0]?.seqId).not.toBe(target.seqId);
-    expect(after.durableIndexedSeqId).toBe(after.lastChatEventSeqId);
-  });
-
-  it("keeps the legacy projection safe before the durable schema migration", async () => {
-    const chatThreadId = await createProjectionThread();
-    const text = `pre-migration prompt ${randomUUID()}`;
-    const prompt = await insertSearchablePromptFixture({
-      chatThreadId,
-      text,
-    });
-
-    const tick = await projectOwnedChatEventSearch([chatThreadId], {
-      simulateDurableSchemaUnavailable: true,
-    });
-
-    expect(tick).toMatchObject({
-      success: true,
-      durableProjectionAvailable: false,
-      threads: 1,
-      indexedEvents: 1,
-      durableThreads: 0,
-      durableIndexedMessages: 0,
-      durableDeletedMessages: 0,
-      convergence: {
-        eligibleThreads: 1,
-        legacyCaughtUpThreads: 1,
-        durableCaughtUpThreads: 0,
-      },
-    });
-    const projection = await readChatEventSearchProjectionFixture(chatThreadId);
-    expect(projection.legacyDocs).toStrictEqual([
-      { eventId: prompt.id, role: "user", text },
-    ]);
-    expect(projection.legacyIndexedSeqId).toBe(prompt.seqId);
-    expect(projection.durableMessages).toStrictEqual([]);
-    expect(projection.durableIndexedSeqId).toBeNull();
+    expect(after.messages[0]?.seqId).not.toBe(target.seqId);
+    expect(after.indexedSeqId).toBe(after.lastChatEventSeqId);
   });
 });
