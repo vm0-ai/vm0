@@ -1,12 +1,12 @@
 import {
-  ZERO_TRANSLATION_MAX_LANGUAGE_CHARS,
-  ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
-} from "@okouai/api-contracts/contracts/zero-translation";
+  TRANSLATION_MAX_LANGUAGE_CHARS,
+  TRANSLATION_MAX_SOURCE_TEXT_CHARS,
+} from "@okouai/api-contracts/contracts/translation";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroTranslateCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { translateCommand } from "../index";
 
 const TRANSLATE_URL = "http://localhost:3000/api/okou/translate";
 
@@ -49,7 +49,7 @@ describe("okou translate command", () => {
       }),
     );
 
-    await zeroTranslateCommand.parseAsync([
+    await translateCommand.parseAsync([
       "node",
       "okou",
       "  Hello, world  ",
@@ -79,7 +79,7 @@ describe("okou translate command", () => {
       }),
     );
 
-    await zeroTranslateCommand.parseAsync([
+    await translateCommand.parseAsync([
       "node",
       "okou",
       "Bonjour",
@@ -101,19 +101,19 @@ describe("okou translate command", () => {
     const invalidInputs = [
       { text: "   ", to: "English" },
       {
-        text: "x".repeat(ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS + 1),
+        text: "x".repeat(TRANSLATION_MAX_SOURCE_TEXT_CHARS + 1),
         to: "English",
       },
       { text: "hello", to: "   " },
       {
         text: "hello",
-        to: "x".repeat(ZERO_TRANSLATION_MAX_LANGUAGE_CHARS + 1),
+        to: "x".repeat(TRANSLATION_MAX_LANGUAGE_CHARS + 1),
       },
     ];
 
     for (const input of invalidInputs) {
       mockConsoleError.mockClear();
-      await zeroTranslateCommand.parseAsync([
+      await translateCommand.parseAsync([
         "node",
         "okou",
         input.text,
@@ -141,7 +141,7 @@ describe("okou translate command", () => {
       }),
     );
 
-    await zeroTranslateCommand.parseAsync([
+    await translateCommand.parseAsync([
       "node",
       "okou",
       "Hello",
@@ -160,7 +160,7 @@ describe("okou translate command", () => {
   });
 
   it("exposes no model, retry, JSON, or billing options", () => {
-    const optionNames = zeroTranslateCommand.options.map((option) => {
+    const optionNames = translateCommand.options.map((option) => {
       return option.attributeName();
     });
     expect(optionNames).toStrictEqual(["to", "from"]);

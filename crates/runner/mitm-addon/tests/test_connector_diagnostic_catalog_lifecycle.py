@@ -205,6 +205,7 @@ def _builtin_shared_registry(tmp_path, *, capture_network_bodies: bool = False):
         tmp_path,
         vm_info={
             "runId": "run-shared",
+            "billableFirewalls": [],
             "sandboxToken": "sandbox-shared",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),

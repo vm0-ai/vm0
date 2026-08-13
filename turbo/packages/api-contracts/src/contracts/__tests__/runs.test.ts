@@ -32,6 +32,39 @@ describe("unified run request contract", () => {
   });
 });
 
+describe("network log capture completeness", () => {
+  const baseEntry = {
+    timestamp: "2026-08-13T12:00:00.000Z",
+    type: "http",
+  };
+
+  it("accepts independent request and response header truncation state", () => {
+    expect(
+      networkLogEntrySchema.safeParse({
+        ...baseEntry,
+        request_headers: { accept: "application/json" },
+        request_headers_truncated: true,
+        response_headers: { server: "***" },
+        response_headers_truncated: false,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-boolean header truncation state", () => {
+    for (const invalidEntry of [
+      { request_headers_truncated: "true" },
+      { response_headers_truncated: 1 },
+    ]) {
+      expect(
+        networkLogEntrySchema.safeParse({
+          ...baseEntry,
+          ...invalidEntry,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
+
 describe("network log model catalog cache telemetry", () => {
   const baseEntry = {
     timestamp: "2026-07-27T12:00:00.000Z",

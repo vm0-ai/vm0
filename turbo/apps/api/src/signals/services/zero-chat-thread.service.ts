@@ -1,17 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
 import {
-  chatEventCompatibilityRole,
-  type ChatEventType,
-} from "@okouai/api-contracts/contracts/chat-events";
-import {
-  type ChatSearchMessage,
-  type ChatSearchResult,
   type ChatThreadDraft,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type CodexServiceTier,
   type PersistedAttachment,
-  type UserMessageDocument,
   type UserMessageInputDocument,
   type ZeroIndicator,
   type ZeroIndicators,
@@ -28,10 +21,8 @@ import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
 } from "@okouai/api-contracts/contracts/zero-host";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { chatEventSearchDocs } from "@okouai/db/schema/chat-event-search";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
@@ -40,7 +31,7 @@ import {
 } from "@okouai/db/schema/run-uploaded-file";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { alias, unionAll } from "drizzle-orm/pg-core";
+import { unionAll } from "drizzle-orm/pg-core";
 import {
   and,
   asc,
@@ -52,73 +43,25 @@ import {
   inArray,
   isNotNull,
   isNull,
-  lt,
   notExists,
   or,
   type SQL,
   sql,
 } from "drizzle-orm";
 
-import {
-  chatSearchBigramTsquery,
-  chatSearchMatchRanges,
-} from "../../lib/chat-search-bigram";
-import {
-  nullableDriverValueDecoder,
-  pgBooleanDecoder,
-  pgIntegerDecoder,
-  zodEnumDriverValueDecoder,
-} from "../../lib/db-structured-result";
+import { zodEnumDriverValueDecoder } from "../../lib/db-structured-result";
 import { now } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
-import {
-  canonicalChatEventContent,
-  canonicalChatEventUserMessage,
-} from "./canonical-chat-event-read.service";
-import {
-  inferMimetype,
-  visibleChatEventCondition,
-} from "./zero-chat-event-shared.service";
+import { inferMimetype } from "./zero-chat-event-shared.service";
 import { latestRunFinishEventSubquery } from "./zero-chat-thread-read-state-query";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "./zero-chat-thread-event.service";
-import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
-import {
-  projectUserMessage,
-  requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
-import {
-  chatEventTextCondition,
-  runOwnedChatEventForRunCondition,
-} from "./zero-chat-event-type.service";
+import { runOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 import { listPendingChatQueueEvents } from "./chat-event-queue.service";
-
-const matchedChatEvent = alias(chatEvents, "matched_chat_event");
-
-type ChatSearchMessageRow = {
-  readonly messageId: string;
-  readonly chatThreadId: string;
-  readonly eventType: ChatEventType;
-  readonly content: string | null;
-  readonly userMessage: UserMessageDocument | null;
-  readonly createdAt: Date;
-  readonly seqId: number;
-  readonly sequenceNumber: number | null;
-  readonly runId: string | null;
-};
-
-type ChatSearchMatchRow = ChatSearchMessageRow & {
-  readonly agentName: string;
-};
-
-interface ChatSearchContext {
-  readonly before: ChatSearchMessage[];
-  readonly after: ChatSearchMessage[];
-}
 
 type ChatThreadRow = {
   readonly id: string;
@@ -144,38 +87,6 @@ type ChatThreadRow = {
 type ChatThreadDetailRow = {
   readonly lastReadAt: Date | null;
 };
-
-function publicChatEventRunId() {
-  // Public ChatEvent responses preserve their established shape: an interrupt
-  // exposes its canonical target as interruptsRunId, never as run ownership.
-  return sql`CASE
-    WHEN ${chatEvents.eventType} = 'control.interrupt' THEN NULL
-    ELSE ${chatEvents.runId}
-  END`
-    .mapWith(nullableDriverValueDecoder(chatEvents.runId))
-    .as("effective_run_id");
-}
-
-const searchMessageColumns = {
-  messageId: chatEvents.id,
-  chatThreadId: chatEvents.chatThreadId,
-  eventType: chatEvents.eventType,
-  content: canonicalChatEventContent(),
-  userMessage: canonicalChatEventUserMessage(),
-  createdAt: chatEvents.createdAt,
-  seqId: chatEvents.seqId,
-  sequenceNumber: chatEvents.runEventSequenceNumber,
-  runId: publicChatEventRunId(),
-} as const;
-
-const searchContextMessageColumns = {
-  ...searchMessageColumns,
-  eventType: sql`${chatEvents.eventType}`
-    .mapWith(chatEvents.eventType)
-    .as("context_event_type"),
-  content: canonicalChatEventContent().as("context_content"),
-  userMessage: canonicalChatEventUserMessage().as("context_user_message"),
-} as const;
 
 function parseHostedArtifactKind(
   value: unknown,
@@ -806,296 +717,6 @@ export function zeroChatThreadArtifacts(args: {
       });
     },
   );
-}
-
-function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
-  const userMessage = requiredUserMessageForEvent(
-    row.eventType,
-    row.userMessage,
-  );
-  const content = userMessage
-    ? projectUserMessage(userMessage).displayText
-    : row.content;
-  if (content === null) {
-    throw new Error(
-      "chat search invariant violated: searchable message text is null",
-    );
-  }
-
-  return {
-    messageId: row.messageId,
-    chatThreadId: row.chatThreadId,
-    role: chatEventCompatibilityRole(row.eventType),
-    content,
-    createdAt: row.createdAt.toISOString(),
-    seqId: row.seqId,
-    sequenceNumber: row.sequenceNumber,
-    runId: row.runId,
-  };
-}
-
-/**
- * Resolves matches from the chat_event_search_docs projection alone: keyword,
- * ownership, agent scope, `since`, ordering and the limit are all answered by
- * the projection, so no chat_events predicate can pull the planner away from
- * the tsvector index. Keywords without a bigram-indexable form cannot match.
- */
-async function chatSearchIndexedEventIds(
-  db: ReadonlyDb,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly keyword: string;
-    readonly agentId?: string;
-    readonly since?: Date;
-    readonly limit: number;
-  },
-): Promise<readonly string[]> {
-  const tsquery = chatSearchBigramTsquery(args.keyword);
-  if (tsquery === null) {
-    return [];
-  }
-  const docs = await db
-    .select({ eventId: chatEventSearchDocs.eventId })
-    .from(chatEventSearchDocs)
-    .where(
-      and(
-        eq(chatEventSearchDocs.userId, args.userId),
-        eq(chatEventSearchDocs.orgId, args.orgId),
-        sql`${chatEventSearchDocs.tsv} @@ to_tsquery('simple', ${tsquery})`,
-        args.agentId
-          ? eq(chatEventSearchDocs.agentComposeId, args.agentId)
-          : undefined,
-        args.since ? gte(chatEventSearchDocs.createdAt, args.since) : undefined,
-      ),
-    )
-    .orderBy(desc(chatEventSearchDocs.createdAt))
-    .limit(args.limit);
-  return docs.map((doc) => {
-    return doc.eventId;
-  });
-}
-
-/**
- * Decorates already-selected matches with the columns the response needs. The
- * joins run over at most `limit + 1` primary-key lookups, so they never take
- * part in selecting rows. Ownership is re-asserted against the authoritative
- * thread and compose rows, because the projection only holds a copy of it.
- */
-async function chatSearchIndexedMatches(
-  db: ReadonlyDb,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly eventIds: readonly string[];
-  },
-): Promise<ChatSearchMatchRow[]> {
-  if (args.eventIds.length === 0) {
-    return [];
-  }
-  return await db
-    .select({
-      ...searchMessageColumns,
-      agentName: agentComposes.name,
-    })
-    .from(chatEvents)
-    .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
-    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
-    .where(
-      and(
-        inArray(chatEvents.id, [...args.eventIds]),
-        eq(chatThreads.userId, args.userId),
-        eq(agentComposes.orgId, args.orgId),
-      ),
-    )
-    .orderBy(desc(chatEvents.createdAt));
-}
-
-function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
-  return sql`unnest(${sql.param([...messageIds])}::uuid[])
-    WITH ORDINALITY AS chat_search_matches(message_id, result_ordinality)`;
-}
-
-function chatSearchContextSideQuery(
-  db: ReadonlyDb,
-  args: {
-    readonly isBefore: boolean;
-    readonly limit: number;
-  },
-) {
-  return db
-    .select({
-      isBefore: sql`${args.isBefore}::boolean`
-        .mapWith(pgBooleanDecoder)
-        .as("is_before"),
-      ...searchContextMessageColumns,
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, matchedChatEvent.chatThreadId),
-        args.isBefore
-          ? lt(chatEvents.seqId, matchedChatEvent.seqId)
-          : gt(chatEvents.seqId, matchedChatEvent.seqId),
-        chatEventTextCondition(),
-        visibleChatEventCondition(db),
-        excludeGoalMarkerCondition(),
-      ),
-    )
-    .orderBy(args.isBefore ? desc(chatEvents.seqId) : asc(chatEvents.seqId))
-    .limit(args.limit);
-}
-
-async function loadChatSearchContexts(
-  db: ReadonlyDb,
-  args: {
-    readonly matches: readonly ChatSearchMessageRow[];
-    readonly before: number;
-    readonly after: number;
-  },
-): Promise<ReadonlyMap<string, ChatSearchContext>> {
-  const contextsByMessageId = new Map<string, ChatSearchContext>(
-    args.matches.map((match): readonly [string, ChatSearchContext] => {
-      return [match.messageId, { before: [], after: [] }];
-    }),
-  );
-  if (args.matches.length === 0 || (args.before === 0 && args.after === 0)) {
-    return contextsByMessageId;
-  }
-
-  const contextQuery =
-    args.before > 0
-      ? args.after > 0
-        ? chatSearchContextSideQuery(db, {
-            isBefore: true,
-            limit: args.before,
-          }).unionAll(
-            chatSearchContextSideQuery(db, {
-              isBefore: false,
-              limit: args.after,
-            }),
-          )
-        : chatSearchContextSideQuery(db, {
-            isBefore: true,
-            limit: args.before,
-          })
-      : chatSearchContextSideQuery(db, {
-          isBefore: false,
-          limit: args.after,
-        });
-
-  const context = contextQuery.as("chat_search_context");
-  const resultOrdinality = sql`chat_search_matches.result_ordinality::integer`
-    .mapWith(pgIntegerDecoder)
-    .as("result_ordinality");
-  const rows = await db
-    .select({
-      resultOrdinality,
-      matchedMessageId: matchedChatEvent.id,
-      isBefore: context.isBefore,
-      messageId: context.messageId,
-      chatThreadId: context.chatThreadId,
-      eventType: context.eventType,
-      content: context.content,
-      userMessage: context.userMessage,
-      createdAt: context.createdAt,
-      seqId: context.seqId,
-      sequenceNumber: context.sequenceNumber,
-      runId: context.runId,
-    })
-    .from(
-      chatSearchMatchesTable(
-        args.matches.map((match) => {
-          return match.messageId;
-        }),
-      ),
-    )
-    .innerJoin(
-      matchedChatEvent,
-      eq(matchedChatEvent.id, sql`chat_search_matches.message_id`),
-    )
-    .crossJoinLateral(context)
-    .orderBy(resultOrdinality, asc(context.seqId));
-
-  for (const row of rows) {
-    const matchedContext = contextsByMessageId.get(row.matchedMessageId);
-    if (!matchedContext) {
-      throw new Error(
-        "chat search context returned an unknown matched message",
-      );
-    }
-    const message = toChatSearchMessage(row);
-    if (row.isBefore) {
-      matchedContext.before.push(message);
-    } else {
-      matchedContext.after.push(message);
-    }
-  }
-
-  return contextsByMessageId;
-}
-
-export function zeroChatSearch(args: {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly keyword: string;
-  readonly agentId?: string;
-  readonly since?: number;
-  readonly limit: number;
-  readonly before: number;
-  readonly after: number;
-}): Computed<
-  Promise<{
-    readonly results: readonly ChatSearchResult[];
-    readonly hasMore: boolean;
-  }>
-> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const sinceDate = args.since ? new Date(args.since) : undefined;
-
-    const matches = await chatSearchIndexedMatches(db, {
-      userId: args.userId,
-      orgId: args.orgId,
-      eventIds: await chatSearchIndexedEventIds(db, {
-        userId: args.userId,
-        orgId: args.orgId,
-        keyword: args.keyword,
-        agentId: args.agentId,
-        since: sinceDate,
-        limit: args.limit + 1,
-      }),
-    });
-
-    const hasMore = matches.length > args.limit;
-    const truncated = hasMore ? matches.slice(0, args.limit) : matches;
-
-    const contextsByMessageId = await loadChatSearchContexts(db, {
-      matches: truncated,
-      before: args.before,
-      after: args.after,
-    });
-    const results = truncated.map((match): ChatSearchResult => {
-      const context = contextsByMessageId.get(match.messageId);
-      if (!context) {
-        throw new Error("chat search context is missing a matched message");
-      }
-      const matchedMessage = toChatSearchMessage(match);
-      return {
-        chatThreadId: match.chatThreadId,
-        agentName: match.agentName,
-        matchedMessage,
-        matchedRanges: chatSearchMatchRanges(
-          matchedMessage.content,
-          args.keyword,
-        ),
-        contextBefore: context.before,
-        contextAfter: context.after,
-      };
-    });
-
-    return { results, hasMore };
-  });
 }
 
 export function zeroChatThreadQueuedEvents(args: {

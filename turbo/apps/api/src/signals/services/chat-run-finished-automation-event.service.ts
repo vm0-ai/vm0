@@ -6,9 +6,9 @@ import {
 } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { and, eq, sql } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
@@ -159,40 +159,34 @@ export const dispatchChatRunFinishedAutomationEvents$ = command(
     const automationRows = await db
       .select({
         automation: workflowAutomationColumns(),
-        agentId: zeroWorkflows.agentId,
-        workflowName: zeroWorkflows.name,
-        workflowDisplayName: zeroWorkflows.displayName,
+        agentId: workflows.agentId,
+        workflowName: workflows.name,
+        workflowDisplayName: workflows.displayName,
         chatThreadId: workflowUserAutomationThreads.chatThreadId,
       })
-      .from(zeroWorkflowAutomations)
-      .innerJoin(
-        zeroWorkflows,
-        eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-      )
+      .from(workflowAutomations)
+      .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
       .leftJoin(
         workflowUserAutomationThreads,
         and(
-          eq(
-            workflowUserAutomationThreads.orgId,
-            zeroWorkflowAutomations.orgId,
-          ),
+          eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
           eq(
             workflowUserAutomationThreads.userId,
-            zeroWorkflowAutomations.ownerUserId,
+            workflowAutomations.ownerUserId,
           ),
           eq(
             workflowUserAutomationThreads.workflowId,
-            zeroWorkflowAutomations.workflowId,
+            workflowAutomations.workflowId,
           ),
         ),
       )
       .where(
         and(
-          eq(zeroWorkflowAutomations.enabled, true),
-          eq(zeroWorkflowAutomations.kind, "event"),
-          eq(zeroWorkflowAutomations.eventType, CHAT_RUN_FINISHED_EVENT_TYPE),
+          eq(workflowAutomations.enabled, true),
+          eq(workflowAutomations.kind, "event"),
+          eq(workflowAutomations.eventType, CHAT_RUN_FINISHED_EVENT_TYPE),
           eq(
-            sql`${zeroWorkflowAutomations.eventConfig}->>'chatThreadId'`,
+            sql`${workflowAutomations.eventConfig}->>'chatThreadId'`,
             event.chatThreadId,
           ),
         ),

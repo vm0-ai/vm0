@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.168.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.1...runner-rs-v0.168.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
+
+### Documentation
+
+* **runner:** correct JobProvider shutdown contract ([#26867](https://github.com/vm0-ai/vm0/issues/26867)) ([9eb6d8b](https://github.com/vm0-ai/vm0/commit/9eb6d8b6bcc2a2ae01118dd0ad9de823b50726ca))
+
+
+### Refactoring
+
+* **python:** separate x response inspection ([#26872](https://github.com/vm0-ai/vm0/issues/26872)) ([3013216](https://github.com/vm0-ai/vm0/commit/30132164b6b4f89b0ec25551302ec2ef9e6e8553))
+* remove sandbox presentation import pipeline ([#26646](https://github.com/vm0-ai/vm0/issues/26646)) ([54601f1](https://github.com/vm0-ai/vm0/commit/54601f1aedeb78825f2e8c63760b9c94b41009c0))
+* **rust:** centralize nbd orphan cleanup ownership ([#26880](https://github.com/vm0-ai/vm0/issues/26880)) ([0690874](https://github.com/vm0-ai/vm0/commit/069087456bdaf89f4ee8586ee1f5c1497c956f94))
+
+
+### Performance Improvements
+
+* **mitm-addon:** bound path validation work ([#26855](https://github.com/vm0-ai/vm0/issues/26855)) ([0db7ccc](https://github.com/vm0-ai/vm0/commit/0db7cccccff216be2869cb7561ac37a8114751cd))
+
 ## [0.168.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.0...runner-rs-v0.168.1) (2026-08-13)
 
 

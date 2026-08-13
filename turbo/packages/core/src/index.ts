@@ -487,11 +487,11 @@ export {
   type ZeroAgentMetadataRequest,
   type ZeroAgentInstructionsResponse,
   type ZeroAgentInstructionsRequest,
-  type ZeroWorkflowVisibility,
+  type WorkflowVisibility,
   type WorkflowFileEntry,
   type WorkflowFileMetadata,
-  type ZeroWorkflowAutomationKind,
-  type ZeroWorkflowScheduleType,
+  type WorkflowAutomationKind,
+  type WorkflowScheduleType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowAutomationSummary,
   type ZeroWorkflowSummary,
@@ -668,4 +668,4 @@ export {
 export { getModelDisplayName } from "./model-display-name";
 export { formatMessage, serializeError, extractFields } from "./log-utils";
 
-export * from "./zero-workflow-skill";
+export * from "./skill-document";

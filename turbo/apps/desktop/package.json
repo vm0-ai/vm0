@@ -1,6 +1,6 @@
 {
   "name": "@okouai/desktop",
-  "version": "0.37.8",
+  "version": "0.37.9",
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Computer Use desktop shell",

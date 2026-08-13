@@ -9,9 +9,9 @@ import {
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { getAllFeatureStates } from "@okouai/core/feature-switch";
 import {
-  zeroWorkflowAutomations,
-  type ZeroAutomationEventType,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  type WorkflowAutomationEventType,
+} from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -61,7 +61,7 @@ interface AutomationConnectorDependency {
 }
 
 function automationConnectorDependency(
-  eventType: ZeroAutomationEventType,
+  eventType: WorkflowAutomationEventType,
 ): AutomationConnectorDependency | null {
   switch (eventType) {
     case "gmail-new-message":
@@ -146,13 +146,13 @@ async function loadAutomationConnectorDependencies(
   },
 ): Promise<ReadonlyMap<ConnectorSlug, AutomationConnectorDependency>> {
   const automations = await db
-    .select({ eventType: zeroWorkflowAutomations.eventType })
-    .from(zeroWorkflowAutomations)
+    .select({ eventType: workflowAutomations.eventType })
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-        eq(zeroWorkflowAutomations.workflowId, args.workflowId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.workflowId, args.workflowId),
       ),
     );
 

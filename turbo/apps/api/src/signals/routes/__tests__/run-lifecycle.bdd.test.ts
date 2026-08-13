@@ -10835,7 +10835,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const saved = await connectors.saveCustomConnectorProposal(actor, {
       proposal: {
         operation: "create",
-        displayName: "BDD Unpinned Recovery Runtime",
+        displayName: "BDD Full Recovery Runtime",
         prefixTemplates: [
           `https://{{variables.subdomain}}.${rand}.recovery.test/v1/`,
         ],
@@ -15064,6 +15064,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             latency_ms: 12,
             request_size: 100,
             response_size: 256,
+            request_headers: { accept: "application/json" },
+            request_headers_truncated: true,
+            response_headers: { server: "***" },
+            response_headers_truncated: true,
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
@@ -15139,6 +15143,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         url: "[truncated]",
         url_truncated: true,
         url_original_char_count: 1_000_001,
+        request_headers: { accept: "application/json" },
+        request_headers_truncated: true,
+        response_headers: { server: "***" },
+        response_headers_truncated: true,
         model_catalog_cache_status: "model_catalog_cold_stored",
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,

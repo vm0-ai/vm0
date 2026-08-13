@@ -258,6 +258,16 @@ def _classify_registry_vms(
             )
             continue
 
+        billable_firewalls = vm.get("billableFirewalls")
+        if not isinstance(billable_firewalls, list) or any(
+            not isinstance(firewall_name, str) for firewall_name in billable_firewalls
+        ):
+            invalid_vms[client_ip] = InvalidVmEntry(
+                "invalid_billable_firewalls",
+                "proxy registry VM entry billableFirewalls must be a list of strings",
+            )
+            continue
+
         if (
             "firewalls" in vm
             and vm["firewalls"] is not None

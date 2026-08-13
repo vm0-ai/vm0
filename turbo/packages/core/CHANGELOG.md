@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.555.0](https://github.com/vm0-ai/vm0/compare/core-v8.554.0...core-v8.555.0) (2026-08-13)
+
+
+### Features
+
+* confirm saved-billing credit purchases in app ([#26806](https://github.com/vm0-ai/vm0/issues/26806)) ([135585d](https://github.com/vm0-ai/vm0/commit/135585db4ea65e2c93cd37c7053012d268eedf86))
+
+
+### Refactoring
+
+* remove sandbox presentation import pipeline ([#26646](https://github.com/vm0-ai/vm0/issues/26646)) ([54601f1](https://github.com/vm0-ai/vm0/commit/54601f1aedeb78825f2e8c63760b9c94b41009c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.0
+
 ## [8.554.0](https://github.com/vm0-ai/vm0/compare/core-v8.553.3...core-v8.554.0) (2026-08-13)
 
 

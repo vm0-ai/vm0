@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import {
-  ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
-  zeroTranslationContract,
-} from "@okouai/api-contracts/contracts/zero-translation";
+  TRANSLATION_MAX_SOURCE_TEXT_CHARS,
+  translationContract,
+} from "@okouai/api-contracts/contracts/translation";
 import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
@@ -22,7 +22,7 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroTranslationRoutes } from "../zero-translation";
+import { translationRoutes } from "../translation";
 import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
@@ -124,9 +124,9 @@ function requestTranslation(args: {
   };
   return setupApp({
     context,
-    routes: zeroTranslationRoutes,
+    routes: translationRoutes,
     usagePricingResolution: args.usagePricingResolution,
-  })(zeroTranslationContract).translate({
+  })(translationContract).translate({
     headers,
     body: {
       text: args.text ?? "Hello, world",
@@ -318,7 +318,7 @@ describe("POST /api/zero/translate", () => {
 
     for (const text of [
       "   ",
-      "x".repeat(ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS + 1),
+      "x".repeat(TRANSLATION_MAX_SOURCE_TEXT_CHARS + 1),
     ]) {
       const response = await requestTranslation({
         token: zeroToken(actor),

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.742.0](https://github.com/vm0-ai/vm0/compare/app-v0.741.0...app-v0.742.0) (2026-08-13)
+
+
+### Features
+
+* **api:** add member default video model ([#26841](https://github.com/vm0-ai/vm0/issues/26841)) ([4690e37](https://github.com/vm0-ai/vm0/commit/4690e379ae93f4103dbc41267d4a925a1bd45fb1))
+* **api:** add per-thread video model endpoint ([#26831](https://github.com/vm0-ai/vm0/issues/26831)) ([d12287f](https://github.com/vm0-ai/vm0/commit/d12287ff2412e1f37fd531a8ea3ac373dc61a66b))
+* **chat:** read a steer burst as one group ([#26804](https://github.com/vm0-ai/vm0/issues/26804)) ([6b22a4d](https://github.com/vm0-ai/vm0/commit/6b22a4d16d55fe367fd16df39b1fb26afedcbfee))
+* confirm saved-billing credit purchases in app ([#26806](https://github.com/vm0-ai/vm0/issues/26806)) ([135585d](https://github.com/vm0-ai/vm0/commit/135585db4ea65e2c93cd37c7053012d268eedf86))
+
+
+### Bug Fixes
+
+* **chat:** delay thread skeleton reveal ([#26851](https://github.com/vm0-ai/vm0/issues/26851)) ([bc33b23](https://github.com/vm0-ai/vm0/commit/bc33b23ba996f3456a1ae5a6e792ef40be85a457))
+* constrain forward composer and hide pending items ([#26850](https://github.com/vm0-ai/vm0/issues/26850)) ([1adf03b](https://github.com/vm0-ai/vm0/commit/1adf03bb247ae13d798e3d141d7b6a011fe41680))
+* **platform:** improve image preview zoom ([#26800](https://github.com/vm0-ai/vm0/issues/26800)) ([d236683](https://github.com/vm0-ai/vm0/commit/d2366839222472627b234df0655fcbd0997b1efc))
+* **ui:** show okou unread menu on row hover ([#26789](https://github.com/vm0-ai/vm0/issues/26789)) ([c3e7a11](https://github.com/vm0-ai/vm0/commit/c3e7a11864df21d619b1f419f4b9c206ed0b23a3))
+
+
+### Refactoring
+
+* **platform:** replace steer acknowledgement timer ([#26869](https://github.com/vm0-ai/vm0/issues/26869)) ([95d6272](https://github.com/vm0-ai/vm0/commit/95d6272344b27637758564420201e53a5e389755))
+* remove sandbox presentation import pipeline ([#26646](https://github.com/vm0-ai/vm0/issues/26646)) ([54601f1](https://github.com/vm0-ai/vm0/commit/54601f1aedeb78825f2e8c63760b9c94b41009c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.0
+    * @okouai/core bumped to 8.555.0
+
 ## [0.741.0](https://github.com/vm0-ai/vm0/compare/app-v0.740.1...app-v0.741.0) (2026-08-13)
 
 
