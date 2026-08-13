@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.742.0](https://github.com/vm0-ai/vm0/compare/app-v0.741.0...app-v0.742.0) (2026-08-13)
+
+
+### Features
+
+* **api:** add member default video model ([#26841](https://github.com/vm0-ai/vm0/issues/26841)) ([4690e37](https://github.com/vm0-ai/vm0/commit/4690e379ae93f4103dbc41267d4a925a1bd45fb1))
+* **api:** add per-thread video model endpoint ([#26831](https://github.com/vm0-ai/vm0/issues/26831)) ([d12287f](https://github.com/vm0-ai/vm0/commit/d12287ff2412e1f37fd531a8ea3ac373dc61a66b))
+* **chat:** read a steer burst as one group ([#26804](https://github.com/vm0-ai/vm0/issues/26804)) ([6b22a4d](https://github.com/vm0-ai/vm0/commit/6b22a4d16d55fe367fd16df39b1fb26afedcbfee))
+* confirm saved-billing credit purchases in app ([#26806](https://github.com/vm0-ai/vm0/issues/26806)) ([135585d](https://github.com/vm0-ai/vm0/commit/135585db4ea65e2c93cd37c7053012d268eedf86))
+
+
+### Bug Fixes
+
+* **chat:** delay thread skeleton reveal ([#26851](https://github.com/vm0-ai/vm0/issues/26851)) ([bc33b23](https://github.com/vm0-ai/vm0/commit/bc33b23ba996f3456a1ae5a6e792ef40be85a457))
+* constrain forward composer and hide pending items ([#26850](https://github.com/vm0-ai/vm0/issues/26850)) ([1adf03b](https://github.com/vm0-ai/vm0/commit/1adf03bb247ae13d798e3d141d7b6a011fe41680))
+* **platform:** improve image preview zoom ([#26800](https://github.com/vm0-ai/vm0/issues/26800)) ([d236683](https://github.com/vm0-ai/vm0/commit/d2366839222472627b234df0655fcbd0997b1efc))
+* **ui:** show okou unread menu on row hover ([#26789](https://github.com/vm0-ai/vm0/issues/26789)) ([c3e7a11](https://github.com/vm0-ai/vm0/commit/c3e7a11864df21d619b1f419f4b9c206ed0b23a3))
+
+
+### Refactoring
+
+* **platform:** replace steer acknowledgement timer ([#26869](https://github.com/vm0-ai/vm0/issues/26869)) ([95d6272](https://github.com/vm0-ai/vm0/commit/95d6272344b27637758564420201e53a5e389755))
+* remove sandbox presentation import pipeline ([#26646](https://github.com/vm0-ai/vm0/issues/26646)) ([54601f1](https://github.com/vm0-ai/vm0/commit/54601f1aedeb78825f2e8c63760b9c94b41009c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.0
+    * @okouai/core bumped to 8.555.0
+
+## [0.741.0](https://github.com/vm0-ai/vm0/compare/app-v0.740.1...app-v0.741.0) (2026-08-13)
+
+
+### Features
+
+* **db:** add video model columns and thread event kind ([#26807](https://github.com/vm0-ai/vm0/issues/26807)) ([683a9e7](https://github.com/vm0-ai/vm0/commit/683a9e748792feba0ea6d7ed3eea1d1f63665a47))
+* **platform:** add an illustrated empty state to credit usage ([#26827](https://github.com/vm0-ai/vm0/issues/26827)) ([e24bf3f](https://github.com/vm0-ai/vm0/commit/e24bf3f7eedf0d58e3264be6183cf8629f47b9fa))
+
+
+### Bug Fixes
+
+* **platform:** keep async card shells stable ([#26845](https://github.com/vm0-ai/vm0/issues/26845)) ([69a4586](https://github.com/vm0-ai/vm0/commit/69a458652b78451bdd39a81a37a1f6c57b328443))
+* **platform:** recover realtime when network reconnects ([#26853](https://github.com/vm0-ai/vm0/issues/26853)) ([aeb263d](https://github.com/vm0-ai/vm0/commit/aeb263de89a21b1e0e2c09db12db4318a75ae7e4))
+* restore block spacing between markdown card slots ([#26763](https://github.com/vm0-ai/vm0/issues/26763)) ([e4a6c19](https://github.com/vm0-ai/vm0/commit/e4a6c19cd2108f2a7845a9bbf02eae6634e78f55))
+
+
+### Refactoring
+
+* **platform:** remove org credits summary bar from credit usage ([#26818](https://github.com/vm0-ai/vm0/issues/26818)) ([6632970](https://github.com/vm0-ai/vm0/commit/663297089a86e4de2e507c35f3f1ff075075c042))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.328.0
+    * @okouai/core bumped to 8.554.0
+
 ## [0.740.1](https://github.com/vm0-ai/vm0/compare/app-v0.740.0...app-v0.740.1) (2026-08-13)
 
 

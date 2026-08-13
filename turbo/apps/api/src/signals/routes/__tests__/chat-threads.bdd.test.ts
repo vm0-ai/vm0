@@ -44,6 +44,7 @@ import {
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
+  setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
@@ -1018,6 +1019,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "claude-sonnet-5",
       { eventId: modelSelectionEventId },
     );
+    await setChatThreadVideoModelFixture(liveThread.id, "fal-ai/veo3.1/fast");
 
     const incrementalSnapshotAt = initialSnapshotAt + 1000;
     mockNow(incrementalSnapshotAt);
@@ -1049,6 +1051,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         title: "Renamed compact title",
         renamedAt: expect.any(String),
         selectedModel: "claude-sonnet-5",
+        // The compaction projection is hand-written SQL, so a column missing
+        // from it survives every read until compaction runs and drops it.
+        selectedVideoModel: "fal-ai/veo3.1/fast",
       }),
     ]);
 

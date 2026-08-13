@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -460,6 +461,7 @@ interface RecordedImage {
   readonly contentType: string;
   readonly size: number;
   readonly url: string;
+  readonly embedUrl: string;
   readonly creditsCharged: number;
   readonly model: string;
   readonly provider: ImageProvider;
@@ -1720,6 +1722,10 @@ export const recordGeneratedImage$ = command(
       contentType,
       size: params.generation.imageBytes.byteLength,
       url,
+      // Models such as seedream4 only emit PNG. Serving the stored object
+      // through Cloudflare Image Resizing negotiates AVIF/WebP per request, so
+      // pages embedding this image download a fraction of the PNG bytes.
+      embedUrl: r2ImageTransformUrl(url, {}),
       creditsCharged: estimateImageCredits(
         params.generation.model,
         params.generation.billing,

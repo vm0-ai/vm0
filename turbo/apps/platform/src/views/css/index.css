@@ -386,6 +386,17 @@ body {
   animation: zero-thinking-in 0.3s ease-out;
 }
 
+@keyframes zero-chat-skeleton-reveal {
+  to {
+    opacity: 1;
+  }
+}
+.zero-chat-skeleton-reveal {
+  /* Avoid flashing the skeleton when cached chat events resolve immediately. */
+  opacity: 0;
+  animation: zero-chat-skeleton-reveal 0s 100ms forwards;
+}
+
 /* Thinking indicator: 3-block loader */
 .zero-blocks {
   display: inline-grid;
@@ -961,7 +972,8 @@ body {
   max-width: 100%;
 }
 
-.wmde-markdown p {
+.wmde-markdown p,
+.wmde-markdown .zero-markdown-card {
   margin-top: 6px;
   margin-bottom: 6px;
 }
@@ -970,7 +982,9 @@ body {
    Line-height is owned by the bubble container (leading-[1.7]) and inherited
    by the markdown body, mirroring how the bubble owns the font size. */
 .zero-chat-bubble-assistant .wmde-markdown p,
-.zero-chat-bubble-user .wmde-markdown p {
+.zero-chat-bubble-user .wmde-markdown p,
+.zero-chat-bubble-assistant .wmde-markdown .zero-markdown-card,
+.zero-chat-bubble-user .wmde-markdown .zero-markdown-card {
   margin-top: 8px;
   margin-bottom: 8px;
 }

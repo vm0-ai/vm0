@@ -79,11 +79,12 @@ const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
-const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
     "analytics.enabled=false",
     "features.plugins=false",
     "features.apps=false",
     "features.goals=false",
+    "features.image_generation=false",
 ];
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
@@ -488,9 +489,6 @@ fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a s
 }
 
 const PI_NODE_OPTIONS: &str = "--disable-warning=ExperimentalWarning";
-// Remove after the Phase 1 Runner release is live and every queued or active
-// context pinned to a legacy commit-addressed Pi CLI artifact has drained.
-const LEGACY_PI_RUN_ID_ENV: &str = "VM0_RUN_ID";
 
 fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<String>, AgentError> {
     for (name, value) in [
@@ -522,11 +520,12 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
     ])
 }
 
-fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 6] {
-    let run_id = runtime.run_id.to_string();
+fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] {
     [
-        (guest_contracts::env::RUN_ID_ENV.to_string(), run_id.clone()),
-        (LEGACY_PI_RUN_ID_ENV.to_string(), run_id),
+        (
+            guest_contracts::env::RUN_ID_ENV.to_string(),
+            runtime.run_id.to_string(),
+        ),
         (
             guest_contracts::env::PI_SESSION_ID_ENV.to_string(),
             runtime.pi_session_id.to_string(),
@@ -765,6 +764,7 @@ pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
     user_cancellation: CancellationToken,
     codex_startup: Option<&'a CodexStartupTiming>,
+    workload_containment: Option<&'a crate::workload_containment::WorkloadContainment>,
 }
 
 impl<'a> CliExecutionControls<'a> {
@@ -779,7 +779,17 @@ impl<'a> CliExecutionControls<'a> {
             active_input,
             user_cancellation,
             codex_startup,
+            workload_containment: None,
         }
+    }
+    /// Supply the production workload placement capability for CLI children.
+    #[must_use]
+    pub fn with_workload_containment(
+        mut self,
+        containment: Option<&'a crate::workload_containment::WorkloadContainment>,
+    ) -> Self {
+        self.workload_containment = containment;
+        self
     }
 }
 
@@ -820,6 +830,7 @@ async fn execute_cli_inner(
         active_input,
         user_cancellation,
         codex_startup: _,
+        workload_containment,
     } = controls;
 
     let replay_user_messages =
@@ -892,6 +903,9 @@ async fn execute_cli_inner(
     // Set the child cwd explicitly at spawn time so the CLI observes the
     // current canonical workspace mount instead of relying on inherited cwd.
     set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
+    if let Some(workload_containment) = workload_containment {
+        workload_containment.configure_command(&mut cmd)?;
+    }
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.
@@ -1929,7 +1943,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_child_env_keeps_run_id_compatible_and_controls_node_warnings() {
+    fn pi_child_env_uses_canonical_run_id_and_controls_node_warnings() {
         let user_env = HashMap::from([(
             "NODE_OPTIONS".to_string(),
             "--require /tmp/user-script.js".to_string(),
@@ -1960,12 +1974,7 @@ mod tests {
             .iter()
             .find(|(key, _)| key == guest_contracts::env::RUN_ID_ENV)
             .map(|(_, value)| value.as_str());
-        let legacy_run_id = values
-            .iter()
-            .find(|(key, _)| key == super::LEGACY_PI_RUN_ID_ENV)
-            .map(|(_, value)| value.as_str());
         assert_eq!(canonical_run_id, Some(runtime.run_id.as_ref()));
-        assert_eq!(legacy_run_id, canonical_run_id);
         for (key, expected) in [
             (
                 guest_contracts::env::PI_SESSION_ID_ENV,

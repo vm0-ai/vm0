@@ -222,6 +222,7 @@ describe("chat thread event sourcing local-first list", () => {
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
     expect(eventsRequests).toBe(1);
@@ -670,6 +671,7 @@ describe("chat thread event sourcing local-first list", () => {
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
     expect(context.store.get(threadMeta(OPTIMISTIC_THREAD_ID))).toStrictEqual({
@@ -681,6 +683,7 @@ describe("chat thread event sourcing local-first list", () => {
       serviceTier: null,
       computerUseHostId: null,
       cloudBrowserEnabled: false,
+      selectedVideoModel: null,
     });
 
     let threadDraftRequests = 0;

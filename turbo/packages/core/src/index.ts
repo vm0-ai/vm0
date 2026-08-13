@@ -615,7 +615,6 @@ export {
   getInstructionsStorageName,
   getSkillStorageName,
   getCustomSkillStorageName,
-  getPresentationTemplateStorageName,
   getCustomConnectorSkillStorageName,
   getCustomConnectorSkillName,
   VOLUME_ORG_USER_ID,
@@ -669,4 +668,4 @@ export {
 export { getModelDisplayName } from "./model-display-name";
 export { formatMessage, serializeError, extractFields } from "./log-utils";
 
-export * from "./zero-workflow-skill";
+export * from "./skill-document";

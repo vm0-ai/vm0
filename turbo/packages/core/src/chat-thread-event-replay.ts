@@ -8,6 +8,7 @@ export type ReplayChatThreadEvent = Omit<ChatThreadEvent, "seqId">;
 export interface EventDrivenChatThread extends ChatThreadSnapshotProjection {
   readonly sortAt: string;
   readonly cloudBrowserEnabled: boolean;
+  readonly selectedVideoModel: string | null;
 }
 
 function compareThreadOrder(
@@ -24,6 +25,53 @@ function compareThreadOrder(
     return sortCompare;
   }
   return right.id.localeCompare(left.id);
+}
+
+/**
+ * Updates that can arrive before the `created` event they belong to. They are
+ * queued and replayed once the thread exists; every other kind is dropped.
+ */
+function isDeferrableUpdate(kind: ReplayChatThreadEvent["kind"]): boolean {
+  return (
+    kind === "model_selection_updated" ||
+    kind === "service_tier_updated" ||
+    kind === "computer_use_host_updated" ||
+    kind === "video_model_updated"
+  );
+}
+
+/**
+ * Fields an event writes onto an existing thread, or null for `sort_touched`,
+ * which moves the thread without counting as an update.
+ */
+function updatedThreadFields(
+  event: ReplayChatThreadEvent,
+): Partial<EventDrivenChatThread> | null {
+  if (event.kind === "renamed") {
+    return { title: event.title, renamedAt: event.createdAt };
+  }
+  if (event.kind === "pinned") {
+    return { pinnedAt: event.createdAt };
+  }
+  if (event.kind === "unpinned") {
+    return { pinnedAt: null };
+  }
+  if (event.kind === "model_selection_updated") {
+    return { selectedModel: event.selectedModel };
+  }
+  if (event.kind === "service_tier_updated") {
+    return { serviceTier: event.serviceTier };
+  }
+  if (event.kind === "computer_use_host_updated") {
+    return {
+      computerUseHostId: event.computerUseHostId,
+      cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,
+    };
+  }
+  if (event.kind === "video_model_updated") {
+    return { selectedVideoModel: event.selectedVideoModel ?? null };
+  }
+  return null;
 }
 
 function applyEvent(
@@ -45,6 +93,7 @@ function applyEvent(
       serviceTier: event.serviceTier,
       computerUseHostId: event.computerUseHostId,
       cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,
+      selectedVideoModel: event.selectedVideoModel ?? null,
     });
     const pendingUpdates = pendingThreadUpdates.get(event.chatThreadId) ?? [];
     pendingThreadUpdates.delete(event.chatThreadId);
@@ -63,79 +112,37 @@ function applyEvent(
 
   const thread = threads.get(event.chatThreadId);
   if (!thread) {
-    if (
-      event.kind === "model_selection_updated" ||
-      event.kind === "service_tier_updated" ||
-      event.kind === "computer_use_host_updated"
-    ) {
+    if (isDeferrableUpdate(event.kind)) {
       const pendingUpdates = pendingThreadUpdates.get(event.chatThreadId) ?? [];
       pendingThreadUpdates.set(event.chatThreadId, [...pendingUpdates, event]);
     }
     return;
   }
 
-  if (event.kind === "renamed") {
+  const fields = updatedThreadFields(event);
+  if (fields === null) {
     threads.set(event.chatThreadId, {
       ...thread,
-      title: event.title,
-      renamedAt: event.createdAt,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "pinned") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      pinnedAt: event.createdAt,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "unpinned") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      pinnedAt: null,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "model_selection_updated") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      selectedModel: event.selectedModel,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "service_tier_updated") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      serviceTier: event.serviceTier,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "computer_use_host_updated") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      computerUseHostId: event.computerUseHostId,
-      cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,
-      updatedAt: event.createdAt,
+      sortAt: event.createdAt,
     });
     return;
   }
 
   threads.set(event.chatThreadId, {
     ...thread,
-    sortAt: event.createdAt,
+    ...fields,
+    updatedAt: event.createdAt,
   });
 }
 
+/**
+ * Rollout fallback: `selectedVideoModel` is optional on the wire, so a snapshot
+ * or event from an API deployed before this change (DB/API skew, observed max
+ * ~102min) or from an IndexedDB row an older bundle wrote (old web clients,
+ * ~2d) arrives without it and must replay as an unset pin. Remove with the
+ * contract's optional marker once the client floor passes the build that
+ * introduced the field. Follow-up: https://github.com/vm0-ai/vm0/issues/26765
+ */
 export function replayChatThreadEvents(
   snapshot: readonly ChatThreadSnapshotProjection[],
   events: readonly ReplayChatThreadEvent[],
@@ -148,6 +155,7 @@ export function replayChatThreadEvents(
       serviceTier: thread.serviceTier ?? null,
       computerUseHostId: thread.computerUseHostId ?? null,
       cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
+      selectedVideoModel: thread.selectedVideoModel ?? null,
     });
   }
   const pendingThreadUpdates = new Map<string, ReplayChatThreadEvent[]>();

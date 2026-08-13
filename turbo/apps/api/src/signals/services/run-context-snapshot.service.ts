@@ -1,5 +1,14 @@
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
-import type { NetworkPolicies } from "@okouai/connectors/firewall-types";
+import {
+  executionFirewallInlineEntrySchema,
+  firewallAwsSigv4AuthSchema,
+  firewallBaseHostPolicySchema,
+  firewallPermissionSchema,
+  type ExecutionFirewallInlineEntry,
+  type ExecutionFirewalls,
+  type NetworkPolicies,
+} from "@okouai/connectors/firewall-types";
+import { z } from "zod";
 
 type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];
@@ -12,6 +21,10 @@ type RunContextBuiltinFirewall = Extract<
 type RunContextSanitizedFirewall = Extract<
   RunContextFirewall,
   { apis: unknown }
+>;
+type RunContextExecutionInlineFirewall = Extract<
+  RunContextFirewall,
+  { kind: "inline" }
 >;
 type RunContextFirewallApi = RunContextSanitizedFirewall["apis"][number];
 type RunContextFirewallPermission = NonNullable<
@@ -34,14 +47,49 @@ export interface RunContextFeatureFlagEntry {
   readonly enabled: boolean;
 }
 
+const runContextAxiomAuthEntrySchema = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
+const runContextAxiomFirewallAuthSchema = z.object({
+  headerEntries: z.array(runContextAxiomAuthEntrySchema).optional(),
+  base: z.string().min(1).optional(),
+  queryEntries: z.array(runContextAxiomAuthEntrySchema).optional(),
+  awsSigv4: firewallAwsSigv4AuthSchema.optional(),
+});
+
+const runContextAxiomInlineFirewallSchema = z.object({
+  kind: z.literal("inline"),
+  name: z.string().min(1),
+  customConnectorId: z.uuid().optional(),
+  apis: z.array(
+    z.object({
+      id: z.string().min(1).optional(),
+      base: z.string(),
+      hostPolicy: firewallBaseHostPolicySchema.optional(),
+      auth: runContextAxiomFirewallAuthSchema,
+      permissions: z.array(firewallPermissionSchema).optional(),
+    }),
+  ),
+});
+
+type RunContextAxiomInlineFirewall = z.infer<
+  typeof runContextAxiomInlineFirewallSchema
+>;
+type RunContextAxiomFirewall =
+  | RunContextBuiltinFirewall
+  | RunContextAxiomInlineFirewall;
+
 export type RunContextAxiomSnapshot = Omit<
   RunContextResponse,
-  "vars" | "environment" | "networkPolicies" | "featureFlags"
+  "vars" | "environment" | "firewalls" | "networkPolicies" | "featureFlags"
 > & {
   readonly _time: string;
   readonly userId: string;
   readonly cliAgentType?: string;
   readonly environmentEntries: readonly RunContextEnvironmentEntry[];
+  readonly firewalls: readonly RunContextAxiomFirewall[];
   readonly networkPolicyEntries: readonly RunContextNetworkPolicyEntry[];
   readonly featureFlagEntries: readonly RunContextFeatureFlagEntry[];
 };
@@ -226,6 +274,72 @@ function sanitizedFirewallFromUnknown(
   };
 }
 
+function authEntriesToRecord(
+  entries:
+    | readonly z.infer<typeof runContextAxiomAuthEntrySchema>[]
+    | undefined,
+): Record<string, string> | undefined {
+  return entries === undefined
+    ? undefined
+    : Object.fromEntries(
+        entries.map((entry) => {
+          return [entry.name, entry.value];
+        }),
+      );
+}
+
+function executionInlineFirewallFromUnknown(
+  value: UnknownRecord,
+): RunContextExecutionInlineFirewall | undefined {
+  const parsed = runContextAxiomInlineFirewallSchema.safeParse(value);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const executionEntry = {
+    kind: "inline",
+    ...(parsed.data.customConnectorId === undefined
+      ? {}
+      : { customConnectorId: parsed.data.customConnectorId }),
+    firewall: {
+      name: parsed.data.name,
+      apis: parsed.data.apis.map((api) => {
+        const headers = authEntriesToRecord(api.auth.headerEntries);
+        const query = authEntriesToRecord(api.auth.queryEntries);
+        return {
+          ...(api.id === undefined ? {} : { id: api.id }),
+          base: api.base,
+          ...(api.hostPolicy === undefined
+            ? {}
+            : { hostPolicy: api.hostPolicy }),
+          auth: {
+            ...(headers === undefined ? {} : { headers }),
+            ...(api.auth.base === undefined ? {} : { base: api.auth.base }),
+            ...(query === undefined ? {} : { query }),
+            ...(api.auth.awsSigv4 === undefined
+              ? {}
+              : { awsSigv4: api.auth.awsSigv4 }),
+          },
+          ...(api.permissions === undefined
+            ? {}
+            : { permissions: api.permissions }),
+        };
+      }),
+    },
+  };
+  const normalized =
+    executionFirewallInlineEntrySchema.safeParse(executionEntry);
+  if (!normalized.success) {
+    return undefined;
+  }
+  return {
+    kind: "inline",
+    ...normalized.data.firewall,
+    ...(normalized.data.customConnectorId === undefined
+      ? {}
+      : { customConnectorId: normalized.data.customConnectorId }),
+  };
+}
+
 function firewallsFromUnknown(value: unknown): RunContextResponse["firewalls"] {
   if (!Array.isArray(value)) {
     return [];
@@ -241,6 +355,13 @@ function firewallsFromUnknown(value: unknown): RunContextResponse["firewalls"] {
         firewalls.push(normalized);
       }
       continue;
+    }
+    if (item.kind === "inline") {
+      const normalized = executionInlineFirewallFromUnknown(item);
+      if (normalized) {
+        firewalls.push(normalized);
+        continue;
+      }
     }
     const normalized = sanitizedFirewallFromUnknown(item);
     if (normalized) {
@@ -335,6 +456,56 @@ export function featureFlagsRecordToEntries(
   }
   return Object.entries(featureFlags).map(([name, enabled]) => {
     return { name, enabled };
+  });
+}
+
+function authRecordToEntries(
+  values: Record<string, string> | undefined,
+): z.infer<typeof runContextAxiomAuthEntrySchema>[] | undefined {
+  return values === undefined
+    ? undefined
+    : Object.entries(values).map(([name, value]) => {
+        return { name, value };
+      });
+}
+
+function inlineFirewallToAxiomEntry(
+  entry: ExecutionFirewallInlineEntry,
+): RunContextAxiomInlineFirewall {
+  return {
+    kind: "inline",
+    name: entry.firewall.name,
+    ...(entry.customConnectorId === undefined
+      ? {}
+      : { customConnectorId: entry.customConnectorId }),
+    apis: entry.firewall.apis.map((api) => {
+      const headerEntries = authRecordToEntries(api.auth.headers);
+      const queryEntries = authRecordToEntries(api.auth.query);
+      return {
+        ...(api.id === undefined ? {} : { id: api.id }),
+        base: api.base,
+        ...(api.hostPolicy === undefined ? {} : { hostPolicy: api.hostPolicy }),
+        auth: {
+          ...(headerEntries === undefined ? {} : { headerEntries }),
+          ...(api.auth.base === undefined ? {} : { base: api.auth.base }),
+          ...(queryEntries === undefined ? {} : { queryEntries }),
+          ...(api.auth.awsSigv4 === undefined
+            ? {}
+            : { awsSigv4: api.auth.awsSigv4 }),
+        },
+        ...(api.permissions === undefined
+          ? {}
+          : { permissions: api.permissions }),
+      };
+    }),
+  };
+}
+
+export function executionFirewallsToAxiomEntries(
+  firewalls: ExecutionFirewalls | null | undefined,
+): RunContextAxiomFirewall[] {
+  return (firewalls ?? []).map((entry) => {
+    return entry.kind === "inline" ? inlineFirewallToAxiomEntry(entry) : entry;
   });
 }
 

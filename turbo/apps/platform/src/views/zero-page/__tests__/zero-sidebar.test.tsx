@@ -2537,17 +2537,16 @@ describe("zero sidebar", () => {
       return current;
     });
     const defaultSidebarRow = agentRowByName(nav, "Zero");
-    await waitFor(() => {
-      expect(
-        within(defaultSidebarRow).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-      expect(
-        within(defaultSidebarRow).getByLabelText("Open agent menu"),
-      ).toBeInTheDocument();
+    const defaultUnread = await waitFor(() => {
+      return within(defaultSidebarRow).getByLabelText("Unread");
     });
+    const defaultMenuTrigger =
+      within(defaultSidebarRow).getByLabelText("Open agent menu");
+    expect(defaultUnread).toBeVisible();
 
-    click(within(defaultSidebarRow).getByLabelText("Open agent menu"));
+    click(defaultMenuTrigger);
     expect(menuItemByText("Mark all read")).toBeInTheDocument();
+    expect(queryAllByRoleFast("menuitem")).toHaveLength(1);
     expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
     click(menuItemByText("Mark all read"));
 

@@ -16,33 +16,35 @@ async function main(): Promise<void> {
   let result: ClerkCleanupResult;
 
   switch (command) {
-    case "cleanup-generation":
-      result = await cleanupCurrentClerkTestGeneration(
-        parseRoles(requiredArgument(3, "role list")),
-        { dryRun },
-      );
+    case "cleanup-generation": {
+      const roles = parseRoles(requiredArgument(3, "role list"));
+      assertNoExtraArguments(4);
+      result = await cleanupCurrentClerkTestGeneration(roles, { dryRun });
       break;
+    }
     case "cleanup-job-ref":
       assertNoExtraArguments(3);
       result = await cleanupClerkTestJobRef(currentClerkTestJobRef(), {
         dryRun,
       });
       break;
-    case "cleanup-stale":
-      if (process.argv[3] !== STALE_CLEANUP_ARGUMENT) {
+    case "cleanup-stale": {
+      const roles = parseRoles(requiredArgument(3, "role list"));
+      if (process.argv[4] !== STALE_CLEANUP_ARGUMENT) {
         throw new Error(
-          `cleanup-stale requires ${STALE_CLEANUP_ARGUMENT} <hours>`,
+          `cleanup-stale requires <roles> ${STALE_CLEANUP_ARGUMENT} <hours>`,
         );
       }
-      result = await cleanupStaleClerkTestResources(
-        staleCutoff(requiredArgument(4, "stale age")),
-        { dryRun },
-      );
-      assertNoExtraArguments(5);
+      const createdBefore = staleCutoff(requiredArgument(5, "stale age"));
+      assertNoExtraArguments(6);
+      result = await cleanupStaleClerkTestResources(roles, createdBefore, {
+        dryRun,
+      });
       break;
+    }
     default:
       throw new Error(
-        "Usage: clerk-test-resources.ts cleanup-generation <roles> | cleanup-job-ref | cleanup-stale --older-than-hours <hours>",
+        "Usage: clerk-test-resources.ts cleanup-generation <roles> | cleanup-job-ref | cleanup-stale <roles> --older-than-hours <hours>",
       );
   }
 
@@ -66,7 +68,6 @@ function parseRoles(value: string): readonly ClerkTestRole[] {
   if (roles.length === 0) {
     throw new Error("At least one Clerk test role is required");
   }
-  assertNoExtraArguments(4);
   return roles;
 }
 

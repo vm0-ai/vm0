@@ -41,12 +41,12 @@ function usageRows(): UsageRecordRow[] {
       threadId: "thread-planning",
       runId: null,
       title: "Quarterly planning chat",
-      credits: 983,
+      credits: 1083,
       tokens: 2200,
       breakdown: [
         {
           kind: "other",
-          credits: 983,
+          credits: 1083,
           providers: [
             {
               provider: "firecrawl",
@@ -65,6 +65,11 @@ function usageRows(): UsageRecordRow[] {
                 { kind: "people-search", credits: 80 },
                 { kind: "web-search", credits: 120 },
               ],
+            },
+            {
+              provider: "dataforseo",
+              credits: 100,
+              usageKinds: [{ kind: "seo", credits: 100 }],
             },
             {
               provider: "apidojo",
@@ -602,6 +607,26 @@ describe("personal usage settings", () => {
     expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
   });
 
+  it("shows an illustrated empty state when the range has no usage", async () => {
+    mockPersonalUsageStory([]);
+    await openUsageSettings(true, "usage-records");
+
+    const empty = await screen.findByTestId("usage-records-empty");
+    expect(
+      within(empty).getByText("No usage in this time range"),
+    ).toBeInTheDocument();
+    expect(
+      within(empty).getByText(
+        "Credits you spend on chats, automations, and channels show up here.",
+      ),
+    ).toBeInTheDocument();
+    // The illustration is decorative, so it must stay out of the accessible name.
+    expect(within(empty).getByRole("presentation")).toHaveAttribute(
+      "src",
+      expect.stringContaining("empty-usage-"),
+    );
+  });
+
   it("shows personal usage, loads more, and changes the usage range", async () => {
     const user = userEvent.setup();
     const requestedRanges = mockPersonalUsageStory();
@@ -611,7 +636,7 @@ describe("personal usage settings", () => {
       expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
       expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
     });
-    expect(screen.getByText("983")).toBeInTheDocument();
+    expect(screen.getByText("1.1K")).toBeInTheDocument();
     expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
     expect(requestedRanges).toContain("today");
@@ -637,6 +662,11 @@ describe("personal usage settings", () => {
           return element.parentElement?.textContent === "Web Search120";
         }),
       ).toBeTruthy();
+      expect(
+        screen.getAllByText("SEO").some((element) => {
+          return element.parentElement?.textContent === "SEO100";
+        }),
+      ).toBeTruthy();
       expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Translation").length).toBeGreaterThanOrEqual(
@@ -645,6 +675,7 @@ describe("personal usage settings", () => {
       expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
       expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
+      expect(screen.queryByText("Dataforseo")).not.toBeInTheDocument();
       expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
       expect(
