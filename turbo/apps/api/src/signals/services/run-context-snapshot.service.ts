@@ -328,7 +328,16 @@ function executionInlineFirewallFromUnknown(
   };
   const normalized =
     executionFirewallInlineEntrySchema.safeParse(executionEntry);
-  return normalized.success ? normalized.data : undefined;
+  if (!normalized.success) {
+    return undefined;
+  }
+  return {
+    kind: "inline",
+    ...normalized.data.firewall,
+    ...(normalized.data.customConnectorId === undefined
+      ? {}
+      : { customConnectorId: normalized.data.customConnectorId }),
+  };
 }
 
 function firewallsFromUnknown(value: unknown): RunContextResponse["firewalls"] {

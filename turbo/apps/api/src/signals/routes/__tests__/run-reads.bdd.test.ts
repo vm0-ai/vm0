@@ -2614,39 +2614,39 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(Object.keys(contextRead.body.networkPolicies ?? {})).toStrictEqual([
       "github",
     ]);
+    // New inline responses retain the previous top-level name/apis shape so
+    // already-loaded web clients can parse them as sanitized firewalls.
     expect(contextRead.body.firewalls).toStrictEqual([
       {
         kind: "inline",
         customConnectorId: "11111111-1111-4111-8111-111111111111",
-        firewall: {
-          name: "test-fw",
-          apis: [
-            {
-              id: "test-fw:0",
-              base: "https://api.example.com",
-              hostPolicy: { kind: "publicDestination" },
-              auth: {
-                headers: {
-                  Authorization: `Bearer \${{ secrets.TEST_TOKEN }}`,
-                },
-                base: "https://auth.example.com",
-                query: { api_key: `\${{ secrets.TEST_QUERY_TOKEN }}` },
+        name: "test-fw",
+        apis: [
+          {
+            id: "test-fw:0",
+            base: "https://api.example.com",
+            hostPolicy: { kind: "publicDestination" },
+            auth: {
+              headers: {
+                Authorization: `Bearer \${{ secrets.TEST_TOKEN }}`,
               },
-              permissions: [{ name: "read", rules: ["GET /users/*"] }],
+              base: "https://auth.example.com",
+              query: { api_key: `\${{ secrets.TEST_QUERY_TOKEN }}` },
             },
-            {
-              id: "test-fw:1",
-              base: "https://aws.example.com",
-              auth: {
-                awsSigv4: {
-                  accessKeyId: `\${{ secrets.AWS_ACCESS_KEY_ID }}`,
-                  secretAccessKey: `\${{ secrets.AWS_SECRET_ACCESS_KEY }}`,
-                  sessionToken: `\${{ secrets.AWS_SESSION_TOKEN }}`,
-                },
+            permissions: [{ name: "read", rules: ["GET /users/*"] }],
+          },
+          {
+            id: "test-fw:1",
+            base: "https://aws.example.com",
+            auth: {
+              awsSigv4: {
+                accessKeyId: `\${{ secrets.AWS_ACCESS_KEY_ID }}`,
+                secretAccessKey: `\${{ secrets.AWS_SECRET_ACCESS_KEY }}`,
+                sessionToken: `\${{ secrets.AWS_SESSION_TOKEN }}`,
               },
             },
-          ],
-        },
+          },
+        ],
       },
       {
         name: "fallback-fw",

@@ -112,13 +112,7 @@ type RunContextBuiltinFirewall = Extract<
   RunContextFirewall,
   { kind: "builtin" }
 >;
-type RunContextExecutionInlineFirewall = Extract<
-  RunContextFirewall,
-  { kind: "inline" }
->;
-type RunContextInlineFirewall =
-  | Extract<RunContextFirewall, { apis: unknown }>
-  | RunContextExecutionInlineFirewall["firewall"];
+type RunContextInlineFirewall = Extract<RunContextFirewall, { apis: unknown }>;
 type RunContextInlinePermission =
   RunContextInlineFirewall["apis"][number]["permissions"] extends
     | readonly (infer Permission)[]
@@ -487,12 +481,6 @@ function completeRunBaseUrlVars(
   return values;
 }
 
-function runContextFirewallName(firewall: RunContextFirewall): string {
-  return "kind" in firewall && firewall.kind === "inline"
-    ? firewall.firewall.name
-    : firewall.name;
-}
-
 async function loadRunRoutingConfigs(
   runContext: RunContextResponse,
   snapshot: ConnectorRuntimeSnapshot,
@@ -517,18 +505,11 @@ async function loadRunRoutingConfigs(
 
   const configs: ConnectorCheckRoutingConfig[] = [];
   for (const firewall of runContext.firewalls) {
-    const firewallName = runContextFirewallName(firewall);
-    if (!snapshot.serverFirewalls.has(firewallName)) {
+    if (!snapshot.serverFirewalls.has(firewall.name)) {
       continue;
     }
-    const connectorSlug = firewallName;
+    const connectorSlug = firewall.name;
     const view = await loadView(connectorSlug);
-    if ("kind" in firewall && firewall.kind === "inline") {
-      configs.push(
-        configFromInlineRunContext(firewall.firewall, connectorSlug, view),
-      );
-      continue;
-    }
     if ("apis" in firewall) {
       configs.push(configFromInlineRunContext(firewall, connectorSlug, view));
       continue;

@@ -152,9 +152,18 @@ const runContextSanitizedFirewallSchema = z.object({
   ),
 });
 
+// Keep name/apis at the top level so the previous web client can parse a new
+// inline response through runContextSanitizedFirewallSchema during rollout.
+const runContextExecutionInlineFirewallSchema =
+  executionFirewallInlineEntrySchema.shape.firewall.extend({
+    kind: z.literal("inline"),
+    customConnectorId:
+      executionFirewallInlineEntrySchema.shape.customConnectorId,
+  });
+
 const runContextFirewallSchema = z.union([
   executionFirewallBuiltinEntrySchema,
-  executionFirewallInlineEntrySchema,
+  runContextExecutionInlineFirewallSchema,
   runContextSanitizedFirewallSchema,
 ]);
 
