@@ -6302,7 +6302,7 @@ interface BuildRunnerJobPayloadInput {
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly timing?: ApiDispatchTimingCollector;
+  readonly timing: ApiDispatchTimingCollector;
 }
 
 interface PreparedPiLaunchResources {
@@ -6364,7 +6364,7 @@ async function preparePiLaunchResources(args: {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly persistedStorageMounts: readonly PersistedStorageMount[];
-  readonly timing: ApiDispatchTimingCollector | undefined;
+  readonly timing: ApiDispatchTimingCollector;
 }): Promise<PreparedPiLaunchResources | undefined> {
   if (args.piSandbox === undefined) {
     return undefined;
@@ -6439,13 +6439,11 @@ async function preparePiLaunchResources(args: {
           }),
         };
       };
-      const prompts = args.timing
-        ? args.timing.measureSync(
-            "api_dispatch_prepare_pi_launch_prompts",
-            "nested",
-            renderPrompts,
-          )
-        : renderPrompts();
+      const prompts = args.timing.measureSync(
+        "api_dispatch_prepare_pi_launch_prompts",
+        "nested",
+        renderPrompts,
+      );
       return {
         modelConfig: piSandbox,
         ...prompts,
@@ -6507,9 +6505,7 @@ function buildRunnerJobPayload(
     const extraEnvironment = args.includeZeroTokenSecret
       ? { ...args.extraEnvironment, ...zeroTokenEnvironment(body) }
       : args.extraEnvironment;
-    const storageManifestStats = args.timing
-      ? new StorageManifestBuildStats()
-      : undefined;
+    const storageManifestStats = new StorageManifestBuildStats();
     const preparedStoragePromise = measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_storage_manifest",
@@ -6535,7 +6531,7 @@ function buildRunnerJobPayload(
         );
       },
       () => {
-        return storageManifestStats?.overallDimensions();
+        return storageManifestStats.overallDimensions();
       },
     );
     const builtContextDraftPromise = measureApiDispatchTiming(
