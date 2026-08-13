@@ -23,6 +23,7 @@ import {
   zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
+  zeroChatThreadQueuedEvents,
   zeroChatThreadDraftIds,
   zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreadThreadIds,
@@ -220,6 +221,24 @@ const listChatEventRowsInner$ = computed(async (get) => {
   };
 });
 
+const listQueuedChatEventsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(chatThreadEventsContract.queued));
+  const events = await get(
+    zeroChatThreadQueuedEvents({
+      threadId: params.threadId,
+      userId: auth.userId,
+    }),
+  );
+  if (!events) {
+    return chatThreadNotFound();
+  }
+  return {
+    status: 200 as const,
+    body: { events: [...events] },
+  };
+});
+
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
 
@@ -402,6 +421,17 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requiredCapability: "chat-event:read" },
       listChatEventRowsInner$,
+    ),
+  },
+  {
+    route: chatThreadEventsContract.queued,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-event:read",
+      },
+      listQueuedChatEventsInner$,
     ),
   },
   {
