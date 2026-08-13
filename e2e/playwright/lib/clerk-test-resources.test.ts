@@ -7,7 +7,9 @@ import { test } from "node:test";
 const execFileAsync = promisify(execFile);
 
 test("runs generation and stale cleanup through the command entry point", async () => {
+  let requestCount = 0;
   const server = createServer((request, response) => {
+    requestCount += 1;
     const url = new URL(request.url ?? "", "http://clerk.test");
     if (request.method === "GET" && url.pathname === "/v1/users") {
       sendJson(response, []);
@@ -57,6 +59,23 @@ test("runs generation and stale cleanup through the command entry point", async 
       ),
       /Unknown Clerk test role: unknown/,
     );
+
+    const requestCountBeforeInvalidArguments = requestCount;
+    await assert.rejects(
+      runClerkCommand(
+        ["cleanup-generation", "playwright", "unexpected"],
+        environment,
+      ),
+      /Unexpected argument: unexpected/,
+    );
+    await assert.rejects(
+      runClerkCommand(
+        ["cleanup-stale", "runner", "--older-than-hours", "30", "unexpected"],
+        environment,
+      ),
+      /Unexpected argument: unexpected/,
+    );
+    assert.equal(requestCount, requestCountBeforeInvalidArguments);
   } finally {
     await closeServer(server);
   }

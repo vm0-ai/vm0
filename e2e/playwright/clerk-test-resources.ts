@@ -16,32 +16,32 @@ async function main(): Promise<void> {
   let result: ClerkCleanupResult;
 
   switch (command) {
-    case "cleanup-generation":
-      result = await cleanupCurrentClerkTestGeneration(
-        parseRoles(requiredArgument(3, "role list")),
-        { dryRun },
-      );
+    case "cleanup-generation": {
+      const roles = parseRoles(requiredArgument(3, "role list"));
       assertNoExtraArguments(4);
+      result = await cleanupCurrentClerkTestGeneration(roles, { dryRun });
       break;
+    }
     case "cleanup-job-ref":
       assertNoExtraArguments(3);
       result = await cleanupClerkTestJobRef(currentClerkTestJobRef(), {
         dryRun,
       });
       break;
-    case "cleanup-stale":
+    case "cleanup-stale": {
+      const roles = parseRoles(requiredArgument(3, "role list"));
       if (process.argv[4] !== STALE_CLEANUP_ARGUMENT) {
         throw new Error(
           `cleanup-stale requires <roles> ${STALE_CLEANUP_ARGUMENT} <hours>`,
         );
       }
-      result = await cleanupStaleClerkTestResources(
-        parseRoles(requiredArgument(3, "role list")),
-        staleCutoff(requiredArgument(5, "stale age")),
-        { dryRun },
-      );
+      const createdBefore = staleCutoff(requiredArgument(5, "stale age"));
       assertNoExtraArguments(6);
+      result = await cleanupStaleClerkTestResources(roles, createdBefore, {
+        dryRun,
+      });
       break;
+    }
     default:
       throw new Error(
         "Usage: clerk-test-resources.ts cleanup-generation <roles> | cleanup-job-ref | cleanup-stale <roles> --older-than-hours <hours>",
