@@ -236,6 +236,63 @@ async function expectAutomationFired(automationId: string): Promise<void> {
     .toBeTruthy();
 }
 
+async function expectAutomationSourceAnnotation(
+  fixture: ChatAutomationFixture,
+  automationId: string,
+  sourceRun: { readonly runId: string; readonly threadId: string },
+): Promise<void> {
+  const automation = await accept(
+    automationsClient().get({
+      headers: authHeaders(),
+      params: { id: automationId },
+    }),
+    [200],
+  );
+  const automationThreadId = automation.body.chatThreadId;
+  if (!automationThreadId) {
+    throw new Error("Expected the automation chat thread");
+  }
+  const automationRun = await readLatestWorkflowAutomationRunFixture(
+    context,
+    automationId,
+  );
+  if (!automationRun) {
+    throw new Error("Expected the triggered automation run");
+  }
+  const automationEvents = await chat.listThreadEvents(
+    fixture.actor,
+    automationThreadId,
+  );
+  const automationInput = automationEvents.events.find((event) => {
+    return (
+      event.eventType === "input.prompt" && event.runId === automationRun.runId
+    );
+  });
+  if (!automationInput || automationInput.eventType !== "input.prompt") {
+    throw new Error("Expected the triggered automation input");
+  }
+  expect(
+    automationInput.userMessage.parts.filter((part) => {
+      return (
+        part.type === "source" ||
+        part.type === "automation" ||
+        part.type === "goal" ||
+        part.type === "morning_brief"
+      );
+    }),
+  ).toStrictEqual([
+    {
+      type: "source",
+      kind: "agent",
+      runId: sourceRun.runId,
+      threadId: sourceRun.threadId,
+      agentId: fixture.agentId,
+      titleSnapshot: WATCHED_THREAD_TITLE,
+      href: `/chats/${sourceRun.threadId}#run-${sourceRun.runId}`,
+    },
+  ]);
+}
+
 describe("chat-run-finished workflow automations", () => {
   it("requires the watched chat thread to belong to the automation owner", async () => {
     const fixture = await setupChatAutomationFixture();
@@ -391,57 +448,7 @@ describe("chat-run-finished workflow automations", () => {
         readLatestWorkflowAutomationRunFixture(context, patternMatch),
       ).resolves.toMatchObject({ autonomyBudget: 1 });
 
-      const fireAlwaysAutomation = await accept(
-        automationsClient().get({
-          headers: authHeaders(),
-          params: { id: fireAlways },
-        }),
-        [200],
-      );
-      const automationThreadId = fireAlwaysAutomation.body.chatThreadId;
-      if (!automationThreadId) {
-        throw new Error("Expected the automation chat thread");
-      }
-      const automationRun = await readLatestWorkflowAutomationRunFixture(
-        context,
-        fireAlways,
-      );
-      if (!automationRun) {
-        throw new Error("Expected the triggered automation run");
-      }
-      const automationEvents = await chat.listThreadEvents(
-        fixture.actor,
-        automationThreadId,
-      );
-      const automationInput = automationEvents.events.find((event) => {
-        return (
-          event.eventType === "input.prompt" &&
-          event.runId === automationRun.runId
-        );
-      });
-      if (!automationInput || automationInput.eventType !== "input.prompt") {
-        throw new Error("Expected the triggered automation input");
-      }
-      expect(
-        automationInput.userMessage.parts.filter((part) => {
-          return (
-            part.type === "source" ||
-            part.type === "automation" ||
-            part.type === "goal" ||
-            part.type === "morning_brief"
-          );
-        }),
-      ).toStrictEqual([
-        {
-          type: "source",
-          kind: "agent",
-          runId: run.runId,
-          threadId: run.threadId,
-          agentId: fixture.agentId,
-          titleSnapshot: WATCHED_THREAD_TITLE,
-          href: `/chats/${run.threadId}#run-${run.runId}`,
-        },
-      ]);
+      await expectAutomationSourceAnnotation(fixture, fireAlways, run);
 
       const automationRuns = await api.listAgentRuns(fixture.actor, {
         status: "pending",
@@ -543,6 +550,7 @@ describe("chat-run-finished workflow automations", () => {
       );
 
       await expectAutomationFired(failedOnly);
+      await expectAutomationSourceAnnotation(fixture, failedOnly, run);
       await expect(automationLastRunAt(completedOnly)).resolves.toBeNull();
       // Error messages are not matchable output, so pattern automations stay
       // silent even when the error text would match.
