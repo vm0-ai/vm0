@@ -16,6 +16,7 @@
     "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit"
   },
   "dependencies": {
+    "@aiden0z/pptx-renderer": "1.2.4",
     "@clerk/clerk-js": "^6.25.8",
     "@clerk/localizations": "^4.13.8",
     "@clerk/react": "^6.12.8",
@@ -45,6 +46,7 @@
     "lucide-react": "1.30.0",
     "mermaid": "^11.16.1",
     "micromark-util-sanitize-uri": "^2.0.1",
+    "modern-screenshot": "4.7.0",
     "path-to-regexp": "^8.4.0",
     "posthog-js": "^1.372.1",
     "react": "^19.2.6",
