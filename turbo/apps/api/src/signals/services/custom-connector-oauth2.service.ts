@@ -25,7 +25,7 @@ import {
 import { badRequestMessage, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import {
-  CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+  connectorOAuthStateExpiresAt,
   generateConnectorOAuthState,
 } from "../../lib/connector-oauth-state";
 import { createDeferredPromise, safeJsonParse, settle } from "../utils";
@@ -558,9 +558,7 @@ export const startCustomConnectorOAuth2$ = command(
         authorizationUrl,
         codeVerifier,
         oauthContext: JSON.stringify(context),
-        expiresAt: new Date(
-          nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-        ),
+        expiresAt: connectorOAuthStateExpiresAt(),
       });
     signal.throwIfAborted();
     return { authorizationUrl };
