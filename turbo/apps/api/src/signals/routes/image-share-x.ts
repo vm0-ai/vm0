@@ -1,14 +1,14 @@
 import { command } from "ccstate";
 import { createErrorResponse } from "@okouai/api-contracts/contracts/errors";
-import { zeroImageShareXContract } from "@okouai/api-contracts/contracts/zero-image-share-x";
+import { imageShareXContract } from "@okouai/api-contracts/contracts/image-share-x";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { shareImageToX$ } from "../services/zero-image-share-x.service";
+import { shareImageToX$ } from "../services/image-share-x.service";
 
-const imageShareXBody$ = bodyResultOf(zeroImageShareXContract.post);
+const imageShareXBody$ = bodyResultOf(imageShareXContract.post);
 
 const postImageShareXInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -45,9 +45,9 @@ const postImageShareXInner$ = command(
   },
 );
 
-export const zeroImageShareXRoutes: readonly RouteEntry[] = [
+export const imageShareXRoutes: readonly RouteEntry[] = [
   {
-    route: zeroImageShareXContract.post,
+    route: imageShareXContract.post,
     handler: authRoute(
       {
         requireOrganization: true,
