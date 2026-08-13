@@ -3356,7 +3356,12 @@ async function handleInvoicePaid(
     invoice,
   );
   if (usageAllowanceResult.handled) {
-    return usageAllowanceResult.drainOrgId;
+    const concurrencyResult = await handleConcurrencyInvoicePaid(
+      db,
+      getClerk,
+      invoice,
+    );
+    return concurrencyResult.drainOrgId ?? usageAllowanceResult.drainOrgId;
   }
 
   const atomGrantResult = await handleAtomGrantInvoicePaid(db, invoice);
@@ -3720,14 +3725,13 @@ async function handleSubscriptionUpdatedLegacy(
     db,
     subscription,
   );
-  if (allowanceOrgIds.length > 0) {
-    return allowanceOrgIds;
-  }
-
   const concurrencyOrgIds = await handleConcurrencySubscriptionUpdated(
     db,
     subscription,
   );
+  if (allowanceOrgIds.length > 0) {
+    return [...new Set([...allowanceOrgIds, ...concurrencyOrgIds])];
+  }
 
   const stripe = getStripeClient();
   const periodEnd = await subscriptionScheduledEnd(stripe, subscription);
@@ -3914,12 +3918,6 @@ async function handleSubscriptionDeletedLegacy(
     });
     return rows;
   });
-  if (allowanceRows.length > 0) {
-    return allowanceRows.map((row) => {
-      return row.orgId;
-    });
-  }
-
   const concurrencyRows = await db
     .update(orgConcurrencySubscriptions)
     .set({
@@ -3932,6 +3930,19 @@ async function handleSubscriptionDeletedLegacy(
       eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
     )
     .returning({ orgId: orgConcurrencySubscriptions.orgId });
+
+  if (allowanceRows.length > 0) {
+    return [
+      ...new Set([
+        ...allowanceRows.map((row) => {
+          return row.orgId;
+        }),
+        ...concurrencyRows.map((row) => {
+          return row.orgId;
+        }),
+      ]),
+    ];
+  }
 
   const planRows = await db.transaction(async (tx) => {
     const downgraded = await writeOrgMetadataWithPlanEntitlements(tx, {
