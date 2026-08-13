@@ -1668,7 +1668,6 @@ describe("RUN-01: direct run admission boundaries", () => {
 });
 
 interface AxiomQueryRows {
-  readonly visibility?: readonly Record<string, unknown>[];
   readonly events?: readonly Record<string, unknown>[];
   readonly network?: readonly unknown[];
   readonly runContext?: readonly Record<string, unknown>[];
@@ -1688,9 +1687,6 @@ function dispatchAxiomQueries(
     const rows = runId === undefined ? undefined : rowsByRun[runId];
     if (!rows) {
       return Promise.resolve([]);
-    }
-    if (apl.includes("| project sequenceNumber")) {
-      return Promise.resolve([...(rows.visibility ?? [])]);
     }
     if (apl.includes("['agent-run-events']")) {
       return Promise.resolve(sequenceEventRows(apl, rows.events ?? []));
@@ -1941,7 +1937,6 @@ describe("RUN-04: agent run telemetry families", () => {
 
     dispatchAxiomQueries({
       [run.runId]: {
-        visibility: [{ sequenceNumber: 0 }, { sequenceNumber: 1 }],
         events: [
           agentEvent(run.runId, 0, "First event"),
           agentEvent(run.runId, 1, "Second event"),
@@ -1970,6 +1965,8 @@ describe("RUN-04: agent run telemetry families", () => {
       hasMore: true,
       nextCursor: "sequence:asc:0",
       framework: "claude-code",
+      status: "completed",
+      lastEventSequence: 1,
     });
 
     const cursor = firstPage.body.nextCursor;
@@ -1995,6 +1992,8 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     ]);
     expect(secondPage.body.hasMore).toBeFalsy();
+    expect(secondPage.body.status).toBe("completed");
+    expect(secondPage.body.lastEventSequence).toBe(1);
 
     const memberPage = await reads.requestZeroRunAgentEvents(
       member,
@@ -2007,11 +2006,7 @@ describe("RUN-04: agent run telemetry families", () => {
 
     const eventQueries = context.mocks.axiom.query.mock.calls.filter(
       ([apl]) => {
-        return (
-          typeof apl === "string" &&
-          apl.includes("['agent-run-events']") &&
-          !apl.includes("| project sequenceNumber")
-        );
+        return typeof apl === "string" && apl.includes("['agent-run-events']");
       },
     );
     expect(eventQueries).toHaveLength(2);

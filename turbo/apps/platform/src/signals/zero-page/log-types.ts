@@ -122,4 +122,6 @@ export interface AgentEventsResponse {
   hasMore: boolean;
   nextCursor?: string | null;
   framework: string;
+  status: LogStatus;
+  lastEventSequence: number | null;
 }

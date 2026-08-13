@@ -8,8 +8,14 @@ import type {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { pageSignal$ } from "../page-signal.ts";
 import { pathParams$ } from "../route.ts";
-import type { AgentEvent } from "../zero-page/log-types.ts";
+import { onRef, setLoop } from "../utils.ts";
+import type {
+  AgentEvent,
+  AgentEventsResponse,
+  LogStatus,
+} from "../zero-page/log-types.ts";
 import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
 import {
   formatActivityClockTime,
@@ -17,6 +23,7 @@ import {
 } from "./activity-time.ts";
 
 const AGENT_EVENTS_PAGE_LIMIT = 100;
+const AGENT_EVENTS_POLL_INTERVAL_MS = 1000;
 
 type AgentEventsClient = InitClientReturn<
   typeof zeroRunAgentEventsContract,
@@ -26,6 +33,8 @@ type AgentEventsClient = InitClientReturn<
 interface ZeroActivityEvents {
   readonly runId: string;
   readonly events: AgentEvent[];
+  readonly status: LogStatus;
+  readonly lastEventSequence: number | null;
 }
 
 interface ZeroActivityVisibleGroups {
@@ -44,50 +53,127 @@ export const currentRunId$ = computed((get) => {
 async function fetchAllAgentEvents(
   client: AgentEventsClient,
   runId: string,
-): Promise<AgentEvent[]> {
-  const events: AgentEvent[] = [];
+  signal: AbortSignal,
+): Promise<Omit<ZeroActivityEvents, "runId">> {
   const seenCursors = new Set<string>();
-  let cursor: string | undefined;
+  const firstPage = await accept(
+    client.getAgentEvents({
+      params: { id: runId },
+      query: {
+        limit: AGENT_EVENTS_PAGE_LIMIT,
+        order: "asc",
+      },
+      fetchOptions: { signal },
+    }),
+    [200],
+  );
+  const events = [...firstPage.body.events];
+  let page: AgentEventsResponse = firstPage.body;
 
-  while (true) {
+  while (page.hasMore) {
+    const nextCursor = page.nextCursor;
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      throw new Error("Agent event pagination cursor did not advance");
+    }
+    seenCursors.add(nextCursor);
     const result = await accept(
       client.getAgentEvents({
         params: { id: runId },
         query: {
           limit: AGENT_EVENTS_PAGE_LIMIT,
           order: "asc",
-          ...(cursor === undefined ? {} : { cursor }),
+          cursor: nextCursor,
         },
+        fetchOptions: { signal },
       }),
       [200],
     );
     events.push(...result.body.events);
-
-    if (!result.body.hasMore) {
-      return events;
-    }
-
-    const nextCursor = result.body.nextCursor;
-    if (!nextCursor || seenCursors.has(nextCursor)) {
-      throw new Error("Agent event pagination cursor did not advance");
-    }
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
+    page = result.body;
   }
+
+  return {
+    events,
+    status: page.status,
+    lastEventSequence: page.lastEventSequence,
+  };
 }
 
+const internalActivityEventsReload$ = state(0);
+
 export const zeroActivityEvents$ = computed(async (get) => {
+  get(internalActivityEventsReload$);
   const runId = get(currentRunId$);
   if (!runId) {
     return null;
   }
 
   const client = get(zeroClient$)(zeroRunAgentEventsContract);
+  const signal = get(pageSignal$);
   return {
     runId,
-    events: await fetchAllAgentEvents(client, runId),
+    ...(await fetchAllAgentEvents(client, runId, signal)),
   } satisfies ZeroActivityEvents;
 });
+
+function isTerminalStatus(status: LogStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "timeout" ||
+    status === "cancelled"
+  );
+}
+
+function visibleEventSequence(events: readonly AgentEvent[]): number {
+  let visibleThrough = -1;
+  for (const event of events) {
+    if (event.sequenceNumber <= visibleThrough) {
+      continue;
+    }
+    if (event.sequenceNumber !== visibleThrough + 1) {
+      break;
+    }
+    visibleThrough = event.sequenceNumber;
+  }
+  return visibleThrough;
+}
+
+function reachedTerminalEventWatermark(data: ZeroActivityEvents): boolean {
+  if (!isTerminalStatus(data.status)) {
+    return false;
+  }
+  return (
+    data.lastEventSequence === null ||
+    visibleEventSequence(data.events) >= data.lastEventSequence
+  );
+}
+
+const pollActivityEvents$ = command(
+  async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
+    let shouldReload = false;
+    await setLoop(
+      async (loopSignal) => {
+        if (shouldReload) {
+          set(internalActivityEventsReload$, (current) => {
+            return current + 1;
+          });
+        }
+        shouldReload = true;
+        const events = await get(zeroActivityEvents$);
+        loopSignal.throwIfAborted();
+        if (!events || reachedTerminalEventWatermark(events)) {
+          return true;
+        }
+        return false;
+      },
+      AGENT_EVENTS_POLL_INTERVAL_MS,
+      signal,
+    );
+  },
+);
+
+export const activityEventsPollerRef$ = onRef(pollActivityEvents$);
 
 export const zeroActivityDetail$ = computed(async (get) => {
   const runId = get(currentRunId$);
