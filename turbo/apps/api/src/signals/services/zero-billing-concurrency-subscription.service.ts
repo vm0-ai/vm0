@@ -589,6 +589,39 @@ function previewTargetQuantity(
     : args.quantity;
 }
 
+interface DeferredConcurrencyPreviewArgs {
+  readonly item: StripeSubscriptionItem;
+  readonly currentQuantity: number;
+  readonly targetQuantity: number;
+  readonly recurringPreview: StripeInvoice;
+  readonly recurringLines: readonly StripeInvoiceLine[];
+}
+
+function deferredConcurrencyPreviewResponse(
+  args: DeferredConcurrencyPreviewArgs,
+): PreviewConcurrencySubscriptionChangeResult {
+  return {
+    ok: true,
+    preview: {
+      currentQuantity: args.currentQuantity,
+      targetQuantity: args.targetQuantity,
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: recurringConcurrencyAmount(
+        args.recurringPreview,
+        args.recurringLines,
+      ),
+      currency: args.recurringPreview.currency,
+      ...(args.targetQuantity < args.currentQuantity
+        ? {
+            effectiveAt: new Date(
+              concurrencyItemPeriod(args.item).end * 1000,
+            ).toISOString(),
+          }
+        : {}),
+    },
+  };
+}
+
 export const previewStripeConcurrencySubscriptionChange$ = command(
   async (
     _,
@@ -630,9 +663,10 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         ? { id: item.id, quantity: targetQuantity }
         : { price: args.priceId, quantity: targetQuantity },
     ];
-    const existingSchedule = scheduleId
-      ? await stripe.subscriptionSchedules.retrieve(scheduleId)
-      : null;
+    const existingSchedule =
+      scheduleId && targetQuantity < currentQuantity
+        ? await stripe.subscriptionSchedules.retrieve(scheduleId)
+        : null;
     signal.throwIfAborted();
     const recurringPreviewParams: StripeInvoiceCreatePreviewParams =
       scheduleId && existingSchedule
@@ -666,22 +700,13 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         recurringPreview,
         signal,
       );
-      return {
-        ok: true,
-        preview: {
-          currentQuantity,
-          targetQuantity,
-          immediateAmountCents: 0,
-          nextRecurringAmountCents: recurringConcurrencyAmount(
-            recurringPreview,
-            recurringLines,
-          ),
-          currency: recurringPreview.currency,
-          effectiveAt: new Date(
-            concurrencyItemPeriod(item).end * 1000,
-          ).toISOString(),
-        },
-      };
+      return deferredConcurrencyPreviewResponse({
+        item,
+        currentQuantity,
+        targetQuantity,
+        recurringPreview,
+        recurringLines,
+      });
     }
 
     const [immediatePreview, recurringPreview] = await Promise.all([
@@ -766,8 +791,8 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
           }
         : { ok: false, reason: "pending_update" };
     }
-    const scheduledChange = stripeObjectId(subscription.schedule) !== null;
-    if (targetQuantity === item.quantity && !scheduledChange) {
+    const scheduleId = stripeObjectId(subscription.schedule);
+    if (targetQuantity === item.quantity && scheduleId === null) {
       return {
         ok: true,
         response: { status: "completed", hostedInvoiceUrl: null },
@@ -775,7 +800,7 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       };
     }
 
-    if (targetQuantity <= item.quantity) {
+    if (targetQuantity < item.quantity) {
       const effectiveAt = await scheduleConcurrencyChange(
         subscription,
         targetQuantity,
@@ -792,6 +817,19 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       };
     }
 
+    if (scheduleId !== null) {
+      await stripe.subscriptionSchedules.release(scheduleId);
+      signal.throwIfAborted();
+    }
+
+    if (targetQuantity === item.quantity) {
+      return {
+        ok: true,
+        response: { status: "completed", hostedInvoiceUrl: null },
+        subscription: { ...subscription, schedule: null },
+      };
+    }
+
     const updatedSubscription = await stripe.subscriptions.update(
       subscription.id,
       {
@@ -803,16 +841,6 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       },
     );
     signal.throwIfAborted();
-    if (scheduledChange) {
-      await scheduleConcurrencyChange(
-        {
-          ...updatedSubscription,
-          schedule: updatedSubscription.schedule ?? subscription.schedule,
-        },
-        targetQuantity,
-        signal,
-      );
-    }
     return {
       ok: true,
       response: appliedConcurrencyChangeResponse(updatedSubscription),
