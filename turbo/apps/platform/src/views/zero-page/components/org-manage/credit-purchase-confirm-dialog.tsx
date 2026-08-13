@@ -1,8 +1,8 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@vm0/core";
-import { Button } from "@vm0/ui";
+import { FeatureSwitchKey } from "@okouai/core";
+import { Button } from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
