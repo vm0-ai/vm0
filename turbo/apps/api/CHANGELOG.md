@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.444.2](https://github.com/vm0-ai/vm0/compare/api-v1.444.1...api-v1.444.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **billing:** align custom concurrency billing cycle ([#26843](https://github.com/vm0-ai/vm0/issues/26843)) ([6b242e2](https://github.com/vm0-ai/vm0/commit/6b242e2278cb7cf2e2c786538bab97b51924a53d))
+
+
+### Refactoring
+
+* **cli:** remove chat queued command ([#26925](https://github.com/vm0-ai/vm0/issues/26925)) ([b8b3306](https://github.com/vm0-ai/vm0/commit/b8b33065b7eaf0b6c0e371ccba07b5924315d31d))
+* **steam:** neutralize the steam player vertical slice ([#26949](https://github.com/vm0-ai/vm0/issues/26949)) ([8a57848](https://github.com/vm0-ai/vm0/commit/8a5784890954d0634f394526d80d0056d8ea2bf1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.2
+    * @okouai/core bumped to 8.556.0
+    * @okouai/db bumped to 1.198.3
+    * @okouai/pi-agent-runtime bumped to 1.4.10
+
 ## [1.444.1](https://github.com/vm0-ai/vm0/compare/api-v1.444.0...api-v1.444.1) (2026-08-13)
 
 
