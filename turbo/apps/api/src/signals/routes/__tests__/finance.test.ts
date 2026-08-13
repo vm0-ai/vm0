@@ -2,7 +2,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
-import { zeroFinanceContract } from "@okouai/api-contracts/contracts/zero-finance";
+import { financeContract } from "@okouai/api-contracts/contracts/finance";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -18,12 +18,12 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroFinanceRoutes } from "../zero-finance";
+import { financeRoutes } from "../finance";
 
 const context = testContext();
 const FINANCE_ROUTES = Object.freeze([
   ...zeroBillingStatusRoutes,
-  ...zeroFinanceRoutes,
+  ...financeRoutes,
 ]);
 const APIDOJO_BASE_URL = "https://apidojo-yahoo-finance-v1.p.rapidapi.com";
 
@@ -62,7 +62,7 @@ describe("okou finance routes", () => {
   it("rejects zero tokens without finance:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
-      throw new Error("Zero Finance test actor must belong to an organization");
+      throw new Error("Finance test actor must belong to an organization");
     }
     const completed = await createBddApi(context).completeOnboarding(actor);
     expect(completed.status).toBe(200);
@@ -71,14 +71,14 @@ describe("okou finance routes", () => {
       scope: "zero",
       userId: actor.userId,
       orgId: actor.orgId,
-      runId: "run_zero_finance_missing_capability",
+      runId: "run_finance_missing_capability",
       capabilities: [],
       iat: seconds,
       exp: seconds + 60,
     });
 
     const response = await accept(
-      client()(zeroFinanceContract).quote({
+      client()(financeContract).quote({
         headers: { authorization: `Bearer ${token}` },
         body: { symbol: "AAPL" },
       }),
@@ -130,28 +130,28 @@ describe("okou finance routes", () => {
     );
 
     const search = await accept(
-      client()(zeroFinanceContract).search({
+      client()(financeContract).search({
         headers: authenticate(actor),
         body: { query: "Tencent" },
       }),
       [200],
     );
     const profile = await accept(
-      client()(zeroFinanceContract).profile({
+      client()(financeContract).profile({
         headers: authenticate(actor),
         body: { symbol: "AAPL" },
       }),
       [200],
     );
     const quote = await accept(
-      client()(zeroFinanceContract).quote({
+      client()(financeContract).quote({
         headers: authenticate(actor),
         body: { symbol: "AAPL" },
       }),
       [200],
     );
     const chart = await accept(
-      client()(zeroFinanceContract).chart({
+      client()(financeContract).chart({
         headers: authenticate(actor),
         body: { symbol: "AAPL", range: "5y", interval: "1wk" },
       }),
@@ -194,7 +194,7 @@ describe("okou finance routes", () => {
     );
 
     const response = await accept(
-      client()(zeroFinanceContract).quote({
+      client()(financeContract).quote({
         headers: authenticate(actor),
         body: { symbol: "AAPL" },
       }),
@@ -218,7 +218,7 @@ describe("okou finance routes", () => {
     );
 
     const response = await accept(
-      client()(zeroFinanceContract).profile({
+      client()(financeContract).profile({
         headers: authenticate(actor),
         body: { symbol: "AAPL" },
       }),

@@ -1,16 +1,16 @@
-import { zeroFinanceContract } from "@okouai/api-contracts/contracts/zero-finance";
+import { financeContract } from "@okouai/api-contracts/contracts/finance";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { zeroFinance$ } from "../services/zero-finance.service";
+import { finance$ } from "../services/finance.service";
 
-const searchBody$ = bodyResultOf(zeroFinanceContract.search);
-const profileBody$ = bodyResultOf(zeroFinanceContract.profile);
-const quoteBody$ = bodyResultOf(zeroFinanceContract.quote);
-const chartBody$ = bodyResultOf(zeroFinanceContract.chart);
+const searchBody$ = bodyResultOf(financeContract.search);
+const profileBody$ = bodyResultOf(financeContract.profile);
+const quoteBody$ = bodyResultOf(financeContract.quote);
+const chartBody$ = bodyResultOf(financeContract.chart);
 
 const searchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -21,7 +21,7 @@ const searchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   return await set(
-    zeroFinance$,
+    finance$,
     { auth, request: { operation: "search", body: bodyResult.data } },
     signal,
   );
@@ -36,7 +36,7 @@ const profileInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   return await set(
-    zeroFinance$,
+    finance$,
     { auth, request: { operation: "profile", body: bodyResult.data } },
     signal,
   );
@@ -51,7 +51,7 @@ const quoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   return await set(
-    zeroFinance$,
+    finance$,
     { auth, request: { operation: "quote", body: bodyResult.data } },
     signal,
   );
@@ -66,7 +66,7 @@ const chartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   return await set(
-    zeroFinance$,
+    finance$,
     { auth, request: { operation: "chart", body: bodyResult.data } },
     signal,
   );
@@ -78,21 +78,21 @@ const financeAuth = {
   requiredCapability: "finance:read",
 } as const;
 
-export const zeroFinanceRoutes: readonly RouteEntry[] = [
+export const financeRoutes: readonly RouteEntry[] = [
   {
-    route: zeroFinanceContract.search,
+    route: financeContract.search,
     handler: authRoute(financeAuth, searchInner$),
   },
   {
-    route: zeroFinanceContract.profile,
+    route: financeContract.profile,
     handler: authRoute(financeAuth, profileInner$),
   },
   {
-    route: zeroFinanceContract.quote,
+    route: financeContract.quote,
     handler: authRoute(financeAuth, quoteInner$),
   },
   {
-    route: zeroFinanceContract.chart,
+    route: financeContract.chart,
     handler: authRoute(financeAuth, chartInner$),
   },
 ];
