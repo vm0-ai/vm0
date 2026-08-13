@@ -1712,6 +1712,9 @@
       "frequentlyUsed": "Usados con frecuencia",
       "icon": "Icono del hilo de chat",
       "loadingEarlier": "Cargando mensajes anteriores",
+      "locator": {
+        "you": "Tú"
+      },
       "noEmojiFound": "No se ha encontrado ningún emoji",
       "notFound": "Hilo de chat no encontrado",
       "openArtifacts": "Abrir artefactos",

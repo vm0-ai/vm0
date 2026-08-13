@@ -1712,6 +1712,9 @@
       "frequentlyUsed": "Usato frequentemente",
       "icon": "Icona del thread di chat",
       "loadingEarlier": "Caricamento dei messaggi precedenti",
+      "locator": {
+        "you": "Tu"
+      },
       "noEmojiFound": "Nessuna emoji trovata",
       "notFound": "Conversazione non trovata",
       "openArtifacts": "Artefatti aperti",
