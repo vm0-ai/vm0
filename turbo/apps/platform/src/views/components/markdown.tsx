@@ -193,8 +193,15 @@ function MediaImageRenderer(props: MarkdownImageProps) {
 function MarkdownDivRenderer(props: MarkdownDivProps) {
   const { children, ...rest } = props;
   const data = props.node?.data;
+  // A card slot enters the tree as a paragraph and leaves it as this div, so it
+  // carries the block spacing the paragraph would have had — without it two
+  // consecutive cards sit border-to-border.
   if (data?.card) {
-    return <MarkdownCardView card={data.card} />;
+    return (
+      <div className="zero-markdown-card">
+        <MarkdownCardView card={data.card} />
+      </div>
+    );
   }
   if (typeof data?.copyCode === "string") {
     return (
