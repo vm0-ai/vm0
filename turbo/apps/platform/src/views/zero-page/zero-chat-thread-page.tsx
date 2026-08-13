@@ -3984,6 +3984,15 @@ const RUN_SECTION_LABEL_CLASS =
 const RUN_SECTION_ROW_CLASS =
   "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
+// A steer burst reads as one thing the user said, which means an even rhythm:
+// the copy button sits the same distance from the text above it as from
+// whatever follows — the next message, or the burst's acknowledgement. The
+// button already sits `mt-1` under its own message, so this pull cancels the
+// thread's 24px gap down to that same 4px on the other side of it. It is the
+// same pull a run-section row uses, which is why the acknowledgement can go on
+// carrying `RUN_SECTION_ROW_CLASS`.
+const MESSAGE_STACK_PULL_CLASS = "-mt-5";
+
 function RunSectionDivider({
   label,
   labelPosition = "left",
@@ -4037,6 +4046,13 @@ function RunSectionDividerRow({
 // whether all three landed, so the label counts them; repeating "this one
 // arrived" under each message answers a question nobody asked and chops the
 // burst into unrelated pieces.
+//
+// The row carries no rule. A hairline is how the transcript marks a boundary
+// between two stretches of work, and drawing one under the burst cut the
+// acknowledgement away from the very messages it is about — the label ended up
+// reading as the start of something else rather than the closing line of what
+// the user just sent. It sits one stack gap under the burst for the same
+// reason: the burst and its acknowledgement are one block.
 function SteerAcknowledgementRow({ count }: { count: number }) {
   const { t } = useTranslation();
   const sweepRef = useSet(steerAcknowledgementRef$);
@@ -4047,29 +4063,36 @@ function SteerAcknowledgementRow({ count }: { count: number }) {
     { count },
   );
   return (
-    <RunSectionDividerRow
-      label={
-        // Remounting on every change is what tells the sweep to run. The
-        // outgoing layer stays empty here: the wording it erases is whatever
-        // this row said last, which only the row itself still knows.
-        <span
-          key={label}
-          ref={sweepRef}
-          data-testid="chat-steer-acknowledgement"
-          data-steer-acknowledgement-label={label}
-          className="zero-steer-ack"
-        >
+    <div className={RUN_SECTION_ROW_CLASS}>
+      <div className="hidden @[900px]:block" />
+      {/* The label keeps its own width rather than filling the column: the
+          sweep masks are sized from this box, so a full-width one would drag
+          the boundary across empty space beside the text. No min-height: the
+          row is the text, so the gap above it is the gap that was measured. */}
+      <div className="flex justify-end">
+        <p className={cn(RUN_SECTION_LABEL_CLASS, "text-right")}>
+          {/* Remounting on every change is what tells the sweep to run. The
+              outgoing layer stays empty here: the wording it erases is whatever
+              this row said last, which only the row itself still knows. */}
           <span
-            aria-hidden="true"
-            data-steer-acknowledgement-outgoing=""
-            className="zero-steer-ack-layer zero-steer-ack-outgoing"
-          />
-          <span className="zero-steer-ack-layer zero-steer-ack-incoming">
-            {label}
+            key={label}
+            ref={sweepRef}
+            data-testid="chat-steer-acknowledgement"
+            data-steer-acknowledgement-label={label}
+            className="zero-steer-ack"
+          >
+            <span
+              aria-hidden="true"
+              data-steer-acknowledgement-outgoing=""
+              className="zero-steer-ack-layer zero-steer-ack-outgoing"
+            />
+            <span className="zero-steer-ack-layer zero-steer-ack-incoming">
+              {label}
+            </span>
           </span>
-        </span>
-      }
-    />
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -6215,14 +6238,34 @@ function PagedUserGroup({
   }).length;
   return (
     <>
-      {group.events.map((event) => {
+      {group.events.map((event, index) => {
         const modelChange = modelChanges.get(event.id);
+        const previousEvent = group.events[index - 1];
+        // Two steers in a row are one thing the user said, so they close up.
+        // The stack is scoped to the burst rather than to adjacency: outside
+        // this feature a run of user messages carries no acknowledgement to
+        // close the group, and `steerEventIds` is empty whenever the switch is
+        // off, so the transcript there keeps the spacing it has today.
+        // Anything that belongs between two of them — a model change, a
+        // message that renders as its own card rather than a bubble — ends the
+        // stack.
+        const stackedOnPrevious =
+          previousEvent !== undefined &&
+          modelChange === undefined &&
+          steerEventIds.has(event.id) &&
+          steerEventIds.has(previousEvent.id) &&
+          rendersUserBubble(event) &&
+          rendersUserBubble(previousEvent);
         return (
           <div key={event.id} className="contents">
             {modelChange === undefined ? null : (
               <ModelChangeDividerRow change={modelChange} />
             )}
-            <PagedUserMessage event={event} thread={thread} />
+            <PagedUserMessage
+              event={event}
+              thread={thread}
+              stackedOnPrevious={stackedOnPrevious}
+            />
           </div>
         );
       })}
@@ -6231,6 +6274,16 @@ function PagedUserGroup({
         return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
     </>
+  );
+}
+
+// A user event does not always render as a bubble: a workflow run, a goal, and
+// a rejected goal each render as their own card or as nothing at all.
+function rendersUserBubble(event: EnrichedChatEvent): boolean {
+  return (
+    !isRejectedGoalUserMessage(event) &&
+    !isWorkflowUserMessage(event) &&
+    !isGoalUserMessage(event)
   );
 }
 
@@ -7468,9 +7521,11 @@ function messageImageLightboxTarget(
 function PagedUserMessage({
   event,
   thread,
+  stackedOnPrevious = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  stackedOnPrevious?: boolean;
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
@@ -7537,7 +7592,7 @@ function PagedUserMessage({
       id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
-      className="group"
+      className={cn("group", stackedOnPrevious && MESSAGE_STACK_PULL_CLASS)}
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
