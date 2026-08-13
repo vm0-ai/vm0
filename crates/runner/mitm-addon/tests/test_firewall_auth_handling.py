@@ -132,7 +132,6 @@ def _vm_info(
     encrypted_secrets: str = "iv:tag:data",
     include_encrypted_secrets: bool = True,
     billable_firewalls: list[str] | None = None,
-    include_billable_firewalls: bool = True,
     network_log_path: str | None = None,
 ) -> dict:
     if network_log_path is None:
@@ -144,11 +143,10 @@ def _vm_info(
         "runId": run_id,
         "sandboxToken": sandbox_marker,
         "networkLogPath": network_log_path,
+        "billableFirewalls": list(billable_firewalls or []),
     }
     if include_encrypted_secrets:
         vm_info["encryptedSecrets"] = encrypted_secrets
-    if include_billable_firewalls:
-        vm_info["billableFirewalls"] = list(billable_firewalls or [])
     return vm_info
 
 
@@ -871,14 +869,12 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
 
-    async def test_missing_billable_firewalls_falls_back_to_empty(
+    async def test_empty_billable_firewalls_is_not_billable(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
-        """billableFirewalls is optional in the TS schema — a vm_info without
-        the key must not KeyError; firewall_billable should be False."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry(api_id="run-1:0")
-        vm_info = _vm_info(tmp_path, include_billable_firewalls=False)
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry, rule="GET /repos")
         token_meta = _token_meta()
 

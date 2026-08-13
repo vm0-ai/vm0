@@ -131,6 +131,7 @@ def _candidate_precedence_vm(tmp_path: Path, *, custom_available: bool) -> dict[
     }
     vm: dict[str, object] = {
         "runId": _ORIGINAL_RUN_ID,
+        "cliAgentType": "claude-code",
         "sandboxToken": "candidate-precedence-token",
         "networkLogPath": str(tmp_path / "net.jsonl"),
         "proxyLogPath": str(tmp_path / "proxy.jsonl"),

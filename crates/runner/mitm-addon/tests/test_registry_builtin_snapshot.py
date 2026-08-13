@@ -322,6 +322,8 @@ class TestRegistryBuiltinSnapshot:
             {
                 "10.200.0.1": {
                     "runId": "run-pinned-cache",
+                    "billableFirewalls": [],
+                    "cliAgentType": "claude-code",
                     "firewalls": [
                         {"kind": "builtin", "name": "alpha"},
                         {"kind": "builtin", "name": "beta"},

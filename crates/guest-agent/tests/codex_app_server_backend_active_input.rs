@@ -58,11 +58,8 @@ async fn codex_app_server_backend_steers_active_input_into_active_turn()
         HttpClient::with_api_config(server.base_url(), "test-token", "", RUN_ID, Duration::ZERO)?,
     )?;
     let controller = active_input.controller();
-    let payload = serde_json::to_vec(&json!({
-        "type": "active-input",
-        "deliveryId": DELIVERY_ID,
-        "text": "follow-up prompt",
-    }))?;
+    let payload =
+        guest_contracts::active_input::encode_active_input(DELIVERY_ID, "follow-up prompt")?;
     assert_eq!(
         controller.handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted

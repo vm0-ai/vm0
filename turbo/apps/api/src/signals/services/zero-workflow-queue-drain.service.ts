@@ -1,7 +1,4 @@
-import {
-  zeroWorkflows,
-  zeroWorkflowAutomations,
-} from "@okouai/db/schema/zero-workflow";
+import { workflows, workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/log";
@@ -33,7 +30,7 @@ const log = logger("ZeroWorkflowQueueDrain");
 const MAX_DRAIN_ATTEMPTS = 5;
 
 interface DequeueTarget {
-  readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+  readonly automation: typeof workflowAutomations.$inferSelect;
   readonly agentId: string;
 }
 
@@ -44,14 +41,11 @@ async function loadDequeueTarget(
   const [row] = await db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
+      agentId: workflows.agentId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .where(eq(zeroWorkflowAutomations.id, event.automationId))
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
+    .where(eq(workflowAutomations.id, event.automationId))
     .limit(1);
   return row ?? null;
 }
@@ -63,7 +57,7 @@ type WorkflowRunAutonomyBudget =
 async function resolveWorkflowRunAutonomyBudget(
   db: Db,
   event: PendingWorkflowQueueEvent,
-  automation: typeof zeroWorkflowAutomations.$inferSelect,
+  automation: typeof workflowAutomations.$inferSelect,
 ): Promise<WorkflowRunAutonomyBudget> {
   const sourceRunId =
     event.workflowAutomationEventType === "chat-run-finished"

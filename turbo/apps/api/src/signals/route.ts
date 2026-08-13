@@ -170,7 +170,7 @@ import { zeroFeishuBrowserConnectRoutes } from "./routes/zero-feishu-browser-con
 import { zeroFeishuConnectRoutes } from "./routes/zero-feishu-connect";
 import { zeroFeishuEventsRoutes } from "./routes/zero-feishu-events";
 import { zeroFeishuOauthRoutes } from "./routes/zero-feishu-oauth";
-import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
+import { steamPlayerRoutes } from "./routes/steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
@@ -370,7 +370,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsTeamsUploadCompleteRoutes,
   ...zeroIntegrationsTeamsUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
-  ...zeroSteamPlayerRoutes,
+  ...steamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,

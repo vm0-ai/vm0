@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.444.1](https://github.com/vm0-ai/vm0/compare/api-v1.444.0...api-v1.444.1) (2026-08-13)
+
+
+### Refactoring
+
+* **chat:** read search from durable message projection ([#26907](https://github.com/vm0-ai/vm0/issues/26907)) ([1861a16](https://github.com/vm0-ai/vm0/commit/1861a16c8de848af60a49f424f78b61c79daca21))
+* **core:** canonicalize seed modules and onboarding copy ([#26900](https://github.com/vm0-ai/vm0/issues/26900)) ([929d020](https://github.com/vm0-ai/vm0/commit/929d0207440b7cccb8051d17890d8096cbd96ea1))
+* **translation:** neutralize managed translation naming ([#26932](https://github.com/vm0-ai/vm0/issues/26932)) ([8c18ee2](https://github.com/vm0-ai/vm0/commit/8c18ee2adec75865f92365c7e074d1b36177a718)), closes [#26873](https://github.com/vm0-ai/vm0/issues/26873)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.1
+    * @okouai/core bumped to 8.555.1
+    * @okouai/db bumped to 1.198.2
+    * @okouai/pi-agent-runtime bumped to 1.4.9
+
 ## [1.444.0](https://github.com/vm0-ai/vm0/compare/api-v1.443.0...api-v1.444.0) (2026-08-13)
 
 

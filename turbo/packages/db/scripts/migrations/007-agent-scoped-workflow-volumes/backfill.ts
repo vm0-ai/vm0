@@ -70,7 +70,7 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@okouai/core";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
-import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
+import { workflows } from "@okouai/db/schema/workflow";
 import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -731,9 +731,9 @@ async function backfillInstruction(
   }
 
   await db
-    .update(zeroWorkflows)
+    .update(workflows)
     .set({ instruction })
-    .where(eq(zeroWorkflows.id, workflow.id));
+    .where(eq(workflows.id, workflow.id));
   console.log(
     `      backfilled instruction for ${workflow.id} (${instruction.length} chars)`,
   );
@@ -770,9 +770,9 @@ async function deleteLegacyVolumes(
   const currentIdNames = new Set(
     (
       await db
-        .select({ id: zeroWorkflows.id })
-        .from(zeroWorkflows)
-        .where(eq(zeroWorkflows.orgId, orgId))
+        .select({ id: workflows.id })
+        .from(workflows)
+        .where(eq(workflows.orgId, orgId))
     ).map((w) => {
       return getCustomSkillStorageName(w.id);
     }),
@@ -834,13 +834,13 @@ async function loadWorkflows(db: Db, orgId: string): Promise<WorkflowRow[]> {
   if (PRESEED) {
     const rows = await db
       .select({
-        id: zeroWorkflows.id,
-        orgId: zeroWorkflows.orgId,
-        name: zeroWorkflows.name,
+        id: workflows.id,
+        orgId: workflows.orgId,
+        name: workflows.name,
       })
-      .from(zeroWorkflows)
-      .where(eq(zeroWorkflows.orgId, orgId))
-      .orderBy(asc(zeroWorkflows.createdAt));
+      .from(workflows)
+      .where(eq(workflows.orgId, orgId))
+      .orderBy(asc(workflows.createdAt));
 
     return rows.map((row) => {
       return { ...row, description: null, instruction: null };
@@ -849,15 +849,15 @@ async function loadWorkflows(db: Db, orgId: string): Promise<WorkflowRow[]> {
 
   return await db
     .select({
-      id: zeroWorkflows.id,
-      orgId: zeroWorkflows.orgId,
-      name: zeroWorkflows.name,
-      description: zeroWorkflows.description,
-      instruction: zeroWorkflows.instruction,
+      id: workflows.id,
+      orgId: workflows.orgId,
+      name: workflows.name,
+      description: workflows.description,
+      instruction: workflows.instruction,
     })
-    .from(zeroWorkflows)
-    .where(eq(zeroWorkflows.orgId, orgId))
-    .orderBy(asc(zeroWorkflows.createdAt));
+    .from(workflows)
+    .where(eq(workflows.orgId, orgId))
+    .orderBy(asc(workflows.createdAt));
 }
 
 async function processOrg(
@@ -1007,9 +1007,9 @@ async function main(): Promise<void> {
       orgIds = [SINGLE_ORG_ID];
     } else {
       const rows = await db
-        .selectDistinct({ orgId: zeroWorkflows.orgId })
-        .from(zeroWorkflows)
-        .orderBy(asc(zeroWorkflows.orgId));
+        .selectDistinct({ orgId: workflows.orgId })
+        .from(workflows)
+        .orderBy(asc(workflows.orgId));
       orgIds = rows.map((r) => {
         return r.orgId;
       });

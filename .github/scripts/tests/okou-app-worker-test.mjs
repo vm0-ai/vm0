@@ -404,7 +404,7 @@ const production = await requestSharedPage({
 assert.equal(production.response.status, 200);
 assert.equal(
   production.observedUrl,
-  `https://api.vm0.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
+  `https://api.okou.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),
@@ -421,6 +421,10 @@ const missing = await requestSharedPage({
   },
 });
 assert.equal(missing.response.status, 404);
+assert.equal(
+  missing.observedUrl,
+  `https://api.vm0.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
+);
 assert.equal(
   missing.response.headers.get("cache-control"),
   "public, max-age=60, s-maxage=60",

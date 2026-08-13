@@ -51,11 +51,8 @@ async fn claude_receipts_delivery_only_after_follow_up_reaches_stdin()
         receipt_http,
     )?;
     let controller = active_input.controller();
-    let payload = serde_json::to_vec(&json!({
-        "type": "active-input",
-        "deliveryId": DELIVERY_ID,
-        "text": "follow-up prompt",
-    }))?;
+    let payload =
+        guest_contracts::active_input::encode_active_input(DELIVERY_ID, "follow-up prompt")?;
     assert_eq!(
         controller.handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted

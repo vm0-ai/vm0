@@ -6,6 +6,7 @@ use api_contracts::generated::types::runners::runs::active_inputs::{
     receipt::Response as ActiveInputReceiptResponse,
     reserve::{Response as ActiveInputReserveResponse, ResponseRejectedReason},
 };
+use guest_contracts::active_input::encode_active_input;
 use sandbox::{
     GuestProcessControlHandle, ProcessControlFailureKind, ProcessControlGuestStatus,
     ProcessControlOutcome, ProcessControlWriteState, Sandbox,
@@ -14,8 +15,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::active_input::{
-    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, ActiveInputBatch, ActiveInputPayload,
-    ActiveInputSource, ApiActiveInputRecovery, local_active_input_delivery_id,
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, ActiveInputBatch, ActiveInputSource,
+    ApiActiveInputRecovery, local_active_input_delivery_id,
 };
 use crate::ids::RunId;
 
@@ -258,7 +259,7 @@ async fn forward_once(
     control: &GuestProcessControlHandle,
     warn_retryable_failure: bool,
 ) -> ForwardDisposition {
-    let bytes = match ActiveInputPayload::new(delivery_id, text).to_vec() {
+    let bytes = match encode_active_input(delivery_id, text) {
         Ok(bytes) if bytes.len() <= ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES => bytes,
         Ok(_) => {
             warn!(

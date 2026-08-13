@@ -1406,6 +1406,32 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("renders 100 chat threads before the sidebar viewport is measured", async () => {
+    prepareDefaultAgent();
+    const firstThread = createThread(EXISTING_THREAD_ID, "Fallback chat 1");
+    const threads = [
+      firstThread,
+      ...Array.from({ length: 119 }, (_, index) => {
+        return createThread(
+          `b3200000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+          `Fallback chat ${index + 2}`,
+        );
+      }),
+    ];
+    mockSidebarThreadStory(threads);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${firstThread.id}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("sidebar-chat-thread-virtual-row"),
+      ).toHaveLength(100);
+    });
+  });
+
   it("aligns the current virtualized chat row with the sidebar scroll area top on page setup", async () => {
     prepareDefaultAgent();
     const leadingThreads = Array.from({ length: 24 }, (_, index) => {
