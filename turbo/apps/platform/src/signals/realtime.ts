@@ -650,6 +650,18 @@ const connectRealtimeClient$ = command(
   },
 );
 
+const closeRealtimeWhileHidden$ = command(({ get }) => {
+  if (document.visibilityState === "visible") {
+    return;
+  }
+  const session = get(internalRealtimeSession$);
+  if (!session) {
+    return;
+  }
+  L.debug("page hidden, closing realtime connection");
+  session.close();
+});
+
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const session = get(internalRealtimeSession$);
@@ -658,8 +670,13 @@ const foregroundRealtimeCatchUp$ = command(
       return;
     }
 
-    if (session.ably.connection.state === "failed") {
-      L.debug("foreground catch-up rebuilding failed realtime connection");
+    const connectionState = session.ably.connection.state;
+    if (
+      connectionState === "failed" ||
+      connectionState === "closing" ||
+      connectionState === "closed"
+    ) {
+      L.debug("foreground catch-up rebuilding inactive realtime connection");
       const connected = await set(connectRealtimeClient$, signal);
       signal.throwIfAborted();
       await onRejection(session.channel.replace(connected.channel), () => {
@@ -672,6 +689,11 @@ const foregroundRealtimeCatchUp$ = command(
         close: connected.close,
       });
       session.close();
+    }
+
+    if (document.visibilityState !== "visible") {
+      set(closeRealtimeWhileHidden$);
+      return;
     }
 
     L.debug("foreground catch-up ready, poking subscribers");
@@ -719,6 +741,13 @@ export const setupRealtime$ = command(
       close: connected.close,
     });
     set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        set(closeRealtimeWhileHidden$);
+      },
+      { signal },
+    );
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {

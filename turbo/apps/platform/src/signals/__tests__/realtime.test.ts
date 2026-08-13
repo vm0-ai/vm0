@@ -272,12 +272,16 @@ describe("realtime signals", () => {
     });
   });
 
-  it("waits for one foreground auth recovery before rerunning an active loop", async () => {
+  it("closes realtime while hidden and reconnects after foreground auth", async () => {
     mockSignedInUser();
     const topic = "test:visibility";
     const subscriber = testSubscriber();
     const touchCanFinish = context.mocks.deferred<void>();
     mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => {
+      return visibilityState;
+    });
     let runs = 0;
     const loop$ = command((_ctx, _signal: AbortSignal) => {
       runs += 1;
@@ -303,16 +307,23 @@ describe("realtime signals", () => {
       expect(runs).toBe(1);
     });
 
-    expect(document.visibilityState).toBe("visible");
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+
+    visibilityState = "visible";
     document.dispatchEvent(new Event("visibilitychange"));
     window.dispatchEvent(new Event("focus"));
     await waitFor(() => {
       expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
     });
     expect(runs).toBe(1);
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
 
     touchCanFinish.resolve();
     await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
       expect(runs).toBe(2);
     });
   });
