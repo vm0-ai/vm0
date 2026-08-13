@@ -95,6 +95,7 @@ pub enum NbdOrphanError {
 }
 
 /// Result of revalidating an observed orphan without disconnecting it.
+#[must_use = "orphan probe outcomes must be checked before reporting the device"]
 #[derive(Debug)]
 pub enum NbdOrphanProbe {
     /// The exact observed owner still satisfies the selected policy.
@@ -110,6 +111,7 @@ pub enum NbdOrphanProbe {
 }
 
 /// Result of revalidating and attempting to disconnect an observed orphan.
+#[must_use = "orphan disconnect outcomes must be checked for skipped or failed cleanup"]
 #[derive(Debug)]
 pub enum NbdOrphanDisconnect {
     /// Netlink disconnected the exact revalidated orphan.
