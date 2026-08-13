@@ -577,6 +577,24 @@ mod tests {
         }
     }
 
+    fn sandbox_op_successes(path: &Path, action_type: &str) -> Result<Vec<bool>, AgentError> {
+        let contents = std::fs::read_to_string(path)?;
+        let mut successes = Vec::new();
+        for line in contents.lines() {
+            let entry = serde_json::from_str::<serde_json::Value>(line)?;
+            if entry.get("action_type").and_then(serde_json::Value::as_str) != Some(action_type) {
+                continue;
+            }
+            let Some(success) = entry.get("success").and_then(serde_json::Value::as_bool) else {
+                return Err(AgentError::Execution(format!(
+                    "{action_type} telemetry omitted boolean success"
+                )));
+            };
+            successes.push(success);
+        }
+        Ok(successes)
+    }
+
     #[tokio::test]
     async fn snapshot_rejects_empty_prepare_response_before_upload_or_commit()
     -> Result<(), AgentError> {
@@ -944,6 +962,198 @@ mod tests {
         archive_upload.assert_calls(1);
         manifest_upload.assert_calls(1);
         commit.assert_calls(1);
+        prepare.delete_async().await;
+        archive_upload.delete_async().await;
+        manifest_upload.delete_async().await;
+        commit.delete_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn snapshot_archive_upload_failure_skips_manifest_and_commit() -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        disable_system_log();
+        let server = MockServer::start();
+
+        let artifact_dir = tempfile::tempdir().unwrap();
+        let root = artifact_dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files = file_json_values(&files);
+        let archive_url = format!("{}/test/failed-artifact-archive-upload", server.base_url());
+        let manifest_url = format!(
+            "{}/test/skipped-artifact-manifest-upload",
+            server.base_url()
+        );
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-failed-archive-upload",
+                    "storageId": SNAPSHOT_STORAGE_ID,
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-failed-archive-upload",
+                "existing": false,
+                "uploads": {
+                    "archive": {
+                        "key": "archive-key",
+                        "presignedUrl": archive_url,
+                    },
+                    "manifest": {
+                        "key": "manifest-key",
+                        "presignedUrl": manifest_url,
+                    },
+                },
+            }));
+        });
+        let archive_upload = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/failed-artifact-archive-upload");
+            then.status(403);
+        });
+        let manifest_upload = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/skipped-artifact-manifest-upload");
+            then.status(200);
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .json_body(serde_json::json!({ "success": true }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_id: SNAPSHOT_STORAGE_ID,
+                run_id: "run-failed-archive-upload",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected archive upload HTTP error");
+        };
+        assert_eq!(message, "PUT presigned: HTTP 403 Forbidden");
+        prepare.assert_calls(1);
+        archive_upload.assert_calls(1);
+        manifest_upload.assert_calls(0);
+        commit.assert_calls(0);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_s3_upload")?,
+            vec![false]
+        );
+        prepare.delete_async().await;
+        archive_upload.delete_async().await;
+        manifest_upload.delete_async().await;
+        commit.delete_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn snapshot_manifest_upload_failure_skips_commit() -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        disable_system_log();
+        let server = MockServer::start();
+
+        let artifact_dir = tempfile::tempdir().unwrap();
+        let root = artifact_dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files = file_json_values(&files);
+        let archive_url = format!(
+            "{}/test/successful-artifact-archive-upload",
+            server.base_url()
+        );
+        let manifest_url = format!("{}/test/failed-artifact-manifest-upload", server.base_url());
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-failed-manifest-upload",
+                    "storageId": SNAPSHOT_STORAGE_ID,
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-failed-manifest-upload",
+                "existing": false,
+                "uploads": {
+                    "archive": {
+                        "key": "archive-key",
+                        "presignedUrl": archive_url,
+                    },
+                    "manifest": {
+                        "key": "manifest-key",
+                        "presignedUrl": manifest_url,
+                    },
+                },
+            }));
+        });
+        let archive_upload = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/successful-artifact-archive-upload");
+            then.status(200);
+        });
+        let manifest_upload = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/failed-artifact-manifest-upload");
+            then.status(403);
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .json_body(serde_json::json!({ "success": true }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_id: SNAPSHOT_STORAGE_ID,
+                run_id: "run-failed-manifest-upload",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected manifest upload HTTP error");
+        };
+        assert_eq!(message, "PUT presigned: HTTP 403 Forbidden");
+        prepare.assert_calls(1);
+        archive_upload.assert_calls(1);
+        manifest_upload.assert_calls(1);
+        commit.assert_calls(0);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_s3_upload")?,
+            vec![false]
+        );
         prepare.delete_async().await;
         archive_upload.delete_async().await;
         manifest_upload.delete_async().await;
