@@ -379,17 +379,49 @@ async function fillCardNumber(
   );
   const payWithCard = await findPayWithCard(page);
   if (payWithCard) {
-    if (attachedCardNumber) {
-      await activateCardMethod(payWithCard, deadline);
-      if (await fillLocatedStripeField(attachedCardNumber, value, deadline)) {
-        return attachedCardNumber;
-      }
-      throw await stripeFieldError(page, CARD_NUMBER_FIELD);
-    }
-
     const baseline = await createStripeFrameBaseline(payWithCard.frame);
     try {
       await activateCardMethod(payWithCard, deadline);
+      if (attachedCardNumber) {
+        const visibleAfterActivation = await findStripeField(
+          page,
+          CARD_NUMBER_FIELD,
+          "visible",
+        );
+        if (
+          visibleAfterActivation &&
+          (await fillLocatedStripeField(
+            visibleAfterActivation,
+            value,
+            deadline,
+          ))
+        ) {
+          return visibleAfterActivation;
+        }
+
+        try {
+          if (
+            await fillLocatedStripeField(attachedCardNumber, value, deadline)
+          ) {
+            return attachedCardNumber;
+          }
+          throw await stripeFieldError(page, CARD_NUMBER_FIELD);
+        } catch (error: unknown) {
+          if (!attachedCardNumber.frame.isDetached()) {
+            throw error;
+          }
+          // Stripe replaced the exact field frame during Card activation.
+          // Transfer ownership to the newly attached descendant once; do not
+          // replay activation or retry the detached locator.
+          return await fillRevealedCardNumber(
+            page,
+            payWithCard,
+            baseline,
+            value,
+            deadline,
+          );
+        }
+      }
       return await fillRevealedCardNumber(
         page,
         payWithCard,

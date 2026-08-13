@@ -14,6 +14,7 @@ type CheckoutLayout =
   | "framed-accordion"
   | "iframe"
   | "late-frame"
+  | "replaced-field-frame"
   | "wallet";
 
 const CARD_FIELDS = `
@@ -29,6 +30,7 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
       "expanded",
       "iframe",
       "late-frame",
+      "replaced-field-frame",
       "wallet",
       "accordion",
       "framed-accordion",
@@ -52,6 +54,12 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
               await cardFrame
                 .locator("body")
                 .getAttribute("data-activation-count"),
+              "1",
+            );
+          }
+          if (layout === "replaced-field-frame") {
+            assert.equal(
+              await page.locator("body").getAttribute("data-activation-count"),
               "1",
             );
           }
@@ -84,7 +92,8 @@ function checkoutDocument(layout: CheckoutLayout): string {
     layout === "expanded" ||
     layout === "framed-accordion" ||
     layout === "iframe" ||
-    layout === "late-frame"
+    layout === "late-frame" ||
+    layout === "replaced-field-frame"
       ? ""
       : `<button id="pay-with-card" type="button"${
           layout === "accordion"
@@ -149,6 +158,29 @@ function checkoutDocument(layout: CheckoutLayout): string {
           }, { once: true });
         });
         host.append(cardFrame);
+      } else if (document.body.dataset.layout === "replaced-field-frame") {
+        document.body.dataset.activationCount = "0";
+        const payWithCard = document.createElement("button");
+        payWithCard.type = "button";
+        payWithCard.textContent = "Pay with card";
+        const initialFieldsFrame = document.createElement("iframe");
+        initialFieldsFrame.title = "Initial hidden card fields";
+        initialFieldsFrame.srcdoc = ${JSON.stringify(
+          `<div hidden>${CARD_FIELDS}</div>`,
+        )};
+        payWithCard.addEventListener("click", () => {
+          document.body.dataset.activationCount = String(
+            Number(document.body.dataset.activationCount) + 1
+          );
+          initialFieldsFrame.remove();
+          window.requestAnimationFrame(() => {
+            const replacementFieldsFrame = document.createElement("iframe");
+            replacementFieldsFrame.title = "Replacement card fields";
+            replacementFieldsFrame.srcdoc = cardFields;
+            host.append(replacementFieldsFrame);
+          });
+        }, { once: true });
+        host.append(payWithCard, initialFieldsFrame);
       } else if (document.body.dataset.layout === "framed-accordion") {
         for (let index = 0; index < 32; index += 1) {
           const unrelatedFrame = document.createElement("iframe");
