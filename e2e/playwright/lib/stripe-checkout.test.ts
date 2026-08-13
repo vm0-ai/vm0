@@ -8,7 +8,12 @@ import {
   fillStripeCheckout,
 } from "./stripe-checkout";
 
-type CheckoutLayout = "accordion" | "expanded" | "iframe" | "wallet";
+type CheckoutLayout =
+  | "accordion"
+  | "expanded"
+  | "iframe"
+  | "late-frame"
+  | "wallet";
 
 const CARD_FIELDS = `
   <label>Card number <input name="cardNumber" placeholder="1234 1234 1234 1234"></label>
@@ -22,6 +27,7 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
     for (const layout of [
       "expanded",
       "iframe",
+      "late-frame",
       "wallet",
       "accordion",
     ] as const) {
@@ -63,7 +69,7 @@ async function openCheckoutFixture(
 
 function checkoutDocument(layout: CheckoutLayout): string {
   const cardControl =
-    layout === "expanded" || layout === "iframe"
+    layout === "expanded" || layout === "iframe" || layout === "late-frame"
       ? ""
       : `<button id="pay-with-card" type="button"${
           layout === "accordion"
@@ -96,6 +102,31 @@ function checkoutDocument(layout: CheckoutLayout): string {
           `<!doctype html><html><body>${CARD_FIELDS}</body></html>`,
         )};
         host.append(frame);
+      } else if (document.body.dataset.layout === "late-frame") {
+        for (let index = 0; index < 32; index += 1) {
+          const unrelatedFrame = document.createElement("iframe");
+          unrelatedFrame.title = \`Unrelated frame \${index}\`;
+          host.append(unrelatedFrame);
+        }
+
+        const cardFrame = document.createElement("iframe");
+        cardFrame.title = "Late card frame";
+        cardFrame.srcdoc = '<button id="pay-with-card" type="button">Pay with card</button><div id="card-host"></div>';
+        cardFrame.addEventListener("load", () => {
+          const cardDocument = cardFrame.contentDocument;
+          const cardHost = cardDocument.querySelector("#card-host");
+          cardDocument.querySelector("#pay-with-card").addEventListener("click", (event) => {
+            if (!event.isTrusted) {
+              return;
+            }
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(() => {
+                cardHost.innerHTML = cardFields;
+              });
+            });
+          }, { once: true });
+        });
+        host.append(cardFrame);
       } else {
         document.querySelector("#pay-with-card").addEventListener("click", (event) => {
           if (document.body.dataset.layout === "wallet" && !event.isTrusted) {

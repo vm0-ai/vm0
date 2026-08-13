@@ -7,7 +7,7 @@ import {
 } from "@playwright/test";
 
 const FIELD_TIMEOUT_MS = 15_000;
-const LOCATOR_ATTEMPT_TIMEOUT_MS = 500;
+const FIELD_DISCOVERY_WINDOW_MS = 500;
 
 interface StripeFieldDefinition {
   readonly label: RegExp;
@@ -83,28 +83,40 @@ function payWithCardLocator(frame: Frame): Locator {
   return frame.getByRole("button", { name: /pay with card/i });
 }
 
-async function tryFillStripeField(
+async function waitForVisibleStripeField(
   page: Page,
   field: StripeFieldDefinition,
-  value: string,
   deadline: number,
-): Promise<boolean> {
-  for (const frame of page.frames()) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
-      return false;
-    }
-    if (
-      await fillFirst(
-        stripeFieldLocator(frame, field),
-        value,
-        Math.min(LOCATOR_ATTEMPT_TIMEOUT_MS, remaining),
-      )
-    ) {
-      return true;
-    }
+): Promise<Locator | null> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    return null;
   }
-  return false;
+
+  const timeout = Math.min(FIELD_DISCOVERY_WINDOW_MS, remaining);
+  const candidates = page.frames().map(async (frame): Promise<Locator> => {
+    const locator = stripeFieldLocator(frame, field).first();
+    await locator.waitFor({ state: "visible", timeout });
+    return locator;
+  });
+
+  try {
+    return await Promise.any(candidates);
+  } catch (error: unknown) {
+    if (!(error instanceof AggregateError)) {
+      throw error;
+    }
+
+    const failures: readonly unknown[] = error.errors;
+    const unexpectedFailure = failures.find(
+      (failure): failure is Error =>
+        failure instanceof Error && !(failure instanceof errors.TimeoutError),
+    );
+    if (unexpectedFailure) {
+      throw unexpectedFailure;
+    }
+    return null;
+  }
 }
 
 async function findPayWithCard(page: Page): Promise<Locator | null> {
@@ -121,13 +133,37 @@ async function findVisibleStripeField(
   page: Page,
   field: StripeFieldDefinition,
 ): Promise<Locator | null> {
-  for (const frame of page.frames()) {
-    const locator = stripeFieldLocator(frame, field).first();
-    if (await locator.isVisible()) {
-      return locator;
-    }
+  const locators = page
+    .frames()
+    .map((frame) => stripeFieldLocator(frame, field).first());
+  const visibility = await Promise.all(
+    locators.map(
+      async (locator): Promise<boolean> => await locator.isVisible(),
+    ),
+  );
+  return locators.find((_, index) => visibility[index]) ?? null;
+}
+
+async function fillVisibleStripeField(
+  page: Page,
+  field: StripeFieldDefinition,
+  locator: Locator,
+  value: string,
+  deadline: number,
+): Promise<void> {
+  const timeout = deadline - Date.now();
+  if (timeout <= 0) {
+    throw await stripeFieldError(page, field);
   }
-  return null;
+
+  try {
+    await locator.fill(value, { timeout });
+  } catch (error: unknown) {
+    if (error instanceof errors.TimeoutError) {
+      throw await stripeFieldError(page, field);
+    }
+    throw error;
+  }
 }
 
 async function activateCardMethod(
@@ -160,17 +196,14 @@ async function fillCardNumber(page: Page, value: string): Promise<void> {
       CARD_NUMBER_FIELD,
     );
     if (visibleCardNumber) {
-      const remaining = deadline - Date.now();
-      if (
-        remaining > 0 &&
-        (await fillFirst(
-          visibleCardNumber,
-          value,
-          Math.min(LOCATOR_ATTEMPT_TIMEOUT_MS, remaining),
-        ))
-      ) {
-        return;
-      }
+      await fillVisibleStripeField(
+        page,
+        CARD_NUMBER_FIELD,
+        visibleCardNumber,
+        value,
+        deadline,
+      );
+      return;
     }
 
     if (!visibleCardNumber && !cardMethodActivated) {
@@ -182,7 +215,19 @@ async function fillCardNumber(page: Page, value: string): Promise<void> {
       }
     }
 
-    if (await tryFillStripeField(page, CARD_NUMBER_FIELD, value, deadline)) {
+    const discoveredCardNumber = await waitForVisibleStripeField(
+      page,
+      CARD_NUMBER_FIELD,
+      deadline,
+    );
+    if (discoveredCardNumber) {
+      await fillVisibleStripeField(
+        page,
+        CARD_NUMBER_FIELD,
+        discoveredCardNumber,
+        value,
+        deadline,
+      );
       return;
     }
   }
@@ -198,7 +243,11 @@ async function fillStripeField(
   const deadline = Date.now() + FIELD_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
-    if (await tryFillStripeField(page, field, value, deadline)) {
+    const visibleField =
+      (await findVisibleStripeField(page, field)) ??
+      (await waitForVisibleStripeField(page, field, deadline));
+    if (visibleField) {
+      await fillVisibleStripeField(page, field, visibleField, value, deadline);
       return;
     }
   }
