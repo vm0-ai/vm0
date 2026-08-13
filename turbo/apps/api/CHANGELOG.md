@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.441.1](https://github.com/vm0-ai/vm0/compare/api-v1.441.0...api-v1.441.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.1
+    * @vm0/core bumped to 8.553.1
+    * @vm0/db bumped to 1.197.7
+    * @vm0/pi-agent-runtime bumped to 1.4.4
+
 ## [1.441.0](https://github.com/vm0-ai/vm0/compare/api-v1.440.2...api-v1.441.0) (2026-08-13)
 
 

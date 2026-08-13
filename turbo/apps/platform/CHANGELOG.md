@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.739.1](https://github.com/vm0-ai/vm0/compare/app-v0.739.0...app-v0.739.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **platform:** limit background sync to ten unread threads ([#26778](https://github.com/vm0-ai/vm0/issues/26778)) ([3d47aca](https://github.com/vm0-ai/vm0/commit/3d47aca154a0bcbb73a26d88fc10ed9156c1ee5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.1
+    * @vm0/core bumped to 8.553.1
+
 ## [0.739.0](https://github.com/vm0-ai/vm0/compare/app-v0.738.2...app-v0.739.0) (2026-08-13)
 
 
