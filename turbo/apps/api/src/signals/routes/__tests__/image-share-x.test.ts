@@ -1,4 +1,4 @@
-import { zeroImageShareXContract } from "@okouai/api-contracts/contracts/zero-image-share-x";
+import { imageShareXContract } from "@okouai/api-contracts/contracts/image-share-x";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -15,7 +15,7 @@ import { seedConnectedXConnector } from "../../../test-fixtures/x-connector";
 import { createBddApi } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroImageShareXRoutes } from "../zero-image-share-x";
+import { imageShareXRoutes } from "../image-share-x";
 
 const context = testContext();
 const routeMocks = createZeroRouteMocks(context);
@@ -59,9 +59,9 @@ function authHeaders() {
 function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
   return setupApp({
     context,
-    routes: zeroImageShareXRoutes,
+    routes: imageShareXRoutes,
     usagePricingResolution,
-  })(zeroImageShareXContract);
+  })(imageShareXContract);
 }
 
 function mockXImageShareProvider(options?: {

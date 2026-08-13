@@ -1599,13 +1599,13 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
-  zeroImageShareXContract,
-  zeroImageShareXRequestSchema,
-  zeroImageShareXResponseSchema,
-  type ZeroImageShareXContract,
-  type ZeroImageShareXRequest,
-  type ZeroImageShareXResponse,
-} from "./zero-image-share-x";
+  imageShareXContract,
+  imageShareXRequestSchema,
+  imageShareXResponseSchema,
+  type ImageShareXContract,
+  type ImageShareXRequest,
+  type ImageShareXResponse,
+} from "./image-share-x";
 export {
   zeroMailContract,
   zeroMailDraftSchema,

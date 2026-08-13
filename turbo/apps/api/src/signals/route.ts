@@ -97,7 +97,7 @@ import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
-import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
+import { imageShareXRoutes } from "./routes/image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
@@ -288,7 +288,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroImageIoGenerateRoutes,
-  ...zeroImageShareXRoutes,
+  ...imageShareXRoutes,
   ...zeroAvatarVideoRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
