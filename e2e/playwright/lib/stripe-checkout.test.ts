@@ -102,7 +102,9 @@ function checkoutDocument(layout: CheckoutLayout): string {
             return;
           }
           if (document.body.dataset.layout === "wallet") {
-            window.setTimeout(renderCardForm, 100);
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(renderCardForm);
+            });
           } else {
             renderCardForm();
           }

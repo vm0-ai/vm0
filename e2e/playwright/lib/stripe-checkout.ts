@@ -117,6 +117,19 @@ async function findPayWithCard(page: Page): Promise<Locator | null> {
   return null;
 }
 
+async function findVisibleStripeField(
+  page: Page,
+  field: StripeFieldDefinition,
+): Promise<Locator | null> {
+  for (const frame of page.frames()) {
+    const locator = stripeFieldLocator(frame, field).first();
+    if (await locator.isVisible()) {
+      return locator;
+    }
+  }
+  return null;
+}
+
 async function activateCardMethod(
   payWithCard: Locator,
   deadline: number,
@@ -142,16 +155,35 @@ async function fillCardNumber(page: Page, value: string): Promise<void> {
   let cardMethodActivated = false;
 
   while (Date.now() < deadline) {
-    if (await tryFillStripeField(page, CARD_NUMBER_FIELD, value, deadline)) {
-      return;
+    const visibleCardNumber = await findVisibleStripeField(
+      page,
+      CARD_NUMBER_FIELD,
+    );
+    if (visibleCardNumber) {
+      const remaining = deadline - Date.now();
+      if (
+        remaining > 0 &&
+        (await fillFirst(
+          visibleCardNumber,
+          value,
+          Math.min(LOCATOR_ATTEMPT_TIMEOUT_MS, remaining),
+        ))
+      ) {
+        return;
+      }
     }
 
-    if (!cardMethodActivated) {
+    if (!visibleCardNumber && !cardMethodActivated) {
       const payWithCard = await findPayWithCard(page);
       if (payWithCard) {
         await activateCardMethod(payWithCard, deadline);
         cardMethodActivated = true;
+        continue;
       }
+    }
+
+    if (await tryFillStripeField(page, CARD_NUMBER_FIELD, value, deadline)) {
+      return;
     }
   }
 
