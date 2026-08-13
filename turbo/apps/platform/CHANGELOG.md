@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.739.0](https://github.com/vm0-ai/vm0/compare/app-v0.738.2...app-v0.739.0) (2026-08-13)
+
+
+### Features
+
+* **api:** retire chat event reads and force app upgrade ([#26755](https://github.com/vm0-ai/vm0/issues/26755)) ([7be323f](https://github.com/vm0-ai/vm0/commit/7be323f3f555183be738a3ee0fe158d3d4327e0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.0
+    * @vm0/core bumped to 8.553.0
+
 ## [0.738.2](https://github.com/vm0-ai/vm0/compare/app-v0.738.1...app-v0.738.2) (2026-08-13)
 
 
