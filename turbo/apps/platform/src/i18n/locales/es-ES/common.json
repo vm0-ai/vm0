@@ -4658,12 +4658,17 @@
       "yesterday": "Ayer"
     },
     "records": {
-      "emptyBillingPeriod": "No hubo consumo en este periodo de facturación.",
-      "emptyRange": "No hubo consumo en este intervalo.",
+      "empty": {
+        "billingPeriodTitle": "No hubo consumo en este periodo de facturación",
+        "description": "Los créditos que gastas en chats, automatizaciones y canales aparecen aquí.",
+        "noBillingPeriodDescription": "El consumo del equipo aparece cuando empieza un periodo de facturación.",
+        "noBillingPeriodTitle": "No hay periodo de facturación activo",
+        "rangeTitle": "No hubo consumo en este intervalo",
+        "teamDescription": "Los créditos que gasta tu equipo en chats, automatizaciones y canales aparecen aquí."
+      },
       "loadError": "No se pudo cargar tu consumo.",
       "loadMore": "Cargar más",
       "myUsage": "Mi uso",
-      "noActiveBillingPeriod": "No hay periodo de facturación activo.",
       "teamLoadError": "No se pudo cargar el uso del equipo.",
       "teamUsage": "Uso del equipo",
       "untitled": "(sin título)"
