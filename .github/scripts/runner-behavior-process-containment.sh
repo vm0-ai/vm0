@@ -548,7 +548,9 @@ import pathlib
 import signal
 import time
 
-pathlib.Path("/tmp/vm0-process-containment/pid-pressure-vm").touch()
+marker = pathlib.Path("/tmp/vm0-process-containment")
+marker.mkdir()
+(marker / "pid-pressure-vm").touch()
 relative = next(
     line.removeprefix("0::").strip()
     for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
