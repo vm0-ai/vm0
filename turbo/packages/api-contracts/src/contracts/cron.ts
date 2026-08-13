@@ -79,8 +79,9 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   eventsPruned: z.number(),
 });
 
-const cronProjectChatEventSearchResponseSchema = z.object({
+export const cronProjectChatEventSearchResponseSchema = z.object({
   success: z.literal(true),
+  durableProjectionAvailable: z.boolean(),
   threads: z.number(),
   indexedEvents: z.number(),
   deletedDocs: z.number(),

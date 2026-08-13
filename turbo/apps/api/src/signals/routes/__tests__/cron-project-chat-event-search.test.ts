@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { cronProjectChatEventSearchContract } from "@vm0/api-contracts/contracts/cron";
+import { testChatEventSearchProjectionContract } from "@vm0/api-contracts/contracts/test-chat-event-search-projection";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -14,6 +15,7 @@ import {
   resetDurableChatEventSearchProjectionFixture,
 } from "../../../test-fixtures/chat-event-search";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
+import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 
@@ -31,6 +33,27 @@ async function projectChatEventSearch() {
   const response = await accept(
     client.project({
       headers: { authorization: `Bearer ${CRON_SECRET}` },
+    }),
+    [200],
+  );
+  return response.body;
+}
+
+async function projectOwnedChatEventSearch(
+  chatThreadIds: readonly string[],
+  options: { readonly simulateDurableSchemaUnavailable?: boolean } = {},
+) {
+  const client = setupApp({
+    context,
+    routes: testChatEventSearchProjectionRoutes,
+  })(testChatEventSearchProjectionContract);
+  const response = await accept(
+    client.project({
+      body: {
+        chat_thread_ids: [...chatThreadIds],
+        simulate_durable_schema_unavailable:
+          options.simulateDurableSchemaUnavailable,
+      },
     }),
     [200],
   );
@@ -64,6 +87,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
 
     const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();
+    expect(tick.durableProjectionAvailable).toBeTruthy();
     expect(tick.durableThreads).toBeGreaterThanOrEqual(1);
     expect(tick.durableIndexedMessages).toBeGreaterThanOrEqual(2);
     expect(tick.convergence.eligibleThreads).toBeGreaterThanOrEqual(
@@ -115,7 +139,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
       errorText: `backfill error ${randomUUID()}`,
       terminalText: `backfill terminal ${randomUUID()}`,
     });
-    await projectChatEventSearch();
+    await projectOwnedChatEventSearch([chatThreadId]);
     const established =
       await readChatEventSearchProjectionFixture(chatThreadId);
 
@@ -128,7 +152,10 @@ describe("GET /api/cron/project-chat-event-search", () => {
     expect(rolloutStart.durableIndexedSeqId).toBeNull();
     expect(rolloutStart.durableMessages).toStrictEqual([]);
 
-    await Promise.all([projectChatEventSearch(), projectChatEventSearch()]);
+    await Promise.all([
+      projectOwnedChatEventSearch([chatThreadId]),
+      projectOwnedChatEventSearch([chatThreadId]),
+    ]);
 
     const backfilled = await readChatEventSearchProjectionFixture(chatThreadId);
     expect(backfilled.legacyIndexedSeqId).toBe(established.legacyIndexedSeqId);
@@ -150,7 +177,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
         terminalText: `bounded terminal ${randomUUID()}`,
       });
     }
-    await projectChatEventSearch();
+    await projectOwnedChatEventSearch([servingThreadId, backfillThreadId]);
     await resetDurableChatEventSearchProjectionFixture(backfillThreadId);
     const tail = await insertSearchablePromptFixture({
       chatThreadId: servingThreadId,
@@ -158,7 +185,10 @@ describe("GET /api/cron/project-chat-event-search", () => {
     });
 
     mockOptionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE", "1");
-    const tick = await projectChatEventSearch();
+    const tick = await projectOwnedChatEventSearch([
+      servingThreadId,
+      backfillThreadId,
+    ]);
 
     expect(tick.threads).toBe(1);
     expect(tick.indexedEvents).toBe(1);
@@ -176,7 +206,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
     const chatThreadId = await createProjectionThread();
     const text = `revoked durable prompt ${randomUUID()}`;
     const target = await insertSearchablePromptFixture({ chatThreadId, text });
-    await projectChatEventSearch();
+    await projectOwnedChatEventSearch([chatThreadId]);
 
     const before = await readChatEventSearchProjectionFixture(chatThreadId);
     expect(before.durableMessages).toStrictEqual([
@@ -193,7 +223,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
       eventId: target.id,
       text,
     });
-    const tick = await projectChatEventSearch();
+    const tick = await projectOwnedChatEventSearch([chatThreadId]);
     expect(tick.deletedDocs).toBeGreaterThanOrEqual(1);
     expect(tick.durableDeletedMessages).toBeGreaterThanOrEqual(1);
 
@@ -211,5 +241,40 @@ describe("GET /api/cron/project-chat-event-search", () => {
     ]);
     expect(after.durableMessages[0]?.seqId).not.toBe(target.seqId);
     expect(after.durableIndexedSeqId).toBe(after.lastChatEventSeqId);
+  });
+
+  it("keeps the legacy projection safe before the durable schema migration", async () => {
+    const chatThreadId = await createProjectionThread();
+    const text = `pre-migration prompt ${randomUUID()}`;
+    const prompt = await insertSearchablePromptFixture({
+      chatThreadId,
+      text,
+    });
+
+    const tick = await projectOwnedChatEventSearch([chatThreadId], {
+      simulateDurableSchemaUnavailable: true,
+    });
+
+    expect(tick).toMatchObject({
+      success: true,
+      durableProjectionAvailable: false,
+      threads: 1,
+      indexedEvents: 1,
+      durableThreads: 0,
+      durableIndexedMessages: 0,
+      durableDeletedMessages: 0,
+      convergence: {
+        eligibleThreads: 1,
+        legacyCaughtUpThreads: 1,
+        durableCaughtUpThreads: 0,
+      },
+    });
+    const projection = await readChatEventSearchProjectionFixture(chatThreadId);
+    expect(projection.legacyDocs).toStrictEqual([
+      { eventId: prompt.id, role: "user", text },
+    ]);
+    expect(projection.legacyIndexedSeqId).toBe(prompt.seqId);
+    expect(projection.durableMessages).toStrictEqual([]);
+    expect(projection.durableIndexedSeqId).toBeNull();
   });
 });

@@ -339,6 +339,12 @@ export {
   type TestBrowserReconcileContract,
 } from "./test-browser-reconcile";
 export {
+  testChatEventSearchProjectionBodySchema,
+  testChatEventSearchProjectionContract,
+  type TestChatEventSearchProjectionBody,
+  type TestChatEventSearchProjectionContract,
+} from "./test-chat-event-search-projection";
+export {
   testRuntimeStateActionBodySchema,
   testRuntimeStateActionResponseSchema,
   testRuntimeStateContract,
