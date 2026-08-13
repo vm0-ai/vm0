@@ -598,6 +598,7 @@ export {
   cleanupResultSchema,
   cleanupResponseSchema,
   cronCompactChatThreadSnapshotsResponseSchema,
+  cronSnapshotChatEventsResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,

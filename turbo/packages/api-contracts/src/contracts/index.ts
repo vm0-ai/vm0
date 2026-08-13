@@ -393,6 +393,11 @@ export {
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
 export {
+  testChatEventSnapshotBodySchema,
+  testChatEventSnapshotContract,
+  type TestChatEventSnapshotContract,
+} from "./test-chat-event-snapshot";
+export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,
