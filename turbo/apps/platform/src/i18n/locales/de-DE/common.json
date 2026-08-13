@@ -1672,6 +1672,9 @@
       "frequentlyUsed": "Häufig verwendet",
       "icon": "Chat-Thread-Symbol",
       "loadingEarlier": "Frühere Nachrichten werden geladen",
+      "locator": {
+        "you": "Du"
+      },
       "noEmojiFound": "Kein Emoji gefunden",
       "notFound": "Chat-Thread nicht gefunden",
       "openArtifacts": "Artefakte öffnen",

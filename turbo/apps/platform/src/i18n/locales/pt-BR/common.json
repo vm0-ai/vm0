@@ -1712,6 +1712,9 @@
       "frequentlyUsed": "Usados com frequência",
       "icon": "Ícone da conversa",
       "loadingEarlier": "Carregando mensagens anteriores",
+      "locator": {
+        "you": "Você"
+      },
       "noEmojiFound": "Nenhum emoji encontrado",
       "notFound": "Conversa não encontrada",
       "openArtifacts": "Abrir artefatos",
