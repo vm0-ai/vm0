@@ -1559,6 +1559,32 @@ async fn write_file_chunked_rename_guest_timeout_cleans_up_and_releases_tracker(
 }
 
 #[tokio::test]
+async fn write_file_chunked_rename_wait_timeout_cleans_up_and_keeps_tracker_fail_closed() {
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    tokio::time::pause();
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
+
+    let _rename = drive_two_chunk_write_to_rename(&mut fixture).await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
+
+    tokio::time::advance(Duration::from_secs(11)).await;
+    let cleanup = fixture.expect_cleanup().await;
+    send_exec_result(
+        &mut fixture.guest,
+        cleanup.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert!(err.to_string().contains("exec operation timeout"));
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
+}
+
+#[tokio::test]
 async fn write_file_chunked_rename_observer_error_keeps_tracker_fail_closed() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
