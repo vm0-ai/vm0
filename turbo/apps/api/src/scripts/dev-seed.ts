@@ -11,7 +11,7 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { GOAL_SKILL_NAME, SEED_SKILLS } from "@okouai/core/zero-seed-skills";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
 import { skills } from "@okouai/db/schema/skill";
