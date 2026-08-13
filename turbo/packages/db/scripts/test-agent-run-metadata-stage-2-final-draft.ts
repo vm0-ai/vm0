@@ -524,8 +524,14 @@ async function runActualMigrationRunner(
   process.chdir(fixtureDirectory);
   try {
     await sql.unsafe(
-      "SET vm0.agent_run_metadata_stage2_no_progress_timeout_ms = '250'",
+      "SET vm0.agent_run_metadata_backfill_no_progress_timeout = '250ms'",
     );
+    const configuredTimeout = await sql<{ timeout: string }[]>`
+      SELECT current_setting(
+        'vm0.agent_run_metadata_backfill_no_progress_timeout'
+      ) AS "timeout"
+    `;
+    assert.deepEqual([...configuredTimeout], [{ timeout: "250ms" }]);
     await applyPendingMigrations(sql);
     return sql;
   } catch (error) {
@@ -576,9 +582,19 @@ export async function validateAgentRunMetadataStage2RunnerDraft(): Promise<void>
       `SELECT 1 FROM "agent_runs" WHERE "id" = $1 FOR UPDATE`,
       [runIds[0]],
     );
+    const failureStartedAt = process.hrtime.bigint();
     await assert.rejects(
       runActualMigrationRunner(testUrl, fixtureDirectory),
       /Stage 2 backfill made no progress for .* while eligible rows remained/,
+    );
+    const failureElapsedMilliseconds =
+      Number(process.hrtime.bigint() - failureStartedAt) / 1_000_000;
+    assert.ok(
+      failureElapsedMilliseconds < 5_000,
+      `expected the 250ms no-progress timeout to fail within 5s, took ${failureElapsedMilliseconds.toFixed(1)}ms`,
+    );
+    console.log(
+      `stage2 actual migration-runner bounded failure took ${failureElapsedMilliseconds.toFixed(1)}ms`,
     );
     const failedLedger = await client.query<{ count: number }>(`
       SELECT count(*)::integer AS "count"
@@ -601,9 +617,10 @@ export async function validateAgentRunMetadataStage2RunnerDraft(): Promise<void>
           current_setting('lock_timeout') AS "lockTimeout",
           current_setting('statement_timeout') AS "statementTimeout"
       `;
-      assert.deepEqual([...timeouts], [
-        { lockTimeout: "0", statementTimeout: "0" },
-      ]);
+      assert.deepEqual(
+        [...timeouts],
+        [{ lockTimeout: "0", statementTimeout: "0" }],
+      );
     } finally {
       await successfulRunner.end();
     }
