@@ -18,6 +18,7 @@ import {
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { createAuthRecovery, setupAuthCatchUp$ } from "./auth-retry.ts";
+import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
@@ -427,6 +428,7 @@ export const setupClerk$ = command(
       const currentUserId = clerk.user?.id ?? null;
       if (currentUserId !== prevUserId) {
         prevUserId = currentUserId;
+        set(writeConnectionDiagnostic$, { action: "clear" });
         set(reload$, (x) => {
           return x + 1;
         });

@@ -2499,15 +2499,21 @@ describe("organization billing settings", () => {
 
   it("recovers from a billing load failure and starts an upgrade checkout", async () => {
     let statusCalls = 0;
+    let failNextStatusRequest = false;
+    const failedStatusRequestStarted = context.mocks.deferred<void>();
+    const releaseFailedStatusResponse = context.mocks.deferred<void>();
 
     context.mocks.data.org({
       id: "org_1",
       name: "Suspended Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(zeroBillingStatusContract.get, async ({ respond }) => {
       statusCalls++;
-      if (statusCalls === 1) {
+      if (failNextStatusRequest) {
+        failNextStatusRequest = false;
+        failedStatusRequestStarted.resolve();
+        await releaseFailedStatusResponse.promise;
         return respond(500, {
           error: {
             message: "Failed to load billing status",
@@ -2528,6 +2534,18 @@ describe("organization billing settings", () => {
 
     await openBillingTab();
 
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(statusCalls).toBeGreaterThanOrEqual(2);
+    });
+
+    failNextStatusRequest = true;
+    context.mocks.ably.trigger("billing:changed");
+    await failedStatusRequestStarted.promise;
+    releaseFailedStatusResponse.resolve();
     await expect(
       screen.findByText("Could not load billing status."),
     ).resolves.toBeInTheDocument();

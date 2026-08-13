@@ -4334,6 +4334,24 @@
           "enabled_other": "Enabled for the next {{count}} runs",
           "title": "Capture network bodies"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Active waits",
+          "blurred": "blurred",
+          "channel": "channel",
+          "clear": "Clear",
+          "connection": "connection",
+          "copyJson": "Copy JSON",
+          "description": "Inspect browser lifecycle, auth recovery, and Ably connection signals.",
+          "empty": "No diagnostic events recorded.",
+          "events": "events",
+          "focused": "focused",
+          "log": "Event log",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "recovery",
+          "title": "Realtime connection diagnostics",
+          "unavailable": "unavailable"
+        },
         "tab": "Debug"
       },
       "documentTitle": "Preferences",

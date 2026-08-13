@@ -1,0 +1,264 @@
+import { useGet, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
+import {
+  ChevronDown,
+  ChevronUp,
+  ClipboardCopy,
+  RadioTower,
+  Trash2,
+} from "lucide-react";
+import { Button } from "@okouai/ui/components/ui/button";
+
+import { now } from "../../../../lib/time.ts";
+import {
+  connectionDiagnostics$,
+  writeConnectionDiagnostic$,
+  type ConnectionDiagnosticEvent,
+  type ConnectionDiagnostics,
+} from "../../../../signals/connection-diagnostics.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs} ms`;
+  }
+  return `${(durationMs / 1000).toFixed(3)} s`;
+}
+
+function ConnectionDiagnosticsSummary({
+  diagnostics,
+}: {
+  readonly diagnostics: ConnectionDiagnostics;
+}) {
+  const { t } = useTranslation();
+  const unavailable = t(($) => {
+    return $.settings.preferences.debug.connectionDiagnostics.unavailable;
+  });
+  const connectionState = diagnostics.snapshot.connectionState ?? unavailable;
+  const channelState = diagnostics.snapshot.channelState ?? unavailable;
+
+  return (
+    <summary className="flex w-full cursor-pointer list-none items-start gap-4 p-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+        <RadioTower size={22} className="text-muted-foreground" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-2">
+        <span className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.settings.preferences.debug.connectionDiagnostics.title;
+          })}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          {t(($) => {
+            return $.settings.preferences.debug.connectionDiagnostics
+              .description;
+          })}
+        </span>
+        <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
+          <span className="zero-badge rounded-md px-2 py-0.5">
+            {t(($) => {
+              return $.settings.preferences.debug.connectionDiagnostics
+                .connection;
+            })}
+            : {connectionState}
+          </span>
+          <span className="zero-badge rounded-md px-2 py-0.5">
+            {t(($) => {
+              return $.settings.preferences.debug.connectionDiagnostics.channel;
+            })}
+            : {channelState}
+          </span>
+          <span className="zero-badge rounded-md px-2 py-0.5">
+            {diagnostics.snapshot.visibilityState}
+          </span>
+          <span className="zero-badge rounded-md px-2 py-0.5">
+            {diagnostics.snapshot.online
+              ? t(($) => {
+                  return $.settings.preferences.debug.connectionDiagnostics
+                    .online;
+                })
+              : t(($) => {
+                  return $.settings.preferences.debug.connectionDiagnostics
+                    .offline;
+                })}
+          </span>
+          <span className="zero-badge rounded-md px-2 py-0.5">
+            {diagnostics.snapshot.focused
+              ? t(($) => {
+                  return $.settings.preferences.debug.connectionDiagnostics
+                    .focused;
+                })
+              : t(($) => {
+                  return $.settings.preferences.debug.connectionDiagnostics
+                    .blurred;
+                })}
+          </span>
+        </span>
+      </span>
+      <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground group-open:hidden" />
+      <ChevronUp className="mt-1 hidden h-4 w-4 shrink-0 text-muted-foreground group-open:block" />
+    </summary>
+  );
+}
+
+function ConnectionDiagnosticEventLog({
+  events,
+}: {
+  readonly events: readonly ConnectionDiagnosticEvent[];
+}) {
+  const { t } = useTranslation();
+  if (events.length === 0) {
+    return (
+      <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+        {t(($) => {
+          return $.settings.preferences.debug.connectionDiagnostics.empty;
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col-reverse gap-1">
+      {events.map((event) => {
+        const details = event.details ? JSON.stringify(event.details) : null;
+        return (
+          <div
+            key={event.sequence}
+            className="rounded-md bg-background/70 px-2.5 py-2 font-mono text-[11px] leading-4 text-foreground"
+          >
+            <div className="break-all">
+              #{event.sequence} +{formatDuration(event.elapsedMs)} ·{" "}
+              {event.event}
+              {" · "}
+              {event.phase}
+              {event.durationMs === undefined
+                ? ""
+                : ` · ${formatDuration(event.durationMs)}`}
+            </div>
+            <div className="break-all text-muted-foreground">
+              {event.timestamp}
+              {details ? ` · ${details}` : ""}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConnectionDiagnosticsDetails({
+  diagnostics,
+  onClear,
+  onCopy,
+}: {
+  readonly diagnostics: ConnectionDiagnostics;
+  readonly onClear: () => void;
+  readonly onCopy: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-4 border-t border-border/60 p-4">
+      <div className="grid gap-2 font-mono text-[11px] sm:grid-cols-2">
+        <div className="rounded-md bg-muted/40 px-3 py-2 break-all">
+          {t(($) => {
+            return $.settings.preferences.debug.connectionDiagnostics.recovery;
+          })}
+          : {diagnostics.snapshot.recoveryPhase}
+        </div>
+        <div className="rounded-md bg-muted/40 px-3 py-2">
+          {t(($) => {
+            return $.settings.preferences.debug.connectionDiagnostics.events;
+          })}
+          : {diagnostics.events.length} / {diagnostics.capacity}
+        </div>
+      </div>
+
+      {diagnostics.activeWaits.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs font-medium text-foreground">
+            {t(($) => {
+              return $.settings.preferences.debug.connectionDiagnostics
+                .activeWaits;
+            })}
+          </div>
+          <div className="flex flex-col gap-1 font-mono text-[11px]">
+            {diagnostics.activeWaits.map((wait) => {
+              return (
+                <div
+                  key={wait.spanId}
+                  className="rounded-md bg-amber-500/10 px-3 py-2 text-foreground"
+                >
+                  {wait.event} · {formatDuration(now() - wait.startedAtMs)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-medium text-foreground">
+          {t(($) => {
+            return $.settings.preferences.debug.connectionDiagnostics.log;
+          })}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 text-xs"
+            onClick={onCopy}
+          >
+            <ClipboardCopy className="h-3.5 w-3.5" />
+            {t(($) => {
+              return $.settings.preferences.debug.connectionDiagnostics
+                .copyJson;
+            })}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 text-xs"
+            onClick={onClear}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t(($) => {
+              return $.settings.preferences.debug.connectionDiagnostics.clear;
+            })}
+          </Button>
+        </div>
+      </div>
+
+      <div className="max-h-96 overflow-y-auto rounded-md bg-muted/30 p-2">
+        <ConnectionDiagnosticEventLog events={diagnostics.events} />
+      </div>
+    </div>
+  );
+}
+
+export function ConnectionDiagnosticsBlock() {
+  const diagnostics = useGet(connectionDiagnostics$);
+  const writeDiagnostic = useSet(writeConnectionDiagnostic$);
+  const handleCopy = (): void => {
+    detach(
+      navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2)),
+      Reason.DomCallback,
+      "copy-connection-diagnostics",
+    );
+  };
+
+  return (
+    <details className="group overflow-hidden rounded-xl bg-card zero-border">
+      <ConnectionDiagnosticsSummary diagnostics={diagnostics} />
+      <ConnectionDiagnosticsDetails
+        diagnostics={diagnostics}
+        onClear={() => {
+          writeDiagnostic({ action: "clear" });
+        }}
+        onCopy={handleCopy}
+      />
+    </details>
+  );
+}

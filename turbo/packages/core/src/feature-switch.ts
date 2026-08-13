@@ -191,7 +191,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.Banking]: {

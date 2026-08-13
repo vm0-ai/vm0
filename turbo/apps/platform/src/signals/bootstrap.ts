@@ -1,5 +1,6 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
@@ -81,7 +82,14 @@ import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
-import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
+import {
+  featureSwitch$,
+  reloadFeatureSwitch$,
+} from "./external/feature-switch.ts";
+import {
+  setupConnectionDiagnostics$,
+  writeConnectionDiagnostic$,
+} from "./connection-diagnostics.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 import { captureInvitationRedirect$ } from "./invitation-redirect.ts";
 
@@ -438,7 +446,7 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 });
 
 export const bootstrap$ = command(
-  async ({ set }, render: () => void, signal: AbortSignal) => {
+  async ({ get, set }, render: () => void, signal: AbortSignal) => {
     set(captureInvitationRedirect$);
     await set(initLocale$, signal);
     signal.throwIfAborted();
@@ -447,6 +455,16 @@ export const bootstrap$ = command(
     set(initBootstrapSkeleton$);
 
     set(setupLoggers$);
+
+    // The cached effective switches already drive the first rendered frame.
+    // Install capture from that same snapshot before setupRouter starts the
+    // authenticated daemons, so their initial Clerk and Ably waits are kept
+    // even while remote feature-switch hydration is still pending.
+    set(setupConnectionDiagnostics$, signal);
+    set(writeConnectionDiagnostic$, {
+      action: "set-enabled",
+      enabled: get(featureSwitch$)[FeatureSwitchKey.ZeroDebug] ?? false,
+    });
 
     render();
 

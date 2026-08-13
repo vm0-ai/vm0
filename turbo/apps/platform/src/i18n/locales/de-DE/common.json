@@ -4334,6 +4334,24 @@
           "enabled_other": "Für {{count}} kommende Ausführungen aktiviert",
           "title": "Netzwerk-Bodys erfassen"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Aktive Wartevorgänge",
+          "blurred": "nicht fokussiert",
+          "channel": "Kanal",
+          "clear": "Leeren",
+          "connection": "Verbindung",
+          "copyJson": "JSON kopieren",
+          "description": "Browser-Lebenszyklus, Authentifizierungswiederherstellung und Ably-Verbindungssignale prüfen.",
+          "empty": "Keine Diagnoseereignisse aufgezeichnet.",
+          "events": "Ereignisse",
+          "focused": "fokussiert",
+          "log": "Ereignisprotokoll",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "Wiederherstellung",
+          "title": "Echtzeit-Verbindungsdiagnose",
+          "unavailable": "nicht verfügbar"
+        },
         "tab": "Debuggen"
       },
       "documentTitle": "Präferenzen",
