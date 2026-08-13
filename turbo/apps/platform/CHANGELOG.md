@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.747.2](https://github.com/vm0-ai/vm0/compare/app-v0.747.1...app-v0.747.2) (2026-08-13)
+
+
+### Refactoring
+
+* **web-files:** neutralize private web file modules ([#27029](https://github.com/vm0-ai/vm0/issues/27029)) ([66e73ca](https://github.com/vm0-ai/vm0/commit/66e73cafc219d273a91aa383c5edbbb7e28ee465))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.8
+    * @okouai/core bumped to 8.559.2
+
 ## [0.747.1](https://github.com/vm0-ai/vm0/compare/app-v0.747.0...app-v0.747.1) (2026-08-13)
 
 

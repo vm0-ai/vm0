@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.445.4](https://github.com/vm0-ai/vm0/compare/api-v1.445.3...api-v1.445.4) (2026-08-13)
+
+
+### Refactoring
+
+* **web-files:** neutralize private web file modules ([#27029](https://github.com/vm0-ai/vm0/issues/27029)) ([66e73ca](https://github.com/vm0-ai/vm0/commit/66e73cafc219d273a91aa383c5edbbb7e28ee465))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.8
+    * @okouai/core bumped to 8.559.2
+    * @okouai/db bumped to 1.198.9
+    * @okouai/pi-agent-runtime bumped to 1.4.16
+
 ## [1.445.3](https://github.com/vm0-ai/vm0/compare/api-v1.445.2...api-v1.445.3) (2026-08-13)
 
 
