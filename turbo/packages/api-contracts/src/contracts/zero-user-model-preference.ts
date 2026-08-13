@@ -17,8 +17,13 @@ export const userModelPreferenceResponseSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
   /**
-   * Optional so a new bundle can still parse a response from an API that
-   * predates the field; the two deploy independently.
+   * Rollout fallback. Optional so a newly promoted bundle can still parse a
+   * response from an API that predates the field. App promotion follows API
+   * promotion, so the reachable direction is an API rollback.
+   *
+   * Surface: frontend -> backend. Window: the API rollback window.
+   * Remove — make it required — once the pre-field API is outside that window.
+   * Follow-up: #26765.
    */
   selectedVideoModel: videoModelPreferenceSchema.nullable().optional(),
   updatedAt: z.string().nullable(),
@@ -32,8 +37,12 @@ export const updateUserModelPreferenceRequestSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
   /**
-   * Optional so an older bundle that only knows the run model keeps its stored
-   * video default instead of clearing it. Null clears it explicitly.
+   * Partial-update semantics, not a rollout fallback: the three preferences are
+   * independent, so absent means "leave it alone" and null clears it. This is
+   * permanent — a caller that only changes the run model must never blank the
+   * video default — and it matches how `updateUserPreferences$` already treats
+   * its own optional fields. An older bundle keeping its stored default falls
+   * out of the same rule rather than needing its own branch.
    */
   selectedVideoModel: videoModelPreferenceSchema.nullable().optional(),
 });

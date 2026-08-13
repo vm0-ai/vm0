@@ -36,8 +36,28 @@ export const userPreferenceKinds = [
 
 export type UserPreferenceKind = (typeof userPreferenceKinds)[number];
 
+const USER_PREFERENCE_KIND_SET: ReadonlySet<string> = new Set(
+  userPreferenceKinds,
+);
+
+function isUserPreferenceKind(kind: string): kind is UserPreferenceKind {
+  return USER_PREFERENCE_KIND_SET.has(kind);
+}
+
+/**
+ * Unknown kinds are dropped instead of failing the payload. A strict enum makes
+ * `kinds` unextendable: a browser tab running a bundle from before a kind was
+ * added would reject the whole push and silently stop honoring the kinds it
+ * does understand. Old web clients stay open for ~2 days
+ * (`docs/fallback.md` §7), so every future kind addition needs this.
+ *
+ * This does not retroactively fix bundles already in browsers — see the
+ * `defaultVideoModel` note in `zero-user-model-preference.ts`.
+ */
 export const userPreferenceChangedPayloadSchema = z.object({
-  kinds: z.array(z.enum(userPreferenceKinds)),
+  kinds: z.array(z.string()).transform((kinds) => {
+    return kinds.filter(isUserPreferenceKind);
+  }),
 });
 
 export type UserPreferenceChangedPayload = z.infer<
