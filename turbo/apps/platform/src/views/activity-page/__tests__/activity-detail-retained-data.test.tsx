@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import {
+  zeroRunAgentEventsContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
   type RunContextResponse,
@@ -10,7 +11,10 @@ import {
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import type { LogDetail } from "../../../signals/zero-page/log-types.ts";
+import type {
+  AgentEvent,
+  LogDetail,
+} from "../../../signals/zero-page/log-types.ts";
 
 const context = testContext();
 
@@ -68,6 +72,19 @@ function networkLog(): NetworkLogEntry {
   };
 }
 
+function activityEvent(): AgentEvent {
+  return {
+    sequenceNumber: 0,
+    eventType: "assistant",
+    eventData: {
+      message: {
+        content: [{ type: "text", text: "Checkout diagnostics exported" }],
+      },
+    },
+    createdAt: "2026-03-10T14:56:02Z",
+  };
+}
+
 describe("activity retained diagnostic data", () => {
   it("renders not found when the activity is missing or inaccessible", async () => {
     context.mocks.data.composesList([]);
@@ -84,12 +101,23 @@ describe("activity retained diagnostic data", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("downloads metadata, context, and network data without an event stream", async () => {
+  it("downloads events with metadata, context, and network data", async () => {
     const downloads = context.mocks.browser.blobDownload();
     context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, logDetail());
     });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [activityEvent()],
+          hasMore: false,
+          status: "completed",
+          lastEventSequence: 0,
+        });
+      },
+    );
     context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
       return respond(200, runContext());
     });
@@ -109,6 +137,9 @@ describe("activity retained diagnostic data", () => {
         screen.getByRole("heading", { name: "Checkout Export" }),
       ).toBeInTheDocument();
     });
+    await expect(
+      screen.findByText("Checkout diagnostics exported"),
+    ).resolves.toBeInTheDocument();
 
     click(screen.getByLabelText("Download raw data"));
     await waitFor(() => {
@@ -124,8 +155,8 @@ describe("activity retained diagnostic data", () => {
       unknown
     >;
 
-    expect(download.filename).toBe(`${RUN_ID}-activity.json`);
-    expect(downloaded).not.toHaveProperty("events");
+    expect(download.filename).toBe(`${RUN_ID}-logs.json`);
+    expect(downloaded.events).toStrictEqual([activityEvent()]);
     expect(downloaded.meta).toMatchObject({
       id: RUN_ID,
       displayName: "Checkout Export",
@@ -174,7 +205,8 @@ describe("activity retained diagnostic data", () => {
       unknown
     >;
 
-    expect(download.filename).toBe(`${RUN_ID}-activity.json`);
+    expect(download.filename).toBe(`${RUN_ID}-logs.json`);
+    expect(downloaded.events).toStrictEqual([]);
     expect(downloaded).not.toHaveProperty("context");
     expect(downloaded.networkLogs).toStrictEqual([]);
   });

@@ -789,15 +789,22 @@
     {
       "idx": 920,
       "version": "7",
-      "when": 1786624692686,
-      "tag": "0920_chat_event_snapshot_version_pointers",
+      "when": 1786638786640,
+      "tag": "0920_drop_legacy_chat_event_search",
       "breakpoints": true
     },
     {
       "idx": 921,
       "version": "7",
-      "when": 1786624723492,
-      "tag": "0921_chat_event_snapshot_cursor",
+      "when": 1786644511822,
+      "tag": "0921_chat_event_snapshot_version_pointers",
+      "breakpoints": true
+    },
+    {
+      "idx": 922,
+      "version": "7",
+      "when": 1786644541994,
+      "tag": "0922_chat_event_snapshot_cursor",
       "breakpoints": true
     }
   ]

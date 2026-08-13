@@ -100,6 +100,7 @@ import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
+  isChatRunTerminalEventType,
   terminatedChatRunIds,
 } from "@okouai/api-contracts/contracts/chat-events";
 import {
@@ -3297,12 +3298,20 @@ function chatRunPresentationForGroups(
   const runlessAssistantOwnerEventIds = new Set<string>();
   const seenUserRunIds = new Set<string>();
   const steerEventIds = new Set<string>();
+  // The run each steer was picked up by, so the acknowledgement can retire
+  // with it. The terminal event arrives after the steer, so the two are
+  // reconciled once the whole transcript has been walked.
+  const runIdBySteerEventId = new Map<string, string>();
+  const finishedRunIds = new Set<string>();
   let lastAssociatedRunId: string | undefined;
 
   for (const group of groups) {
     for (const event of group.events) {
       const role = chatEventCompatibilityRole(event.eventType);
       const runId = event.runId;
+      if (isChatRunTerminalEventType(event.eventType) && runId !== undefined) {
+        finishedRunIds.add(runId);
+      }
       if (role === "user") {
         const isSteer = isSteerPromptEvent(
           event,
@@ -3312,6 +3321,10 @@ function chatRunPresentationForGroups(
         );
         if (isSteer) {
           steerEventIds.add(event.id);
+        }
+        const steerRunId = isSteer ? (runId ?? lastAssociatedRunId) : undefined;
+        if (steerRunId !== undefined) {
+          runIdBySteerEventId.set(event.id, steerRunId);
         }
         if (runId !== undefined) {
           actionOwnerEventIdByRunId.delete(runId);
@@ -3337,6 +3350,16 @@ function chatRunPresentationForGroups(
     }
   }
 
+  // The acknowledgement answers "did my correction land in the work that is
+  // running" — a condition, true until that run ends, not a permanent
+  // transcript landmark. Once the run finishes, its answer is the work itself,
+  // so the line retires and stops accumulating down the thread.
+  for (const [steerEventId, steerRunId] of runIdBySteerEventId) {
+    if (finishedRunIds.has(steerRunId)) {
+      steerEventIds.delete(steerEventId);
+    }
+  }
+
   return {
     actionOwnerEventIds: new Set([
       ...actionOwnerEventIdByRunId.values(),
@@ -3344,6 +3367,29 @@ function chatRunPresentationForGroups(
     ]),
     steerEventIds,
   };
+}
+
+// An assistant group whose events are all bookkeeping — a run's terminal event,
+// usage — puts nothing on screen, so it must not break a stack of user
+// messages that visually sit right on top of each other.
+function groupRendersContent(
+  group: ChatEventGroup,
+  embeddedFolds: readonly RunGroupFoldControl[],
+  completedWorkFold: CompletedWorkFold | null,
+): boolean {
+  if (embeddedFolds.length > 0 || completedWorkFold !== null) {
+    return true;
+  }
+  if (group.role === "user") {
+    return group.events.some(rendersUserBubble);
+  }
+  return group.events.some(isRenderableAssistantEvent);
+}
+
+// A user group can be on screen for its fold alone, with every message in it
+// rendering as a card or as nothing, and there is no bubble to stack against.
+function groupHasUserBubble(group: ChatEventGroup): boolean {
+  return group.events.some(rendersUserBubble);
 }
 
 function ChatThreadEventGroups({
@@ -3377,6 +3423,12 @@ function ChatThreadEventGroups({
     ? chatRunPresentationForGroups(groups)
     : null;
 
+  // A run that ends re-forms the groups around it, so the messages the user
+  // sent back to back can land in separate groups with nothing rendered in
+  // between. Tracking the last group that actually put something on screen
+  // keeps the stack from springing open the moment a run finishes.
+  let previousVisibleGroup: ChatEventGroup | undefined;
+
   return (
     <>
       {groups.map((group) => {
@@ -3388,6 +3440,14 @@ function ChatThreadEventGroups({
           completedWorkFolding,
           group,
         );
+        const stackFirstOnPrevious =
+          runGroupFolds.length === 0 &&
+          previousVisibleGroup !== undefined &&
+          previousVisibleGroup.role === "user" &&
+          groupHasUserBubble(previousVisibleGroup);
+        if (groupRendersContent(group, embeddedFolds, completedWorkFold)) {
+          previousVisibleGroup = group;
+        }
         const completedWorkExpanded =
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
@@ -3414,6 +3474,7 @@ function ChatThreadEventGroups({
               steerEventIds={
                 runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
               }
+              stackFirstOnPrevious={stackFirstOnPrevious}
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -6042,6 +6103,7 @@ function PagedGroupRow({
   modelChanges,
   showActions,
   steerEventIds,
+  stackFirstOnPrevious = false,
   runGroupFolds,
   completedWorkFold,
 }: {
@@ -6050,6 +6112,7 @@ function PagedGroupRow({
   modelChanges: ReadonlyMap<string, RunModelChange>;
   showActions: boolean;
   steerEventIds: ReadonlySet<string>;
+  stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6065,6 +6128,7 @@ function PagedGroupRow({
         thread={thread}
         modelChanges={modelChanges}
         steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -6127,6 +6191,7 @@ function SelectablePagedGroupRow({
   modelChanges,
   showActions,
   steerEventIds,
+  stackFirstOnPrevious,
   runGroupFolds,
   completedWorkFold,
 }: Parameters<typeof PagedGroupRow>[0]) {
@@ -6146,6 +6211,7 @@ function SelectablePagedGroupRow({
         modelChanges={modelChanges}
         showActions={showActions}
         steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6191,6 +6257,7 @@ function SelectablePagedGroupRow({
         modelChanges={modelChanges}
         showActions={showActions}
         steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6217,12 +6284,14 @@ function PagedUserGroup({
   thread,
   modelChanges,
   steerEventIds,
+  stackFirstOnPrevious = false,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
   steerEventIds: ReadonlySet<string>;
+  stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   // Consecutive user events already arrive as one group, so the burst boundary
@@ -6236,21 +6305,20 @@ function PagedUserGroup({
       {group.events.map((event, index) => {
         const modelChange = modelChanges.get(event.id);
         const previousEvent = group.events[index - 1];
-        // Two steers in a row are one thing the user said, so they close up.
-        // The stack is scoped to the burst rather than to adjacency: outside
-        // this feature a run of user messages carries no acknowledgement to
-        // close the group, and `steerEventIds` is empty whenever the switch is
-        // off, so the transcript there keeps the spacing it has today.
-        // Anything that belongs between two of them — a model change, a
-        // message that renders as its own card rather than a bubble — ends the
-        // stack.
+        // Anything the user sent back to back is one thing they said, so the
+        // whole run closes up — including the message the run started from and
+        // the first correction after it, which is the seam this rule used to
+        // leave wide. Adjacency is the whole condition on purpose: a burst that
+        // carries no acknowledgement is still a burst, so the spacing does not
+        // wait on the acknowledgement's feature switch. Anything that belongs
+        // between two messages — a model change, a message that renders as its
+        // own card rather than a bubble — ends the stack.
         const stackedOnPrevious =
-          previousEvent !== undefined &&
           modelChange === undefined &&
-          steerEventIds.has(event.id) &&
-          steerEventIds.has(previousEvent.id) &&
           rendersUserBubble(event) &&
-          rendersUserBubble(previousEvent);
+          (previousEvent !== undefined
+            ? rendersUserBubble(previousEvent)
+            : stackFirstOnPrevious);
         return (
           <div key={event.id} className="contents">
             {modelChange === undefined ? null : (

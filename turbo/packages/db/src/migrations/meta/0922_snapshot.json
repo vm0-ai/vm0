@@ -1,6 +1,6 @@
 {
-  "id": "ef3284a9-b24b-4db1-92cd-167c20a1c3f6",
-  "prevId": "3528c8a3-145c-4787-bd6c-d8ec68b9ae11",
+  "id": "3bcb2699-b343-4a2e-bcf2-81d0259ebffe",
+  "prevId": "ef3284a9-b24b-4db1-92cd-167c20a1c3f6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4902,6 +4902,12 @@
         "last_seq_id": {
           "name": "last_seq_id",
           "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_event_id": {
+          "name": "last_event_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },

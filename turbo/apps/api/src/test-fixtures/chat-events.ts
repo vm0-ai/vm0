@@ -1093,6 +1093,26 @@ export async function removeAcknowledgedCancellationLifecycleFixture(args: {
   });
 }
 
+/** Make the canonical chat callback fail validation before terminal processing. */
+export async function invalidateChatCallbackPayloadFixture(
+  runId: string,
+): Promise<void> {
+  const callbacks = await db()
+    .update(agentRunCallbacks)
+    .set({ payload: {} })
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+        eq(agentRunCallbacks.status, "pending"),
+      ),
+    )
+    .returning({ id: agentRunCallbacks.id });
+  if (callbacks.length !== 1) {
+    throw new Error("Expected one pending canonical chat callback");
+  }
+}
+
 async function transitiveBlockedWaiterCount(
   holderPid: number,
 ): Promise<number> {
