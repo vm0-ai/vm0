@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.2...runner-rs-v0.168.3) (2026-08-13)
+
+
+### Performance Improvements
+
+* **runner:** reduce gc tree walk task handoffs ([#26920](https://github.com/vm0-ai/vm0/issues/26920)) ([2133a7f](https://github.com/vm0-ai/vm0/commit/2133a7f016b8eac193943e8195d07cc0b740ea41))
+
 ## [0.168.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.1...runner-rs-v0.168.2) (2026-08-13)
 
 
