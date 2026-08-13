@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.73.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.72.0...guest-agent-v0.73.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate pi child environment to okou ([#26810](https://github.com/vm0-ai/vm0/issues/26810)) ([9c54e70](https://github.com/vm0-ai/vm0/commit/9c54e70777750b608dad06fde2a44a5a08f9796b))
+
+
+### Refactoring
+
+* **guest:** centralize private file replacement ([#26786](https://github.com/vm0-ai/vm0/issues/26786)) ([b12cef8](https://github.com/vm0-ai/vm0/commit/b12cef89edbcdf0f9748dba40f3ebe99bfb3fbe5))
+
+
+### Performance Improvements
+
+* **guest-agent:** prevent overdue heartbeat replay ([#26792](https://github.com/vm0-ai/vm0/issues/26792)) ([8f03dfe](https://github.com/vm0-ai/vm0/commit/8f03dfef2cb09562767a4b9c2fa6b7865e06e489))
+
 ## [0.72.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.3...guest-agent-v0.72.0) (2026-08-13)
 
 

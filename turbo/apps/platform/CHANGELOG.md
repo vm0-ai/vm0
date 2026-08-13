@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.740.1](https://github.com/vm0-ai/vm0/compare/app-v0.740.0...app-v0.740.1) (2026-08-13)
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.327.3
+    * @okouai/connectors bumped to 1.205.2
+    * @okouai/core bumped to 8.553.3
+
 ## [0.740.0](https://github.com/vm0-ai/vm0/compare/app-v0.739.1...app-v0.740.0) (2026-08-13)
 
 
