@@ -973,8 +973,11 @@ fn replace_private_atomic_unix(
     let name = file_name(path)?;
     let name_c = component_cstring(name, path)?;
     let parent = open_or_create_private_dir(parent_dir(path)?)?;
-    if target == PrivateFileReplacementTarget::PrivateFileOrMissing {
-        validate_replace_target(&parent, name, path)?;
+    match target {
+        PrivateFileReplacementTarget::PrivateFileOrMissing => {
+            validate_replace_target(&parent, name, path)?;
+        }
+        PrivateFileReplacementTarget::ReplaceFinalEntry => {}
     }
 
     let temp_name = replacement_name();
