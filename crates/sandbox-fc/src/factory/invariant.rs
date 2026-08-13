@@ -5,8 +5,10 @@ use crate::network::{GUEST_NETWORK, generate_boot_args};
 /// Shell command executed during snapshot creation to pre-warm guest state.
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
 ///
-/// **Note:** Do NOT wrap this in `su - user -c '...'` — the vsock-guest exec
-/// handler already wraps commands with `su - user -c` in release builds.
+/// **Note:** Do NOT wrap this in another user transition — the vsock-guest exec
+/// handler already applies the sandbox credentials directly (`setgroups`,
+/// `setgid`, and `setuid`) before executing an explicit non-login `/bin/sh` in
+/// release builds.
 /// Double-wrapping creates nested sessions where inner processes escape the
 /// process group, surviving SIGKILL on timeout as orphans frozen into the
 /// snapshot.

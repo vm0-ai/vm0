@@ -4,6 +4,11 @@ import pytest
 
 ONLY_DOTS_HOSTNAME = "..."
 
+OVERRANGE_IPV4_HOSTNAME_CASES = (
+    pytest.param("256.0.0.1", id="overrange-first-ipv4-octet"),
+    pytest.param("1.2.3.999", id="overrange-last-ipv4-octet"),
+)
+
 INVALID_IDNA_HOSTNAME_CASES = (
     pytest.param("\uff21.example", id="fullwidth-latin"),
     pytest.param(ONLY_DOTS_HOSTNAME, id="dots"),
@@ -45,6 +50,7 @@ INVALID_IDNA_HOSTNAME_CASES = (
     pytest.param("a\u0663\u0664.example", id="latin-arabic-digits"),
     pytest.param("1\u0663.example", id="ascii-and-arabic-digits"),
     pytest.param("!\u0663!.example", id="punctuation-arabic-digit"),
+    *OVERRANGE_IPV4_HOSTNAME_CASES,
     pytest.param("0177.0.0.1", id="octal-ipv4"),
     pytest.param("127\u30020\u30020\u30021", id="ideographic-dot-ipv4"),
     pytest.param("127.0.0.1\u3002", id="trailing-ideographic-dot-ipv4"),

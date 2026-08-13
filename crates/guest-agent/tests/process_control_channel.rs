@@ -7,9 +7,11 @@
 
 mod common;
 
-use std::io;
-use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::fs::File;
+use std::io::{self, Write};
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -25,9 +27,58 @@ const READY_CONTROL_MESSAGE_ID: &str = "process-control-after-cli-ready";
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
+struct MockStartGate {
+    writer: File,
+}
+
 struct ConnectionHarness {
     host: Option<vsock_host::VsockHost>,
     guest: Option<thread::JoinHandle<io::Result<()>>>,
+}
+
+impl MockStartGate {
+    fn create(dir: &Path, mock: &Path) -> TestResult<(Self, PathBuf)> {
+        let fifo = dir.join("mock-start.fifo");
+        let c_fifo = std::ffi::CString::new(fifo.as_os_str().as_bytes())?;
+        // SAFETY: c_fifo is a valid NUL-terminated path and the mode is a
+        // normal POSIX permission mask for a test-only FIFO.
+        if unsafe { libc::mkfifo(c_fifo.as_ptr(), 0o600) } != 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+
+        // Keep both FIFO ends open so the wrapper can block on its read even
+        // when the test releases it before the wrapper reaches that read.
+        // SAFETY: c_fifo remains valid for the call and ownership of the
+        // returned descriptor transfers to File below.
+        let fd = unsafe {
+            libc::open(
+                c_fifo.as_ptr(),
+                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        // SAFETY: fd is a freshly opened descriptor owned by this function.
+        let writer = unsafe { File::from_raw_fd(fd) };
+
+        let wrapper = dir.join("gated-mock-claude.sh");
+        let script = format!(
+            "#!/bin/sh\nIFS= read -r _ < {}\nexec {} \"$@\"\n",
+            quote_shell_arg(&fifo.to_string_lossy()),
+            quote_shell_arg(&mock.to_string_lossy()),
+        );
+        std::fs::write(&wrapper, script)?;
+        let mut permissions = std::fs::metadata(&wrapper)?.permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&wrapper, permissions)?;
+
+        Ok((Self { writer }, wrapper))
+    }
+
+    fn release(&mut self) -> io::Result<()> {
+        self.writer.write_all(b"start\n")
+    }
 }
 
 impl ConnectionHarness {
@@ -67,6 +118,7 @@ impl Drop for ConnectionHarness {
 async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
+    let (mut mock_start_gate, gated_mock) = MockStartGate::create(tmp.path(), &mock)?;
     let run_id = format!(
         "process-control-channel-{}-{}",
         std::process::id(),
@@ -76,7 +128,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
     let prompt = "@active-input-smoke:2";
     let workdir = tmp.path().to_string_lossy().into_owned();
-    let mock_path = mock.to_string_lossy().into_owned();
+    let mock_path = gated_mock.to_string_lossy().into_owned();
     let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), &run_id)?;
     let run_payload_path = common::write_run_payload_file_for_test(
         &runtime_dir,
@@ -101,6 +153,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("VM0_API_TOKEN", ""),
         ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
         ("VM0_SANDBOX_REUSE_RESULT", "reused"),
+        ("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
         ("HOME", workdir.as_str()),
     ];
 
@@ -142,6 +195,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         )
         .await?;
 
+    mock_start_gate.release()?;
     let mut stdout = collect_stdout_until(
         &mut stdout_rx,
         b"READY_FOR_ACTIVE_INPUT",
@@ -218,6 +272,7 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
         ("VM0_API_TOKEN", ""),
         ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
         ("VM0_SANDBOX_REUSE_RESULT", "reused"),
+        ("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
         ("HOME", workdir.as_str()),
     ];
 

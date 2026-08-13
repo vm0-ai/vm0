@@ -2712,6 +2712,26 @@ async fn file_operation_entrypoints_preserve_operation_context_for_start_rejecti
         .expect("abort prepare park");
 }
 
+#[test]
+fn process_control_latency_logs_only_material_delays() {
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(249)),
+        None
+    );
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(250)),
+        Some(ProcessControlLatencyLevel::Info)
+    );
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(749)),
+        Some(ProcessControlLatencyLevel::Info)
+    );
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(750)),
+        Some(ProcessControlLatencyLevel::Warn)
+    );
+}
+
 #[tokio::test]
 async fn process_control_rejects_closed_policy_gate_without_dirtying() {
     let ExecProcessControlFixture {

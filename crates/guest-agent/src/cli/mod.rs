@@ -764,6 +764,7 @@ pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
     user_cancellation: CancellationToken,
     codex_startup: Option<&'a CodexStartupTiming>,
+    workload_containment: Option<&'a crate::workload_containment::WorkloadContainment>,
 }
 
 impl<'a> CliExecutionControls<'a> {
@@ -778,7 +779,17 @@ impl<'a> CliExecutionControls<'a> {
             active_input,
             user_cancellation,
             codex_startup,
+            workload_containment: None,
         }
+    }
+    /// Supply the production workload placement capability for CLI children.
+    #[must_use]
+    pub fn with_workload_containment(
+        mut self,
+        containment: Option<&'a crate::workload_containment::WorkloadContainment>,
+    ) -> Self {
+        self.workload_containment = containment;
+        self
     }
 }
 
@@ -819,6 +830,7 @@ async fn execute_cli_inner(
         active_input,
         user_cancellation,
         codex_startup: _,
+        workload_containment,
     } = controls;
 
     let replay_user_messages =
@@ -891,6 +903,9 @@ async fn execute_cli_inner(
     // Set the child cwd explicitly at spawn time so the CLI observes the
     // current canonical workspace mount instead of relying on inherited cwd.
     set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
+    if let Some(workload_containment) = workload_containment {
+        workload_containment.configure_command(&mut cmd)?;
+    }
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.

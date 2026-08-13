@@ -1,5 +1,5 @@
 import { getCustomSkillStorageName } from "@okouai/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@okouai/core/zero-workflow-skill";
+import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
 import type { ZeroWorkflowUpdateRequest } from "@okouai/api-contracts/contracts/zero-workflows";
 import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";

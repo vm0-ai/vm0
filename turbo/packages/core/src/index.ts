@@ -668,4 +668,4 @@ export {
 export { getModelDisplayName } from "./model-display-name";
 export { formatMessage, serializeError, extractFields } from "./log-utils";
 
-export * from "./zero-workflow-skill";
+export * from "./skill-document";

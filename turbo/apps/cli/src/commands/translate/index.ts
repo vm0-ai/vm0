@@ -1,15 +1,15 @@
-import { zeroTranslationRequestSchema } from "@okouai/api-contracts/contracts/zero-translation";
+import { translationRequestSchema } from "@okouai/api-contracts/contracts/translation";
 import { Command, InvalidArgumentError } from "commander";
 
-import { callZeroTranslation } from "../../../lib/api/domains/zero-translation";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { callTranslation } from "../../lib/api/domains/translation";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface TranslateOptions {
   readonly to: string;
   readonly from?: string;
 }
 
-export const zeroTranslateCommand = new Command()
+export const translateCommand = new Command()
   .name("translate")
   .description("Translate text through a managed translation model")
   .argument("<text>", "Text to translate")
@@ -17,7 +17,7 @@ export const zeroTranslateCommand = new Command()
   .option("--from <language>", "Source language name or code")
   .action(
     withErrorHandler(async (text: string, options: TranslateOptions) => {
-      const request = zeroTranslationRequestSchema.safeParse({
+      const request = translationRequestSchema.safeParse({
         text,
         targetLanguage: options.to,
         ...(options.from === undefined ? {} : { sourceLanguage: options.from }),
@@ -28,7 +28,7 @@ export const zeroTranslateCommand = new Command()
         );
       }
 
-      const response = await callZeroTranslation(request.data);
+      const response = await callTranslation(request.data);
       console.log(response.text);
     }),
   )
@@ -41,6 +41,6 @@ Examples:
 
 Notes:
   - Available only inside agent runs with the translation:write capability
-  - Uses a fixed vm0-managed Qwen 7B translation model
+  - Uses a fixed Okou-managed Qwen 7B translation model
   - Prints only the translated text`,
   );
