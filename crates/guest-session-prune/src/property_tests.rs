@@ -428,7 +428,7 @@ fn expect_candidate(selection: ClaudeHistorySelection) -> Result<CandidateView, 
 fn assert_ineligible(selection: ClaudeHistorySelection) -> TestCaseResult {
     prop_assert!(
         matches!(selection, ClaudeHistorySelection::Ineligible(_)),
-        "expected fail-closed selection, got {selection:?}",
+        "expected fail-closed selection, got a candidate",
     );
     Ok(())
 }
@@ -658,9 +658,8 @@ fn assert_candidate_invariants(
         .len()
         .checked_sub(candidate.bytes.len())
         .ok_or_else(|| TestCaseError::fail("candidate exceeded source length"))?;
-    prop_assert_eq!(
-        candidate.bytes.as_slice(),
-        &source.bytes[candidate_start..],
+    prop_assert!(
+        candidate.bytes.as_slice() == &source.bytes[candidate_start..],
         "candidate rewrote source bytes",
     );
     prop_assert_eq!(
@@ -1273,6 +1272,11 @@ fn every_named_newest_generation_mutation_fails_closed() {
     for mutation in InvalidMutation::ALL {
         for line_ending in [LineEnding::Lf, LineEnding::Crlf] {
             let records = invalid_history(mutation, line_ending);
+            let retained_size = records.iter().map(Vec::len).sum::<usize>();
+            assert!(
+                retained_size <= GENERATED_LIMITS.candidate_max_bytes as usize,
+                "mutation {mutation:?} did not keep the older fallback in the tail window",
+            );
             let source = write_raw_source(&records, GENERATED_LIMITS)
                 .expect("invalid generated history must be writable");
             let selection = select(&source, GENERATED_LIMITS)
@@ -1280,7 +1284,7 @@ fn every_named_newest_generation_mutation_fails_closed() {
 
             assert!(
                 matches!(selection, ClaudeHistorySelection::Ineligible(_)),
-                "mutation {mutation:?} with {line_ending:?} selected {selection:?}",
+                "mutation {mutation:?} with {line_ending:?} selected a candidate",
             );
         }
     }
@@ -1316,9 +1320,9 @@ fn line_endings_tail_alignment_and_unterminated_eof_preserve_exact_bytes() {
                     }
                 };
 
-                assert_eq!(
-                    candidate.into_bytes(),
-                    source.bytes[source.newest_boundary_offset..],
+                assert!(
+                    candidate.into_bytes() == source.bytes[source.newest_boundary_offset..],
+                    "selected generation rewrote source bytes",
                 );
             }
         }
@@ -1343,9 +1347,9 @@ proptest! {
         )?;
         let candidate = expect_candidate(selection)?;
 
-        prop_assert_eq!(
-            candidate.bytes.as_slice(),
-            &source.bytes[source.newest_boundary_offset..],
+        prop_assert!(
+            candidate.bytes.as_slice() == &source.bytes[source.newest_boundary_offset..],
+            "selected generation did not preserve exact source bytes",
         );
         assert_candidate_invariants(candidate, &source, GENERATED_LIMITS)?;
     }
