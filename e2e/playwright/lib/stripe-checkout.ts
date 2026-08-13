@@ -124,21 +124,6 @@ async function locatorCount(
   }
 }
 
-async function locatorIsVisible(
-  page: Page,
-  frame: Frame,
-  locator: Locator,
-): Promise<boolean> {
-  try {
-    return await locator.isVisible();
-  } catch (error: unknown) {
-    if (frameDetachedDuringDiscovery(page, frame)) {
-      return false;
-    }
-    throw error;
-  }
-}
-
 async function findStripeFieldInFrames(
   page: Page,
   frames: readonly Frame[],
@@ -146,14 +131,11 @@ async function findStripeFieldInFrames(
   visibility: "attached" | "visible",
 ): Promise<LocatedStripeControl | null> {
   for (const frame of frames) {
-    const locator = stripeFieldLocator(frame, field).first();
+    const locator =
+      visibility === "visible"
+        ? visibleStripeFieldLocator(frame, field)
+        : stripeFieldLocator(frame, field).first();
     if ((await locatorCount(page, frame, locator)) === 0) {
-      continue;
-    }
-    if (
-      visibility === "visible" &&
-      !(await locatorIsVisible(page, frame, locator))
-    ) {
       continue;
     }
     return { frame, locator };
@@ -173,11 +155,8 @@ async function findPayWithCard(
   page: Page,
 ): Promise<StripeCardMethodControl | null> {
   for (const frame of page.frames()) {
-    const locator = payWithCardLocator(frame).first();
-    if (
-      (await locatorCount(page, frame, locator)) > 0 &&
-      (await locatorIsVisible(page, frame, locator))
-    ) {
+    const locator = payWithCardLocator(frame).filter({ visible: true }).first();
+    if ((await locatorCount(page, frame, locator)) > 0) {
       return { activation: "click", frame, locator };
     }
   }
