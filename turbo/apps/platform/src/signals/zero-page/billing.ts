@@ -29,6 +29,7 @@ import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
 import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
+import { isOrgAdmin$ } from "../org.ts";
 import { settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
@@ -450,6 +451,11 @@ export const reloadAccountMenuBillingStatus$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
     const foregroundReady = get(foregroundReady$);
+    if (!(await get(isOrgAdmin$))) {
+      signal.throwIfAborted();
+      return;
+    }
+    signal.throwIfAborted();
     if (!foregroundReady.pending) {
       const resource = get(billingStatusResource$);
       if (resource.pending()) {

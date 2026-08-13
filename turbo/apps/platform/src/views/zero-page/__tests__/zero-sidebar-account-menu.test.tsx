@@ -321,6 +321,26 @@ describe("zero sidebar account menu", () => {
 
   it("does not request or show member usage pack credits when the switch is disabled", async () => {
     mockMemberAccountSidebar();
+    let billingRequests = 0;
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingRequests += 1;
+      return respond(200, {
+        tier: "pro",
+        credits: 12_500,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
+      });
+    });
     let usagePackCreditRequests = 0;
     context.mocks.api(
       zeroBillingUsagePackCreditsContract.get,
@@ -345,11 +365,18 @@ describe("zero sidebar account menu", () => {
       },
     });
 
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+    billingRequests = 0;
     const menu = await openAccountMenu();
     expect(within(menu).getByText("Settings")).toBeInTheDocument();
     expect(
       within(menu).queryByTestId("account-menu-credit-balance"),
     ).toBeNull();
+    expect(billingRequests).toBe(0);
     expect(usagePackCreditRequests).toBe(0);
   });
 
