@@ -1485,8 +1485,10 @@ export const chatEventsContract = c.router({
 
 /**
  * Single chat message in a search result.
- * `content` is guaranteed non-null because the search route filters out
- * placeholder rows where content is NULL.
+ * `(chatThreadId, seqId)` is the stable identity and `runId` carries optional
+ * run ownership. `messageId` and `sequenceNumber` remain temporarily for
+ * already-open App builds; the durable reader synthesizes the former from the
+ * stable identity and returns null for the latter.
  */
 const chatSearchMessageSchema = z.object({
   messageId: z.string(),

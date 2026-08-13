@@ -18,7 +18,6 @@ import {
   googleDriveArtifactStatusLookup,
 } from "../services/google-drive-artifact-sync.service";
 import {
-  zeroChatSearch,
   zeroChatIndicators,
   zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
@@ -29,6 +28,7 @@ import {
   zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
+import { zeroChatSearch } from "../services/zero-chat-search.service";
 import {
   zeroChatThreadEventRows,
   zeroChatThreadEventSnapshot,
