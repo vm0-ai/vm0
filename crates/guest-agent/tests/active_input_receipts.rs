@@ -16,11 +16,7 @@ fn receipt_http(base_url: &str) -> Result<HttpClient, guest_agent::error::AgentE
 }
 
 fn payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
-    serde_json::to_vec(&json!({
-        "type": "active-input",
-        "deliveryId": DELIVERY_ID,
-        "text": text,
-    }))
+    guest_contracts::active_input::encode_active_input(DELIVERY_ID, text)
 }
 
 #[tokio::test]
@@ -110,11 +106,10 @@ async fn accepted_input_is_deduplicated_reported_and_compacted()
     );
     assert!(matches!(
         controller.handle_control_payload(
-            &serde_json::to_vec(&json!({
-                "type": "active-input",
-                "deliveryId": "8736a7bd-8ddc-46b4-a159-af71d09f65e4",
-                "text": "new after close",
-            }))?
+            &guest_contracts::active_input::encode_active_input(
+                "8736a7bd-8ddc-46b4-a159-af71d09f65e4",
+                "new after close",
+            )?
         ),
         ActiveInputControlOutcome::Rejected { diagnostic }
             if diagnostic == "active input is closed"

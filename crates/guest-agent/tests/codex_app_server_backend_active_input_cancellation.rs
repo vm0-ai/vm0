@@ -64,11 +64,12 @@ async fn cancellation_preserves_a_steer_response_already_in_flight()
     )?;
     let active_input_controller = active_input.controller();
     assert_eq!(
-        active_input_controller.handle_control_payload(&serde_json::to_vec(&json!({
-            "type": "active-input",
-            "deliveryId": DELIVERY_ID,
-            "text": "settle this steer before stopping",
-        }))?),
+        active_input_controller.handle_control_payload(
+            &guest_contracts::active_input::encode_active_input(
+                DELIVERY_ID,
+                "settle this steer before stopping",
+            )?,
+        ),
         ActiveInputControlOutcome::Accepted
     );
 
@@ -105,11 +106,12 @@ async fn cancellation_preserves_a_steer_response_already_in_flight()
         () = std::future::ready(()) => {}
     }
     assert_eq!(
-        active_input_controller.handle_control_payload(&serde_json::to_vec(&json!({
-            "type": "active-input",
-            "deliveryId": LATE_DELIVERY_ID,
-            "text": "do not admit this after cancellation",
-        }))?),
+        active_input_controller.handle_control_payload(
+            &guest_contracts::active_input::encode_active_input(
+                LATE_DELIVERY_ID,
+                "do not admit this after cancellation",
+            )?,
+        ),
         ActiveInputControlOutcome::Rejected {
             diagnostic: "active input is closed",
         }
