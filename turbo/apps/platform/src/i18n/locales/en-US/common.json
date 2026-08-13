@@ -790,6 +790,7 @@
       "confirm": "Confirm",
       "credits": "credits",
       "manage": "Manage",
+      "preparing": "Preparing...",
       "redirecting": "Redirecting...",
       "restore": "Restore",
       "retry": "Retry",

@@ -3307,6 +3307,7 @@ describe("organization billing settings", () => {
   });
 
   it("previews and confirms a saved-billing credit purchase in the app", async () => {
+    const checkoutReady = createDeferredPromise<void>(context.signal);
     let startRequest: CreditCheckoutRequest | null = null;
     let confirmedPreviewToken: string | null = null;
     let billingStatusRequests = 0;
@@ -3325,8 +3326,9 @@ describe("organization billing settings", () => {
     });
     context.mocks.api(
       zeroBillingCreditCheckoutContract.create,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
         startRequest = body;
+        await checkoutReady.promise;
         return respond(200, {
           status: "preview",
           credits: 20_000,
@@ -3351,6 +3353,12 @@ describe("organization billing settings", () => {
     await openBillingTab();
     const locationBeforePurchase = window.location.href;
     click(screen.getByText("Quick buy $20.00"));
+
+    await waitFor(() => {
+      expect(buttonByText("Preparing...")).toBeDisabled();
+    });
+    expect(queryButtonByText("Redirecting...")).toBeUndefined();
+    checkoutReady.resolve(undefined);
 
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review credit purchase",

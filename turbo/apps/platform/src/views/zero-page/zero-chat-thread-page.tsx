@@ -5489,10 +5489,10 @@ function insufficientCreditsCopy(params: {
 }
 
 function PaidCreditCheckoutActions({
-  redirecting,
+  preparing,
   handleCreditClick,
 }: {
-  readonly redirecting: boolean;
+  readonly preparing: boolean;
   readonly handleCreditClick: (
     selection: CreditCheckoutSelection,
     event: ReactMouseEvent<HTMLButtonElement>,
@@ -5525,7 +5525,7 @@ function PaidCreditCheckoutActions({
               onClick={(event) => {
                 handleCreditClick({ credits }, event);
               }}
-              disabled={redirecting}
+              disabled={preparing}
               variant="default"
               size="sm"
               className="disabled:opacity-60"
@@ -5564,14 +5564,14 @@ function PaidCreditCheckoutActions({
             <Button
               type="button"
               onClick={handleCustomCreditClick}
-              disabled={redirecting}
+              disabled={preparing}
               variant="default"
               size="sm"
               className="disabled:opacity-60"
             >
-              {redirecting
+              {preparing
                 ? t(($) => {
-                    return $.chat.billing.redirecting;
+                    return $.billing.common.preparing;
                   })
                 : t(($) => {
                     return $.chat.billing.buy;
@@ -5605,9 +5605,8 @@ function InsufficientCreditsCard() {
   const hasAvailableCredits = canBuyCredits && credits !== null && credits > 0;
   const shouldStartProCheckout = !canBuyCredits;
   const canShowBillingAction = billingResolved && canManageBilling;
-  const redirecting =
-    checkoutLoadable.state === "loading" ||
-    creditCheckoutLoadable.state === "loading";
+  const checkoutRedirecting = checkoutLoadable.state === "loading";
+  const creditCheckoutPreparing = creditCheckoutLoadable.state === "loading";
 
   if (hasAvailableCredits) {
     return <CreditsAvailableMessage />;
@@ -5652,12 +5651,12 @@ function InsufficientCreditsCard() {
         <Button
           type="button"
           onClick={handleUpgradeClick}
-          disabled={redirecting}
+          disabled={checkoutRedirecting}
           variant="default"
           size="sm"
           className="mt-3 disabled:opacity-60"
         >
-          {redirecting
+          {checkoutRedirecting
             ? t(($) => {
                 return $.chat.billing.redirecting;
               })
@@ -5667,7 +5666,7 @@ function InsufficientCreditsCard() {
         </Button>
       ) : (
         <PaidCreditCheckoutActions
-          redirecting={redirecting}
+          preparing={creditCheckoutPreparing}
           handleCreditClick={handleCreditClick}
         />
       )}
