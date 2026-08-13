@@ -172,6 +172,38 @@ describe("chat run actions", () => {
     await expect(screen.findByText(STEER_ONE_COPY)).resolves.toBeVisible();
   });
 
+  it("retires the acknowledgement once the run it belongs to finishes", async () => {
+    // The line answers "did my correction land in the work that is running".
+    // Once that run ends the work itself is the answer, so the line goes.
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: [RUN_ID],
+      chatEvents: [
+        transcriptEvent("U1", 0, []),
+        transcriptEvent("U2", 1, ["U2"]),
+        {
+          id: "msg-run-completed",
+          role: "assistant",
+          content: null,
+          runId: RUN_ID,
+          runLifecycleEvent: "completed",
+          createdAt: new Date(Date.UTC(2026, 7, 11, 10, 0, 2)).toISOString(),
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
+    });
+
+    await expect(screen.findByText("U2")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-steer-acknowledgement")).toBeNull();
+    });
+  });
+
   it("acknowledges a burst of steers once, counting every message", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
