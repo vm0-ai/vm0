@@ -4658,12 +4658,17 @@
       "yesterday": "Ontem"
     },
     "records": {
-      "emptyBillingPeriod": "Nenhum uso neste período de cobrança.",
-      "emptyRange": "Nenhum uso neste período.",
+      "empty": {
+        "billingPeriodTitle": "Nenhum uso neste período de cobrança",
+        "description": "Os créditos que você gasta em chats, automações e canais aparecem aqui.",
+        "noBillingPeriodDescription": "O uso da equipe aparece assim que um período de cobrança começa.",
+        "noBillingPeriodTitle": "Nenhum período de cobrança ativo",
+        "rangeTitle": "Nenhum uso neste período",
+        "teamDescription": "Os créditos que sua equipe gasta em chats, automações e canais aparecem aqui."
+      },
       "loadError": "Não foi possível carregar seu uso.",
       "loadMore": "Carregar mais",
       "myUsage": "Meu uso",
-      "noActiveBillingPeriod": "Nenhum período de cobrança ativo.",
       "teamLoadError": "Não foi possível carregar o uso da equipe.",
       "teamUsage": "Uso da equipe",
       "untitled": "(sem título)"

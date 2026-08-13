@@ -4606,12 +4606,17 @@
       "yesterday": "Yesterday"
     },
     "records": {
-      "emptyBillingPeriod": "No usage in this billing period.",
-      "emptyRange": "No usage in this time range.",
+      "empty": {
+        "billingPeriodTitle": "No usage in this billing period",
+        "description": "Credits you spend on chats, automations, and channels show up here.",
+        "noBillingPeriodDescription": "Team usage appears once a billing period starts.",
+        "noBillingPeriodTitle": "No active billing period",
+        "rangeTitle": "No usage in this time range",
+        "teamDescription": "Credits your team spends on chats, automations, and channels show up here."
+      },
       "loadError": "Could not load your usage.",
       "loadMore": "Load more",
       "myUsage": "My usage",
-      "noActiveBillingPeriod": "No active billing period.",
       "teamLoadError": "Could not load team usage.",
       "teamUsage": "Team usage",
       "untitled": "(untitled)"

@@ -4606,12 +4606,17 @@
       "yesterday": "Gestern"
     },
     "records": {
-      "emptyBillingPeriod": "Keine Nutzung in diesem Abrechnungszeitraum.",
-      "emptyRange": "Keine Nutzung in diesem Zeitraum.",
+      "empty": {
+        "billingPeriodTitle": "Keine Nutzung in diesem Abrechnungszeitraum",
+        "description": "Credits, die du für Chats, Automationen und Kanäle ausgibst, erscheinen hier.",
+        "noBillingPeriodDescription": "Die Team-Nutzung erscheint, sobald ein Abrechnungszeitraum beginnt.",
+        "noBillingPeriodTitle": "Kein aktiver Abrechnungszeitraum",
+        "rangeTitle": "Keine Nutzung in diesem Zeitraum",
+        "teamDescription": "Credits, die dein Team für Chats, Automationen und Kanäle ausgibt, erscheinen hier."
+      },
       "loadError": "Ihre Nutzung konnte nicht geladen werden.",
       "loadMore": "Mehr laden",
       "myUsage": "Meine Nutzung",
-      "noActiveBillingPeriod": "Kein aktiver Abrechnungszeitraum.",
       "teamLoadError": "Die Teamnutzung konnte nicht geladen werden.",
       "teamUsage": "Teamnutzung",
       "untitled": "(ohne Titel)"
