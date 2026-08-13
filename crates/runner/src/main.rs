@@ -369,6 +369,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn service_drain_help_describes_bounded_coordination() {
+        let error = Cli::try_parse_from(["runner", "service", "--help"])
+            .err()
+            .expect("service --help should exit through clap");
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let normalized_help = error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(normalized_help.contains(
+            "drain Drain without waiting for active jobs (may wait for bounded systemd/signal coordination)"
+        ));
+        assert!(!normalized_help.contains("returns immediately"));
+    }
+
     #[tokio::test]
     async fn runner_help_hides_token_environment_values() {
         for subcommand in ["config", "start"] {
