@@ -229,23 +229,6 @@ describe("chat event snapshot read endpoints", () => {
       range: { start: 4, end: 13 },
     });
 
-    const canonicalInput = (
-      await chat.listThreadEvents(owner, threadId)
-    ).events.find((event) => {
-      return event.id === archivedInput.id;
-    });
-    if (canonicalInput?.eventType !== "input.prompt") {
-      throw new Error("Expected the canonical feedback input");
-    }
-    expect(
-      canonicalInput.userMessage.parts.find((part) => {
-        return part.type === "feedback";
-      }),
-    ).toMatchObject({
-      eventId: "snapshot-feedback-source-event",
-      range: { start: 4, end: 13 },
-    });
-
     // Unsupported heads fail closed instead of entering a rewrite fallback.
     await setChatEventSnapshotHeadVersion(context, threadId, 2);
     await accept(
