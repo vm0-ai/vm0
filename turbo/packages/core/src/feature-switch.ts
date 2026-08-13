@@ -298,12 +298,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Let a video template chip in the chat composer set the generation model, aspect ratio, duration, resolution, and audio.",
-    // REVIEW ONLY — REVERT TO `enabled: false` BEFORE MERGING.
-    // A preview deployment gives every reviewer a brand-new org, which is
-    // never in STAFF_ORG_ID_HASHES, so the redesign was invisible on the
-    // preview unless each reviewer first found the toggle on /_/lab. Turned on
-    // for the life of this branch so the preview URL alone is enough.
-    enabled: true,
+    enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PiLoop]: {
