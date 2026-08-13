@@ -779,7 +779,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("zooms a tall image to its original width with viewport margin", async () => {
+  it("zooms a tall image up to three times the viewport width", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -816,7 +816,7 @@ describe("zero attachment chips", () => {
       expect(lightboxImage).toHaveStyle({ width: "28px" });
     });
 
-    for (let index = 0; index < 13; index += 1) {
+    for (let index = 0; index < 15; index += 1) {
       const maxZoomEvent = zoomWheelEvent(transformWrapper, {
         clientX: 400,
         clientY: 300,
@@ -828,7 +828,7 @@ describe("zero attachment chips", () => {
     }
 
     await waitFor(() => {
-      expect(transformContent.style.transform).toContain("scale(42.855)");
+      expect(transformContent.style.transform).toContain("scale(85.7099)");
       expect(screen.getByLabelText("Zoom in")).toBeDisabled();
     });
 

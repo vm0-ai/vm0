@@ -26,7 +26,7 @@ const IMAGE_DOUBLE_CLICK_ZOOM_STEP = Math.log(2);
 const IMAGE_TRACKPAD_ZOOM_SENSITIVITY = 0.03;
 const IMAGE_TRACKPAD_ZOOM_MAX_DELTA = 10;
 const IMAGE_WHEEL_LINE_HEIGHT = 16;
-const IMAGE_MAX_WIDTH_VIEWPORT_RATIO = 1.5;
+const IMAGE_MAX_WIDTH_VIEWPORT_RATIO = 3;
 
 function isImageWheelZoomActivated(keys: string[]): boolean {
   return keys.includes("Control") || keys.includes("Meta");
