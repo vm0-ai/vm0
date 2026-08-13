@@ -9,6 +9,7 @@ import { and, eq } from "drizzle-orm";
 
 import {
   getStripeClient,
+  type StripeClient,
   type StripeInvoice,
   type StripeInvoiceCreatePreviewParams,
   type StripeInvoiceLine,
@@ -29,6 +30,7 @@ import {
 } from "./org-concurrency-entitlements.service";
 
 const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
+const STRIPE_INVOICE_LINE_PAGE_SIZE = 100;
 
 interface ConcurrencySubscriptionArgs {
   readonly orgId: string;
@@ -456,17 +458,6 @@ export const addStripeConcurrencySubscriptionItem$ = command(
   },
 );
 
-function invoiceAmount(invoice: StripeInvoice, description: string): number {
-  if (
-    !Number.isSafeInteger(invoice.amount_due) ||
-    invoice.amount_due < 0 ||
-    invoice.currency.length !== 3
-  ) {
-    throw new Error(`Stripe ${description} has an invalid amount`);
-  }
-  return invoice.amount_due;
-}
-
 function invoiceLinePriceId(line: StripeInvoiceLine): string | null {
   const price = line.pricing?.price_details?.price;
   return typeof price === "string"
@@ -485,11 +476,65 @@ function invoiceLineAmountWithTax(line: StripeInvoiceLine): number {
   return amount;
 }
 
-function immediateProrationAmount(
+async function listCompleteInvoiceLines(
+  stripe: StripeClient,
   invoice: StripeInvoice,
+  signal: AbortSignal,
+): Promise<readonly StripeInvoiceLine[]> {
+  if (!invoice.lines.has_more) {
+    return invoice.lines.data;
+  }
+  const lines: StripeInvoiceLine[] = [];
+  let startingAfter: string | undefined;
+  while (true) {
+    const page = await stripe.invoices.listLineItems(invoice.id, {
+      limit: STRIPE_INVOICE_LINE_PAGE_SIZE,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    signal.throwIfAborted();
+    lines.push(...page.data);
+    if (!page.has_more) {
+      return lines;
+    }
+    const last = page.data.at(-1);
+    if (!last?.id) {
+      throw new Error(
+        `Stripe invoice ${invoice.id} returned an incomplete line-item page`,
+      );
+    }
+    startingAfter = last.id;
+  }
+}
+
+function recurringConcurrencyAmount(
+  invoice: StripeInvoice,
+  lines: readonly StripeInvoiceLine[],
+): number {
+  const concurrencyLines = lines.filter((line) => {
+    const priceId = invoiceLinePriceId(line);
+    return priceId !== null && isConcurrencyPriceId(priceId);
+  });
+  const amount = concurrencyLines.reduce((total, line) => {
+    return total + invoiceLineAmountWithTax(line);
+  }, 0);
+  if (
+    invoice.currency.length !== 3 ||
+    concurrencyLines.length === 0 ||
+    !Number.isSafeInteger(amount) ||
+    amount < 0
+  ) {
+    throw new Error(
+      "Stripe concurrency recurring preview has an invalid amount",
+    );
+  }
+  return amount;
+}
+
+function immediateProrationAmount(
+  lines: readonly StripeInvoiceLine[],
   prorationTimestamp: number,
 ): number {
-  const lines = invoice.lines.data.filter((line) => {
+  const prorationLines = lines.filter((line) => {
     const priceId = invoiceLinePriceId(line);
     return (
       line.parent?.subscription_item_details?.proration === true &&
@@ -498,13 +543,34 @@ function immediateProrationAmount(
       isConcurrencyPriceId(priceId)
     );
   });
-  const amount = lines.reduce((total, line) => {
+  const amount = prorationLines.reduce((total, line) => {
     return total + invoiceLineAmountWithTax(line);
   }, 0);
-  if (lines.length === 0 || !Number.isSafeInteger(amount)) {
+  if (prorationLines.length === 0 || !Number.isSafeInteger(amount)) {
     throw new Error("Stripe concurrency preview has an invalid amount");
   }
   return Math.max(0, amount);
+}
+
+async function concurrencyPreviewLines(
+  stripe: StripeClient,
+  immediatePreview: StripeInvoice,
+  recurringPreview: StripeInvoice,
+  signal: AbortSignal,
+): Promise<
+  readonly [readonly StripeInvoiceLine[], readonly StripeInvoiceLine[]]
+> {
+  if (immediatePreview.currency !== recurringPreview.currency) {
+    throw new Error(
+      "Stripe concurrency previews returned different currencies",
+    );
+  }
+  const lines = await Promise.all([
+    listCompleteInvoiceLines(stripe, immediatePreview, signal),
+    listCompleteInvoiceLines(stripe, recurringPreview, signal),
+  ]);
+  signal.throwIfAborted();
+  return lines;
 }
 
 interface StripeConcurrencySubscriptionPreviewArgs {
@@ -512,6 +578,15 @@ interface StripeConcurrencySubscriptionPreviewArgs {
   readonly priceId?: string;
   readonly quantity: number;
   readonly mode: "absolute" | "increase";
+}
+
+function previewTargetQuantity(
+  currentQuantity: number,
+  args: StripeConcurrencySubscriptionPreviewArgs,
+): number {
+  return args.mode === "increase"
+    ? currentQuantity + args.quantity
+    : args.quantity;
 }
 
 export const previewStripeConcurrencySubscriptionChange$ = command(
@@ -535,10 +610,7 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
       return { ok: false, reason: "pending_update" };
     }
     const currentQuantity = item?.quantity ?? 0;
-    const targetQuantity =
-      args.mode === "increase"
-        ? currentQuantity + args.quantity
-        : args.quantity;
+    const targetQuantity = previewTargetQuantity(currentQuantity, args);
     if (
       !Number.isSafeInteger(targetQuantity) ||
       targetQuantity < 1 ||
@@ -589,15 +661,20 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         recurringPreviewParams,
       );
       signal.throwIfAborted();
+      const recurringLines = await listCompleteInvoiceLines(
+        stripe,
+        recurringPreview,
+        signal,
+      );
       return {
         ok: true,
         preview: {
           currentQuantity,
           targetQuantity,
           immediateAmountCents: 0,
-          nextRecurringAmountCents: invoiceAmount(
+          nextRecurringAmountCents: recurringConcurrencyAmount(
             recurringPreview,
-            "concurrency recurring preview",
+            recurringLines,
           ),
           currency: recurringPreview.currency,
           effectiveAt: new Date(
@@ -620,11 +697,12 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
       stripe.invoices.createPreview(recurringPreviewParams),
     ]);
     signal.throwIfAborted();
-    if (immediatePreview.currency !== recurringPreview.currency) {
-      throw new Error(
-        "Stripe concurrency previews returned different currencies",
-      );
-    }
+    const [immediateLines, recurringLines] = await concurrencyPreviewLines(
+      stripe,
+      immediatePreview,
+      recurringPreview,
+      signal,
+    );
 
     return {
       ok: true,
@@ -632,12 +710,12 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         currentQuantity,
         targetQuantity,
         immediateAmountCents: immediateProrationAmount(
-          immediatePreview,
+          immediateLines,
           prorationTimestamp,
         ),
-        nextRecurringAmountCents: invoiceAmount(
+        nextRecurringAmountCents: recurringConcurrencyAmount(
           recurringPreview,
-          "concurrency recurring preview",
+          recurringLines,
         ),
         currency: recurringPreview.currency,
       },

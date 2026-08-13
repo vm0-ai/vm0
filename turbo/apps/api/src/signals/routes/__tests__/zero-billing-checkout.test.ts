@@ -7622,6 +7622,27 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     return fixture;
   }
 
+  function recurringConcurrencyPreviewInvoice(quantity: number) {
+    const line = {
+      id: `il_${randomUUID()}`,
+      amount: 10_000 * quantity,
+      subtotal: 10_000 * quantity,
+      quantity,
+      price: { id: TEST_PRICE_CONCURRENCY },
+      period: { start: 4_075_660_800, end: 4_078_252_800 },
+      parent: {
+        type: "subscription_item_details" as const,
+        subscription_item_details: { proration: false },
+      },
+    };
+    return {
+      id: `in_recurring_${randomUUID()}`,
+      amount_due: line.amount,
+      currency: "usd",
+      lines: { has_more: false, data: [line] },
+    };
+  }
+
   it("requires an active Plan subscription for a concurrency purchase", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -7654,6 +7675,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
   });
 
   it("previews a concurrency purchase on the Plan subscription", async () => {
+    context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [],
+      has_more: false,
+    });
     const fixture = await createSubscriptionOrg({ tier: "team" });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
@@ -7668,6 +7693,19 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
           },
         ],
       },
+    });
+    const recurringInvoice = recurringConcurrencyPreviewInvoice(3);
+    const planLine = {
+      ...recurringInvoice.lines.data[0],
+      id: `il_${randomUUID()}`,
+      amount: 20_000,
+      subtotal: 20_000,
+      quantity: 1,
+      price: { id: TEST_PRICE_TEAM },
+    };
+    context.mocks.stripe.invoices.listLineItems.mockResolvedValueOnce({
+      has_more: false,
+      data: [planLine, ...recurringInvoice.lines.data],
     });
     context.mocks.stripe.invoices.createPreview
       .mockImplementationOnce((input) => {
@@ -7705,9 +7743,9 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         });
       })
       .mockResolvedValueOnce({
-        id: `in_recurring_${randomUUID()}`,
+        ...recurringInvoice,
         amount_due: 50_000,
-        currency: "usd",
+        lines: { has_more: true, data: [planLine] },
       });
 
     const response = await accept(
@@ -7725,7 +7763,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       currentQuantity: 0,
       targetQuantity: 3,
       immediateAmountCents: 5500,
-      nextRecurringAmountCents: 50_000,
+      nextRecurringAmountCents: 30_000,
       currency: "usd",
     });
     expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
@@ -7737,6 +7775,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         proration_date: expect.any(Number),
       },
     });
+    expect(context.mocks.stripe.invoices.listLineItems).toHaveBeenCalledWith(
+      recurringInvoice.id,
+      { limit: 100 },
+    );
     expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
       subscription: fixture.subscriptionId,
       preview_mode: "recurring",
@@ -8375,11 +8417,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
           },
         });
       })
-      .mockResolvedValueOnce({
-        id: `in_recurring_${randomUUID()}`,
-        amount_due: 40_000,
-        currency: "usd",
-      });
+      .mockResolvedValueOnce(recurringConcurrencyPreviewInvoice(4));
     context.mocks.stripe.subscriptions.update.mockResolvedValueOnce({
       id: subscriptionId,
       latest_invoice: {
@@ -8506,11 +8544,9 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         ],
       },
     });
-    context.mocks.stripe.invoices.createPreview.mockResolvedValueOnce({
-      id: `in_recurring_${randomUUID()}`,
-      amount_due: 30_000,
-      currency: "usd",
-    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValueOnce(
+      recurringConcurrencyPreviewInvoice(3),
+    );
     context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
       id: scheduleId,
     });
@@ -8630,16 +8666,8 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       .mockResolvedValueOnce(subscriptionWithSchedule)
       .mockResolvedValueOnce(subscriptionWithSchedule);
     context.mocks.stripe.invoices.createPreview
-      .mockResolvedValueOnce({
-        id: `in_recurring_${randomUUID()}`,
-        amount_due: 30_000,
-        currency: "usd",
-      })
-      .mockResolvedValueOnce({
-        id: `in_recurring_${randomUUID()}`,
-        amount_due: 20_000,
-        currency: "usd",
-      });
+      .mockResolvedValueOnce(recurringConcurrencyPreviewInvoice(3))
+      .mockResolvedValueOnce(recurringConcurrencyPreviewInvoice(2));
     context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
       id: scheduleId,
     });
