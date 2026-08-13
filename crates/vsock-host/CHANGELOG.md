@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.83](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.82...vsock-host-v0.17.83) (2026-08-13)
+
+
+### Bug Fixes
+
+* **vsock-host:** prevent sequence collisions after wrap ([#26952](https://github.com/vm0-ai/vm0/issues/26952)) ([5b5834c](https://github.com/vm0-ai/vm0/commit/5b5834cd9c12185774df955fe45cd00ddc8b7397))
+
 ## [0.17.82](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.81...vsock-host-v0.17.82) (2026-08-13)
 
 
