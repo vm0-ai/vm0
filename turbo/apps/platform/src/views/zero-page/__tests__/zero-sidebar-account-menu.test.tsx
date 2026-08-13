@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { command } from "ccstate";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,6 +25,7 @@ import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
+import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 
 const context = testContext();
 
@@ -624,6 +626,81 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(within(menu).getByText("125 credits")).toBeInTheDocument();
       expect(billingRequests).toBe(2);
+    });
+  });
+
+  it("joins a foreground billing refresh that already started", async () => {
+    let billingRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(12_500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+    });
+
+    const initialMenu = await openAccountMenu();
+    await waitFor(() => {
+      expect(
+        within(initialMenu).getByText("12,500 credits"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const catchUpCanFinish = context.mocks.deferred<void>();
+    const holdForegroundCatchUp$ = command(
+      async (_ctx, signal: AbortSignal): Promise<void> => {
+        await catchUpCanFinish.promise;
+        signal.throwIfAborted();
+      },
+    );
+    context.store.set(
+      subscribeRealtimeReadyCatchUp$,
+      holdForegroundCatchUp$,
+      context.signal,
+    );
+
+    mockAdminBillingStatus(500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(billingRequests).toBe(1);
+    });
+    const foregroundReady = context.store.get(foregroundReady$);
+    expect(foregroundReady.pending).toBeTruthy();
+
+    const menu = await openAccountMenu();
+    expect(billingRequests).toBe(1);
+
+    catchUpCanFinish.resolve();
+    await foregroundReady.promise;
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
     });
   });
 

@@ -29,7 +29,7 @@ import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
 import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
-import { bestEffort, settle, tapError } from "../utils.ts";
+import { settle, tapError } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution$,
@@ -229,6 +229,7 @@ const maybeShowPendingRestoreToast$ = command(
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
+const completedForegroundBillingCatchUp$ = state<Promise<void> | null>(null);
 const usagePackManagementReload$ = state(0);
 const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
@@ -433,10 +434,10 @@ export const reloadAccountMenuBillingStatus$ = command(
       return;
     }
 
-    const reloadVersionBeforeForeground = get(billingReload$);
-    await settle(foregroundReady.promise, signal);
+    const foregroundCatchUp = foregroundReady.promise;
+    await settle(foregroundCatchUp, signal);
     signal.throwIfAborted();
-    if (get(billingReload$) === reloadVersionBeforeForeground) {
+    if (get(completedForegroundBillingCatchUp$) !== foregroundCatchUp) {
       set(reloadBillingStatus$);
     }
     // Join the mounted view's async load, or start it when this menu is the
@@ -564,8 +565,15 @@ const reloadBillingStatusFromRealtime$ = command(
 );
 
 const reloadBillingStatusOnForeground$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    await bestEffort(set(reloadBillingStatusFromRemoteChange$, signal), signal);
+  async ({ get, set }, signal: AbortSignal) => {
+    const foregroundCatchUp = get(foregroundReady$).promise;
+    const result = await settle(
+      set(reloadBillingStatusFromRemoteChange$, signal),
+      signal,
+    );
+    if (result.ok) {
+      set(completedForegroundBillingCatchUp$, foregroundCatchUp);
+    }
   },
 );
 
