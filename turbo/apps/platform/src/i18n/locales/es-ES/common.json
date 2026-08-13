@@ -1676,6 +1676,7 @@
       "removeVideo": "Eliminar la plantilla de vídeo {{title}}",
       "removeWebsite": "Eliminar la plantilla de sitio web {{title}}",
       "removeWorkflow": "Eliminar la plantilla de flujo de trabajo {{title}}",
+      "videoModelLabel": "Modelo de vídeo {{model}}",
       "videoOptions": "Opciones de vídeo",
       "videoOptionsAudio": "Generar audio",
       "videoOptionsDuration": "Duración",

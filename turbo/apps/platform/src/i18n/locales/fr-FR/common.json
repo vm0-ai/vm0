@@ -1676,6 +1676,7 @@
       "removeVideo": "Supprimer le modèle vidéo {{title}}",
       "removeWebsite": "Supprimer le modèle de site web {{title}}",
       "removeWorkflow": "Supprimer le modèle de workflow {{title}}",
+      "videoModelLabel": "Modèle vidéo {{model}}",
       "videoOptions": "Options vidéo",
       "videoOptionsAudio": "Générer l'audio",
       "videoOptionsDuration": "Durée",
