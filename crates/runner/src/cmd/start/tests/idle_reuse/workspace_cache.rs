@@ -63,6 +63,12 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
         .await
         .unwrap();
     let publisher_cache = WorkspaceImageCache::shared(publisher_paths.clone(), &home, &group);
+    let foreign_publisher_paths = RunnerPaths::new(env._temp_dir.path().join("foreign-publisher"));
+    tokio::fs::create_dir_all(foreign_publisher_paths.base_dir())
+        .await
+        .unwrap();
+    let foreign_publisher_cache =
+        WorkspaceImageCache::shared(foreign_publisher_paths.clone(), &home, "foreign-group");
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     let before_publication = env.handle.heartbeat_count();
@@ -81,6 +87,25 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
     )
     .await
     .unwrap();
+    seed_workspace_cache_state(
+        &foreign_publisher_cache,
+        &foreign_publisher_paths,
+        "thread:foreign-workspace-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    seed_workspace_cache_state(
+        &publisher_cache,
+        &publisher_paths,
+        "thread:cancel-safe-workspace-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    env.start_observer
+        .wait_workspace_cache_change_observed(Duration::from_secs(5))
+        .await;
 
     let reuse_key = "thread:external-workspace-cache";
     let expected_workspace = WorkspaceCacheCapability {
@@ -105,6 +130,9 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
                 heartbeat.held_workspace_states.iter().any(|state| {
                     state.reuse_key == reuse_key
                         && state.workspace_caches.contains(&expected_workspace)
+                }) && heartbeat.held_workspace_states.iter().any(|state| {
+                    state.reuse_key == "thread:cancel-safe-workspace-cache"
+                        && state.workspace_caches.contains(&expected_workspace)
                 })
             },
         )
@@ -114,7 +142,7 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
     assert_eq!(
         env.handle.heartbeat_count(),
         before_publication + 1,
-        "invalid cache events must not create an extra provider heartbeat",
+        "invalid and foreign cache events must not create extra provider heartbeats",
     );
 
     let before_removal = env.handle.heartbeat_count();

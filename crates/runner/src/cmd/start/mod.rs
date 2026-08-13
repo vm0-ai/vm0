@@ -27,6 +27,8 @@
 //!   branches do not restart polling;
 //! - heartbeat work is pinned and single-flight so its I/O does not stall the
 //!   main reactor or overlap a newer snapshot;
+//! - workspace-cache watcher work is pinned across reactor turns so async
+//!   metadata classification cannot lose already-drained kernel events;
 //! - the first routine heartbeat and idle-cleanup ticks are deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
@@ -37,6 +39,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Args;
+use futures_util::future::BoxFuture;
 use sandbox::{RuntimeProvider, SandboxRuntime};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -156,11 +159,29 @@ async fn sleep_until_optional_instant(deadline: Option<Instant>) {
     }
 }
 
+type WorkspaceCacheChangeFuture = BoxFuture<
+    'static,
+    (
+        WorkspaceCacheWatcher,
+        RunnerResult<crate::workspace_image_cache::WorkspaceCacheChange>,
+    ),
+>;
+
+fn workspace_cache_change_future(mut watcher: WorkspaceCacheWatcher) -> WorkspaceCacheChangeFuture {
+    Box::pin(async move {
+        let result = watcher.next_change().await;
+        (watcher, result)
+    })
+}
+
 async fn next_workspace_cache_change(
-    watcher: &mut Option<WorkspaceCacheWatcher>,
-) -> RunnerResult<crate::workspace_image_cache::WorkspaceCacheChange> {
-    match watcher {
-        Some(watcher) => watcher.next_change().await,
+    future: &mut Option<WorkspaceCacheChangeFuture>,
+) -> (
+    WorkspaceCacheWatcher,
+    RunnerResult<crate::workspace_image_cache::WorkspaceCacheChange>,
+) {
+    match future {
+        Some(future) => future.await,
         None => std::future::pending().await,
     }
 }
@@ -938,6 +959,7 @@ enum SignalSource {
 #[derive(Debug, PartialEq, Eq)]
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
+    WorkspaceCacheChangeObserved,
     IdleCleanupProcessed { expired_count: usize },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
@@ -1043,6 +1065,10 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BudgetExhaustedReactorEntered);
     }
 
+    fn notify_workspace_cache_change_observed(&self) {
+        self.record(StartLoopEvent::WorkspaceCacheChangeObserved);
+    }
+
     fn notify_before_idle_pool_ownership_transfer(&self, run_id: RunId) {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
@@ -1078,6 +1104,13 @@ impl StartLoopTestObserver {
     async fn wait_budget_exhausted_reactor(&self, timeout: Duration) {
         self.wait_for(timeout, "budget-exhausted reactor entry", |event| {
             matches!(event, StartLoopEvent::BudgetExhaustedReactorEntered).then_some(())
+        })
+        .await;
+    }
+
+    async fn wait_workspace_cache_change_observed(&self, timeout: Duration) {
+        self.wait_for(timeout, "workspace-cache change", |event| {
+            matches!(event, StartLoopEvent::WorkspaceCacheChangeObserved).then_some(())
         })
         .await;
     }
@@ -1511,8 +1544,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let mut workspace_cache_watcher = match exec_config.workspace_cache.clone() {
-        Some(cache) => match WorkspaceCacheWatcher::new(cache) {
+    let workspace_cache_watcher = match exec_config.workspace_cache.clone() {
+        Some(cache) => match WorkspaceCacheWatcher::new(cache).await {
             Ok(watcher) => Some(watcher),
             Err(error) => {
                 warn!(error = %error, "workspace cache watcher unavailable; using routine reconciliation");
@@ -1521,6 +1554,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         },
         None => None,
     };
+    let mut workspace_cache_change_fut = workspace_cache_watcher.map(workspace_cache_change_future);
     let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
         idle_pool: &shared.idle_pool,
         runner_id: &runner.id,
@@ -1774,9 +1808,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let live_mode = *mode_rx.borrow();
                 heartbeat.finish_send(live_mode)?;
             }
-            result = next_workspace_cache_change(&mut workspace_cache_watcher) => {
+            (watcher, result) = next_workspace_cache_change(&mut workspace_cache_change_fut) => {
                 match result {
                     Ok(change) => {
+                        workspace_cache_change_fut = Some(workspace_cache_change_future(watcher));
+                        #[cfg(test)]
+                        test_hooks
+                            .test_observer
+                            .notify_workspace_cache_change_observed();
                         let live_mode = *mode_rx.borrow();
                         if live_mode == RunnerMode::Running {
                             heartbeat.request_workspace_cache(live_mode, change)?;
@@ -1784,7 +1823,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                     Err(error) => {
                         warn!(error = %error, "workspace cache watcher failed; using routine reconciliation");
-                        workspace_cache_watcher = None;
+                        workspace_cache_change_fut = None;
                     }
                 }
             }
@@ -2002,6 +2041,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // the historical shutdown-deadlock regression covered by mock providers.
     drop(discover_fut);
     teardown.event("drop_discover_fut");
+    drop(workspace_cache_change_fut);
 
     // Drain idle pool first — these VMs hold budget reservations. This
     // also clears `idle_vms` in status.json so the final snapshot is

@@ -23,8 +23,8 @@ use super::fs::{
     secure_workspace_cache_publication_file, sparse_copy,
 };
 use super::metadata::{
-    WorkspaceCacheMetadata, WorkspaceCacheState as WorkspaceCacheEntryState,
-    WorkspaceImageFileIdentity, WorkspaceTrust,
+    WorkspaceCacheMetadata, WorkspaceCacheScopeClassification,
+    WorkspaceCacheState as WorkspaceCacheEntryState, WorkspaceImageFileIdentity, WorkspaceTrust,
 };
 use super::path_safety::{
     filter_storage_fingerprints_for_working_dir, is_safe_guest_working_dir,
@@ -719,9 +719,8 @@ impl WorkspaceImageCache {
                 Ok(crate::lock::TryLock::Busy) => {
                     if collect_locked_commits
                         && locked_commit_keys.len() < MAX_HELD_WORKSPACE_STATES
-                        && fs::symlink_metadata(self.workspace_image_cache_metadata(cache_key))
-                            .await
-                            .is_ok()
+                        && self.classify_metadata_scope(cache_key).await
+                            == WorkspaceCacheScopeClassification::Relevant
                     {
                         locked_commit_keys.insert(cache_key.to_owned());
                     }

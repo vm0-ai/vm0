@@ -12,6 +12,7 @@ use crate::types::MAX_HELD_WORKSPACE_STATES;
 
 use super::WorkspaceImageCache;
 use super::entry::is_cache_key_name;
+use super::metadata::WorkspaceCacheScopeClassification;
 
 const METADATA_FILE_NAME: &str = "metadata.json";
 const CURRENT_IMAGE_FILE_NAME: &str = "current.ext4";
@@ -43,9 +44,10 @@ const MAX_EVENT_READ_BATCHES_PER_CHANGE: usize = 16;
 
 /// Advisory cache mutation observed from the host-shared filesystem.
 ///
-/// Cache keys identify metadata commits whose existing entry locks should be
-/// awaited before authoritative validation. An empty set still requests a full
-/// reconciliation for removal, invalidation, or queue-overflow events.
+/// Cache keys identify matching-scope metadata commits whose existing entry
+/// locks should be awaited before authoritative validation. An empty set still
+/// requests a full reconciliation for a relevant removal, invalidation, or
+/// queue-overflow event.
 #[derive(Debug)]
 pub(crate) struct WorkspaceCacheChange {
     pub(crate) observed_at: tokio::time::Instant,
@@ -68,9 +70,21 @@ impl WorkspaceCacheChange {
 pub(crate) struct WorkspaceCacheWatcher {
     inotify: AsyncFd<AsyncInotify>,
     root_watch: WatchDescriptor,
-    cache_key_by_watch: BTreeMap<WatchDescriptor, String>,
+    entry_by_watch: BTreeMap<WatchDescriptor, WatchedEntry>,
     watch_by_cache_key: BTreeMap<String, WatchDescriptor>,
     cache: WorkspaceImageCache,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EntryWatchState {
+    Unclassified,
+    Relevant,
+}
+
+#[derive(Clone, Debug)]
+struct WatchedEntry {
+    cache_key: String,
+    state: EntryWatchState,
 }
 
 struct AsyncInotify(Inotify);
@@ -82,7 +96,7 @@ impl AsRawFd for AsyncInotify {
 }
 
 impl WorkspaceCacheWatcher {
-    pub(crate) fn new(cache: WorkspaceImageCache) -> RunnerResult<Self> {
+    pub(crate) async fn new(cache: WorkspaceImageCache) -> RunnerResult<Self> {
         host_file::ensure_dir(
             cache.workspace_image_cache_dir(),
             DirMode::Private,
@@ -99,11 +113,13 @@ impl WorkspaceCacheWatcher {
         let mut watcher = Self {
             inotify,
             root_watch,
-            cache_key_by_watch: BTreeMap::new(),
+            entry_by_watch: BTreeMap::new(),
             watch_by_cache_key: BTreeMap::new(),
             cache,
         };
-        watcher.reconcile_entry_watches(&mut BTreeSet::new(), &BTreeSet::new())?;
+        watcher
+            .reconcile_all_entry_watches(&mut BTreeSet::new())
+            .await?;
         Ok(watcher)
     }
 
@@ -135,13 +151,14 @@ impl WorkspaceCacheWatcher {
             drop(ready);
 
             let mut changed = false;
-            let mut reconcile_entry_watches = false;
+            let mut reconcile_all_entry_watches = false;
             let mut committed_cache_keys = BTreeSet::new();
-            let mut new_cache_keys = BTreeSet::new();
+            let mut metadata_commit_keys = BTreeSet::new();
+            let mut new_cache_keys = Vec::new();
             for event in pending_events {
                 if event.mask.contains(AddWatchFlags::IN_Q_OVERFLOW) {
                     changed = true;
-                    reconcile_entry_watches = true;
+                    reconcile_all_entry_watches = true;
                     continue;
                 }
                 if event.wd == self.root_watch {
@@ -161,30 +178,26 @@ impl WorkspaceCacheWatcher {
                     if event
                         .mask
                         .intersects(AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
+                        && new_cache_keys.len() < MAX_HELD_WORKSPACE_STATES
                     {
-                        reconcile_entry_watches = true;
-                        if new_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {
-                            new_cache_keys.insert(cache_key.to_owned());
-                        }
+                        new_cache_keys.push(cache_key.to_owned());
                     }
                     if event
                         .mask
                         .intersects(AddWatchFlags::IN_DELETE | AddWatchFlags::IN_MOVED_FROM)
                     {
-                        changed = true;
-                        reconcile_entry_watches = true;
-                        self.forget_entry_watch(cache_key);
+                        changed |=
+                            self.forget_entry_watch(cache_key) == Some(EntryWatchState::Relevant);
                     }
                     continue;
                 }
 
-                let Some(cache_key) = self.cache_key_by_watch.get(&event.wd).cloned() else {
+                let Some(entry) = self.entry_by_watch.get(&event.wd).cloned() else {
                     continue;
                 };
                 if event.mask.intersects(WATCH_INVALIDATION_FLAGS) {
-                    self.forget_watch_descriptor(event.wd);
-                    changed = true;
-                    reconcile_entry_watches = true;
+                    changed |=
+                        self.forget_watch_descriptor(event.wd) == Some(EntryWatchState::Relevant);
                     continue;
                 }
                 let Some(name) = event.name.as_deref() else {
@@ -193,9 +206,8 @@ impl WorkspaceCacheWatcher {
                 if name == OsStr::new(METADATA_FILE_NAME)
                     && event.mask.contains(AddWatchFlags::IN_MOVED_TO)
                 {
-                    changed = true;
-                    if committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {
-                        committed_cache_keys.insert(cache_key);
+                    if metadata_commit_keys.len() < MAX_HELD_WORKSPACE_STATES {
+                        metadata_commit_keys.insert(entry.cache_key);
                     }
                 } else if (name == OsStr::new(METADATA_FILE_NAME)
                     || name == OsStr::new(CURRENT_IMAGE_FILE_NAME))
@@ -203,19 +215,23 @@ impl WorkspaceCacheWatcher {
                         .mask
                         .intersects(AddWatchFlags::IN_DELETE | AddWatchFlags::IN_MOVED_FROM)
                 {
-                    changed = true;
+                    changed |= entry.state == EntryWatchState::Relevant;
                 }
             }
-            if !drained_all_events {
-                // Bound one reactor turn even when producers keep the queue
-                // continuously readable. Reconciliation covers events beyond
-                // the batch budget, which remain queued for the next turn.
-                changed = true;
-                reconcile_entry_watches = true;
-            }
 
-            if reconcile_entry_watches {
-                self.reconcile_entry_watches(&mut committed_cache_keys, &new_cache_keys)?;
+            for cache_key in new_cache_keys {
+                changed |= self
+                    .add_entry_watch(cache_key, &mut committed_cache_keys)
+                    .await?;
+            }
+            for cache_key in metadata_commit_keys {
+                changed |= self
+                    .classify_metadata_commit(&cache_key, &mut committed_cache_keys)
+                    .await;
+            }
+            if reconcile_all_entry_watches {
+                self.reconcile_all_entry_watches(&mut committed_cache_keys)
+                    .await?;
             }
             if changed || !committed_cache_keys.is_empty() {
                 return Ok(WorkspaceCacheChange {
@@ -223,13 +239,17 @@ impl WorkspaceCacheWatcher {
                     committed_cache_keys,
                 });
             }
+            if !drained_all_events {
+                // Preserve descriptor readiness for queued events while giving
+                // the reactor a scheduling point between bounded read batches.
+                tokio::task::yield_now().await;
+            }
         }
     }
 
-    fn reconcile_entry_watches(
+    async fn reconcile_all_entry_watches(
         &mut self,
         committed_cache_keys: &mut BTreeSet<String>,
-        new_cache_keys: &BTreeSet<String>,
     ) -> RunnerResult<()> {
         let stale_cache_keys = self
             .watch_by_cache_key
@@ -248,24 +268,10 @@ impl WorkspaceCacheWatcher {
             self.forget_entry_watch(&cache_key);
         }
 
-        for cache_key in new_cache_keys {
-            if self.watch_by_cache_key.contains_key(cache_key)
-                || !self.entry_is_watchable(cache_key)?
-            {
-                continue;
-            }
-            if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
-                let Some(evicted_cache_key) = self
-                    .watch_by_cache_key
-                    .keys()
-                    .find(|existing| !new_cache_keys.contains(existing.as_str()))
-                    .cloned()
-                else {
-                    break;
-                };
-                self.forget_entry_watch(&evicted_cache_key);
-            }
-            self.add_entry_watch(cache_key.clone(), committed_cache_keys)?;
+        let watched_cache_keys = self.watch_by_cache_key.keys().cloned().collect::<Vec<_>>();
+        for cache_key in watched_cache_keys {
+            self.classify_metadata_commit(&cache_key, committed_cache_keys)
+                .await;
         }
 
         if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
@@ -299,7 +305,8 @@ impl WorkspaceCacheWatcher {
             if self.watch_by_cache_key.contains_key(&cache_key) {
                 continue;
             }
-            self.add_entry_watch(cache_key, committed_cache_keys)?;
+            self.add_entry_watch(cache_key, committed_cache_keys)
+                .await?;
         }
         Ok(())
     }
@@ -312,11 +319,16 @@ impl WorkspaceCacheWatcher {
         }
     }
 
-    fn add_entry_watch(
+    async fn add_entry_watch(
         &mut self,
         cache_key: String,
         committed_cache_keys: &mut BTreeSet<String>,
-    ) -> RunnerResult<()> {
+    ) -> RunnerResult<bool> {
+        if self.watch_by_cache_key.contains_key(&cache_key)
+            || !self.entry_is_watchable(&cache_key)?
+        {
+            return Ok(false);
+        }
         let entry_dir = self.cache.workspace_image_cache_entry_dir(&cache_key);
         let watch = match self
             .inotify
@@ -325,31 +337,114 @@ impl WorkspaceCacheWatcher {
             .add_watch(&entry_dir, ENTRY_WATCH_FLAGS)
         {
             Ok(watch) => watch,
-            Err(Errno::ENOENT | Errno::ENOTDIR | Errno::ELOOP) => return Ok(()),
+            Err(Errno::ENOENT | Errno::ENOTDIR | Errno::ELOOP) => return Ok(false),
             Err(error) => return Err(watcher_error("watch entry", error)),
         };
-        self.cache_key_by_watch.insert(watch, cache_key.clone());
+        self.entry_by_watch.insert(
+            watch,
+            WatchedEntry {
+                cache_key: cache_key.clone(),
+                state: EntryWatchState::Unclassified,
+            },
+        );
         self.watch_by_cache_key.insert(cache_key.clone(), watch);
-        if std::fs::symlink_metadata(self.cache.workspace_image_cache_metadata(&cache_key)).is_ok()
-            && committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES
-        {
-            committed_cache_keys.insert(cache_key);
+        let changed = self
+            .classify_metadata_commit(&cache_key, committed_cache_keys)
+            .await;
+        self.enforce_watch_limit(&cache_key);
+        if !self.watch_by_cache_key.contains_key(&cache_key) {
+            committed_cache_keys.remove(&cache_key);
         }
-        Ok(())
+        Ok(changed && self.watch_by_cache_key.contains_key(&cache_key))
     }
 
-    fn forget_entry_watch(&mut self, cache_key: &str) {
+    async fn classify_metadata_commit(
+        &mut self,
+        cache_key: &str,
+        committed_cache_keys: &mut BTreeSet<String>,
+    ) -> bool {
+        let Some(previous_state) = self.entry_watch_state(cache_key) else {
+            return false;
+        };
+        match self.cache.classify_metadata_scope(cache_key).await {
+            WorkspaceCacheScopeClassification::Relevant => {
+                self.set_entry_watch_state(cache_key, EntryWatchState::Relevant);
+                if committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {
+                    committed_cache_keys.insert(cache_key.to_owned());
+                }
+                true
+            }
+            WorkspaceCacheScopeClassification::Foreign => {
+                self.forget_entry_watch(cache_key);
+                previous_state == EntryWatchState::Relevant
+            }
+            WorkspaceCacheScopeClassification::Unclassified => {
+                self.set_entry_watch_state(cache_key, EntryWatchState::Unclassified);
+                previous_state == EntryWatchState::Relevant
+            }
+        }
+    }
+
+    fn enforce_watch_limit(&mut self, preferred_cache_key: &str) {
+        while self.watch_by_cache_key.len() > MAX_HELD_WORKSPACE_STATES {
+            let preferred_state = self.entry_watch_state(preferred_cache_key);
+            let evicted_cache_key = self
+                .watch_by_cache_key
+                .keys()
+                .find(|cache_key| {
+                    cache_key.as_str() != preferred_cache_key
+                        && self.entry_watch_state(cache_key) == Some(EntryWatchState::Unclassified)
+                })
+                .cloned()
+                .or_else(|| {
+                    (preferred_state == Some(EntryWatchState::Unclassified))
+                        .then(|| preferred_cache_key.to_owned())
+                })
+                .or_else(|| {
+                    self.watch_by_cache_key
+                        .keys()
+                        .find(|cache_key| cache_key.as_str() != preferred_cache_key)
+                        .cloned()
+                });
+            let Some(evicted_cache_key) = evicted_cache_key else {
+                break;
+            };
+            self.forget_entry_watch(&evicted_cache_key);
+        }
+    }
+
+    fn entry_watch_state(&self, cache_key: &str) -> Option<EntryWatchState> {
+        let watch = self.watch_by_cache_key.get(cache_key)?;
+        self.entry_by_watch.get(watch).map(|entry| entry.state)
+    }
+
+    fn set_entry_watch_state(&mut self, cache_key: &str, state: EntryWatchState) {
+        let Some(watch) = self.watch_by_cache_key.get(cache_key) else {
+            return;
+        };
+        if let Some(entry) = self.entry_by_watch.get_mut(watch) {
+            entry.state = state;
+        }
+    }
+
+    fn forget_entry_watch(&mut self, cache_key: &str) -> Option<EntryWatchState> {
         if let Some(watch) = self.watch_by_cache_key.remove(cache_key) {
-            self.cache_key_by_watch.remove(&watch);
+            let state = self.entry_by_watch.remove(&watch).map(|entry| entry.state);
             let _ = self.inotify.get_ref().0.rm_watch(watch);
+            return state;
         }
+        None
     }
 
-    fn forget_watch_descriptor(&mut self, watch: WatchDescriptor) {
-        if let Some(cache_key) = self.cache_key_by_watch.remove(&watch) {
-            self.watch_by_cache_key.remove(&cache_key);
-        }
+    fn forget_watch_descriptor(&mut self, watch: WatchDescriptor) -> Option<EntryWatchState> {
+        let state = if let Some(entry) = self.entry_by_watch.remove(&watch) {
+            self.watch_by_cache_key.remove(&entry.cache_key);
+            Some(entry.state)
+        } else {
+            None
+        };
         let _ = self.inotify.get_ref().0.rm_watch(watch);
+        state
     }
 }
 
@@ -363,34 +458,93 @@ fn watcher_io_error(action: &str, kind: std::io::ErrorKind) -> RunnerError {
 
 #[cfg(test)]
 mod tests {
+    use super::super::fs::allocated_bytes;
+    use super::super::metadata::{
+        WorkspaceCacheMetadata, WorkspaceCacheState, WorkspaceImageFileIdentity, WorkspaceTrust,
+    };
+    use super::super::{
+        CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheTerminalStatus,
+    };
     use super::*;
-    use crate::paths::RunnerPaths;
+    use crate::ids::RunId;
+    use crate::paths::{HomePaths, RunnerPaths};
+    use crate::storage_fingerprints::StorageFingerprints;
+
+    const TEST_PROFILE_NAME: &str = "vm0/default";
+    const TEST_WORKING_DIR: &str = "/workspace";
+
+    async fn commit_entry(cache: &WorkspaceImageCache, reuse_key: &str) -> String {
+        let image = format!("image-{reuse_key}");
+        let cache_key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            reuse_key,
+            TEST_WORKING_DIR,
+            image.len() as u64,
+        );
+        cache
+            .ensure_workspace_cache_entry_dir(&cache_key)
+            .await
+            .unwrap();
+        let current_image = cache.workspace_image_cache_current_image(&cache_key);
+        tokio::fs::write(&current_image, image).await.unwrap();
+        let current_metadata = tokio::fs::metadata(&current_image).await.unwrap();
+        cache
+            .write_metadata(
+                &cache_key,
+                RunId::new_v4(),
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    cache_scope: cache.inner.cache_scope.clone(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    reuse_key: reuse_key.into(),
+                    working_dir: TEST_WORKING_DIR.into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+        cache_key
+    }
 
     #[tokio::test]
     async fn reports_metadata_commit_and_removal_from_existing_entry() {
         let temp = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(temp.path().join("runner"));
         let cache = WorkspaceImageCache::new(paths);
-        let cache_key = "a".repeat(64);
+        let cache_key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "existing-entry",
+            TEST_WORKING_DIR,
+            b"image-existing-entry".len() as u64,
+        );
         cache
             .ensure_workspace_cache_entry_dir(&cache_key)
             .await
             .unwrap();
-        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).unwrap();
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).await.unwrap();
 
-        let metadata = cache.workspace_image_cache_metadata(&cache_key);
-        let temporary_metadata = metadata.with_extension("tmp");
-        tokio::fs::write(&temporary_metadata, b"{}").await.unwrap();
-        tokio::fs::rename(&temporary_metadata, &metadata)
-            .await
-            .unwrap();
+        assert_eq!(commit_entry(&cache, "existing-entry").await, cache_key);
         let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(change.committed_cache_keys, BTreeSet::from([cache_key]));
+        assert_eq!(
+            change.committed_cache_keys,
+            BTreeSet::from([cache_key.clone()])
+        );
 
-        tokio::fs::remove_file(metadata).await.unwrap();
+        tokio::fs::remove_file(cache.workspace_image_cache_metadata(&cache_key))
+            .await
+            .unwrap();
         let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
             .await
             .unwrap()
@@ -403,13 +557,8 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(temp.path().join("runner"));
         let cache = WorkspaceImageCache::new(paths);
-        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).unwrap();
-        let cache_key = "b".repeat(64);
-        let entry_dir = cache.workspace_image_cache_entry_dir(&cache_key);
-        tokio::fs::create_dir_all(&entry_dir).await.unwrap();
-        tokio::fs::write(entry_dir.join(METADATA_FILE_NAME), b"{}")
-            .await
-            .unwrap();
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).await.unwrap();
+        let cache_key = commit_entry(&cache, "new-entry").await;
 
         let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
             .await
@@ -423,7 +572,12 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(temp.path().join("runner"));
         let cache = WorkspaceImageCache::new(paths);
-        let cache_key = "c".repeat(64);
+        let cache_key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "bounded-drain",
+            TEST_WORKING_DIR,
+            b"image-bounded-drain".len() as u64,
+        );
         cache
             .ensure_workspace_cache_entry_dir(&cache_key)
             .await
@@ -435,38 +589,19 @@ mod tests {
                 .await
                 .unwrap();
         }
-        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).unwrap();
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).await.unwrap();
         for index in 0..5_000 {
             tokio::fs::remove_file(entry_dir.join(format!("noise-{index:04}")))
                 .await
                 .unwrap();
         }
-        let metadata = cache.workspace_image_cache_metadata(&cache_key);
-        let temporary_metadata = metadata.with_extension("tmp");
-        tokio::fs::write(&temporary_metadata, b"{}").await.unwrap();
-        tokio::fs::rename(&temporary_metadata, &metadata)
-            .await
-            .unwrap();
+        assert_eq!(commit_entry(&cache, "bounded-drain").await, cache_key);
 
-        let first = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
+        let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
             .await
             .unwrap()
             .unwrap();
-        assert!(first.committed_cache_keys.is_empty());
-
-        let mut committed_cache_keys = BTreeSet::new();
-        for _ in 0..8 {
-            let change =
-                tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
-                    .await
-                    .unwrap()
-                    .unwrap();
-            committed_cache_keys.extend(change.committed_cache_keys);
-            if committed_cache_keys.contains(&cache_key) {
-                break;
-            }
-        }
-        assert_eq!(committed_cache_keys, BTreeSet::from([cache_key]));
+        assert_eq!(change.committed_cache_keys, BTreeSet::from([cache_key]));
     }
 
     #[tokio::test]
@@ -480,17 +615,10 @@ mod tests {
                 .await
                 .unwrap();
         }
-        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).unwrap();
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).await.unwrap();
         assert_eq!(watcher.watch_by_cache_key.len(), MAX_HELD_WORKSPACE_STATES);
 
-        let cache_key = "f".repeat(64);
-        cache
-            .ensure_workspace_cache_entry_dir(&cache_key)
-            .await
-            .unwrap();
-        tokio::fs::write(cache.workspace_image_cache_metadata(&cache_key), b"{}")
-            .await
-            .unwrap();
+        let cache_key = commit_entry(&cache, "preferred-new-entry").await;
 
         let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
             .await
@@ -504,8 +632,119 @@ mod tests {
         assert!(watcher.watch_by_cache_key.contains_key(&cache_key));
     }
 
-    #[test]
-    fn setup_error_does_not_expose_cache_path() {
+    #[tokio::test]
+    async fn create_and_remove_in_one_batch_does_not_leave_a_stale_watch() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(temp.path().join("runner"));
+        let cache = WorkspaceImageCache::new(paths);
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).await.unwrap();
+        let cache_key = "e".repeat(64);
+        let entry_dir = cache.workspace_image_cache_entry_dir(&cache_key);
+
+        tokio::fs::create_dir_all(&entry_dir).await.unwrap();
+        tokio::fs::remove_dir(&entry_dir).await.unwrap();
+        let relevant_cache_key = commit_entry(&cache, "post-create-remove").await;
+
+        let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            change.committed_cache_keys,
+            BTreeSet::from([relevant_cache_key])
+        );
+        assert!(!watcher.watch_by_cache_key.contains_key(&cache_key));
+    }
+
+    #[tokio::test]
+    async fn foreign_scope_commit_and_removal_do_not_report_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(temp.path().join("home"));
+        let observer_paths = RunnerPaths::new(temp.path().join("observer"));
+        let publisher_paths = RunnerPaths::new(temp.path().join("publisher"));
+        tokio::fs::create_dir_all(observer_paths.base_dir())
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(publisher_paths.base_dir())
+            .await
+            .unwrap();
+        let observer = WorkspaceImageCache::shared(observer_paths, &home, "group-a");
+        let publisher = WorkspaceImageCache::shared(publisher_paths, &home, "group-b");
+        let mut watcher = WorkspaceCacheWatcher::new(observer.clone()).await.unwrap();
+
+        let foreign_cache_key = commit_entry(&publisher, "foreign-entry").await;
+        let relevant_cache_key = commit_entry(&observer, "relevant-entry").await;
+
+        let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            change.committed_cache_keys,
+            BTreeSet::from([relevant_cache_key])
+        );
+        assert!(!watcher.watch_by_cache_key.contains_key(&foreign_cache_key));
+
+        tokio::fs::remove_dir_all(publisher.workspace_image_cache_entry_dir(&foreign_cache_key))
+            .await
+            .unwrap();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), watcher.next_change())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn foreign_scope_commit_does_not_wake_observer() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(temp.path().join("home"));
+        let observer_paths = RunnerPaths::new(temp.path().join("observer"));
+        let publisher_paths = RunnerPaths::new(temp.path().join("publisher"));
+        tokio::fs::create_dir_all(observer_paths.base_dir())
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(publisher_paths.base_dir())
+            .await
+            .unwrap();
+        let observer = WorkspaceImageCache::shared(observer_paths, &home, "group-a");
+        let publisher = WorkspaceImageCache::shared(publisher_paths, &home, "group-b");
+        let mut watcher = WorkspaceCacheWatcher::new(observer).await.unwrap();
+
+        let foreign_cache_key = commit_entry(&publisher, "foreign-only-entry").await;
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), watcher.next_change())
+                .await
+                .is_err()
+        );
+        assert!(!watcher.watch_by_cache_key.contains_key(&foreign_cache_key));
+    }
+
+    #[tokio::test]
+    async fn existing_foreign_entries_do_not_consume_watch_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(temp.path().join("home"));
+        let observer_paths = RunnerPaths::new(temp.path().join("observer"));
+        let publisher_paths = RunnerPaths::new(temp.path().join("publisher"));
+        tokio::fs::create_dir_all(observer_paths.base_dir())
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(publisher_paths.base_dir())
+            .await
+            .unwrap();
+        let observer = WorkspaceImageCache::shared(observer_paths, &home, "group-a");
+        let publisher = WorkspaceImageCache::shared(publisher_paths, &home, "group-b");
+        let foreign_cache_key = commit_entry(&publisher, "existing-foreign-entry").await;
+
+        let watcher = WorkspaceCacheWatcher::new(observer).await.unwrap();
+
+        assert!(!watcher.watch_by_cache_key.contains_key(&foreign_cache_key));
+        assert!(watcher.watch_by_cache_key.is_empty());
+    }
+
+    #[tokio::test]
+    async fn setup_error_does_not_expose_cache_path() {
         let temp = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(temp.path().join("runner"));
         let cache = WorkspaceImageCache::new(paths);
@@ -513,7 +752,7 @@ mod tests {
         std::fs::create_dir_all(cache_root.parent().unwrap()).unwrap();
         std::fs::write(&cache_root, b"not a directory").unwrap();
 
-        let error = match WorkspaceCacheWatcher::new(cache) {
+        let error = match WorkspaceCacheWatcher::new(cache).await {
             Ok(_) => panic!("watcher setup should reject a non-directory cache root"),
             Err(error) => error,
         };
