@@ -1058,15 +1058,12 @@ vi.mock("../signals/external/axiom", async () => {
     // Wrap the underlying vi.fn() in a ccstate `computed` so `get(queryAxiom(apl))`
     // resolves correctly. Tests configure responses via
     // `context.mocks.axiom.query.mockResolvedValue(...)`. The optional
-    // `options` second arg is forwarded so tests can assert on `noCache`
-    // (and any future option) via `expect(...).toHaveBeenCalledWith(apl, opts)`.
+    // The optional `options` second arg is forwarded so tests can assert on
+    // pagination options via `expect(...).toHaveBeenCalledWith(apl, opts)`.
     queryAxiom: (apl: string, options?: unknown) => {
       return computed(() => {
         return apiTestMocks.axiom.query(apl, options);
       });
-    },
-    queryAxiomDirect: (apl: string, options?: unknown) => {
-      return apiTestMocks.axiom.query(apl, options);
     },
     getDatasetName: (name: string) => {
       return name;
