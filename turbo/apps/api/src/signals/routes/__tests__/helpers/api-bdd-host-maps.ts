@@ -6,13 +6,13 @@ import {
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
 } from "@okouai/api-contracts/contracts/zero-host";
-import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
+import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import type { RouteEntry } from "../../../route-entry";
 import { zeroHostRoutes } from "../../zero-host";
-import { zeroMapsRoutes } from "../../zero-maps";
+import { mapsRoutes } from "../../maps";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -107,7 +107,7 @@ function notFoundS3Error(key: string): Error {
 
 const hostMapsRoutes: readonly RouteEntry[] = [
   ...zeroHostRoutes,
-  ...zeroMapsRoutes,
+  ...mapsRoutes,
 ];
 
 export function createHostMapsBddApi(context: TestContext) {
@@ -122,7 +122,7 @@ export function createHostMapsBddApi(context: TestContext) {
     return setupAppWithRoutes({
       context,
       routes: hostMapsRoutes,
-    })(zeroMapsContract);
+    })(mapsContract);
   }
 
   return {

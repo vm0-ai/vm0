@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
-import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
+import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
@@ -28,7 +28,7 @@ import {
   materializeHourlyUsage$,
   readUsageStorageCounts$,
 } from "./helpers/usage-state";
-import { zeroMapsRoutes } from "../zero-maps";
+import { mapsRoutes } from "../maps";
 import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
@@ -971,9 +971,9 @@ describe("GET /api/zero/usage/record", () => {
     );
     const maps = setupApp({
       context,
-      routes: zeroMapsRoutes,
+      routes: mapsRoutes,
       usagePricingResolution: pricing.resolution,
-    })(zeroMapsContract);
+    })(mapsContract);
     const geocode = await accept(
       maps.geocode({
         headers: { authorization: `Bearer ${mapsToken}` },

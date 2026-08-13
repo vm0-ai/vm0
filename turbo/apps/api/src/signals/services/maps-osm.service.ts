@@ -1,10 +1,10 @@
 import { deflateSync } from "node:zlib";
 
 import type {
-  ZeroMapsOsmDownloadRequest,
-  ZeroMapsOsmRenderRequest,
-  ZeroMapsResponse,
-} from "@okouai/api-contracts/contracts/zero-maps";
+  MapsOsmDownloadRequest,
+  MapsOsmRenderRequest,
+  MapsResponse,
+} from "@okouai/api-contracts/contracts/maps";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
@@ -13,7 +13,7 @@ import {
   checkMapsCredits$,
   recordMapsUsage$,
   type MapsErrorResponse,
-} from "./zero-maps.service";
+} from "./maps.service";
 
 const PROVIDER = "openstreetmap";
 const DOWNLOAD_CATEGORY = "osm.download";
@@ -55,7 +55,7 @@ interface OverpassResponse {
   readonly elements?: readonly OverpassElement[];
 }
 
-type OsmLayer = ZeroMapsOsmDownloadRequest["layers"][number];
+type OsmLayer = MapsOsmDownloadRequest["layers"][number];
 
 interface OsmFeature {
   readonly id: string;
@@ -177,7 +177,7 @@ function isOverpassResponse(value: unknown): value is OverpassResponse {
 }
 
 function bboxFromRequest(
-  request: ZeroMapsOsmDownloadRequest | ZeroMapsOsmRenderRequest,
+  request: MapsOsmDownloadRequest | MapsOsmRenderRequest,
 ): BoundingBox {
   if (request.bbox) {
     return request.bbox;
@@ -405,9 +405,7 @@ function roadWidth(tags: Readonly<Record<string, string>>): number {
   return 1.4;
 }
 
-function paletteForStyle(
-  style: ZeroMapsOsmRenderRequest["style"],
-): RenderPalette {
+function paletteForStyle(style: MapsOsmRenderRequest["style"]): RenderPalette {
   if (style === "guide") {
     return {
       background: "#f7f1e7",
@@ -462,7 +460,7 @@ function parseColor(hex: string): Color {
 }
 
 function rasterPaletteForStyle(
-  style: ZeroMapsOsmRenderRequest["style"],
+  style: MapsOsmRenderRequest["style"],
 ): RasterPalette {
   const palette = paletteForStyle(style);
   return {
@@ -887,7 +885,7 @@ function encodePng(image: RasterImage): Buffer {
 }
 
 function renderRasterMap(
-  request: ZeroMapsOsmRenderRequest,
+  request: MapsOsmRenderRequest,
   bbox: BoundingBox,
   features: readonly OsmFeature[],
 ): Buffer {
@@ -963,17 +961,17 @@ function renderRasterMap(
 }
 
 function renderPngBase64(
-  request: ZeroMapsOsmRenderRequest,
+  request: MapsOsmRenderRequest,
   bbox: BoundingBox,
   features: readonly OsmFeature[],
 ): string {
   return renderRasterMap(request, bbox, features).toString("base64");
 }
 
-export const zeroMapsOsmDownload$ = command(
+export const mapsOsmDownload$ = command(
   async (
     { set },
-    args: AuthedMapsArgs<ZeroMapsOsmDownloadRequest>,
+    args: AuthedMapsArgs<MapsOsmDownloadRequest>,
     signal: AbortSignal,
   ) => {
     const bbox = bboxFromRequest(args.body);
@@ -1010,7 +1008,7 @@ export const zeroMapsOsmDownload$ = command(
       },
       signal,
     );
-    const body: ZeroMapsResponse = {
+    const body: MapsResponse = {
       operation: "osm.download",
       provider: PROVIDER,
       creditsCharged,
@@ -1028,10 +1026,10 @@ export const zeroMapsOsmDownload$ = command(
   },
 );
 
-export const zeroMapsOsmRender$ = command(
+export const mapsOsmRender$ = command(
   async (
     { set },
-    args: AuthedMapsArgs<ZeroMapsOsmRenderRequest>,
+    args: AuthedMapsArgs<MapsOsmRenderRequest>,
     signal: AbortSignal,
   ) => {
     const bbox = bboxFromRequest(args.body);
@@ -1072,7 +1070,7 @@ export const zeroMapsOsmRender$ = command(
       },
       signal,
     );
-    const body: ZeroMapsResponse = {
+    const body: MapsResponse = {
       operation: "osm.render",
       provider: PROVIDER,
       creditsCharged,
