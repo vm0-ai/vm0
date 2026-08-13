@@ -8,10 +8,9 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-it("fails closed with a values-free error when run identities differ", async () => {
-  const canonicalRunId = "canonical-sensitive-run-id";
+it("rejects a legacy-only run id without exposing its value", async () => {
   const legacyRunId = "legacy-sensitive-run-id";
-  vi.stubEnv("OKOU_RUN_ID", canonicalRunId);
+  vi.stubEnv("OKOU_RUN_ID", "");
   vi.stubEnv("VM0_RUN_ID", legacyRunId);
   vi.stubEnv("OKOU_PI_SESSION_ID", "11111111-1111-4111-8111-111111111111");
   vi.stubEnv("OKOU_PI_SYSTEM_PROMPT", "system prompt");
@@ -32,9 +31,8 @@ it("fails closed with a values-free error when run identities differ", async () 
   expect(process.exitCode).toBe(1);
   expect(consoleError).toHaveBeenCalledOnce();
   expect(consoleError).toHaveBeenCalledWith(
-    "Pi run identity environment mismatch",
+    "OKOU_RUN_ID is required for Pi execution",
   );
   const stderr = consoleError.mock.calls.flat().join("\n");
-  expect(stderr).not.toContain(canonicalRunId);
   expect(stderr).not.toContain(legacyRunId);
 });
