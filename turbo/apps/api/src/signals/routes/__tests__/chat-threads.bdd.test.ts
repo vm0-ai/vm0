@@ -1648,7 +1648,7 @@ describe("CHAT-01 chat thread read state", () => {
     );
   }, 120_000);
 
-  it("lists active chat thread ids for the current user and org", async () => {
+  it("lists active thread ids without hiding the agent's unread state", async () => {
     const {
       actor: owner,
       agentId: ownerAgent,
@@ -1701,7 +1701,7 @@ describe("CHAT-01 chat thread read state", () => {
       new Set([runningRun.threadId, queuedRun.threadId]),
     );
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
-      agents: { [ownerAgent]: "active" },
+      agents: { [ownerAgent]: "unread" },
       threads: {
         [completedRun.threadId]: "unread",
         [runningRun.threadId]: "active",
@@ -1724,7 +1724,7 @@ describe("CHAT-01 chat thread read state", () => {
       new Set([queuedRun.threadId]),
     );
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
-      agents: { [ownerAgent]: "active" },
+      agents: { [ownerAgent]: "unread" },
       threads: {
         [completedRun.threadId]: "unread",
         [runningRun.threadId]: "unread",
@@ -1763,7 +1763,7 @@ describe("CHAT-01 chat thread read state", () => {
         new Set([expiredRun.threadId, recentRun.threadId]),
       );
       await expect(chat.listIndicators(actor)).resolves.toStrictEqual({
-        agents: { [agentId]: "active" },
+        agents: { [agentId]: "unread" },
         threads: {
           [recentRun.threadId]: "unread",
           [activeRun.threadId]: "active",
@@ -1862,7 +1862,7 @@ describe("CHAT-01 chat thread read state", () => {
       ),
     ).toStrictEqual(new Set([completedRun.threadId, completeGoalRun.threadId]));
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
-      agents: { [agentId]: "active" },
+      agents: { [agentId]: "unread" },
       threads: {
         [runningRun.threadId]: "active",
         [completedRun.threadId]: "unread",

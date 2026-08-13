@@ -411,8 +411,9 @@ export function zeroChatThreadUnreadThreadIds(args: {
  * Active and unread indicators for the user's agents and threads in the
  * current organization. Active threads are complete; unread threads are the
  * latest 50 terminal markers from the last seven days. Active threads are
- * computed once and reused to keep unread classification and indicator
- * precedence within one database snapshot.
+ * computed once and reused to keep unread classification within one database
+ * snapshot. Unread agent aggregates take precedence so unread actions remain
+ * available while another thread for the same agent is active.
  */
 export function zeroChatIndicators(args: {
   readonly userId: string;
@@ -502,7 +503,7 @@ export function zeroChatIndicators(args: {
     const threads: Record<string, ZeroIndicator> = {};
     for (const row of rows) {
       threads[row.threadId] = row.indicator;
-      if (row.indicator === "active" || agents[row.agentId] === undefined) {
+      if (row.indicator === "unread" || agents[row.agentId] === undefined) {
         agents[row.agentId] = row.indicator;
       }
     }
