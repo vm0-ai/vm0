@@ -61,7 +61,6 @@ import {
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
-import { listPendingChatQueueEvents } from "./chat-event-queue.service";
 
 type ChatThreadRow = {
   readonly id: string;
@@ -717,27 +716,6 @@ export function zeroChatThreadArtifacts(args: {
       });
     },
   );
-}
-
-export function zeroChatThreadQueuedEvents(args: {
-  readonly threadId: string;
-  readonly userId: string;
-}): Computed<
-  Promise<
-    readonly { readonly eventId: string; readonly seqId: number }[] | null
-  >
-> {
-  return computed(async (get) => {
-    const owned = await get(ownedChatThread(args.threadId, args.userId));
-    if (!owned) {
-      return null;
-    }
-
-    const events = await listPendingChatQueueEvents(get(db$), args.threadId);
-    return events.map((event) => {
-      return { eventId: event.id, seqId: event.seqId };
-    });
-  });
 }
 
 export const createChatThread$ = command(
