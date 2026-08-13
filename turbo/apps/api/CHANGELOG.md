@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.443.0](https://github.com/vm0-ai/vm0/compare/api-v1.442.0...api-v1.443.0) (2026-08-13)
+
+
+### Features
+
+* **api:** add request public brand context ([#26838](https://github.com/vm0-ai/vm0/issues/26838)) ([76ead74](https://github.com/vm0-ai/vm0/commit/76ead74ddf66738fd49db66fa60977c098da9a22))
+* **db:** add video model columns and thread event kind ([#26807](https://github.com/vm0-ai/vm0/issues/26807)) ([683a9e7](https://github.com/vm0-ai/vm0/commit/683a9e748792feba0ea6d7ed3eea1d1f63665a47))
+* serve generated images through the cdn image transform ([#26809](https://github.com/vm0-ai/vm0/issues/26809)) ([3a150bf](https://github.com/vm0-ai/vm0/commit/3a150bf44d50bc92439214761e483d8fdc022d37))
+
+
+### Bug Fixes
+
+* **api:** preserve firewall execution metadata in run context ([#26840](https://github.com/vm0-ai/vm0/issues/26840)) ([0bb6240](https://github.com/vm0-ai/vm0/commit/0bb624045ceeb53bbad3e386da0ffda21f812e9e))
+* **connectors:** require pinned custom runtime registrations ([#26854](https://github.com/vm0-ai/vm0/issues/26854)) ([7a80c6c](https://github.com/vm0-ai/vm0/commit/7a80c6c506db436956c7a8e23dafa7d6c9014955))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.328.0
+    * @okouai/core bumped to 8.554.0
+    * @okouai/db bumped to 1.198.0
+    * @okouai/pi-agent-runtime bumped to 1.4.7
+
 ## [1.442.0](https://github.com/vm0-ai/vm0/compare/api-v1.441.2...api-v1.442.0) (2026-08-13)
 
 

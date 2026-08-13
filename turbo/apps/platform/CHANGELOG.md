@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.741.0](https://github.com/vm0-ai/vm0/compare/app-v0.740.1...app-v0.741.0) (2026-08-13)
+
+
+### Features
+
+* **db:** add video model columns and thread event kind ([#26807](https://github.com/vm0-ai/vm0/issues/26807)) ([683a9e7](https://github.com/vm0-ai/vm0/commit/683a9e748792feba0ea6d7ed3eea1d1f63665a47))
+* **platform:** add an illustrated empty state to credit usage ([#26827](https://github.com/vm0-ai/vm0/issues/26827)) ([e24bf3f](https://github.com/vm0-ai/vm0/commit/e24bf3f7eedf0d58e3264be6183cf8629f47b9fa))
+
+
+### Bug Fixes
+
+* **platform:** keep async card shells stable ([#26845](https://github.com/vm0-ai/vm0/issues/26845)) ([69a4586](https://github.com/vm0-ai/vm0/commit/69a458652b78451bdd39a81a37a1f6c57b328443))
+* **platform:** recover realtime when network reconnects ([#26853](https://github.com/vm0-ai/vm0/issues/26853)) ([aeb263d](https://github.com/vm0-ai/vm0/commit/aeb263de89a21b1e0e2c09db12db4318a75ae7e4))
+* restore block spacing between markdown card slots ([#26763](https://github.com/vm0-ai/vm0/issues/26763)) ([e4a6c19](https://github.com/vm0-ai/vm0/commit/e4a6c19cd2108f2a7845a9bbf02eae6634e78f55))
+
+
+### Refactoring
+
+* **platform:** remove org credits summary bar from credit usage ([#26818](https://github.com/vm0-ai/vm0/issues/26818)) ([6632970](https://github.com/vm0-ai/vm0/commit/663297089a86e4de2e507c35f3f1ff075075c042))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.328.0
+    * @okouai/core bumped to 8.554.0
+
 ## [0.740.1](https://github.com/vm0-ai/vm0/compare/app-v0.740.0...app-v0.740.1) (2026-08-13)
 
 
