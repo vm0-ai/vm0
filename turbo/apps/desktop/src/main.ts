@@ -1444,6 +1444,7 @@ if (!hasSingleInstanceLock) {
     queueDesktopAuthCallbackArgv(process.argv);
 
     if (isDesktopSmokeTestEnabled(process.env)) {
+      desktopAuthSession.signOut();
       try {
         await verifyDesktopSmokeBridge();
       } catch (error) {

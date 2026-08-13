@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -24,7 +23,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { buildInfoRoutes } from "../build-info";
 import { healthRoutes } from "../health";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
-import { zeroReportErrorRoutes } from "../zero-report-error";
 
 /*
 helper gap: HOOK-01 signed callbacks still need API-visible builders for
@@ -54,12 +52,6 @@ function healthAuthClient() {
 function featureSwitchesClient() {
   return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
     zeroFeatureSwitchesContract,
-  );
-}
-
-function reportErrorClient() {
-  return setupApp({ context, routes: zeroReportErrorRoutes })(
-    zeroReportErrorContract,
   );
 }
 
@@ -141,7 +133,7 @@ describe("OPS-02: API health and auth boundary", () => {
   });
 });
 
-describe("OPS-01: feature switches and report-error routes", () => {
+describe("OPS-01: feature switch routes", () => {
   it("updates, reads, merges, and deletes feature switch overrides through API", async () => {
     const admin = api.user();
 
@@ -282,36 +274,5 @@ describe("OPS-01: feature switches and report-error routes", () => {
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.Dummy],
     ).toBeUndefined();
-  });
-
-  it("reports invalid or missing failed runs as visible API errors", async () => {
-    const admin = api.user();
-
-    const invalidBody = await accept(
-      reportErrorClient().submit({
-        headers: headersFor(admin),
-        body: {
-          runId: "not-a-run-id",
-          title: "Invalid run id",
-        },
-      }),
-      [400],
-    );
-    expectApiError(invalidBody.body);
-    expect(invalidBody.body.error.code).toBe("BAD_REQUEST");
-
-    const missingRun = await accept(
-      reportErrorClient().submit({
-        headers: headersFor(admin),
-        body: {
-          runId: randomUUID(),
-          title: "Missing failed run",
-          description: "BDD route-level missing-run boundary",
-        },
-      }),
-      [400],
-    );
-    expectApiError(missingRun.body);
-    expect(missingRun.body.error.code).toBe("RUN_NOT_FOUND");
   });
 });

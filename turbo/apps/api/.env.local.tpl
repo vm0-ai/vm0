@@ -274,9 +274,6 @@ AGENTPHONE_AGENT_ID=op://Development/agentphone/AGENTPHONE_AGENT_ID
 AGENTPHONE_PHONE_NUMBER=op://Development/agentphone/AGENTPHONE_PHONE_NUMBER
 AGENTPHONE_WEBHOOK_SECRET=op://Development/agentphone/AGENTPHONE_WEBHOOK_SECRET
 
-# Optional: Plain.com (Developer Support)
-PLAIN_API_KEY=op://Development/plain/PLAIN_API_KEY
-
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/ngrok/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
