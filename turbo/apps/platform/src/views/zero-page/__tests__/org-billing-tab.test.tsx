@@ -1323,22 +1323,20 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Order summary")).toBeInTheDocument();
     expect(
-      within(reviewDialog).getByText("Team plan").parentElement,
+      within(reviewDialog).getByText("New monthly subscription"),
+    ).toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText("Team plan · 10 concurrent runs")
+        .parentElement,
     ).toHaveTextContent("$160");
-    expect(
-      within(reviewDialog).getByText("Concurrent slots").parentElement,
-    ).toHaveTextContent("10");
     expect(
       within(reviewDialog).getByText("Member packages").parentElement,
     ).toHaveTextContent("$70");
     expect(
-      within(reviewDialog).getByText("Purchased credits").parentElement,
-    ).toHaveTextContent("70,000");
-    expect(
-      within(reviewDialog).getByText("Bonus credits").parentElement,
-    ).toHaveTextContent("5,555");
+      within(reviewDialog).getByText("Credits each month · 5,555 bonus")
+        .parentElement,
+    ).toHaveTextContent("75,555");
     expect(
       within(reviewDialog).getByText("Monthly total").parentElement,
     ).toHaveTextContent("$229.50/month");
@@ -1594,29 +1592,25 @@ describe("organization billing settings", () => {
     expect(within(confirmationDialog).getByText("Due now")).toBeInTheDocument();
     expect(within(confirmationDialog).getByText("$15.00")).toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText("Credits added after payment"),
+      within(confirmationDialog).getByText(
+        "For the rest of this billing period",
+      ),
     ).toBeInTheDocument();
-    const creditGrant = within(confirmationDialog).getByRole("group", {
-      name: "Credits added after payment",
-    });
-    expect(within(creditGrant).getByText("+16,100")).toBeInTheDocument();
     expect(
-      within(creditGrant).getByText("Purchased credits"),
-    ).toBeInTheDocument();
-    expect(within(creditGrant).getByText("+15,000")).toBeInTheDocument();
-    expect(within(creditGrant).getByText("Bonus credits")).toBeInTheDocument();
-    expect(within(creditGrant).getByText("+1,100")).toBeInTheDocument();
-    expect(
-      within(creditGrant).getByText("Expires Apr 1, 2026"),
-    ).toBeInTheDocument();
+      within(confirmationDialog).getByText(
+        "Credits added after payment · Expires Apr 1, 2026",
+      ).parentElement,
+    ).toHaveTextContent("+16,100");
     expect(
       within(confirmationDialog).queryByText("Next recurring total"),
     ).not.toBeInTheDocument();
     expect(
       within(confirmationDialog).queryByText("Total credits"),
     ).not.toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("50,000")).toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("4,321")).toBeInTheDocument();
+    expect(
+      within(confirmationDialog).getByText("Credits each month · 4,321 bonus")
+        .parentElement,
+    ).toHaveTextContent("54,321");
     expect(
       within(confirmationDialog).getByText("$50/month"),
     ).toBeInTheDocument();
