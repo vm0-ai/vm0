@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.168.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.0...runner-rs-v0.168.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **connectors:** require pinned custom runtime registrations ([#26854](https://github.com/vm0-ai/vm0/issues/26854)) ([7a80c6c](https://github.com/vm0-ai/vm0/commit/7a80c6c506db436956c7a8e23dafa7d6c9014955))
+* **runner:** avoid world-writable kvm access ([#26797](https://github.com/vm0-ai/vm0/issues/26797)) ([ad737ac](https://github.com/vm0-ai/vm0/commit/ad737ac997fcfb2cfa27de69caf1e74efc0e629d))
+
+
+### Documentation
+
+* **python:** document content-length parse result semantics ([#26837](https://github.com/vm0-ai/vm0/issues/26837)) ([3964241](https://github.com/vm0-ai/vm0/commit/39642416f57ccea56d79afc67127c595adb94067))
+* **runner:** explain drain and resume invariants ([#26821](https://github.com/vm0-ai/vm0/issues/26821)) ([11896de](https://github.com/vm0-ai/vm0/commit/11896de8ed8f8be484463d24cbc3f3083715c769))
+
+
+### Refactoring
+
+* **python:** separate auth.base transport ([#26847](https://github.com/vm0-ai/vm0/issues/26847)) ([08c823d](https://github.com/vm0-ai/vm0/commit/08c823d462dda5c8105081ce72ae06607d6dc288))
+
+
+### Performance Improvements
+
+* **python:** stagger firewall auth address attempts ([#26787](https://github.com/vm0-ai/vm0/issues/26787)) ([6f87d56](https://github.com/vm0-ai/vm0/commit/6f87d567dfe68b738a005a1c01bd568e6a33959f))
+
 ## [0.168.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.167.0...runner-rs-v0.168.0) (2026-08-13)
 
 
