@@ -904,10 +904,12 @@ const networkLogDetailFields = {
   error: detailField("error", "error"),
   // CapturedBodySections renders these fields below the detail grid.
   request_headers: null,
+  request_headers_truncated: null,
   request_body: null,
   request_body_encoding: null,
   request_body_truncated: null,
   response_headers: null,
+  response_headers_truncated: null,
   response_body: null,
   response_body_encoding: null,
   response_body_truncated: null,
