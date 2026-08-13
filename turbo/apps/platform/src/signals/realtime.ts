@@ -104,6 +104,48 @@ const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 
 const subscriberPokeTarget$ = state(new EventTarget());
 const SUBSCRIBER_POKE_EVENT = "poke";
+type RealtimeReadyCatchUpCommand = Command<Promise<void> | void, [AbortSignal]>;
+const realtimeReadyCatchUpCommands$ = state<
+  ReadonlySet<RealtimeReadyCatchUpCommand>
+>(new Set());
+
+/**
+ * Register snapshot catch-up that runs after realtime recovery and before the
+ * shared foreground-ready barrier resolves.
+ */
+export const subscribeRealtimeReadyCatchUp$ = command(
+  (
+    { get, set },
+    callback$: RealtimeReadyCatchUpCommand,
+    signal: AbortSignal,
+  ) => {
+    set(
+      realtimeReadyCatchUpCommands$,
+      new Set([...get(realtimeReadyCatchUpCommands$), callback$]),
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        const commands = new Set(get(realtimeReadyCatchUpCommands$));
+        commands.delete(callback$);
+        set(realtimeReadyCatchUpCommands$, commands);
+      },
+      { once: true },
+    );
+  },
+);
+
+const runRealtimeReadyCatchUp$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    await Promise.all(
+      [...get(realtimeReadyCatchUpCommands$)].map(async (callback$) => {
+        await set(callback$, signal);
+        signal.throwIfAborted();
+      }),
+    );
+    signal.throwIfAborted();
+  },
+);
 
 interface PendingAblySubscription {
   topic: string;
@@ -1017,6 +1059,8 @@ const foregroundRealtimeCatchUp$ = command(
 
     L.debug("foreground catch-up ready, poking subscribers");
     subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+    await set(runRealtimeReadyCatchUp$, signal);
+    signal.throwIfAborted();
   },
 );
 

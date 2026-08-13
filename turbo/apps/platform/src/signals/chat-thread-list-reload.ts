@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { subscribeForegroundCatchUp$ } from "./auth-retry.ts";
-import { setAblyLoop$ } from "./realtime.ts";
+import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
 
 const internalReloadChatIndicators$ = state(0);
 
@@ -65,6 +64,10 @@ export const subscribeChatThreadReadCursorUpdated$ = command(
 
 export const setupChatIndicatorForegroundCatchUp$ = command(
   ({ set }, signal: AbortSignal) => {
-    set(subscribeForegroundCatchUp$, reloadChatIndicatorsOnForeground$, signal);
+    set(
+      subscribeRealtimeReadyCatchUp$,
+      reloadChatIndicatorsOnForeground$,
+      signal,
+    );
   },
 );

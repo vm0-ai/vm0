@@ -27,12 +27,9 @@ import { zeroClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
-import { setAblyLoop$ } from "../realtime.ts";
-import {
-  foregroundReady$,
-  subscribeForegroundCatchUp$,
-} from "../auth-retry.ts";
-import { settle, tapError } from "../utils.ts";
+import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
+import { foregroundReady$ } from "../auth-retry.ts";
+import { bestEffort, settle, tapError } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution$,
@@ -232,7 +229,6 @@ const maybeShowPendingRestoreToast$ = command(
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
-const handledRemoteBillingReload$ = state<number | null>(null);
 const usagePackManagementReload$ = state(0);
 const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
@@ -437,16 +433,14 @@ export const reloadAccountMenuBillingStatus$ = command(
       return;
     }
 
-    const reloadVersion = get(billingReload$);
+    const reloadVersionBeforeForeground = get(billingReload$);
     await settle(foregroundReady.promise, signal);
     signal.throwIfAborted();
-    const currentReloadVersion = get(billingReload$);
-    if (
-      currentReloadVersion === reloadVersion ||
-      get(handledRemoteBillingReload$) !== currentReloadVersion
-    ) {
+    if (get(billingReload$) === reloadVersionBeforeForeground) {
       set(reloadBillingStatus$);
     }
+    // Join the mounted view's async load, or start it when this menu is the
+    // first billing consumer. A failed foreground load gets one fresh retry.
     const billingResult = await settle(get(billingStatusAsync$), signal);
     if (!billingResult.ok) {
       set(reloadBillingStatus$);
@@ -552,14 +546,12 @@ export const handleBillingRedirect$ = command(
 );
 
 const reloadBillingStatusFromRemoteChange$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
     set(reloadQueueData$);
     set(reloadUsagePackManagement$);
     set(reloadUsageRecords$);
     await set(reconcilePendingBillingPayment$, signal);
-    signal.throwIfAborted();
-    set(handledRemoteBillingReload$, get(billingReload$));
   },
 );
 
@@ -573,13 +565,17 @@ const reloadBillingStatusFromRealtime$ = command(
 
 const reloadBillingStatusOnForeground$ = command(
   async ({ set }, signal: AbortSignal) => {
-    await settle(set(reloadBillingStatusFromRemoteChange$, signal), signal);
+    await bestEffort(set(reloadBillingStatusFromRemoteChange$, signal), signal);
   },
 );
 
 export const setupBillingRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(subscribeForegroundCatchUp$, reloadBillingStatusOnForeground$, signal);
+    set(
+      subscribeRealtimeReadyCatchUp$,
+      reloadBillingStatusOnForeground$,
+      signal,
+    );
     await set(
       setAblyLoop$,
       {
