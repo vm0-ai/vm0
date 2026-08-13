@@ -339,18 +339,19 @@ echo "--- Pressure: sustain CPU saturation with live process control ---"
 PRESSURE_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 PRESSURE_SESSION_ID="e2e-process-containment-pressure"
 PRESSURE_SUBMIT_OUTPUT=$(mktemp)
-# Queue one input immediately to keep the mock turn open while this script
-# resolves its sandbox; later inputs exercise control during CPU pressure.
+# Queue one input immediately while this script resolves the sandbox. Keep the
+# final input after the pressure command so the mock turn cannot finish first.
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --timeout 45 \
   --chat-thread-id "$PRESSURE_CHAT_THREAD_ID" \
   --session-id "$PRESSURE_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt '@active-input-smoke:4' \
+  --prompt '@active-input-smoke:5' \
   --active-input 'after=100ms,text=cpu-pressure-ready' \
   --active-input 'after=2s,text=cpu-pressure-one' \
   --active-input 'after=4s,text=cpu-pressure-two' \
-  --active-input 'after=7s,text=cpu-pressure-three' \
+  --active-input 'after=6s,text=cpu-pressure-three' \
+  --active-input 'after=9s,text=cpu-pressure-finish' \
   >"$PRESSURE_SUBMIT_OUTPUT" 2>&1 &
 PRESSURE_SUBMIT_PID=$!
 
@@ -385,7 +386,7 @@ done
 [ -n "$PRESSURE_SANDBOX_ID" ] \
   || fail "CPU-pressure sandbox did not become ready"
 
-CPU_PRESSURE_SECONDS=8
+CPU_PRESSURE_SECONDS=6
 CPU_PRESSURE_COMMAND=$(cat <<'SCRIPT'
 set -eu
 duration=$1
@@ -447,7 +448,7 @@ SUBMITTED_PRESSURE_RUN_ID=$(jq -r '.run_id // empty' <<<"$PRESSURE_SUBMIT_JSON")
 PRESSURE_STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${PRESSURE_RUN_ID}.log"
 PRESSURE_METRICS_LOG="/var/lib/vm0-runner/logs/metrics-${PRESSURE_RUN_ID}.jsonl"
 sudo grep -F -q \
-  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three' \
+  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+cpu-pressure-finish' \
   "$PRESSURE_STREAM_LOG" \
   || fail "CPU-pressure active inputs were not all consumed in order"
 
