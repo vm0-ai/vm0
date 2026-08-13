@@ -922,15 +922,20 @@ describe("workflow queue", () => {
       await postWorkflowWebhook(automation, "queued friendly event"),
     );
 
-    const automationEvents = (
-      await wf.readThreadEvents(automation.threadId)
-    ).filter((event) => {
-      return chatEventAutomationPart(event) !== undefined;
+    const automationEvents = await wf.readThreadEvents(automation.threadId);
+    const claimedEvent = automationEvents.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === firstRunId;
     });
-    expect(automationEvents.map(chatEventDisplayText)).toStrictEqual([
+    const [pendingEvent] = await pendingAutomationEvents(automation.threadId);
+    if (!claimedEvent || !pendingEvent) {
+      throw new Error("Expected claimed and pending automation events");
+    }
+    expect(chatEventDisplayText(claimedEvent)).toBe(
       "A signed webhook request was received.",
+    );
+    expect(chatEventDisplayText(pendingEvent)).toBe(
       "A signed webhook request was received.",
-    ]);
+    );
 
     // The queued event keeps the admitted variant even if the org switch is
     // disabled before the event drains.
