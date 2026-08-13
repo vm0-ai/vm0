@@ -154,7 +154,7 @@ type FlatDecodePathNode =
 
 interface FlatDecodePathField {
   readonly name: string;
-  node: number;
+  readonly node: number;
 }
 
 interface FlatDecodePathSchema {
@@ -1198,17 +1198,8 @@ function flattenDecodePathSchema(root: DecodePathNode): FlatDecodePathSchema {
       }
       case "object": {
         const objectFields = node.fields.map((field) => {
-          return { name: field.name, node: 0 };
+          return { name: field.name, node: addNode(field.node) };
         });
-        for (const [index, field] of node.fields.entries()) {
-          const flatField = objectFields[index];
-          if (flatField === undefined) {
-            throw new Error(
-              `decode-path field ${field.name} was not allocated`,
-            );
-          }
-          flatField.node = addNode(field.node);
-        }
         const fieldStart = fields.length;
         fields.push(...objectFields);
         nodes[nodeIndex] = {
