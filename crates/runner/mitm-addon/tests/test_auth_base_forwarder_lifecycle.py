@@ -13,6 +13,7 @@ import pytest
 from mitmproxy import http
 
 import auth_base_forwarder as forwarder
+import auth_base_transport as transport
 from tests.auth_base_forwarder_helpers import (
     FakeResponseFile,
     FakeSocket,
@@ -613,6 +614,7 @@ class TestForwardRequestAsyncWrapper:
                     10,
                 ),
                 patch.object(forwarder, "time", clock),
+                patch.object(transport, "time", clock),
                 patch.object(
                     loop,
                     "call_later",
@@ -671,7 +673,7 @@ class TestForwardRequestAsyncWrapper:
             forwarder._run_forward_request_worker(
                 future,
                 contextvars.copy_context(),
-                forwarder._prepare_forward_request("https://example.com"),
+                transport._prepare_forward_request("https://example.com"),
                 "GET",
                 [],
                 None,
@@ -693,9 +695,9 @@ class TestForwardRequestAsyncWrapper:
 
     async def test_rejects_body_over_limit_before_forwarding(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
             fake_forwarder_upstream() as upstream,
-            pytest.raises(forwarder.ForwardedRequestTooLargeError),
+            pytest.raises(transport.ForwardedRequestTooLargeError),
         ):
             await forwarder.forward_request(
                 "https://example.com",
@@ -952,7 +954,7 @@ class TestForwardRequestAsyncWrapper:
             forwarder._run_forward_request_worker(
                 future,
                 contextvars.copy_context(),
-                forwarder._prepare_forward_request("https://example.com"),
+                transport._prepare_forward_request("https://example.com"),
                 "GET",
                 [],
                 None,

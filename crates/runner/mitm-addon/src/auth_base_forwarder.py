@@ -1,60 +1,48 @@
-"""HTTPS forwarding for auth.base URL rewrites.
+"""Async lifecycle and admission for auth.base HTTPS forwarding.
 
 The addon forwards auth.base requests itself because mitmproxy's eager
-connection has already connected to the placeholder IP. This module owns
-the low-level HTTP details for that forward path.
+connection has already connected to the placeholder IP. This module is the
+public forwarding facade and owns worker lifecycle and admission state.
 """
 
 import asyncio
 import contextvars
-import errno
-import http.client as http_client
-import ipaddress
 import socket
-import ssl
 import sys
 import threading
 import time
-import urllib.parse
 from collections.abc import Callable
 from concurrent.futures import Future, InvalidStateError
 from contextlib import suppress
 from enum import Enum, auto
-from typing import NamedTuple, Protocol
+from typing import NamedTuple
 
-import mitmproxy_rs
 from mitmproxy import http
 
+import auth_base_transport
 import flow_metadata_keys as metadata_keys
-import public_destination
 import request_body_admission
-from authority_utils import (
-    IPV6_VERSION,
-    authority_has_empty_port,
-    format_url_host,
-    percent_decode_host,
-    raw_authority_host,
-)
-from host_normalization import normalize_idna_hostname
-from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
-from runtime_url_parsing import split_runtime_url
 
-HOP_BY_HOP: frozenset[str] = frozenset(
-    (
-        "connection",
-        "keep-alive",
-        "proxy-connection",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "transfer-encoding",
-        "te",
-        "trailer",
-        "upgrade",
-    )
+DEFAULT_HTTPS_PORT = auth_base_transport.DEFAULT_HTTPS_PORT
+HOP_BY_HOP = auth_base_transport.HOP_BY_HOP
+MAX_AUTH_BASE_REQUEST_BODY_BYTES = auth_base_transport.MAX_AUTH_BASE_REQUEST_BODY_BYTES
+MAX_AUTH_BASE_RESPONSE_BODY_BYTES = auth_base_transport.MAX_AUTH_BASE_RESPONSE_BODY_BYTES
+AuthBaseForwardingDeadlineExceededError = (
+    auth_base_transport.AuthBaseForwardingDeadlineExceededError
 )
-DEFAULT_HTTPS_PORT = 443
-MAX_AUTH_BASE_REQUEST_BODY_BYTES = 32 * 1024 * 1024
-MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
+ForwardedRequestTooLargeError = auth_base_transport.ForwardedRequestTooLargeError
+ForwardedResponseTooLargeError = auth_base_transport.ForwardedResponseTooLargeError
+InvalidAuthBaseRequestHeadersError = auth_base_transport.InvalidAuthBaseRequestHeadersError
+InvalidResolvedAuthHeaderError = auth_base_transport.InvalidResolvedAuthHeaderError
+UnsafeAuthBaseDestinationError = auth_base_transport.UnsafeAuthBaseDestinationError
+forwarded_auth_base_client_header_pairs = (
+    auth_base_transport.forwarded_auth_base_client_header_pairs
+)
+forwarded_request_header_pairs = auth_base_transport.forwarded_request_header_pairs
+header_pairs = auth_base_transport.header_pairs
+resolved_auth_header_pairs = auth_base_transport.resolved_auth_header_pairs
+trusted_request_header_pairs = auth_base_transport.trusted_request_header_pairs
+
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
@@ -67,8 +55,6 @@ _FORWARD_REQUEST_CLEANUP_EXCEPTIONS: tuple[type[BaseException], ...] = (
     SystemExit,
     GeneratorExit,
 )
-_PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
-_UPSTREAM_HOST_FORBIDDEN_CHARS = frozenset("{}*")
 _forward_request_accepting = True
 _forward_request_lifecycle_lock = threading.Lock()
 _forward_request_workers: set[threading.Thread] = set()
@@ -82,14 +68,6 @@ _forward_request_budget = request_body_admission.RequestBodyAdmissionBudget(
 )
 _forward_request_active_handles: set["_ForwardRequestAbortHandle"] = set()
 _forward_request_active_handles_lock = threading.Lock()
-_https_context: ssl.SSLContext | None = None
-_https_context_lock = threading.Lock()
-_dns_resolver: "_AddressResolver | None" = None
-
-
-class _AddressResolver(Protocol):
-    async def lookup_ip(self, host: str) -> list[str]:
-        raise NotImplementedError
 
 
 class _ForwardRequestAdmissionState(NamedTuple):
@@ -170,15 +148,10 @@ def _join_forward_request_workers() -> None:
 
 def reset_forward_request_state_for_tests() -> None:
     """Reset forwarder worker state between tests."""
-    global _dns_resolver
     global _forward_request_accepting
-    global _https_context
 
     shutdown_forward_request_workers(wait=True)
     _forward_request_budget.reset_for_tests()
-    with _https_context_lock:
-        _https_context = None
-    _dns_resolver = None
     _forward_request_accepting = True
 
 
@@ -198,32 +171,8 @@ def shutdown_forward_request_workers(*, wait: bool) -> None:
         _join_forward_request_workers()
 
 
-class ForwardedResponseTooLargeError(Exception):
-    """Raised when an auth.base upstream response exceeds the local body cap."""
-
-
-class ForwardedRequestTooLargeError(Exception):
-    """Raised when an auth.base forwarded request body exceeds the local cap."""
-
-
 class AuthBaseForwardingSaturatedError(Exception):
     """Raised when auth.base forwarding admission is saturated."""
-
-
-class AuthBaseForwardingDeadlineExceededError(Exception):
-    """Raised when one auth.base forwarding attempt exceeds its total lifetime."""
-
-
-class UnsafeAuthBaseDestinationError(Exception):
-    """Raised when an auth.base upstream destination is not public internet."""
-
-
-class InvalidResolvedAuthHeaderError(Exception):
-    """Raised when resolved auth data contains an invalid HTTP header."""
-
-
-class InvalidAuthBaseRequestHeadersError(Exception):
-    """Raised when client representation headers cannot be forwarded safely."""
 
 
 class _ForwardRequestTerminalState(Enum):
@@ -355,376 +304,6 @@ class _ForwardRequestAbortHandle:
         raise RuntimeError("auth.base forwarding attempt is already completed")
 
 
-class _ValidatedAddress(NamedTuple):
-    family: socket.AddressFamily
-    host: str
-    port: int
-
-
-class _PreparedForwardRequest(NamedTuple):
-    host: str
-    port: int | None
-    target: str
-
-
-type _SocketAddress = tuple[str, int] | tuple[str, int, int, int]
-
-
-def _validated_socket_address(address: _ValidatedAddress) -> _SocketAddress:
-    if address.family == socket.AF_INET6:
-        return address.host, address.port, 0, 0
-    return address.host, address.port
-
-
-def _remaining_deadline_seconds(deadline: float) -> float:
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise AuthBaseForwardingDeadlineExceededError("auth.base forwarding deadline exceeded")
-    return remaining
-
-
-def _create_https_context() -> ssl.SSLContext:
-    context = ssl.create_default_context()
-    context.set_alpn_protocols(["http/1.1"])
-    if context.post_handshake_auth is not None:
-        context.post_handshake_auth = True
-    return context
-
-
-def _get_https_context() -> ssl.SSLContext:
-    global _https_context
-
-    context = _https_context
-    if context is not None:
-        return context
-
-    with _https_context_lock:
-        context = _https_context
-        if context is None:
-            context = _create_https_context()
-            _https_context = context
-        return context
-
-
-class _ValidatedTLSConnection(http_client.HTTPConnection):
-    default_port = DEFAULT_HTTPS_PORT
-
-    def __init__(
-        self,
-        host: str,
-        port: int | None,
-        *,
-        deadline: float,
-        abort_handle: _ForwardRequestAbortHandle,
-        validated_addresses: tuple[_ValidatedAddress, ...],
-    ) -> None:
-        super().__init__(
-            host,
-            port=port,
-            timeout=_remaining_deadline_seconds(deadline),
-        )
-        self._abort_handle = abort_handle
-        self._deadline = deadline
-        self._validated_addresses = validated_addresses
-        self._context = _get_https_context()
-
-    def _close_and_clear_socket(self, sock: socket.socket) -> None:
-        self._abort_handle.clear_socket(sock)
-        with suppress(Exception):
-            sock.close()
-
-    def _connect_raw_socket(self) -> socket.socket:
-        last_error: OSError | None = None
-        for address in self._validated_addresses:
-            self._abort_handle.raise_if_aborted()
-            raw_sock = socket.socket(address.family, socket.SOCK_STREAM)
-            try:
-                self._abort_handle.register_socket(raw_sock)
-                raw_sock.settimeout(_remaining_deadline_seconds(self._deadline))
-                raw_sock.connect(_validated_socket_address(address))
-                self._abort_handle.raise_if_aborted()
-            except OSError as exc:
-                last_error = exc
-                self._close_and_clear_socket(raw_sock)
-                continue
-            except Exception:
-                self._close_and_clear_socket(raw_sock)
-                raise
-            return raw_sock
-        if last_error is not None:
-            raise last_error
-        raise OSError("address resolver returned an empty list")
-
-    def connect(self) -> None:
-        raw_sock = self._connect_raw_socket()
-        try:
-            raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        except OSError as exc:
-            if exc.errno != errno.ENOPROTOOPT:
-                self._close_and_clear_socket(raw_sock)
-                raise
-        try:
-            wrapped_sock = self._context.wrap_socket(
-                raw_sock,
-                server_hostname=self.host,
-                do_handshake_on_connect=False,
-            )
-            if wrapped_sock is not raw_sock:
-                self._abort_handle.replace_socket(raw_sock, wrapped_sock)
-            self.sock = wrapped_sock
-            self.set_remaining_timeout()
-            wrapped_sock.do_handshake()
-        except Exception:
-            current_sock = self.sock
-            self.sock = None
-            self._close_and_clear_socket(current_sock if current_sock is not None else raw_sock)
-            raise
-
-    def set_remaining_timeout(self) -> None:
-        self._abort_handle.raise_if_aborted()
-        if self.sock is not None:
-            self.sock.settimeout(_remaining_deadline_seconds(self._deadline))
-
-    def close(self) -> None:
-        sock = self.sock
-        try:
-            super().close()
-        finally:
-            if sock is not None:
-                self._abort_handle.clear_socket(sock)
-
-
-def _make_validated_https_connection(
-    host: str,
-    port: int | None,
-    *,
-    deadline: float,
-    abort_handle: _ForwardRequestAbortHandle,
-    validated_addresses: tuple[_ValidatedAddress, ...],
-) -> _ValidatedTLSConnection:
-    return _ValidatedTLSConnection(
-        host,
-        port=port,
-        deadline=deadline,
-        abort_handle=abort_handle,
-        validated_addresses=validated_addresses,
-    )
-
-
-def header_pairs(headers) -> list[tuple[str, str]]:
-    """Normalize a supported header container into ordered header pairs.
-
-    Plain dict inputs use their normal items. Header containers with an
-    ``items`` method use ``items(multi=True)`` when supported, preserving
-    repeated mitmproxy headers, then fall back to ``items()``. Other inputs
-    are treated as iterable ``(name, value)`` pairs.
-    """
-    if isinstance(headers, dict):
-        return list(headers.items())
-    if hasattr(headers, "items"):
-        try:
-            return list(headers.items(multi=True))
-        except TypeError:
-            return list(headers.items())
-    return list(headers)
-
-
-def _connection_header_names(headers: list[tuple[str, str]]) -> set[str]:
-    names: set[str] = set()
-    for header_name, header_value in headers:
-        if header_name.lower() != "connection":
-            continue
-        for token in header_value.split(","):
-            token = token.strip().lower()
-            if token:
-                names.add(token)
-    return names
-
-
-def _filter_header_pairs(
-    headers,
-    *,
-    extra_excluded: set[str] | None = None,
-) -> list[tuple[str, str]]:
-    pairs = header_pairs(headers)
-    excluded = set(HOP_BY_HOP)
-    excluded.update(_connection_header_names(pairs))
-    if extra_excluded:
-        excluded.update(extra_excluded)
-    return [(name, value) for name, value in pairs if name.lower() not in excluded]
-
-
-def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
-    """Return request headers that can be forwarded to an auth.base target.
-
-    Hop-by-hop headers and headers named by ``Connection`` are removed.
-    ``Host``, ``Content-Length``, and ``Transfer-Encoding`` are also excluded
-    because the forwarder recomputes request authority and framing.
-    """
-    return _filter_header_pairs(
-        headers,
-        extra_excluded={"host", "content-length", "transfer-encoding"},
-    )
-
-
-def forwarded_auth_base_client_header_pairs(
-    headers,
-) -> list[tuple[str, str]]:
-    """Select representation metadata allowed to cross an auth.base rewrite."""
-    raw_pairs = header_pairs(headers)
-    content_type_count = sum(1 for name, _value in raw_pairs if name.lower() == "content-type")
-    if content_type_count > 1:
-        raise InvalidAuthBaseRequestHeadersError(
-            "auth.base requests must contain at most one Content-Type header"
-        )
-
-    return [
-        (name, value)
-        for name, value in forwarded_request_header_pairs(raw_pairs)
-        if name.lower() in {"content-type", "content-encoding"}
-    ]
-
-
-def _validate_resolved_auth_header_pair(header_name: str, header_value: str) -> None:
-    if not isinstance(header_name, str) or not is_http_header_name(header_name):
-        raise InvalidResolvedAuthHeaderError("Resolved auth header name is invalid")
-    if not isinstance(header_value, str) or has_forbidden_header_value_control(header_value):
-        raise InvalidResolvedAuthHeaderError(f"Resolved auth header {header_name} value is invalid")
-    try:
-        header_value.encode("latin-1")
-    except UnicodeEncodeError as exc:
-        raise InvalidResolvedAuthHeaderError(
-            f"Resolved auth header {header_name} value is invalid"
-        ) from exc
-
-
-def resolved_auth_header_pairs(headers) -> list[tuple[str, str]]:
-    """Validate and filter resolved auth headers before outbound injection.
-
-    Each resolved header name and value is validated before any pair is
-    returned; invalid pairs raise ``InvalidResolvedAuthHeaderError``. Transport,
-    authority, and framing headers are then dropped. This helper does not merge
-    with or replace client headers; callers that combine resolved and client
-    headers own that policy.
-    """
-    pairs = header_pairs(headers)
-    for name, value in pairs:
-        _validate_resolved_auth_header_pair(name, value)
-    return _filter_header_pairs(
-        pairs,
-        extra_excluded={"host", "content-length", "transfer-encoding"},
-    )
-
-
-def trusted_request_header_pairs(headers) -> list[tuple[str, str]]:
-    """Validate and filter trusted injected headers through the resolved-auth path."""
-    return resolved_auth_header_pairs(headers)
-
-
-def _filter_response_headers(headers: list[tuple[str, str]]) -> http.Headers:
-    """Strip hop-by-hop headers from an upstream response.
-
-    The response body is fully read, so headers like transfer-encoding must
-    not be forwarded. Headers named by Connection are hop-by-hop too.
-
-    ``HTTPResponse.getheaders()`` exposes raw field octets through a one-to-one
-    ISO-8859-1 decode. Encode with the same codec to restore those octets for
-    mitmproxy's byte-backed header container.
-    """
-    return http.Headers(
-        (name.encode("latin-1"), value.encode("latin-1"))
-        for name, value in _filter_header_pairs(headers)
-    )
-
-
-def _normalized_forward_request_host(parsed: urllib.parse.SplitResult) -> str:
-    raw_host = raw_authority_host(parsed.netloc)
-    if raw_host is None:
-        if parsed.netloc:
-            raise ValueError("Invalid upstream URL: invalid host")
-        raise ValueError("Invalid upstream URL: missing host")
-
-    decoded = percent_decode_host(
-        raw_host.hostname,
-        syntax_chars=_PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS,
-    )
-    if decoded.invalid_encoding or decoded.decoded_syntax:
-        raise ValueError("Invalid upstream URL: invalid host")
-    if any(char in decoded.value for char in _UPSTREAM_HOST_FORBIDDEN_CHARS):
-        raise ValueError("Invalid upstream URL: invalid host")
-
-    if raw_host.bracketed:
-        try:
-            parsed_ip = ipaddress.ip_address(decoded.value)
-        except ValueError as exc:
-            raise ValueError("Invalid upstream URL: invalid host") from exc
-        if parsed_ip.version != IPV6_VERSION or parsed_ip.scope_id is not None:
-            raise ValueError("Invalid upstream URL: invalid host")
-        return parsed_ip.compressed.lower()
-
-    try:
-        return normalize_idna_hostname(decoded.value)
-    except (UnicodeError, ValueError) as exc:
-        raise ValueError("Invalid upstream URL: invalid host") from exc
-
-
-def _host_header(host: str, port: int | None) -> str:
-    formatted_host = format_url_host(host)
-    if port is None or port == DEFAULT_HTTPS_PORT:
-        return formatted_host
-    return f"{formatted_host}:{port}"
-
-
-def _request_target(parsed: urllib.parse.SplitResult) -> str:
-    path = parsed.path or "/"
-    if parsed.query:
-        return f"{path}?{parsed.query}"
-    return path
-
-
-def _connection_factory(scheme: str):
-    if scheme == "https":
-        return _make_validated_https_connection
-    raise ValueError(f"Unsupported URL scheme: {scheme}")
-
-
-def _reject_userinfo(parsed: urllib.parse.SplitResult) -> None:
-    if parsed.username is not None or parsed.password is not None:
-        raise ValueError("Unsupported URL authority: userinfo is not allowed")
-
-
-def _outbound_request_headers(
-    headers: list[tuple[str, str]],
-    host: str,
-    port: int | None,
-    body: bytes | None,
-) -> list[tuple[str, str]]:
-    filtered = forwarded_request_header_pairs(headers)
-    outbound = [("Host", _host_header(host, port)), *filtered]
-    if body is not None:
-        outbound.append(("Content-Length", str(len(body))))
-    return outbound
-
-
-def _read_response_body(resp) -> bytes:
-    body = resp.read(MAX_AUTH_BASE_RESPONSE_BODY_BYTES + 1)
-    if len(body) > MAX_AUTH_BASE_RESPONSE_BODY_BYTES:
-        raise ForwardedResponseTooLargeError("Forwarded auth.base response body too large")
-    remaining = resp.length
-    if remaining is not None and remaining > 0:
-        raise http_client.IncompleteRead(body, remaining)
-    return body
-
-
-def _validate_request_body_size(body: bytes | None) -> None:
-    if body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES:
-        raise ForwardedRequestTooLargeError("Forwarded auth.base request body too large")
-
-
-def _request_body_size(body: bytes | None) -> int:
-    return len(body) if body is not None else 0
-
-
 def reserve_forward_request_admission(
     body_bytes: int,
 ) -> request_body_admission.RequestBodyAdmissionLease:
@@ -800,129 +379,6 @@ def forward_request_admission_state_for_tests() -> tuple[int, int]:
     return _forward_request_budget.state_for_tests()
 
 
-def _is_public_unicast_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return public_destination.ip_address_is_public(address)
-
-
-def _raise_unsafe_destination() -> None:
-    raise UnsafeAuthBaseDestinationError("Unsafe auth.base upstream destination")
-
-
-def _get_dns_resolver() -> _AddressResolver:
-    global _dns_resolver
-
-    resolver = _dns_resolver
-    if resolver is None:
-        resolver = mitmproxy_rs.dns.DnsResolver()
-        _dns_resolver = resolver
-    return resolver
-
-
-def _validated_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address, port: int):
-    family = socket.AF_INET6 if address.version == IPV6_VERSION else socket.AF_INET
-    return _ValidatedAddress(family, address.compressed, port)
-
-
-async def _resolve_validated_addresses(
-    host: str,
-    port: int,
-    abort_handle: _ForwardRequestAbortHandle,
-) -> tuple[_ValidatedAddress, ...]:
-    try:
-        literal_address = ipaddress.ip_address(host)
-    except ValueError:
-        lookup_future = asyncio.ensure_future(_get_dns_resolver().lookup_ip(host))
-
-        def cancel_lookup() -> object:
-            return lookup_future.cancel()
-
-        abort_handle.register_async_cancel(cancel_lookup)
-        try:
-            resolved_hosts = await lookup_future
-        finally:
-            abort_handle.clear_async_cancel(cancel_lookup)
-    else:
-        resolved_hosts = [literal_address.compressed]
-
-    seen: set[str] = set()
-    addresses: list[_ValidatedAddress] = []
-    for resolved_host in resolved_hosts:
-        address = ipaddress.ip_address(resolved_host)
-        key = address.compressed
-        if key in seen:
-            continue
-        seen.add(key)
-        if not _is_public_unicast_address(address):
-            _raise_unsafe_destination()
-        addresses.append(_validated_address(address, port))
-    if not addresses:
-        raise ValueError("Invalid upstream URL: host did not resolve")
-    return tuple(addresses)
-
-
-def _prepare_forward_request(url: str) -> _PreparedForwardRequest:
-    parsed = split_runtime_url(url)
-    _connection_factory(parsed.scheme.lower())
-    _reject_userinfo(parsed)
-    host = _normalized_forward_request_host(parsed)
-    if authority_has_empty_port(parsed.netloc):
-        raise ValueError("Invalid upstream URL: invalid port")
-    try:
-        port = parsed.port
-    except ValueError as exc:
-        raise ValueError("Invalid upstream URL: invalid port") from exc
-    return _PreparedForwardRequest(host, port, _request_target(parsed))
-
-
-def _forward_request_sync(
-    prepared: _PreparedForwardRequest,
-    method: str,
-    headers: list[tuple[str, str]],
-    body: bytes | None,
-    validated_addresses: tuple[_ValidatedAddress, ...],
-    abort_handle: _ForwardRequestAbortHandle,
-    deadline: float,
-) -> tuple[int, bytes, http.Headers]:
-    """Forward an HTTPS request to the real URL and return (status, body, headers).
-
-    Security: only https URLs are allowed, and redirects are returned
-    to the sandbox client instead of being followed inside the addon.
-    """
-    abort_handle.raise_if_aborted()
-    conn = _make_validated_https_connection(
-        prepared.host,
-        port=prepared.port,
-        deadline=deadline,
-        abort_handle=abort_handle,
-        validated_addresses=validated_addresses,
-    )
-    resp = None
-    try:
-        conn.putrequest(
-            method,
-            prepared.target,
-            skip_host=True,
-            skip_accept_encoding=True,
-        )
-        for header_name, header_value in _outbound_request_headers(
-            headers,
-            prepared.host,
-            prepared.port,
-            body,
-        ):
-            conn.putheader(header_name, header_value)
-        conn.endheaders(body)
-        conn.set_remaining_timeout()
-        resp = conn.getresponse()
-        conn.set_remaining_timeout()
-        resp_body = _read_response_body(resp)
-        return resp.status, resp_body, _filter_response_headers(resp.getheaders())
-    finally:
-        if resp is not None:
-            resp.close()
-        conn.close()
-
-
 def _get_forward_request_admission_semaphore() -> asyncio.Semaphore:
     global _forward_request_admission_state
 
@@ -985,16 +441,16 @@ def _release_forward_request_resources(
 
 def _forward_request_sync_in_context(
     context: contextvars.Context,
-    prepared: _PreparedForwardRequest,
+    prepared: auth_base_transport._PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
-    validated_addresses: tuple[_ValidatedAddress, ...],
+    validated_addresses: tuple[auth_base_transport._ValidatedAddress, ...],
     abort_handle: _ForwardRequestAbortHandle,
     deadline: float,
 ) -> tuple[int, bytes, http.Headers]:
     return context.run(
-        _forward_request_sync,
+        auth_base_transport._forward_request_sync,
         prepared,
         method,
         headers,
@@ -1035,11 +491,11 @@ def _set_forward_request_terminal_exception(
 def _run_forward_request_worker(
     future: Future[tuple[int, bytes, http.Headers]],
     context: contextvars.Context,
-    prepared: _PreparedForwardRequest,
+    prepared: auth_base_transport._PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
-    validated_addresses: tuple[_ValidatedAddress, ...],
+    validated_addresses: tuple[auth_base_transport._ValidatedAddress, ...],
     abort_handle: _ForwardRequestAbortHandle,
     deadline: float,
 ) -> None:
@@ -1087,11 +543,11 @@ def _run_forward_request_worker(
 
 def _start_forward_request_worker(
     context: contextvars.Context,
-    prepared: _PreparedForwardRequest,
+    prepared: auth_base_transport._PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
-    validated_addresses: tuple[_ValidatedAddress, ...],
+    validated_addresses: tuple[auth_base_transport._ValidatedAddress, ...],
     abort_handle: _ForwardRequestAbortHandle,
     deadline: float,
 ) -> Future[tuple[int, bytes, http.Headers]]:
@@ -1158,9 +614,9 @@ async def forward_request(
     Request body size, admission saturation, shutdown, URL/header/destination validation, upstream
     forwarding, and response processing failures propagate to the caller.
     """
-    body_bytes = _request_body_size(body)
+    body_bytes = auth_base_transport._request_body_size(body)
     try:
-        _validate_request_body_size(body)
+        auth_base_transport._validate_request_body_size(body)
     except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
         if admission is not None:
             release_forward_request_admission(admission)
@@ -1184,7 +640,7 @@ async def forward_request(
         semaphore = _get_forward_request_admission_semaphore()
         context = contextvars.copy_context()
         try:
-            async with asyncio.timeout(_remaining_deadline_seconds(deadline)):
+            async with asyncio.timeout(auth_base_transport._remaining_deadline_seconds(deadline)):
                 await semaphore.acquire()
                 semaphore_acquired = True
         except TimeoutError as exc:
@@ -1199,11 +655,11 @@ async def forward_request(
             abort_handle.abort_for_shutdown()
             raise RuntimeError("auth.base forwarding workers are shut down")
 
-        prepared = _prepare_forward_request(url)
+        prepared = auth_base_transport._prepare_forward_request(url)
         effective_port = prepared.port if prepared.port is not None else DEFAULT_HTTPS_PORT
         try:
-            async with asyncio.timeout(_remaining_deadline_seconds(deadline)):
-                validated_addresses = await _resolve_validated_addresses(
+            async with asyncio.timeout(auth_base_transport._remaining_deadline_seconds(deadline)):
+                validated_addresses = await auth_base_transport._resolve_validated_addresses(
                     prepared.host,
                     effective_port,
                     abort_handle,
@@ -1219,7 +675,7 @@ async def forward_request(
             raise
 
         deadline_timer = loop.call_later(
-            _remaining_deadline_seconds(deadline),
+            auth_base_transport._remaining_deadline_seconds(deadline),
             abort_handle.abort_for_deadline,
         )
         future = _start_forward_request_worker(
