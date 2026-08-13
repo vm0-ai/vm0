@@ -3985,6 +3985,15 @@ const RUN_SECTION_GRID_CLASS =
   "@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 const RUN_SECTION_ROW_CLASS = `-mt-5 ${RUN_SECTION_GRID_CLASS}`;
 
+// Messages the user sent back to back read as one thing they said, which means
+// an even rhythm: the copy button sits the same 6px from the text above it as
+// from whatever follows — the next message, or the burst's acknowledgement.
+// Everything between two of those texts is one 6px + control + 6px unit, so
+// the three values move together. The pull cancels the thread's own 24px gap
+// down to the same 6px.
+const MESSAGE_STACK_GAP_CLASS = "mt-1.5";
+const MESSAGE_STACK_PULL_CLASS = "-mt-[18px]";
+
 function RunSectionDivider({
   label,
   labelPosition = "left",
@@ -4039,12 +4048,13 @@ function RunSectionDividerRow({
 // arrived" under each message answers a question nobody asked and chops the
 // burst into unrelated pieces.
 //
-// The label carries no rule. A hairline is how the transcript marks a boundary
+// The row carries no rule. A hairline is how the transcript marks a boundary
 // between two stretches of work, and drawing one under the burst cut the
 // acknowledgement away from the very messages it is about — the label ended up
 // reading as the start of something else rather than the closing line of what
-// the user just sent.
-function SteerAcknowledgementLabel({ count }: { count: number }) {
+// the user just sent. It closes to MESSAGE_STACK_GAP for the same reason: the
+// burst and its acknowledgement are one block.
+function SteerAcknowledgementRow({ count }: { count: number }) {
   const { t } = useTranslation();
   const sweepRef = useSet(steerAcknowledgementRef$);
   const label = t(
@@ -4054,27 +4064,36 @@ function SteerAcknowledgementLabel({ count }: { count: number }) {
     { count },
   );
   return (
-    <p className={cn(RUN_SECTION_LABEL_CLASS, "text-right")}>
-      {/* Remounting on every change is what tells the sweep to run. The
-          outgoing layer stays empty here: the wording it erases is whatever
-          this row said last, which only the row itself still knows. */}
-      <span
-        key={label}
-        ref={sweepRef}
-        data-testid="chat-steer-acknowledgement"
-        data-steer-acknowledgement-label={label}
-        className="zero-steer-ack"
-      >
-        <span
-          aria-hidden="true"
-          data-steer-acknowledgement-outgoing=""
-          className="zero-steer-ack-layer zero-steer-ack-outgoing"
-        />
-        <span className="zero-steer-ack-layer zero-steer-ack-incoming">
-          {label}
-        </span>
-      </span>
-    </p>
+    <div className={cn(MESSAGE_STACK_PULL_CLASS, RUN_SECTION_GRID_CLASS)}>
+      <div className="hidden @[900px]:block" />
+      {/* The label keeps its own width rather than filling the column: the
+          sweep masks are sized from this box, so a full-width one would drag
+          the boundary across empty space beside the text. No min-height: the
+          row is the text, so the gap above it is the gap that was measured. */}
+      <div className="flex justify-end">
+        <p className={cn(RUN_SECTION_LABEL_CLASS, "text-right")}>
+          {/* Remounting on every change is what tells the sweep to run. The
+              outgoing layer stays empty here: the wording it erases is whatever
+              this row said last, which only the row itself still knows. */}
+          <span
+            key={label}
+            ref={sweepRef}
+            data-testid="chat-steer-acknowledgement"
+            data-steer-acknowledgement-label={label}
+            className="zero-steer-ack"
+          >
+            <span
+              aria-hidden="true"
+              data-steer-acknowledgement-outgoing=""
+              className="zero-steer-ack-layer zero-steer-ack-outgoing"
+            />
+            <span className="zero-steer-ack-layer zero-steer-ack-incoming">
+              {label}
+            </span>
+          </span>
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -6218,17 +6237,15 @@ function PagedUserGroup({
   const steerCount = group.events.filter((event) => {
     return steerEventIds.has(event.id);
   }).length;
-  // display:contents keeps every message a direct child of the thread's own
-  // column, so the group can own the hover state without owning the layout.
   return (
-    <div className="group contents">
+    <>
       {group.events.map((event, index) => {
         const modelChange = modelChanges.get(event.id);
         const previousEvent = group.events[index - 1];
-        // Messages the user sent back to back are one thing they said, so the
-        // bubbles stack instead of sitting a full message apart. Anything that
-        // belongs between two of them — a model change, a message that renders
-        // as its own card rather than a bubble — ends the stack.
+        // Messages the user sent back to back are one thing they said, so they
+        // close up to MESSAGE_STACK_GAP. Anything that belongs between two of
+        // them — a model change, a message that renders as its own card rather
+        // than a bubble — ends the stack.
         const stackedOnPrevious =
           previousEvent !== undefined &&
           modelChange === undefined &&
@@ -6247,119 +6264,11 @@ function PagedUserGroup({
           </div>
         );
       })}
-      <UserGroupFooterRow
-        group={group}
-        thread={thread}
-        steerCount={steerCount}
-      />
+      {steerCount > 0 ? <SteerAcknowledgementRow count={steerCount} /> : null}
       {runGroupFolds?.map((fold) => {
         return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
-    </div>
-  );
-}
-
-// Actions belong to the group, not to each message — the same rule the
-// assistant side already follows, where one bar sits under the whole run and
-// copies all of it. Per-message rows were what held a burst apart: each one
-// reserves its height whether or not it is being hovered, so two messages sent
-// back to back could never sit closer than a row plus a gap. One row under the
-// group also means copying a burst hands back the whole correction rather than
-// whichever line the pointer happened to be over.
-function UserGroupFooterRow({
-  group,
-  thread,
-  steerCount,
-}: {
-  group: ChatEventGroup;
-  thread: ChatPanelSignals;
-  steerCount: number;
-}) {
-  const { t } = useTranslation();
-  const pageSignal = useGet(pageSignal$);
-  const copiedEventId = useGet(thread.copiedEventId$);
-  const copyEvent = useSet(thread.copyEvent$);
-  const copyable = group.events.filter(rendersUserBubble).map((event) => {
-    return resolvePagedUserMessageRendering({
-      renderDocument: event.userMessageRenderDocument,
-    });
-  });
-  const copyText = copyable
-    .map((message) => {
-      return message.copyText;
-    })
-    .filter((text) => {
-      return text.trim().length > 0;
-    })
-    .join("\n\n");
-  const clipboardAttachments = copyable.flatMap((message) => {
-    return message.clipboardAttachments;
-  });
-  // The structured document is what lets a paste land back in the composer as
-  // the message it was. A burst has no single document, so it pastes as text.
-  const canonicalUserMessage =
-    copyable.length === 1 ? copyable[0]?.canonicalUserMessage : undefined;
-  const canCopy =
-    canonicalUserMessage !== undefined ||
-    copyText.trim().length > 0 ||
-    clipboardAttachments.length > 0;
-  const copied = copiedEventId === group.beginEventId;
-
-  if (!canCopy && steerCount === 0) {
-    return null;
-  }
-
-  const handleCopy = () => {
-    detach(
-      copyEvent(
-        group.beginEventId,
-        {
-          text: copyText,
-          attachments: clipboardAttachments,
-          ...(canonicalUserMessage
-            ? { userMessage: canonicalUserMessage }
-            : {}),
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    // The acknowledgement is a line of text and needs a text row's breathing
-    // room; on its own the row holds nothing visible until hover, so it keeps
-    // the tighter offset the copy button has always had.
-    <div
-      className={cn(steerCount > 0 ? "-mt-2" : "-mt-5", RUN_SECTION_GRID_CLASS)}
-    >
-      <div className="hidden @[900px]:block" />
-      {/* The label keeps its own width rather than filling the column: the
-          sweep masks are sized from that box, so a full-width one would drag
-          the boundary across empty space beside the text. */}
-      {/* Whatever is permanently visible takes the right-hand rail, and the
-          button — which only exists under the pointer — sits beside it. The
-          button still reserves its width while hidden, so putting it last
-          would leave the acknowledgement hanging short of the edge every
-          message lines up on, to make room for something nobody can see. */}
-      <div className="flex min-h-5 items-center justify-end gap-2">
-        {canCopy ? (
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="p-1 rounded-md text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-all duration-150 hover:text-foreground hover:bg-state-hover"
-            aria-label={t(($) => {
-              return $.chat.actions.copyMessage;
-            })}
-          >
-            {copied ? <Check size={18} /> : <Copy size={18} />}
-          </button>
-        ) : null}
-        {steerCount > 0 ? (
-          <SteerAcknowledgementLabel count={steerCount} />
-        ) : null}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -6588,6 +6497,40 @@ function UserMessageAttachments({
         onImageClick={onImageClick}
         testId="message-file-attachments"
       />
+    </div>
+  );
+}
+
+function UserMessageActions({
+  canCopy,
+  copied,
+  onCopy,
+}: {
+  canCopy: boolean;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!canCopy) {
+    return null;
+  }
+  return (
+    <div
+      className={cn(
+        "flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150",
+        MESSAGE_STACK_GAP_CLASS,
+      )}
+    >
+      <button
+        type="button"
+        onClick={onCopy}
+        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
+        aria-label={t(($) => {
+          return $.chat.actions.copyMessage;
+        })}
+      >
+        {copied ? <Check size={18} /> : <Copy size={18} />}
+      </button>
     </div>
   );
 }
@@ -7586,13 +7529,45 @@ function PagedUserMessage({
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
+  const { canonicalUserMessage, clipboardAttachments, copyText } =
+    resolvePagedUserMessageRendering({
+      renderDocument,
+    });
+  const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox: OpenMessageImagePreview = (url, filename) => {
     openImageLightbox(
       messageImageLightboxTarget(thread.threadId, url, filename),
     );
   };
+  const copiedId = useGet(thread.copiedEventId$);
+  const copied = copiedId === event.id;
+  const copyEvent = useSet(thread.copyEvent$);
   const allAttachments = userMessageRenderAttachments(renderDocument);
+  const canCopy =
+    canonicalUserMessage !== undefined ||
+    copyText.trim().length > 0 ||
+    clipboardAttachments.length > 0;
+
+  const handleCopy = () => {
+    if (!canCopy) {
+      return;
+    }
+    detach(
+      copyEvent(
+        event.id,
+        {
+          text: copyText,
+          attachments: clipboardAttachments,
+          ...(canonicalUserMessage
+            ? { userMessage: canonicalUserMessage }
+            : {}),
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
 
   if (isRejectedGoalUserMessage(event)) {
     return null;
@@ -7617,8 +7592,7 @@ function PagedUserMessage({
       id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
-      // Closes the thread's message gap down to the spacing of a stack.
-      className={cn("group", stackedOnPrevious && "-mt-[18px]")}
+      className={cn("group", stackedOnPrevious && MESSAGE_STACK_PULL_CLASS)}
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
@@ -7647,6 +7621,11 @@ function PagedUserMessage({
               )}
             </>
           )}
+          <UserMessageActions
+            canCopy={canCopy}
+            copied={copied}
+            onCopy={handleCopy}
+          />
         </div>
       </div>
     </div>

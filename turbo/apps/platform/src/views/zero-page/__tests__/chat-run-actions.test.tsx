@@ -267,36 +267,6 @@ describe("chat run actions", () => {
     ).toBe(STEER_ONE_COPY);
   });
 
-  it("copies a burst from one control, as the whole correction", async () => {
-    const user = userEvent.setup({ delay: null });
-    const clipboard = context.mocks.browser.clipboardWriteText();
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      activeRunIds: [RUN_ID],
-      chatEvents: [transcriptEvent("U1", 0, []), transcriptEvent("A1", 1, [])],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
-    });
-
-    await expect(screen.findByText("A1")).resolves.toBeInTheDocument();
-    await sendQueuedMessage(user, "First steer");
-    await sendQueuedMessage(user, "Second steer");
-    await expect(screen.findByText(STEER_TWO_COPY)).resolves.toBeVisible();
-
-    // One control for the burst, not one per message.
-    const copyControls = screen.getAllByLabelText("Copy message");
-    expect(copyControls).toHaveLength(2);
-
-    await user.click(copyControls[1]!);
-    await waitFor(() => {
-      expect(clipboard.writes).toStrictEqual(["First steer\n\nSecond steer"]);
-    });
-  });
-
   it("keeps legacy actions and hides the acknowledgement when the feature switch is disabled", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
