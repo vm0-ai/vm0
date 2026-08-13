@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  chatThreadMetadataContract,
   chatThreadsContract,
   chatThreadVideoModelContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -9,14 +10,14 @@ import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
+import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { readChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroChatThreadVideoModelRoutes } from "../zero-chat-threads-video-model";
 
@@ -94,6 +95,46 @@ function threadsClient() {
   );
 }
 
+function metadataClient() {
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
+}
+
+/**
+ * The contract types `model` as the catalog enum, so an out-of-catalog id is
+ * only reachable from a non-TypeScript caller. Send it as raw JSON instead of
+ * suppressing the type error.
+ */
+function rawVideoModelRequest(
+  threadId: string,
+  token: string,
+  body: Record<string, unknown>,
+) {
+  return setupRawAppRequest({
+    context,
+    routes: zeroChatThreadVideoModelRoutes,
+  })(`/api/okou/chat-threads/${threadId}/video-model`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function readSelectedModel(threadId: string, token: string) {
+  const response = await accept(
+    metadataClient().get({
+      headers: { authorization: `Bearer ${token}` },
+      params: { id: threadId },
+    }),
+    [200],
+  );
+  return response.body.selectedModel;
+}
+
 async function readVideoModelEvents(token: string) {
   const response = await accept(
     threadsClient().events({
@@ -128,9 +169,6 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
       [204],
     );
 
-    await expect(
-      readChatThreadVideoModelFixture(fixture.threadId),
-    ).resolves.toMatchObject({ selectedVideoModel: "fal-ai/veo3.1/fast" });
     const events = await readVideoModelEvents(token);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
@@ -164,10 +202,12 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
       [204],
     );
 
-    await expect(
-      readChatThreadVideoModelFixture(fixture.threadId),
-    ).resolves.toMatchObject({ selectedVideoModel: null });
-    await expect(readVideoModelEvents(token)).resolves.toHaveLength(2);
+    const events = await readVideoModelEvents(token);
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      chatThreadId: fixture.threadId,
+      selectedVideoModel: null,
+    });
   });
 
   it("leaves the run model untouched", async () => {
@@ -187,12 +227,12 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
       [204],
     );
 
-    await expect(
-      readChatThreadVideoModelFixture(fixture.threadId),
-    ).resolves.toStrictEqual({
-      selectedModel: "claude-sonnet-5",
-      selectedVideoModel: "fal-ai/veo3.1/fast",
-    });
+    await expect(readSelectedModel(fixture.threadId, token)).resolves.toBe(
+      "claude-sonnet-5",
+    );
+    await expect(readVideoModelEvents(token)).resolves.toMatchObject([
+      { selectedVideoModel: "fal-ai/veo3.1/fast" },
+    ]);
   });
 
   it("reuses a caller-supplied event id so a retry appends once", async () => {
@@ -226,19 +266,12 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
       capabilities: ["chat-thread:read", "chat-thread:write"],
     });
 
-    await accept(
-      videoModelClient().update({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: fixture.threadId },
-        // @ts-expect-error -- the contract rejects ids outside the catalog.
-        body: { model: "claude-sonnet-5" },
-      }),
-      [400],
-    );
+    const response = await rawVideoModelRequest(fixture.threadId, token, {
+      model: "claude-sonnet-5",
+    });
 
-    await expect(
-      readChatThreadVideoModelFixture(fixture.threadId),
-    ).resolves.toMatchObject({ selectedVideoModel: null });
+    expect(response.status).toBe(400);
+    await expect(readVideoModelEvents(token)).resolves.toStrictEqual([]);
   });
 
   it("returns 404 for a thread the caller does not own", async () => {
@@ -259,9 +292,12 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
       [404],
     );
 
-    await expect(
-      readChatThreadVideoModelFixture(other.threadId),
-    ).resolves.toMatchObject({ selectedVideoModel: null });
+    const otherToken = zeroToken({
+      userId: other.userId,
+      orgId: other.orgId,
+      capabilities: ["chat-thread:read"],
+    });
+    await expect(readVideoModelEvents(otherToken)).resolves.toStrictEqual([]);
   });
 
   it("rejects a ZERO_TOKEN without chat-thread:write", async () => {
