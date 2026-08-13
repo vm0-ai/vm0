@@ -3981,18 +3981,17 @@ function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
 
 const RUN_SECTION_LABEL_CLASS =
   "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
-const RUN_SECTION_GRID_CLASS =
-  "@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
-const RUN_SECTION_ROW_CLASS = `-mt-5 ${RUN_SECTION_GRID_CLASS}`;
+const RUN_SECTION_ROW_CLASS =
+  "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
-// Messages the user sent back to back read as one thing they said, which means
-// an even rhythm: the copy button sits the same 6px from the text above it as
-// from whatever follows — the next message, or the burst's acknowledgement.
-// Everything between two of those texts is one 6px + control + 6px unit, so
-// the three values move together. The pull cancels the thread's own 24px gap
-// down to the same 6px.
-const MESSAGE_STACK_GAP_CLASS = "mt-1.5";
-const MESSAGE_STACK_PULL_CLASS = "-mt-[18px]";
+// A steer burst reads as one thing the user said, which means an even rhythm:
+// the copy button sits the same distance from the text above it as from
+// whatever follows — the next message, or the burst's acknowledgement. The
+// button already sits `mt-1` under its own message, so this pull cancels the
+// thread's 24px gap down to that same 4px on the other side of it. It is the
+// same pull a run-section row uses, which is why the acknowledgement can go on
+// carrying `RUN_SECTION_ROW_CLASS`.
+const MESSAGE_STACK_PULL_CLASS = "-mt-5";
 
 function RunSectionDivider({
   label,
@@ -4064,7 +4063,7 @@ function SteerAcknowledgementRow({ count }: { count: number }) {
     { count },
   );
   return (
-    <div className={cn(MESSAGE_STACK_PULL_CLASS, RUN_SECTION_GRID_CLASS)}>
+    <div className={RUN_SECTION_ROW_CLASS}>
       <div className="hidden @[900px]:block" />
       {/* The label keeps its own width rather than filling the column: the
           sweep masks are sized from this box, so a full-width one would drag
@@ -6242,13 +6241,19 @@ function PagedUserGroup({
       {group.events.map((event, index) => {
         const modelChange = modelChanges.get(event.id);
         const previousEvent = group.events[index - 1];
-        // Messages the user sent back to back are one thing they said, so they
-        // close up to MESSAGE_STACK_GAP. Anything that belongs between two of
-        // them — a model change, a message that renders as its own card rather
-        // than a bubble — ends the stack.
+        // Two steers in a row are one thing the user said, so they close up.
+        // The stack is scoped to the burst rather than to adjacency: outside
+        // this feature a run of user messages carries no acknowledgement to
+        // close the group, and `steerEventIds` is empty whenever the switch is
+        // off, so the transcript there keeps the spacing it has today.
+        // Anything that belongs between two of them — a model change, a
+        // message that renders as its own card rather than a bubble — ends the
+        // stack.
         const stackedOnPrevious =
           previousEvent !== undefined &&
           modelChange === undefined &&
+          steerEventIds.has(event.id) &&
+          steerEventIds.has(previousEvent.id) &&
           rendersUserBubble(event) &&
           rendersUserBubble(previousEvent);
         return (
@@ -6515,12 +6520,7 @@ function UserMessageActions({
     return null;
   }
   return (
-    <div
-      className={cn(
-        "flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150",
-        MESSAGE_STACK_GAP_CLASS,
-      )}
-    >
+    <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
       <button
         type="button"
         onClick={onCopy}
