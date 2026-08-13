@@ -157,7 +157,7 @@ ${formatRegistryListing(templates, "website templates")}`;
       const templateSelectionRules = resolvedTemplate
         ? ["Use the explicitly selected template."]
         : [
-            "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+            "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
             "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
             "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
           ];

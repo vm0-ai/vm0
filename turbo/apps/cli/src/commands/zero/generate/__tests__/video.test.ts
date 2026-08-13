@@ -339,6 +339,7 @@ describe("okou generate video command", () => {
     expect(helpOutput).toContain("--first-frame-image-url");
     expect(helpOutput).toContain("--last-frame-image-url");
     expect(helpOutput).toContain("--json");
+    expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
   });
 
   it("should surface API errors", async () => {

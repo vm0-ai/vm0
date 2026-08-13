@@ -276,8 +276,8 @@ describe("personal usage settings", () => {
     );
 
     await openUsageSettings(false);
-    // Without a usage pack a member has no organization balance to read, but
-    // their own usage records stay available in their own section.
+    // Without the new pricing a member has neither an organization balance nor
+    // a records section to open.
     expect(
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Credit balance";
@@ -287,7 +287,7 @@ describe("personal usage settings", () => {
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Credit usage";
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
     expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
     expect(usagePackCreditRequests).toBe(0);
   });

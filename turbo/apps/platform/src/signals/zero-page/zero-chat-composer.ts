@@ -11,6 +11,10 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@vm0/core/video-model-catalog";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -303,6 +307,19 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  /**
+   * The video model the next template pick will use. Video generation is the
+   * most expensive thing the composer can start, so the choice is made up
+   * front on the template picker rather than inside the chip after the fact.
+   */
+  const internalVideoTemplateModel$ = state<VideoModel>(DEFAULT_VIDEO_MODEL);
+  const videoTemplateModel$ = computed((get) => {
+    return get(internalVideoTemplateModel$);
+  });
+  const setVideoTemplateModel$ = command(({ set }, model: VideoModel) => {
+    set(internalVideoTemplateModel$, model);
+  });
+
   const internalVideoOptionsAnchor$ = state<VideoTemplateOptionsAnchor | null>(
     null,
   );
@@ -369,6 +386,8 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerOpen$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
+    videoTemplateModel$,
+    setVideoTemplateModel$,
     videoTemplateOptionsAnchor$,
     videoTemplateOptionsValue$,
     videoTemplateOptionsPosition$,

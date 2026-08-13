@@ -11,7 +11,7 @@ const snapshotChatEventsRoute$ = command(
       return cronUnauthorized();
     }
 
-    const result = await set(snapshotChatEvents$, signal);
+    const result = await set(snapshotChatEvents$, { kind: "global" }, signal);
     signal.throwIfAborted();
     return {
       status: 200 as const,

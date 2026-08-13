@@ -137,7 +137,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
         .env_clear()
-        .env("VM0_RUN_ID", args.run_id)
+        .env(guest_contracts::env::RUN_ID_ENV, args.run_id)
         .env(
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             args.run_payload_path,

@@ -68,6 +68,14 @@ interface ChatEventSnapshotConvergence {
   readonly snapshotHeadVersions: readonly ChatEventSnapshotHeadVersion[];
 }
 
+type ChatEventSnapshotScope =
+  | { readonly kind: "global" }
+  | {
+      readonly kind: "fixtures";
+      readonly chatThreadIds: readonly string[];
+      readonly r2ObjectKeys: readonly string[];
+    };
+
 interface SnapshotCandidate {
   readonly chatThreadId: string;
   readonly indexedSeqId: number;
@@ -470,6 +478,7 @@ async function archiveThread(
 
 async function chatEventSnapshotConvergence(
   db: Db,
+  chatThreadIds: readonly string[] | null,
 ): Promise<ChatEventSnapshotConvergence> {
   const versions = await db
     .select({
@@ -477,7 +486,14 @@ async function chatEventSnapshotConvergence(
       heads: count(),
     })
     .from(chatEventSnapshots)
-    .where(eq(chatEventSnapshots.isHead, true))
+    .where(
+      and(
+        eq(chatEventSnapshots.isHead, true),
+        chatThreadIds === null
+          ? undefined
+          : inArray(chatEventSnapshots.chatThreadId, chatThreadIds),
+      ),
+    )
     .groupBy(chatEventSnapshots.archiveSchemaVersion)
     .orderBy(asc(chatEventSnapshots.archiveSchemaVersion));
   const snapshotHeads = versions.reduce((total, version) => {
@@ -505,9 +521,19 @@ interface R2GcStats {
   readonly subpartitionedShards: number;
 }
 
+interface R2GcOptions {
+  readonly deleteQuota: number;
+  readonly ownedObjectKeys: ReadonlySet<string> | null;
+}
+
 interface RetiredSnapshotVersionGcStats {
   readonly selected: number;
   readonly referencesDeleted: number;
+}
+
+interface RetiredSnapshotVersionGcOptions {
+  readonly deleteQuota: number;
+  readonly chatThreadIds: readonly string[] | null;
 }
 
 const deleteRetiredSnapshotVersions$ = command(
@@ -515,7 +541,7 @@ const deleteRetiredSnapshotVersions$ = command(
     { get },
     db: Db,
     bucket: string,
-    deleteQuota: number,
+    options: RetiredSnapshotVersionGcOptions,
     signal: AbortSignal,
   ): Promise<RetiredSnapshotVersionGcStats> => {
     const candidates = await db
@@ -525,12 +551,17 @@ const deleteRetiredSnapshotVersions$ = command(
       })
       .from(chatEventSnapshots)
       .where(
-        lt(
-          chatEventSnapshots.archiveSchemaVersion,
-          MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
+        and(
+          lt(
+            chatEventSnapshots.archiveSchemaVersion,
+            MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
+          ),
+          options.chatThreadIds === null
+            ? undefined
+            : inArray(chatEventSnapshots.chatThreadId, options.chatThreadIds),
         ),
       )
-      .limit(deleteQuota);
+      .limit(options.deleteQuota);
     signal.throwIfAborted();
     if (candidates.length === 0) {
       return { selected: 0, referencesDeleted: 0 };
@@ -607,7 +638,7 @@ async function collectR2SnapshotGarbage(
   get: ComputedGetter,
   db: Db,
   bucket: string,
-  deleteQuota: number,
+  options: R2GcOptions,
   signal: AbortSignal,
 ): Promise<R2GcStats> {
   const now = nowDate();
@@ -619,9 +650,10 @@ async function collectR2SnapshotGarbage(
   let bytesDeleted = 0;
   let shardsScanned = 0;
   let subpartitionedShards = 0;
-  let remainingDeleteQuota = deleteQuota;
+  let remainingDeleteQuota = options.deleteQuota;
+  const ownedObjectKeys = options.ownedObjectKeys;
 
-  if (remainingDeleteQuota === 0) {
+  if (remainingDeleteQuota === 0 || ownedObjectKeys?.size === 0) {
     return {
       scanned,
       measured,
@@ -641,8 +673,14 @@ async function collectR2SnapshotGarbage(
       subpartitionedShards += 1;
     }
     for (const objects of pages) {
-      scanned += objects.length;
-      const oldObjects = objects.filter((object) => {
+      const scopedObjects =
+        ownedObjectKeys === null
+          ? objects
+          : objects.filter((object) => {
+              return ownedObjectKeys.has(object.key);
+            });
+      scanned += scopedObjects.length;
+      const oldObjects = scopedObjects.filter((object) => {
         return object.lastModified < olderThan;
       });
       if (oldObjects.length === 0) {
@@ -735,10 +773,14 @@ async function collectR2SnapshotGarbage(
 export const snapshotChatEvents$ = command(
   async (
     { get, set },
+    scope: ChatEventSnapshotScope,
     signal: AbortSignal,
   ): Promise<ChatEventSnapshotStats> => {
     const db = set(writeDb$);
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const chatThreadIds = scope.kind === "global" ? null : scope.chatThreadIds;
+    const ownedObjectKeys =
+      scope.kind === "global" ? null : new Set(scope.r2ObjectKeys);
     const candidates = await db
       .select({
         chatThreadId: chatThreads.id,
@@ -765,6 +807,9 @@ export const snapshotChatEvents$ = command(
       // are reported by the convergence check instead of being overwritten.
       .where(
         and(
+          chatThreadIds === null
+            ? undefined
+            : inArray(chatThreads.id, chatThreadIds),
           or(
             isNull(chatEventSnapshots.archiveSchemaVersion),
             lte(
@@ -807,17 +852,23 @@ export const snapshotChatEvents$ = command(
       deleteRetiredSnapshotVersions$,
       db,
       bucket,
-      SNAPSHOT_GC_DELETE_QUOTA,
+      {
+        deleteQuota: SNAPSHOT_GC_DELETE_QUOTA,
+        chatThreadIds,
+      },
       signal,
     );
     signal.throwIfAborted();
-    const convergence = await chatEventSnapshotConvergence(db);
+    const convergence = await chatEventSnapshotConvergence(db, chatThreadIds);
     signal.throwIfAborted();
     const r2Gc = await collectR2SnapshotGarbage(
       get,
       db,
       bucket,
-      SNAPSHOT_GC_DELETE_QUOTA - retiredSnapshots.selected,
+      {
+        deleteQuota: SNAPSHOT_GC_DELETE_QUOTA - retiredSnapshots.selected,
+        ownedObjectKeys,
+      },
       signal,
     );
     signal.throwIfAborted();

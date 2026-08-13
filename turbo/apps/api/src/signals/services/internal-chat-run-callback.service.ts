@@ -626,6 +626,8 @@ interface ChatThreadForRunRow {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
+  readonly title: string | null;
 }
 
 interface ChatRunInfo {
@@ -2053,6 +2055,8 @@ async function runCompletedChatCallbackSideEffects(
       runId: args.runId,
       runStatus: "completed",
       lastResultText: args.lastResultText,
+      sourceAgentId: args.chatThread.agentId,
+      sourceThreadTitle: args.chatThread.title,
     },
     signal,
   );
@@ -2185,6 +2189,8 @@ async function runFailedChatCallbackSideEffects(
       // Failed runs surface their error separately; patterns only ever match
       // assistant output, so terminal errors dispatch with no matchable text.
       lastResultText: null,
+      sourceAgentId: args.chatThread.agentId,
+      sourceThreadTitle: args.chatThread.title,
     },
     signal,
   );
@@ -2440,6 +2446,8 @@ async function chatThreadForRunFromDb(
       chatThreadId: zeroRuns.chatThreadId,
       userId: chatThreads.userId,
       orgId: agentRuns.orgId,
+      agentId: chatThreads.agentComposeId,
+      title: chatThreads.title,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -2454,6 +2462,8 @@ async function chatThreadForRunFromDb(
     chatThreadId: row.chatThreadId,
     userId: row.userId,
     orgId: row.orgId,
+    agentId: row.agentId,
+    title: row.title,
   };
 }
 

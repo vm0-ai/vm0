@@ -24,6 +24,7 @@ import type { WorkflowAutomationContext } from "./workflow-automation-context.se
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { agentRunSourceTitleSnapshot } from "./zero-chat-user-message.service";
 
 const CHAT_RUN_FINISHED_EVENT_TYPE = "chat-run-finished";
 // Bounds the finished run's output copied into the triggered run's context.
@@ -258,6 +259,12 @@ export const dispatchChatRunFinishedAutomationEvents$ = command(
           },
           automationContext: context,
           apiStartTime: now(),
+          agentRunSource: {
+            runId: event.runId,
+            threadId: event.chatThreadId,
+            agentId: event.sourceAgentId,
+            titleSnapshot: agentRunSourceTitleSnapshot(event.sourceThreadTitle),
+          },
           triggerSource: "automation-event",
           triggerBrief: `Chat run ${event.runStatus} in watched thread`,
           dispatchFailedCallbacks: dispatchFailedRunCallbacks,

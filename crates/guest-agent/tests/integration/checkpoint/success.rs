@@ -1194,7 +1194,7 @@ async fn success_checkpoint_uploads_large_uncompressible_session_history_as_iden
 async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-    let _run_id_guard = EnvVarRestore::capture("VM0_RUN_ID");
+    let _run_id_guard = EnvVarRestore::capture(guest_contracts::env::RUN_ID_ENV);
     let _runtime_dir_guard =
         EnvVarRestore::capture(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
 
@@ -1239,7 +1239,7 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
     };
 
     unsafe {
-        std::env::set_var("VM0_RUN_ID", "stale-run-after-runtime");
+        std::env::set_var(guest_contracts::env::RUN_ID_ENV, "stale-run-after-runtime");
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &stale_runtime_dir,

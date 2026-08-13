@@ -66,14 +66,14 @@ describe("okou generate website command", () => {
       "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
     );
     expect(stdout).toContain(
-      "The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
+      "The Website index includes Okou built-in R2 template packages as template entries with `source.archive`.",
     );
     expect(stdout).toContain(
       "Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
     );
     expect(stdout).toContain("observability launch site");
     expect(stdout).toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
     );
     expect(stdout).toContain(
       "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
@@ -146,7 +146,7 @@ describe("okou generate website command", () => {
     );
     expect(stdout).toContain("Use the explicitly selected template.");
     expect(stdout).not.toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
     );
     expect(stdout).not.toContain(
       "Selected template package: okou resource pull template:web-prototype",

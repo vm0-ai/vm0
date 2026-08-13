@@ -28,6 +28,7 @@ import {
   reloadBillingStatus$,
   openConcurrencyConfirmDialog$,
   openConcurrencyPurchaseDialog$,
+  openConcurrencyPurchaseReview$,
   previewConcurrencySubscriptionChange$,
   restoreConcurrencySubscription$,
   setConcurrencyChangeMode$,
@@ -67,6 +68,7 @@ import type {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -1452,6 +1454,21 @@ function ConcurrencySubscriptionRow({
         >
           {concurrencySubscriptionPeriodLabel(subscription, canceled)}
         </p>
+        {subscription.scheduledQuantity !== null &&
+        subscription.scheduledQuantity !== undefined &&
+        subscription.scheduledChangeAt ? (
+          <p className="mt-0.5 text-[13px] text-amber-600 dark:text-amber-400">
+            {i18n.t(
+              ($) => {
+                return $.billing.concurrency.scheduledChange;
+              },
+              {
+                quantity: slotCountLabel(subscription.scheduledQuantity),
+                date: formatBillingDate(subscription.scheduledChangeAt),
+              },
+            )}
+          </p>
+        ) : null}
       </div>
       <Button
         variant={canceled ? "default" : "outline"}
@@ -1495,6 +1512,7 @@ interface ConcurrencyConfirmCopy {
 function concurrencyConfirmCopy(
   action: "change" | "restore",
   reviewing: boolean,
+  scheduled: boolean,
 ): ConcurrencyConfirmCopy {
   if (reviewing) {
     return {
@@ -1502,7 +1520,9 @@ function concurrencyConfirmCopy(
         return $.billing.concurrency.reviewTitle;
       }),
       description: i18n.t(($) => {
-        return $.billing.concurrency.reviewDescription;
+        return scheduled
+          ? $.billing.concurrency.scheduledReviewDescription
+          : $.billing.concurrency.reviewDescription;
       }),
     };
   }
@@ -1773,6 +1793,16 @@ function ConcurrencyChangeReview({
           </p>
         </div>
       )}
+      {preview.effectiveAt ? (
+        <p className="border-y border-border/70 py-3 text-sm text-muted-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.usagePacks.management.scheduledFor;
+            },
+            { date: formatBillingDate(preview.effectiveAt) },
+          )}
+        </p>
+      ) : null}
       <div className="pt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {i18n.t(($) => {
@@ -1817,7 +1847,10 @@ function ConcurrencyConfirmDialogContent({
   dialog,
   onClose,
 }: {
-  readonly dialog: ConcurrencyConfirmDialogState;
+  readonly dialog: Extract<
+    ConcurrencyConfirmDialogState,
+    { readonly action: "change" | "restore" }
+  >;
   readonly onClose: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -1860,7 +1893,11 @@ function ConcurrencyConfirmDialogContent({
     dialog.currentQuantity,
     dialog.canReduce,
   );
-  const copy = concurrencyConfirmCopy(action, reviewing);
+  const copy = concurrencyConfirmCopy(
+    action,
+    reviewing,
+    preview?.effectiveAt !== undefined,
+  );
 
   const handleConfirm = () => {
     if (action === "restore") {
@@ -1970,6 +2007,65 @@ function ConcurrencyConfirmDialogContent({
   );
 }
 
+function ConcurrencyPurchaseReviewDialogContent({
+  dialog,
+  onClose,
+}: {
+  readonly dialog: Extract<
+    ConcurrencyConfirmDialogState,
+    { readonly action: "purchase" }
+  >;
+  readonly onClose: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [checkoutLoadable, checkout] = useLoadableSet(
+    startConcurrencyCheckout$,
+  );
+  const loading = checkoutLoadable.state === "loading";
+
+  return (
+    <DialogContent className="sm:max-w-[420px]">
+      <DialogHeader>
+        <DialogTitle>
+          {i18n.t(($) => {
+            return $.billing.concurrency.buyTitle;
+          })}
+        </DialogTitle>
+        <DialogDescription>
+          {i18n.t(($) => {
+            return $.billing.concurrency.reviewDescription;
+          })}
+        </DialogDescription>
+      </DialogHeader>
+      <ConcurrencyChangeReview preview={dialog.preview} />
+      <DialogFooter>
+        <Button variant="outline" disabled={loading} onClick={onClose}>
+          {i18n.t(($) => {
+            return $.billing.common.cancel;
+          })}
+        </Button>
+        <Button
+          disabled={loading}
+          onClick={() => {
+            detach(
+              checkout(dialog.quantity, dialog.newTab, pageSignal),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          {loading
+            ? i18n.t(($) => {
+                return $.billing.common.updating;
+              })
+            : i18n.t(($) => {
+                return $.billing.common.confirm;
+              })}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
 export function ConcurrencyConfirmDialog() {
   const dialog = useGet(concurrencyConfirmDialog$);
   const close = useSet(closeConcurrencyConfirmDialog$);
@@ -1982,14 +2078,23 @@ export function ConcurrencyConfirmDialog() {
         }
       }}
     >
-      {dialog && (
+      {dialog?.action === "purchase" ? (
+        <ConcurrencyPurchaseReviewDialogContent
+          dialog={dialog}
+          onClose={close}
+        />
+      ) : dialog ? (
         <ConcurrencyConfirmDialogContent dialog={dialog} onClose={close} />
-      )}
+      ) : null}
     </Dialog>
   );
 }
 
-function ConcurrencyPurchaseDialog() {
+function ConcurrencyPurchaseDialog({
+  reviewAvailable,
+}: {
+  readonly reviewAvailable: boolean;
+}) {
   const pageSignal = useGet(pageSignal$);
   const open = useGet(concurrencyPurchaseDialogOpen$);
   const close = useSet(closeConcurrencyPurchaseDialog$);
@@ -1998,11 +2103,17 @@ function ConcurrencyPurchaseDialog() {
   const [checkoutLoadable, checkout] = useLoadableSet(
     startConcurrencyCheckout$,
   );
-  const checkoutLoading = checkoutLoadable.state === "loading";
+  const [reviewLoadable, review] = useLoadableSet(
+    openConcurrencyPurchaseReview$,
+  );
+  const checkoutLoading =
+    checkoutLoadable.state === "loading" || reviewLoadable.state === "loading";
   const quantity = quantityOverride ?? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN;
   const actionLabel = checkoutLoading
     ? i18n.t(($) => {
-        return $.billing.common.redirecting;
+        return reviewAvailable
+          ? $.billing.common.updating
+          : $.billing.common.redirecting;
       })
     : i18n.t(
         ($) => {
@@ -2062,7 +2173,9 @@ function ConcurrencyPurchaseDialog() {
             disabled={checkoutLoading}
             onClick={(e) => {
               detach(
-                checkout(quantity, e.metaKey || e.ctrlKey, pageSignal),
+                reviewAvailable
+                  ? review(quantity, e.metaKey || e.ctrlKey, pageSignal)
+                  : checkout(quantity, e.metaKey || e.ctrlKey, pageSignal),
                 Reason.DomCallback,
               );
             }}
@@ -2085,6 +2198,8 @@ function ConcurrencyBillingSection({
   const dialog = useGet(concurrencyConfirmDialog$);
   const subscriptions = status?.concurrencySubscriptions ?? [];
   const concurrencyLimit = status?.concurrencyLimit ?? 0;
+  const purchaseReviewAvailable =
+    status?.concurrencyPurchaseReviewAvailable === true;
 
   return (
     <section className="flex flex-col gap-3">
@@ -2127,7 +2242,10 @@ function ConcurrencyBillingSection({
               <div key={subscription.id}>
                 {index > 0 && <div className="h-0 zero-border-t mx-5" />}
                 <ConcurrencySubscriptionRow
-                  changing={dialog?.subscriptionId === subscription.id}
+                  changing={
+                    dialog?.action !== "purchase" &&
+                    dialog?.subscriptionId === subscription.id
+                  }
                   canceled={canceled}
                   onAction={openConfirmDialog}
                   subscription={subscription}
@@ -2154,7 +2272,7 @@ function ConcurrencyBillingSection({
           </>
         ) : null}
       </div>
-      <ConcurrencyPurchaseDialog />
+      <ConcurrencyPurchaseDialog reviewAvailable={purchaseReviewAvailable} />
     </section>
   );
 }

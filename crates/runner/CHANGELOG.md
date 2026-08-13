@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.167.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.166.0...runner-rs-v0.167.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
+
+### Refactoring
+
+* **python:** centralize stream capture metadata validation ([#26784](https://github.com/vm0-ai/vm0/issues/26784)) ([cda9f38](https://github.com/vm0-ai/vm0/commit/cda9f38e3369601248c2a2f8201f82368eb0bfc8))
+
 ## [0.166.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.3...runner-rs-v0.166.0) (2026-08-13)
 
 

@@ -226,4 +226,17 @@ describe("okou recognize command", () => {
     });
     expect(optionNames).toStrictEqual(["file", "prompt"]);
   });
+
+  it("uses Okou branding in recognition help", () => {
+    let helpOutput = "";
+    zeroRecognizeCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    zeroRecognizeCommand.outputHelp();
+
+    expect(helpOutput).toContain("Uses a fixed Okou-managed recognition model");
+  });
 });

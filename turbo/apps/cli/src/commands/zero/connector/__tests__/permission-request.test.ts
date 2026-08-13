@@ -667,9 +667,13 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).toContain(
       "Computer Use access is not managed as a connector permission.",
     );
-    expect(logCalls).toContain("selected for the chat or thread");
+    expect(logCalls).toContain(
+      "issued only when an Okou Desktop Computer Use host is selected for the chat or thread",
+    );
+    expect(logCalls).toContain("Open Okou Desktop");
     expect(logCalls).toContain("Existing run tokens cannot be upgraded");
     expect(logCalls).toContain("okou whoami");
+    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).not.toContain("[Manage");
     expect(mockConsoleError).not.toHaveBeenCalled();
   });
@@ -705,8 +709,9 @@ describe("okou connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain(
-      "Computer Use needs a Zero Desktop host selected before a run starts.",
+      "Computer Use needs an Okou Desktop host selected before a run starts.",
     );
+    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).toContain(
       "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test",
     );

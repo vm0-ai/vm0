@@ -1217,6 +1217,13 @@ function invoiceLineAmount(line: UsagePackInvoiceLineInput): number | null {
     : null;
 }
 
+function invoiceHasUsagePackLine(invoice: UsagePackInvoiceInput): boolean {
+  return invoice.lines.data.some((line) => {
+    const priceId = invoiceLinePriceId(line);
+    return priceId !== null && usagePackUsdForKnownPriceId(priceId) !== null;
+  });
+}
+
 function invoiceLineIsProration(line: UsagePackInvoiceLineInput): boolean {
   if (line.parent?.type === "subscription_item_details") {
     return (
@@ -1824,6 +1831,9 @@ export async function handleUsagePackInvoicePaid(
   );
   if (changeOutcome.handled) {
     return changeOutcome;
+  }
+  if (!invoiceHasUsagePackLine(invoice)) {
+    return { handled: false, orgId: null };
   }
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   if (

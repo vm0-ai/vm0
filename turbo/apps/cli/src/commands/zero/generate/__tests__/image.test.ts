@@ -606,6 +606,7 @@ describe("okou generate image command", () => {
     expect(helpOutput).not.toContain("--styled ");
     expect(helpOutput).toContain("provider");
     expect(helpOutput).toContain("default");
+    expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
     expect(helpOutput).toContain("not support transparent");
     expect(helpOutput).toContain("backgrounds");
     expect(helpOutput).toContain("Image-to-image");

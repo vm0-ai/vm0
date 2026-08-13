@@ -183,6 +183,7 @@ import {
   customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
+  videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -226,7 +227,14 @@ import {
   AvatarTemplatePickerContent,
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
-import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
+import {
+  VideoModelPickerRow,
+  VideoTemplateOptionsPopover,
+} from "./video-template-options-popover.tsx";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@vm0/core/video-model-catalog";
 import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
@@ -866,10 +874,16 @@ function isSelectedVideoTemplate(
 
 function toVideoGenerationTemplate(
   item: VideoTemplateItem,
+  model: VideoModel,
 ): GenerationTemplateRequest {
   return {
     type: "video",
-    selection: { stylePresetId: item.id },
+    selection: {
+      stylePresetId: item.id,
+      // Only a non-default model is worth storing; the rest follows the
+      // catalog so a later change of default is picked up.
+      ...(model === DEFAULT_VIDEO_MODEL ? {} : { videoOptions: { model } }),
+    },
   };
 }
 
@@ -4867,6 +4881,9 @@ function TemplatePickerDialog({
     signals.template.openWebsiteTemplatePreview$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
+  const videoModel = useGet(signals.template.videoTemplateModel$);
+  const setVideoModel = useSet(signals.template.setVideoTemplateModel$);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
   const illustrationVariantIndex = useGet(
     signals.template.illustrationVariantIndex$,
   );
@@ -4910,6 +4927,10 @@ function TemplatePickerDialog({
   });
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
+  // Video generation is the expensive decision, so the model sits in the
+  // dialog's own header band rather than in the scrolling template area.
+  const showVideoModelPicker =
+    selectedCategory === "video" && hasVideoTab && videoOptionsEnabled;
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -4957,7 +4978,7 @@ function TemplatePickerDialog({
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
-    onChange(toVideoGenerationTemplate(item));
+    onChange(toVideoGenerationTemplate(item, videoModel));
     closeTemplatePicker();
   };
 
@@ -5166,7 +5187,9 @@ function TemplatePickerDialog({
                 <div
                   className={cn(
                     "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                    showTemplatePickerSearch || showAvatarPickerToolbar
+                    showTemplatePickerSearch ||
+                      showAvatarPickerToolbar ||
+                      showVideoModelPicker
                       ? "flex"
                       : "hidden sm:flex",
                   )}
@@ -5179,6 +5202,12 @@ function TemplatePickerDialog({
                   ) : null}
                   {showAvatarPickerToolbar ? (
                     <AvatarTemplatePickerToolbar signals={signals} />
+                  ) : null}
+                  {showVideoModelPicker ? (
+                    <VideoModelPickerRow
+                      model={videoModel}
+                      onChange={setVideoModel}
+                    />
                   ) : null}
                 </div>
                 <TemplatePickerCategoryContent
