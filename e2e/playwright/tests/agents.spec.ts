@@ -25,6 +25,14 @@ test("reveal the default agent unread action from the whole row", async ({
   await page.route("**/api/okou/chat-thread-unread-agents", async (route) => {
     await route.fulfill({ json: { agentIds: [defaultAgentId] } });
   });
+  await page.route("**/api/okou/indicators", async (route) => {
+    await route.fulfill({
+      json: {
+        agents: { [defaultAgentId]: "unread" },
+        threads: {},
+      },
+    });
+  });
   await page.reload();
 
   const defaultAgentRow = page.getByTestId("pinned-agent-card").filter({
