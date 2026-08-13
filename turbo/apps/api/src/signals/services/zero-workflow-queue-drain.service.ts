@@ -36,7 +36,7 @@ interface DequeueTarget {
 
 async function loadDequeueTarget(
   db: Db,
-  event: PendingWorkflowQueueEvent,
+  automationId: string,
 ): Promise<DequeueTarget | null> {
   const [row] = await db
     .select({
@@ -45,7 +45,7 @@ async function loadDequeueTarget(
     })
     .from(workflowAutomations)
     .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
-    .where(eq(workflowAutomations.id, event.automationId))
+    .where(eq(workflowAutomations.id, automationId))
     .limit(1);
   return row ?? null;
 }
@@ -159,6 +159,29 @@ async function consumeInvalidAutomationEvent(
   };
 }
 
+function consumeUnavailableAutomationEvent(
+  db: Db,
+  event: PendingWorkflowQueueEvent,
+  launchHint: AutomationEventLaunch | undefined,
+  signal: AbortSignal,
+): Promise<WorkflowQueueDrainStep> {
+  const conflictMessage =
+    event.automationId === null
+      ? "Workflow queue event payload is unreadable"
+      : "Workflow automation no longer exists";
+  log.debug("Consuming workflow queue event without automation", {
+    eventId: event.id,
+    automationId: event.automationId,
+  });
+  return consumeInvalidAutomationEvent(
+    db,
+    event,
+    conflictMessage,
+    launchHint,
+    signal,
+  );
+}
+
 async function handleWorkflowLaunchResult(
   args: {
     readonly db: Db;
@@ -236,17 +259,25 @@ export const drainWorkflowQueueForThread$ = command(
         return null;
       }
 
-      const target = await loadDequeueTarget(db, event);
-      signal.throwIfAborted();
-      if (!target) {
-        log.debug("Consuming workflow queue event without automation", {
-          eventId: event.id,
-          automationId: event.automationId,
-        });
-        const step = await consumeInvalidAutomationEvent(
+      if (!event.automationId || !event.triggerSource) {
+        const step = await consumeUnavailableAutomationEvent(
           db,
           event,
-          "Workflow automation no longer exists",
+          args.automationEventLaunch,
+          signal,
+        );
+        if (step !== CONTINUE_DRAIN) {
+          return step;
+        }
+        continue;
+      }
+
+      const target = await loadDequeueTarget(db, event.automationId);
+      signal.throwIfAborted();
+      if (!target) {
+        const step = await consumeUnavailableAutomationEvent(
+          db,
+          event,
           args.automationEventLaunch,
           signal,
         );

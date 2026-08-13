@@ -1,9 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
+import {
+  validate as validateUuid,
+  version as uuidVersion,
+  v5 as uuidv5,
+} from "uuid";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -32,6 +37,9 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
 const PREVIOUS_ARCHIVE_SCHEMA_VERSION = 4;
+const DUPLICATE_EVENT_ID_NAMESPACE = "46842b1d-a596-47fb-86b3-4f51962751c7";
+const DUPLICATE_EVENT_ID_WARNING =
+  "Normalized duplicate chat event IDs in snapshot";
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
 
@@ -81,6 +89,7 @@ async function sendNoCreditMessage(
     readonly agentId: string;
     readonly threadId?: string;
     readonly prompt: string;
+    readonly clientEventId?: string;
   },
 ): Promise<string> {
   await api.ensureOrgModelProvider(actor);
@@ -95,6 +104,7 @@ interface ArchivedLine {
   readonly [key: string]: unknown;
   readonly id: string;
   readonly chatThreadId: string;
+  readonly revokesEventId: string | null;
   readonly eventType: string;
   readonly seqId: number;
   readonly createdAt: string;
@@ -124,6 +134,79 @@ function archivedLines(body: Buffer): readonly ArchivedLine[] {
     .map((line) => {
       return JSON.parse(line) as ArchivedLine;
     });
+}
+
+interface DuplicateParentFixture {
+  readonly objectKey: string;
+  readonly occurrenceSeqIds: readonly number[];
+  readonly referenceSeqIds: readonly number[];
+}
+
+function duplicateParentFixture(
+  put: RecordedPut,
+  threadId: string,
+  duplicateId: string,
+  occurrenceCount: number,
+): DuplicateParentFixture {
+  const lines = archivedLines(put.body);
+  const occurrences = lines
+    .filter((line) => {
+      return line.eventType === "input.prompt";
+    })
+    .slice(0, occurrenceCount);
+  if (occurrences.length !== occurrenceCount) {
+    throw new Error("Expected enough input.prompt snapshot fixture rows");
+  }
+  const originalIds = new Set(
+    occurrences.map((occurrence) => {
+      return occurrence.id;
+    }),
+  );
+  const references = occurrences.map((occurrence) => {
+    const reference = lines.find((line) => {
+      return (
+        line.seqId > occurrence.seqId && line.revokesEventId === occurrence.id
+      );
+    });
+    if (!reference) {
+      throw new Error("Expected a historical reference after each occurrence");
+    }
+    return reference;
+  });
+  const rewritten = lines.map((line) => {
+    return {
+      ...line,
+      id: originalIds.has(line.id) ? duplicateId : line.id,
+      revokesEventId:
+        line.revokesEventId !== null && originalIds.has(line.revokesEventId)
+          ? duplicateId
+          : line.revokesEventId,
+    };
+  });
+  const body = gzipSync(
+    Buffer.from(
+      rewritten
+        .map((line) => {
+          return `${JSON.stringify(line)}\n`;
+        })
+        .join(""),
+    ),
+  );
+  const lastSeqId = rewritten.at(-1)?.seqId;
+  if (lastSeqId === undefined) {
+    throw new Error("Expected a non-empty duplicate snapshot fixture");
+  }
+  const objectKey = `chat-events/${threadId}/${lastSeqId.toString()}-${createHash("sha256").update(body).digest("hex")}.ndjson.gz`;
+  writeFakeChatEventObject(objectKey, body);
+  return {
+    objectKey,
+    occurrenceSeqIds: occurrences.map((occurrence) => {
+      return occurrence.seqId;
+    }),
+    referenceSeqIds: references.map((reference) => {
+      return reference.seqId;
+    }),
+  };
 }
 
 function expectArchiveInvariants(
@@ -253,6 +336,340 @@ describe("cron snapshot chat events", () => {
     await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
+
+  it("keeps no-conflict prefix and tail bytes and observability unchanged", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "No-conflict snapshot agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `no-conflict-prefix-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+
+    const parentPut = putsForThread(threadId)[0];
+    if (parentPut === undefined) {
+      throw new Error("Expected a no-conflict parent snapshot");
+    }
+    const parentHead = await readChatEventSnapshotHead(context, threadId);
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `no-conflict-tail-${randomUUID()}`,
+    });
+    const tailRows = await chat.listThreadEventRows(
+      owner,
+      threadId,
+      parentHead.last_seq_id,
+    );
+    await projectChatEventSearch(threadId);
+
+    const expectedBody = gzipSync(
+      Buffer.concat([
+        gunzipSync(parentPut.body),
+        Buffer.from(
+          tailRows
+            .map((row) => {
+              return `${JSON.stringify(row)}\n`;
+            })
+            .join(""),
+        ),
+      ]),
+    );
+    context.mocks.axiomLogging.warn.mockClear();
+
+    const result = await runSnapshotCron([threadId]);
+    expect(result).toMatchObject({
+      duplicateEventIdConflictThreads: 0,
+      duplicateEventIdConflicts: 0,
+      duplicateEventIdsRemapped: 0,
+      duplicateEventReferencesRemapped: 0,
+    });
+    const nextPut = putsForThread(threadId)[1];
+    if (nextPut === undefined) {
+      throw new Error("Expected a no-conflict child snapshot");
+    }
+    expect(nextPut.body).toStrictEqual(expectedBody);
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.some((call) => {
+        return call[0] === DUPLICATE_EVENT_ID_WARNING;
+      }),
+    ).toBeFalsy();
+  }, 60_000);
+
+  it("normalizes duplicate IDs and their resolved historical references deterministically", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Duplicate snapshot agent",
+    });
+    const duplicateId = randomUUID();
+    const firstMarker = `duplicate-first-${randomUUID()}`;
+    const secondMarker = `duplicate-second-${randomUUID()}`;
+
+    const firstThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `${firstMarker}-one`,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId: firstThreadId,
+      prompt: `${firstMarker}-two`,
+    });
+    const secondThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `${secondMarker}-one`,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId: secondThreadId,
+      prompt: `${secondMarker}-two`,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId: secondThreadId,
+      prompt: `${secondMarker}-three`,
+    });
+    await projectChatEventSearch(firstThreadId, secondThreadId);
+    await runSnapshotCron([firstThreadId, secondThreadId]);
+
+    const firstParentPut = putsForThread(firstThreadId)[0];
+    const secondParentPut = putsForThread(secondThreadId)[0];
+    if (firstParentPut === undefined || secondParentPut === undefined) {
+      throw new Error("Expected both duplicate parent snapshots");
+    }
+    const firstFixture = duplicateParentFixture(
+      firstParentPut,
+      firstThreadId,
+      duplicateId,
+      2,
+    );
+    const secondFixture = duplicateParentFixture(
+      secondParentPut,
+      secondThreadId,
+      duplicateId,
+      3,
+    );
+    expect(firstFixture.occurrenceSeqIds).toStrictEqual(
+      secondFixture.occurrenceSeqIds.slice(0, 2),
+    );
+    await setChatEventSnapshotHeadVersion(
+      context,
+      firstThreadId,
+      5,
+      firstFixture.objectKey,
+    );
+    await setChatEventSnapshotHeadVersion(
+      context,
+      secondThreadId,
+      5,
+      secondFixture.objectKey,
+    );
+
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId: firstThreadId,
+      prompt: `${firstMarker}-newest`,
+      clientEventId: duplicateId,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId: secondThreadId,
+      prompt: `${secondMarker}-tail`,
+      clientEventId: randomUUID(),
+    });
+    await projectChatEventSearch(firstThreadId, secondThreadId);
+
+    context.mocks.axiomLogging.warn.mockClear();
+    const publicationGate = createDeferredPromise<void>(context.signal);
+    let firstThreadArrivals = 0;
+    installFakeChatEventR2(context, recordedPuts, async (put) => {
+      if (!put.key.startsWith(`chat-events/${firstThreadId}/`)) {
+        return;
+      }
+      firstThreadArrivals += 1;
+      if (firstThreadArrivals === 2 && !publicationGate.settled()) {
+        publicationGate.resolve(undefined);
+      }
+      await publicationGate.promise;
+    });
+
+    const retryResults = await Promise.all([
+      runSnapshotCron([firstThreadId]),
+      runSnapshotCron([firstThreadId]),
+    ]);
+    expect(firstThreadArrivals).toBe(2);
+    for (const result of retryResults) {
+      expect(result).toMatchObject({
+        duplicateEventIdConflictThreads: 1,
+        duplicateEventIdConflicts: 1,
+        duplicateEventIdsRemapped: 2,
+        duplicateEventReferencesRemapped: 2,
+      });
+    }
+
+    const firstRetryPuts = putsForThread(firstThreadId).slice(1);
+    expect(firstRetryPuts).toHaveLength(2);
+    const firstRetryPut = firstRetryPuts[0];
+    const secondRetryPut = firstRetryPuts[1];
+    if (firstRetryPut === undefined || secondRetryPut === undefined) {
+      throw new Error("Expected two duplicate normalization retry objects");
+    }
+    expect(secondRetryPut.key).toBe(firstRetryPut.key);
+    expect(secondRetryPut.body).toStrictEqual(firstRetryPut.body);
+
+    const firstLines = expectArchiveInvariants(firstRetryPut, firstThreadId);
+    const firstBySeqId = new Map(
+      firstLines.map((line) => {
+        return [line.seqId, line] as const;
+      }),
+    );
+    const firstRemappedIds = firstFixture.occurrenceSeqIds.map((seqId) => {
+      return uuidv5(
+        `${firstThreadId}:${seqId.toString()}:${duplicateId}`,
+        DUPLICATE_EVENT_ID_NAMESPACE,
+      );
+    });
+    expect(
+      firstFixture.occurrenceSeqIds.map((seqId) => {
+        return firstBySeqId.get(seqId)?.id;
+      }),
+    ).toStrictEqual(firstRemappedIds);
+    expect(
+      firstFixture.referenceSeqIds.map((seqId) => {
+        return firstBySeqId.get(seqId)?.revokesEventId;
+      }),
+    ).toStrictEqual(firstRemappedIds);
+    expect(new Set(firstRemappedIds).size).toBe(2);
+    for (const remappedId of firstRemappedIds) {
+      expect(validateUuid(remappedId)).toBeTruthy();
+      expect(uuidVersion(remappedId)).toBe(5);
+    }
+    const firstRetained = firstLines.filter((line) => {
+      return line.id === duplicateId;
+    });
+    expect(firstRetained).toHaveLength(1);
+    const retainedFirstOccurrence = firstRetained[0];
+    if (retainedFirstOccurrence === undefined) {
+      throw new Error("Expected the newest first-thread occurrence");
+    }
+    expect(
+      firstLines.some((line) => {
+        return (
+          line.seqId > retainedFirstOccurrence.seqId &&
+          line.revokesEventId === duplicateId
+        );
+      }),
+    ).toBeTruthy();
+
+    installFakeChatEventR2(context, recordedPuts);
+    const secondResult = await runSnapshotCron([secondThreadId]);
+    expect(secondResult).toMatchObject({
+      duplicateEventIdConflictThreads: 1,
+      duplicateEventIdConflicts: 1,
+      duplicateEventIdsRemapped: 2,
+      duplicateEventReferencesRemapped: 2,
+      nonV4SnapshotHeads: 0,
+    });
+    const secondPut = putsForThread(secondThreadId)[1];
+    if (secondPut === undefined) {
+      throw new Error("Expected a normalized second-thread snapshot");
+    }
+    const secondLines = expectArchiveInvariants(secondPut, secondThreadId);
+    const secondBySeqId = new Map(
+      secondLines.map((line) => {
+        return [line.seqId, line] as const;
+      }),
+    );
+    const secondRemappedIds = secondFixture.occurrenceSeqIds
+      .slice(0, -1)
+      .map((seqId) => {
+        return uuidv5(
+          `${secondThreadId}:${seqId.toString()}:${duplicateId}`,
+          DUPLICATE_EVENT_ID_NAMESPACE,
+        );
+      });
+    expect(
+      secondFixture.occurrenceSeqIds.slice(0, -1).map((seqId) => {
+        return secondBySeqId.get(seqId)?.id;
+      }),
+    ).toStrictEqual(secondRemappedIds);
+    expect(
+      secondFixture.referenceSeqIds.slice(0, -1).map((seqId) => {
+        return secondBySeqId.get(seqId)?.revokesEventId;
+      }),
+    ).toStrictEqual(secondRemappedIds);
+    const retainedSecondSeqId = secondFixture.occurrenceSeqIds.at(-1);
+    const retainedSecondReferenceSeqId = secondFixture.referenceSeqIds.at(-1);
+    if (
+      retainedSecondSeqId === undefined ||
+      retainedSecondReferenceSeqId === undefined
+    ) {
+      throw new Error("Expected the newest second-thread occurrence fixture");
+    }
+    expect(secondBySeqId.get(retainedSecondSeqId)?.id).toBe(duplicateId);
+    expect(
+      secondBySeqId.get(retainedSecondReferenceSeqId)?.revokesEventId,
+    ).toBe(duplicateId);
+    expect(secondRemappedIds[0]).not.toBe(firstRemappedIds[0]);
+
+    const warningCalls = context.mocks.axiomLogging.warn.mock.calls.filter(
+      (call) => {
+        return call[0] === DUPLICATE_EVENT_ID_WARNING;
+      },
+    );
+    expect(
+      warningCalls.map((call) => {
+        const fields = call[1];
+        if (typeof fields !== "object" || fields === null) {
+          throw new Error("Expected structured duplicate ID warning fields");
+        }
+        return {
+          type: Reflect.get(fields, "type"),
+          context: Reflect.get(fields, "context"),
+          chatThreadId: Reflect.get(fields, "chatThreadId"),
+          conflictingEventIdCount: Reflect.get(
+            fields,
+            "conflictingEventIdCount",
+          ),
+          remappedEventIdCount: Reflect.get(fields, "remappedEventIdCount"),
+          remappedReferenceCount: Reflect.get(fields, "remappedReferenceCount"),
+        };
+      }),
+    ).toStrictEqual([
+      {
+        type: "chat_event_snapshot_duplicate_ids_normalized",
+        context: "api:cron:snapshot-chat-events",
+        chatThreadId: firstThreadId,
+        conflictingEventIdCount: 1,
+        remappedEventIdCount: 2,
+        remappedReferenceCount: 2,
+      },
+      {
+        type: "chat_event_snapshot_duplicate_ids_normalized",
+        context: "api:cron:snapshot-chat-events",
+        chatThreadId: firstThreadId,
+        conflictingEventIdCount: 1,
+        remappedEventIdCount: 2,
+        remappedReferenceCount: 2,
+      },
+      {
+        type: "chat_event_snapshot_duplicate_ids_normalized",
+        context: "api:cron:snapshot-chat-events",
+        chatThreadId: secondThreadId,
+        conflictingEventIdCount: 1,
+        remappedEventIdCount: 2,
+        remappedReferenceCount: 2,
+      },
+    ]);
+    expect(JSON.stringify(warningCalls)).not.toContain(firstMarker);
+    expect(JSON.stringify(warningCalls)).not.toContain(secondMarker);
+    const firstHead = await readChatEventSnapshotHead(context, firstThreadId);
+    const secondHead = await readChatEventSnapshotHead(context, secondThreadId);
+    expect(firstHead.archive_schema_version).toBe(5);
+    expect(secondHead.archive_schema_version).toBe(5);
+  }, 180_000);
 
   it("limits projection and snapshots to explicitly owned threads", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });

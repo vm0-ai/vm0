@@ -4386,6 +4386,24 @@
           "enabled_other": "Ativado por mais {{count}} execuções",
           "title": "Capturar corpos das requisições de rede"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Esperas ativas",
+          "blurred": "sem foco",
+          "channel": "canal",
+          "clear": "Limpar",
+          "connection": "conexão",
+          "copyJson": "Copiar JSON",
+          "description": "Inspecione o ciclo de vida do navegador, a recuperação de autenticação e os sinais de conexão do Ably.",
+          "empty": "Nenhum evento de diagnóstico registrado.",
+          "events": "eventos",
+          "focused": "com foco",
+          "log": "Log de eventos",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "recuperação",
+          "title": "Diagnóstico de conexão em tempo real",
+          "unavailable": "indisponível"
+        },
         "tab": "Depuração"
       },
       "documentTitle": "Preferências",

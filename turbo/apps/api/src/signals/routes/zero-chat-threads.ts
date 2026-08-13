@@ -21,12 +21,9 @@ import {
 } from "../services/google-drive-artifact-sync.service";
 import {
   zeroChatIndicators,
-  zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
   zeroChatThreadDraftIds,
-  zeroChatThreadUnreadAgentIds,
-  zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
 import { zeroChatSearch } from "../services/zero-chat-search.service";
@@ -130,18 +127,6 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
       hasMore: result.hasMore,
     },
   };
-});
-
-const listChatThreadActiveIdsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const threadIds = await get(
-    zeroChatThreadActiveRunThreadIds({
-      userId: auth.userId,
-      orgId: auth.orgId,
-    }),
-  );
-
-  return { status: 200 as const, body: { threadIds: [...threadIds] } };
 });
 
 const listZeroIndicatorsInner$ = computed(async (get) => {
@@ -284,30 +269,6 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { unreads: [...unreads] } };
 });
 
-const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const agentIds = await get(
-    zeroChatThreadUnreadAgentIds({
-      userId: auth.userId,
-      orgId: auth.orgId,
-    }),
-  );
-
-  return { status: 200 as const, body: { agentIds: [...agentIds] } };
-});
-
-const listChatThreadUnreadIdsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const threadIds = await get(
-    zeroChatThreadUnreadThreadIds({
-      userId: auth.userId,
-      orgId: auth.orgId,
-    }),
-  );
-
-  return { status: 200 as const, body: { threadIds: [...threadIds] } };
-});
-
 const listChatThreadArtifactsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
@@ -389,33 +350,12 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: chatThreadsContract.activeIds,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadActiveIdsInner$,
-    ),
-  },
-  {
-    route: chatThreadsContract.unreadIds,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadUnreadIdsInner$,
-    ),
-  },
-  {
     route: chatThreadsContract.drafts,
     handler: authRoute({}, listChatThreadDraftsInner$),
   },
   {
     route: chatThreadsContract.unreads,
     handler: authRoute({}, listChatThreadUnreadsInner$),
-  },
-  {
-    route: chatThreadsContract.unreadAgents,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadUnreadAgentsInner$,
-    ),
   },
   {
     route: chatThreadByIdContract.get,

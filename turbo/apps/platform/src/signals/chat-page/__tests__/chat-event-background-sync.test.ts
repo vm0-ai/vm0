@@ -4,7 +4,6 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -135,7 +134,6 @@ async function setupAuthenticatedBackgroundSync(): Promise<void> {
       activeOrg: { id: orgId(), name: "Background Sync Org" },
       memberships: [{ id: orgId() }],
     },
-    featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
   });
 }
 

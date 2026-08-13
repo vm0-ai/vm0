@@ -29,6 +29,7 @@ import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env, optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -40,8 +41,15 @@ import {
   type S3Object,
 } from "../external/s3";
 import { settle } from "../utils";
+import {
+  NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+  prepareChatEventArchiveWithNormalizedIds,
+  type DuplicateEventIdNormalizationStats,
+} from "./chat-event-snapshot-duplicate-id-normalization";
 import { decodeChatEventSnapshotBody } from "./chat-event-row-downgrade.service";
 import { upgradeChatEventSnapshotBody } from "./chat-event-snapshot-upgrade.service";
+
+const log = logger("api:cron:snapshot-chat-events");
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
@@ -49,6 +57,10 @@ interface ChatEventSnapshotStats {
   readonly snapshots: number;
   readonly archivedEvents: number;
   readonly unreadableParents: number;
+  readonly duplicateEventIdConflictThreads: number;
+  readonly duplicateEventIdConflicts: number;
+  readonly duplicateEventIdsRemapped: number;
+  readonly duplicateEventReferencesRemapped: number;
   readonly retiredSnapshotReferencesDeleted: number;
   readonly r2ObjectsScanned: number;
   readonly r2ObjectsMeasured: number;
@@ -484,6 +496,7 @@ async function publishSnapshotVersion(
 
 interface ArchivedThread {
   readonly archivedEvents: number | null;
+  readonly normalization: DuplicateEventIdNormalizationStats;
 }
 
 function terminalSnapshotEventId(
@@ -527,7 +540,10 @@ async function archiveThread(
     archive.count === 0 &&
     source?.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
   ) {
-    return { archivedEvents: null };
+    return {
+      archivedEvents: null,
+      normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+    };
   }
   if (archive.count === 0 && source === null) {
     throw new Error(
@@ -543,11 +559,27 @@ async function archiveThread(
     );
   }
   const lastEventId = terminalSnapshotEventId(archive.lastEventId, source);
-  const compressed = await gzipAsync(
+  const prepared =
     prefix === null
-      ? Buffer.concat(archive.lines)
-      : Buffer.concat([prefix, ...archive.lines]),
-  );
+      ? {
+          body: Buffer.concat(archive.lines),
+          normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+        }
+      : prepareChatEventArchiveWithNormalizedIds(
+          candidate.chatThreadId,
+          prefix,
+          archive.lines,
+        );
+  if (prepared.normalization.conflictingEventIds > 0) {
+    log.warn("Normalized duplicate chat event IDs in snapshot", {
+      type: "chat_event_snapshot_duplicate_ids_normalized",
+      chatThreadId: candidate.chatThreadId,
+      conflictingEventIdCount: prepared.normalization.conflictingEventIds,
+      remappedEventIdCount: prepared.normalization.remappedEventIds,
+      remappedReferenceCount: prepared.normalization.remappedEventReferences,
+    });
+  }
+  const compressed = await gzipAsync(prepared.body);
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
     targetSeqId,
@@ -575,10 +607,14 @@ async function archiveThread(
     ) {
       throw published.error;
     }
-    return { archivedEvents: null };
+    return {
+      archivedEvents: null,
+      normalization: prepared.normalization,
+    };
   }
   return {
     archivedEvents: published.value ? archive.count : null,
+    normalization: prepared.normalization,
   };
 }
 
@@ -1016,6 +1052,10 @@ export const snapshotChatEvents$ = command(
     let snapshots = 0;
     let archivedEvents = 0;
     const unreadableParents = 0;
+    let duplicateEventIdConflictThreads = 0;
+    let duplicateEventIdConflicts = 0;
+    let duplicateEventIdsRemapped = 0;
+    let duplicateEventReferencesRemapped = 0;
     for (const candidate of candidates) {
       const archived = await archiveThread(get, db, bucket, candidate, signal);
       signal.throwIfAborted();
@@ -1023,6 +1063,13 @@ export const snapshotChatEvents$ = command(
         snapshots += 1;
         archivedEvents += archived.archivedEvents;
       }
+      if (archived.normalization.conflictingEventIds > 0) {
+        duplicateEventIdConflictThreads += 1;
+      }
+      duplicateEventIdConflicts += archived.normalization.conflictingEventIds;
+      duplicateEventIdsRemapped += archived.normalization.remappedEventIds;
+      duplicateEventReferencesRemapped +=
+        archived.normalization.remappedEventReferences;
     }
     const retiredSnapshots = await set(
       deleteRetiredSnapshotVersions$,
@@ -1051,6 +1098,10 @@ export const snapshotChatEvents$ = command(
       snapshots,
       archivedEvents,
       unreadableParents,
+      duplicateEventIdConflictThreads,
+      duplicateEventIdConflicts,
+      duplicateEventIdsRemapped,
+      duplicateEventReferencesRemapped,
       retiredSnapshotReferencesDeleted: retiredSnapshots.referencesDeleted,
       r2ObjectsScanned: r2Gc.scanned,
       r2ObjectsMeasured: r2Gc.measured,

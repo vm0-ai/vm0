@@ -14,9 +14,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.UnifiedIndicatorApi, {})).toBe(
-      true,
-    );
   });
 
   it("should return true for globally enabled switch even with context", () => {

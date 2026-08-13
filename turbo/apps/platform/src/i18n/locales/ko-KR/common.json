@@ -4333,6 +4333,24 @@
           "enabled_other": "다음 {{count}}회 실행 동안 활성화됨",
           "title": "네트워크 본문 캡처"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "활성 대기",
+          "blurred": "포커스 없음",
+          "channel": "채널",
+          "clear": "지우기",
+          "connection": "연결",
+          "copyJson": "JSON 복사",
+          "description": "브라우저 수명 주기, 인증 복구 및 Ably 연결 신호를 확인합니다.",
+          "empty": "기록된 진단 이벤트가 없습니다.",
+          "events": "이벤트",
+          "focused": "포커스됨",
+          "log": "이벤트 로그",
+          "offline": "오프라인",
+          "online": "온라인",
+          "recovery": "복구",
+          "title": "실시간 연결 진단",
+          "unavailable": "사용 불가"
+        },
         "tab": "디버그"
       },
       "documentTitle": "환경설정",

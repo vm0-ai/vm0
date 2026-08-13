@@ -126,10 +126,6 @@ const chatThreadUnreadsSchema = z.object({
   ),
 });
 
-const chatThreadUnreadAgentsSchema = z.object({
-  agentIds: z.array(z.string()),
-});
-
 export const zeroIndicatorSchema = z.enum(["active", "unread"]);
 
 const zeroIndicatorsSchema = z.object({
@@ -1010,32 +1006,6 @@ export const chatThreadsContract = c.router({
     },
     summary: "List chat thread lifecycle events after an optional cursor.",
   },
-  activeIds: {
-    method: "GET",
-    path: "/api/okou/chat-threads/active-ids",
-    headers: authHeadersSchema,
-    responses: {
-      200: z.object({
-        threadIds: z.array(z.string().uuid()),
-      }),
-      401: apiErrorSchema,
-    },
-    summary:
-      "List chat thread ids that currently have queued, pending, or running runs.",
-  },
-  unreadIds: {
-    method: "GET",
-    path: "/api/okou/chat-threads/unread-ids",
-    headers: authHeadersSchema,
-    responses: {
-      200: z.object({
-        threadIds: z.array(z.string().uuid()),
-      }),
-      401: apiErrorSchema,
-    },
-    summary:
-      "List unread chat thread ids for the caller in the current organization.",
-  },
   create: {
     method: "POST",
     path: "/api/okou/chat-threads",
@@ -1091,18 +1061,6 @@ export const chatThreadsContract = c.router({
     },
     summary:
       "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread.",
-  },
-  unreadAgents: {
-    method: "GET",
-    path: "/api/okou/chat-thread-unread-agents",
-    headers: authHeadersSchema,
-    responses: {
-      200: chatThreadUnreadAgentsSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary:
-      "List agent IDs with at least one unread chat thread for the caller.",
   },
 });
 

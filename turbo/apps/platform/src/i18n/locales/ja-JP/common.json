@@ -4333,6 +4333,24 @@
           "enabled_other": "次回の {{count}} の実行に対して有効になります",
           "title": "ネットワーク本体をキャプチャする"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "処理中の待機",
+          "blurred": "フォーカス外",
+          "channel": "チャネル",
+          "clear": "消去",
+          "connection": "接続",
+          "copyJson": "JSON をコピー",
+          "description": "ブラウザーのライフサイクル、認証の復旧、Ably 接続シグナルを確認します。",
+          "empty": "診断イベントは記録されていません。",
+          "events": "イベント",
+          "focused": "フォーカス中",
+          "log": "イベントログ",
+          "offline": "オフライン",
+          "online": "オンライン",
+          "recovery": "復旧",
+          "title": "リアルタイム接続診断",
+          "unavailable": "利用不可"
+        },
         "tab": "デバッグ"
       },
       "documentTitle": "設定",

@@ -191,7 +191,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.Banking]: {
@@ -307,12 +307,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Run web chat jobs with the sandbox-owned Pi agent loop and native SQLite session persistence.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.UnifiedIndicatorApi]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Load global agent and chat thread indicators from the unified API.",
-    enabled: true,
   },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",

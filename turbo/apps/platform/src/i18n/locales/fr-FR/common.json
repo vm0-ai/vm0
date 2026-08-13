@@ -4386,6 +4386,24 @@
           "enabled_other": "Activé pour les prochaines exécutions de {{count}}",
           "title": "Capturer les corps réseau"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Attentes actives",
+          "blurred": "sans focus",
+          "channel": "canal",
+          "clear": "Effacer",
+          "connection": "connexion",
+          "copyJson": "Copier le JSON",
+          "description": "Inspectez le cycle de vie du navigateur, la récupération de l'authentification et les signaux de connexion Ably.",
+          "empty": "Aucun événement de diagnostic enregistré.",
+          "events": "événements",
+          "focused": "avec focus",
+          "log": "Journal des événements",
+          "offline": "hors ligne",
+          "online": "en ligne",
+          "recovery": "récupération",
+          "title": "Diagnostic de connexion en temps réel",
+          "unavailable": "indisponible"
+        },
         "tab": "Débogage"
       },
       "documentTitle": "Préférences",
