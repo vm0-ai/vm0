@@ -305,6 +305,22 @@ wait_for_auth_next_step() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_sign_in_email_code_ready — Wait for Clerk to finish preparing the
+# email-code first factor before entering the code. The OTP input mounts while
+# prepareFirstFactor is still in flight, so its presence is not a readiness
+# signal for attemptFirstFactor.
+# ---------------------------------------------------------------------------
+wait_for_sign_in_email_code_ready() {
+  wait_for_browser_target --fn \
+    "(() => {
+      const verification =
+        window.Clerk?.client?.signIn?.firstFactorVerification;
+      return verification?.strategy === 'email_code'
+        && verification.status === 'unverified';
+    })()"
+}
+
+# ---------------------------------------------------------------------------
 # accept_legal_consent — Check legal consent checkbox if present
 # Clerk renders this when legal_consent_enabled is on. Safe to call always.
 # ---------------------------------------------------------------------------
@@ -338,7 +354,6 @@ dismiss_cookie_banner() {
 # ---------------------------------------------------------------------------
 enter_otp() {
   local code="$1"
-  local auth_path="$2"
   local otp_selector='input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]'
 
   wait_for_browser_target "$otp_selector"
@@ -350,21 +365,6 @@ enter_otp() {
     for digit in $(echo "$code" | grep -o .); do
       agent-browser press "$digit"
     done
-  fi
-
-  wait_for_browser_target --fn \
-    "(() => {
-      if (!window.location.pathname.includes('/${auth_path}')) return true;
-      return Array.from(document.querySelectorAll('button')).some((button) => {
-        const label = button.textContent?.trim() ?? '';
-        return !button.disabled && /^(Continue|Verify)$/i.test(label);
-      });
-    })()"
-
-  if [[ "$(agent-browser eval "window.location.pathname.includes('/${auth_path}')")" == "true" ]]; then
-    if ! agent-browser find role button click --name "Continue" --exact 2>/dev/null; then
-      agent-browser find role button click --name "Verify" --exact
-    fi
   fi
 }
 
