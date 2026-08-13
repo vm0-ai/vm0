@@ -1,6 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { Textarea, cn } from "@vm0/ui";
+import { Textarea, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { completeOnboarding$ } from "../../signals/onboarding/onboarding-actions.ts";
 import {

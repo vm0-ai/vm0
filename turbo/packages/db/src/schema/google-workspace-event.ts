@@ -11,7 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
 import { zeroWorkflowAutomations } from "./zero-workflow";
-import type { GoogleWorkspaceEventTypes } from "@vm0/db/jsonb-contracts/google-workspace-event";
+import type { GoogleWorkspaceEventTypes } from "@okouai/db/jsonb-contracts/google-workspace-event";
 
 export type GoogleWorkspaceEventProvider = "google-meet";
 

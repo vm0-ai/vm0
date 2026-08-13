@@ -1,13 +1,13 @@
 import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
 import { command, computed, type Computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isChatEventContentTextType } from "@vm0/api-contracts/contracts/chat-events";
-import type { ModelProviderFramework } from "@vm0/api-contracts/contracts/model-provider-types";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isChatEventContentTextType } from "@okouai/api-contracts/contracts/chat-events";
+import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import {
   isSupportedRunModel,
   type ModelProviderResponse,
   type OrgModelPoliciesResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { personalModelProviders$ } from "../external/personal-model-providers.ts";

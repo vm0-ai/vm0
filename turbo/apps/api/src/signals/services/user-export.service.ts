@@ -2,31 +2,31 @@ import { createHash } from "node:crypto";
 import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray, isNotNull, or } from "drizzle-orm";
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
+import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import type {
   UserExportJob,
   UserExportStartResponse,
   UserExportStatusResponse,
-} from "@vm0/api-contracts/contracts/user-export";
+} from "@okouai/api-contracts/contracts/user-export";
 import {
   getInstructionsStorageName,
   MEMORY_ARTIFACT_NAME,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { conversations } from "@vm0/db/schema/conversation";
-import { blobs } from "@vm0/db/schema/blob";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { exportJobs } from "@vm0/db/schema/export-job";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { users } from "@vm0/db/schema/user";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/core/storage-names";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { conversations } from "@okouai/db/schema/conversation";
+import { blobs } from "@okouai/db/schema/blob";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { exportJobs } from "@okouai/db/schema/export-job";
+import { emailOutbox } from "@okouai/db/schema/email-outbox";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { users } from "@okouai/db/schema/user";
+import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { extractFilesFromTarGz } from "../../lib/tar";

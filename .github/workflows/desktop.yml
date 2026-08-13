@@ -109,16 +109,16 @@ jobs:
         run: pnpm install --frozen-lockfile --strict-peer-dependencies
 
       - name: Type check desktop
-        run: pnpm -F @vm0/desktop check-types
+        run: pnpm -F @okouai/desktop check-types
 
       - name: Lint desktop
-        run: pnpm -F @vm0/desktop lint
+        run: pnpm -F @okouai/desktop lint
 
       - name: Test desktop
-        run: pnpm -F @vm0/desktop test
+        run: pnpm -F @okouai/desktop test
 
       - name: Test native helper
-        run: pnpm -F @vm0/desktop test:native
+        run: pnpm -F @okouai/desktop test:native
 
       - name: Resolve PR preview desktop URL
         id: preview
@@ -144,8 +144,8 @@ jobs:
           rm -f apps/desktop/desktop-runtime-config.json
           rm -rf apps/desktop/out
 
-          pnpm -F @vm0/desktop build
-          pnpm -F @vm0/desktop upload:sentry
+          pnpm -F @okouai/desktop build
+          pnpm -F @okouai/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
             --arch arm64 \
@@ -277,7 +277,7 @@ jobs:
           );
           NODE
 
-          pnpm -F @vm0/desktop build
+          pnpm -F @okouai/desktop build
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
             --arch arm64 \
@@ -414,8 +414,8 @@ jobs:
           );
           NODE
 
-          pnpm -F @vm0/desktop build
-          pnpm -F @vm0/desktop upload:sentry
+          pnpm -F @okouai/desktop build
+          pnpm -F @okouai/desktop upload:sentry
           node apps/desktop/scripts/run-forge-make-with-retry.js \
             --platform darwin \
             --arch arm64 \
@@ -660,8 +660,8 @@ jobs:
           cleanup_runtime_config
           rm -rf apps/desktop/out
 
-          pnpm -F @vm0/desktop build
-          pnpm -F @vm0/desktop upload:sentry
+          pnpm -F @okouai/desktop build
+          pnpm -F @okouai/desktop upload:sentry
           pnpm --dir apps/desktop exec electron-forge package \
             --platform darwin \
             --arch arm64
@@ -699,7 +699,7 @@ jobs:
 
           VM0_DESKTOP_PRODUCT=okou \
           VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
-          pnpm -F @vm0/desktop build
+          pnpm -F @okouai/desktop build
           VM0_DESKTOP_PRODUCT=okou \
           VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
           pnpm --dir apps/desktop exec electron-forge package \

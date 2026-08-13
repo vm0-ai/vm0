@@ -2,7 +2,7 @@
 // Shared cron / one-time Automation schedule utilities
 // ---------------------------------------------------------------------------
 
-import { getGmtOffset } from "@vm0/core/timezone";
+import { getGmtOffset } from "@okouai/core/timezone";
 
 import { nowDate } from "../../lib/time.ts";
 

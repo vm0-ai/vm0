@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import { chatEventRowV4Schema } from "@vm0/api-contracts/contracts/chat-event-rows";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import { chatEventRowV4Schema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { testChatEventSearchProjectionContract } from "@vm0/api-contracts/contracts/test-chat-event-search-projection";
-import { testChatEventSnapshotContract } from "@vm0/api-contracts/contracts/test-chat-event-snapshot";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
+import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

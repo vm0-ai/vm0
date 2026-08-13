@@ -5,14 +5,14 @@ import type { Readable, Writable } from "node:stream";
 import {
   CANONICAL_PI_SESSION_DATABASE_PATH,
   piModelConfigSchema,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import {
   createPiNodeExecutionEnv as createNodeExecutionEnv,
   runPiAgentSession,
   type ExecutionEnv,
   type PiAgentModelConfig,
   type PiAssistantMessage,
-} from "@vm0/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/node";
 import { z } from "zod";
 
 const RUN_ID_ENV = "OKOU_RUN_ID";

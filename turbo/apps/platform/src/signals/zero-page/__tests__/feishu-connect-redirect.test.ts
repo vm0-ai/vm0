@@ -1,4 +1,4 @@
-import { zeroFeishuBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-browser-connect";
+import { zeroFeishuBrowserConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-browser-connect";
 import { describe, expect, it } from "vitest";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";

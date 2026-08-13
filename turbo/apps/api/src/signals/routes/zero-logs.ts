@@ -2,7 +2,7 @@ import { computed } from "ccstate";
 import {
   logsByIdContract,
   logsListContract,
-} from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/logs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

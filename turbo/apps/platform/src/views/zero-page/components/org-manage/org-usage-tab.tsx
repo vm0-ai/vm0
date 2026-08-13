@@ -1,16 +1,16 @@
 import { useLoadable } from "ccstate-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
-import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
-import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
+import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
+import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { MemberUsage } from "@okouai/api-contracts/contracts/zero-usage";
 import { ChevronRight } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
+} from "@okouai/ui/components/ui/tooltip";
 import { billingStatusAsync$ } from "../../../../signals/zero-page/billing.ts";
 import { orgPlanCapabilitiesFromBilling } from "../../../../signals/zero-page/org-plan-capabilities.ts";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";

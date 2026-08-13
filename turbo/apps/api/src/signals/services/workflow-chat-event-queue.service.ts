@@ -1,13 +1,13 @@
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 

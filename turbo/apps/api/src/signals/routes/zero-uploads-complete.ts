@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

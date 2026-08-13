@@ -1,9 +1,9 @@
-import { cronMonitorChatEventQueueContract } from "@vm0/api-contracts/contracts/cron";
+import { cronMonitorChatEventQueueContract } from "@okouai/api-contracts/contracts/cron";
 import {
   testCronMonitorChatEventQueueStateContract,
   type TestCronMonitorChatEventQueueStateActionBody,
   type TestCronMonitorChatEventQueueStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
+} from "@okouai/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { setupAppWithRoutes } from "../../../__tests__/test-app";

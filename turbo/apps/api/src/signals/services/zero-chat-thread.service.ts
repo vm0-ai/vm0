@@ -2,7 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -17,29 +17,29 @@ import {
   type ZeroIndicators,
   persistedAttachmentSchema,
   zeroIndicatorSchema,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
-} from "@vm0/api-contracts/contracts/zero-host";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatEventSearchDocs } from "@vm0/db/schema/chat-event-search";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
+} from "@okouai/api-contracts/contracts/zero-host";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSearchDocs } from "@okouai/db/schema/chat-event-search";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/run-uploaded-file";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import {
   and,

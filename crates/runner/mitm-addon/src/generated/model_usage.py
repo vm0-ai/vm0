@@ -1,7 +1,7 @@
 """Generated model usage contracts shared with TypeScript.
 
 Do not edit by hand; regenerate with
-``cd turbo && pnpm -F @vm0/api-contracts generate:python``.
+``cd turbo && pnpm -F @okouai/api-contracts generate:python``.
 """
 
 from typing import Final

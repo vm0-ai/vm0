@@ -5,7 +5,7 @@ import type {
   TransitionEvent as ReactTransitionEvent,
 } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 import {

@@ -2,8 +2,8 @@ import {
   zeroPeopleSearchContract,
   type ZeroPeopleSearchRequest,
   type ZeroPeopleSearchResponse,
-} from "@vm0/api-contracts/contracts/zero-people-search";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/zero-people-search";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 

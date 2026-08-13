@@ -2,7 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 
 import { Command } from "commander";
-import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/integrations";
+import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/integrations";
 
 import {
   completeFeishuFileUpload,

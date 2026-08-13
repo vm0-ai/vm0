@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import {
   zeroTeamsBotContract,
   type TeamsInboundActivity,
-} from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
+} from "@okouai/api-contracts/contracts/zero-teams-bot";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 
 import {
   normalizeTeamsActivity,

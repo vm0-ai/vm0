@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { TestEmailOutboxStateItem } from "@vm0/api-contracts/contracts/test-email-outbox-state";
-import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
+import type { TestEmailOutboxStateItem } from "@okouai/api-contracts/contracts/test-email-outbox-state";
+import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";

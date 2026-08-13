@@ -11,16 +11,16 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import {
   chatEventSearchDocs,
   chatEventSearchMessages,
   chatEventSearchMessageWatermarks,
   chatEventSearchWatermarks,
-} from "@vm0/db/schema/chat-event-search";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/chat-event-search";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatSearchIndexText } from "../../lib/chat-search-bigram";
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Tx } from "../../lib/db-types";

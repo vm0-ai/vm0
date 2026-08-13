@@ -1,5 +1,5 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
-import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
+import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 

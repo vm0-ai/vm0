@@ -2,7 +2,7 @@ import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { Button, cn } from "@vm0/ui";
+import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";

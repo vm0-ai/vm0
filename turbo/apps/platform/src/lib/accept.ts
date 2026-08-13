@@ -1,5 +1,5 @@
-import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { isAbortError, onRejection } from "../signals/utils.ts";
 import { isNetworkRequestError } from "./network-error.ts";
 import { i18n } from "../i18n/index.ts";

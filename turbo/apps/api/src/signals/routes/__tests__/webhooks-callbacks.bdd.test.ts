@@ -1,10 +1,10 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
-import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
-import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
+import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
+import { MAX_FILE_SIZE_BYTES } from "@okouai/api-contracts/contracts/storages";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 

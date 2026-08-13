@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import {
   ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
   zeroTranslationContract,
-} from "@vm0/api-contracts/contracts/zero-translation";
-import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/zero-translation";
+import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 

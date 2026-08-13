@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";

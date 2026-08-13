@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { useGet, useSet } from "ccstate-react";
 import { detach, Reason } from "../../signals/utils.ts";

@@ -1,8 +1,8 @@
 import {
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/zero-workflow";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { db } from "../lib/db";

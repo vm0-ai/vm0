@@ -1,7 +1,7 @@
 import type {
   TestModelProviderStateActionBody,
   TestModelProviderStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-model-provider-state";
+} from "@okouai/api-contracts/contracts/test-model-provider-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { testModelProviderStateRoutes } from "../../test-model-provider-state";

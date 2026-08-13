@@ -6,7 +6,7 @@ import {
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
   zeroBrowserCreateRequestSchema,
   type ZeroBrowserSession,
-} from "@vm0/api-contracts/contracts/zero-browser";
+} from "@okouai/api-contracts/contracts/zero-browser";
 
 import {
   createZeroBrowser,

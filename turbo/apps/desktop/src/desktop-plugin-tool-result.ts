@@ -3,7 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES,
   COMPUTER_USE_PLUGIN_RESULT_INLINE_TEXT_MAX_BYTES,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
 import type {
   ComputerUseCommandExecutionResult,
   ComputerUseCommandFailure,

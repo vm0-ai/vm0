@@ -1,4 +1,4 @@
-import { morningBriefSchedules } from "@vm0/db/schema/morning-brief";
+import { morningBriefSchedules } from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";

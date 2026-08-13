@@ -1,4 +1,4 @@
-import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
+import { onboardingStatusContract } from "@okouai/api-contracts/contracts/onboarding";
 import { command } from "ccstate";
 
 import { logger } from "../../lib/log";

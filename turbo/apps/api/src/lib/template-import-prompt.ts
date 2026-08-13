@@ -2,7 +2,7 @@ import {
   MAX_PRESENTATION_TEMPLATE_PAGES,
   MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
   PRESENTATION_TEMPLATE_CONVERSION_TIMEOUT_SECONDS,
-} from "@vm0/api-contracts/contracts/zero-presentation-templates";
+} from "@okouai/api-contracts/contracts/zero-presentation-templates";
 
 export function templateImportPrompt(templateId: string): string {
   return `Import presentation template ${templateId}.

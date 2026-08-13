@@ -2,8 +2,8 @@ import { command, computed } from "ccstate";
 import {
   zeroOrgContract,
   zeroOrgLeaveContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
+} from "@okouai/api-contracts/contracts/zero-org";
+import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

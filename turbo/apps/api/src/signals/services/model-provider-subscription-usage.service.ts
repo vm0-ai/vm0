@@ -2,10 +2,10 @@ import { command } from "ccstate";
 import type {
   ModelProviderListResponse,
   ModelProviderResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { secrets } from "@vm0/db/schema/secret";
-import { modelProviderAccountSecrets } from "@vm0/db/schema/model-provider-account";
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { secrets } from "@okouai/db/schema/secret";
+import { modelProviderAccountSecrets } from "@okouai/db/schema/model-provider-account";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

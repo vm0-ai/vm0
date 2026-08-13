@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
-import type { UsagePackCreditsResponse } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
+import type { UsagePackCreditsResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { ArrowRight, ChevronDown, History, Users } from "lucide-react";
 import {
   Button,
@@ -21,13 +21,13 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
+} from "@okouai/ui/components/ui/tooltip";
 import {
   CreditAdditionList,
   CreditBalanceCard,

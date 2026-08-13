@@ -3,8 +3,8 @@ import {
   zeroStrapiIntegrationsContract,
   type StrapiIntegration,
   type StrapiIntegrationSecret,
-} from "@vm0/api-contracts/contracts/zero-strapi-integrations";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import { toast } from "@okouai/ui/components/ui/sonner";
 
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";

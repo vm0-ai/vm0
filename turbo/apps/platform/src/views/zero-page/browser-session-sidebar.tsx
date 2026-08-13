@@ -1,5 +1,5 @@
 import { Maximize2, X } from "lucide-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 

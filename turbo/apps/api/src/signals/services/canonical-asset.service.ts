@@ -6,9 +6,9 @@ import {
   runUploadedFiles,
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
-} from "@vm0/db/schema/run-uploaded-file";
-import type { ChatEventAttachFileMetadata } from "@vm0/db/schema/chat-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/run-uploaded-file";
+import type { ChatEventAttachFileMetadata } from "@okouai/db/schema/chat-event";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import type { SlackFile } from "../../lib/slack-webhook-context";

@@ -1,11 +1,11 @@
-import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 

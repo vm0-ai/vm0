@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
-import { zeroVoiceIoSpeechContract } from "@vm0/api-contracts/contracts/zero-voice-io-speech";
+import { zeroVoiceIoSpeechContract } from "@okouai/api-contracts/contracts/zero-voice-io-speech";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
