@@ -851,28 +851,30 @@ export {
 } from "./onboarding";
 export { skillFrontmatterSchema } from "./skills";
 export {
+  agentDraftContract,
+  agentDraftResponseSchema,
+  agentDraftRequestSchema,
+  type AgentDraftContract,
+  type AgentDraftResponse,
+  type AgentDraftRequest,
+} from "./agent-draft";
+export {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroAgentDraftContract,
   zeroAgentResponseSchema,
   zeroAgentRequestSchema,
   zeroAgentMetadataRequestSchema,
   zeroAgentInstructionsResponseSchema,
   zeroAgentInstructionsRequestSchema,
-  zeroAgentDraftResponseSchema,
-  zeroAgentDraftRequestSchema,
   type ZeroAgentsMainContract,
   type ZeroAgentsByIdContract,
   type ZeroAgentInstructionsContract,
-  type ZeroAgentDraftContract,
   type ZeroAgentResponse,
   type ZeroAgentRequest,
   type ZeroAgentMetadataRequest,
   type ZeroAgentInstructionsResponse,
   type ZeroAgentInstructionsRequest,
-  type ZeroAgentDraftResponse,
-  type ZeroAgentDraftRequest,
 } from "./zero-agents";
 export {
   zeroWorkflowVisibilitySchema,

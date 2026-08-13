@@ -10,11 +10,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
 import type {
-  ZeroAgentDraftAttachments,
-  ZeroAgentDraftUserMessage,
-} from "@okouai/db/jsonb-contracts/zero-agent-draft";
+  AgentDraftAttachments,
+  AgentDraftUserMessage,
+} from "@okouai/db/jsonb-contracts/agent-draft";
 
-export const zeroAgentDrafts = pgTable(
+export const agentDrafts = pgTable(
   "zero_agent_drafts",
   {
     userId: text("user_id").notNull(),
@@ -29,9 +29,8 @@ export const zeroAgentDrafts = pgTable(
       ),
     /** Canonical rich document for the agent composer's saved draft. */
     draftUserMessage:
-      jsonb("draft_user_message").$type<ZeroAgentDraftUserMessage>(),
-    draftAttachments:
-      jsonb("draft_attachments").$type<ZeroAgentDraftAttachments>(),
+      jsonb("draft_user_message").$type<AgentDraftUserMessage>(),
+    draftAttachments: jsonb("draft_attachments").$type<AgentDraftAttachments>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

@@ -56,7 +56,7 @@ import { webhooksNotionRoutes } from "./routes/webhooks-notion";
 import { webhooksWorkflowAutomationsRoutes } from "./routes/webhooks-workflow-automations";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { webhooksStripeAutomationEventsRoutes } from "./routes/webhooks-stripe-automation-events";
-import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
+import { agentDraftRoutes } from "./routes/agent-draft";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroArtifactCatalogRoutes } from "./routes/zero-artifact-catalog";
@@ -247,7 +247,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...emailMorningBriefUnsubscribeRoutes,
   ...zeroMorningBriefRoutes,
   ...emailUnsubscribeRoutes,
-  ...zeroAgentDraftRoutes,
+  ...agentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroArtifactCatalogRoutes,

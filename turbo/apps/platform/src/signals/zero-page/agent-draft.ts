@@ -1,9 +1,9 @@
 import { command, state, type Command } from "ccstate";
 import { delay } from "signal-timers";
 import {
-  zeroAgentDraftContract,
-  zeroAgentDraftResponseSchema,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentDraftContract,
+  agentDraftResponseSchema,
+} from "@okouai/api-contracts/contracts/agent-draft";
 import type {
   PersistedAttachment,
   UserMessageDocument,
@@ -92,7 +92,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const patchDraft$ = command(
     async ({ get }, payload: DraftPersistencePayload, signal: AbortSignal) => {
-      const client = get(zeroClient$)(zeroAgentDraftContract);
+      const client = get(zeroClient$)(agentDraftContract);
       await accept(
         client.patch({
           params: { id: agentId },
@@ -211,7 +211,7 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(zeroAgentDraftContract);
+    const client = get(zeroClient$)(agentDraftContract);
     const result = await accept(
       client.get({
         params: { id: agentId },
@@ -228,7 +228,7 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const response = zeroAgentDraftResponseSchema.parse(result.body);
+    const response = agentDraftResponseSchema.parse(result.body);
     const restoredDraft = userMessageAgentDraftState(response);
     if (!restoredDraft) {
       return;
