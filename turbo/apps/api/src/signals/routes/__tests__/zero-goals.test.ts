@@ -331,6 +331,7 @@ describe("zero goals", () => {
       prompt: "create a goal outside chat",
       modelProvider: "anthropic-api-key",
     });
+    const kms = useSecretKmsProbe();
 
     const created = await accept(
       goalsClient().create({
@@ -440,6 +441,7 @@ describe("zero goals", () => {
       id: goalRunId,
       goalId: goal.goalId,
     });
+    expect(kms.generateDataKeyCalls).toBe(1);
 
     await api.requestCancelRun(actor, goalRunId, [200]);
     await api.requestCancelRun(actor, origin.runId, [200]);

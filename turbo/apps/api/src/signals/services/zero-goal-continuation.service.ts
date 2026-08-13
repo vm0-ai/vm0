@@ -78,13 +78,12 @@ async function loadTerminatingRun(
   return row ?? null;
 }
 
-const enqueueGoalContinuation$ = command(
+const admitGoalContinuation$ = command(
   async (
-    { set },
+    _context,
     args: {
       readonly db: Db;
       readonly goal: GoalBootstrap;
-      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
   ): Promise<GoalEnqueueResult> => {
@@ -116,16 +115,6 @@ const enqueueGoalContinuation$ = command(
       };
     }
 
-    await set(
-      drainChatThreadQueueForThread$,
-      {
-        chatThreadId: args.goal.threadId,
-        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
     return admission.value.kind === "inserted"
       ? {
           kind: "enqueued",
@@ -136,13 +125,12 @@ const enqueueGoalContinuation$ = command(
   },
 );
 
-export const continueGoalIfIdle$ = command(
+export const handleTerminalGoalContinuation$ = command(
   async (
     { set },
     args: {
       readonly db: Db;
       readonly runId: string;
-      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
   ): Promise<GoalContinuationResult> => {
@@ -181,7 +169,7 @@ export const continueGoalIfIdle$ = command(
     }
 
     return await set(
-      enqueueGoalContinuation$,
+      admitGoalContinuation$,
       {
         db: args.db,
         goal: {
@@ -191,7 +179,6 @@ export const continueGoalIfIdle$ = command(
           threadId: goal.chatThreadId,
           objectiveBrief: goal.objectiveBrief,
         },
-        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
     );
@@ -208,6 +195,20 @@ export const bootstrapGoalRun$ = command(
     },
     signal: AbortSignal,
   ): Promise<GoalEnqueueResult> => {
-    return await set(enqueueGoalContinuation$, args, signal);
+    const result = await set(admitGoalContinuation$, args, signal);
+    signal.throwIfAborted();
+    if (result.kind === "failed-to-enqueue") {
+      return result;
+    }
+    await set(
+      drainChatThreadQueueForThread$,
+      {
+        chatThreadId: args.goal.threadId,
+        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return result;
   },
 );
