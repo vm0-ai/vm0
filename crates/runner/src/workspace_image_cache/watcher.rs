@@ -103,7 +103,7 @@ impl WorkspaceCacheWatcher {
             watch_by_cache_key: BTreeMap::new(),
             cache,
         };
-        watcher.reconcile_entry_watches(&mut BTreeSet::new())?;
+        watcher.reconcile_entry_watches(&mut BTreeSet::new(), &BTreeSet::new())?;
         Ok(watcher)
     }
 
@@ -137,6 +137,7 @@ impl WorkspaceCacheWatcher {
             let mut changed = false;
             let mut reconcile_entry_watches = false;
             let mut committed_cache_keys = BTreeSet::new();
+            let mut new_cache_keys = BTreeSet::new();
             for event in pending_events {
                 if event.mask.contains(AddWatchFlags::IN_Q_OVERFLOW) {
                     changed = true;
@@ -162,6 +163,9 @@ impl WorkspaceCacheWatcher {
                         .intersects(AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
                     {
                         reconcile_entry_watches = true;
+                        if new_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {
+                            new_cache_keys.insert(cache_key.to_owned());
+                        }
                     }
                     if event
                         .mask
@@ -211,7 +215,7 @@ impl WorkspaceCacheWatcher {
             }
 
             if reconcile_entry_watches {
-                self.reconcile_entry_watches(&mut committed_cache_keys)?;
+                self.reconcile_entry_watches(&mut committed_cache_keys, &new_cache_keys)?;
             }
             if changed || !committed_cache_keys.is_empty() {
                 return Ok(WorkspaceCacheChange {
@@ -225,6 +229,7 @@ impl WorkspaceCacheWatcher {
     fn reconcile_entry_watches(
         &mut self,
         committed_cache_keys: &mut BTreeSet<String>,
+        new_cache_keys: &BTreeSet<String>,
     ) -> RunnerResult<()> {
         let stale_cache_keys = self
             .watch_by_cache_key
@@ -241,6 +246,26 @@ impl WorkspaceCacheWatcher {
             .collect::<Vec<_>>();
         for cache_key in stale_cache_keys {
             self.forget_entry_watch(&cache_key);
+        }
+
+        for cache_key in new_cache_keys {
+            if self.watch_by_cache_key.contains_key(cache_key)
+                || !self.entry_is_watchable(cache_key)?
+            {
+                continue;
+            }
+            if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
+                let Some(evicted_cache_key) = self
+                    .watch_by_cache_key
+                    .keys()
+                    .find(|existing| !new_cache_keys.contains(existing.as_str()))
+                    .cloned()
+                else {
+                    break;
+                };
+                self.forget_entry_watch(&evicted_cache_key);
+            }
+            self.add_entry_watch(cache_key.clone(), committed_cache_keys)?;
         }
 
         if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
@@ -269,25 +294,41 @@ impl WorkspaceCacheWatcher {
             if self.watch_by_cache_key.contains_key(&cache_key) {
                 continue;
             }
-            let entry_dir = self.cache.workspace_image_cache_entry_dir(&cache_key);
-            let watch = match self
-                .inotify
-                .get_ref()
-                .0
-                .add_watch(&entry_dir, ENTRY_WATCH_FLAGS)
-            {
-                Ok(watch) => watch,
-                Err(Errno::ENOENT | Errno::ENOTDIR) => continue,
-                Err(error) => return Err(watcher_error("watch entry", error)),
-            };
-            self.cache_key_by_watch.insert(watch, cache_key.clone());
-            self.watch_by_cache_key.insert(cache_key.clone(), watch);
-            if std::fs::symlink_metadata(self.cache.workspace_image_cache_metadata(&cache_key))
-                .is_ok()
-                && committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES
-            {
-                committed_cache_keys.insert(cache_key);
-            }
+            self.add_entry_watch(cache_key, committed_cache_keys)?;
+        }
+        Ok(())
+    }
+
+    fn entry_is_watchable(&self, cache_key: &str) -> RunnerResult<bool> {
+        match std::fs::symlink_metadata(self.cache.workspace_image_cache_entry_dir(cache_key)) {
+            Ok(metadata) => Ok(metadata.is_dir()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(watcher_io_error("inspect entry", error.kind())),
+        }
+    }
+
+    fn add_entry_watch(
+        &mut self,
+        cache_key: String,
+        committed_cache_keys: &mut BTreeSet<String>,
+    ) -> RunnerResult<()> {
+        let entry_dir = self.cache.workspace_image_cache_entry_dir(&cache_key);
+        let watch = match self
+            .inotify
+            .get_ref()
+            .0
+            .add_watch(&entry_dir, ENTRY_WATCH_FLAGS)
+        {
+            Ok(watch) => watch,
+            Err(Errno::ENOENT | Errno::ENOTDIR | Errno::ELOOP) => return Ok(()),
+            Err(error) => return Err(watcher_error("watch entry", error)),
+        };
+        self.cache_key_by_watch.insert(watch, cache_key.clone());
+        self.watch_by_cache_key.insert(cache_key.clone(), watch);
+        if std::fs::symlink_metadata(self.cache.workspace_image_cache_metadata(&cache_key)).is_ok()
+            && committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES
+        {
+            committed_cache_keys.insert(cache_key);
         }
         Ok(())
     }
@@ -420,6 +461,41 @@ mod tests {
             }
         }
         assert_eq!(committed_cache_keys, BTreeSet::from([cache_key]));
+    }
+
+    #[tokio::test]
+    async fn newly_created_entry_replaces_an_existing_watch_at_the_limit() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(temp.path().join("runner"));
+        let cache = WorkspaceImageCache::new(paths);
+        for index in 0..MAX_HELD_WORKSPACE_STATES {
+            cache
+                .ensure_workspace_cache_entry_dir(&format!("{index:064x}"))
+                .await
+                .unwrap();
+        }
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).unwrap();
+        assert_eq!(watcher.watch_by_cache_key.len(), MAX_HELD_WORKSPACE_STATES);
+
+        let cache_key = "f".repeat(64);
+        cache
+            .ensure_workspace_cache_entry_dir(&cache_key)
+            .await
+            .unwrap();
+        tokio::fs::write(cache.workspace_image_cache_metadata(&cache_key), b"{}")
+            .await
+            .unwrap();
+
+        let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            change.committed_cache_keys,
+            BTreeSet::from([cache_key.clone()])
+        );
+        assert_eq!(watcher.watch_by_cache_key.len(), MAX_HELD_WORKSPACE_STATES);
+        assert!(watcher.watch_by_cache_key.contains_key(&cache_key));
     }
 
     #[test]
