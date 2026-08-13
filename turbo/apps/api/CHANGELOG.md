@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.445.1](https://github.com/vm0-ai/vm0/compare/api-v1.445.0...api-v1.445.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **api:** drain orphaned workflow automation events ([#27001](https://github.com/vm0-ai/vm0/issues/27001)) ([85e2e74](https://github.com/vm0-ai/vm0/commit/85e2e7492cc44e0d465aaa4ff079a64357e3154f))
+* **chat:** normalize duplicate snapshot event ids ([#27007](https://github.com/vm0-ai/vm0/issues/27007)) ([1dabd70](https://github.com/vm0-ai/vm0/commit/1dabd70b26cb833dd0673e8ff1c02ebf686df139))
+
+
+### Refactoring
+
+* **artifacts:** rename artifact catalog route shell ([#27002](https://github.com/vm0-ai/vm0/issues/27002)) ([3a15a8b](https://github.com/vm0-ai/vm0/commit/3a15a8bb568093a3323ebb606bfb0786e26b996a))
+* **chat:** remove unified indicator api fallback ([#27006](https://github.com/vm0-ai/vm0/issues/27006)) ([2dde1fd](https://github.com/vm0-ai/vm0/commit/2dde1fd5a9484199da407cf1dc83815dfdc35add))
+* **logs:** neutralize the logs API modules ([#26996](https://github.com/vm0-ai/vm0/issues/26996)) ([cc2db86](https://github.com/vm0-ai/vm0/commit/cc2db861dbbb832336f7a6486c166fbdba2e618d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.5
+    * @okouai/core bumped to 8.558.0
+    * @okouai/db bumped to 1.198.6
+    * @okouai/pi-agent-runtime bumped to 1.4.13
+
 ## [1.445.0](https://github.com/vm0-ai/vm0/compare/api-v1.444.3...api-v1.445.0) (2026-08-13)
 
 

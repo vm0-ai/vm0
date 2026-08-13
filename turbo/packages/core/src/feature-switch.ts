@@ -321,6 +321,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatConversationLocator]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
+    enabled: false,
+  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:

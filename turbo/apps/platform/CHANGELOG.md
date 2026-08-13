@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.746.0](https://github.com/vm0-ai/vm0/compare/app-v0.745.0...app-v0.746.0) (2026-08-13)
+
+
+### Features
+
+* **platform:** add realtime connection diagnostics ([#26995](https://github.com/vm0-ai/vm0/issues/26995)) ([a30413a](https://github.com/vm0-ai/vm0/commit/a30413a31b7186088360882aace86a60eaddec66))
+
+
+### Bug Fixes
+
+* **platform:** close realtime in hidden tabs ([#26964](https://github.com/vm0-ai/vm0/issues/26964)) ([410e2b2](https://github.com/vm0-ai/vm0/commit/410e2b250c133fb95ef925d91c856a064563c105))
+
+
+### Refactoring
+
+* **chat:** remove unified indicator api fallback ([#27006](https://github.com/vm0-ai/vm0/issues/27006)) ([2dde1fd](https://github.com/vm0-ai/vm0/commit/2dde1fd5a9484199da407cf1dc83815dfdc35add))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.5
+    * @okouai/core bumped to 8.558.0
+
 ## [0.745.0](https://github.com/vm0-ai/vm0/compare/app-v0.744.0...app-v0.745.0) (2026-08-13)
 
 

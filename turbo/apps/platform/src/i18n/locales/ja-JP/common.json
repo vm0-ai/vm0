@@ -1671,6 +1671,9 @@
       "frequentlyUsed": "頻繁に使用される",
       "icon": "チャットスレッドアイコン",
       "loadingEarlier": "以前のメッセージを読み込んでいます",
+      "locator": {
+        "you": "あなた"
+      },
       "noEmojiFound": "絵文字が見つかりませんでした",
       "notFound": "チャットスレッドが見つかりません",
       "openArtifacts": "オープンアーティファクト",

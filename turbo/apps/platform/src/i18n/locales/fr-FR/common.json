@@ -1712,6 +1712,9 @@
       "frequentlyUsed": "Fréquemment utilisé",
       "icon": "Icône de fil de discussion",
       "loadingEarlier": "Chargement des messages précédents",
+      "locator": {
+        "you": "Vous"
+      },
       "noEmojiFound": "Aucun emoji trouvé",
       "notFound": "Fil de discussion introuvable",
       "openArtifacts": "Ouvrir les artéfacts",

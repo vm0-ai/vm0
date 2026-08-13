@@ -1671,6 +1671,9 @@
       "frequentlyUsed": "Sering digunakan",
       "icon": "Ikon thread chat",
       "loadingEarlier": "Memuat pesan sebelumnya",
+      "locator": {
+        "you": "Anda"
+      },
       "noEmojiFound": "Emoji tidak ditemukan",
       "notFound": "Utas chat tidak ditemukan",
       "openArtifacts": "Buka artefak",
