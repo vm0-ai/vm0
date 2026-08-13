@@ -381,9 +381,13 @@ describe("zero sidebar account menu", () => {
     expect(usagePackCreditRequests).toBe(0);
   });
 
-  it("shows member usage pack credits and opens their credit usage", async () => {
+  it("refreshes member usage pack credits without requesting org billing", async () => {
     mockMemberAccountSidebar();
+    let usagePackCredits = 20_400;
+    let usagePackCreditRequests = 0;
+    let billingRequests = 0;
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingRequests += 1;
       return respond(200, {
         tier: "pro",
         credits: 12_500,
@@ -404,9 +408,10 @@ describe("zero sidebar account menu", () => {
     context.mocks.api(
       zeroBillingUsagePackCreditsContract.get,
       ({ respond }) => {
+        usagePackCreditRequests += 1;
         return respond(200, {
-          totalCredits: 20_400,
-          purchasedCredits: 20_000,
+          totalCredits: usagePackCredits,
+          purchasedCredits: Math.max(0, usagePackCredits - 400),
           bonusCredits: 400,
           creditGrants: [],
         });
@@ -424,6 +429,13 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+    });
+    billingRequests = 0;
     const menu = await openAccountMenu();
     const usagePackItem = await within(menu).findByTestId(
       "account-menu-credit-balance",
@@ -433,7 +445,25 @@ describe("zero sidebar account menu", () => {
     ).toBeInTheDocument();
     expect(within(menu).queryByText("32,900 credits")).toBeNull();
 
-    click(usagePackItem);
+    usagePackCredits = 500;
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const refreshedMenu = await openAccountMenu();
+    const refreshedUsagePackItem = await within(refreshedMenu).findByTestId(
+      "account-menu-credit-balance",
+    );
+    await waitFor(() => {
+      expect(
+        within(refreshedUsagePackItem).getByText("500 credits"),
+      ).toBeInTheDocument();
+    });
+    expect(usagePackCreditRequests).toBe(2);
+    expect(billingRequests).toBe(0);
+
+    click(refreshedUsagePackItem);
 
     await waitFor(() => {
       expect(

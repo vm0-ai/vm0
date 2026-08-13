@@ -19,6 +19,7 @@ import {
   type ConcurrencySubscriptionChangePreviewResponse,
   type CreditPurchasePreviewResponse,
   type MemberUsagePack,
+  type UsagePackCreditsResponse,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core";
@@ -230,6 +231,8 @@ const maybeShowPendingRestoreToast$ = command(
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
+const accountMenuBillingStatusReload$ = state(0);
+const accountMenuUsagePackCreditsReload$ = state(0);
 const completedForegroundBillingCatchUp$ = state<Promise<void> | null>(null);
 const usagePackManagementReload$ = state(0);
 const usagePackMigrationReload$ = state(0);
@@ -367,37 +370,59 @@ export const setConcurrencyTargetQuantity$ = command(
     });
   },
 );
-/**
- * Async computed signal that fetches billing status on first access.
- * Use with useLastLoadable() in views for automatic loading.
- */
-interface BillingStatusResource {
+/** Track whether a ccstate-owned async load is still available for joining. */
+interface TrackedAsyncResource<T> {
   readonly pending: () => boolean;
-  readonly promise: Promise<BillingStatusResponse>;
+  readonly promise: Promise<T>;
 }
 
-const billingStatusResource$ = computed((get): BillingStatusResource => {
-  get(billingReload$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingStatusContract);
+function trackAsyncResource<T>(promise: Promise<T>): TrackedAsyncResource<T> {
   let pending = true;
-  const load = async (): Promise<BillingStatusResponse> => {
-    const result = await accept(client.get(), [200]);
-    return result.body;
-  };
-  const promise = withCleanup(load(), () => {
+  const trackedPromise = withCleanup(promise, () => {
     pending = false;
   });
   return {
     pending: () => {
       return pending;
     },
-    promise,
+    promise: trackedPromise,
   };
-});
+}
+
+const billingStatusResource$ = computed(
+  (get): TrackedAsyncResource<BillingStatusResponse> => {
+    get(billingReload$);
+    get(accountMenuBillingStatusReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingStatusContract);
+    const load = async (): Promise<BillingStatusResponse> => {
+      const result = await accept(client.get(), [200]);
+      return result.body;
+    };
+    return trackAsyncResource(load());
+  },
+);
+
+const usagePackCreditsResource$ = computed(
+  (get): TrackedAsyncResource<UsagePackCreditsResponse> => {
+    get(billingReload$);
+    get(accountMenuUsagePackCreditsReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackCreditsContract);
+    const load = async (): Promise<UsagePackCreditsResponse> => {
+      const result = await accept(client.get(), [200]);
+      return result.body;
+    };
+    return trackAsyncResource(load());
+  },
+);
 
 export const billingStatusAsync$ = computed((get) => {
   return get(billingStatusResource$).promise;
+});
+
+export const usagePackCreditsAsync$ = computed((get) => {
+  return get(usagePackCreditsResource$).promise;
 });
 
 export const usagePackCatalogAsync$ = computed(async (get) => {
@@ -413,14 +438,6 @@ export const usagePackManagementAsync$ = computed(async (get) => {
   const client = createClient(zeroBillingUsagePackManagementContract);
   const result = await accept(client.get(), [200, 404]);
   return result.status === 200 ? result.body : null;
-});
-
-export const usagePackCreditsAsync$ = computed(async (get) => {
-  get(billingReload$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingUsagePackCreditsContract);
-  const result = await accept(client.get(), [200]);
-  return result.body;
 });
 
 export const usagePackMigrationAsync$ = computed(
@@ -447,25 +464,105 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
-export const reloadAccountMenuBillingStatus$ = command(
+const reloadAccountMenuBillingStatusResource$ = command(({ set }) => {
+  set(accountMenuBillingStatusReload$, (value) => {
+    return value + 1;
+  });
+});
+
+const reloadAccountMenuUsagePackCreditsResource$ = command(({ set }) => {
+  set(accountMenuUsagePackCreditsReload$, (value) => {
+    return value + 1;
+  });
+});
+
+interface AccountMenuCreditResources {
+  readonly billing: TrackedAsyncResource<BillingStatusResponse> | null;
+  readonly usagePack: TrackedAsyncResource<UsagePackCreditsResponse> | null;
+}
+
+const readAccountMenuCreditResources$ = command(
+  (
+    { get },
+    options: {
+      readonly isAdmin: boolean;
+      readonly usagePackPlansEnabled: boolean;
+    },
+  ): AccountMenuCreditResources => {
+    return {
+      billing: options.isAdmin ? get(billingStatusResource$) : null,
+      usagePack: options.usagePackPlansEnabled
+        ? get(usagePackCreditsResource$)
+        : null,
+    };
+  },
+);
+
+const reloadSettledAccountMenuCreditResources$ = command(
+  (
+    { set },
+    resources: AccountMenuCreditResources,
+  ): AccountMenuCreditResources => {
+    const billingPending = resources.billing?.pending() ?? false;
+    const usagePackPending = resources.usagePack?.pending() ?? false;
+    if (resources.billing && !billingPending) {
+      set(reloadAccountMenuBillingStatusResource$);
+    }
+    if (resources.usagePack && !usagePackPending) {
+      set(reloadAccountMenuUsagePackCreditsResource$);
+    }
+    return {
+      billing: billingPending ? resources.billing : null,
+      usagePack: usagePackPending ? resources.usagePack : null,
+    };
+  },
+);
+
+const joinAccountMenuCreditResources$ = command(
+  async (
+    { set },
+    resources: AccountMenuCreditResources,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const [billingResult, usagePackResult] = await Promise.all([
+      resources.billing
+        ? settle(resources.billing.promise, signal)
+        : Promise.resolve(null),
+      resources.usagePack
+        ? settle(resources.usagePack.promise, signal)
+        : Promise.resolve(null),
+    ]);
+    signal.throwIfAborted();
+    if (billingResult && !billingResult.ok) {
+      set(reloadAccountMenuBillingStatusResource$);
+    }
+    if (usagePackResult && !usagePackResult.ok) {
+      set(reloadAccountMenuUsagePackCreditsResource$);
+    }
+  },
+);
+
+export const reloadAccountMenuCreditBalances$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
     const foregroundReady = get(foregroundReady$);
-    if (!(await get(isOrgAdmin$))) {
-      signal.throwIfAborted();
+    const isAdmin = await get(isOrgAdmin$);
+    signal.throwIfAborted();
+    const usagePackPlansEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans] ?? false;
+    if (!isAdmin && !usagePackPlansEnabled) {
       return;
     }
-    signal.throwIfAborted();
+    const options = { isAdmin, usagePackPlansEnabled };
+
     if (!foregroundReady.pending) {
-      const resource = get(billingStatusResource$);
-      if (resource.pending()) {
-        const result = await settle(resource.promise, signal);
-        if (!result.ok) {
-          set(reloadBillingStatus$);
-        }
-        return;
-      }
-      set(reloadBillingStatus$);
+      const resources = set(readAccountMenuCreditResources$, options);
+      const pendingResources = set(
+        reloadSettledAccountMenuCreditResources$,
+        resources,
+      );
+      await set(joinAccountMenuCreditResources$, pendingResources, signal);
+      signal.throwIfAborted();
       return;
     }
 
@@ -473,14 +570,16 @@ export const reloadAccountMenuBillingStatus$ = command(
     await settle(foregroundCatchUp, signal);
     signal.throwIfAborted();
     if (get(completedForegroundBillingCatchUp$) !== foregroundCatchUp) {
-      set(reloadBillingStatus$);
+      if (isAdmin) {
+        set(reloadAccountMenuBillingStatusResource$);
+      }
+      if (usagePackPlansEnabled) {
+        set(reloadAccountMenuUsagePackCreditsResource$);
+      }
     }
-    // Join the mounted view's async load, or start it when this menu is the
-    // first billing consumer. A failed foreground load gets one fresh retry.
-    const billingResult = await settle(get(billingStatusAsync$), signal);
-    if (!billingResult.ok) {
-      set(reloadBillingStatus$);
-    }
+    const resources = set(readAccountMenuCreditResources$, options);
+    await set(joinAccountMenuCreditResources$, resources, signal);
+    signal.throwIfAborted();
   },
 );
 
