@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: with-runner-lifecycle-lock.sh <command> [args...]
+
+Acquires the per-runner-namespace lifecycle lock on every configured metal
+host, runs the command while every lock is held, then releases the locks.
+
+Required env:
+  JOB_REF, METAL_HOSTS, METAL_USER
+Optional env:
+  RUNNER_LIFECYCLE_LOCK_TIMEOUT_SECONDS (default: 480)
+USAGE
+}
+
+require_env() {
+  local name=$1
+  if [ -z "${!name:-}" ]; then
+    echo "missing required env: ${name}" >&2
+    exit 2
+  fi
+}
+
+case "${1:-}" in
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+esac
+
+if [ "$#" -eq 0 ]; then
+  usage >&2
+  exit 2
+fi
+
+require_env JOB_REF
+require_env METAL_HOSTS
+require_env METAL_USER
+
+if [[ ! "$METAL_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; then
+  echo "invalid metal runner SSH user: ${METAL_USER}" >&2
+  exit 2
+fi
+if [[ ! "$JOB_REF" =~ ^(pr-[1-9][0-9]*|staging-[0-9a-f]{7,40})$ ]]; then
+  echo "invalid runner lifecycle job ref: ${JOB_REF}" >&2
+  exit 2
+fi
+
+lock_timeout=${RUNNER_LIFECYCLE_LOCK_TIMEOUT_SECONDS:-480}
+if [[ ! "$lock_timeout" =~ ^[1-9][0-9]*$ ]] || [ "$lock_timeout" -gt 3600 ]; then
+  echo "runner lifecycle lock timeout must be an integer from 1 through 3600 seconds" >&2
+  exit 2
+fi
+ready_timeout=$((lock_timeout + 30))
+
+normalized_hosts=$(
+  printf '%s\n' "$METAL_HOSTS" |
+    tr ',' '\n' |
+    sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d' |
+    LC_ALL=C sort -u
+)
+hosts=()
+while IFS= read -r host; do
+  [ -n "$host" ] || continue
+  hosts+=("$host")
+done <<<"$normalized_hosts"
+if [ "${#hosts[@]}" -eq 0 ]; then
+  echo "no metal runner hosts configured" >&2
+  exit 2
+fi
+for host in "${hosts[@]}"; do
+  if [[ ! "$host" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
+    echo "invalid metal runner host: ${host}" >&2
+    exit 2
+  fi
+done
+
+umask 077
+state_dir=$(mktemp -d)
+declare -a lock_fds=()
+declare -a lock_hosts=()
+declare -a lock_pids=()
+command_pid=""
+locks_released=false
+
+close_fd() {
+  local fd=$1
+  if [[ "$fd" =~ ^[0-9]+$ ]]; then
+    exec {fd}>&-
+  fi
+}
+
+terminate_command() {
+  if [[ "$command_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$command_pid" 2>/dev/null; then
+    kill -TERM -- "-${command_pid}" 2>/dev/null || kill -TERM "$command_pid" 2>/dev/null || true
+    wait "$command_pid" 2>/dev/null || true
+  fi
+  command_pid=""
+}
+
+release_locks() {
+  if $locks_released; then
+    return 0
+  fi
+  locks_released=true
+
+  local index status=0
+  for ((index = ${#lock_fds[@]} - 1; index >= 0; index--)); do
+    close_fd "${lock_fds[$index]}"
+  done
+  for index in "${!lock_pids[@]}"; do
+    if ! wait "${lock_pids[$index]}"; then
+      echo "runner lifecycle lock holder exited unexpectedly on ${lock_hosts[$index]}" >&2
+      if [ -s "${state_dir}/${index}.err" ]; then
+        sed 's/^/  /' "${state_dir}/${index}.err" >&2
+      fi
+      status=1
+    fi
+  done
+  rm -rf "$state_dir"
+  return "$status"
+}
+
+# ShellCheck does not model functions invoked through traps.
+# shellcheck disable=SC2317
+cleanup_on_exit() {
+  local status=$?
+  trap - EXIT INT TERM
+  terminate_command
+  if ! release_locks && [ "$status" -eq 0 ]; then
+    status=1
+  fi
+  exit "$status"
+}
+
+trap cleanup_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+for host in "${hosts[@]}"; do
+  index=${#lock_pids[@]}
+  ready_fifo="${state_dir}/${index}.ready"
+  release_fifo="${state_dir}/${index}.release"
+  marker_file="${state_dir}/${index}.marker"
+  error_file="${state_dir}/${index}.err"
+  mkfifo "$ready_fifo" "$release_fifo"
+  exec {ready_fd}<>"$ready_fifo"
+  exec {release_fd}<>"$release_fifo"
+
+  lock_path="/var/lock/vm0-runner-lifecycle-${JOB_REF}.lock"
+  remote="${METAL_USER}@${host}"
+  remote_command="exec sudo flock --exclusive --timeout ${lock_timeout} ${lock_path} bash -c 'printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED; cat >/dev/null'"
+  # The validated host, timeout, and lock path select the remote lock. The
+  # command itself is static and receives no untrusted shell fragments.
+  # shellcheck disable=SC2029
+  (
+    for inherited_fd in "${lock_fds[@]}"; do
+      close_fd "$inherited_fd"
+    done
+    close_fd "$ready_fd"
+    close_fd "$release_fd"
+    exec ssh "$remote" "$remote_command"
+  ) <"$release_fifo" >"$ready_fifo" 2>"$error_file" &
+  ssh_pid=$!
+
+  (
+    for inherited_fd in "${lock_fds[@]}"; do
+      close_fd "$inherited_fd"
+    done
+    close_fd "$release_fd"
+    exec timeout "${ready_timeout}s" head -n 1
+  ) <&"$ready_fd" >"$marker_file" &
+  ready_pid=$!
+  wait_candidates=("$ready_pid" "$ssh_pid" "${lock_pids[@]}")
+  completed_pid=""
+  set +e
+  wait -n -p completed_pid "${wait_candidates[@]}"
+  completed_status=$?
+  set -e
+
+  if [ "$completed_pid" != "$ready_pid" ] || [ "$completed_status" -ne 0 ]; then
+    kill "$ready_pid" 2>/dev/null || true
+    wait "$ready_pid" 2>/dev/null || true
+    close_fd "$ready_fd"
+    close_fd "$release_fd"
+    kill "$ssh_pid" 2>/dev/null || true
+    wait "$ssh_pid" 2>/dev/null || true
+    echo "failed to acquire runner lifecycle lock on ${host}" >&2
+    if [ -s "$error_file" ]; then
+      sed 's/^/  /' "$error_file" >&2
+    fi
+    exit 1
+  fi
+
+  close_fd "$ready_fd"
+  marker=$(cat "$marker_file")
+  if [ "$marker" != "VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED" ] || ! kill -0 "$ssh_pid" 2>/dev/null; then
+    close_fd "$release_fd"
+    kill "$ssh_pid" 2>/dev/null || true
+    wait "$ssh_pid" 2>/dev/null || true
+    echo "runner lifecycle lock on ${host} returned an invalid acquisition marker" >&2
+    if [ -s "$error_file" ]; then
+      sed 's/^/  /' "$error_file" >&2
+    fi
+    exit 1
+  fi
+
+  rm -f "$ready_fifo" "$release_fifo" "$marker_file"
+  lock_fds+=("$release_fd")
+  lock_hosts+=("$host")
+  lock_pids+=("$ssh_pid")
+  echo "Acquired runner lifecycle lock for ${JOB_REF} on ${host}"
+done
+
+(
+  for inherited_fd in "${lock_fds[@]}"; do
+    close_fd "$inherited_fd"
+  done
+  exec setsid --wait "$@"
+) &
+command_pid=$!
+wait_candidates=("$command_pid" "${lock_pids[@]}")
+completed_pid=""
+set +e
+wait -n -p completed_pid "${wait_candidates[@]}"
+completed_status=$?
+set -e
+
+if [ "$completed_pid" = "$command_pid" ]; then
+  command_pid=""
+  command_status=$completed_status
+else
+  echo "runner lifecycle lock was lost while the protected command was running" >&2
+  for index in "${!lock_pids[@]}"; do
+    if [ "${lock_pids[$index]}" = "$completed_pid" ] && [ -s "${state_dir}/${index}.err" ]; then
+      sed 's/^/  /' "${state_dir}/${index}.err" >&2
+    fi
+  done
+  terminate_command
+  command_status=1
+fi
+
+release_status=0
+release_locks || release_status=$?
+trap - EXIT INT TERM
+if [ "$command_status" -ne 0 ]; then
+  exit "$command_status"
+fi
+exit "$release_status"

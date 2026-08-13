@@ -87,18 +87,17 @@ jobs:
       - name: Cleanup turbo runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
-          cd ansible
           JOB_REF="pr-${PR_NUMBER}"
-          if ! ansible-playbook \
-            -i "${METAL_HOSTS}," \
-            playbooks/cleanup-turbo-runner.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -e "job_ref=${JOB_REF}" \
-            -v; then
+          export JOB_REF
+          if ! "$GITHUB_WORKSPACE/.github/scripts/with-runner-lifecycle-lock.sh" \
+            "$GITHUB_WORKSPACE/.github/scripts/cleanup-turbo-runner-namespace.sh"; then
             echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
           fi
 

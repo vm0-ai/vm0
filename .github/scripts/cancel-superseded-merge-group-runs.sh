@@ -19,6 +19,14 @@ if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]; then
 fi
 
 owner_scope=${RUNNER_OWNER_SCOPE:-superseded}
+assert_idle=${RUNNER_OWNER_ASSERT_IDLE:-false}
+case "$assert_idle" in
+  true|false) ;;
+  *)
+    echo "invalid RUNNER_OWNER_ASSERT_IDLE: ${assert_idle}" >&2
+    exit 2
+    ;;
+esac
 case "$owner_scope" in
   superseded)
     require_env GITHUB_SHA
@@ -51,6 +59,10 @@ case "$owner_scope" in
     exit 2
     ;;
 esac
+if [ "$assert_idle" = "true" ] && [ "$owner_scope" != "closed-pr-cleanup" ]; then
+  echo "RUNNER_OWNER_ASSERT_IDLE is only valid for closed-PR cleanup" >&2
+  exit 2
+fi
 
 if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then
   echo "invalid PR number: ${pr_number}" >&2
@@ -157,6 +169,12 @@ done
 if [ -z "$selected_runs" ]; then
   echo "No ${selected_runs_label} found for PR #${pr_number}."
   exit 0
+fi
+
+if [ "$assert_idle" = "true" ]; then
+  echo "::error::A runner owner appeared while closed-PR cleanup held the namespace lifecycle lock:" >&2
+  printf '%s\n' "$selected_runs" >&2
+  exit 1
 fi
 
 if $cancel_selected_runs; then

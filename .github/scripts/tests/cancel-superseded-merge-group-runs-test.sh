@@ -197,6 +197,20 @@ grep -q "Waiting for active runner-owner CI runs" <<<"$output" ||
 
 : >"${tmp_dir}/cancel.log"
 : >"${tmp_dir}/sleep.log"
+if run_closed_pr_cleanup RUNNER_OWNER_ASSERT_IDLE=true \
+  >"${tmp_dir}/assert-idle.out" 2>"${tmp_dir}/assert-idle.err"; then
+  fail "locked cleanup must abort when a late owner appears"
+fi
+grep -q "appeared while closed-PR cleanup held the namespace lifecycle lock" \
+  "${tmp_dir}/assert-idle.err" ||
+  fail "locked cleanup must explain the late-owner handoff"
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "locked cleanup must not cancel the late owner"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "locked cleanup must release its host lock instead of awaiting the late owner"
+
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
 rm -f "${tmp_dir}/runs-released"
 if run_closed_pr_cleanup \
   MOCK_DELAY_COMPLETION=1 \

@@ -5,8 +5,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cleanup_workflow="${repo_root}/.github/workflows/cleanup.yml"
 stale_workflow="${repo_root}/.github/workflows/cleanup-stale.yml"
 turbo_workflow="${repo_root}/.github/workflows/turbo.yml"
+namespace_cleanup="${repo_root}/.github/scripts/cleanup-turbo-runner-namespace.sh"
 
-ruby -ryaml - "$cleanup_workflow" "$stale_workflow" "$turbo_workflow" <<'RUBY'
+ruby -ryaml - "$cleanup_workflow" "$stale_workflow" "$turbo_workflow" "$namespace_cleanup" <<'RUBY'
 def named_step(job, name)
   job.fetch("steps").find { |step| step["name"] == name }
 end
@@ -45,6 +46,18 @@ unless cleanup_names.index("Wait for active CI owners before runner cleanup") <
     cleanup_names.index("Cleanup turbo runner on all metal hosts")
   raise "ownership handoff must complete before shared runner resources are deleted"
 end
+cleanup_turbo = named_step(cleanup, "Cleanup turbo runner on all metal hosts")
+cleanup_turbo_script = cleanup_turbo.fetch("run")
+cleanup_lock_index = cleanup_turbo_script.index(".github/scripts/with-runner-lifecycle-lock.sh")
+cleanup_action_index = cleanup_turbo_script.index(".github/scripts/cleanup-turbo-runner-namespace.sh")
+unless cleanup_lock_index && cleanup_action_index && cleanup_lock_index < cleanup_action_index &&
+    cleanup_turbo_script.include?('JOB_REF="pr-${PR_NUMBER}"') &&
+    cleanup_turbo_script.include?("export JOB_REF") &&
+    cleanup_turbo.dig("env", "GH_TOKEN") == "${{ github.token }}" &&
+    cleanup_turbo.dig("env", "GITHUB_REPOSITORY") == "${{ github.repository }}" &&
+    cleanup_turbo.dig("env", "GITHUB_RUN_ID") == "${{ github.run_id }}"
+  raise "immediate cleanup must hold the namespace lifecycle lock through deletion"
+end
 
 stale = YAML.load_file(ARGV.fetch(1)).fetch("jobs").fetch("cleanup-metal-runners")
 unless stale.fetch("permissions") == {
@@ -69,10 +82,23 @@ end
 stale_script = stale_cleanup.fetch("run")
 stale_dry_run_index = stale_script.index('if [ "$DRY_RUN" = "true" ]')
 stale_handoff_index = stale_script.index("RUNNER_OWNER_SCOPE=closed-pr-cleanup")
-stale_delete_index = stale_script.index("playbooks/cleanup-turbo-runner.yml")
-unless stale_dry_run_index && stale_handoff_index && stale_delete_index &&
-    stale_dry_run_index < stale_handoff_index && stale_handoff_index < stale_delete_index
-  raise "stale cleanup must take ownership before deleting each PR runner namespace"
+stale_lock_index = stale_script.index(".github/scripts/with-runner-lifecycle-lock.sh")
+stale_action_index = stale_script.index(".github/scripts/cleanup-turbo-runner-namespace.sh")
+unless stale_dry_run_index && stale_handoff_index && stale_lock_index && stale_action_index &&
+    stale_dry_run_index < stale_handoff_index && stale_handoff_index < stale_lock_index &&
+    stale_lock_index < stale_action_index &&
+    stale_script.include?('JOB_REF="pr-${PR_NUMBER}"') && stale_script.include?("export JOB_REF")
+  raise "stale cleanup must await discovered owners and hold the namespace lock through deletion"
+end
+
+namespace_cleanup = File.read(ARGV.fetch(3))
+locked_probe_index = namespace_cleanup.index("RUNNER_OWNER_ASSERT_IDLE=true")
+barrier_index = namespace_cleanup.index("cancel-superseded-merge-group-runs.sh")
+delete_index = namespace_cleanup.index("playbooks/cleanup-turbo-runner.yml")
+unless locked_probe_index && barrier_index && delete_index &&
+    locked_probe_index < barrier_index && barrier_index < delete_index &&
+    namespace_cleanup.include?("RUNNER_OWNER_SCOPE=closed-pr-cleanup")
+  raise "locked cleanup must recheck stabilized ownership immediately before deletion"
 end
 
 turbo = YAML.load_file(ARGV.fetch(2)).fetch("jobs")
@@ -86,55 +112,20 @@ unless start.fetch("permissions") == {"actions" => "read", "contents" => "read"}
   raise "runner recovery must have read-only workflow permissions"
 end
 
-check = named_step(start, "Check runner binaries against image manifests")
-raise "missing runner binary ownership check" unless check
-unless check["id"] == "runner-binary-check" &&
-    check.dig("env", "BIN_DIR") == "${{ needs.deploy-runner-prepare.outputs.bin-dir }}" &&
-    check.dig("env", "JOB_REF") == "${{ needs.prepare.outputs.runner-image-job-ref }}" &&
-    check.dig("env", "RUNNER_SHA_MAP") == "${{ needs.deploy-runner-prepare.outputs.runner-sha-map }}" &&
-    check["run"] == ".github/scripts/reconcile-runner-binary-groups.sh check"
-  raise "runner binary check must compare every host with its producer manifest"
-end
-
-resolve = named_step(start, "Resolve validated runner binary recovery")
-raise "missing validated runner binary recovery" unless resolve
-unless resolve["id"] == "runner-binary-recovery" &&
-    resolve["if"] == "steps.runner-binary-check.outputs.recovery-needed == 'true'" &&
-    resolve.dig("env", "CURRENT_EVENT") == "${{ github.event_name }}" &&
-    resolve.dig("env", "CURRENT_RUN_ID") == "${{ github.run_id }}" &&
-    resolve.dig("env", "RESOLVE_OUTPUT_DIR") == "runner-binary-recovery" &&
-    resolve.dig("env", "RUNNER_HOST_GROUPS_MATRIX") ==
-      "${{ steps.runner-binary-check.outputs.runner-host-groups-matrix }}" &&
-    resolve.fetch("run").include?("export CURRENT_PR_NUMBER=$current_pr_number") &&
-    resolve.fetch("run").include?(".github/scripts/runner-binary-cache-plan.sh") &&
-    !resolve.key?("continue-on-error")
-  raise "runner binary recovery must use the trusted cache plan only when needed"
-end
-
-restore = named_step(start, "Restore validated runner binaries")
-raise "missing validated runner binary restore" unless restore
-unless restore["if"] == "steps.runner-binary-check.outputs.recovery-needed == 'true'" &&
-    restore.dig("env", "RECOVERY_DIR") == "runner-binary-recovery" &&
-    restore.dig("env", "RECOVERY_MISS_COUNT") ==
-      "${{ steps.runner-binary-recovery.outputs.miss-count }}" &&
-    restore.dig("env", "RUNNER_SHA_MAP") ==
+locked_start = named_step(start, "Reconcile and start runner under lifecycle lock")
+raise "missing locked runner reconciliation and start" unless locked_start
+unless locked_start.dig("env", "AWS_METAL_RUNNER_HOSTS") ==
+      "${{ secrets.AWS_METAL_RUNNER_HOSTS }}" &&
+    locked_start.dig("env", "BIN_DIR") == "${{ needs.deploy-runner-prepare.outputs.bin-dir }}" &&
+    locked_start.dig("env", "CURRENT_EVENT") == "${{ github.event_name }}" &&
+    locked_start.dig("env", "JOB_REF") == "${{ needs.prepare.outputs.runner-image-job-ref }}" &&
+    locked_start.dig("env", "METAL_HOSTS") == "${{ secrets.AWS_METAL_RUNNER_HOSTS }}" &&
+    locked_start.dig("env", "RUNNER_SHA_MAP") ==
       "${{ needs.deploy-runner-prepare.outputs.runner-sha-map }}" &&
-    restore.fetch("run").include?('if [ "$RECOVERY_MISS_COUNT" != "0" ]') &&
-    restore.fetch("run").include?(".github/scripts/reconcile-runner-binary-groups.sh restore") &&
-    !restore.key?("continue-on-error")
-  raise "runner restore must reject cache misses and manifest mismatches"
-end
-
-start_names = start.fetch("steps").map { |step| step["name"] }
-ordered_steps = [
-  "Check runner binaries against image manifests",
-  "Resolve validated runner binary recovery",
-  "Restore validated runner binaries",
-  "Rebuild config and start runner service on all hosts",
-]
-indices = ordered_steps.map { |name| start_names.index(name) }
-unless indices.none?(&:nil?) && indices.each_cons(2).all? { |left, right| left < right }
-  raise "late-approved Turbo runs must reconcile validated binaries before runner start"
+    locked_start.fetch("run").include?(".github/scripts/with-runner-lifecycle-lock.sh") &&
+    locked_start.fetch("run").include?(".github/scripts/reconcile-and-start-runner-groups.sh") &&
+    !locked_start.key?("continue-on-error")
+  raise "runner reconciliation and readiness must share cleanup's namespace lifecycle lock"
 end
 RUBY
 

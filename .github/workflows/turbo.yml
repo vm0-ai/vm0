@@ -2333,305 +2333,39 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Check runner binaries against image manifests
-        id: runner-binary-check
-        env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-          JOB_REF: ${{ needs.prepare.outputs.runner-image-job-ref }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RUNNER_SHA_MAP: ${{ needs.deploy-runner-prepare.outputs.runner-sha-map }}
-        run: .github/scripts/reconcile-runner-binary-groups.sh check
-
-      - name: Resolve validated runner binary recovery
-        id: runner-binary-recovery
-        if: steps.runner-binary-check.outputs.recovery-needed == 'true'
+      # The same host-local lock is used by closed-PR cleanup. It spans the
+      # manifest check, any validated recovery, and service readiness so a late
+      # approval cannot turn the cleanup handoff into a check-then-act race.
+      - name: Reconcile and start runner under lifecycle lock
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_DEFAULT_REGION: auto
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           CURRENT_EVENT: ${{ github.event_name }}
           CURRENT_PR_HEAD_REF: ${{ github.head_ref || '' }}
           CURRENT_RUN_ID: ${{ github.run_id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
           JOB_REF: ${{ needs.prepare.outputs.runner-image-job-ref }}
-          REPO: ${{ github.repository }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-          RESOLVE_OUTPUT_DIR: runner-binary-recovery
-          RUNNER_HOST_GROUPS_MATRIX: ${{ steps.runner-binary-check.outputs.runner-host-groups-matrix }}
-        run: |
-          set -euo pipefail
-          current_pr_number=""
-          case "$CURRENT_EVENT" in
-            pull_request|merge_group)
-              if [[ ! "$JOB_REF" =~ ^pr-([1-9][0-9]*)$ ]]; then
-                echo "::error::Cannot resolve the runner owner PR from ${JOB_REF}"
-                exit 2
-              fi
-              current_pr_number=${BASH_REMATCH[1]}
-              ;;
-            push) ;;
-            *)
-              echo "::error::Unsupported runner recovery event: ${CURRENT_EVENT}"
-              exit 2
-              ;;
-          esac
-          export CURRENT_PR_NUMBER=$current_pr_number
-          .github/scripts/runner-binary-cache-plan.sh
-
-      - name: Restore validated runner binaries
-        if: steps.runner-binary-check.outputs.recovery-needed == 'true'
-        env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-          JOB_REF: ${{ needs.prepare.outputs.runner-image-job-ref }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RECOVERY_DIR: runner-binary-recovery
-          RECOVERY_MISS_COUNT: ${{ steps.runner-binary-recovery.outputs.miss-count }}
-          RUNNER_SHA_MAP: ${{ needs.deploy-runner-prepare.outputs.runner-sha-map }}
-        run: |
-          set -euo pipefail
-          if [ "$RECOVERY_MISS_COUNT" != "0" ]; then
-            echo "::error::Validated runner binary recovery was unavailable for ${RECOVERY_MISS_COUNT} target(s)"
-            exit 1
-          fi
-          .github/scripts/reconcile-runner-binary-groups.sh restore
-
-      # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
-      - name: Rebuild config and start runner service on all hosts
-        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          RUNNER_SERVICE_REF: ${{ needs.prepare.outputs.job-ref }}
-          RUNNER_GROUP: ${{ format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
-          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          REPO: ${{ github.repository }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
-          SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          RUNNER_GROUP: ${{ format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
+          RUNNER_SERVICE_REF: ${{ needs.prepare.outputs.job-ref }}
+          RUNNER_SHA_MAP: ${{ needs.deploy-runner-prepare.outputs.runner-sha-map }}
+          SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          set -euo pipefail
-
-          read_host_capacity() {
-            local HOST=$1
-            local RUNNER_NAME=$2
-            local REMOTE="${METAL_USER}@${HOST}"
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service wait-running --name ${RUNNER_NAME} --timeout-secs 120"
-          }
-
-          start_on_host() {
-            set -euo pipefail
-
-            local HOST=$1
-            local HOST_INDEX=$2
-            local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
-            local RUNNER_DIRNAME="${RUNNER_DIR##*/}"
-            local REMOTE="${METAL_USER}@${HOST}"
-            local MC
-            echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
-
-            # Look up per-host hashes
-            local ROOTFS_HASH SNAPSHOT_HASH
-            ROOTFS_HASH=$(echo "$ROOTFS_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
-            SNAPSHOT_HASH=$(echo "$SNAPSHOT_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
-            if [ -z "$ROOTFS_HASH" ] || [ "$ROOTFS_HASH" = "null" ] \
-                || [ -z "$SNAPSHOT_HASH" ] || [ "$SNAPSHOT_HASH" = "null" ]; then
-              echo "::error::No rootfs/snapshot hash found for ${HOST} in hash map"
-              return 1
-            fi
-
-            # Guard the narrow interval after validated reconciliation. A
-            # closed-PR cleanup that still owns this path must fail this start.
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "test -x ${BIN_DIR}/runner"; then
-              echo "::error::Runner binary disappeared on ${HOST} after validated reconciliation."
-              return 1
-            fi
-
-            # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
-              --profile vm0/default \
-              --rootfs-hash ${ROOTFS_HASH} \
-              --snapshot-hash ${SNAPSHOT_HASH} \
-              --name ${RUNNER_NAME} \
-              --group ${RUNNER_GROUP} \
-              --runner-dirname ${RUNNER_DIRNAME} \
-              --concurrency-factor 1.5 \
-              --api-url ${RUNNER_API_URL} \
-              --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
-
-            # Stop any existing service from a previous run (e.g., re-run after test failure).
-            # Use cleanup semantics so a stale or wedged unit cannot hang this start path.
-            # shellcheck disable=SC2029
-            timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start"
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
-
-            # Start as systemd transient service
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
-              --name ${RUNNER_NAME} \
-              --config ${RUNNER_DIR}/runner.yaml \
-              --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
-              --env USE_MOCK_CLAUDE=true \
-              --env USE_MOCK_CODEX=true"
-
-            # Wait for the runner to become job-admitting before health checks.
-            # systemd-run returns once the process starts, but startup
-            # readiness can keep status.json at mode=starting for longer.
-            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
-              return 1
-            fi
-            echo "Runner ready on ${HOST}: max_concurrent=${MC}"
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
-            echo "=== Runner started on ${HOST} ==="
-          }
-
-          LOG_DIR=$(mktemp -d)
-          HOSTS=()
-          PIDS=()
-          PGIDS=()
-          RUNNER_START_SUCCEEDED=0
-          RUNNER_START_SIGNAL_EXIT=0
-          RUNNER_START_RECORDING=0
-
-          cleanup_logs() {
-            rm -rf "$LOG_DIR"
-          }
-
-          request_runner_start_exit() {
-            RUNNER_START_SIGNAL_EXIT=$1
-            if [ "$RUNNER_START_RECORDING" -ne 1 ]; then
-              exit "$RUNNER_START_SIGNAL_EXIT"
-            fi
-          }
-
-          check_runner_start_exit() {
-            if [ "$RUNNER_START_SIGNAL_EXIT" -ne 0 ]; then
-              exit "$RUNNER_START_SIGNAL_EXIT"
-            fi
-          }
-
-          process_group_for_pid() {
-            local PID=$1
-            ps -o pgid= -p "$PID" 2>/dev/null | tr -d ' '
-          }
-
-          stop_background_start_jobs() {
-            local JOB_PIDS=()
-            local START_PGIDS=()
-            local WAIT_PIDS=()
-            local CURRENT_PGID
-            CURRENT_PGID=$(process_group_for_pid "$$" || true)
-            for PGID in "${PGIDS[@]}"; do
-              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
-                START_PGIDS+=("$PGID")
-              fi
-            done
-            for PID in $(jobs -pr); do
-              JOB_PIDS+=("$PID")
-              WAIT_PIDS+=("$PID")
-            done
-            for PID in "${PIDS[@]}"; do
-              WAIT_PIDS+=("$PID")
-            done
-            for PID in "${JOB_PIDS[@]}"; do
-              local PGID
-              PGID=$(process_group_for_pid "$PID" || true)
-              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
-                START_PGIDS+=("$PGID")
-              else
-                kill -TERM "$PID" 2>/dev/null || true
-              fi
-            done
-            for PGID in "${START_PGIDS[@]}"; do
-              kill -TERM -- "-$PGID" 2>/dev/null || true
-            done
-            for PGID in "${START_PGIDS[@]}"; do
-              kill -KILL -- "-$PGID" 2>/dev/null || true
-            done
-            for PID in "${JOB_PIDS[@]}"; do
-              kill -KILL "$PID" 2>/dev/null || true
-            done
-            for PID in "${WAIT_PIDS[@]}"; do
-              wait "$PID" 2>/dev/null || true
-            done
-          }
-
-          stop_started_hosts() {
-            local STOP_PIDS=()
-            local HOST_INDEX=0
-            for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-              HOST_INDEX=$((HOST_INDEX + 1))
-              local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
-              local REMOTE="${METAL_USER}@${HOST}"
-              echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
-              (
-                # The runner cleanup command has per-action deadlines; keep the
-                # outer SSH watchdog longer than the combined worst-case budget.
-                # shellcheck disable=SC2029
-                timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
-              ) &
-              STOP_PIDS+=($!)
-            done
-            for PID in "${STOP_PIDS[@]}"; do
-              wait "$PID" 2>/dev/null || true
-            done
-          }
-
-          cleanup_runner_start() {
-            local EXIT_CODE=$?
-            trap - EXIT
-            trap '' INT TERM
-            if [ "$RUNNER_START_SUCCEEDED" -ne 1 ]; then
-              stop_background_start_jobs
-              stop_started_hosts
-            fi
-            cleanup_logs
-            exit "$EXIT_CODE"
-          }
-
-          trap cleanup_runner_start EXIT
-          trap 'request_runner_start_exit 130' INT
-          trap 'request_runner_start_exit 143' TERM
-          export -f read_host_capacity start_on_host
-          HOST_INDEX=0
-          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            HOST_INDEX=$((HOST_INDEX + 1))
-            HOSTS+=("$HOST")
-            RUNNER_START_RECORDING=1
-            setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
-            PIDS+=($!)
-            PGIDS+=($!)
-            RUNNER_START_RECORDING=0
-            check_runner_start_exit
-          done
-
-          FAILED=0
-          for i in "${!PIDS[@]}"; do
-            if ! wait "${PIDS[$i]}"; then
-              check_runner_start_exit
-              FAILED=1
-              echo "::error::Runner start failed on ${HOSTS[$i]}"
-            fi
-            check_runner_start_exit
-            echo "=== ${HOSTS[$i]} ==="
-            cat "${LOG_DIR}/${HOSTS[$i]}.log"
-            check_runner_start_exit
-          done
-          rm -rf "$LOG_DIR"
-          if [ "$FAILED" -ne 0 ]; then
-            exit 1
-          fi
-
-          RUNNER_START_SUCCEEDED=1
+          .github/scripts/with-runner-lifecycle-lock.sh \
+            .github/scripts/reconcile-and-start-runner-groups.sh
 
   # Prepare the runner identities and API credentials once, then fan runner
   # coverage across no more than twelve non-empty file-balanced shards.

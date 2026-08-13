@@ -235,6 +235,7 @@ jobs:
             .github/scripts/cancel-superseded-merge-group-runs.sh \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
+            .github/scripts/cleanup-turbo-runner-namespace.sh \
             .github/scripts/cloudflare-ssh-command.sh \
             .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
@@ -242,6 +243,7 @@ jobs:
             .github/scripts/download-verified.sh \
             .github/scripts/fetch-okou-desktop-artifact.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
+            .github/scripts/reconcile-and-start-runner-groups.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
             .github/scripts/resolve-desktop-version-change.sh \
             .github/scripts/run-semgrep.sh \
@@ -250,6 +252,7 @@ jobs:
             .github/scripts/validate-desktop-migration-policy.sh \
             .github/scripts/verify-okou-cli-artifact.sh \
             .github/scripts/verify-okou-desktop-artifact.sh \
+            .github/scripts/with-runner-lifecycle-lock.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/audit-okou-cli-cutover-test.sh \
             .github/scripts/tests/cancel-superseded-merge-group-runs-test.sh \
@@ -272,6 +275,7 @@ jobs:
             .github/scripts/tests/resolve-desktop-version-change-test.sh \
             .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/reconcile-runner-binary-groups-test.sh \
+            .github/scripts/tests/runner-lifecycle-lock-test.sh \
             .github/scripts/tests/runner-lifecycle-ownership-workflow-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
