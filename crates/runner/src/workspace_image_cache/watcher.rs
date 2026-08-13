@@ -123,6 +123,37 @@ impl WorkspaceCacheWatcher {
         Ok(watcher)
     }
 
+    /// Connects entries accepted by the subscribe-before-scan startup pass to
+    /// watcher state before the loaded snapshot can be published. Entries that
+    /// were not already relevant when the watcher subscribed require one more
+    /// authoritative scan after their entry watches are installed.
+    pub(crate) async fn reconcile_initial_relevant_entries(
+        &mut self,
+        cache_keys: &BTreeSet<String>,
+    ) -> RunnerResult<bool> {
+        let mut committed_cache_keys = BTreeSet::new();
+        let mut requires_refresh = false;
+        for cache_key in cache_keys {
+            match self.entry_watch_state(cache_key) {
+                Some(EntryWatchState::Relevant) => {}
+                Some(EntryWatchState::Unclassified) => {
+                    requires_refresh = true;
+                    self.classify_metadata_commit(cache_key, &mut committed_cache_keys)
+                        .await;
+                }
+                None => {
+                    requires_refresh = true;
+                    self.add_entry_watch(cache_key.clone(), &mut committed_cache_keys)
+                        .await?;
+                }
+            }
+        }
+        Ok(requires_refresh
+            || cache_keys.iter().any(|cache_key| {
+                self.entry_watch_state(cache_key) != Some(EntryWatchState::Relevant)
+            }))
+    }
+
     /// Waits for and coalesces all currently readable relevant mutations.
     pub(crate) async fn next_change(&mut self) -> RunnerResult<WorkspaceCacheChange> {
         loop {

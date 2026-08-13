@@ -357,7 +357,7 @@ async fn initial_scan_returns_committed_entry_skipped_for_locking() {
         .await
         .unwrap();
 
-    let (states, locked_commit_keys) = cache
+    let (states, locked_commit_keys, _) = cache
         .initial_held_workspace_states_for_profiles(&configured)
         .await;
 
@@ -395,7 +395,7 @@ async fn initial_scan_ignores_locked_foreign_scope_commit() {
         .await
         .unwrap();
 
-    let (states, locked_commit_keys) = observer
+    let (states, locked_commit_keys, _) = observer
         .initial_held_workspace_states_for_profiles(&configured)
         .await;
 

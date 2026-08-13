@@ -599,15 +599,36 @@ impl WorkspaceImageCache {
             .states
     }
 
-    /// Performs the startup scan and returns committed entries skipped for locking.
+    /// Performs the startup scan and returns the loaded and locked cache keys
+    /// needed to connect subscribe-before-scan watcher state.
     pub(crate) async fn initial_held_workspace_states_for_profiles(
         &self,
         profile_image_sizes_bytes: &BTreeMap<&str, u64>,
-    ) -> (Vec<HeldWorkspaceState>, BTreeSet<String>) {
+    ) -> (Vec<HeldWorkspaceState>, BTreeSet<String>, BTreeSet<String>) {
         let scan = self
             .held_workspace_states_matching_profiles(Some(profile_image_sizes_bytes), None, true)
             .await;
-        (scan.states, scan.locked_commit_keys)
+        // The heartbeat projection omits cache keys, but startup needs the
+        // deterministic keys for the watcher handoff before publishing it.
+        let loaded_cache_keys = scan
+            .states
+            .iter()
+            .flat_map(|state| {
+                state.workspace_caches.iter().filter_map(|workspace| {
+                    profile_image_sizes_bytes
+                        .get(workspace.profile.as_str())
+                        .map(|image_size_bytes| {
+                            self.scoped_cache_key(
+                                &workspace.profile,
+                                &state.reuse_key,
+                                CANONICAL_WORKING_DIR,
+                                *image_size_bytes,
+                            )
+                        })
+                })
+            })
+            .collect();
+        (scan.states, scan.locked_commit_keys, loaded_cache_keys)
     }
 
     /// Waits for metadata-commit entry locks before performing the complete scan.

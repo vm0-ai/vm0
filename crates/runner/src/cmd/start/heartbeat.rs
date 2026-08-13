@@ -300,6 +300,7 @@ pub(super) struct WorkspaceCacheRefreshOutcome {
 pub(super) struct InitialWorkspaceCacheRefreshOutcome {
     pub(super) states: Vec<HeldWorkspaceState>,
     pub(super) locked_commit_keys: BTreeSet<String>,
+    pub(super) loaded_cache_keys: BTreeSet<String>,
 }
 
 impl WorkspaceCacheStateSnapshot {
@@ -517,16 +518,18 @@ pub(super) async fn refresh_initial_workspace_cache_snapshot(
         return InitialWorkspaceCacheRefreshOutcome {
             states: outcome.states,
             locked_commit_keys: BTreeSet::new(),
+            loaded_cache_keys: BTreeSet::new(),
         };
     };
     let profile_image_sizes_bytes = profile_image_sizes_bytes(profiles);
-    let (states, locked_commit_keys) = cache
+    let (states, locked_commit_keys, loaded_cache_keys) = cache
         .initial_held_workspace_states_for_profiles(&profile_image_sizes_bytes)
         .await;
     let outcome = snapshot.finish_workspace_cache_refresh(refresh, states);
     InitialWorkspaceCacheRefreshOutcome {
         states: outcome.states,
         locked_commit_keys,
+        loaded_cache_keys,
     }
 }
 

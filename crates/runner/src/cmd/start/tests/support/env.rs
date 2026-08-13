@@ -296,6 +296,8 @@ fn build_mock_run_config_with_runtime(
         test_hooks: RunTestHooks {
             outer_job_panic: None,
             test_observer: start_observer.clone(),
+            before_initial_workspace_cache_scan: None,
+            after_initial_workspace_cache_scan: None,
         },
     };
 

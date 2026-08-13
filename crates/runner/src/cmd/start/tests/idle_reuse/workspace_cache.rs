@@ -250,6 +250,86 @@ async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tic
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test]
+async fn startup_cache_invalidated_after_initial_scan_is_not_advertised() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let home = config.paths.home.clone();
+    let group = config.runner.group.clone();
+    let workspace_cache = WorkspaceImageCache::shared(runner_paths.clone(), &home, &group);
+    let reuse_key = "thread:startup-cache-invalidation";
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
+        &group,
+        "vm0/default",
+        reuse_key,
+        api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
+        16 * 1024 * 1024,
+    );
+    let cache_entry = home.workspace_image_cache_dir().join(cache_key);
+    tokio::fs::create_dir_all(&cache_entry).await.unwrap();
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+    let before_scan = StartLoopTestGate::default();
+    let after_scan = StartLoopTestGate::default();
+    config.test_hooks.before_initial_workspace_cache_scan = Some(before_scan.clone());
+    config.test_hooks.after_initial_workspace_cache_scan = Some(after_scan.clone());
+
+    let run_handle = tokio::spawn(run(config));
+    before_scan
+        .wait_entered(
+            Duration::from_secs(5),
+            "workspace-cache watcher setup before the initial scan",
+        )
+        .await;
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        reuse_key,
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    before_scan.release();
+
+    after_scan
+        .wait_entered(
+            Duration::from_secs(5),
+            "initial workspace-cache scan before watcher reconciliation",
+        )
+        .await;
+    tokio::fs::remove_file(cache_entry.join("metadata.json"))
+        .await
+        .unwrap();
+    after_scan.release();
+
+    assert!(
+        env.handle
+            .wait_heartbeat_past(0, Duration::from_secs(5))
+            .await,
+        "startup reconciliation should publish the refreshed cache state",
+    );
+    let first_heartbeat = env
+        .handle
+        .heartbeats
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .first()
+        .cloned()
+        .unwrap();
+    assert!(
+        first_heartbeat
+            .held_workspace_states
+            .iter()
+            .all(|state| state.reuse_key != reuse_key),
+        "the first heartbeat must not advertise a cache invalidated after the initial scan",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
     let mut profiles = test_profiles();

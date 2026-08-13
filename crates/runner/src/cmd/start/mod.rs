@@ -843,6 +843,8 @@ async fn run_start_with_home(
         test_hooks: RunTestHooks {
             outer_job_panic: None,
             test_observer: StartLoopTestObserver::default(),
+            before_initial_workspace_cache_scan: None,
+            after_initial_workspace_cache_scan: None,
         },
     };
 
@@ -942,6 +944,8 @@ struct OrphanReapState {
 struct RunTestHooks {
     outer_job_panic: Option<OuterJobPanicPoint>,
     test_observer: StartLoopTestObserver,
+    before_initial_workspace_cache_scan: Option<StartLoopTestGate>,
+    after_initial_workspace_cache_scan: Option<StartLoopTestGate>,
 }
 
 enum SignalSource {
@@ -970,6 +974,31 @@ enum StartLoopEvent {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct StartLoopCursor(usize);
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+struct StartLoopTestGate {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(test)]
+impl StartLoopTestGate {
+    async fn enter_and_wait(&self) {
+        self.entered.notify_one();
+        self.release.notified().await;
+    }
+
+    async fn wait_entered(&self, timeout: Duration, context: &str) {
+        tokio::time::timeout(timeout, self.entered.notified())
+            .await
+            .unwrap_or_else(|_| panic!("runner did not reach {context} within {timeout:?}"));
+    }
+
+    fn release(&self) {
+        self.release.notify_one();
+    }
+}
 
 #[cfg(test)]
 #[derive(Clone, Default)]
@@ -1550,7 +1579,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let workspace_cache_watcher = match exec_config.workspace_cache.clone() {
+    let mut workspace_cache_watcher = match exec_config.workspace_cache.clone() {
         Some(cache) => match WorkspaceCacheWatcher::new(cache).await {
             Ok(watcher) => Some(watcher),
             Err(error) => {
@@ -1560,7 +1589,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         },
         None => None,
     };
-    let mut workspace_cache_change_fut = workspace_cache_watcher.map(workspace_cache_change_future);
+    #[cfg(test)]
+    if let Some(gate) = &test_hooks.before_initial_workspace_cache_scan {
+        gate.enter_and_wait().await;
+    }
     let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
         idle_pool: &shared.idle_pool,
         runner_id: &runner.id,
@@ -1580,10 +1612,33 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         &runner.profiles,
     )
     .await;
+    #[cfg(test)]
+    if let Some(gate) = &test_hooks.after_initial_workspace_cache_scan {
+        gate.enter_and_wait().await;
+    }
     debug_assert!(workspace_cache_snapshot.workspace_cache_loaded());
+    let mut initial_relevant_cache_keys = initial_workspace_cache.loaded_cache_keys;
+    initial_relevant_cache_keys.extend(initial_workspace_cache.locked_commit_keys.iter().cloned());
+    let initial_workspace_cache_requires_refresh = match workspace_cache_watcher.as_mut() {
+        Some(watcher) => match watcher
+            .reconcile_initial_relevant_entries(&initial_relevant_cache_keys)
+            .await
+        {
+            Ok(requires_refresh) => requires_refresh,
+            Err(error) => {
+                warn!(error = %error, "workspace cache watcher failed during startup reconciliation; using routine reconciliation");
+                workspace_cache_watcher = None;
+                true
+            }
+        },
+        None => false,
+    };
+    let mut workspace_cache_change_fut = workspace_cache_watcher.map(workspace_cache_change_future);
     let mut heartbeat = HeartbeatController::new(hb_ctx);
     if startup_mode == RunnerMode::Running {
-        if initial_workspace_cache.locked_commit_keys.is_empty() {
+        if initial_workspace_cache.locked_commit_keys.is_empty()
+            && !initial_workspace_cache_requires_refresh
+        {
             if !initial_workspace_cache.states.is_empty() {
                 heartbeat.request_initial_workspace_cache_snapshot(startup_mode)?;
             }
