@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cleanup_workflow="${repo_root}/.github/workflows/cleanup.yml"
+stale_workflow="${repo_root}/.github/workflows/cleanup-stale.yml"
+turbo_workflow="${repo_root}/.github/workflows/turbo.yml"
+namespace_cleanup="${repo_root}/.github/scripts/cleanup-turbo-runner-namespace.sh"
+
+ruby -ryaml - "$cleanup_workflow" "$stale_workflow" "$turbo_workflow" "$namespace_cleanup" <<'RUBY'
+def named_step(job, name)
+  job.fetch("steps").find { |step| step["name"] == name }
+end
+
+cleanup_workflow = YAML.load_file(ARGV.fetch(0))
+cleanup_concurrency = cleanup_workflow.fetch("concurrency")
+unless cleanup_concurrency == {
+  "group" => "cleanup-pr-${{ github.event.pull_request.number }}",
+  "cancel-in-progress" => true,
+}
+  raise "cleanup must deduplicate in a namespace distinct from active PR CI owners"
+end
+
+cleanup = cleanup_workflow.fetch("jobs").fetch("cleanup-runner")
+permissions = cleanup.fetch("permissions")
+unless permissions == {
+  "actions" => "read",
+  "contents" => "read",
+  "pull-requests" => "read",
+}
+  raise "cleanup runner must have only the permissions needed for ownership handoff"
+end
+
+checkout = cleanup.fetch("steps").find { |step| step["uses"] == "actions/checkout@v7.0.1" }
+unless checkout&.dig("with", "ref") == "${{ github.event.repository.default_branch }}" &&
+    checkout&.dig("with", "persist-credentials") == false
+  raise "cleanup runner must execute the trusted default-branch ownership script"
+end
+
+handoff = named_step(cleanup, "Wait for active CI owners before runner cleanup")
+raise "missing closed-PR ownership handoff" unless handoff
+unless handoff.fetch("if").include?("steps.check.outputs.should-cleanup") &&
+    handoff.dig("env", "GH_TOKEN") == "${{ github.token }}" &&
+    handoff.dig("env", "GITHUB_REPOSITORY") == "${{ github.repository }}" &&
+    handoff.dig("env", "GITHUB_RUN_ID") == "${{ github.run_id }}" &&
+    handoff.dig("env", "PR_NUMBER") == "${{ github.event.pull_request.number }}" &&
+    handoff.dig("env", "RUNNER_OWNER_SCOPE") == "closed-pr-cleanup" &&
+    handoff.fetch("run") == ".github/scripts/cancel-superseded-merge-group-runs.sh" &&
+    !handoff.key?("continue-on-error")
+  raise "closed-PR ownership handoff must fail closed"
+end
+
+cleanup_names = cleanup.fetch("steps").map { |step| step["name"] }
+unless cleanup_names.index("Wait for active CI owners before runner cleanup") <
+    cleanup_names.index("Cleanup turbo runner on all metal hosts")
+  raise "ownership handoff must complete before shared runner resources are deleted"
+end
+cleanup_turbo = named_step(cleanup, "Cleanup turbo runner on all metal hosts")
+cleanup_turbo_script = cleanup_turbo.fetch("run")
+cleanup_lock_index = cleanup_turbo_script.index(".github/scripts/with-runner-lifecycle-lock.sh")
+cleanup_action_index = cleanup_turbo_script.index(".github/scripts/cleanup-turbo-runner-namespace.sh")
+unless cleanup_lock_index && cleanup_action_index && cleanup_lock_index < cleanup_action_index &&
+    cleanup_turbo_script.include?('JOB_REF="pr-${PR_NUMBER}"') &&
+    cleanup_turbo_script.include?("export JOB_REF") &&
+    cleanup_turbo.dig("env", "GH_TOKEN") == "${{ github.token }}" &&
+    cleanup_turbo.dig("env", "GITHUB_REPOSITORY") == "${{ github.repository }}" &&
+    cleanup_turbo.dig("env", "GITHUB_RUN_ID") == "${{ github.run_id }}"
+  raise "immediate cleanup must hold the namespace lifecycle lock through deletion"
+end
+
+stale = YAML.load_file(ARGV.fetch(1)).fetch("jobs").fetch("cleanup-metal-runners")
+unless stale.fetch("permissions") == {
+  "actions" => "read",
+  "contents" => "read",
+  "pull-requests" => "read",
+}
+  raise "stale runner cleanup must use the same ownership permissions"
+end
+stale_checkout = stale.fetch("steps").find { |step| step["uses"] == "actions/checkout@v7.0.1" }
+unless stale_checkout&.dig("with", "ref") == "${{ github.event.repository.default_branch }}" &&
+    stale_checkout&.dig("with", "persist-credentials") == false
+  raise "stale runner cleanup must execute the trusted default-branch ownership script"
+end
+stale_cleanup = named_step(stale, "Cleanup stale runners")
+raise "missing stale runner cleanup" unless stale_cleanup
+unless stale_cleanup.dig("env", "GH_TOKEN") == "${{ github.token }}" &&
+    stale_cleanup.dig("env", "GITHUB_REPOSITORY") == "${{ github.repository }}" &&
+    stale_cleanup.dig("env", "GITHUB_RUN_ID") == "${{ github.run_id }}"
+  raise "stale runner cleanup must receive the ownership API context"
+end
+stale_script = stale_cleanup.fetch("run")
+stale_dry_run_index = stale_script.index('if [ "$DRY_RUN" = "true" ]')
+stale_handoff_index = stale_script.index("RUNNER_OWNER_SCOPE=closed-pr-cleanup")
+stale_lock_index = stale_script.index(".github/scripts/with-runner-lifecycle-lock.sh")
+stale_action_index = stale_script.index(".github/scripts/cleanup-turbo-runner-namespace.sh")
+unless stale_dry_run_index && stale_handoff_index && stale_lock_index && stale_action_index &&
+    stale_dry_run_index < stale_handoff_index && stale_handoff_index < stale_lock_index &&
+    stale_lock_index < stale_action_index &&
+    stale_script.include?('JOB_REF="pr-${PR_NUMBER}"') && stale_script.include?("export JOB_REF")
+  raise "stale cleanup must await discovered owners and hold the namespace lock through deletion"
+end
+
+namespace_cleanup = File.read(ARGV.fetch(3))
+locked_probe_index = namespace_cleanup.index("RUNNER_OWNER_ASSERT_IDLE=true")
+barrier_index = namespace_cleanup.index("cancel-superseded-merge-group-runs.sh")
+delete_index = namespace_cleanup.index("playbooks/cleanup-turbo-runner.yml")
+unless locked_probe_index && barrier_index && delete_index &&
+    locked_probe_index < barrier_index && barrier_index < delete_index &&
+    namespace_cleanup.include?("RUNNER_OWNER_SCOPE=closed-pr-cleanup")
+  raise "locked cleanup must recheck stabilized ownership immediately before deletion"
+end
+
+turbo = YAML.load_file(ARGV.fetch(2)).fetch("jobs")
+prepare = turbo.fetch("deploy-runner-prepare")
+start = turbo.fetch("deploy-runner-start")
+unless prepare.dig("outputs", "runner-sha-map") ==
+    "${{ steps.manifest.outputs.runner-sha-map }}"
+  raise "runner prepare must expose producer SHA ownership by target"
+end
+unless start.fetch("permissions") == {"actions" => "read", "contents" => "read"}
+  raise "runner recovery must have read-only workflow permissions"
+end
+
+locked_start = named_step(start, "Reconcile and start runner under lifecycle lock")
+raise "missing locked runner reconciliation and start" unless locked_start
+unless locked_start.dig("env", "AWS_METAL_RUNNER_HOSTS") ==
+      "${{ secrets.AWS_METAL_RUNNER_HOSTS }}" &&
+    locked_start.dig("env", "BIN_DIR") == "${{ needs.deploy-runner-prepare.outputs.bin-dir }}" &&
+    locked_start.dig("env", "CURRENT_EVENT") == "${{ github.event_name }}" &&
+    locked_start.dig("env", "JOB_REF") == "${{ needs.prepare.outputs.runner-image-job-ref }}" &&
+    locked_start.dig("env", "METAL_HOSTS") == "${{ secrets.AWS_METAL_RUNNER_HOSTS }}" &&
+    locked_start.dig("env", "RUNNER_SHA_MAP") ==
+      "${{ needs.deploy-runner-prepare.outputs.runner-sha-map }}" &&
+    locked_start.fetch("run").include?(".github/scripts/with-runner-lifecycle-lock.sh") &&
+    locked_start.fetch("run").include?(".github/scripts/reconcile-and-start-runner-groups.sh") &&
+    !locked_start.key?("continue-on-error")
+  raise "runner reconciliation and readiness must share cleanup's namespace lifecycle lock"
+end
+RUBY
+
+echo "runner-lifecycle-ownership-workflow-test: ok"

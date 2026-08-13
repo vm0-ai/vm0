@@ -31,7 +31,6 @@ async function projectChatSearchMessages(
     client.project({ body: { chat_thread_ids: [...chatThreadIds] } }),
     [200],
   );
-  expect(response.body.durableProjectionAvailable).toBeTruthy();
   expect(response.body.convergence.durableCaughtUpThreads).toBe(
     chatThreadIds.length,
   );

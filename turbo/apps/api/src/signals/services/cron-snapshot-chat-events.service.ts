@@ -24,7 +24,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { chatEventSearchWatermarks } from "@okouai/db/schema/chat-event-search";
+import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
@@ -970,7 +970,7 @@ export const snapshotChatEvents$ = command(
     const candidates = await db
       .select({
         chatThreadId: chatThreads.id,
-        indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
+        indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
         headId: chatEventSnapshots.id,
         headLastSeqId: chatEventSnapshots.lastSeqId,
         headLastEventId: chatEventSnapshots.lastEventId,
@@ -979,8 +979,8 @@ export const snapshotChatEvents$ = command(
       })
       .from(chatThreads)
       .innerJoin(
-        chatEventSearchWatermarks,
-        eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
+        chatEventSearchMessageWatermarks,
+        eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),
       )
       .leftJoin(
         chatEventSnapshots,
@@ -1000,7 +1000,7 @@ export const snapshotChatEvents$ = command(
             ? undefined
             : inArray(chatThreads.id, chatThreadIds),
           gt(
-            chatEventSearchWatermarks.indexedSeqId,
+            chatEventSearchMessageWatermarks.indexedSeqId,
             sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
           ),
         ),

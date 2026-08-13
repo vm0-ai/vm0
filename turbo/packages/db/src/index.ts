@@ -87,7 +87,7 @@ import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
-import * as zeroAgentDraftSchema from "./schema/zero-agent-draft";
+import * as agentDraftSchema from "./schema/agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as zeroRunSchema from "./schema/zero-run";
 import * as threadGoalSchema from "./schema/thread-goal";
@@ -216,7 +216,7 @@ export const schema = {
   ...skillSchema,
   ...usagePricingSchema,
   ...zeroAgentSchema,
-  ...zeroAgentDraftSchema,
+  ...agentDraftSchema,
   ...userPermissionGrantSchema,
   ...zeroRunSchema,
   ...threadGoalSchema,

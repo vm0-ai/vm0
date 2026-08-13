@@ -56,7 +56,7 @@ import { webhooksNotionRoutes } from "./routes/webhooks-notion";
 import { webhooksWorkflowAutomationsRoutes } from "./routes/webhooks-workflow-automations";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { webhooksStripeAutomationEventsRoutes } from "./routes/webhooks-stripe-automation-events";
-import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
+import { agentDraftRoutes } from "./routes/agent-draft";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroArtifactCatalogRoutes } from "./routes/zero-artifact-catalog";
@@ -91,13 +91,13 @@ import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
-import { zeroFinanceRoutes } from "./routes/zero-finance";
+import { financeRoutes } from "./routes/finance";
 import { zeroSeoRoutes } from "./routes/zero-seo";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
-import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
+import { imageShareXRoutes } from "./routes/image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
@@ -128,7 +128,7 @@ import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroScrapeRoutes } from "./routes/zero-scrape";
-import { zeroPeopleSearchRoutes } from "./routes/zero-people-search";
+import { peopleSearchRoutes } from "./routes/people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
@@ -247,7 +247,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...emailMorningBriefUnsubscribeRoutes,
   ...zeroMorningBriefRoutes,
   ...emailUnsubscribeRoutes,
-  ...zeroAgentDraftRoutes,
+  ...agentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroArtifactCatalogRoutes,
@@ -282,13 +282,13 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroCustomConnectorsRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
-  ...zeroFinanceRoutes,
+  ...financeRoutes,
   ...zeroSeoRoutes,
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroImageIoGenerateRoutes,
-  ...zeroImageShareXRoutes,
+  ...imageShareXRoutes,
   ...zeroAvatarVideoRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
@@ -297,7 +297,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMcpConnectorsRoutes,
   ...zeroWeatherRoutes,
   ...zeroScrapeRoutes,
-  ...zeroPeopleSearchRoutes,
+  ...peopleSearchRoutes,
   ...zeroWebSearchRoutes,
   ...zeroBrowserRoutes,
   ...zeroBrowserAuthorizationRoutes,

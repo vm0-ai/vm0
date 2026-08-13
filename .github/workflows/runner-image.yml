@@ -625,7 +625,7 @@ jobs:
           name: ${{ steps.artifact.outputs.artifact-name }}
           path: runner-binary-asset/manifest.json
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
 
       - name: Summarize runner binary asset
         if: always()

@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
+RUNNER_START_HELPER="${REPO_ROOT}/.github/scripts/reconcile-and-start-runner-groups.sh"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
 RUNNER_HELPERS=(
   "${REPO_ROOT}/e2e/helpers/runner-api.bash"
@@ -17,13 +18,15 @@ fail() {
   exit 1
 }
 
-grep -Fq "local RUNNER_DIRNAME=\"\${RUNNER_DIR##*/}\"" "$WORKFLOW" ||
+grep -Fq ".github/scripts/reconcile-and-start-runner-groups.sh" "$WORKFLOW" ||
+  fail "runner deployment must invoke the lifecycle-locked start helper"
+grep -Fq "local RUNNER_DIRNAME=\"\${RUNNER_DIR##*/}\"" "$RUNNER_START_HELPER" ||
   fail "runner config dirname must come from the manifest runner directory"
-grep -Fq -- "--runner-dirname \${RUNNER_DIRNAME}" "$WORKFLOW" ||
+grep -Fq -- "--runner-dirname \${RUNNER_DIRNAME}" "$RUNNER_START_HELPER" ||
   fail "runner config must be written beneath the manifest runner directory"
-grep -Fq -- "--config \${RUNNER_DIR}/runner.yaml" "$WORKFLOW" ||
+grep -Fq -- "--config \${RUNNER_DIR}/runner.yaml" "$RUNNER_START_HELPER" ||
   fail "runner service must read the config from the manifest runner directory"
-if grep -Fq -- "--runner-dirname \${RUNNER_SERVICE_REF}" "$WORKFLOW"; then
+if grep -Fq -- "--runner-dirname \${RUNNER_SERVICE_REF}" "$RUNNER_START_HELPER"; then
   fail "runner service identity must not select the manifest config directory"
 fi
 grep -Fq "RUNNER_SERVICE_REF: \${{ needs.prepare.outputs.job-ref }}" "$WORKFLOW" ||

@@ -3,10 +3,8 @@ import { randomUUID } from "node:crypto";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
-  chatEventSearchDocs,
   chatEventSearchMessages,
   chatEventSearchMessageWatermarks,
-  chatEventSearchWatermarks,
 } from "@okouai/db/schema/chat-event-search";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { asc, eq, inArray, sql } from "drizzle-orm";
@@ -20,14 +18,8 @@ import { createUserMessageDocument } from "../signals/services/zero-chat-user-me
 
 interface ChatEventSearchProjectionFixture {
   readonly lastChatEventSeqId: number;
-  readonly legacyIndexedSeqId: number | null;
-  readonly durableIndexedSeqId: number | null;
-  readonly legacyDocs: readonly {
-    readonly eventId: string;
-    readonly role: "user" | "assistant";
-    readonly text: string;
-  }[];
-  readonly durableMessages: readonly {
+  readonly indexedSeqId: number | null;
+  readonly messages: readonly {
     readonly seqId: number;
     readonly runId: string | null;
     readonly role: "user" | "assistant";
@@ -46,26 +38,12 @@ export async function readChatEventSearchProjectionFixture(
   if (!thread) {
     throw new Error("Expected chat search projection fixture thread");
   }
-  const [legacyWatermark] = await db()
-    .select({ indexedSeqId: chatEventSearchWatermarks.indexedSeqId })
-    .from(chatEventSearchWatermarks)
-    .where(eq(chatEventSearchWatermarks.chatThreadId, chatThreadId))
-    .limit(1);
-  const [durableWatermark] = await db()
+  const [watermark] = await db()
     .select({ indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId })
     .from(chatEventSearchMessageWatermarks)
     .where(eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreadId))
     .limit(1);
-  const legacyDocs = await db()
-    .select({
-      eventId: chatEventSearchDocs.eventId,
-      role: chatEventSearchDocs.role,
-      text: chatEventSearchDocs.text,
-    })
-    .from(chatEventSearchDocs)
-    .where(eq(chatEventSearchDocs.chatThreadId, chatThreadId))
-    .orderBy(asc(chatEventSearchDocs.createdAt));
-  const durableMessages = await db()
+  const messages = await db()
     .select({
       seqId: chatEventSearchMessages.seqId,
       runId: chatEventSearchMessages.runId,
@@ -77,25 +55,9 @@ export async function readChatEventSearchProjectionFixture(
     .orderBy(asc(chatEventSearchMessages.seqId));
   return {
     lastChatEventSeqId: thread.lastChatEventSeqId,
-    legacyIndexedSeqId: legacyWatermark?.indexedSeqId ?? null,
-    durableIndexedSeqId: durableWatermark?.indexedSeqId ?? null,
-    legacyDocs,
-    durableMessages,
+    indexedSeqId: watermark?.indexedSeqId ?? null,
+    messages,
   };
-}
-
-/** Recreates the rollout state where only the established projection exists. */
-export async function resetDurableChatEventSearchProjectionFixture(
-  chatThreadId: string,
-): Promise<void> {
-  await db().transaction(async (tx) => {
-    await tx
-      .delete(chatEventSearchMessages)
-      .where(eq(chatEventSearchMessages.chatThreadId, chatThreadId));
-    await tx
-      .delete(chatEventSearchMessageWatermarks)
-      .where(eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreadId));
-  });
 }
 
 export async function insertChatSearchProjectionCoverageFixture(args: {
@@ -154,7 +116,7 @@ export async function insertChatSearchProjectionCoverageFixture(args: {
 /**
  * Simulates retention after the durable projection has caught up. Product APIs
  * cannot delete append-only source events, so the fixture removes only rows
- * owned by the test's unique threads while preserving both search projections.
+ * owned by the test's unique threads while preserving the search projection.
  */
 export async function removeChatSearchSourceEventsFixture(
   chatThreadIds: readonly string[],
