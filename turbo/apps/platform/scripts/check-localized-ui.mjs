@@ -111,31 +111,11 @@ function getInternalAllowedLiterals() {
       "typed renderer diagnostic; UI consumers localize their own presentation",
     ],
     [
-      "src/lib/pptx-renderer.ts\u0000Embedded video is not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
-      "src/lib/pptx-renderer.ts\u0000Embedded audio is not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
-      "src/lib/pptx-renderer.ts\u0000Slide animations are not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
-      "src/lib/pptx-renderer.ts\u0000Slide transitions are not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
       "src/lib/pptx-renderer.ts\u0000Office Math equations are not supported",
       "typed renderer diagnostic; UI consumers localize their own presentation",
     ],
     [
-      "src/lib/pptx-renderer.ts\u00003D shapes and charts are not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
-      "src/lib/pptx-renderer.ts\u0000EMF and WMF image content is not supported",
+      "src/lib/pptx-renderer.ts\u0000EMF image content is not supported",
       "typed renderer diagnostic; UI consumers localize their own presentation",
     ],
     [

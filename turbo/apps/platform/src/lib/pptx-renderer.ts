@@ -50,15 +50,10 @@ export type PptxRenderErrorCode =
   | "unsupported_format";
 
 export type PptxUnsupportedFeature =
-  | "animation"
-  | "audio"
   | "equation"
   | "macro"
   | "ole"
-  | "three-dimensional"
-  | "transition"
-  | "vector-metafile"
-  | "video";
+  | "vector-metafile";
 
 interface PptxRenderErrorOptions extends ErrorOptions {
   readonly feature?: PptxUnsupportedFeature;
@@ -125,43 +120,14 @@ const UNSUPPORTED_RULES: readonly UnsupportedRule[] = [
     pattern: /<(?:\w+:)?oleObj\b|\/relationships\/oleObject(?:"|<)/i,
   },
   {
-    feature: "video",
-    message: "Embedded video is not supported",
-    pattern:
-      /<(?:\w+:)?videoFile\b|\/relationships\/video(?:"|<)|target="[^"]+\.(?:mp4|m4v|mov|webm)(?:"|\?)/i,
-  },
-  {
-    feature: "audio",
-    message: "Embedded audio is not supported",
-    pattern:
-      /<(?:\w+:)?audioFile\b|\/relationships\/audio(?:"|<)|target="[^"]+\.(?:mp3|m4a|wav|wma)(?:"|\?)/i,
-  },
-  {
-    feature: "animation",
-    message: "Slide animations are not supported",
-    pattern: /<(?:\w+:)?timing(?:\s|>)/i,
-  },
-  {
-    feature: "transition",
-    message: "Slide transitions are not supported",
-    pattern: /<(?:\w+:)?transition(?:\s|>)/i,
-  },
-  {
     feature: "equation",
     message: "Office Math equations are not supported",
     pattern: /<(?:\w+:)?oMath(?:Para)?(?:\s|>)/i,
   },
   {
-    feature: "three-dimensional",
-    message: "3D shapes and charts are not supported",
-    pattern:
-      /<(?:\w+:)?(?:scene3d|sp3d|area3DChart|bar3DChart|line3DChart|pie3DChart|surfaceChart|surface3DChart)(?:\s|>)/i,
-  },
-  {
     feature: "vector-metafile",
-    message: "EMF and WMF image content is not supported",
-    pattern:
-      /(?:target|partname)="[^"]+\.(?:emf|wmf)(?:"|\?)|image\/(?:x-)?(?:emf|wmf)/i,
+    message: "EMF image content is not supported",
+    pattern: /(?:target|partname)="[^"]+\.emf(?:"|\?)|image\/(?:x-)?emf/i,
   },
 ];
 
