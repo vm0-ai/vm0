@@ -12,6 +12,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes, agentComposeVersions } from "./agent-compose";
 import type {
   AgentRunResult,
@@ -88,6 +89,28 @@ export const agentRuns = pgTable(
       .default(false)
       .notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }),
+    // Nullable while legacy binaries still write run metadata to zero_runs.
+    triggerSource: varchar("trigger_source", { length: 20 }),
+    autonomyBudget: integer("autonomy_budget"),
+    workflowAutomationId: uuid("workflow_automation_id"),
+    goalId: uuid("goal_id"),
+    modelProvider: varchar("model_provider", { length: 100 }),
+    modelProviderId: uuid("model_provider_id"),
+    modelProviderCredentialScope: varchar("model_provider_credential_scope", {
+      length: 20,
+    }),
+    selectedModel: varchar("selected_model", { length: 255 }),
+    codexServiceTier: varchar("codex_service_tier", {
+      length: 20,
+    }).$type<CodexServiceTier>(),
+    selectedVideoModel: varchar("selected_video_model", { length: 255 }),
+    chatThreadId: uuid("chat_thread_id"),
+    apiStartedAt: timestamp("api_started_at"),
+    firstAssistantEventAcknowledgedAt: timestamp(
+      "first_assistant_event_acknowledged_at",
+    ),
+    summary: text("summary"),
+    triggerBrief: text("trigger_brief"),
   },
   (table) => {
     return [

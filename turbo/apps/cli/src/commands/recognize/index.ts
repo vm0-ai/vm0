@@ -1,20 +1,20 @@
 import { statSync } from "node:fs";
 
 import {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  ZERO_RECOGNITION_MAX_PROMPT_CHARS,
-  zeroRecognitionImageMimeTypeSchema,
-  type ZeroRecognitionImageMimeType,
-} from "@okouai/api-contracts/contracts/zero-recognition";
+  IMAGE_RECOGNITION_MAX_FILE_BYTES,
+  IMAGE_RECOGNITION_MAX_PROMPT_CHARS,
+  imageRecognitionMimeTypeSchema,
+  type ImageRecognitionMimeType,
+} from "@okouai/api-contracts/contracts/image-recognition";
 import { Command } from "commander";
 
-import { ApiRequestError } from "../../../lib/api/core/client-factory";
-import { callZeroRecognition } from "../../../lib/api/domains/zero-recognition";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
+import { callImageRecognition } from "../../lib/api/domains/image-recognition";
 import {
   inferWebUploadContentType,
   uploadWebFile,
-} from "../../../lib/api/domains/web";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/web";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface RecognizeOptions {
   readonly file: string;
@@ -30,9 +30,9 @@ function validatePrompt(prompt: string): string {
       400,
     );
   }
-  if (trimmed.length > ZERO_RECOGNITION_MAX_PROMPT_CHARS) {
+  if (trimmed.length > IMAGE_RECOGNITION_MAX_PROMPT_CHARS) {
     throw new ApiRequestError(
-      `Recognition prompt must be ${ZERO_RECOGNITION_MAX_PROMPT_CHARS} characters or fewer`,
+      `Recognition prompt must be ${IMAGE_RECOGNITION_MAX_PROMPT_CHARS} characters or fewer`,
       "BAD_REQUEST",
       400,
     );
@@ -40,7 +40,7 @@ function validatePrompt(prompt: string): string {
   return trimmed;
 }
 
-function validateImageFile(file: string): ZeroRecognitionImageMimeType {
+function validateImageFile(file: string): ImageRecognitionMimeType {
   const stats = statSync(file);
   if (!stats.isFile()) {
     throw new ApiRequestError(
@@ -56,7 +56,7 @@ function validateImageFile(file: string): ZeroRecognitionImageMimeType {
       400,
     );
   }
-  if (stats.size > ZERO_RECOGNITION_MAX_FILE_BYTES) {
+  if (stats.size > IMAGE_RECOGNITION_MAX_FILE_BYTES) {
     throw new ApiRequestError(
       "Image file must be 20 MB or smaller",
       "PAYLOAD_TOO_LARGE",
@@ -65,7 +65,7 @@ function validateImageFile(file: string): ZeroRecognitionImageMimeType {
   }
 
   const contentType = inferWebUploadContentType(file);
-  const parsed = zeroRecognitionImageMimeTypeSchema.safeParse(contentType);
+  const parsed = imageRecognitionMimeTypeSchema.safeParse(contentType);
   if (!parsed.success) {
     throw new ApiRequestError(
       "Image must be a PNG, JPEG, or WebP file",
@@ -76,7 +76,7 @@ function validateImageFile(file: string): ZeroRecognitionImageMimeType {
   return parsed.data;
 }
 
-export const zeroRecognizeCommand = new Command()
+export const recognizeCommand = new Command()
   .name("recognize")
   .description("Recognize one image through a managed multimodal model")
   .requiredOption("-f, --file <path>", "Local PNG, JPEG, or WebP image")
@@ -86,7 +86,7 @@ export const zeroRecognizeCommand = new Command()
       const prompt = validatePrompt(options.prompt);
       const contentType = validateImageFile(options.file);
       const uploaded = await uploadWebFile(options.file, { contentType });
-      const response = await callZeroRecognition({
+      const response = await callImageRecognition({
         fileId: uploaded.id,
         prompt,
       });

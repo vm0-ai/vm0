@@ -43,6 +43,50 @@ pub(in crate::exec_operation) struct ExecWaitCore {
         Option<oneshot::Receiver<io::Result<ExecOperationResult>>>,
 }
 
+#[must_use = "exec operation wait outcomes contain terminal-proof state that must be handled"]
+pub(crate) enum ExecOperationWaitOutcome<T> {
+    Terminal(io::Result<T>),
+    Unproven(io::Error),
+}
+
+impl<T> ExecOperationWaitOutcome<T> {
+    pub(crate) fn terminal(result: io::Result<T>) -> Self {
+        Self::Terminal(result)
+    }
+
+    pub(crate) fn unproven(error: io::Error) -> Self {
+        Self::Unproven(error)
+    }
+
+    pub(crate) fn terminal_observed(&self) -> bool {
+        matches!(self, Self::Terminal(_))
+    }
+
+    pub(crate) fn map<U>(self, map: impl FnOnce(T) -> U) -> ExecOperationWaitOutcome<U> {
+        match self {
+            Self::Terminal(result) => ExecOperationWaitOutcome::Terminal(result.map(map)),
+            Self::Unproven(error) => ExecOperationWaitOutcome::Unproven(error),
+        }
+    }
+
+    pub(crate) fn and_then<U>(
+        self,
+        map: impl FnOnce(T) -> io::Result<U>,
+    ) -> ExecOperationWaitOutcome<U> {
+        match self {
+            Self::Terminal(result) => ExecOperationWaitOutcome::Terminal(result.and_then(map)),
+            Self::Unproven(error) => ExecOperationWaitOutcome::Unproven(error),
+        }
+    }
+
+    pub(crate) fn into_result(self) -> io::Result<T> {
+        match self {
+            Self::Terminal(result) => result,
+            Self::Unproven(error) => Err(error),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(in crate::exec_operation) enum ExecWaitLifecycle {
     OneShot,
@@ -55,7 +99,7 @@ pub(in crate::exec_operation) struct ExecCancelWaitResult {
 }
 
 enum ExecCancelWriteOutcome {
-    Terminal(ExecOperationResult),
+    Terminal(io::Result<ExecOperationResult>),
     CancelSent { seq: u32, remaining: Duration },
 }
 
@@ -213,10 +257,16 @@ impl ExecWaitCore {
     fn complete_taken_result(
         &mut self,
         result: Result<io::Result<ExecOperationResult>, oneshot::error::RecvError>,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.seq = None;
         self.result_rx = None;
-        result.map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?
+        match result {
+            Ok(result) => ExecOperationWaitOutcome::terminal(result),
+            Err(_) => ExecOperationWaitOutcome::unproven(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            )),
+        }
     }
 
     fn abandon_timed_out_operation(
@@ -277,7 +327,7 @@ impl ExecWaitCore {
 
     pub(in crate::exec_operation) fn try_take_ready_result(
         &mut self,
-    ) -> io::Result<Option<ExecOperationResult>> {
+    ) -> io::Result<Option<io::Result<ExecOperationResult>>> {
         let Some(rx) = self.result_rx.as_mut() else {
             return Ok(None);
         };
@@ -286,7 +336,7 @@ impl ExecWaitCore {
             Ok(result) => {
                 self.seq = None;
                 self.result_rx = None;
-                result.map(Some)
+                Ok(Some(result))
             }
             Err(oneshot::error::TryRecvError::Empty) => Ok(None),
             Err(oneshot::error::TryRecvError::Closed) => {
@@ -305,28 +355,36 @@ impl ExecWaitCore {
         timeout: impl Future<Output = ()>,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         tokio::pin!(timeout);
-        let seq = self.active_seq_or_closed(lifecycle.operation_closed_message())?;
-        let rx = self.result_rx.as_mut().ok_or_else(|| {
-            io::Error::new(
+        let seq = match self.active_seq_or_closed(lifecycle.operation_closed_message()) {
+            Ok(seq) => seq,
+            Err(error) => return ExecOperationWaitOutcome::unproven(error),
+        };
+        let Some(rx) = self.result_rx.as_mut() else {
+            return ExecOperationWaitOutcome::unproven(io::Error::new(
                 io::ErrorKind::ConnectionReset,
                 lifecycle.operation_closed_message(),
-            )
-        })?;
+            ));
+        };
 
         tokio::select! {
             biased;
             result = rx => {
                 self.seq = None;
                 self.result_rx = None;
-                result.map_err(|_| io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))?
+                match result {
+                    Ok(result) => ExecOperationWaitOutcome::terminal(result),
+                    Err(_) => ExecOperationWaitOutcome::unproven(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    )),
+                }
             }
             _ = &mut timeout => {
-                Err(self.abandon_timed_out_operation(seq, poison_on_timeout, lifecycle))
+                ExecOperationWaitOutcome::unproven(
+                    self.abandon_timed_out_operation(seq, poison_on_timeout, lifecycle),
+                )
             }
         }
     }
@@ -336,7 +394,7 @@ impl ExecWaitCore {
         timeout: Duration,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_with_timeout_future(tokio::time::sleep(timeout), poison_on_timeout, lifecycle)
             .await
     }
@@ -346,7 +404,7 @@ impl ExecWaitCore {
         deadline: Instant,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_with_timeout_future(
             tokio::time::sleep_until(deadline),
             poison_on_timeout,
@@ -410,9 +468,12 @@ impl ExecWaitCore {
                     })
             }
             result = &mut result_rx => {
-                return self
-                    .complete_taken_result(result)
-                    .map(ExecCancelWriteOutcome::Terminal);
+                return match self.complete_taken_result(result) {
+                    ExecOperationWaitOutcome::Terminal(result) => {
+                        Ok(ExecCancelWriteOutcome::Terminal(result))
+                    }
+                    ExecOperationWaitOutcome::Unproven(error) => Err(error),
+                };
             }
             _ = time::sleep_until(deadline) => {
                 return Err(self.abandon_timed_out_operation(seq, false, lifecycle));
@@ -425,8 +486,12 @@ impl ExecWaitCore {
         match write_outcome? {
             ExecCancelFrameWriteOutcome::AlreadyTerminal => {
                 let result = result_rx.await;
-                self.complete_taken_result(result)
-                    .map(ExecCancelWriteOutcome::Terminal)
+                match self.complete_taken_result(result) {
+                    ExecOperationWaitOutcome::Terminal(result) => {
+                        Ok(ExecCancelWriteOutcome::Terminal(result))
+                    }
+                    ExecOperationWaitOutcome::Unproven(error) => Err(error),
+                }
             }
             ExecCancelFrameWriteOutcome::Sent => {
                 self.result_rx = Some(result_rx);
@@ -444,12 +509,13 @@ impl ExecWaitCore {
         seq: u32,
         remaining: Duration,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecCancelWaitResult> {
-        let result = self.wait_with_timeout(remaining, true, lifecycle).await?;
-        Ok(ExecCancelWaitResult {
-            result,
-            cancel_seq: Some(seq),
-        })
+    ) -> ExecOperationWaitOutcome<ExecCancelWaitResult> {
+        self.wait_with_timeout(remaining, true, lifecycle)
+            .await
+            .map(|result| ExecCancelWaitResult {
+                result,
+                cancel_seq: Some(seq),
+            })
     }
 }
 
@@ -465,16 +531,23 @@ impl ExecOperationHandle {
     /// not cancel the guest-side exec operation. If the request may have
     /// reached the guest, normal operations can become unavailable on this
     /// connection even though the connection itself may still be open.
-    pub async fn wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
+    pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
+        self.wait_for_outcome(timeout).await.into_result()
+    }
+
+    pub(crate) async fn wait_for_outcome(
+        mut self,
+        timeout: Duration,
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_core
             .wait_with_timeout(timeout, false, ExecWaitLifecycle::OneShot)
             .await
     }
 
-    pub(in crate::exec_operation) async fn wait_until(
+    pub(in crate::exec_operation) async fn wait_until_outcome(
         mut self,
         deadline: Instant,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_core
             .wait_with_deadline(deadline, false, ExecWaitLifecycle::OneShot)
             .await
@@ -495,18 +568,21 @@ impl ExecOperationHandle {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
         self.cancel_and_wait_for_terminal_status(timeout)
-            .await?
-            .into_expected_cancel_result(
-                ExecWaitLifecycle::OneShot,
-                &cancel_label_log,
-                registered_at,
-            )
+            .await
+            .and_then(|wait_result| {
+                wait_result.into_expected_cancel_result(
+                    ExecWaitLifecycle::OneShot,
+                    &cancel_label_log,
+                    registered_at,
+                )
+            })
+            .into_result()
     }
 
     pub(crate) async fn cancel_and_wait_for_terminal(
         self,
         timeout: Duration,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.cancel_and_wait_for_terminal_status(timeout)
             .await
             .map(|wait_result| wait_result.result)
@@ -515,19 +591,22 @@ impl ExecOperationHandle {
     pub(in crate::exec_operation) async fn cancel_and_wait_for_terminal_status(
         mut self,
         timeout: Duration,
-    ) -> io::Result<ExecCancelWaitResult> {
+    ) -> ExecOperationWaitOutcome<ExecCancelWaitResult> {
         let (seq, remaining) = match self
             .wait_core
             .send_cancel_before_terminal_with_deadline(timeout, ExecWaitLifecycle::OneShot)
-            .await?
+            .await
         {
-            ExecCancelWriteOutcome::Terminal(result) => {
-                return Ok(ExecCancelWaitResult {
-                    result,
-                    cancel_seq: None,
+            Ok(ExecCancelWriteOutcome::Terminal(result)) => {
+                return ExecOperationWaitOutcome::terminal(result).map(|result| {
+                    ExecCancelWaitResult {
+                        result,
+                        cancel_seq: None,
+                    }
                 });
             }
-            ExecCancelWriteOutcome::CancelSent { seq, remaining } => (seq, remaining),
+            Ok(ExecCancelWriteOutcome::CancelSent { seq, remaining }) => (seq, remaining),
+            Err(error) => return ExecOperationWaitOutcome::unproven(error),
         };
 
         self.wait_core
@@ -677,6 +756,7 @@ impl SupervisedExecHandle {
         self.wait_core
             .wait_with_timeout(timeout, false, ExecWaitLifecycle::Supervised)
             .await
+            .into_result()
     }
 
     /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
@@ -694,30 +774,36 @@ impl SupervisedExecHandle {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
         self.cancel_and_wait_for_terminal_status(timeout)
-            .await?
-            .into_expected_cancel_result(
-                ExecWaitLifecycle::Supervised,
-                &cancel_label_log,
-                registered_at,
-            )
+            .await
+            .and_then(|wait_result| {
+                wait_result.into_expected_cancel_result(
+                    ExecWaitLifecycle::Supervised,
+                    &cancel_label_log,
+                    registered_at,
+                )
+            })
+            .into_result()
     }
 
     pub(in crate::exec_operation) async fn cancel_and_wait_for_terminal_status(
         mut self,
         timeout: Duration,
-    ) -> io::Result<ExecCancelWaitResult> {
+    ) -> ExecOperationWaitOutcome<ExecCancelWaitResult> {
         let (seq, remaining) = match self
             .wait_core
             .send_cancel_before_terminal_with_deadline(timeout, ExecWaitLifecycle::Supervised)
-            .await?
+            .await
         {
-            ExecCancelWriteOutcome::Terminal(result) => {
-                return Ok(ExecCancelWaitResult {
-                    result,
-                    cancel_seq: None,
+            Ok(ExecCancelWriteOutcome::Terminal(result)) => {
+                return ExecOperationWaitOutcome::terminal(result).map(|result| {
+                    ExecCancelWaitResult {
+                        result,
+                        cancel_seq: None,
+                    }
                 });
             }
-            ExecCancelWriteOutcome::CancelSent { seq, remaining } => (seq, remaining),
+            Ok(ExecCancelWriteOutcome::CancelSent { seq, remaining }) => (seq, remaining),
+            Err(error) => return ExecOperationWaitOutcome::unproven(error),
         };
 
         self.clear_unclaimed_stream_sender();

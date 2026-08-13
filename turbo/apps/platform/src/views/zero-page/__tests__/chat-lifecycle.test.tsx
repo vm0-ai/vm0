@@ -5,7 +5,7 @@ import {
   chatThreadEventsContract,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/zero-recognition";
+import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -541,7 +541,7 @@ describe("chat lifecycle", () => {
       id: "upload-visual-brief",
       filename: "brief.png",
       contentType: "image/png",
-      size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      size: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
       url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
     });
 
@@ -562,7 +562,7 @@ describe("chat lifecycle", () => {
     const brief = new File(["image"], "brief.png", { type: "image/png" });
     Object.defineProperty(brief, "size", {
       configurable: true,
-      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      value: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
     });
     await user.upload(fileInput, brief);
 

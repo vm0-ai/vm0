@@ -30,7 +30,7 @@ import {
   type UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/zero-recognition";
+import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
@@ -2672,7 +2672,7 @@ describe("chat composer models", () => {
     });
     Object.defineProperty(oversizedImage, "size", {
       configurable: true,
-      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      value: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
     });
 
     await user.upload(fileInput, [

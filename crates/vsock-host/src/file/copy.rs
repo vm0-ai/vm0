@@ -12,11 +12,12 @@ use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination};
 use crate::{
     CompositeNormalOperation, ExecOperationResult, ExecOutputEvent, ExecOwnedCapturedOutput,
     ExecStreamRequest, FrameWriteObserver, VsockHost, exec_operation,
+    exec_operation::ExecOperationWaitOutcome,
 };
 
 use super::{
-    MISSING_FILE_EXIT_CODE, file_operation_error_is_terminal, normalize_file_exec_stderr,
-    read_regular_file_command, validate_guest_file_path,
+    MISSING_FILE_EXIT_CODE, normalize_file_exec_stderr, read_regular_file_command,
+    validate_guest_file_path,
 };
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
@@ -74,48 +75,12 @@ enum CopyFileOutcome {
     Missing,
 }
 
-struct CopyFileToTempError {
-    error: io::Error,
-    terminal_proven: bool,
-}
-
 struct CopyFileToTempRequest<'a> {
     path: &'a str,
     stream_limit_bytes: u32,
     timeout_ms: u32,
     missing_ok: bool,
     write_observer: FrameWriteObserver,
-}
-
-impl CopyFileToTempError {
-    fn unproven(error: io::Error) -> Self {
-        Self {
-            error,
-            terminal_proven: false,
-        }
-    }
-
-    fn terminal(error: io::Error) -> Self {
-        Self {
-            error,
-            terminal_proven: true,
-        }
-    }
-
-    fn from_exec_wait(error: io::Error) -> Self {
-        if file_operation_error_is_terminal(&error) {
-            Self::terminal(error)
-        } else {
-            Self::unproven(error)
-        }
-    }
-
-    fn after_cancel(error: io::Error, cancel_result: io::Result<ExecOperationResult>) -> Self {
-        Self {
-            error,
-            terminal_proven: cancel_result.is_ok(),
-        }
-    }
 }
 
 struct HostTempFileGuard {
@@ -490,7 +455,7 @@ impl VsockHost {
             )
             .await;
         match copy_result {
-            Ok(CopyFileOutcome::Copied { bytes_copied }) => {
+            ExecOperationWaitOutcome::Terminal(Ok(CopyFileOutcome::Copied { bytes_copied })) => {
                 match tokio::fs::rename(temp_guard.path(), host_path).await {
                     Ok(()) => {
                         temp_guard.disarm();
@@ -504,17 +469,19 @@ impl VsockHost {
                     }
                 }
             }
-            Ok(CopyFileOutcome::Missing) => {
+            ExecOperationWaitOutcome::Terminal(Ok(CopyFileOutcome::Missing)) => {
                 temp_guard.remove_now().await;
                 normal_operation.complete()?;
                 Ok(CopyFileResult { bytes_copied: 0 })
             }
-            Err(err) => {
+            ExecOperationWaitOutcome::Terminal(Err(error)) => {
                 temp_guard.remove_now().await;
-                if err.terminal_proven {
-                    normal_operation.complete()?;
-                }
-                Err(err.error)
+                normal_operation.complete()?;
+                Err(error)
+            }
+            ExecOperationWaitOutcome::Unproven(error) => {
+                temp_guard.remove_now().await;
+                Err(error)
             }
         }
     }
@@ -524,7 +491,7 @@ impl VsockHost {
         request: CopyFileToTempRequest<'_>,
         mut temp_file: tokio::fs::File,
         normal_operation: &mut CompositeNormalOperation,
-    ) -> Result<CopyFileOutcome, CopyFileToTempError> {
+    ) -> ExecOperationWaitOutcome<CopyFileOutcome> {
         let CopyFileToTempRequest {
             path,
             stream_limit_bytes,
@@ -539,7 +506,7 @@ impl VsockHost {
             &[]
         };
         let wait_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
-        let mut handle =
+        let start_result =
             exec_operation::exec_operation_stream_with_composite_on_shared_and_observer(
                 &self.shared,
                 ExecStreamRequest {
@@ -563,15 +530,18 @@ impl VsockHost {
                 normal_operation,
                 write_observer,
             )
-            .await
-            .map_err(CopyFileToTempError::unproven)?;
+            .await;
+        let mut handle = match start_result {
+            Ok(handle) => handle,
+            Err(error) => return ExecOperationWaitOutcome::unproven(error),
+        };
         let mut cancel_on_drop = exec_operation::ExecOperationCancelOnDropGuard::new(&handle);
-        let mut stream_rx = handle.take_stream_receiver().ok_or_else(|| {
-            CopyFileToTempError::unproven(io::Error::new(
+        let Some(mut stream_rx) = handle.take_stream_receiver() else {
+            return ExecOperationWaitOutcome::unproven(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "copy_file exec operation did not create a stream receiver",
-            ))
-        })?;
+            ));
+        };
         let mut bytes_copied = 0u64;
 
         let drain_result = tokio::time::timeout(wait_timeout, async {
@@ -596,7 +566,11 @@ impl VsockHost {
                 if let Some(cancel_on_drop) = &mut cancel_on_drop {
                     cancel_on_drop.disarm();
                 }
-                return Err(CopyFileToTempError::after_cancel(err, cancel_result));
+                return if cancel_result.terminal_observed() {
+                    ExecOperationWaitOutcome::terminal(Err(err))
+                } else {
+                    ExecOperationWaitOutcome::unproven(err)
+                };
             }
             Err(_) => {
                 let cancel_result = handle
@@ -605,28 +579,42 @@ impl VsockHost {
                 if let Some(cancel_on_drop) = &mut cancel_on_drop {
                     cancel_on_drop.disarm();
                 }
-                return Err(CopyFileToTempError::after_cancel(
-                    io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        format!("copy_file stream drain timed out for {path}"),
-                    ),
-                    cancel_result,
-                ));
+                let error = io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("copy_file stream drain timed out for {path}"),
+                );
+                return if cancel_result.terminal_observed() {
+                    ExecOperationWaitOutcome::terminal(Err(error))
+                } else {
+                    ExecOperationWaitOutcome::unproven(error)
+                };
             }
         };
 
-        let result = handle
-            .wait(Duration::from_secs(5))
-            .await
-            .map_err(CopyFileToTempError::from_exec_wait)?;
-        if let Some(cancel_on_drop) = &mut cancel_on_drop {
+        let wait_outcome = handle.wait_for_outcome(Duration::from_secs(5)).await;
+        if wait_outcome.terminal_observed()
+            && let Some(cancel_on_drop) = &mut cancel_on_drop
+        {
             cancel_on_drop.disarm();
         }
-        match validate_copy_exec_result(path, result).map_err(CopyFileToTempError::terminal)? {
+        let result = match wait_outcome {
+            ExecOperationWaitOutcome::Terminal(Ok(result)) => result,
+            ExecOperationWaitOutcome::Terminal(Err(error)) => {
+                return ExecOperationWaitOutcome::terminal(Err(error));
+            }
+            ExecOperationWaitOutcome::Unproven(error) => {
+                return ExecOperationWaitOutcome::unproven(error);
+            }
+        };
+        let status = match validate_copy_exec_result(path, result) {
+            Ok(status) => status,
+            Err(error) => return ExecOperationWaitOutcome::terminal(Err(error)),
+        };
+        match status {
             CopyFileExecStatus::Present => {}
             CopyFileExecStatus::Missing => {
                 if bytes_copied != 0 {
-                    return Err(CopyFileToTempError::terminal(io::Error::new(
+                    return ExecOperationWaitOutcome::terminal(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         format!(
                             "copy_file missing result for {path} streamed {bytes_copied} bytes"
@@ -634,20 +622,19 @@ impl VsockHost {
                     )));
                 }
                 if missing_ok {
-                    return Ok(CopyFileOutcome::Missing);
+                    return ExecOperationWaitOutcome::terminal(Ok(CopyFileOutcome::Missing));
                 }
-                return Err(CopyFileToTempError::terminal(io::Error::new(
+                return ExecOperationWaitOutcome::terminal(Err(io::Error::new(
                     io::ErrorKind::NotFound,
                     format!("guest file not found: {path}"),
                 )));
             }
         }
-        temp_file
-            .flush()
-            .await
-            .map_err(CopyFileToTempError::terminal)?;
+        if let Err(error) = temp_file.flush().await {
+            return ExecOperationWaitOutcome::terminal(Err(error));
+        }
 
-        Ok(CopyFileOutcome::Copied { bytes_copied })
+        ExecOperationWaitOutcome::terminal(Ok(CopyFileOutcome::Copied { bytes_copied }))
     }
 }
 

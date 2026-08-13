@@ -778,6 +778,13 @@
       "when": 1786603051878,
       "tag": "0918_add_video_model_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 919,
+      "version": "7",
+      "when": 1786617147388,
+      "tag": "0919_clammy_mastermind",
+      "breakpoints": true
     }
   ]
 }

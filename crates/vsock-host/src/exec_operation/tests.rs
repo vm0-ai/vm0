@@ -626,7 +626,7 @@ async fn one_shot_cancel_handle_marks_terminal_result_as_host_requested_cancel()
     };
 
     let (wait_result, ()) = tokio::join!(cancel_future, peer);
-    let wait_result = wait_result.unwrap();
+    let wait_result = wait_result.into_result().unwrap();
     assert_eq!(wait_result.cancel_seq, Some(7));
     assert_eq!(wait_result.result.termination, ExecTermination::Cancelled);
 }

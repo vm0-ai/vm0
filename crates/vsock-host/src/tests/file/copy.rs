@@ -4,10 +4,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
 use tokio::task::JoinHandle;
 use vsock_proto::{
-    ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START,
+    ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_START,
 };
 
 use super::super::support::{
@@ -418,6 +419,92 @@ async fn copy_file_stream_error_releases_tracker_when_cancel_sees_terminal_resul
     let err = copy_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("truncated"));
     fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
+}
+
+#[tokio::test]
+async fn copy_file_stream_error_releases_tracker_when_cancel_sees_guest_error() {
+    let mut fixture =
+        CopyFileFixture::new("vsock-host-copy-cancel-guest-error", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
+
+    let start = fixture.expect_start().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
+    send_exec_output(
+        &mut fixture.guest,
+        start.seq(),
+        0,
+        ExecOutputStream::Stdout,
+        b"partial",
+        true,
+    )
+    .await;
+
+    let cancel = read_guest_message(&mut fixture.guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq());
+    send_guest_error(
+        &mut fixture.guest,
+        start.seq(),
+        "guest rejected cancellation",
+    )
+    .await;
+
+    let err = copy_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("truncated"));
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
+}
+
+#[tokio::test]
+async fn copy_file_stream_error_keeps_tracker_fail_closed_when_cancel_loses_connection() {
+    let mut fixture =
+        CopyFileFixture::new("vsock-host-copy-cancel-connection-close", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
+
+    let start = fixture.expect_start().await;
+    send_exec_output(
+        &mut fixture.guest,
+        start.seq(),
+        0,
+        ExecOutputStream::Stdout,
+        b"partial",
+        true,
+    )
+    .await;
+    let cancel = read_guest_message(&mut fixture.guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq());
+
+    fixture.guest.shutdown().await.unwrap();
+
+    let err = copy_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("truncated"));
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
+    fixture.assert_host_bytes(b"old host log");
+    fixture.assert_no_temp_files();
+}
+
+#[tokio::test]
+async fn copy_file_malformed_error_removes_temp_and_keeps_tracker_fail_closed() {
+    let mut fixture = CopyFileFixture::new("vsock-host-copy-malformed-error", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
+
+    let start = fixture.expect_start().await;
+    fixture
+        .guest
+        .write_all(&vsock_proto::encode(MSG_ERROR, start.seq(), &[0]).unwrap())
+        .await
+        .unwrap();
+
+    let err = copy_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
     fixture.assert_host_bytes(b"old host log");
     fixture.assert_no_temp_files();
 }
