@@ -369,6 +369,7 @@ describe("zero sidebar account menu", () => {
       expect(
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
     });
     billingRequests = 0;
     const menu = await openAccountMenu();
