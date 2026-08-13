@@ -37,11 +37,11 @@ const codexDeviceAuthCancelResponseSchema = z.object({
 });
 
 /**
- * Zero contract for Codex device auth.
+ * Contract for Codex device auth.
  * Runs the official Codex device authorization flow through OpenAI auth and
  * imports the resulting ChatGPT tokens.
  */
-export const zeroCodexDeviceAuthContract = c.router({
+export const codexDeviceAuthContract = c.router({
   start: {
     method: "POST",
     path: "/api/okou/model-providers/codex/device-auth/sessions",
@@ -93,4 +93,4 @@ export const zeroCodexDeviceAuthContract = c.router({
 
 export type CodexDeviceAuthScope = z.infer<typeof codexDeviceAuthScopeSchema>;
 export type CodexDeviceAuthMode = z.infer<typeof codexDeviceAuthModeSchema>;
-export type ZeroCodexDeviceAuthContract = typeof zeroCodexDeviceAuthContract;
+export type CodexDeviceAuthContract = typeof codexDeviceAuthContract;

@@ -29,11 +29,11 @@ const claudeCodeDeviceAuthCancelResponseSchema = z.object({
 });
 
 /**
- * Zero contract for Claude Code device-style OAuth.
+ * Contract for Claude Code device-style OAuth.
  * Runs the same PKCE OAuth path as `claude setup-token` and imports the
  * resulting long-lived Claude Code token.
  */
-export const zeroClaudeCodeDeviceAuthContract = c.router({
+export const claudeCodeDeviceAuthContract = c.router({
   start: {
     method: "POST",
     path: "/api/okou/model-providers/claude-code/device-auth/sessions",
@@ -92,5 +92,4 @@ export type ClaudeCodeDeviceAuthScope = z.infer<
 export type ClaudeCodeDeviceAuthMode = z.infer<
   typeof claudeCodeDeviceAuthModeSchema
 >;
-export type ZeroClaudeCodeDeviceAuthContract =
-  typeof zeroClaudeCodeDeviceAuthContract;
+export type ClaudeCodeDeviceAuthContract = typeof claudeCodeDeviceAuthContract;

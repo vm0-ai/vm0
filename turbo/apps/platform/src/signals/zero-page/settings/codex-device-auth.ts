@@ -2,10 +2,10 @@ import { command, computed, state, type Command, type State } from "ccstate";
 import { delay } from "signal-timers";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  zeroCodexDeviceAuthContract,
+  codexDeviceAuthContract,
   type CodexDeviceAuthMode,
   type CodexDeviceAuthScope,
-} from "@okouai/api-contracts/contracts/zero-codex-device-auth";
+} from "@okouai/api-contracts/contracts/codex-device-auth";
 
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -180,7 +180,7 @@ const startCodexDeviceAuth$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
+    const client = get(zeroClient$)(codexDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -197,7 +197,7 @@ const startCodexDeviceAuth$ = command(
 
 const completeCodexDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
+    const client = get(zeroClient$)(codexDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -214,7 +214,7 @@ const completeCodexDeviceAuth$ = command(
 
 const cancelCodexDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
+    const client = get(zeroClient$)(codexDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(

@@ -1042,16 +1042,16 @@ export {
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,
-  zeroCodexDeviceAuthContract,
+  codexDeviceAuthContract,
   type CodexDeviceAuthScope,
-  type ZeroCodexDeviceAuthContract,
-} from "./zero-codex-device-auth";
+  type CodexDeviceAuthContract,
+} from "./codex-device-auth";
 export {
   claudeCodeDeviceAuthScopeSchema,
-  zeroClaudeCodeDeviceAuthContract,
+  claudeCodeDeviceAuthContract,
   type ClaudeCodeDeviceAuthScope,
-  type ZeroClaudeCodeDeviceAuthContract,
-} from "./zero-claude-code-device-auth";
+  type ClaudeCodeDeviceAuthContract,
+} from "./claude-code-device-auth";
 export {
   zeroOrgContract,
   zeroOrgLeaveContract,
@@ -1061,11 +1061,11 @@ export {
   type ZeroOrgDeleteContract,
 } from "./zero-org";
 export {
-  zeroOrgLogoContract,
-  zeroOrgLogoResponseSchema,
-  type ZeroOrgLogoContract,
-  type ZeroOrgLogoResponse,
-} from "./zero-org-logo";
+  orgLogoContract,
+  orgLogoResponseSchema,
+  type OrgLogoContract,
+  type OrgLogoResponse,
+} from "./org-logo";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
@@ -1599,13 +1599,13 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
-  zeroImageShareXContract,
-  zeroImageShareXRequestSchema,
-  zeroImageShareXResponseSchema,
-  type ZeroImageShareXContract,
-  type ZeroImageShareXRequest,
-  type ZeroImageShareXResponse,
-} from "./zero-image-share-x";
+  imageShareXContract,
+  imageShareXRequestSchema,
+  imageShareXResponseSchema,
+  type ImageShareXContract,
+  type ImageShareXRequest,
+  type ImageShareXResponse,
+} from "./image-share-x";
 export {
   zeroMailContract,
   zeroMailDraftSchema,
