@@ -439,7 +439,7 @@ impl VsockHost {
         }
 
         let (mut temp_guard, temp_file) =
-            create_copy_temp_file(host_path, self.shared.next_seq()).await?;
+            create_copy_temp_file(host_path, self.shared.next_temp_seq()).await?;
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
         let copy_result = self
             .copy_file_to_temp(

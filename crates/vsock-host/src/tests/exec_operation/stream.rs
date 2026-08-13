@@ -557,8 +557,7 @@ async fn exec_output_teardown_before_copy_discards_reserved_event() {
             let ConnectionState::Connected { operations, .. } = &mut *guard else {
                 return false;
             };
-            operations.remove(seq);
-            true
+            operations.remove_by_seq(seq)
         })
         .join()
         .expect("operation teardown thread should not panic");

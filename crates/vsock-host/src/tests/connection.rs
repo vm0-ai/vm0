@@ -12,7 +12,8 @@ use super::support::{
     MockGuest, await_mock_guest, captured_output_bytes, drop_idle_request_write_guard,
     drop_started_request_write_guard, exec_capture_default, fence_normal_operations,
     host_from_stream, is_connected, make_pair, normal_operation_readiness, pending_request_count,
-    poison_connection, setup_host_and_mock_guest,
+    poison_connection, set_next_route_id, setup_host_and_mock_guest,
+    wait_for_pending_request_count,
 };
 use crate::{
     NormalOperationFenceRejection, VsockHost, operation_tracker::NormalOperationReadiness,
@@ -393,6 +394,48 @@ async fn memory_snapshot_timeout_removes_pending_and_ignores_late_response() {
         )
         .await;
     assert_eq!(second_task.await.unwrap().unwrap(), memory_snapshot());
+}
+
+#[tokio::test]
+async fn stale_request_cleanup_does_not_remove_reused_wire_sequence() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let expected = memory_snapshot();
+    let wire_seq = 17;
+    set_next_route_id(&host, wire_seq.into());
+
+    let mut first = Box::pin(host.memory_snapshot(Duration::from_secs(5)));
+    let first_request = tokio::select! {
+        result = &mut first => panic!("first request completed before guest response: {result:?}"),
+        request = guest.expect_message(MSG_MEMORY_SNAPSHOT) => request,
+    };
+    assert_eq!(first_request.seq, wire_seq);
+    guest
+        .send_response(
+            MSG_MEMORY_SNAPSHOT_RESULT,
+            first_request.seq,
+            &expected.encode_payload(),
+        )
+        .await;
+    wait_for_pending_request_count(&host, 0).await;
+
+    set_next_route_id(&host, (1_u64 << 32) + u64::from(wire_seq));
+    let mut second = Box::pin(host.memory_snapshot(Duration::from_secs(5)));
+    let second_request = tokio::select! {
+        result = &mut second => panic!("second request completed before guest response: {result:?}"),
+        request = guest.expect_message(MSG_MEMORY_SNAPSHOT) => request,
+    };
+    assert_eq!(second_request.seq, first_request.seq);
+
+    drop(first);
+    assert_eq!(pending_request_count(&host), 1);
+    guest
+        .send_response(
+            MSG_MEMORY_SNAPSHOT_RESULT,
+            second_request.seq,
+            &expected.encode_payload(),
+        )
+        .await;
+    assert_eq!(second.await.unwrap(), expected);
 }
 
 #[tokio::test]

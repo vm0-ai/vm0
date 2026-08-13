@@ -1,9 +1,9 @@
 use super::super::super::*;
 use super::super::support::{
-    WorkspacePromotionSeedSpec, context_with_session, mock_run_config,
+    WorkspacePromotionSeedSpec, assert_run_exits_within, context_with_session, mock_run_config,
     mock_run_config_with_overrides, push_job, seed_idle_pool_with_overrides,
-    seed_idle_pool_with_workspace_promotion, shutdown, test_profiles, wait_budget_count,
-    wait_discover_entered, wait_idle_pool_reuse_keys,
+    seed_idle_pool_with_workspace_promotion, seed_workspace_cache_state, shutdown, test_profiles,
+    wait_budget_count, wait_discover_entered, wait_idle_pool_reuse_keys,
 };
 
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
@@ -43,6 +43,398 @@ async fn wait_heartbeat_matching_after(
             return false;
         }
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn external_workspace_cache_publication_and_removal_trigger_immediate_heartbeats() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let home = config.paths.home.clone();
+    let group = config.runner.group.clone();
+    let observer_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let observer_cache = WorkspaceImageCache::shared(observer_paths, &home, &group);
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(observer_cache);
+
+    let publisher_paths = RunnerPaths::new(env._temp_dir.path().join("publisher"));
+    tokio::fs::create_dir_all(publisher_paths.base_dir())
+        .await
+        .unwrap();
+    let publisher_cache = WorkspaceImageCache::shared(publisher_paths.clone(), &home, &group);
+    let foreign_publisher_paths = RunnerPaths::new(env._temp_dir.path().join("foreign-publisher"));
+    tokio::fs::create_dir_all(foreign_publisher_paths.base_dir())
+        .await
+        .unwrap();
+    let foreign_publisher_cache =
+        WorkspaceImageCache::shared(foreign_publisher_paths.clone(), &home, "foreign-group");
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let before_publication = env.handle.heartbeat_count();
+    env.handle.block_heartbeats();
+    let watcher_cursor = env.start_observer.cursor();
+
+    let invalid_cache_key = "d".repeat(64);
+    let invalid_staging = home
+        .workspace_image_cache_dir()
+        .with_file_name("invalid-workspace-cache-staging");
+    tokio::fs::create_dir_all(&invalid_staging).await.unwrap();
+    tokio::fs::write(invalid_staging.join("metadata.json"), b"{}")
+        .await
+        .unwrap();
+    tokio::fs::rename(
+        &invalid_staging,
+        home.workspace_image_cache_dir().join(invalid_cache_key),
+    )
+    .await
+    .unwrap();
+    seed_workspace_cache_state(
+        &foreign_publisher_cache,
+        &foreign_publisher_paths,
+        "thread:foreign-workspace-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    seed_workspace_cache_state(
+        &publisher_cache,
+        &publisher_paths,
+        "thread:cancel-safe-workspace-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    let watcher_cursor = env
+        .start_observer
+        .wait_workspace_cache_change_observed_after(watcher_cursor, Duration::from_secs(5))
+        .await;
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(5))
+            .await,
+        "the first relevant cache heartbeat should remain blocked",
+    );
+
+    let reuse_key = "thread:external-workspace-cache";
+    let expected_workspace = WorkspaceCacheCapability {
+        profile: "vm0/default".to_string(),
+        workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
+    };
+    seed_workspace_cache_state(
+        &publisher_cache,
+        &publisher_paths,
+        reuse_key,
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    env.start_observer
+        .wait_workspace_cache_change_observed_after(watcher_cursor, Duration::from_secs(5))
+        .await;
+    assert_eq!(
+        env.handle.heartbeat_count(),
+        before_publication + 1,
+        "the watcher must consume a second event without overlapping the blocked heartbeat",
+    );
+    assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
+    env.handle.unblock_heartbeats();
+
+    assert!(
+        wait_heartbeat_matching_after(
+            &env.handle,
+            before_publication,
+            Duration::from_secs(5),
+            |heartbeat| {
+                heartbeat.held_workspace_states.iter().any(|state| {
+                    state.reuse_key == reuse_key
+                        && state.workspace_caches.contains(&expected_workspace)
+                }) && heartbeat.held_workspace_states.iter().any(|state| {
+                    state.reuse_key == "thread:cancel-safe-workspace-cache"
+                        && state.workspace_caches.contains(&expected_workspace)
+                })
+            },
+        )
+        .await,
+        "external publication should be advertised without the routine heartbeat tick",
+    );
+    assert_eq!(
+        env.handle.heartbeat_count(),
+        before_publication + 2,
+        "two relevant publications should produce only the active and coalesced heartbeats",
+    );
+
+    let before_removal = env.handle.heartbeat_count();
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
+        &group,
+        "vm0/default",
+        reuse_key,
+        api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
+        16 * 1024 * 1024,
+    );
+    let metadata = home
+        .workspace_image_cache_dir()
+        .join(cache_key)
+        .join("metadata.json");
+    let duplicate_metadata = metadata.with_extension("duplicate");
+    tokio::fs::write(
+        &duplicate_metadata,
+        tokio::fs::read(&metadata).await.unwrap(),
+    )
+    .await
+    .unwrap();
+    tokio::fs::rename(&duplicate_metadata, &metadata)
+        .await
+        .unwrap();
+    tokio::fs::remove_file(&metadata).await.unwrap();
+
+    assert!(
+        wait_heartbeat_matching_after(
+            &env.handle,
+            before_removal,
+            Duration::from_secs(5),
+            |heartbeat| {
+                heartbeat
+                    .held_workspace_states
+                    .iter()
+                    .all(|state| state.reuse_key != reuse_key)
+            },
+        )
+        .await,
+        "external removal should promptly withdraw the advertised capability",
+    );
+    assert_eq!(
+        env.handle.heartbeat_count(),
+        before_removal + 1,
+        "duplicate unchanged publication must coalesce with the effective removal",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tick() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = WorkspaceImageCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        "thread:initial-workspace-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+
+    let run_handle = tokio::spawn(run(config));
+    assert!(
+        wait_heartbeat_matching_after(&env.handle, 0, Duration::from_secs(5), |heartbeat| {
+            heartbeat
+                .held_workspace_states
+                .iter()
+                .any(|state| state.reuse_key == "thread:initial-workspace-cache")
+        })
+        .await,
+        "non-empty initial cache should be published before the deferred routine tick",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn drain_during_initial_cache_reconciliation_does_not_send_running_heartbeat() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = WorkspaceImageCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        "thread:startup-drain-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+    let after_scan = StartLoopTestGate::default();
+    config.test_hooks.after_initial_workspace_cache_scan = Some(after_scan.clone());
+
+    let run_handle = tokio::spawn(run(config));
+    after_scan
+        .wait_entered(
+            Duration::from_secs(5),
+            "initial workspace-cache scan before lifecycle refresh",
+        )
+        .await;
+    env.drain();
+    after_scan.release();
+
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup cache reconciliation should honor the live draining mode",
+    )
+    .await;
+    let heartbeats = env
+        .handle
+        .heartbeats
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    assert!(
+        heartbeats
+            .iter()
+            .all(|heartbeat| heartbeat.mode != "running"),
+        "draining during startup cache reconciliation must not publish a stale running snapshot: {heartbeats:#?}",
+    );
+}
+
+#[tokio::test]
+async fn startup_unclassified_cache_invalidated_after_scan_is_reconciled() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let home = config.paths.home.clone();
+    let group = config.runner.group.clone();
+    let workspace_cache = WorkspaceImageCache::shared(runner_paths.clone(), &home, &group);
+    let reuse_key = "thread:startup-cache-invalidation";
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
+        &group,
+        "vm0/default",
+        reuse_key,
+        api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
+        16 * 1024 * 1024,
+    );
+    let cache_entry = home.workspace_image_cache_dir().join(cache_key);
+    tokio::fs::create_dir_all(&cache_entry).await.unwrap();
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+    let before_scan = StartLoopTestGate::default();
+    let after_scan = StartLoopTestGate::default();
+    config.test_hooks.before_initial_workspace_cache_scan = Some(before_scan.clone());
+    config.test_hooks.after_initial_workspace_cache_scan = Some(after_scan.clone());
+
+    let run_handle = tokio::spawn(run(config));
+    before_scan
+        .wait_entered(
+            Duration::from_secs(5),
+            "workspace-cache watcher setup before the initial scan",
+        )
+        .await;
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        reuse_key,
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    before_scan.release();
+
+    after_scan
+        .wait_entered(
+            Duration::from_secs(5),
+            "initial workspace-cache scan before watcher reconciliation",
+        )
+        .await;
+    tokio::fs::remove_file(cache_entry.join("metadata.json"))
+        .await
+        .unwrap();
+    after_scan.release();
+
+    assert!(
+        env.handle
+            .wait_heartbeat_past(0, Duration::from_secs(5))
+            .await,
+        "startup reconciliation should publish the refreshed cache state",
+    );
+    let first_heartbeat = env
+        .handle
+        .heartbeats
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .first()
+        .cloned()
+        .unwrap();
+    assert!(
+        first_heartbeat
+            .held_workspace_states
+            .iter()
+            .all(|state| state.reuse_key != reuse_key),
+        "the first heartbeat must not advertise a cache invalidated after the initial scan",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let home = config.paths.home.clone();
+    let group = config.runner.group.clone();
+    let cache_root = home.workspace_image_cache_dir();
+    tokio::fs::write(&cache_root, b"not a directory")
+        .await
+        .unwrap();
+    let workspace_cache = WorkspaceImageCache::shared(
+        RunnerPaths::new(config.paths.base_dir.clone()),
+        &home,
+        &group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    tokio::fs::remove_file(cache_root).await.unwrap();
+    let runner_paths = RunnerPaths::new(env._temp_dir.path().join("fallback-publisher"));
+    tokio::fs::create_dir_all(runner_paths.base_dir())
+        .await
+        .unwrap();
+    let publisher_cache = WorkspaceImageCache::shared(runner_paths.clone(), &home, &group);
+    seed_workspace_cache_state(
+        &publisher_cache,
+        &runner_paths,
+        "thread:routine-fallback",
+        "vm0/default",
+        1024 * 1024,
+    )
+    .await;
+    let before = env.handle.heartbeat_count();
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    assert!(
+        wait_heartbeat_matching_after(&env.handle, before, Duration::from_secs(5), |heartbeat| {
+            heartbeat
+                .held_workspace_states
+                .iter()
+                .any(|state| state.reuse_key == "thread:routine-fallback")
+        })
+        .await,
+        "routine heartbeat must converge after watcher setup failure",
+    );
+
+    shutdown(&env, run_handle).await;
 }
 
 #[tokio::test]

@@ -3966,6 +3966,128 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, recovered.runId);
   }, 90_000);
 
+  it("resolves a NULL legacy thread from current defaults without replaying its first run", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-opus-4-8",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the historical thread model",
+      model: "claude-sonnet-5",
+    });
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue after canonical default resolution",
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the legacy-thread follow-up to queue");
+    }
+    expect(queued.body.runId).toBeNull();
+
+    const historicalMessages = await chat.listThreadEvents(
+      actor,
+      first.threadId,
+    );
+    expect(userMessages(historicalMessages.events)).toContainEqual(
+      expect.objectContaining({ runId: first.runId }),
+    );
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-8",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-5",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await chat.updateUserModelPreference(actor, "claude-opus-4-8");
+    await chat.updateThreadModelSelection(actor, first.threadId, null);
+    expect(
+      (await chat.readThreadMetadata(actor, first.threadId)).selectedModel,
+    ).toBeNull();
+
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const promotedMessages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesEventId === queuedEventId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promotedRunId = userMessages(promotedMessages.events).find(
+      (message) => {
+        return message.revokesEventId === queuedEventId;
+      },
+    )?.runId;
+    if (!promotedRunId) {
+      throw new Error("Expected the queued legacy-thread message to run");
+    }
+
+    const promotedClaim = await claimChatRun(runnerGroup, promotedRunId);
+    expect(promotedClaim.claim.cliAgentType).toBe("claude-code");
+    expect(claimEnvironment(promotedClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-8",
+    );
+    expect(
+      (await chat.readThreadMetadata(actor, first.threadId)).selectedModel,
+    ).toBe("claude-opus-4-8");
+
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: first.threadId,
+        selectedModel: "claude-opus-4-8",
+      }),
+    );
+
+    await cancelChatRun(actor, promotedRunId, promotedClaim.sandboxHeaders);
+  }, 90_000);
+
   it("does not overwrite a concurrent explicit thread model selection", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();

@@ -6,7 +6,7 @@ use tokio::sync::{mpsc, oneshot};
 use vsock_proto::{ExecControlNonce, ExecControlStatus, ExecOutputPolicy, ExecTermination};
 
 use crate::{
-    CompositeNormalOperation, ConnectionState, Shared, normal_operation_transition_error,
+    CompositeNormalOperation, ConnectionState, RouteId, Shared, normal_operation_transition_error,
     operation_tracker::{NormalOperationToken, NormalOperationTransitionHandle},
 };
 
@@ -25,7 +25,7 @@ use super::{
 
 pub(crate) struct Operations {
     operations: HashMap<u32, ExecOperation>,
-    control_targets: HashMap<u32, u32>,
+    control_targets: HashMap<u32, RouteId>,
 }
 
 impl Operations {
@@ -41,19 +41,46 @@ impl Operations {
         self.operations.len()
     }
 
-    pub(in crate::exec_operation) fn insert(&mut self, seq: u32, operation: ExecOperation) {
-        self.operations.insert(seq, operation);
+    #[cfg(test)]
+    pub(crate) fn pending_control_count(&self) -> usize {
+        self.control_targets.len()
     }
 
-    pub(crate) fn remove(&mut self, seq: u32) {
-        if let Some(operation) = self.operations.remove(&seq) {
-            for request_seq in operation.pending_controls.keys() {
-                self.control_targets.remove(request_seq);
-            }
+    pub(crate) fn contains_route_seq(&self, seq: u32) -> bool {
+        self.operations.contains_key(&seq) || self.control_targets.contains_key(&seq)
+    }
+
+    pub(crate) fn contains_route(&self, route_id: RouteId) -> bool {
+        self.operations
+            .get(&route_id.wire_seq())
+            .is_some_and(|operation| operation.route_id == route_id)
+    }
+
+    pub(in crate::exec_operation) fn insert(
+        &mut self,
+        route_id: RouteId,
+        operation: ExecOperation,
+    ) {
+        assert!(
+            self.operations
+                .insert(route_id.wire_seq(), operation)
+                .is_none(),
+            "exec operation route must be vacant"
+        );
+    }
+
+    pub(crate) fn remove(&mut self, route_id: RouteId) {
+        let seq = route_id.wire_seq();
+        if self
+            .operations
+            .get(&seq)
+            .is_some_and(|operation| operation.route_id == route_id)
+        {
+            self.take_by_seq(seq);
         }
     }
 
-    pub(in crate::exec_operation) fn take(&mut self, seq: u32) -> Option<ExecOperation> {
+    pub(in crate::exec_operation) fn take_by_seq(&mut self, seq: u32) -> Option<ExecOperation> {
         let operation = self.operations.remove(&seq)?;
         for request_seq in operation.pending_controls.keys() {
             self.control_targets.remove(request_seq);
@@ -61,23 +88,45 @@ impl Operations {
         Some(operation)
     }
 
+    #[cfg(test)]
+    pub(crate) fn remove_by_seq(&mut self, seq: u32) -> bool {
+        self.take_by_seq(seq).is_some()
+    }
+
     pub(in crate::exec_operation) fn take_terminal_exec_operation(
         &mut self,
         seq: u32,
     ) -> io::Result<Option<TerminalExecOperation>> {
-        self.take(seq).map(ExecOperation::into_terminal).transpose()
+        self.take_by_seq(seq)
+            .map(ExecOperation::into_terminal)
+            .transpose()
     }
 
-    pub(in crate::exec_operation) fn contains(&self, seq: u32) -> bool {
+    pub(in crate::exec_operation) fn contains_seq(&self, seq: u32) -> bool {
         self.operations.contains_key(&seq)
     }
 
-    pub(in crate::exec_operation) fn get_mut(&mut self, seq: u32) -> Option<&mut ExecOperation> {
+    pub(in crate::exec_operation) fn get_mut_by_seq(
+        &mut self,
+        seq: u32,
+    ) -> Option<&mut ExecOperation> {
         self.operations.get_mut(&seq)
     }
 
-    pub(in crate::exec_operation) fn mark_host_cancel_requested(&mut self, seq: u32) -> bool {
-        if let Some(operation) = self.operations.get_mut(&seq) {
+    pub(in crate::exec_operation) fn get_mut(
+        &mut self,
+        route_id: RouteId,
+    ) -> Option<&mut ExecOperation> {
+        self.operations
+            .get_mut(&route_id.wire_seq())
+            .filter(|operation| operation.route_id == route_id)
+    }
+
+    pub(in crate::exec_operation) fn mark_host_cancel_requested(
+        &mut self,
+        route_id: RouteId,
+    ) -> bool {
+        if let Some(operation) = self.get_mut(route_id) {
             operation.host_cancel_requested = true;
             true
         } else {
@@ -87,28 +136,48 @@ impl Operations {
 
     pub(in crate::exec_operation) fn insert_pending_control(
         &mut self,
-        target_seq: u32,
-        request_seq: u32,
+        target_route_id: RouteId,
+        request_route_id: RouteId,
         pending: PendingExecControl,
     ) -> io::Result<()> {
-        let Some(operation) = self.operations.get_mut(&target_seq) else {
+        let Some(operation) = self.get_mut(target_route_id) else {
             return Err(exec_control_status_error(
                 ExecControlStatus::Inactive,
                 "exec operation is not active",
             ));
         };
         operation.validate_control_nonce(pending.control_nonce)?;
-        operation.pending_controls.insert(request_seq, pending);
-        self.control_targets.insert(request_seq, target_seq);
+        let request_seq = request_route_id.wire_seq();
+        assert!(
+            operation
+                .pending_controls
+                .insert(request_seq, pending)
+                .is_none(),
+            "exec control route must be vacant"
+        );
+        assert!(
+            self.control_targets
+                .insert(request_seq, target_route_id)
+                .is_none(),
+            "exec control target route must be vacant"
+        );
         Ok(())
     }
 
-    pub(in crate::exec_operation) fn remove_pending_control(&mut self, request_seq: u32) {
-        let Some(target_seq) = self.control_targets.remove(&request_seq) else {
+    pub(in crate::exec_operation) fn remove_pending_control(&mut self, request_route_id: RouteId) {
+        let request_seq = request_route_id.wire_seq();
+        let Some(target_route_id) = self.control_targets.get(&request_seq).copied() else {
             return;
         };
-        if let Some(operation) = self.operations.get_mut(&target_seq) {
-            operation.pending_controls.remove(&request_seq);
+        let request_matches = self
+            .get_mut(target_route_id)
+            .and_then(|operation| operation.pending_controls.get(&request_seq))
+            .is_some_and(|pending| pending.route_id == request_route_id);
+        if request_matches {
+            self.control_targets.remove(&request_seq);
+            if let Some(operation) = self.get_mut(target_route_id) {
+                operation.pending_controls.remove(&request_seq);
+            }
         }
     }
 
@@ -116,9 +185,8 @@ impl Operations {
         &mut self,
         request_seq: u32,
     ) -> Option<PendingExecControl> {
-        let target_seq = self.control_targets.remove(&request_seq)?;
-        self.operations
-            .get_mut(&target_seq)?
+        let target_route_id = self.control_targets.remove(&request_seq)?;
+        self.get_mut(target_route_id)?
             .pending_controls
             .remove(&request_seq)
     }
@@ -145,6 +213,7 @@ impl Default for Operations {
 }
 
 pub(in crate::exec_operation) struct ExecOperation {
+    pub(in crate::exec_operation) route_id: RouteId,
     pub(in crate::exec_operation) normal_operation: Option<ExecOperationNormalTracking>,
     pub(in crate::exec_operation) lifecycle: ExecOperationLifecycle,
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
@@ -173,7 +242,8 @@ pub(in crate::exec_operation) enum ExecOperationLifecycle {
 }
 
 pub(in crate::exec_operation) struct PendingExecControl {
-    pub(in crate::exec_operation) target_seq: u32,
+    pub(in crate::exec_operation) route_id: RouteId,
+    pub(in crate::exec_operation) target_route_id: RouteId,
     pub(in crate::exec_operation) message_id: String,
     pub(in crate::exec_operation) control_nonce: ExecControlNonce,
     pub(in crate::exec_operation) response_tx: oneshot::Sender<io::Result<ExecControlOutcome>>,
@@ -324,7 +394,7 @@ pub(in crate::exec_operation) struct ExecOperationRegistrationInput<'a> {
 }
 
 pub(in crate::exec_operation) struct ExecOperationRegistration {
-    pub(in crate::exec_operation) seq: u32,
+    pub(in crate::exec_operation) route_id: RouteId,
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
     pub(in crate::exec_operation) result_rx: oneshot::Receiver<io::Result<ExecOperationResult>>,
     pub(in crate::exec_operation) stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
@@ -346,20 +416,20 @@ pub(in crate::exec_operation) struct ExecStreamState {
 
 pub(in crate::exec_operation) struct ExecOperationRegistrationGuard {
     pub(in crate::exec_operation) shared: Arc<Shared>,
-    pub(in crate::exec_operation) seq: u32,
+    pub(in crate::exec_operation) route_id: RouteId,
     pub(in crate::exec_operation) disarmed: bool,
 }
 
 pub(in crate::exec_operation) struct PendingExecControlGuard {
     pub(in crate::exec_operation) shared: Arc<Shared>,
-    pub(in crate::exec_operation) request_seq: u32,
+    pub(in crate::exec_operation) request_route_id: RouteId,
 }
 
 impl ExecOperationRegistrationGuard {
-    pub(in crate::exec_operation) fn new(shared: Arc<Shared>, seq: u32) -> Self {
+    pub(in crate::exec_operation) fn new(shared: Arc<Shared>, route_id: RouteId) -> Self {
         Self {
             shared,
-            seq,
+            route_id,
             disarmed: false,
         }
     }
@@ -372,23 +442,23 @@ impl ExecOperationRegistrationGuard {
 impl Drop for ExecOperationRegistrationGuard {
     fn drop(&mut self) {
         if !self.disarmed {
-            self.shared.remove_operation(self.seq);
+            self.shared.remove_operation(self.route_id);
         }
     }
 }
 
 impl PendingExecControlGuard {
-    pub(in crate::exec_operation) fn new(shared: Arc<Shared>, request_seq: u32) -> Self {
+    pub(in crate::exec_operation) fn new(shared: Arc<Shared>, request_route_id: RouteId) -> Self {
         Self {
             shared,
-            request_seq,
+            request_route_id,
         }
     }
 }
 
 impl Drop for PendingExecControlGuard {
     fn drop(&mut self) {
-        remove_pending_exec_control(&self.shared, self.request_seq);
+        remove_pending_exec_control(&self.shared, self.request_route_id);
     }
 }
 
@@ -485,8 +555,6 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
         None => (None, None),
     };
     let (result_tx, result_rx) = oneshot::channel();
-    let seq = shared.next_seq();
-    let diagnostic = ExecOperationDiagnostic::new(seq, label);
     let normal_operation = match tracking {
         ExecOperationTracking::Tracked => Some(ExecOperationNormalTracking::Owned(
             shared.reserve_normal_operation()?,
@@ -497,43 +565,40 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
         ExecOperationTracking::Untracked => None,
     };
     let tracks_normal_operation = normal_operation.is_some();
-    let operation = ExecOperation {
-        normal_operation,
-        lifecycle,
-        diagnostic: diagnostic.clone(),
-        result_tx,
-        stream_tx,
-        stdout_capture: capture_state(stdout),
-        stderr_capture: capture_state(stderr),
-        stdout_stream: stream_state(stdout),
-        stderr_stream: stream_state(stderr),
-        expected_output_seq: 0,
-        stream_overflowed: false,
-        host_cancel_requested: false,
-        pending_controls: HashMap::new(),
-    };
-
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { operations, .. } => {
-                operations.insert(seq, operation);
-            }
-        }
-    }
+    let (route_id, diagnostic) = shared.register_route(|route_id, state| {
+        let diagnostic = ExecOperationDiagnostic::new(route_id.wire_seq(), label);
+        let operation = ExecOperation {
+            route_id,
+            normal_operation,
+            lifecycle,
+            diagnostic: diagnostic.clone(),
+            result_tx,
+            stream_tx,
+            stdout_capture: capture_state(stdout),
+            stderr_capture: capture_state(stderr),
+            stdout_stream: stream_state(stdout),
+            stderr_stream: stream_state(stderr),
+            expected_output_seq: 0,
+            stream_overflowed: false,
+            host_cancel_requested: false,
+            pending_controls: HashMap::new(),
+        };
+        let ConnectionState::Connected { operations, .. } = state else {
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ));
+        };
+        operations.insert(route_id, operation);
+        Ok(diagnostic)
+    })?;
 
     Ok(ExecOperationRegistration {
-        seq,
+        route_id,
         diagnostic,
         result_rx,
         stream_rx,
-        registration_guard: ExecOperationRegistrationGuard::new(Arc::clone(shared), seq),
+        registration_guard: ExecOperationRegistrationGuard::new(Arc::clone(shared), route_id),
         tracks_normal_operation,
     })
 }

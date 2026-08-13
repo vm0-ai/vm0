@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.744.0](https://github.com/vm0-ai/vm0/compare/app-v0.743.0...app-v0.744.0) (2026-08-13)
+
+
+### Features
+
+* **billing:** rebuild the package change review dialog as a ledger ([#26955](https://github.com/vm0-ai/vm0/issues/26955)) ([6f0e2f4](https://github.com/vm0-ai/vm0/commit/6f0e2f477208c8c5a9c5cc9f8e6c5ba590797fe5))
+* **billing:** redesign plan selection as a single comparison panel ([#26829](https://github.com/vm0-ai/vm0/issues/26829)) ([41c0284](https://github.com/vm0-ai/vm0/commit/41c0284678bfb48f34ca4c5b14854b0ccd0e1302))
+
+
+### Refactoring
+
+* **model-provider:** neutralize device auth modules ([#26965](https://github.com/vm0-ai/vm0/issues/26965)) ([f11e0a1](https://github.com/vm0-ai/vm0/commit/f11e0a13759ab812f4cc328c2a9662e70f1bacc4))
+* **org:** neutralize the organization logo vertical slice ([#26961](https://github.com/vm0-ai/vm0/issues/26961)) ([74e3061](https://github.com/vm0-ai/vm0/commit/74e30614ebaf1c2fad8cad2991bb783823b18882))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.3
+    * @okouai/core bumped to 8.556.1
+
 ## [0.743.0](https://github.com/vm0-ai/vm0/compare/app-v0.742.1...app-v0.743.0) (2026-08-13)
 
 

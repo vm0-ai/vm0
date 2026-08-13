@@ -6,7 +6,7 @@ import {
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
 } from "@okouai/api-contracts/contracts/zero-org";
-import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
@@ -432,7 +432,7 @@ const uploadOrgLogo$ = command(
   ): Promise<{ readonly logoUrl: string | null }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const client = get(zeroClient$)(orgLogoContract);
     const result = await accept(
       client.post({
         body: formData,
@@ -447,7 +447,7 @@ const uploadOrgLogo$ = command(
 
 export const loadOrgLogo$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const client = get(zeroClient$)(orgLogoContract);
     const result = await accept(
       client.get({
         fetchOptions: { signal },

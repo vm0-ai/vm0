@@ -17,8 +17,12 @@ export interface WorkflowAutomationEventPolicy {
 }
 
 type TriggerRenderer = (payload: WorkflowAutomationEventPayload) => string;
+type DisplayMessageRenderer = (
+  payload: WorkflowAutomationEventPayload,
+) => string;
 
 const EVENT_PAYLOAD_OBJECT_KEY_ORDER = "__vm0EventPayloadObjectKeyOrderV1";
+const USER_FRIENDLY_AUTOMATION_MESSAGE = "__vm0UserFriendlyAutomationMessageV1";
 const eventPayloadObjectKeyOrderSchema = z.array(
   z.object({
     path: z.array(z.union([z.string(), z.number()])),
@@ -80,7 +84,11 @@ function restoreEventPayloadObjectKeyOrder(
     return value;
   }
   const persistedKeys = Object.keys(value).filter((key) => {
-    return path.length > 0 || key !== EVENT_PAYLOAD_OBJECT_KEY_ORDER;
+    return (
+      path.length > 0 ||
+      (key !== EVENT_PAYLOAD_OBJECT_KEY_ORDER &&
+        key !== USER_FRIENDLY_AUTOMATION_MESSAGE)
+    );
   });
   const persistedKeySet = new Set(persistedKeys);
   const orderedKeys = keyOrder.get(eventPayloadPathKey(path))?.filter((key) => {
@@ -109,8 +117,12 @@ function restoreEventPayloadObjectKeyOrder(
  */
 export function persistedWorkflowAutomationEventPayload(
   payload: WorkflowAutomationEventPayload,
+  options?: { readonly userFriendlyAutomationMessage?: boolean },
 ): WorkflowAutomationEventPayload {
-  if (EVENT_PAYLOAD_OBJECT_KEY_ORDER in payload) {
+  if (
+    EVENT_PAYLOAD_OBJECT_KEY_ORDER in payload ||
+    USER_FRIENDLY_AUTOMATION_MESSAGE in payload
+  ) {
     throw new Error("Workflow automation event payload uses a reserved field");
   }
   const objectKeyOrder: EventPayloadObjectKeyOrder[] = [];
@@ -118,7 +130,17 @@ export function persistedWorkflowAutomationEventPayload(
   return {
     ...payload,
     [EVENT_PAYLOAD_OBJECT_KEY_ORDER]: objectKeyOrder,
+    ...(options?.userFriendlyAutomationMessage
+      ? { [USER_FRIENDLY_AUTOMATION_MESSAGE]: true }
+      : {}),
   };
+}
+
+/** The prompt variant is admitted with the event so later flag changes do not split it. */
+export function workflowAutomationEventUsesUserFriendlyMessage(
+  payload: WorkflowAutomationEventPayload,
+): boolean {
+  return payload[USER_FRIENDLY_AUTOMATION_MESSAGE] === true;
 }
 
 /** Rows admitted before key-order metadata was written must use the blob. */
@@ -201,6 +223,22 @@ function nullableStringField(
   return value;
 }
 
+function optionalStringField(
+  payload: WorkflowAutomationEventPayload,
+  field: string,
+): string | null {
+  const value = payload[field];
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new Error(
+      `Workflow automation event payload field "${field}" must be a string, null, or undefined`,
+    );
+  }
+  return value;
+}
+
 function booleanField(
   payload: WorkflowAutomationEventPayload,
   field: string,
@@ -250,7 +288,7 @@ function renderGithubIssueCommentCreated(
   return `GitHub user "${stringField(author, "login")}" created a comment (GitHub webhook delivery ${githubWebhookDelivery(payload)}).`;
 }
 
-function renderGithubPullRequest(
+function renderGithubPullRequestSummary(
   payload: WorkflowAutomationEventPayload,
 ): string {
   const action = stringField(payload, "action");
@@ -296,7 +334,13 @@ function renderGithubPullRequest(
       }
     }
   };
-  return `${summary()} (GitHub webhook delivery ${githubWebhookDelivery(payload)}).`;
+  return summary();
+}
+
+function renderGithubPullRequest(
+  payload: WorkflowAutomationEventPayload,
+): string {
+  return `${renderGithubPullRequestSummary(payload)} (GitHub webhook delivery ${githubWebhookDelivery(payload)}).`;
 }
 
 function renderGoogleCalendarEvent(
@@ -402,6 +446,166 @@ export const TRIGGER_RENDERERS: Readonly<
   },
 };
 
+function gmailDisplayMessage(
+  payload: WorkflowAutomationEventPayload,
+  prefix: string,
+): string {
+  const from = optionalStringField(payload, "from");
+  const subject = optionalStringField(payload, "subject");
+  const details = [
+    ...(from ? [`from ${from}`] : []),
+    ...(subject ? [`with subject "${subject}"`] : []),
+  ].join(" ");
+  return `${prefix}${details ? ` ${details}` : ""}.`;
+}
+
+function notionDisplayMessage(
+  payload: WorkflowAutomationEventPayload,
+  untitledMessage: string,
+  titledMessage: (title: string) => string,
+): string {
+  const page = objectField(payload, "page");
+  const title = optionalStringField(page, "title");
+  return title ? titledMessage(title) : untitledMessage;
+}
+
+function scheduleDisplayMessage(
+  payload: WorkflowAutomationEventPayload,
+): string {
+  switch (stringField(payload, "scheduleType")) {
+    case "cron": {
+      return "This workflow started on schedule.";
+    }
+    case "loop": {
+      return "The next recurring run started.";
+    }
+    case "once": {
+      return "The one-time scheduled run started.";
+    }
+    default: {
+      throw new Error("Unsupported workflow automation schedule type");
+    }
+  }
+}
+
+/** Human-readable trigger context for the visible chat turn. */
+const DISPLAY_MESSAGE_RENDERERS: Readonly<
+  Record<WorkflowAutomationEventType, DisplayMessageRenderer>
+> = {
+  "chat-run-finished": (payload) => {
+    const status = stringField(payload, "runStatus");
+    const finished = status === "cancelled" ? "was cancelled" : status;
+    return `A run in the watched chat thread ${finished}.`;
+  },
+  "gmail-new-message": (payload) => {
+    return gmailDisplayMessage(payload, "A new email arrived");
+  },
+  "gmail-label-applied": (payload) => {
+    return gmailDisplayMessage(
+      payload,
+      `Gmail label "${stringField(payload, "labelName")}" was added to an email`,
+    );
+  },
+  "github-deployment-status-created": (payload) => {
+    const deploymentStatus = objectField(payload, "deploymentStatus");
+    return `A GitHub deployment changed to "${stringField(deploymentStatus, "state")}".`;
+  },
+  "github-issue-comment-created": (payload) => {
+    const comment = objectField(payload, "comment");
+    const author = objectField(comment, "author");
+    return `GitHub user "${stringField(author, "login")}" added a comment.`;
+  },
+  "github-pull-request": (payload) => {
+    return `${renderGithubPullRequestSummary(payload)}.`;
+  },
+  "github-pull-request-review-submitted": (payload) => {
+    const review = objectField(payload, "review");
+    const author = objectField(review, "author");
+    return `GitHub user "${stringField(author, "login")}" submitted a pull request review with state "${stringField(review, "state")}".`;
+  },
+  "github-workflow-job-completed": (payload) => {
+    const job = objectField(payload, "job");
+    return `GitHub Actions job "${stringField(job, "name")}" completed with conclusion "${nullableStringField(job, "conclusion")}".`;
+  },
+  "github-workflow-run-completed": (payload) => {
+    const workflow = objectField(payload, "workflow");
+    const run = objectField(payload, "run");
+    const workflowName =
+      nullableStringField(workflow, "name") ?? stringField(workflow, "path");
+    return `GitHub Actions workflow "${workflowName}" completed with conclusion "${nullableStringField(run, "conclusion")}".`;
+  },
+  "google-calendar-event-created": (payload) => {
+    const summary = optionalStringField(payload, "summary");
+    return summary
+      ? `Google Calendar event "${summary}" was created.`
+      : "A Google Calendar event was created.";
+  },
+  "google-calendar-event-updated": (payload) => {
+    const summary = optionalStringField(payload, "summary");
+    return summary
+      ? `Google Calendar event "${summary}" was updated.`
+      : "A Google Calendar event was updated.";
+  },
+  "google-calendar-event-cancelled": (payload) => {
+    const summary = optionalStringField(payload, "summary");
+    return summary
+      ? `Google Calendar event "${summary}" was cancelled.`
+      : "A Google Calendar event was cancelled.";
+  },
+  "google-forms-response-submitted": (payload) => {
+    const respondent = nullableStringField(payload, "respondentEmail");
+    const formTitle = stringField(payload, "formTitle");
+    return stringField(payload, "changeType") === "created"
+      ? `A new response${respondent ? ` from ${respondent}` : ""} was submitted to Google Form "${formTitle}".`
+      : `A response${respondent ? ` from ${respondent}` : ""} was updated in Google Form "${formTitle}".`;
+  },
+  "google-meet-transcript-generated": () => {
+    return "A Google Meet transcript is ready.";
+  },
+  "notion-child-page-created": (payload) => {
+    return notionDisplayMessage(
+      payload,
+      "A Notion child page was created under the configured parent page.",
+      (title) => {
+        return `Notion page "${title}" was created under the configured parent page.`;
+      },
+    );
+  },
+  "notion-database-item-created": (payload) => {
+    return notionDisplayMessage(
+      payload,
+      "A Notion database item was created.",
+      (title) => {
+        return `Notion item "${title}" was created in the configured database.`;
+      },
+    );
+  },
+  "notion-page-content-updated": (payload) => {
+    return notionDisplayMessage(
+      payload,
+      "A Notion page was updated.",
+      (title) => {
+        return `Notion page "${title}" was updated.`;
+      },
+    );
+  },
+  "strapi-entry-published": (payload) => {
+    const integration = objectField(payload, "integration");
+    return `Strapi entry "${stringField(payload, "documentId")}" was published in ${stringField(integration, "name")}.`;
+  },
+  "stripe-invoice-paid": (payload) => {
+    const invoice = objectField(payload, "invoice");
+    return `Stripe invoice "${stringField(invoice, "id")}" was paid.`;
+  },
+  "webhook-received": () => {
+    return "A signed webhook request was received.";
+  },
+  schedule: scheduleDisplayMessage,
+  manual: () => {
+    return "A manual run of this workflow was requested.";
+  },
+};
+
 const CHAT_RUN_FINISHED_NOTES = [
   'Not included below: the finished run\'s full transcript, and its final output beyond the excerpt. `okou search "<runId>" --source agent-session` prints both local session-file locations for direct analysis.',
 ] as const;
@@ -469,6 +673,18 @@ export const EVENT_NOTES: Readonly<
   manual: NO_NOTES,
 };
 
+const AGENT_EVENT_CONTEXT: Readonly<
+  Record<WorkflowAutomationEventType, readonly string[]>
+> = {
+  ...EVENT_NOTES,
+  "chat-run-finished": [
+    "The finished run's full transcript and final output beyond the excerpt are not included. The run ID identifies its agent-session files in Okou search.",
+  ],
+  "google-forms-response-submitted": [
+    "Response answers are not included. The response and form resources identified by formId and responseId contain the answers and question text.",
+  ],
+};
+
 const EVENT_SOURCE_POLICY = {
   activePreviousRunPolicy: "allow",
   recordLastRunId: false,
@@ -522,11 +738,11 @@ export const EVENT_POLICY: Readonly<
  * current run from earlier ones are the trigger identity and the event payload,
  * and both live outside the conversation, so the run has to be told.
  *
- * Two placements, one string: `workflowAutomationPrompt` puts the trigger on the
- * visible user turn (the newest turn, and what the user reads in chat), and
- * `workflowAutomationAppendSystemPrompt` repeats it next to the event payload.
- * Every trigger line carries an identifier that is unique per firing, so a
- * resumed session self-labels which round each turn belongs to.
+ * Legacy runs put the same technical trigger in the visible user turn and an
+ * automation-specific system append. User-friendly runs keep the visible turn
+ * human-readable and build the agent's user prompt from this context instead.
+ * Every technical trigger carries an identifier that is unique per firing, so
+ * a resumed session self-labels which round each turn belongs to.
  *
  * These prompts state facts only. Behavioral instructions belong in the
  * workflow's own skill, and diagnostic guidance belongs in the output of the
@@ -575,6 +791,41 @@ export function workflowAutomationPrompt(args: {
   readonly trigger: string;
 }): string {
   return [`/${args.workflowName}`, `Trigger: ${args.trigger}`].join("\n");
+}
+
+export function workflowAutomationDisplayMessage(
+  context: WorkflowAutomationContext,
+): string {
+  return DISPLAY_MESSAGE_RENDERERS[context.eventType](context.event);
+}
+
+/**
+ * Agent-only user prompt for the user-friendly variant. It supplies facts and
+ * event data; behavioral instructions remain in the workflow skill.
+ */
+export function workflowAutomationAgentPrompt(
+  context: WorkflowAutomationContext,
+): string {
+  const notes = AGENT_EVENT_CONTEXT[context.eventType];
+  return [
+    `/${context.workflowName}`,
+    "",
+    "Automation event",
+    `Type: ${context.eventType}`,
+    `Summary: ${context.trigger}`,
+    ...(notes.length === 0
+      ? []
+      : [
+          "",
+          "Context:",
+          ...notes.map((note) => {
+            return `- ${note}`;
+          }),
+        ]),
+    "",
+    "Event data:",
+    JSON.stringify(context.event, null, 2),
+  ].join("\n");
 }
 
 export function workflowAutomationAppendSystemPrompt(

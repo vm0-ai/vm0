@@ -30,9 +30,9 @@ const READ_BUF_SIZE: usize = 64 * 1024;
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
-/// Pending requests, active exec operations, and connected process state
-/// live inside the `Connected` variant so registrations are structurally
-/// unreachable once the reader task has exited.
+/// Pending requests, active exec operations, queued-frame route reservations,
+/// and connected process state live inside the `Connected` variant so new
+/// registrations are structurally unreachable once the reader task has exited.
 ///
 /// The invariant "connection is closed ⇔ registrations are impossible" is
 /// enforced by the type: every code path that cares about liveness must
@@ -40,6 +40,10 @@ const READ_BUF_SIZE: usize = 64 * 1024;
 /// without taking the corresponding lock.
 pub(super) enum ConnectionState {
     Connected {
+        /// Next logical route identity. Its low 32 bits are used on the wire.
+        next_route_id: u64,
+        /// Routes held by frames admitted for a future write.
+        route_reservations: HashMap<u32, RouteReservationEntry>,
         /// Pending request responses: seq → response route.
         pending: HashMap<u32, PendingResponse>,
         /// Active exec-operation state owned by the exec_operation module.
@@ -60,10 +64,8 @@ pub(super) struct Shared {
     pub(super) file_write_gate: tokio::sync::Mutex<()>,
     /// Raw fd of the underlying socket, used to poison a corrupted stream.
     pub(super) fd: RawFd,
-    /// Monotonically increasing sequence number (starts at 2, skips 0).
-    /// Handshake uses seq=1 before Shared is created, so post-handshake
-    /// sequences start at 2 to avoid collisions.
-    pub(super) seq: AtomicU32,
+    /// Counter used only to distinguish temporary file names.
+    pub(super) temp_seq: AtomicU32,
     /// Single source of truth for connection liveness plus all per-connection
     /// registration tables. See [`ConnectionState`].
     pub(super) state: std::sync::Mutex<ConnectionState>,
@@ -81,9 +83,20 @@ pub(super) struct Shared {
 }
 
 pub(super) struct PendingResponse {
+    route_id: RouteId,
     response_tx: oneshot::Sender<RawMessage>,
     normal_operation: Option<PendingNormalOperation>,
     normal_terminal_msg_types: &'static [u8],
+}
+
+pub(super) struct RouteReservationEntry {
+    route_id: RouteId,
+    holders: usize,
+}
+
+pub(super) struct RouteReservation {
+    shared: Arc<Shared>,
+    route_id: RouteId,
 }
 
 enum PendingNormalOperation {
@@ -91,15 +104,122 @@ enum PendingNormalOperation {
     Composite(NormalOperationTransitionHandle),
 }
 
+/// Connection-local registration identity.
+///
+/// The guest protocol carries only [`Self::wire_seq`]. The complete value
+/// distinguishes owners after that wire sequence wraps and is reused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct RouteId(u64);
+
+impl RouteId {
+    pub(super) fn wire_seq(self) -> u32 {
+        self.0 as u32
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 impl Shared {
-    /// Get next sequence number, skipping 0 (reserved for unsolicited messages).
-    pub(super) fn next_seq(&self) -> u32 {
+    /// Register one response route while holding the connection-state lock.
+    ///
+    /// Candidate selection spans ordinary requests, exec operations, and exec
+    /// controls so a wire sequence has exactly one live owner. The callback
+    /// must insert that owner before returning.
+    pub(super) fn register_route<T>(
+        &self,
+        register: impl FnOnce(RouteId, &mut ConnectionState) -> io::Result<T>,
+    ) -> io::Result<(RouteId, T)> {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let route_id = match &mut *guard {
+            ConnectionState::Connected {
+                next_route_id,
+                route_reservations,
+                pending,
+                operations,
+            } => loop {
+                let route_id = RouteId(*next_route_id);
+                *next_route_id = next_route_id
+                    .checked_add(1)
+                    .ok_or_else(|| io::Error::other("vsock route identity exhausted"))?;
+                let seq = route_id.wire_seq();
+                if seq != 0
+                    && !route_reservations.contains_key(&seq)
+                    && !pending.contains_key(&seq)
+                    && !operations.contains_route_seq(seq)
+                {
+                    break route_id;
+                }
+            },
+            ConnectionState::Closed => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+        };
+        let value = register(route_id, &mut guard)?;
+        Ok((route_id, value))
+    }
+
+    /// Reserve a route while a frame waits to acquire the writer lock.
+    ///
+    /// A free route may be reserved for an earlier owner whose frame is still
+    /// queued. A route owned by a newer generation cannot be reserved.
+    pub(super) fn reserve_exec_route_for_frame(
+        self: &Arc<Self>,
+        route_id: RouteId,
+    ) -> io::Result<Option<RouteReservation>> {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let ConnectionState::Connected {
+            route_reservations,
+            pending,
+            operations,
+            ..
+        } = &mut *guard
+        else {
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ));
+        };
+        let seq = route_id.wire_seq();
+        if route_reservations
+            .get(&seq)
+            .is_some_and(|reservation| reservation.route_id != route_id)
+        {
+            return Ok(None);
+        }
+        let owns_exec_route = operations.contains_route(route_id);
+        if !owns_exec_route && (pending.contains_key(&seq) || operations.contains_route_seq(seq)) {
+            return Ok(None);
+        }
+        match route_reservations.entry(seq) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().holders += 1;
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(RouteReservationEntry {
+                    route_id,
+                    holders: 1,
+                });
+            }
+        }
+        Ok(Some(RouteReservation {
+            shared: Arc::clone(self),
+            route_id,
+        }))
+    }
+
+    /// Get the next temporary-file suffix, skipping zero.
+    pub(super) fn next_temp_seq(&self) -> u32 {
         loop {
-            let seq = self.seq.fetch_add(1, Ordering::Relaxed);
+            let seq = self.temp_seq.fetch_add(1, Ordering::Relaxed);
             if seq != 0 {
                 return seq;
             }
-            // Wrapped to 0 — skip it.
         }
     }
 
@@ -123,6 +243,7 @@ impl Shared {
                 ConnectionState::Connected {
                     pending,
                     operations,
+                    ..
                 } => {
                     // Serialize tracker close/poison with terminal dispatch,
                     // which completes tracker tokens under this same state lock.
@@ -155,17 +276,44 @@ impl Shared {
         let _ = nix::sys::socket::shutdown(self.fd, nix::sys::socket::Shutdown::Both);
     }
 
-    fn remove_pending(&self, seq: u32) {
+    fn remove_pending(&self, route_id: RouteId) {
         let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { pending, .. } = &mut *guard {
-            pending.remove(&seq);
+            let seq = route_id.wire_seq();
+            if pending
+                .get(&seq)
+                .is_some_and(|pending| pending.route_id == route_id)
+            {
+                pending.remove(&seq);
+            }
         }
     }
 
-    pub(super) fn remove_operation(&self, seq: u32) {
+    pub(super) fn remove_operation(&self, route_id: RouteId) {
         let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { operations, .. } = &mut *guard {
-            operations.remove(seq);
+            operations.remove(route_id);
+        }
+    }
+
+    fn release_route_reservation(&self, route_id: RouteId) {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let ConnectionState::Connected {
+            route_reservations, ..
+        } = &mut *guard
+        else {
+            return;
+        };
+        let seq = route_id.wire_seq();
+        let Some(reservation) = route_reservations.get_mut(&seq) else {
+            return;
+        };
+        if reservation.route_id != route_id {
+            return;
+        }
+        reservation.holders -= 1;
+        if reservation.holders == 0 {
+            route_reservations.remove(&seq);
         }
     }
 
@@ -173,6 +321,12 @@ impl Shared {
         self.normal_operations
             .reserve()
             .map_err(request::normal_operation_rejection_error)
+    }
+}
+
+impl Drop for RouteReservation {
+    fn drop(&mut self) {
+        self.shared.release_route_reservation(self.route_id);
     }
 }
 

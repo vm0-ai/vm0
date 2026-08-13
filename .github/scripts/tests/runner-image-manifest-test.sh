@@ -25,7 +25,7 @@ cat > "${TMPDIR}/manifest.json" <<'JSON'
   "profile": "vm0/default",
   "binDir": "/var/lib/vm0-runner/bin/pr-123",
   "runnerDir": "/var/lib/vm0-runner/runners/pr-123",
-  "runnerSha256": "runner-sha",
+  "runnerSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "guestSha256": {
     "guest-agent": "a",
     "guest-download": "b",
@@ -59,6 +59,7 @@ out=$(MANIFEST_PATH="${TMPDIR}/manifest.json" \
   SELECTED_HOST=dev-2 \
   "$MANIFEST" validate)
 assert_contains "$out" "bin-dir=/var/lib/vm0-runner/bin/pr-123"
+assert_contains "$out" "runner-sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 assert_contains "$out" 'rootfs-hash-map={"dev-1":"rootfs-1","dev-2":"rootfs-2"}'
 assert_contains "$out" "selected-rootfs-hash=rootfs-2"
 assert_contains "$out" "selected-snapshot-hash=snapshot-2"
