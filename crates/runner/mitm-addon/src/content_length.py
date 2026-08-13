@@ -17,8 +17,8 @@ class ContentLengthResult:
     - ``missing``: no field values were supplied.
     - ``valid``: every part is valid, agrees after normalization, and does not exceed
       ``max_value``.
-    - ``invalid``: parsing encountered an empty part or a part that is not an ASCII decimal
-      after surrounding HTTP optional whitespace was trimmed.
+    - ``invalid``: after trimming surrounding HTTP optional whitespace, parsing encountered
+      an empty part or a character outside the ASCII digits ``0`` through ``9``.
     - ``conflicting``: parsing encountered a normalized decimal value that differs from the
       first value.
     - ``over_limit``: valid parts agree on a value greater than ``max_value``.
@@ -41,9 +41,10 @@ class ContentLengthResult:
 def parse(values: Iterable[str], *, max_value: int) -> ContentLengthResult:
     """Parse repeated Content-Length fields with a bounded integer result.
 
-    The parser scans comma-separated parts across repeated fields after trimming only surrounding
-    HTTP optional whitespace (space and horizontal tab). Parts must be nonempty ASCII decimals.
-    Leading zeroes are ignored when comparing parts, and all normalized values must agree.
+    For each comma-separated part across repeated fields, the parser trims only surrounding HTTP
+    optional whitespace (space and horizontal tab). The remaining part must be nonempty and contain
+    only ASCII digits ``0`` through ``9``. Leading zeroes are ignored when comparing parts, and all
+    normalized values must agree.
 
     Integer conversion is limited to normalized values whose significant digit count does not
     exceed that of ``max_value``; longer agreed values use the bounded ``over_limit`` sentinel
