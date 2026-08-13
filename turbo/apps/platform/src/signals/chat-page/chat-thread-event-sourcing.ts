@@ -613,6 +613,7 @@ export const touchOptimisticChatThreadSort$ = command(
       serviceTier: null,
       computerUseHostId: null,
       cloudBrowserEnabled: false,
+      selectedVideoModel: null,
       createdAt: args.createdAt,
     } satisfies OptimisticChatThreadEvent);
   },
