@@ -1,4 +1,4 @@
-//! A new guest-agent must keep old commit-addressed Pi CLI artifacts runnable.
+//! Pi CLI children receive the canonical Runner-owned run identity.
 
 mod common;
 
@@ -8,19 +8,18 @@ use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
 #[tokio::test]
-async fn new_guest_keeps_legacy_run_id_visible_to_old_pi_cli()
--> Result<(), Box<dyn std::error::Error>> {
+async fn guest_exposes_canonical_run_id_to_pi_cli() -> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir_all(&bin_dir)?;
-    let capture_path = tmp.path().join("legacy-run-id.txt");
+    let capture_path = tmp.path().join("canonical-run-id.txt");
     let npx = bin_dir.join("npx");
     std::fs::write(
         &npx,
         r#"#!/bin/sh
 set -eu
-test -n "${VM0_RUN_ID:-}"
-printf '%s' "$VM0_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
+test -n "${OKOU_RUN_ID:-}"
+printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 IFS= read -r _
 printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"11111111-1111-4111-8111-111111111111","duration_ms":1}'
 "#,
@@ -51,7 +50,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
         common::set_run_payload_file_env_for_test(
             &runtime_dir,
             &guest_contracts::env::RunPayload {
-                prompt: "verify old CLI compatibility".to_string(),
+                prompt: "verify canonical Pi run identity".to_string(),
                 pi_system_prompt: "system prompt".to_string(),
                 pi_model_config: "{}".to_string(),
                 pi_session_id: "11111111-1111-4111-8111-111111111111".to_string(),
@@ -63,7 +62,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
             &HashMap::from([
                 (
                     "CLI_PKG_URL".to_string(),
-                    "https://example.invalid/old-okou-cli.tgz".to_string(),
+                    "https://example.invalid/current-okou-cli.tgz".to_string(),
                 ),
                 (
                     "RUN_ID_CAPTURE_PATH".to_string(),
@@ -85,7 +84,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
         ),
     )
     .await
-    .expect("old Pi CLI compatibility process should finish")?;
+    .expect("canonical Pi CLI process should finish")?;
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
     assert_eq!(std::fs::read_to_string(capture_path)?, run_id);
