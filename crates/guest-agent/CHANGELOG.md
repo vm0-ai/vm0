@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.73.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.1...guest-agent-v0.73.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* disable Codex image generation ([#26879](https://github.com/vm0-ai/vm0/issues/26879)) ([43fa6e1](https://github.com/vm0-ai/vm0/commit/43fa6e113f583f9d06768a043f9382a86423b050))
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
 ## [0.73.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.0...guest-agent-v0.73.1) (2026-08-13)
 
 
