@@ -1,5 +1,6 @@
 import {
   zeroRunsByIdContract,
+  zeroRunAgentEventsContract,
   zeroRunsQueueContract,
   zeroRunsCancelContract,
   zeroRunContextContract,
@@ -21,6 +22,11 @@ export const apiRunsHandlers = [
       result: { agentSessionId: "session-1", output: "" },
       createdAt: "2026-03-10T00:00:00Z",
     }),
+  ),
+
+  // GET /api/okou/runs/:id/telemetry/agent
+  mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+    respond(200, { events: [], hasMore: false, framework: "claude-code" }),
   ),
 
   // GET /api/okou/runs/queue

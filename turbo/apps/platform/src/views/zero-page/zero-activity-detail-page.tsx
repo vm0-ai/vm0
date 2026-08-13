@@ -6,9 +6,10 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { Loader2, Download, ChartLine } from "lucide-react";
+import { Search, Loader2, Download, ChartLine } from "lucide-react";
 import {
   Button,
+  Input,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -43,12 +44,17 @@ import {
 import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
   zeroActivityDetail$,
+  zeroActivityEvents$,
+  zeroActivityVisibleGroups$,
+  zeroActivityStepSearch$,
+  setZeroActivityStepSearch$,
   formatLogTime,
   formatDuration,
   currentRunId$,
 } from "../../signals/activity-page/activity-signals.ts";
 import {
   eventGroupKey,
+  eventGroupMatchesSearch,
   type EventGroup,
 } from "../../signals/activity-page/log-detail-utils";
 import { EventGroupCard } from "./components/log-views/event-group-card.tsx";
@@ -64,6 +70,7 @@ import { ContextContent } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
+import { formatAppNumber } from "../../i18n/format.ts";
 
 // ---------------------------------------------------------------------------
 // Error Banner
@@ -446,6 +453,21 @@ export function ActivityHeaderCard({
   );
 }
 
+function prepareRenderData(
+  detail: {
+    prompt: string | null;
+    appendSystemPrompt: string | null;
+  },
+  features: Record<FeatureSwitchKey, boolean> | undefined,
+) {
+  const prompt = detail.prompt ?? "";
+  const appendSystemPrompt = detail.appendSystemPrompt ?? "";
+  const showSystemPrompt =
+    (features?.[FeatureSwitchKey.ZeroDebug] ?? false) &&
+    appendSystemPrompt.trim().length > 0;
+  return { prompt, appendSystemPrompt, showSystemPrompt };
+}
+
 function resolveDisplayName(
   detail: { displayName: string | null; agentId: string | null } | null,
   isStale: boolean,
@@ -457,7 +479,95 @@ function resolveDisplayName(
   return detail.displayName ?? detail.agentId ?? fallback;
 }
 
-type ActivityTab = "context" | "runner" | "network";
+type ActivityTab = "steps" | "context" | "runner" | "network";
+
+function ActivityStepsContent({
+  detail,
+  features,
+}: {
+  detail: LogDetail;
+  features: Record<FeatureSwitchKey, boolean> | undefined;
+}) {
+  const { t } = useTranslation();
+  const stepSearch = useGet(zeroActivityStepSearch$);
+  const setStepSearch = useSet(setZeroActivityStepSearch$);
+  const visibleGroupsLoadable = useLastLoadable(zeroActivityVisibleGroups$);
+  const visibleGroupsData =
+    visibleGroupsLoadable.state === "hasData" &&
+    visibleGroupsLoadable.data.runId === detail.id
+      ? visibleGroupsLoadable.data
+      : null;
+  const visibleGroups =
+    visibleGroupsData === null ? [] : visibleGroupsData.groups;
+  const visibleGroupsLoading =
+    visibleGroupsLoadable.state === "loading" ||
+    (visibleGroupsLoadable.state === "hasData" &&
+      visibleGroupsLoadable.data.runId !== detail.id);
+  const { prompt, showSystemPrompt, appendSystemPrompt } = prepareRenderData(
+    detail,
+    features,
+  );
+  const searchTerm = stepSearch.trim();
+  const groups = visibleGroups.filter((group) => {
+    return eventGroupMatchesSearch(group, searchTerm);
+  });
+
+  return (
+    <div className="flex flex-col gap-4 pb-8 min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-medium text-foreground whitespace-nowrap">
+            {t(($) => {
+              return $.activity.detail.steps.title;
+            })}
+          </span>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            {stepSearch.trim()
+              ? t(
+                  ($) => {
+                    return $.activity.detail.steps.matched;
+                  },
+                  {
+                    matched: formatAppNumber(groups.length),
+                    total: formatAppNumber(visibleGroups.length),
+                  },
+                )
+              : t(
+                  ($) => {
+                    return $.activity.detail.steps.total;
+                  },
+                  { total: formatAppNumber(visibleGroups.length) },
+                )}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative flex-1 sm:flex-none sm:w-44">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t(($) => {
+                return $.activity.detail.steps.search;
+              })}
+              value={stepSearch}
+              onChange={(event) => {
+                return setStepSearch(event.target.value);
+              }}
+              className="pl-9"
+            />
+          </div>
+        </div>
+      </div>
+
+      <StepsList
+        prompt={prompt}
+        appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
+        groups={groups}
+        stepSearch={stepSearch}
+        isLoading={visibleGroupsLoading}
+        startedAt={detail.startedAt}
+      />
+    </div>
+  );
+}
 
 function ActivityContextTab({ detailId }: { detailId: string }) {
   const { t } = useTranslation();
@@ -814,10 +924,15 @@ function ActivityNetworkTab({ detailId }: { detailId: string }) {
 function ActivityTabContent({
   activeTab,
   detail,
+  features,
 }: {
   activeTab: ActivityTab;
   detail: LogDetail;
+  features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
+  if (activeTab === "steps") {
+    return <ActivityStepsContent detail={detail} features={features} />;
+  }
   if (activeTab === "context") {
     return <ActivityContextTab detailId={detail.id} />;
   }
@@ -830,10 +945,12 @@ function ActivityTabContent({
 function ActivityDetailContent({
   detail,
   displayName,
+  events,
   features,
 }: {
   detail: LogDetail;
   displayName: string;
+  events: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
   const { t } = useTranslation();
@@ -842,10 +959,13 @@ function ActivityDetailContent({
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
   const rawTab = params.get("tab");
   const activeTab: ActivityTab =
-    rawTab === "runner" || rawTab === "network" ? rawTab : "context";
+    showDebugTabs &&
+    (rawTab === "context" || rawTab === "runner" || rawTab === "network")
+      ? rawTab
+      : "steps";
   const setActiveTab = (tab: ActivityTab) => {
     const next = new URLSearchParams(params);
-    if (tab === "context") {
+    if (tab === "steps") {
       next.delete("tab");
     } else {
       next.set("tab", tab);
@@ -882,13 +1002,13 @@ function ActivityDetailContent({
             logDetail={detail}
             duration={duration}
             time={time}
-            events={[]}
+            events={events}
             showModelDetail
             onDownload={() => {
               detach(
                 (async () => {
                   const extra = await fetchExtra(detail.id, pageSignal);
-                  downloadJson([], detail.id, detail, extra);
+                  downloadJson(events, detail.id, detail, extra);
                 })(),
                 Reason.DomCallback,
               );
@@ -904,6 +1024,11 @@ function ActivityDetailContent({
                 }}
               >
                 <TabsList>
+                  <TabsTrigger value="steps">
+                    {t(($) => {
+                      return $.activity.detail.tabs.steps;
+                    })}
+                  </TabsTrigger>
                   <TabsTrigger value="context">
                     {t(($) => {
                       return $.activity.detail.tabs.context;
@@ -924,11 +1049,13 @@ function ActivityDetailContent({
             </div>
           )}
 
-          {showDebugTabs && (
-            <div className="mt-6">
-              <ActivityTabContent activeTab={activeTab} detail={detail} />
-            </div>
-          )}
+          <div className="mt-6">
+            <ActivityTabContent
+              activeTab={activeTab}
+              detail={detail}
+              features={features}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -939,6 +1066,7 @@ export function ZeroActivityDetailPage() {
   const { t } = useTranslation();
   const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
+  const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   // Resolve agent display name from the detail response
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
@@ -953,7 +1081,13 @@ export function ZeroActivityDetailPage() {
   );
 
   const features = useLastResolved(featureSwitch$);
-  if (!detail || isStale) {
+  const events =
+    eventsLoadable.state === "hasData" &&
+    eventsLoadable.data?.runId === currentRunId
+      ? eventsLoadable.data.events
+      : null;
+
+  if (!detail || isStale || events === null) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
     }
@@ -964,6 +1098,7 @@ export function ZeroActivityDetailPage() {
     <ActivityDetailContent
       detail={detail}
       displayName={displayName}
+      events={events}
       features={features}
     />
   );
