@@ -12,7 +12,9 @@ describe("Okou CLI program", () => {
 
   it("should use the canonical Okou product identity", () => {
     expect(program.name()).toBe("okou");
-    expect(program.description()).toContain("Okou CLI");
+    expect(program.description()).toBe(
+      "Okou CLI — interact with Okou from inside the sandbox",
+    );
   });
 
   it("should register all expected Okou commands", () => {
