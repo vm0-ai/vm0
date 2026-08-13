@@ -8632,6 +8632,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const subscriptionItemId = `si_${randomUUID()}`;
     const scheduleId = `sub_sched_${randomUUID()}`;
     const periodStartUnix = 4_075_660_800;
+    const schedulePhaseStartUnix = periodStartUnix + 3600;
     const periodEndUnix = 4_078_252_800;
     const fixture = await createConcurrencySubscriptionOrg({
       subscriptionId,
@@ -8673,8 +8674,15 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
     context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
       id: scheduleId,
+      current_phase: {
+        start_date: schedulePhaseStartUnix,
+        end_date: periodEndUnix,
+      },
       phases: [
-        { start_date: periodStartUnix, end_date: periodEndUnix },
+        {
+          start_date: schedulePhaseStartUnix,
+          end_date: periodEndUnix,
+        },
         {
           start_date: periodEndUnix,
           end_date: periodEndUnix + 2_592_000,
@@ -8741,7 +8749,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         proration_behavior: "none",
         phases: [
           {
-            start_date: periodStartUnix,
+            start_date: schedulePhaseStartUnix,
             end_date: periodEndUnix,
             items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 5 }],
             proration_behavior: "none",

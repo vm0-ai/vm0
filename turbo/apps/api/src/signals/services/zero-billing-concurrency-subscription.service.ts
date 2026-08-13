@@ -244,6 +244,23 @@ function concurrencyItemPeriod(item: StripeSubscriptionItem): {
   };
 }
 
+function concurrencySchedulePeriod(
+  item: StripeSubscriptionItem,
+  schedule: StripeSubscriptionSchedule | null,
+): { readonly start: number; readonly end: number } {
+  const currentPhase = schedule?.current_phase;
+  if (!currentPhase) {
+    return concurrencyItemPeriod(item);
+  }
+  if (currentPhase.end_date <= currentPhase.start_date) {
+    throw new Error("Concurrency schedule has an invalid current phase");
+  }
+  return {
+    start: currentPhase.start_date,
+    end: currentPhase.end_date,
+  };
+}
+
 function concurrencyRecurringDuration(
   item: StripeSubscriptionItem,
 ): StripePriceRecurring {
@@ -288,12 +305,12 @@ function concurrencyScheduleUpdateParams(
   subscription: StripeSubscription,
   schedule: StripeSubscriptionSchedule | null,
   targetQuantity: number,
+  period: { readonly start: number; readonly end: number },
 ): NonNullable<StripeInvoiceCreatePreviewParams["schedule_details"]> {
   const item = concurrencyPriceItem(subscription.items.data);
   if (!item?.quantity) {
     throw new Error("Concurrency subscription has no active concurrency item");
   }
-  const period = concurrencyItemPeriod(item);
   const discounts = subscriptionPhaseDiscounts(subscription);
   return {
     end_behavior: "release",
@@ -346,23 +363,26 @@ async function scheduleConcurrencyChange(
         },
       );
   signal.throwIfAborted();
-  const scheduleId = existingScheduleId ?? createdSchedule?.id;
+  const schedule = existingSchedule ?? createdSchedule;
+  const scheduleId = existingScheduleId ?? schedule?.id;
   if (!scheduleId) {
     throw new Error("Stripe did not return a subscription schedule ID");
   }
+  const schedulePeriod = concurrencySchedulePeriod(item, schedule);
   await stripe.subscriptionSchedules.update(
     scheduleId,
     concurrencyScheduleUpdateParams(
       subscription,
       existingSchedule,
       targetQuantity,
+      schedulePeriod,
     ),
     {
-      idempotencyKey: `concurrency-change:${subscription.id}:${period.end}:${targetQuantity}:schedule-update`,
+      idempotencyKey: `concurrency-change:${subscription.id}:${schedulePeriod.end}:${targetQuantity}:schedule-update`,
     },
   );
   signal.throwIfAborted();
-  return new Date(period.end * 1000);
+  return new Date(schedulePeriod.end * 1000);
 }
 
 function expandedLatestInvoice(
@@ -663,20 +683,28 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         ? { id: item.id, quantity: targetQuantity }
         : { price: args.priceId, quantity: targetQuantity },
     ];
-    const existingSchedule =
-      scheduleId && targetQuantity < currentQuantity
-        ? await stripe.subscriptionSchedules.retrieve(scheduleId)
+    const scheduledPreview =
+      scheduleId && item && targetQuantity < currentQuantity
+        ? {
+            id: scheduleId,
+            item,
+            schedule: await stripe.subscriptionSchedules.retrieve(scheduleId),
+          }
         : null;
     signal.throwIfAborted();
     const recurringPreviewParams: StripeInvoiceCreatePreviewParams =
-      scheduleId && existingSchedule
+      scheduledPreview
         ? {
-            schedule: scheduleId,
+            schedule: scheduledPreview.id,
             preview_mode: "next",
             schedule_details: concurrencyScheduleUpdateParams(
               subscription,
-              existingSchedule,
+              scheduledPreview.schedule,
               targetQuantity,
+              concurrencySchedulePeriod(
+                scheduledPreview.item,
+                scheduledPreview.schedule,
+              ),
             ),
           }
         : {
