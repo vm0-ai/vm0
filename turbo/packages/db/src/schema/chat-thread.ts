@@ -9,6 +9,7 @@ import {
   boolean,
   check,
   varchar,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
@@ -18,7 +19,10 @@ import type {
   ChatThreadDraftAttachments,
   ChatThreadDraftUserMessage,
 } from "@okouai/db/jsonb-contracts/chat-thread";
-import { agentRuns, agentSessions } from "./agent-run-session-conversation";
+import {
+  resolveAgentRunId,
+  resolveAgentSessionId,
+} from "./agent-run-reference";
 
 /**
  * Chat Threads table
@@ -53,8 +57,8 @@ export const chatThreads = pgTable(
      * Every thread-bound run source resolves continuation through this binding.
      */
     agentSessionId: uuid("agent_session_id").references(
-      () => {
-        return agentSessions.id;
+      (): AnyPgColumn => {
+        return resolveAgentSessionId();
       },
       { onDelete: "set null" },
     ),
@@ -63,8 +67,8 @@ export const chatThreads = pgTable(
      * Provides route provenance for session rotation and binding snapshots.
      */
     agentSessionRunId: uuid("agent_session_run_id").references(
-      () => {
-        return agentRuns.id;
+      (): AnyPgColumn => {
+        return resolveAgentRunId();
       },
       { onDelete: "set null" },
     ),
