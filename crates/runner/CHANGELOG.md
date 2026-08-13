@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.168.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.3...runner-rs-v0.168.4) (2026-08-13)
+
+
+### Refactoring
+
+* **python:** require cli agent type in proxy registry ([#26933](https://github.com/vm0-ai/vm0/issues/26933)) ([ba18bf4](https://github.com/vm0-ai/vm0/commit/ba18bf4bd7b430842d42da3de522f6d29860918a))
+* **runner:** generate contract-owned decode paths ([#26931](https://github.com/vm0-ai/vm0/issues/26931)) ([8145f56](https://github.com/vm0-ai/vm0/commit/8145f56bcaf853c3709141ca02dfc735901b0b7a))
+* **rust:** share active-input control payload contract ([#26950](https://github.com/vm0-ai/vm0/issues/26950)) ([403bfd8](https://github.com/vm0-ai/vm0/commit/403bfd8f08fcd272d7c39df9149b1aa9124dca42))
+
 ## [0.168.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.2...runner-rs-v0.168.3) (2026-08-13)
 
 

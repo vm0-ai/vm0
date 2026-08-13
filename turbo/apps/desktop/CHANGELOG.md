@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.38.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.37.10...desktop-v0.38.0) (2026-08-13)
+
+
+### Features
+
+* **app:** route Okou production API traffic ([#26856](https://github.com/vm0-ai/vm0/issues/26856)) ([b925ece](https://github.com/vm0-ai/vm0/commit/b925ece93dd63d7a746f341d265d74f4ead2311d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.2
+
 ## [0.37.10](https://github.com/vm0-ai/vm0/compare/desktop-v0.37.9...desktop-v0.37.10) (2026-08-13)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.556.0](https://github.com/vm0-ai/vm0/compare/core-v8.555.1...core-v8.556.0) (2026-08-13)
+
+
+### Features
+
+* roll out saved-billing credit purchases ([#26945](https://github.com/vm0-ai/vm0/issues/26945)) ([84b2e72](https://github.com/vm0-ai/vm0/commit/84b2e721648cfe8af360bd773690203301228bc9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.2
+
 ## [8.555.1](https://github.com/vm0-ai/vm0/compare/core-v8.555.0...core-v8.555.1) (2026-08-13)
 
 
