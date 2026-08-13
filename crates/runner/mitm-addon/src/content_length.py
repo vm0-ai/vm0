@@ -9,12 +9,46 @@ ContentLengthKind = Literal["missing", "valid", "invalid", "conflicting", "over_
 
 @dataclass(frozen=True, slots=True)
 class ContentLengthResult:
+    """Result of bounded Content-Length field parsing.
+
+    In this contract, ``max_value`` is the limit supplied to ``parse()``.
+    ``kind`` describes the parser outcome:
+
+    - ``missing``: no field values were supplied.
+    - ``valid``: every part is valid, agrees after normalization, and does not exceed
+      ``max_value``.
+    - ``invalid``: parsing encountered an empty part or a part that is not an ASCII decimal
+      after surrounding HTTP optional whitespace was trimmed.
+    - ``conflicting``: parsing encountered a normalized decimal value that differs from the
+      first value.
+    - ``over_limit``: valid parts agree on a value greater than ``max_value``.
+
+    Parsing stops at the first ``invalid`` or ``conflicting`` part. Numeric limit
+    classification occurs only after every part has been scanned and agrees.
+
+    ``value`` is the exact normalized integer for ``valid``. It remains the default zero for
+    ``missing``, ``invalid``, and ``conflicting``. For ``over_limit``, it is exact when the
+    normalized numeral's significant digit count does not exceed that of ``max_value``;
+    otherwise, it is the bounded ``max_value + 1`` sentinel rather than a guaranteed exact
+    declared value. Always interpret ``value`` through ``kind`` because a valid zero also has
+    value zero.
+    """
+
     kind: ContentLengthKind
     value: int = 0
 
 
 def parse(values: Iterable[str], *, max_value: int) -> ContentLengthResult:
-    """Parse repeated Content-Length fields without converting unbounded integers."""
+    """Parse repeated Content-Length fields with a bounded integer result.
+
+    The parser scans comma-separated parts across repeated fields after trimming only surrounding
+    HTTP optional whitespace (space and horizontal tab). Parts must be nonempty ASCII decimals.
+    Leading zeroes are ignored when comparing parts, and all normalized values must agree.
+
+    Integer conversion is limited to normalized values whose significant digit count does not
+    exceed that of ``max_value``; longer agreed values use the bounded ``over_limit`` sentinel
+    described by ``ContentLengthResult``.
+    """
     first_value: str | None = None
     first_start = 0
     first_end = 0
