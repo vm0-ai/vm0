@@ -94,7 +94,8 @@ async function waitForVisibleStripeField(
   }
 
   const timeout = Math.min(FIELD_DISCOVERY_WINDOW_MS, remaining);
-  const candidates = page.frames().map(async (frame): Promise<Locator> => {
+  const frames = page.frames();
+  const candidates = frames.map(async (frame): Promise<Locator> => {
     const locator = stripeFieldLocator(frame, field).first();
     await locator.waitFor({ state: "visible", timeout });
     return locator;
@@ -108,40 +109,63 @@ async function waitForVisibleStripeField(
     }
 
     const failures: readonly unknown[] = error.errors;
-    const unexpectedFailure = failures.find(
-      (failure): failure is Error =>
-        failure instanceof Error && !(failure instanceof errors.TimeoutError),
+    const unexpectedFailureIndex = failures.findIndex(
+      (failure, index) =>
+        !(failure instanceof errors.TimeoutError) &&
+        !frameDetachedDuringDiscovery(page, frames[index]),
     );
-    if (unexpectedFailure) {
-      throw unexpectedFailure;
+    if (unexpectedFailureIndex >= 0) {
+      throw failures[unexpectedFailureIndex];
     }
     return null;
   }
 }
 
+function frameDetachedDuringDiscovery(page: Page, frame: Frame): boolean {
+  return !page.isClosed() && frame.isDetached();
+}
+
+async function findMatchingFrameLocator(
+  page: Page,
+  createLocator: (frame: Frame) => Locator,
+  isMatch: (locator: Locator) => Promise<boolean>,
+): Promise<Locator | null> {
+  const candidates = page.frames().map((frame) => ({
+    frame,
+    locator: createLocator(frame),
+  }));
+  const matches = await Promise.all(
+    candidates.map(async ({ frame, locator }): Promise<boolean> => {
+      try {
+        return await isMatch(locator);
+      } catch (error: unknown) {
+        if (frameDetachedDuringDiscovery(page, frame)) {
+          return false;
+        }
+        throw error;
+      }
+    }),
+  );
+  return candidates.find((_, index) => matches[index])?.locator ?? null;
+}
+
 async function findPayWithCard(page: Page): Promise<Locator | null> {
-  for (const frame of page.frames()) {
-    const locator = payWithCardLocator(frame);
-    if ((await locator.count()) > 0) {
-      return locator.first();
-    }
-  }
-  return null;
+  return await findMatchingFrameLocator(
+    page,
+    (frame) => payWithCardLocator(frame).first(),
+    async (locator) => (await locator.count()) > 0,
+  );
 }
 
 async function findVisibleStripeField(
   page: Page,
   field: StripeFieldDefinition,
 ): Promise<Locator | null> {
-  const locators = page
-    .frames()
-    .map((frame) => stripeFieldLocator(frame, field).first());
-  const visibility = await Promise.all(
-    locators.map(
-      async (locator): Promise<boolean> => await locator.isVisible(),
-    ),
+  return await findMatchingFrameLocator(
+    page,
+    (frame) => stripeFieldLocator(frame, field).first(),
+    async (locator) => await locator.isVisible(),
   );
-  return locators.find((_, index) => visibility[index]) ?? null;
 }
 
 async function fillVisibleStripeField(

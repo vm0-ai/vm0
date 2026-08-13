@@ -103,10 +103,12 @@ function checkoutDocument(layout: CheckoutLayout): string {
         )};
         host.append(frame);
       } else if (document.body.dataset.layout === "late-frame") {
+        const unrelatedFrames = [];
         for (let index = 0; index < 32; index += 1) {
           const unrelatedFrame = document.createElement("iframe");
           unrelatedFrame.title = \`Unrelated frame \${index}\`;
           host.append(unrelatedFrame);
+          unrelatedFrames.push(unrelatedFrame);
         }
 
         const cardFrame = document.createElement("iframe");
@@ -120,8 +122,13 @@ function checkoutDocument(layout: CheckoutLayout): string {
               return;
             }
             window.requestAnimationFrame(() => {
+              for (const unrelatedFrame of unrelatedFrames) {
+                unrelatedFrame.remove();
+              }
               window.requestAnimationFrame(() => {
-                cardHost.innerHTML = cardFields;
+                const fieldsFrame = cardDocument.createElement("iframe");
+                fieldsFrame.srcdoc = cardFields;
+                cardHost.append(fieldsFrame);
               });
             });
           }, { once: true });
