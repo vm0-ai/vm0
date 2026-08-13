@@ -199,6 +199,9 @@ describe("computer-use command visibility", () => {
     zeroComputerUseCommand.outputHelp();
 
     expect(helpOutput).toContain("Workflow:");
+    expect(helpOutput).toContain(
+      "Start the Okou Desktop app and make sure Computer Use is online",
+    );
     expect(helpOutput).toContain("okou computer-use list-apps");
     expect(helpOutput).toContain(
       "okou computer-use get-app-state --app <bundleId>",
@@ -208,6 +211,50 @@ describe("computer-use command visibility", () => {
     expect(helpOutput).toContain("overwrites the same files");
     expect(helpOutput).toContain("shift+semicolon");
     expect(helpOutput).toContain("Control_L+J");
+    expect(helpOutput).not.toContain("Zero Desktop");
+  });
+
+  it("should use Okou Desktop branding in plugin help", () => {
+    const pluginCommand = zeroComputerUseCommand.commands.find((command) => {
+      return command.name() === "plugin";
+    });
+    const filesystemCommand = pluginCommand?.commands.find((command) => {
+      return command.name() === "filesystem";
+    });
+    const mcpCommand = pluginCommand?.commands.find((command) => {
+      return command.name() === "mcp";
+    });
+    expect(filesystemCommand).toBeDefined();
+    expect(mcpCommand).toBeDefined();
+
+    let filesystemHelpOutput = "";
+    filesystemCommand!.configureOutput({
+      writeOut: (text: string) => {
+        filesystemHelpOutput += text;
+      },
+    });
+    filesystemCommand!.outputHelp();
+
+    let mcpHelpOutput = "";
+    mcpCommand!.configureOutput({
+      writeOut: (text: string) => {
+        mcpHelpOutput += text;
+      },
+    });
+    mcpCommand!.outputHelp();
+
+    expect(filesystemHelpOutput).toContain(
+      "Use the Okou Desktop filesystem plugin",
+    );
+    expect(filesystemHelpOutput).toContain(
+      "List directories enabled in Okou Desktop",
+    );
+    expect(mcpHelpOutput).toContain(
+      "Use custom MCP servers configured in the Okou Desktop app",
+    );
+    expect(`${filesystemHelpOutput}\n${mcpHelpOutput}`).not.toContain(
+      "Zero Desktop",
+    );
   });
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
@@ -235,6 +282,9 @@ describe("computer-use command visibility", () => {
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Computer Use authorization required");
     expect(errorOutput).toContain(
+      "ask the user to select an Okou Desktop host for this chat or Slack thread",
+    );
+    expect(errorOutput).toContain(
       "okou connector permission-request computer-use --permission computer-use:write",
     );
     expect(errorOutput).toContain(
@@ -243,6 +293,7 @@ describe("computer-use command visibility", () => {
     expect(errorOutput).not.toContain(
       "403: Missing required capability: computer-use:write",
     );
+    expect(errorOutput).not.toContain("Zero Desktop");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -971,6 +1022,31 @@ describe("computer-use command visibility", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Lancy's Mac (online): notes, figma");
+  });
+
+  it("should guide empty mcp setup to Okou Desktop", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+
+    server.use(
+      http.get("http://localhost:3000/api/okou/computer-use/hosts", () => {
+        return HttpResponse.json({ hosts: [] });
+      }),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "plugin",
+      "mcp",
+      "list",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(
+      "Configure and enable them in the Okou Desktop app's Developer Tools section",
+    );
+    expect(output).not.toContain("Zero Desktop");
   });
 
   it("should download pointer-backed screenshots through the API proxy", async () => {

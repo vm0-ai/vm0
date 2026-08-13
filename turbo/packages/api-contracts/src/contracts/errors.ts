@@ -115,7 +115,7 @@ export const RUN_ERROR_GUIDANCE: Record<
   COMPUTER_USE_AUTHORIZATION_REQUIRED: {
     title: "Computer Use authorization required",
     guidance:
-      "Request a delegated Computer Use authorization link, ask the user to select a Zero Desktop host for this chat or Slack thread, then start a new run. Existing run tokens cannot be upgraded in place.",
+      "Request a delegated Computer Use authorization link, ask the user to select an Okou Desktop host for this chat or Slack thread, then start a new run. Existing run tokens cannot be upgraded in place.",
     cliHint:
       "okou connector permission-request computer-use --permission computer-use:write",
   },
