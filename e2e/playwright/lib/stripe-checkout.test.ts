@@ -12,6 +12,7 @@ type CheckoutLayout =
   | "accordion"
   | "expanded"
   | "framed-accordion"
+  | "hidden-duplicates"
   | "iframe"
   | "late-frame"
   | "replaced-field-frame"
@@ -29,6 +30,7 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
     for (const layout of [
       "expanded",
       "iframe",
+      "hidden-duplicates",
       "late-frame",
       "replaced-field-frame",
       "wallet",
@@ -57,7 +59,10 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
               "1",
             );
           }
-          if (layout === "replaced-field-frame") {
+          if (
+            layout === "hidden-duplicates" ||
+            layout === "replaced-field-frame"
+          ) {
             assert.equal(
               await page.locator("body").getAttribute("data-activation-count"),
               "1",
@@ -95,11 +100,14 @@ function checkoutDocument(layout: CheckoutLayout): string {
     layout === "late-frame" ||
     layout === "replaced-field-frame"
       ? ""
-      : `<button id="pay-with-card" type="button"${
-          layout === "accordion"
-            ? ' style="height: 0; overflow: hidden; position: absolute; width: 0"'
-            : ""
-        }>Pay with card</button>`;
+      : layout === "hidden-duplicates"
+        ? `<button type="button" style="border: 0; height: 0; overflow: hidden; padding: 0; position: absolute; width: 0">Pay with card</button>
+           <button id="pay-with-card" type="button">Pay with card</button>`
+        : `<button id="pay-with-card" type="button"${
+            layout === "accordion"
+              ? ' style="height: 0; overflow: hidden; position: absolute; width: 0"'
+              : ""
+          }>Pay with card</button>`;
 
   return `<!doctype html>
 <html>
@@ -116,8 +124,13 @@ function checkoutDocument(layout: CheckoutLayout): string {
       const cardFields = ${JSON.stringify(CARD_FIELDS)};
       const host = document.querySelector("#card-host");
       const renderCardForm = () => {
-        host.innerHTML = cardFields;
+        host.innerHTML = document.body.dataset.layout === "hidden-duplicates"
+          ? "<div hidden>" + cardFields + "</div>" + cardFields
+          : cardFields;
       };
+      if (document.body.dataset.layout === "hidden-duplicates") {
+        document.body.dataset.activationCount = "0";
+      }
       if (document.body.dataset.layout === "expanded") {
         renderCardForm();
       } else if (document.body.dataset.layout === "iframe") {
@@ -195,10 +208,19 @@ function checkoutDocument(layout: CheckoutLayout): string {
         host.append(cardFrame);
       } else {
         document.querySelector("#pay-with-card").addEventListener("click", (event) => {
-          if (document.body.dataset.layout === "wallet" && !event.isTrusted) {
+          if (
+            (document.body.dataset.layout === "wallet" ||
+              document.body.dataset.layout === "hidden-duplicates") &&
+            !event.isTrusted
+          ) {
             return;
           }
-          if (document.body.dataset.layout === "wallet") {
+          if (document.body.dataset.layout === "hidden-duplicates") {
+            document.body.dataset.activationCount = String(
+              Number(document.body.dataset.activationCount) + 1
+            );
+            renderCardForm();
+          } else if (document.body.dataset.layout === "wallet") {
             window.requestAnimationFrame(() => {
               window.requestAnimationFrame(renderCardForm);
             });
@@ -264,7 +286,10 @@ async function assertCheckoutWasSubmitted(page: Page): Promise<void> {
 
 async function stripeFieldValue(page: Page, name: string): Promise<string> {
   for (const frame of page.frames()) {
-    const field = frame.locator(`input[name="${name}"]`);
+    const field = frame
+      .locator(`input[name="${name}"]`)
+      .filter({ visible: true })
+      .first();
     if ((await field.count()) > 0) {
       return await field.inputValue();
     }
