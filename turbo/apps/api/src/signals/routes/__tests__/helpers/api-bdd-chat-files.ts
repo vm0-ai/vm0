@@ -26,32 +26,32 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
   type ZeroIndicators,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   artifactCatalogContract,
   type ArtifactCatalogKind,
   type ArtifactDetail,
   type ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
-import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/artifact-catalog";
+import type { ApiErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   isSupportedRunModel,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
   type HostedSiteDeploymentsResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
-} from "@vm0/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/zero-host";
 import {
   zeroUploadsContract,
   type UploadCompleteResponse,
   type UploadPrepareResponse,
-} from "@vm0/api-contracts/contracts/zero-uploads";
+} from "@okouai/api-contracts/contracts/zero-uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import {
@@ -77,6 +77,10 @@ import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { ApiTestUser } from "./api-bdd";
+import {
+  projectChatEventRows,
+  readProjectedChatEvents,
+} from "./chat-event-test-reader";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 interface AuthHeaders {
@@ -929,20 +933,15 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       query: {
         readonly sinceSeqId?: number;
-        readonly beforeSeqId?: number;
         readonly limit?: number;
       } = {},
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
-      const response = await accept(
-        threadEventsClient().list({
-          headers: authenticate(context, actor),
-          params: { threadId },
-          query,
-        }),
-        [200],
-      );
       return {
-        events: response.body.events,
+        events: await readProjectedChatEvents(context, {
+          threadId,
+          headers: authenticate(context, actor),
+          ...query,
+        }),
       };
     },
 
@@ -951,19 +950,28 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       query: {
         readonly sinceSeqId?: number;
-        readonly beforeSeqId?: number;
         readonly limit?: number;
       },
-      statuses: readonly (200 | 400 | 401 | 404)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 410)[],
     ) {
-      return await accept(
-        threadEventsClient().list({
+      const response = await accept(
+        threadEventsClient().rows({
           headers: authenticate(context, actor),
           params: { threadId },
-          query,
+          query: {
+            sinceSeqId: query.sinceSeqId ?? 0,
+            ...(query.limit === undefined ? {} : { limit: query.limit }),
+          },
         }),
         statuses,
       );
+      if (response.status !== 200) {
+        return response;
+      }
+      return {
+        ...response,
+        body: { events: projectChatEventRows(response.body.rows) },
+      };
     },
 
     async listThreadEventRows(
@@ -980,21 +988,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body.rows;
-    },
-
-    async getThreadEvent(
-      actor: ApiTestUser,
-      threadId: string,
-      eventId: string,
-    ): Promise<ChatEvent> {
-      const response = await accept(
-        threadEventsClient().get({
-          headers: authenticate(context, actor),
-          params: { threadId, eventId },
-        }),
-        [200],
-      );
-      return response.body;
     },
 
     async listThreadArtifacts(

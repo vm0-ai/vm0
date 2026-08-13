@@ -3,8 +3,8 @@ import type {
   ConnectorDeviceAuthStartOptionConfig,
   ConnectorDeviceAuthStartOptions,
   ConnectorDeviceAuthStartOptionsConfig,
-} from "@vm0/connectors/connector-config";
-import { parseConnectorDeviceAuthStartOptionsConfig } from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-config";
+import { parseConnectorDeviceAuthStartOptionsConfig } from "@okouai/connectors/connector-auth-method";
 
 interface PublicManualGrantFieldDescriptor {
   readonly publicId: string;

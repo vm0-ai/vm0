@@ -10,19 +10,19 @@ import {
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
   resolveSkillRef,
-} from "@vm0/core/github-url";
+} from "@okouai/core/github-url";
 import {
   parseSkillFrontmatter,
   type SkillFrontmatter,
-} from "@vm0/core/skill-frontmatter";
+} from "@okouai/core/skill-frontmatter";
 import {
   getSkillStorageName,
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
-import { skills } from "@vm0/db/schema/skill";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/core/storage-names";
+import { SEED_SKILLS } from "@okouai/core/zero-seed-skills";
+import { skills } from "@okouai/db/schema/skill";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
 import { eq, inArray, like } from "drizzle-orm";
 import { create as createTar, Parser } from "tar";

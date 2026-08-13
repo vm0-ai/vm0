@@ -1,13 +1,13 @@
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -21,7 +21,11 @@ import {
 } from "./chat-event-queue.service";
 import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import {
+  createUserMessageDocument,
+  withAgentRunSourceAnnotation,
+  type ChatAgentRunSourceAnnotation,
+} from "./zero-chat-user-message.service";
 import type {
   WorkflowAutomationEventPayload,
   WorkflowAutomationEventType,
@@ -105,6 +109,7 @@ interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly workflowName: string;
   readonly displayPrompt: string;
+  readonly agentRunSource?: ChatAgentRunSourceAnnotation;
   readonly workflowAutomationEventType?: WorkflowAutomationEventType;
   readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
   readonly chatThreadId: string;
@@ -134,21 +139,25 @@ async function attemptWorkflowQueueAdmission(
       return { kind: "coalesced" };
     }
 
+    const automationUserMessage = createUserMessageDocument({
+      text: args.displayPrompt,
+      nonContentPart: {
+        type: "automation",
+        workflowName: args.workflowName,
+        workflowId: automation.workflowId,
+        ...(args.triggerBrief === undefined
+          ? {}
+          : { automationBrief: args.triggerBrief }),
+      },
+    });
+    const userMessage = args.agentRunSource
+      ? withAgentRunSourceAnnotation(automationUserMessage, args.agentRunSource)
+      : automationUserMessage;
     const inserted = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
       eventType: "input.automation",
       content: null,
-      userMessage: createUserMessageDocument({
-        text: args.displayPrompt,
-        nonContentPart: {
-          type: "automation",
-          workflowName: args.workflowName,
-          workflowId: automation.workflowId,
-          ...(args.triggerBrief === undefined
-            ? {}
-            : { automationBrief: args.triggerBrief }),
-        },
-      }),
+      userMessage,
       runId: null,
       automationId: automation.id,
       workflowName: args.workflowName,

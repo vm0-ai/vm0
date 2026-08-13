@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
+import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
 import { describe, expect, it } from "vitest";
 
 import {

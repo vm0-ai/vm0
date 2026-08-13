@@ -1,7 +1,7 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { and, asc, count, eq, gt, inArray, or, sql, sum } from "drizzle-orm";
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
@@ -27,6 +27,8 @@ export interface ActiveConcurrencySubscription {
   readonly quantity: number;
   readonly currentPeriodEnd: Date | null;
   readonly cancelAtPeriodEnd: boolean;
+  readonly scheduledQuantity: number | null;
+  readonly scheduledChangeAt: Date | null;
 }
 
 interface OrgConcurrencyState {
@@ -180,6 +182,8 @@ export async function activeConcurrencySubscriptions(
       quantity: orgConcurrencySubscriptions.slots,
       currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
       cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+      scheduledQuantity: orgConcurrencySubscriptions.scheduledSlots,
+      scheduledChangeAt: orgConcurrencySubscriptions.scheduledChangeAt,
     })
     .from(orgConcurrencySubscriptions)
     .where(activeConcurrencySubscriptionPredicate(orgId, at))
@@ -195,6 +199,8 @@ export async function activeConcurrencySubscriptions(
         quantity: Number(row.quantity),
         currentPeriodEnd: dbTimestamp(row.currentPeriodEnd),
         cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+        scheduledQuantity: row.scheduledQuantity,
+        scheduledChangeAt: dbTimestamp(row.scheduledChangeAt),
       };
     })
     .filter((row) => {

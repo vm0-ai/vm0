@@ -1,4 +1,5 @@
-import { Command } from "commander";
+import type { ZeroAgentVisibility } from "@okouai/api-contracts/contracts/zero-agents";
+import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import {
@@ -7,6 +8,7 @@ import {
 } from "../../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { resolveAvatarUrl } from "./avatar";
+import { parseAgentVisibility } from "./visibility";
 
 export const createCommand = new Command()
   .name("create")
@@ -16,6 +18,14 @@ export const createCommand = new Command()
   .option(
     "--sound <tone>",
     "Agent tone: professional, friendly, direct, supportive",
+  )
+  .addOption(
+    new Option(
+      "--visibility <visibility>",
+      "Agent visibility: private or public",
+    )
+      .default("private" satisfies ZeroAgentVisibility)
+      .argParser(parseAgentVisibility),
   )
   .option("--avatar <preset>", "Avatar preset: preset:0 through preset:4")
   .option(
@@ -60,6 +70,7 @@ Avatar:
 
 Examples:
   Minimal:               okou agent create --display-name "My Agent"
+  Public agent:          okou agent create --display-name "My Agent" --visibility public
   Quick preset:          okou agent create --display-name "My Agent" --avatar preset:2
   Custom avatar:         okou agent create --display-name "My Agent" --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
   With instructions:     okou agent create --display-name "My Agent" --instructions-file ./instructions.md`,
@@ -70,6 +81,7 @@ Examples:
         displayName?: string;
         description?: string;
         sound?: string;
+        visibility: ZeroAgentVisibility;
         avatar?: string;
         avatarRotation?: string;
         avatarSkin?: string;
@@ -85,6 +97,7 @@ Examples:
           displayName: options.displayName,
           description: options.description,
           sound: options.sound,
+          visibility: options.visibility,
           avatarUrl,
         });
 
@@ -97,6 +110,11 @@ Examples:
         console.log(`  Agent ID:     ${agent.agentId}`);
         if (agent.displayName) {
           console.log(`  Display Name: ${agent.displayName}`);
+        }
+        // Commit-addressed CLI/backend responses may omit visibility. Remove
+        // after #26761 verifies producers and queued/active contexts have drained.
+        if (agent.visibility) {
+          console.log(`  Visibility:   ${agent.visibility}`);
         }
 
         console.log();

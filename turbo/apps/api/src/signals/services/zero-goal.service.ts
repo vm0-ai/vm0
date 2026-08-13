@@ -1,13 +1,16 @@
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import type {
   ZeroGoalResponse,
   ZeroGoalStatus,
-} from "@vm0/api-contracts/contracts/zero-goals";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { threadGoals, type ThreadGoalStatus } from "@vm0/db/schema/thread-goal";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/zero-goals";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import {
+  threadGoals,
+  type ThreadGoalStatus,
+} from "@okouai/db/schema/thread-goal";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

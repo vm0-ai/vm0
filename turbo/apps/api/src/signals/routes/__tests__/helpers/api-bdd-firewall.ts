@@ -3,8 +3,8 @@ import {
   cliAuthTestCodexOauthContract,
   cliAuthTestConnectorContract,
   cliAuthTestTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth-test";
-import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/cli-auth-test";
+import { webhookFirewallAuthContract } from "@okouai/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";

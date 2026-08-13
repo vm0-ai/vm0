@@ -12,11 +12,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-import type { NotionWorkflowPendingEventContextJson } from "@vm0/db/jsonb-contracts/notion-event";
+import type { NotionWorkflowPendingEventContextJson } from "@okouai/db/jsonb-contracts/notion-event";
 
 import { zeroWorkflowAutomations } from "./zero-workflow";
 
-export type { NotionWorkflowPendingEventContext } from "@vm0/db/jsonb-contracts/notion-event";
+export type { NotionWorkflowPendingEventContext } from "@okouai/db/jsonb-contracts/notion-event";
 
 export const notionWebhookSecrets = pgTable(
   "notion_webhook_secrets",

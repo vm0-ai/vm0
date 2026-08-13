@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import {
   PI_SKILLS_ROOT,
   type RunSkillSnapshot,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import type {
   FileError,
   FileInfo,

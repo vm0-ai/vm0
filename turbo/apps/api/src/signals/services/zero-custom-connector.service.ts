@@ -2,41 +2,40 @@ import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import {
-  CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS,
-  type CreateCustomConnectorBody,
-  type CustomConnectorAuthMode,
-  type CustomConnectorField,
-  type CustomConnectorFieldKind,
-  type CustomConnectorHeaderInjection,
-  type CustomConnectorHttpResponse,
-  type CustomConnectorMcpResponse,
-  type CustomConnectorMcpTransport,
-  type CustomConnectorOAuthConfig,
-  type CustomConnectorOAuthConfigInput,
-  type CustomConnectorPermissionBundleRef,
-  type CustomConnectorPermissionBundleResponse,
-  type CustomConnectorProposal,
-  type CustomConnectorQueryInjection,
-  type CustomConnectorResponse,
-  type CustomConnectorValueInput,
-  type UpdateCustomConnectorBody,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type {
+  CreateCustomConnectorBody,
+  CustomConnectorAuthMode,
+  CustomConnectorField,
+  CustomConnectorFieldKind,
+  CustomConnectorHeaderInjection,
+  CustomConnectorHttpResponse,
+  CustomConnectorMcpResponse,
+  CustomConnectorMcpTransport,
+  CustomConnectorOAuthConfig,
+  CustomConnectorOAuthConfigInput,
+  CustomConnectorPermissionBundleRef,
+  CustomConnectorPermissionBundleResponse,
+  CustomConnectorProposal,
+  CustomConnectorQueryInjection,
+  CustomConnectorResponse,
+  CustomConnectorValueInput,
+  UpdateCustomConnectorBody,
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
   validateBaseUrlHostPolicy,
-} from "@vm0/connectors/firewall-types";
-import { connectors } from "@vm0/db/schema/connector";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+} from "@okouai/connectors/firewall-types";
+import { connectors } from "@okouai/db/schema/connector";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import {
   orgCustomConnectorOauthConfigs,
   type OrgCustomConnectorOAuthPkceMethod,
   type OrgCustomConnectorOAuthProviderAdapter,
   type OrgCustomConnectorOAuthTokenEndpointAuthMethod,
-} from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+} from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -92,13 +91,12 @@ import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
 
-const LEGACY_SECRET_PLACEHOLDER = "{{secret}}";
-const LEGACY_SECRET_KEY = "secret";
 const FIELD_KEY_REGEX = /^[a-z][a-z0-9_]{0,63}$/;
 const SLUG_REGEX = /^_[a-z0-9][a-z0-9-]{0,60}[a-z0-9]$/;
 const HEADER_NAME_REGEX = /^[A-Za-z][A-Za-z0-9-]*$/;
 const TEMPLATE_REFERENCE_REGEX =
   /\{\{\s*(secrets|variables|oauth)\.([a-z][a-z0-9_]*)\s*\}\}/g;
+const TEMPLATE_EXPRESSION_REGEX = /\{\{[^{}]*\}\}/;
 const VARIABLE_REFERENCE_REGEX = /\{\{\s*variables\.[a-z][a-z0-9_]*\s*\}\}/;
 const TEMPLATE_PLACEHOLDER_VALUE = "placeholder";
 const HOST_TEMPLATE_VALUE_UNSAFE_REGEX = /[/?#\\@:]/;
@@ -865,12 +863,6 @@ export function customConnectorManualAuthReferencesMemberField(args: {
   const declared = declaredFieldsByNamespace(args.fields);
   return [...args.headerInjections, ...args.queryInjections].some(
     (injection) => {
-      if (
-        injection.valueTemplate.includes(LEGACY_SECRET_PLACEHOLDER) &&
-        declared.secrets.has(LEGACY_SECRET_KEY)
-      ) {
-        return true;
-      }
       return extractTemplateReferences(injection.valueTemplate).some(
         (reference) => {
           const fields =
@@ -923,16 +915,17 @@ function validateTemplateReferences(args: {
   readonly fields: readonly CustomConnectorField[];
   readonly allowSecrets: boolean;
   readonly allowOAuth: boolean;
-  readonly allowLegacySecret: boolean;
   readonly context: string;
 }): BadRequestResponse | null {
   const declared = declaredFieldsByNamespace(args.fields);
-  if (args.template.includes(LEGACY_SECRET_PLACEHOLDER)) {
-    if (!args.allowLegacySecret || !declared.secrets.has(LEGACY_SECRET_KEY)) {
-      return badRequestMessage(
-        `${args.context} uses unsupported ${LEGACY_SECRET_PLACEHOLDER} placeholder`,
-      );
-    }
+  if (
+    TEMPLATE_EXPRESSION_REGEX.test(
+      args.template.replaceAll(TEMPLATE_REFERENCE_REGEX, ""),
+    )
+  ) {
+    return badRequestMessage(
+      `${args.context} uses unsupported template placeholder`,
+    );
   }
   for (const ref of extractTemplateReferences(args.template)) {
     if (ref.namespace === "secrets" && !args.allowSecrets) {
@@ -958,22 +951,6 @@ function validateTemplateReferences(args: {
     }
   }
   return null;
-}
-
-function canonicalizeInjectionTemplate(
-  template: string,
-  context: string,
-): string | BadRequestResponse {
-  const canonical = template.replaceAll(
-    LEGACY_SECRET_PLACEHOLDER,
-    `{{secrets.${LEGACY_SECRET_KEY}}}`,
-  );
-  if (canonical.length > CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS) {
-    return badRequestMessage(
-      `${context} value template must not exceed ${CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS} characters after canonicalization`,
-    );
-  }
-  return canonical;
 }
 
 function templateWithPlaceholders(template: string): string {
@@ -1030,7 +1007,6 @@ function validateAndNormalizePrefixTemplate(args: {
     fields: args.fields,
     allowSecrets: false,
     allowOAuth: false,
-    allowLegacySecret: false,
     context: "Prefix template",
   });
   if (templateError) {
@@ -1170,20 +1146,12 @@ function validateHeaderInjections(args: {
       fields: args.fields,
       allowSecrets: args.authMode === "manual",
       allowOAuth: args.authMode === "oauth",
-      allowLegacySecret: args.authMode === "manual",
       context: `Header ${name}`,
     });
     if (templateError) {
       return templateError;
     }
-    const valueTemplate = canonicalizeInjectionTemplate(
-      injection.valueTemplate,
-      `Header ${name}`,
-    );
-    if (isBadRequest(valueTemplate)) {
-      return valueTemplate;
-    }
-    headers.push({ name, valueTemplate });
+    headers.push({ name, valueTemplate: injection.valueTemplate });
   }
   return headers;
 }
@@ -1209,20 +1177,12 @@ function validateQueryInjections(args: {
       fields: args.fields,
       allowSecrets: args.authMode === "manual",
       allowOAuth: args.authMode === "oauth",
-      allowLegacySecret: args.authMode === "manual",
       context: `Query ${name}`,
     });
     if (templateError) {
       return templateError;
     }
-    const valueTemplate = canonicalizeInjectionTemplate(
-      injection.valueTemplate,
-      `Query ${name}`,
-    );
-    if (isBadRequest(valueTemplate)) {
-      return valueTemplate;
-    }
-    queries.push({ name, valueTemplate });
+    queries.push({ name, valueTemplate: injection.valueTemplate });
   }
   return queries;
 }
@@ -3046,20 +3006,6 @@ export function renderTemplateForRuntime(args: {
     }),
   );
 
-  if (
-    args.configuredValueMarkers &&
-    args.template.includes(LEGACY_SECRET_PLACEHOLDER)
-  ) {
-    const legacyField = fieldByReference.get(`secrets.${LEGACY_SECRET_KEY}`);
-    if (
-      !legacyField ||
-      !args.configuredValueMarkers.has(
-        customConnectorValueMarkerKey(legacyField),
-      )
-    ) {
-      return null;
-    }
-  }
   for (const match of args.template.matchAll(TEMPLATE_REFERENCE_REGEX)) {
     const namespace = match[1];
     const key = match[2];
@@ -3095,39 +3041,30 @@ export function renderTemplateForRuntime(args: {
     }
   }
 
-  return args.template
-    .replaceAll(
-      LEGACY_SECRET_PLACEHOLDER,
-      `\${{ secrets.${customConnectorSecretKey({
-        connectorId: args.connectorId,
-        kind: "secret",
-        key: LEGACY_SECRET_KEY,
-      })} }}`,
-    )
-    .replaceAll(
-      TEMPLATE_REFERENCE_REGEX,
-      (_match, namespace: string, key: string) => {
-        if (
-          namespace === "oauth" &&
-          key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
-        ) {
-          return `\${{ secrets.${customConnectorSecretKey({
-            connectorId: args.connectorId,
-            kind: "secret",
-            key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-          })} }}`;
-        }
-        const field = fieldByReference.get(`${namespace}.${key}`);
-        if (!field) {
-          return TEMPLATE_PLACEHOLDER_VALUE;
-        }
+  return args.template.replaceAll(
+    TEMPLATE_REFERENCE_REGEX,
+    (_match, namespace: string, key: string) => {
+      if (
+        namespace === "oauth" &&
+        key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+      ) {
         return `\${{ secrets.${customConnectorSecretKey({
           connectorId: args.connectorId,
-          kind: field.kind,
-          key: field.key,
+          kind: "secret",
+          key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
         })} }}`;
-      },
-    );
+      }
+      const field = fieldByReference.get(`${namespace}.${key}`);
+      if (!field) {
+        return TEMPLATE_PLACEHOLDER_VALUE;
+      }
+      return `\${{ secrets.${customConnectorSecretKey({
+        connectorId: args.connectorId,
+        kind: field.kind,
+        key: field.key,
+      })} }}`;
+    },
+  );
 }
 
 function renderPrefixTemplate(args: {

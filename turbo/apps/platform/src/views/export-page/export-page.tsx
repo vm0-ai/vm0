@@ -9,8 +9,8 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import type { UserExportStatusResponse } from "@vm0/api-contracts/contracts/user-export";
-import { Button } from "@vm0/ui";
+import type { UserExportStatusResponse } from "@okouai/api-contracts/contracts/user-export";
+import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
   platformVm0LogoDarkImg,

@@ -4,12 +4,12 @@ import {
   type ChatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import type {
   InitClientArgs,
   InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import { accept } from "../../lib/accept.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { zeroClient$ } from "../api-client.ts";

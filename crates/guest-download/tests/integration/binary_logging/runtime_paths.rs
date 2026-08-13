@@ -40,14 +40,14 @@ fn binary_fails_without_run_id_for_runtime_log_setup() {
     let output = process::run(
         guest_download_command()
             .arg(&manifest_path)
-            .env_remove("VM0_RUN_ID"),
+            .env_remove(guest_contracts::env::RUN_ID_ENV),
     )
     .unwrap();
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("VM0_RUN_ID is required for guest-download runtime paths"),
+        stderr.contains("OKOU_RUN_ID is required for guest-download runtime paths"),
         "unexpected stderr: {stderr}"
     );
 }
@@ -60,14 +60,14 @@ fn binary_fails_with_empty_run_id_for_runtime_log_setup() {
     let output = process::run(
         guest_download_command()
             .arg(&manifest_path)
-            .env("VM0_RUN_ID", ""),
+            .env(guest_contracts::env::RUN_ID_ENV, ""),
     )
     .unwrap();
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("VM0_RUN_ID is required for guest-download runtime paths"),
+        stderr.contains("OKOU_RUN_ID is required for guest-download runtime paths"),
         "unexpected stderr: {stderr}"
     );
 }
@@ -81,7 +81,7 @@ fn binary_fails_with_relative_runtime_dir_for_runtime_log_setup() {
     let output = process::run(
         guest_download_command()
             .arg(&manifest_path)
-            .env("VM0_RUN_ID", run_id)
+            .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env(
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 "relative-runtime-dir",
@@ -107,7 +107,7 @@ fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
     let output = process::run(
         guest_download_command()
             .arg(&manifest_path)
-            .env("VM0_RUN_ID", "invalid/run/id")
+            .env(guest_contracts::env::RUN_ID_ENV, "invalid/run/id")
             .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV),
     )
     .unwrap();
@@ -116,7 +116,7 @@ fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains(
-            "failed to resolve guest-download runtime paths: VM0_RUN_ID must be a single safe path segment"
+            "failed to resolve guest-download runtime paths: OKOU_RUN_ID must be a single safe path segment"
         ),
         "unexpected stderr: {stderr}"
     );
@@ -131,7 +131,10 @@ fn binary_uses_absolute_runtime_dir_without_validating_run_id_as_path_segment() 
     let output = process::run(
         guest_download_command()
             .arg(&manifest_path)
-            .env("VM0_RUN_ID", "ignored/when/runtime-dir/is-set")
+            .env(
+                guest_contracts::env::RUN_ID_ENV,
+                "ignored/when/runtime-dir/is-set",
+            )
             .env(
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 &logs.runtime_dir,
@@ -160,7 +163,7 @@ fn binary_fails_without_home_or_runtime_dir_for_runtime_log_setup() {
     let output = process::run(
         guest_download_command()
             .arg(&manifest_path)
-            .env("VM0_RUN_ID", run_id)
+            .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .env_remove("HOME"),
     )

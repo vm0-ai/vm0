@@ -1,4 +1,4 @@
-import { zeroTranslationContract } from "@vm0/api-contracts/contracts/zero-translation";
+import { zeroTranslationContract } from "@okouai/api-contracts/contracts/zero-translation";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

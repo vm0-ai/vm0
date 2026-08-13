@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   zeroAttributionContract,
   type AdAttributionMetadata,
-} from "@vm0/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/zero-attribution";
 
 import { accept } from "../../lib/accept.ts";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";

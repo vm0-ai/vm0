@@ -12,6 +12,7 @@ import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
+import { voiceCommand } from "../voice";
 
 const SPEECH_URL = "http://localhost:3000/api/okou/voice-io/speech";
 const VOICE_RESULT = {
@@ -44,6 +45,20 @@ describe("okou generate voice command", () => {
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+  });
+
+  it("should use Okou branding in voice help", () => {
+    let helpOutput = "";
+    voiceCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    voiceCommand.outputHelp();
+
+    expect(helpOutput).toContain('--prompt "Hello from Okou"');
+    expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
   });
 
   it("should generate speech and print the /f file URL", async () => {

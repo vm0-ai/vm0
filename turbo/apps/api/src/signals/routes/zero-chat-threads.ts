@@ -5,7 +5,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
@@ -23,8 +23,6 @@ import {
   zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
-  zeroChatThreadEventById,
-  zeroChatThreadEventsPage,
   zeroChatThreadQueuedEvents,
   zeroChatThreadDraftIds,
   zeroChatThreadUnreadAgentIds,
@@ -155,29 +153,6 @@ const listZeroIndicatorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: indicators };
 });
 
-const listChatEventsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.list));
-  const query = get(queryOf(chatThreadEventsContract.list));
-  const events = await get(
-    zeroChatThreadEventsPage({
-      threadId: params.threadId,
-      userId: auth.userId,
-      sinceSeqId: query.sinceSeqId,
-      beforeSeqId: query.beforeSeqId,
-      limit: query.limit,
-    }),
-  );
-  if (!events) {
-    return chatThreadNotFound();
-  }
-
-  return {
-    status: 200 as const,
-    body: { events },
-  };
-});
-
 const getChatEventSnapshotInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.snapshot));
@@ -260,26 +235,6 @@ const listQueuedChatEventsInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: { events: [...events] },
-  };
-});
-
-const getChatThreadEventInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.get));
-  const event = await get(
-    zeroChatThreadEventById({
-      threadId: params.threadId,
-      userId: auth.userId,
-      eventId: params.eventId,
-    }),
-  );
-  if (!event) {
-    return chatThreadNotFound();
-  }
-
-  return {
-    status: 200 as const,
-    body: event,
   };
 });
 
@@ -452,17 +407,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadArtifactsContract.list,
     handler: authRoute({}, listChatThreadArtifactsInner$),
-  },
-  {
-    route: chatThreadEventsContract.list,
-    handler: authRoute(
-      { requiredCapability: "chat-event:read" },
-      listChatEventsInner$,
-    ),
-  },
-  {
-    route: chatThreadEventsContract.get,
-    handler: authRoute({}, getChatThreadEventInner$),
   },
   {
     route: chatThreadEventsContract.snapshot,

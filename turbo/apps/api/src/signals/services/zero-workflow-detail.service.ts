@@ -3,7 +3,7 @@ import type {
   WorkflowFileEntry,
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { db$, type Db } from "../external/db";
 import { clerk$ } from "../external/clerk";

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { cronRenewGoogleCalendarWatchesContract } from "@vm0/api-contracts/contracts/cron";
+import { cronRenewGoogleCalendarWatchesContract } from "@okouai/api-contracts/contracts/cron";
 
 import type { RouteEntry } from "../route-entry";
 import { renewGoogleCalendarWatches$ } from "../services/google-calendar-automation-event.service";

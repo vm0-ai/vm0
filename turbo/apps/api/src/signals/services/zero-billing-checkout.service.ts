@@ -1,11 +1,15 @@
 import { command } from "ccstate";
-import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import type {
+  ConcurrencySubscriptionChangePreviewResponse,
+  UsagePackUsd,
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type ReadonlyDb } from "../external/db";
 import {
   getStripeClient,
   type StripeMetadataParam,
@@ -13,9 +17,12 @@ import {
 } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
-import { applyStripeConcurrencySubscriptionChange$ } from "./zero-billing-concurrency-subscription.service";
+import {
+  addStripeConcurrencySubscriptionItem$,
+  applyStripeConcurrencySubscriptionChange$,
+  previewStripeConcurrencySubscriptionChange$,
+} from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
-import { CONCURRENCY_SUBSCRIPTION_PURPOSE } from "./org-concurrency-entitlements.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -54,21 +61,54 @@ interface StartConcurrencyPurchaseArgs {
   readonly quantity: number;
   readonly priceId: string;
   readonly existingSubscriptionId?: string;
+  readonly hasScheduledConcurrencyChange: boolean;
   readonly successUrl: string;
-  readonly cancelUrl: string;
 }
 
 type StartConcurrencyPurchaseResult =
   | { readonly ok: true; readonly url: string }
   | {
       readonly ok: false;
-      readonly reason: "invalid_quantity" | "pending_update";
+      readonly reason:
+        | "invalid_quantity"
+        | "missing_plan_subscription"
+        | "pending_update";
+    };
+
+type PreviewInitialConcurrencyPurchaseResult =
+  | {
+      readonly ok: true;
+      readonly preview: ConcurrencySubscriptionChangePreviewResponse;
+    }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "invalid_quantity"
+        | "missing_plan_subscription"
+        | "not_found"
+        | "canceling"
+        | "no_change"
+        | "pending_update";
     };
 
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
+
+async function orgPlanSubscriptionId(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<string | null> {
+  const [plan] = await db
+    .select({
+      stripeSubscriptionId: orgPlanEntitlements.stripeSubscriptionId,
+    })
+    .from(orgPlanEntitlements)
+    .where(eq(orgPlanEntitlements.orgId, orgId))
+    .limit(1);
+  return plan?.stripeSubscriptionId ?? null;
+}
 
 function legacyPriceIdsForTier(
   tier: SubscriptionCheckoutTier,
@@ -496,6 +536,38 @@ export const createCreditCheckoutSession$ = command(
   },
 );
 
+export const previewInitialConcurrencyPurchase$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly priceId: string;
+      readonly quantity: number;
+    },
+    signal: AbortSignal,
+  ): Promise<PreviewInitialConcurrencyPurchaseResult> => {
+    const subscriptionId = await orgPlanSubscriptionId(
+      set(writeDb$),
+      args.orgId,
+    );
+    signal.throwIfAborted();
+    if (!subscriptionId) {
+      return { ok: false, reason: "missing_plan_subscription" };
+    }
+    return await set(
+      previewStripeConcurrencySubscriptionChange$,
+      {
+        subscriptionId,
+        priceId: args.priceId,
+        quantity: args.quantity,
+        mode: "absolute",
+        hasScheduledConcurrencyChange: false,
+      },
+      signal,
+    );
+  },
+);
+
 export const startConcurrencyPurchase$ = command(
   async (
     { set },
@@ -512,6 +584,7 @@ export const startConcurrencyPurchase$ = command(
           subscriptionId: args.existingSubscriptionId,
           quantity: args.quantity,
           mode: "increase",
+          hasScheduledConcurrencyChange: args.hasScheduledConcurrencyChange,
         },
         signal,
       );
@@ -533,38 +606,33 @@ export const startConcurrencyPurchase$ = command(
       };
     }
 
-    const stripe = getStripeClient();
-    const customerId = await set(
-      getOrCreateStripeCustomer$,
-      { orgId: args.orgId },
-      signal,
+    const subscriptionId = await orgPlanSubscriptionId(
+      set(writeDb$),
+      args.orgId,
     );
     signal.throwIfAborted();
-
-    const metadata: StripeMetadataParam = {
-      purpose: CONCURRENCY_SUBSCRIPTION_PURPOSE,
-      orgId: args.orgId,
-      priceId: args.priceId,
-      quantity: String(args.quantity),
-      ...stripePreviewMetadata(),
-    };
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: args.priceId, quantity: args.quantity }],
-      allow_promotion_codes: true,
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      metadata,
-      subscription_data: {
-        metadata,
-      },
-    });
-    signal.throwIfAborted();
-
-    if (!session.url) {
-      throw new Error("Stripe checkout session did not return a URL");
+    if (!subscriptionId) {
+      return { ok: false, reason: "missing_plan_subscription" };
     }
-    return { ok: true, url: session.url };
+
+    const result = await set(
+      addStripeConcurrencySubscriptionItem$,
+      {
+        subscriptionId,
+        priceId: args.priceId,
+        quantity: args.quantity,
+      },
+      signal,
+    );
+    if (!result.ok) {
+      return result;
+    }
+    return {
+      ok: true,
+      url:
+        result.response.status === "pending_payment"
+          ? result.response.hostedInvoiceUrl
+          : args.successUrl,
+    };
   },
 );

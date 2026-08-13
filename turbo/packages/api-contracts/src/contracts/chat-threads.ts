@@ -1090,10 +1090,6 @@ const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
 const chatThreadThreadIdPathParamsSchema = z.object({
   threadId: z.string().uuid(),
 });
-const chatThreadEventPathParamsSchema =
-  chatThreadThreadIdPathParamsSchema.extend({
-    eventId: z.string().uuid(),
-  });
 
 export const chatThreadByIdContract = c.router({
   get: {
@@ -1522,39 +1518,6 @@ export const chatSearchContract = c.router({
 
 /** Canonical ChatEvent read contract. */
 export const chatThreadEventsContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/okou/chat-threads/:threadId/events",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: z.object({
-      sinceSeqId: z.coerce.number().int().positive().optional(),
-      beforeSeqId: z.coerce.number().int().positive().optional(),
-      limit: z.coerce.number().min(1).max(50).default(50),
-    }),
-    responses: {
-      200: z.object({
-        events: z.array(chatEventSchema),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get paginated chat events for a thread",
-  },
-  get: {
-    method: "GET",
-    path: "/api/okou/chat-threads/:threadId/events/:eventId",
-    headers: authHeadersSchema,
-    pathParams: chatThreadEventPathParamsSchema,
-    responses: {
-      200: chatEventSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get a chat event by id for a thread",
-  },
   /**
    * Snapshot-read cold start: a presigned download for the thread's head
    * archive object. The object is gzip NDJSON of chatEventRowV4Schema lines

@@ -1,8 +1,8 @@
 import {
   testEmailOutboxStateContract,
   type TestEmailOutboxStateActionBody,
-} from "@vm0/api-contracts/contracts/test-email-outbox-state";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
+} from "@okouai/api-contracts/contracts/test-email-outbox-state";
+import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { command } from "ccstate";
 import { and, asc, eq, inArray } from "drizzle-orm";
 

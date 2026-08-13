@@ -17,7 +17,7 @@ import {
   type ZeroSeoDevice,
   type ZeroSeoEngine,
   type ZeroSeoResponse,
-} from "@vm0/api-contracts/contracts/zero-seo";
+} from "@okouai/api-contracts/contracts/zero-seo";
 
 import {
   callZeroSeoBacklinksSummary,

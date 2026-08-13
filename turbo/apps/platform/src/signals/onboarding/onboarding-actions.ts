@@ -1,9 +1,9 @@
 import { command } from "ccstate";
-import { onboardingCompleteContract } from "@vm0/api-contracts/contracts/onboarding";
+import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
   zeroBillingCheckoutContract,
   zeroBillingRedeemCodeContract,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import { zeroClient$ } from "../api-client.ts";

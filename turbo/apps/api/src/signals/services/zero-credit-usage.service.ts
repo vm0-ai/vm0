@@ -1,9 +1,9 @@
 import { command } from "ccstate";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";

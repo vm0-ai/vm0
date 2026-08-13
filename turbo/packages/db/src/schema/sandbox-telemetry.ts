@@ -1,6 +1,6 @@
 import { pgTable, uuid, jsonb, timestamp, index } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
-import type { SandboxTelemetryData } from "@vm0/db/jsonb-contracts/sandbox-telemetry";
+import type { SandboxTelemetryData } from "@okouai/db/jsonb-contracts/sandbox-telemetry";
 
 /**
  * Sandbox Telemetry table

@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
-import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { eq } from "drizzle-orm";
 
 import { request$ } from "../context/hono";

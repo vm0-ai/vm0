@@ -12,8 +12,8 @@ import {
 import { builtInGenerationJobs } from "./built-in-generation-job";
 import { hostedSites } from "./hosted-site";
 import { runUploadedFiles } from "./run-uploaded-file";
-import type { ArtifactThumbnail } from "@vm0/db/jsonb-contracts/artifact";
-export type { ArtifactThumbnail } from "@vm0/db/jsonb-contracts/artifact";
+import type { ArtifactThumbnail } from "@okouai/db/jsonb-contracts/artifact";
+export type { ArtifactThumbnail } from "@okouai/db/jsonb-contracts/artifact";
 
 /**
  * Artifact catalog kinds. One logical product maps to exactly one `artifacts`

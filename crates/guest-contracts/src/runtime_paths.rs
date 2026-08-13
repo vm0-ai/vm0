@@ -50,8 +50,8 @@ pub enum RuntimePathError {
 impl std::fmt::Display for RuntimePathError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingRunId => f.write_str("VM0_RUN_ID is required for guest runtime paths"),
-            Self::InvalidRunId => f.write_str("VM0_RUN_ID must be a single safe path segment"),
+            Self::MissingRunId => f.write_str("OKOU_RUN_ID is required for guest runtime paths"),
+            Self::InvalidRunId => f.write_str("OKOU_RUN_ID must be a single safe path segment"),
             Self::MissingHome => f.write_str("HOME is required for guest runtime paths"),
             Self::InvalidRuntimeDir => {
                 f.write_str("VM0_GUEST_RUNTIME_DIR must be an absolute path")
@@ -921,6 +921,19 @@ fn replacement_name() -> OsString {
     OsString::from_vec(format!(".vm0-private-replacement-{}", Uuid::new_v4()).into_bytes())
 }
 
+/// Policy for an existing final entry during private atomic replacement.
+///
+/// These target guarantees apply on Unix. Non-Unix platforms accept the
+/// policy for API consistency without claiming equivalent file-type,
+/// permission, ownership, or symlink validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrivateFileReplacementTarget {
+    /// On Unix, require a missing target or an existing private regular file.
+    PrivateFileOrMissing,
+    /// On Unix, replace the final entry without opening or following it.
+    ReplaceFinalEntry,
+}
+
 #[cfg(unix)]
 fn validate_replace_target(parent: &OwnedFd, name: &OsStr, path: &Path) -> io::Result<()> {
     let name_c = component_cstring(name, path)?;
@@ -952,11 +965,20 @@ fn validate_replace_target(parent: &OwnedFd, name: &OsStr, path: &Path) -> io::R
 }
 
 #[cfg(unix)]
-fn replace_private_atomic_unix(path: &Path, bytes: &[u8]) -> io::Result<()> {
+fn replace_private_atomic_unix(
+    path: &Path,
+    bytes: &[u8],
+    target: PrivateFileReplacementTarget,
+) -> io::Result<()> {
     let name = file_name(path)?;
     let name_c = component_cstring(name, path)?;
     let parent = open_or_create_private_dir(parent_dir(path)?)?;
-    validate_replace_target(&parent, name, path)?;
+    match target {
+        PrivateFileReplacementTarget::PrivateFileOrMissing => {
+            validate_replace_target(&parent, name, path)?;
+        }
+        PrivateFileReplacementTarget::ReplaceFinalEntry => {}
+    }
 
     let temp_name = replacement_name();
     let temp_name_c = component_cstring(&temp_name, path)?;
@@ -1017,7 +1039,11 @@ fn replace_private_atomic_unix(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 #[cfg(not(unix))]
-fn replace_private_atomic_non_unix(path: &Path, bytes: &[u8]) -> io::Result<()> {
+fn replace_private_atomic_non_unix(
+    path: &Path,
+    bytes: &[u8],
+    _target: PrivateFileReplacementTarget,
+) -> io::Result<()> {
     ensure_parent_dir(path)?;
     let temp_path = path.with_file_name(format!(".vm0-private-replacement-{}", Uuid::new_v4()));
     let mut file = OpenOptions::new()
@@ -1039,18 +1065,27 @@ fn replace_private_atomic_non_unix(path: &Path, bytes: &[u8]) -> io::Result<()> 
 /// Atomically replace a runtime-private file with complete bytes.
 ///
 /// On Unix, the replacement is written to an exclusively created `0600`
-/// sibling, synced, and published with descriptor-relative `renameat`. Parent
-/// and final symlinks, non-regular targets, foreign ownership, and group/other
-/// permissions are rejected. Existing readers therefore observe either the
-/// previous complete file or the new complete file.
-pub fn replace_private_atomic(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
+/// sibling, synced, and published with descriptor-relative `renameat` before
+/// the parent directory is synced. Parent symlinks are always rejected.
+/// [`PrivateFileReplacementTarget::PrivateFileOrMissing`] also rejects final
+/// symlinks, non-regular targets, foreign ownership, and group/other
+/// permissions. [`PrivateFileReplacementTarget::ReplaceFinalEntry`] replaces
+/// an existing non-directory final entry without opening or following it.
+/// Existing readers therefore observe either the previous complete file or
+/// the new complete file. On non-Unix platforms, the target policy adds no
+/// guarantees beyond the platform's rename behavior.
+pub fn replace_private_atomic(
+    path: impl AsRef<Path>,
+    bytes: impl AsRef<[u8]>,
+    target: PrivateFileReplacementTarget,
+) -> io::Result<()> {
     #[cfg(unix)]
     {
-        replace_private_atomic_unix(path.as_ref(), bytes.as_ref())
+        replace_private_atomic_unix(path.as_ref(), bytes.as_ref(), target)
     }
     #[cfg(not(unix))]
     {
-        replace_private_atomic_non_unix(path.as_ref(), bytes.as_ref())
+        replace_private_atomic_non_unix(path.as_ref(), bytes.as_ref(), target)
     }
 }
 
@@ -1231,6 +1266,155 @@ mod tests {
             Uuid::parse_str(suffix).unwrap().hyphenated().to_string(),
             suffix
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_atomic_replacement_creates_private_paths_and_replaces_private_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("run");
+        let path = parent.join("state.json");
+
+        replace_private_atomic(
+            &path,
+            b"first",
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
+        )
+        .unwrap();
+        replace_private_atomic(
+            &path,
+            b"second",
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"second");
+        assert_eq!(mode(parent), 0o700);
+        assert_eq!(mode(path), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_atomic_replacement_policy_controls_permissive_file_replacement() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("run");
+        std::fs::create_dir(&parent).unwrap();
+        let path = parent.join("state.json");
+        std::fs::write(&path, b"old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let error = replace_private_atomic(
+            &path,
+            b"strict",
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(std::fs::read(&path).unwrap(), b"old");
+
+        replace_private_atomic(
+            &path,
+            b"replacement",
+            PrivateFileReplacementTarget::ReplaceFinalEntry,
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"replacement");
+        assert_eq!(mode(path), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_atomic_replacement_policy_controls_final_symlink_replacement() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("run");
+        std::fs::create_dir(&parent).unwrap();
+        let target = temp.path().join("target.json");
+        std::fs::write(&target, b"target").unwrap();
+        let path = parent.join("state.json");
+        symlink(&target, &path).unwrap();
+
+        let error = replace_private_atomic(
+            &path,
+            b"strict",
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            std::fs::symlink_metadata(&path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+
+        replace_private_atomic(
+            &path,
+            b"replacement",
+            PrivateFileReplacementTarget::ReplaceFinalEntry,
+        )
+        .unwrap();
+
+        assert!(
+            !std::fs::symlink_metadata(&path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"replacement");
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+        assert_eq!(mode(path), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_atomic_replacement_rejects_symlink_parent_for_both_policies() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let target_parent = temp.path().join("target");
+        std::fs::create_dir(&target_parent).unwrap();
+        let linked_parent = temp.path().join("linked");
+        symlink(&target_parent, &linked_parent).unwrap();
+
+        for target in [
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
+            PrivateFileReplacementTarget::ReplaceFinalEntry,
+        ] {
+            let error = replace_private_atomic(linked_parent.join("state.json"), b"new", target)
+                .unwrap_err();
+
+            assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+            assert!(!target_parent.join("state.json").exists());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_atomic_replacement_cleans_temp_after_directory_publish_failure() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("run");
+        let path = parent.join("state.json");
+        std::fs::create_dir_all(&path).unwrap();
+
+        replace_private_atomic(
+            &path,
+            b"replacement",
+            PrivateFileReplacementTarget::ReplaceFinalEntry,
+        )
+        .unwrap_err();
+
+        assert!(path.is_dir());
+        let entries = std::fs::read_dir(&parent)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(entries, vec![OsString::from("state.json")]);
     }
 
     #[test]

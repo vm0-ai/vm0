@@ -46,6 +46,22 @@ describe("okou telegram upload-file command", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("uses Okou branding in upload help", () => {
+    let helpOutput = "";
+    uploadFileCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    uploadFileCommand.outputHelp();
+
+    expect(helpOutput).toContain("Uploads through Okou storage first");
+    expect(helpOutput).toContain(
+      "Okou does not apply file type or size restrictions",
+    );
+  });
+
   it("uploads a file to R2 and completes Telegram sendDocument", async () => {
     let putReceivedContentType: string | null = null;
     let completeBody: Record<string, unknown> | undefined;

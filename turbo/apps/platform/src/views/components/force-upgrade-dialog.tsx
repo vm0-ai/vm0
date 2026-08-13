@@ -1,6 +1,6 @@
 import { useGet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@vm0/ui/components/ui/button";
+import { Button } from "@okouai/ui/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 
 import { forceUpgradeDialogOpen$ } from "../../signals/force-upgrade.ts";
 import { brandName$ } from "../../signals/branding.ts";

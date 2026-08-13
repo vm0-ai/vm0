@@ -3,19 +3,19 @@ import type {
   TelegramBot,
   TelegramBotStatus,
   TelegramLinkStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
+} from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
 import { and, desc, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.0...guest-common-v0.3.1) (2026-08-13)
+
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.72...guest-common-v0.3.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
 ## [0.2.72](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.71...guest-common-v0.2.72) (2026-08-12)
 
 ## [0.2.71](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.70...guest-common-v0.2.71) (2026-08-12)

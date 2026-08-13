@@ -21,7 +21,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, isNull, asc, sql } from "drizzle-orm";
 import postgres from "postgres";
 
-import { scopes } from "@vm0/db/schema/scope";
+import { scopes } from "@okouai/db/schema/scope";
 
 // ---------------------------------------------------------------------------
 // Types

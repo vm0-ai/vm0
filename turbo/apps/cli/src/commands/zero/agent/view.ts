@@ -119,6 +119,9 @@ Examples:
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
+        // Commit-addressed CLI/backend responses may omit visibility. Remove
+        // after #26761 verifies producers and queued/active contexts have drained.
+        if (agent.visibility) console.log(`Visibility:   ${agent.visibility}`);
 
         const storedPolicies = options.permissions
           ? connectorPermissionGrantsToFirewallPolicies(

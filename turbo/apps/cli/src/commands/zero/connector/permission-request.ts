@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import type { ConnectorCheckPolicy } from "@vm0/api-contracts/contracts/zero-connector-check";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+import type { ConnectorCheckPolicy } from "@okouai/api-contracts/contracts/zero-connector-check";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
@@ -175,7 +175,7 @@ function printComputerUseAuthorizationLink(args: {
   readonly expiresAt: string;
 }): void {
   console.log(
-    "Computer Use needs a Zero Desktop host selected before a run starts.",
+    "Computer Use needs an Okou Desktop host selected before a run starts.",
   );
   console.log(
     "Ask the user to authorize a host for future runs in this chat or Slack thread:",

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { cronTelegramCleanupContract } from "@vm0/api-contracts/contracts/cron";
+import { cronTelegramCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
   afterEach,
   beforeEach,

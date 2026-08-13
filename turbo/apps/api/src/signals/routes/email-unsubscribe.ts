@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
+import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
 
 import { env } from "../../lib/env";
 import { queryOf } from "../context/request";

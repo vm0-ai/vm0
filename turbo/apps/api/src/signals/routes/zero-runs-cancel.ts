@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroRunsCancelContract } from "@okouai/api-contracts/contracts/zero-runs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

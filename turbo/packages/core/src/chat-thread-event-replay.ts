@@ -1,7 +1,7 @@
 import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 export type ReplayChatThreadEvent = Omit<ChatThreadEvent, "seqId">;
 

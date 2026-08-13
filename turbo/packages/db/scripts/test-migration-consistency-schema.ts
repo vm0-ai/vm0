@@ -19,7 +19,7 @@
  * ❌ NEVER edit existing migration files!
  * ❌ NEVER manually create snapshot files!
  *
- * ✅ ALWAYS use `pnpm -F @vm0/db db:generate` to auto-generate migrations
+ * ✅ ALWAYS use `pnpm -F @okouai/db db:generate` to auto-generate migrations
  * ✅ ALWAYS let Drizzle Kit manage the snapshot system
  * ✅ ALWAYS test with `pnpm test:migration-consistency` before merging
  *
@@ -1027,14 +1027,16 @@ async function validateSnapshotFiles(): Promise<void> {
       `\n   This means the snapshot system is corrupted and needs to be rebuilt.`,
     );
     console.error(`\n   🔧 How to fix:`);
-    console.error(`      1. Reset database: pnpm -F @vm0/db db:reset`);
+    console.error(`      1. Reset database: pnpm -F @okouai/db db:reset`);
     console.error(`      2. Delete your manual migration file (if any)`);
     console.error(`      3. Remove migration entry from meta/_journal.json`);
-    console.error(`      4. Generate migration: pnpm -F @vm0/db db:generate`);
-    console.error(`      5. Apply migration: pnpm -F @vm0/db db:migrate`);
+    console.error(
+      `      4. Generate migration: pnpm -F @okouai/db db:generate`,
+    );
+    console.error(`      5. Apply migration: pnpm -F @okouai/db db:migrate`);
     console.error(`\n   ⚠️  IMPORTANT: Never manually write migration files!`);
     console.error(
-      `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
+      `      Always use 'pnpm -F @okouai/db db:generate' to auto-generate migrations.`,
     );
     console.error(`      Manual migrations break the snapshot chain.\n`);
     throw new Error("Snapshot chain broken");
@@ -5540,7 +5542,7 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
         console.error(`      ${diff}`);
       }
       console.error(`\n   🔧 How to fix:`);
-      console.error(`      1. Reset database: pnpm -F @vm0/db db:reset`);
+      console.error(`      1. Reset database: pnpm -F @okouai/db db:reset`);
       console.error(
         `      2. Delete the latest migration file (${String(latestIdx).padStart(4, "0")}_*.sql)`,
       );
@@ -5548,13 +5550,15 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       console.error(
         `      4. Delete the latest snapshot (${String(latestIdx).padStart(4, "0")}_snapshot.json)`,
       );
-      console.error(`      5. Generate migration: pnpm -F @vm0/db db:generate`);
-      console.error(`      6. Apply migration: pnpm -F @vm0/db db:migrate`);
+      console.error(
+        `      5. Generate migration: pnpm -F @okouai/db db:generate`,
+      );
+      console.error(`      6. Apply migration: pnpm -F @okouai/db db:migrate`);
       console.error(
         `\n   ⚠️  IMPORTANT: Never manually write migration files!`,
       );
       console.error(
-        `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
+        `      Always use 'pnpm -F @okouai/db db:generate' to auto-generate migrations.`,
       );
       console.error(
         `      Manual migrations cause snapshot/database mismatches.\n`,
@@ -8953,6 +8957,355 @@ async function validateInactiveRunModelFinalization(): Promise<void> {
   }
 }
 
+const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_PREVIOUS_MIGRATION =
+  "0914_loud_magdalene";
+const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_MIGRATION =
+  "0915_canonicalize_custom_connector_secret_placeholders";
+
+async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promise<void> {
+  console.log(
+    "=== Validate Custom Connector secret placeholder canonicalization ===\n",
+  );
+  const testDb = "migration_custom_connector_secret_placeholder_test";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const validConnectorId = "26669000-0000-4000-8000-000000000001";
+  const invalidConnectorId = "26669000-0000-4000-8000-000000000002";
+  const overflowConnectorId = "26669000-0000-4000-8000-000000000003";
+  const fields = [
+    {
+      key: "secret",
+      label: "Secret",
+      kind: "secret",
+      required: true,
+      description: "Primary credential",
+    },
+    {
+      key: "region",
+      label: "Region",
+      kind: "variable",
+      required: false,
+    },
+  ];
+  const legacyHeaderInjections = [
+    {
+      name: "Authorization",
+      valueTemplate:
+        "Bearer {{secret}}/{{secrets.secret}}/{{secret}}/{{variables.region}}",
+      metadata: { preserve: true },
+    },
+    {
+      name: "X-Canonical",
+      valueTemplate: "{{secrets.secret}}",
+      untouched: "header",
+    },
+  ];
+  const legacyQueryInjections = [
+    {
+      name: "token",
+      valueTemplate: "{{secret}}:{{variables.region}}",
+      priority: 1,
+    },
+    {
+      name: "canonical",
+      valueTemplate: "{{secrets.secret}}",
+      untouched: "query",
+    },
+  ];
+  const canonicalHeaderInjections = [
+    {
+      name: "Authorization",
+      valueTemplate:
+        "Bearer {{secrets.secret}}/{{secrets.secret}}/{{secrets.secret}}/{{variables.region}}",
+      metadata: { preserve: true },
+    },
+    {
+      name: "X-Canonical",
+      valueTemplate: "{{secrets.secret}}",
+      untouched: "header",
+    },
+  ];
+  const canonicalQueryInjections = [
+    {
+      name: "token",
+      valueTemplate: "{{secrets.secret}}:{{variables.region}}",
+      priority: 1,
+    },
+    {
+      name: "canonical",
+      valueTemplate: "{{secrets.secret}}",
+      untouched: "query",
+    },
+  ];
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_PREVIOUS_MIGRATION,
+    );
+
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "auth_mode",
+          "enabled",
+          "permission_bundle_ref",
+          "storage_version",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ) VALUES (
+          $1,
+          'issue-26669-org',
+          '_legacy-secret-valid',
+          'Legacy Secret Valid',
+          '["https://api.example.test/"]'::jsonb,
+          $2::jsonb,
+          $3::jsonb,
+          $4::jsonb,
+          'manual',
+          false,
+          'builtin:issue-26669@1',
+          37,
+          'issue-26669-user',
+          '2026-08-13 01:02:03',
+          '2026-08-13 04:05:06'
+        )
+      `,
+      [
+        validConnectorId,
+        JSON.stringify(fields),
+        JSON.stringify(legacyHeaderInjections),
+        JSON.stringify(legacyQueryInjections),
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "auth_mode",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26669-org',
+          '_legacy-secret-ambiguous',
+          'Legacy Secret Ambiguous',
+          '["https://ambiguous.example.test/"]'::jsonb,
+          $2::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'manual',
+          'issue-26669-user'
+        )
+      `,
+      [
+        invalidConnectorId,
+        JSON.stringify([fields[0], { ...fields[0], label: "Duplicate" }]),
+      ],
+    );
+
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_MIGRATION,
+      ),
+      /ambiguous secret field data/u,
+    );
+    const rolledBack = await client.query<{
+      headerInjections: unknown;
+      queryInjections: unknown;
+    }>(
+      `
+        SELECT
+          "header_injections" AS "headerInjections",
+          "query_injections" AS "queryInjections"
+        FROM "org_custom_connectors"
+        WHERE "id" = $1
+      `,
+      [validConnectorId],
+    );
+    assert.deepEqual(rolledBack.rows, [
+      {
+        headerInjections: legacyHeaderInjections,
+        queryInjections: legacyQueryInjections,
+      },
+    ]);
+
+    await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
+      invalidConnectorId,
+    ]);
+
+    const utf16BoundaryTemplate = `${"😀".repeat(1019)}{{secret}}`;
+    assert.equal(utf16BoundaryTemplate.length, 2048);
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "auth_mode",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26669-org',
+          '_legacy-secret-overflow',
+          'Legacy Secret Overflow',
+          '["https://overflow.example.test/"]'::jsonb,
+          $2::jsonb,
+          $3::jsonb,
+          '[]'::jsonb,
+          'manual',
+          'issue-26669-user'
+        )
+      `,
+      [
+        overflowConnectorId,
+        JSON.stringify(fields),
+        JSON.stringify([
+          { name: "Authorization", valueTemplate: utf16BoundaryTemplate },
+        ]),
+      ],
+    );
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_MIGRATION,
+      ),
+      /exceeds canonical limit/u,
+    );
+    const overflowRolledBack = await client.query<{
+      valueTemplate: string;
+    }>(
+      `
+        SELECT "entry"."injection" ->> 'valueTemplate' AS "valueTemplate"
+        FROM "org_custom_connectors" AS "connector"
+        CROSS JOIN LATERAL jsonb_array_elements(
+          "connector"."header_injections"
+        ) AS "entry"("injection")
+        WHERE "connector"."id" = $1
+      `,
+      [overflowConnectorId],
+    );
+    assert.deepEqual(overflowRolledBack.rows, [
+      { valueTemplate: utf16BoundaryTemplate },
+    ]);
+
+    await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
+      overflowConnectorId,
+    ]);
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_MIGRATION,
+    );
+
+    const readMigratedFixture = async (): Promise<readonly unknown[]> => {
+      const result = await client.query<{
+        createdAt: string;
+        displayName: string;
+        enabled: boolean;
+        headerInjections: unknown;
+        permissionBundleRef: string;
+        queryInjections: unknown;
+        storageVersion: string;
+        updatedAt: string;
+      }>(
+        `
+          SELECT
+            "display_name" AS "displayName",
+            "header_injections" AS "headerInjections",
+            "query_injections" AS "queryInjections",
+            "enabled",
+            "permission_bundle_ref" AS "permissionBundleRef",
+            "storage_version"::text AS "storageVersion",
+            to_char("created_at", 'YYYY-MM-DD HH24:MI:SS') AS "createdAt",
+            to_char("updated_at", 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
+          FROM "org_custom_connectors"
+          WHERE "id" = $1
+        `,
+        [validConnectorId],
+      );
+      return result.rows;
+    };
+    const expectedMigratedFixture = [
+      {
+        displayName: "Legacy Secret Valid",
+        headerInjections: canonicalHeaderInjections,
+        queryInjections: canonicalQueryInjections,
+        enabled: false,
+        permissionBundleRef: "builtin:issue-26669@1",
+        storageVersion: "37",
+        createdAt: "2026-08-13 01:02:03",
+        updatedAt: "2026-08-13 04:05:06",
+      },
+    ];
+    assert.deepEqual(await readMigratedFixture(), expectedMigratedFixture);
+
+    const residual = await client.query<{ count: number }>(`
+      SELECT count(*)::integer AS "count"
+      FROM "org_custom_connectors" AS "connector"
+      CROSS JOIN LATERAL (
+        SELECT "entry"."injection"
+        FROM jsonb_array_elements("connector"."header_injections")
+          AS "entry"("injection")
+        UNION ALL
+        SELECT "entry"."injection"
+        FROM jsonb_array_elements("connector"."query_injections")
+          AS "entry"("injection")
+      ) AS "entry"
+      WHERE jsonb_typeof("entry"."injection" -> 'valueTemplate') = 'string'
+        AND strpos("entry"."injection" ->> 'valueTemplate', '{{secret}}') > 0
+    `);
+    assert.deepEqual(residual.rows, [{ count: 0 }]);
+
+    const migrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    await client.query(migrationSql);
+    assert.deepEqual(await readMigratedFixture(), expectedMigratedFixture);
+
+    console.log("   ✅ ambiguous matching data aborts without partial writes");
+    console.log(
+      "   ✅ canonical UTF-16 overflows abort without partial writes",
+    );
+    console.log(
+      "   ✅ header and query templates canonicalize exactly in order",
+    );
+    console.log("   ✅ unrelated JSON and connector metadata stay unchanged");
+    console.log(
+      "   ✅ zero legacy expressions remain and reruns are idempotent\n",
+    );
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -8986,6 +9339,7 @@ async function main(): Promise<void> {
     await validateRetiredRunModelStateMigration();
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
+    await validateCustomConnectorSecretPlaceholderCanonicalization();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -9078,23 +9432,23 @@ async function main(): Promise<void> {
       console.log(`      ${TEST_DB_2}`);
       console.log(`\n   For detailed analysis, run:`);
       console.log(
-        `     pnpm -F @vm0/db exec tsx scripts/compare-schemas-normalized.ts "<${TEST_DB_1}-url>" "<${TEST_DB_2}-url>"`,
+        `     pnpm -F @okouai/db exec tsx scripts/compare-schemas-normalized.ts "<${TEST_DB_1}-url>" "<${TEST_DB_2}-url>"`,
       );
       console.log(`\n   🔧 How to fix:`);
       console.log(`      1. Check if you manually edited any migration files`);
-      console.log(`      2. Reset database: pnpm -F @vm0/db db:reset`);
+      console.log(`      2. Reset database: pnpm -F @okouai/db db:reset`);
       console.log(`      3. Delete the problematic migration files`);
       console.log(
         `      4. Remove corresponding entries from meta/_journal.json`,
       );
       console.log(`      5. Delete corresponding snapshots`);
-      console.log(`      6. Regenerate: pnpm -F @vm0/db db:generate`);
-      console.log(`      7. Apply: pnpm -F @vm0/db db:migrate`);
+      console.log(`      6. Regenerate: pnpm -F @okouai/db db:generate`);
+      console.log(`      7. Apply: pnpm -F @okouai/db db:migrate`);
       console.log(
         `\n   ⚠️  IMPORTANT: Never manually write or edit migration files!`,
       );
       console.log(
-        `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
+        `      Always use 'pnpm -F @okouai/db db:generate' to auto-generate migrations.`,
       );
       console.log(
         `      Manual edits break the snapshot system and cause schema mismatches.\n`,

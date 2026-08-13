@@ -86,6 +86,10 @@ export interface StripeSubscriptionPreviousAttributes {
 export interface StripeSchedulePhase {
   readonly start_date: number;
   readonly end_date: number;
+  readonly items?: readonly {
+    readonly price: StripeRef;
+    readonly quantity?: number;
+  }[];
 }
 
 export interface StripeSubscriptionSchedule {
@@ -469,14 +473,23 @@ export interface StripeInvoicesApi {
 export interface StripeInvoiceCreatePreviewParams {
   readonly customer?: string;
   readonly subscription?: string;
+  readonly schedule?: string;
   readonly preview_mode: "next" | "recurring";
-  readonly subscription_details: {
+  readonly subscription_details?: {
     readonly items: StripeSubscriptionUpdateItemParam[];
     readonly proration_behavior?:
       | "always_invoice"
       | "create_prorations"
       | "none";
     readonly proration_date?: number;
+  };
+  readonly schedule_details?: {
+    readonly end_behavior?: "cancel" | "release";
+    readonly proration_behavior?:
+      | "always_invoice"
+      | "create_prorations"
+      | "none";
+    readonly phases?: StripeSchedulePhaseParam[];
   };
 }
 

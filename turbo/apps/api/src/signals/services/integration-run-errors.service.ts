@@ -1,4 +1,4 @@
-import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";

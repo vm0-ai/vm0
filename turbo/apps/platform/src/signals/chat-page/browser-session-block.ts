@@ -2,8 +2,8 @@ import {
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
   zeroBrowserContract,
   type ZeroBrowserSession,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { browserSessionChangedPayloadSchema } from "@vm0/api-contracts/contracts/realtime";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { browserSessionChangedPayloadSchema } from "@okouai/api-contracts/contracts/realtime";
 import {
   command,
   computed,

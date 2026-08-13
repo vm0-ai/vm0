@@ -1,11 +1,11 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
-import { integrationsTelegramBotListContract } from "@vm0/api-contracts/contracts/integrations";
+import { integrationsTelegramBotListContract } from "@okouai/api-contracts/contracts/integrations";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
   type TelegramListResponse,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { createStore } from "ccstate";
 import { afterEach, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";

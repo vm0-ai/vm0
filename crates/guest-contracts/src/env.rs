@@ -8,9 +8,8 @@
 //! The `VM0_` namespace is runner-owned, including keys defined in sibling
 //! modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`]. User env
 //! filtering should treat current, future, and retired `VM0_` keys as
-//! protected. A small set of non-`VM0_` bootstrap keys is also runner-owned
-//! because existing runner, guest-agent, or integration contracts use those
-//! exact names.
+//! protected. Canonical bootstrap keys outside that retired namespace are
+//! listed explicitly below; the whole `OKOU_` namespace is not protected.
 //!
 //! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
 //! selected runner-owned keys may cross the local user-env boundary as
@@ -24,7 +23,7 @@ pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
-pub const RUN_ID_ENV: &str = "VM0_RUN_ID";
+pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 
 /// Sensitive backend API bearer token for guest-agent calls.
 ///
@@ -159,13 +158,13 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
 /// Logical run-payload field name for the immutable Pi system prompt.
-pub const PI_SYSTEM_PROMPT_ENV: &str = "VM0_PI_SYSTEM_PROMPT";
+pub const PI_SYSTEM_PROMPT_ENV: &str = "OKOU_PI_SYSTEM_PROMPT";
 
 /// Logical run-payload field name for non-secret Pi model metadata.
-pub const PI_MODEL_CONFIG_ENV: &str = "VM0_PI_MODEL_CONFIG";
+pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
 
 /// Logical run-payload field name for the Chat Thread-owned Pi session id.
-pub const PI_SESSION_ID_ENV: &str = "VM0_PI_SESSION_ID";
+pub const PI_SESSION_ID_ENV: &str = "OKOU_PI_SESSION_ID";
 
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
@@ -372,7 +371,11 @@ pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
     POST_RESULT_SIGKILL_GRACE_SECS_ENV,
 ];
 
-const NON_VM0_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
+const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
+    RUN_ID_ENV,
+    PI_SESSION_ID_ENV,
+    PI_SYSTEM_PROMPT_ENV,
+    PI_MODEL_CONFIG_ENV,
     CLI_AGENT_TYPE_ENV,
     USE_MOCK_CLAUDE_ENV,
     USE_MOCK_CODEX_ENV,
@@ -409,12 +412,11 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
 /// This covers every `VM0_` key, including future and retired names, plus the
-/// explicit non-`VM0_` bootstrap keys required by established runner,
-/// guest-agent, or integration contracts. Runner and local-submit code use
-/// this predicate to scrub or reject user-provided env keys before the
-/// guest-agent starts.
+/// explicit bootstrap keys required by established runner, guest-agent, or
+/// integration contracts. Runner and local-submit code use this predicate to
+/// scrub or reject user-provided env keys before the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
-    key.starts_with("VM0_") || NON_VM0_RUNNER_OWNED_ENV_KEYS.contains(&key)
+    key.starts_with("VM0_") || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
 /// Escapes and bounds a user-controlled env key for diagnostics.
@@ -444,7 +446,10 @@ mod tests {
     #[test]
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
-        assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
+        assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
+        assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
+        assert_eq!(PI_SYSTEM_PROMPT_ENV, "OKOU_PI_SYSTEM_PROMPT");
+        assert_eq!(PI_MODEL_CONFIG_ENV, "OKOU_PI_MODEL_CONFIG");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(
             AGENT_EXECUTION_TIMEOUT_SECS_ENV,
@@ -632,6 +637,10 @@ mod tests {
     fn runner_owned_key_detection_covers_bootstrap_namespaces() {
         for key in [
             API_URL_ENV,
+            RUN_ID_ENV,
+            PI_SESSION_ID_ENV,
+            PI_SYSTEM_PROMPT_ENV,
+            PI_MODEL_CONFIG_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
@@ -642,6 +651,8 @@ mod tests {
         ] {
             assert!(is_runner_owned_env_key(key), "{key} should be runner-owned");
         }
+        assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
+        assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
         assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
     }
 

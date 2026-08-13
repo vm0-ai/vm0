@@ -8,8 +8,8 @@ import {
   ZERO_BROWSER_SCREEN_WIDTH,
   type ZeroBrowserSession,
   type ZeroBrowserSuspensionReason,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { agentRuns } from "@vm0/db/schema/agent-run";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   browserSessionInstances,
   browserSessionResizeStates,
@@ -18,10 +18,10 @@ import {
   browserSessionTabSnapshots,
   browserSessions,
   browserThreadProfiles,
-} from "@vm0/db/schema/browser-session";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/browser-session";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import {
   and,

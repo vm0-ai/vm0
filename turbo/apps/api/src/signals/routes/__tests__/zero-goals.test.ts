@@ -1,6 +1,6 @@
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -521,9 +521,6 @@ describe("zero goals", () => {
       contextType: "goal",
       contextId: goal.goalId,
     });
-    await expect(
-      chat.getThreadEvent(fixture.actor, fixture.threadId, admission.eventId),
-    ).resolves.toStrictEqual(event);
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {

@@ -8,9 +8,9 @@ import {
 import {
   MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES,
   zeroPresentationTemplatesContract,
-} from "@vm0/api-contracts/contracts/zero-presentation-templates";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import AdmZip from "adm-zip";
 import { beforeEach, describe, expect, it } from "vitest";
 

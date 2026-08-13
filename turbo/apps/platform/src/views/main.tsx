@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import type { Store } from "ccstate";
 import { StoreProvider, useGet, useSet } from "ccstate-react";
-import { Toaster } from "@vm0/ui/components/ui/sonner";
+import { Toaster } from "@okouai/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { AppSkeletonOverlay, Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";

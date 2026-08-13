@@ -1,4 +1,4 @@
-import type { ZeroMailProvider } from "@vm0/api-contracts/contracts/zero-mail";
+import type { ZeroMailProvider } from "@okouai/api-contracts/contracts/zero-mail";
 import { getOkouAgentId } from "../../../lib/okou-env";
 
 export const MAIL_CONNECTOR_SLUG_BY_PROVIDER = {

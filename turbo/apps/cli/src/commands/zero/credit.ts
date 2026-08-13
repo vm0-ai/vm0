@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
 
 import {
   createZeroCreditCheckout,

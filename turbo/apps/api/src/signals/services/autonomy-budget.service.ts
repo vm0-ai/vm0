@@ -1,5 +1,5 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";

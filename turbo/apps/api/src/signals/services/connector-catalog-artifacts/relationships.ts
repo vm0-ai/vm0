@@ -5,7 +5,7 @@ import {
   normalizeFirewallFixedHost,
   type FirewallBaseHostPolicy,
   type FirewallConfig,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 import type {
   ConnectorCatalogArtifact,

@@ -1,7 +1,7 @@
 import {
   ZERO_TRANSLATION_MAX_LANGUAGE_CHARS,
   ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
-} from "@vm0/api-contracts/contracts/zero-translation";
+} from "@okouai/api-contracts/contracts/zero-translation";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

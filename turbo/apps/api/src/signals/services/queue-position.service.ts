@@ -1,6 +1,6 @@
 import { computed, type Computed } from "ccstate";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { and, eq, lte } from "drizzle-orm";
 
 import { db$ } from "../external/db";

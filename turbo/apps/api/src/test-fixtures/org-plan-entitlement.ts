@@ -5,8 +5,8 @@
  * capabilities, so integration tests use this narrow boundary to verify those
  * reads and persisted webhook side effects.
  */
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 

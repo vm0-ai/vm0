@@ -6,7 +6,7 @@ import chalk from "chalk";
 import type {
   SlackUploadInitResponse,
   SlackUploadMaterializeResponse,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 import {
   completeSlackFileUpload,
   initSlackFileUpload,
@@ -262,7 +262,7 @@ Examples:
 
 Notes:
   - Uses the bot token (not user SLACK_TOKEN), so no files:write permission is needed
-  - Run-scoped calls publish to VM0 storage before Slack delivery
+  - Run-scoped calls publish to Okou storage before Slack delivery
   - Returns canonical asset details and Slack delivery status`,
   )
   .action(withErrorHandler(uploadFile));

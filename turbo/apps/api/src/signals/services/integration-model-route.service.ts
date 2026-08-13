@@ -5,9 +5,9 @@ import {
   isSupportedRunModel,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import type { SupportedFramework } from "@vm0/core/frameworks";
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { SupportedFramework } from "@okouai/core/frameworks";
 
 import { writeDb$ } from "../external/db";
 import { resolveDefaultModelFirstPin } from "./zero-model-selection.service";

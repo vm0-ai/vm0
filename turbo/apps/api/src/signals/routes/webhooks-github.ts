@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { command } from "ccstate";
-import { webhookGithubContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookGithubContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";

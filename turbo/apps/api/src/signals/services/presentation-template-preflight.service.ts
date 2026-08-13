@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES } from "@vm0/api-contracts/contracts/zero-presentation-templates";
+import { MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES } from "@okouai/api-contracts/contracts/zero-presentation-templates";
 
 import { env } from "../../lib/env";
 import type { ResolvedArtifactObject } from "./artifact-storage.service";

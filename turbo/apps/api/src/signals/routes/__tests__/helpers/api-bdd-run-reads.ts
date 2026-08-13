@@ -2,9 +2,9 @@ import type { z } from "zod";
 import {
   logsByIdContract,
   logsListContract,
-} from "@vm0/api-contracts/contracts/logs";
-import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { zeroRunNetworkLogsContract } from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/logs";
+import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import { zeroRunNetworkLogsContract } from "@okouai/api-contracts/contracts/zero-runs";
 
 import { createApp } from "../../../../app-factory";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

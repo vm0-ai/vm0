@@ -1,9 +1,9 @@
 import { computed } from "ccstate";
-import { zeroRunRunnerContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroRunRunnerContract } from "@okouai/api-contracts/contracts/zero-runs";
 import type {
   SandboxReuseResult,
   WorkspaceReuseResult,
-} from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/webhooks";
 import { zeroClient$ } from "../api-client.ts";
 import { currentRunId$, zeroActivityDetail$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";

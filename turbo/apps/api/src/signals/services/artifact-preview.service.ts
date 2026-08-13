@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

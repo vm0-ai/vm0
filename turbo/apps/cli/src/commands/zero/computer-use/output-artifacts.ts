@@ -17,15 +17,18 @@ const COMPUTER_USE_OUTPUT_FILE_MODE = 0o600;
 const COMPUTER_USE_OUTPUT_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_COMPUTER_USE_OUTPUT_DIR = path.join(
   tmpdir(),
-  "vm0",
+  "okou",
   "computer-use",
 );
 
 export function computerUseOutputDir(): string {
-  const configured = process.env.VM0_COMPUTER_OUTPUT_DIR?.trim();
-  return configured && configured.length > 0
-    ? configured
-    : DEFAULT_COMPUTER_USE_OUTPUT_DIR;
+  const canonical = process.env.OKOU_COMPUTER_OUTPUT_DIR?.trim();
+  if (canonical) {
+    return canonical;
+  }
+
+  const legacy = process.env.VM0_COMPUTER_OUTPUT_DIR?.trim();
+  return legacy || DEFAULT_COMPUTER_USE_OUTPUT_DIR;
 }
 
 async function ensurePrivateDirectory(directory: string): Promise<void> {

@@ -183,7 +183,7 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub mod prepare {");
     expect(firstRender).toContain("pub struct FileEntryWithHash {");
     expect(firstRender).toContain(
-      "//! Generated Rust DTOs for selected `@vm0/api-contracts` request and response bodies.",
+      "//! Generated Rust DTOs for selected `@okouai/api-contracts` request and response bodies.",
     );
     expect(firstRender).toContain(
       "/// Storage manifest DTOs used by runners to mount volumes and artifacts.",

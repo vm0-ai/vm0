@@ -1,13 +1,13 @@
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";

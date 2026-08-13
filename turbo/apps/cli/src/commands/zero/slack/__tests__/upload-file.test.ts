@@ -59,6 +59,21 @@ describe("okou slack upload-file command", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("uses Okou branding in upload help", () => {
+    let helpOutput = "";
+    uploadFileCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    uploadFileCommand.outputHelp();
+
+    expect(helpOutput).toContain(
+      "Run-scoped calls publish to Okou storage before Slack delivery",
+    );
+  });
+
   describe("successful upload", () => {
     it("should upload a file and return file_id and permalink", async () => {
       server.use(

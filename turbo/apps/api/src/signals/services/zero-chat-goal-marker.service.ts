@@ -1,4 +1,4 @@
-import { CHAT_GOAL_MARKER_EVENT_TYPES } from "@vm0/api-contracts/contracts/chat-events";
+import { CHAT_GOAL_MARKER_EVENT_TYPES } from "@okouai/api-contracts/contracts/chat-events";
 import { not, type SQL } from "drizzle-orm";
 
 import { chatEventTypeIn } from "./zero-chat-event-type.service";

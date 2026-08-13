@@ -6,12 +6,9 @@ import {
   type KeyObject,
 } from "node:crypto";
 
-import {
-  chatThreadEventsContract,
-  chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -33,6 +30,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import {
   installTeamsForTest,
@@ -1676,17 +1674,11 @@ describe("POST /api/zero/teams/bot", () => {
     if (!chatThreadCreated) {
       throw new Error("Expected the canonical Teams file chat thread");
     }
-    const threadEventsPage = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      ).list({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: chatThreadCreated.chatThreadId },
-        query: {},
-      }),
-      [200],
-    );
-    expect(threadEventsPage.body.events).toContainEqual(
+    const threadEventsPage = await readProjectedChatEvents(context, {
+      threadId: chatThreadCreated.chatThreadId,
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(threadEventsPage).toContainEqual(
       expect.objectContaining({
         content: null,
         userMessage: {

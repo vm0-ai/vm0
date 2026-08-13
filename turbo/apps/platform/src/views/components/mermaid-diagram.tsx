@@ -1,4 +1,4 @@
-import { CopyButton } from "@vm0/ui";
+import { CopyButton } from "@okouai/ui";
 import { useLoadable, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";

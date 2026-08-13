@@ -1,4 +1,4 @@
-import { zeroConnectorCheckContract } from "@vm0/api-contracts/contracts/zero-connector-check";
+import { zeroConnectorCheckContract } from "@okouai/api-contracts/contracts/zero-connector-check";
 import { command } from "ccstate";
 
 import {
