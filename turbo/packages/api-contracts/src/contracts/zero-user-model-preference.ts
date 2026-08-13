@@ -2,16 +2,10 @@ import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 import { supportedRunModelSchema } from "./model-providers";
-import { VIDEO_MODEL_IDS } from "./video-models";
+import { videoModelIdSchema } from "./video-models";
 import { chatThreadServiceTierSchema } from "./chat-threads";
 
 const c = initContract();
-
-/**
- * Member default for built-in video generation. Independent of the run model:
- * it carries no provider routing, no service tier, and no org policy row.
- */
-const videoModelPreferenceSchema = z.enum(VIDEO_MODEL_IDS);
 
 export const userModelPreferenceResponseSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
@@ -25,7 +19,7 @@ export const userModelPreferenceResponseSchema = z.object({
    * Remove — make it required — once the pre-field API is outside that window.
    * Follow-up: #26765.
    */
-  selectedVideoModel: videoModelPreferenceSchema.nullable().optional(),
+  selectedVideoModel: videoModelIdSchema.nullable().optional(),
   updatedAt: z.string().nullable(),
 });
 
@@ -44,7 +38,7 @@ export const updateUserModelPreferenceRequestSchema = z.object({
    * its own optional fields. An older bundle keeping its stored default falls
    * out of the same rule rather than needing its own branch.
    */
-  selectedVideoModel: videoModelPreferenceSchema.nullable().optional(),
+  selectedVideoModel: videoModelIdSchema.nullable().optional(),
 });
 
 export type UpdateUserModelPreferenceRequest = z.infer<

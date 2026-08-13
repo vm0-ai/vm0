@@ -6,6 +6,8 @@
  * the per-model capabilities, lives in `@okouai/core/video-model-catalog`, which
  * depends on this package.
  */
+import { z } from "zod";
+
 export const VIDEO_MODEL_IDS = [
   "dreamina-seedance-2-5-260628",
   "dreamina-seedance-2-0-260128",
@@ -30,6 +32,14 @@ export function isVideoModelId(
 ): model is VideoModelId {
   return typeof model === "string" && VIDEO_MODEL_ID_SET.has(model);
 }
+
+/**
+ * A video model id on the wire. Unlike the run model this carries no provider
+ * routing, no service tier, and no org policy row: every catalog model is
+ * selectable by every workspace, so thread pins, member defaults, and
+ * per-generation overrides all validate against this one schema.
+ */
+export const videoModelIdSchema = z.enum(VIDEO_MODEL_IDS);
 
 export const VIDEO_ASPECT_RATIOS = [
   "21:9",

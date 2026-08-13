@@ -10,8 +10,8 @@ import { supportedRunModelSchema } from "./model-providers";
 import {
   VIDEO_ASPECT_RATIOS,
   VIDEO_DURATIONS,
-  VIDEO_MODEL_IDS,
   VIDEO_RESOLUTIONS,
+  videoModelIdSchema,
 } from "./video-models";
 import {
   avatarVideoAspectRatioSchema,
@@ -242,7 +242,7 @@ const presentationGenerationTemplateRequestSchema = z.object({
  */
 const videoGenerationOptionsSchema = z
   .object({
-    model: z.enum(VIDEO_MODEL_IDS),
+    model: videoModelIdSchema,
     aspectRatio: z.enum(VIDEO_ASPECT_RATIOS),
     duration: z.enum(VIDEO_DURATIONS),
     resolution: z.enum(VIDEO_RESOLUTIONS),
@@ -878,16 +878,9 @@ const chatThreadCreateBodySchema = z.object({
   title: z.string().optional(),
 });
 
-/**
- * Built-in video model pinned to a chat thread. Unlike the run model this
- * carries no provider routing, no service tier, and no org policy row: every
- * catalog model is selectable by every workspace.
- */
-const videoModelRequestSchema = z.enum(VIDEO_MODEL_IDS);
-
 const chatThreadVideoModelUpdateBodySchema = z.object({
   /** Video model id, or null to fall back to the member and system defaults. */
-  model: videoModelRequestSchema.nullable(),
+  model: videoModelIdSchema.nullable(),
   eventId: chatThreadEventIdSchema.optional(),
 });
 

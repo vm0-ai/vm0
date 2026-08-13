@@ -54,6 +54,7 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
 import {
+  readRunChatThreadIdFixture,
   readRunVideoModelFixture,
   setOrgMemberVideoModelFixture,
 } from "../../../test-fixtures/run-video-model";
@@ -10336,7 +10337,29 @@ describe("CHAT-02: run video model snapshot", () => {
     await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
       "fal-ai/veo3.1/fast",
     );
+
+    // Re-pinning while that run is still in flight must not reach it. This is
+    // the whole reason the model is snapshotted onto the run instead of being
+    // read back off the thread when generation happens.
+    await setChatThreadVideoModelFixture(
+      unpinned.threadId,
+      "dreamina-seedance-2-5-260628",
+    );
+    await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
+      "fal-ai/veo3.1/fast",
+    );
     await cancelChatRun(actor, threadPinned.runId);
+
+    // The next run does pick the re-pinned model up.
+    const rePinned = await sendChatRun(actor, {
+      agentId,
+      threadId: unpinned.threadId,
+      prompt: "the run after the re-pin uses the new thread pin",
+    });
+    await expect(readRunVideoModelFixture(rePinned.runId)).resolves.toBe(
+      "dreamina-seedance-2-5-260628",
+    );
+    await cancelChatRun(actor, rePinned.runId);
   }, 90_000);
 
   it("keeps falling back past video models the catalog no longer lists", async () => {
@@ -10402,8 +10425,12 @@ describe("CHAT-02: run video model snapshot", () => {
       modelProvider: "anthropic-api-key",
     });
     await expect(
+      readRunChatThreadIdFixture(withoutPreference.runId),
+    ).resolves.toBeNull();
+    await expect(
       readRunVideoModelFixture(withoutPreference.runId),
     ).resolves.toBe(DEFAULT_VIDEO_MODEL);
+    await cancelChatRun(actor, withoutPreference.runId);
 
     await setOrgMemberVideoModelFixture({
       orgId,
@@ -10416,7 +10443,11 @@ describe("CHAT-02: run video model snapshot", () => {
       modelProvider: "anthropic-api-key",
     });
     await expect(
+      readRunChatThreadIdFixture(withMemberDefault.runId),
+    ).resolves.toBeNull();
+    await expect(
       readRunVideoModelFixture(withMemberDefault.runId),
     ).resolves.toBe("MiniMax-H3");
+    await cancelChatRun(actor, withMemberDefault.runId);
   }, 90_000);
 });

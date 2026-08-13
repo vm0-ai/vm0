@@ -35,13 +35,30 @@ export async function setOrgMemberVideoModelFixture(args: {
 export async function readRunVideoModelFixture(
   runId: string,
 ): Promise<string | null> {
+  return (await readRunRow(runId)).selectedVideoModel;
+}
+
+/** Confirms a run really is threadless before asserting how it resolved. */
+export async function readRunChatThreadIdFixture(
+  runId: string,
+): Promise<string | null> {
+  return (await readRunRow(runId)).chatThreadId;
+}
+
+async function readRunRow(runId: string): Promise<{
+  readonly selectedVideoModel: string | null;
+  readonly chatThreadId: string | null;
+}> {
   const [run] = await db()
-    .select({ selectedVideoModel: zeroRuns.selectedVideoModel })
+    .select({
+      selectedVideoModel: zeroRuns.selectedVideoModel,
+      chatThreadId: zeroRuns.chatThreadId,
+    })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   if (!run) {
     throw new Error("Expected a Zero run row for the video model snapshot");
   }
-  return run.selectedVideoModel;
+  return run;
 }
