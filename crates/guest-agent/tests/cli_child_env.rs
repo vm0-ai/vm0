@@ -39,7 +39,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "60");
     }
 
-    let run_id = std::env::var("VM0_RUN_ID")?;
+    let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV)?;
     let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
     let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
     std::fs::create_dir_all(&user_env_dir)?;
@@ -133,6 +133,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
     assert!(!cli_env.contains_key("VM0_USER_ENV_FILE"));
+    assert!(!cli_env.contains_key(guest_contracts::env::RUN_ID_ENV));
     assert!(!cli_env.contains_key("VM0_RUN_ID"));
     assert!(!cli_env.contains_key("VM0_PROMPT"));
     assert!(!cli_env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
