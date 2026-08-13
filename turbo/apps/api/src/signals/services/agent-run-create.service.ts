@@ -3888,8 +3888,6 @@ class CustomConnectorRuntimeBuildStats {
   private missingRequiredCount = 0;
   private noAuthInjectionCount = 0;
   private invalidPrefixCount = 0;
-  private pinnedRoutingCount = 0;
-  private unpinnedRoutingCount = 0;
 
   constructor(rows: CustomConnectorRuntimeDataRows) {
     this.connectorCount = rows.length;
@@ -3928,19 +3926,6 @@ class CustomConnectorRuntimeBuildStats {
 
   recordInvalidPrefix(): void {
     this.invalidPrefixCount += 1;
-  }
-
-  recordTarget(
-    target: Extract<
-      ConnectorRuntimeTargetRegistration,
-      { readonly kind: "custom" }
-    >,
-  ): void {
-    if (target.baseUrlVars === undefined) {
-      this.unpinnedRoutingCount += 1;
-    } else {
-      this.pinnedRoutingCount += 1;
-    }
   }
 
   flush(timing: ApiDispatchTimingCollector | undefined): void {
@@ -3987,12 +3972,6 @@ class CustomConnectorRuntimeBuildStats {
       custom_connector_runtime_invalid_prefix_count_bucket: countBucket(
         this.invalidPrefixCount,
       ),
-      custom_connector_runtime_pinned_routing_count_bucket: countBucket(
-        this.pinnedRoutingCount,
-      ),
-      custom_connector_runtime_unpinned_routing_count_bucket: countBucket(
-        this.unpinnedRoutingCount,
-      ),
     };
   }
 }
@@ -4031,13 +4010,10 @@ function buildCustomConnectorRuntimeApis(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly headers: Record<string, string>;
   readonly query: Record<string, string>;
-  readonly baseUrlVars: Readonly<Record<string, string>> | undefined;
+  readonly baseUrlVars: Readonly<Record<string, string>>;
   readonly permissionBundle: CustomConnectorPermissionBundle | null;
   readonly stats: CustomConnectorRuntimeBuildStats;
 }): ExpandedFirewallConfig["apis"] {
-  if (args.baseUrlVars === undefined) {
-    return [];
-  }
   const prefixStartedAt = now();
   const connector = args.row.connector;
   if (connector.kind === "mcp") {
@@ -4179,15 +4155,26 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-interface BuiltCustomConnectorRuntimeRow {
-  readonly target: Extract<
-    ConnectorRuntimeTargetRegistration,
-    { readonly kind: "custom" }
-  >;
-  readonly skill: CustomConnectorRuntimeContext["skills"][number] | undefined;
-  readonly firewall: ExpandedFirewallConfig | undefined;
-  readonly permissionPolicy: FirewallPolicy | undefined;
-}
+type BuiltCustomConnectorRuntimeRow =
+  | {
+      readonly registration: Extract<
+        ConnectorRuntimeTargetRegistration,
+        { readonly kind: "custom" }
+      >;
+      readonly skill:
+        | CustomConnectorRuntimeContext["skills"][number]
+        | undefined;
+      readonly firewall: ExpandedFirewallConfig;
+      readonly permissionPolicy: FirewallPolicy | undefined;
+    }
+  | {
+      readonly registration: undefined;
+      readonly skill:
+        | CustomConnectorRuntimeContext["skills"][number]
+        | undefined;
+      readonly firewall: undefined;
+      readonly permissionPolicy: undefined;
+    };
 
 function customConnectorRuntimeSkill(
   row: CustomConnectorRuntimeDataRows[number],
@@ -4215,11 +4202,10 @@ function customConnectorRequiredMemberCredentialsAreComplete(
 }
 
 function unavailableCustomConnectorRuntimeRow(
-  target: BuiltCustomConnectorRuntimeRow["target"],
   skill: BuiltCustomConnectorRuntimeRow["skill"],
 ): BuiltCustomConnectorRuntimeRow {
   return {
-    target,
+    registration: undefined,
     skill,
     firewall: undefined,
     permissionPolicy: undefined,
@@ -4282,14 +4268,6 @@ async function buildCustomConnectorRuntimeRow(args: {
     provided: args.context.baseUrlVarsByConnectorId?.get(args.row.connector.id),
     hasProvided: hasProvidedBaseUrlVars,
   });
-  const targetIdentity = {
-    kind: "custom" as const,
-    customConnectorId: args.row.connector.id,
-  };
-  const target: BuiltCustomConnectorRuntimeRow["target"] = {
-    ...targetIdentity,
-    ...(baseUrlVars === undefined ? {} : { baseUrlVars: { ...baseUrlVars } }),
-  };
   const skill = customConnectorRuntimeSkill(args.row);
   const missingRequiredStartedAt = now();
   const missingRequired = !customConnectorRequiredMemberCredentialsAreComplete(
@@ -4307,15 +4285,18 @@ async function buildCustomConnectorRuntimeRow(args: {
   if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
     args.stats.recordNoAuthInjectionConnector();
     if (args.row.connector.kind === "mcp") {
-      return unavailableCustomConnectorRuntimeRow(target, skill);
+      return unavailableCustomConnectorRuntimeRow(skill);
     }
+  }
+  if (baseUrlVars === undefined) {
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
     row: args.row,
     snapshot: args.context.connectorCatalogSnapshot,
   });
   if (permissionBundle === undefined) {
-    return unavailableCustomConnectorRuntimeRow(target, skill);
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   const apisResult = safeSync(() => {
     return buildCustomConnectorRuntimeApis({
@@ -4332,14 +4313,18 @@ async function buildCustomConnectorRuntimeRow(args: {
       throw apisResult.error;
     }
     args.stats.recordInvalidPrefix();
-    return unavailableCustomConnectorRuntimeRow(targetIdentity, skill);
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   const apis = apisResult.ok;
   if (apis.length === 0) {
-    return unavailableCustomConnectorRuntimeRow(target, skill);
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   return {
-    target,
+    registration: {
+      kind: "custom",
+      customConnectorId: args.row.connector.id,
+      baseUrlVars: { ...baseUrlVars },
+    },
     skill,
     firewall: {
       name: customConnectorInternalName(args.row.connector.id),
@@ -4383,15 +4368,14 @@ export async function buildCustomConnectorRuntimeContext(
       stats,
     });
     const assemblyStartedAt = now();
-    stats.recordTarget(built.target);
-    targets.push(built.target);
     if (built.skill) {
       skills.push(built.skill);
     }
-    if (!built.firewall) {
+    if (!built.registration) {
       stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
       continue;
     }
+    targets.push(built.registration);
     firewalls.push(built.firewall);
     customConnectorIdByFirewallName[built.firewall.name] = row.connector.id;
     if (row.connector.kind === "mcp") {
@@ -4441,18 +4425,8 @@ async function buildNewRunCustomConnectorRuntimeContext(
       );
     }),
   });
-  const admittedConnectorIds = new Set(
-    Object.values(context.customConnectorIdByFirewallName),
-  );
   return {
     ...context,
-    targets: context.targets.filter((target) => {
-      return (
-        target.kind === "custom" &&
-        target.baseUrlVars !== undefined &&
-        admittedConnectorIds.has(target.customConnectorId)
-      );
-    }),
     skills: args.rows.flatMap((row) => {
       const skill = customConnectorRuntimeSkill(row);
       return skill ? [skill] : [];
