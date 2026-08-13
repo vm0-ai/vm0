@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { chatThreadVideoModelContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatThreadVideoModelContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

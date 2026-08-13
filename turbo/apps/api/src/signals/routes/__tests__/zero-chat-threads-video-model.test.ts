@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import {
   chatThreadsContract,
   chatThreadVideoModelContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
