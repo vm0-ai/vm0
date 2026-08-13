@@ -489,7 +489,10 @@ describe("chat event action cards", () => {
     });
 
     const loadingCard = await screen.findByTestId("mail-draft-card-loading");
-    expect(loadingCard).toHaveClass("h-[76px]");
+    const mailCardShell = screen.getByTestId("mail-draft-card-shell");
+    expect(mailCardShell.tagName).toBe("DIV");
+    expect(mailCardShell).toHaveClass("h-[76px]");
+    expect(loadingCard).toHaveClass("h-full");
     await waitFor(() => {
       expect(draftRequestStarted).toBeTruthy();
     });
@@ -498,7 +501,9 @@ describe("chat event action cards", () => {
     const mailCard = await screen.findByLabelText(
       `Open sent email: ${MAIL_DRAFT_SUBJECT}`,
     );
-    expect(mailCard).toHaveClass("h-[76px]");
+    expect(screen.getByTestId("mail-draft-card-shell")).toBe(mailCardShell);
+    expect(mailCard.tagName).toBe("BUTTON");
+    expect(mailCard).toHaveClass("h-full");
     expect(
       screen.queryByTestId("mail-draft-card-loading"),
     ).not.toBeInTheDocument();
@@ -507,6 +512,83 @@ describe("chat event action cards", () => {
     await user.click(mailCard);
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(queryButtonByText("Follow up", sidebar)).toBeNull();
+  });
+
+  it("keeps the browser card div shell mounted while the session loads", async () => {
+    const threadId = "c0000000-0000-4000-a000-000000000078";
+    const browserUrl = `https://app.vm0.ai/browsers/${threadId}`;
+    let browserRequestStarted = false;
+    let resolveBrowser = (): void => {
+      throw new Error("Browser request did not start");
+    };
+    const browser: ZeroBrowserSession = {
+      threadId,
+      name: "loading-shell",
+      status: "active",
+      viewerUrl: browserUrl,
+      liveUrl: "https://live.browser-use.com/?wss=loading-shell-token",
+      screenshotUrl: null,
+      proxyCountryCode: null,
+      timeoutMinutes: 240,
+      idleExpiresAt: "2026-07-30T10:10:00.000Z",
+      suspendedAt: null,
+      suspensionReason: null,
+      createdAt: "2026-07-30T10:00:00.000Z",
+      updatedAt: "2026-07-30T10:00:00.000Z",
+    };
+    context.mocks.api(
+      zeroBrowserContract.get,
+      async ({ deferred, params, respond }) => {
+        expect(params.threadId).toBe(threadId);
+        const browserDeferred = deferred<void>();
+        resolveBrowser = () => {
+          browserDeferred.resolve();
+        };
+        browserRequestStarted = true;
+        await browserDeferred.promise;
+        return respond(200, { browser });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Browser loading shell",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: browserUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const loadingCard = await screen.findByTestId(
+      "browser-session-card-loading",
+    );
+    const browserCardShell = screen.getByTestId("browser-session-card-shell");
+    expect(browserCardShell.tagName).toBe("DIV");
+    expect(loadingCard).toBeInTheDocument();
+    await waitFor(() => {
+      expect(browserRequestStarted).toBeTruthy();
+    });
+    resolveBrowser();
+
+    const browserCard = await screen.findByLabelText(
+      "Open loading-shell browser",
+    );
+    expect(screen.getByTestId("browser-session-card-shell")).toBe(
+      browserCardShell,
+    );
+    expect(browserCard.tagName).toBe("BUTTON");
+    expect(
+      screen.queryByTestId("browser-session-card-loading"),
+    ).not.toBeInTheDocument();
   });
 
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
