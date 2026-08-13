@@ -601,6 +601,9 @@ describe("organization billing settings", () => {
       }),
     ).toHaveTextContent("21,234 credits · 6% off");
     expect(resetMemberUsage).toHaveTextContent("$220/month");
+    const resetOrderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
 
     const resetAlexUsage = within(resetMemberUsage).getByRole("combobox", {
       name: "Usage for Alex Chen",
@@ -768,9 +771,7 @@ describe("organization billing settings", () => {
     const paidPendingUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for paid.pending@example.com",
     });
-    expect(paidPendingUsage).toHaveTextContent(
-      "$100 · 109,999 credits · 9% off",
-    );
+    expect(paidPendingUsage).toHaveTextContent("109,999 credits · 9% off");
     expect(paidPendingUsage).toBeDisabled();
     const samUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for Sam Lee",
@@ -1685,7 +1686,7 @@ describe("organization billing settings", () => {
 
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
-    ).resolves.toHaveTextContent("$50 · 54,321 credits · 8% off");
+    ).resolves.toHaveTextContent("54,321 credits · 8% off");
   });
 
   it("hides a retained allocation after its member leaves the workspace", async () => {
@@ -1913,7 +1914,7 @@ describe("organization billing settings", () => {
     const packageSelect = screen.getByRole("combobox", {
       name: "Usage for Alex Chen",
     });
-    expect(packageSelect).toHaveTextContent("$50 · 54,321 credits · 8% off");
+    expect(packageSelect).toHaveTextContent("54,321 credits · 8% off");
     const downgradeNotice = screen.getByText(
       "Downgrades to $50 on Apr 1, 2026.",
     );
@@ -1958,7 +1959,7 @@ describe("organization billing settings", () => {
 
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
-    ).resolves.toHaveTextContent("$100 · 109,999 credits · 9% off");
+    ).resolves.toHaveTextContent("109,999 credits · 9% off");
     expect(
       screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
     ).not.toBeInTheDocument();

@@ -1081,12 +1081,10 @@ function CheckoutOrderSummary({
   members,
   plan,
   selections,
-  totals,
 }: {
   readonly members: readonly MemberDisplay[] | undefined;
   readonly plan: UsagePackPlan;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
-  readonly totals: MemberUsageTotals;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startUsagePackCheckout$);
@@ -2092,7 +2090,6 @@ function PackageConfigurationStep({
           members={members}
           plan={plan}
           selections={selections}
-          totals={totals}
         />
       )}
     </>
