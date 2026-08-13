@@ -4,23 +4,20 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroOrgLogoResponseSchema = z.object({
+export const orgLogoResponseSchema = z.object({
   logoUrl: z.string().nullable(),
   hasImage: z.boolean(),
 });
 
-export type ZeroOrgLogoResponse = z.infer<typeof zeroOrgLogoResponseSchema>;
+export type OrgLogoResponse = z.infer<typeof orgLogoResponseSchema>;
 
-/**
- * Zero contract for /api/okou/org/logo
- */
-export const zeroOrgLogoContract = c.router({
+export const orgLogoContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/org/logo",
     headers: authHeadersSchema,
     responses: {
-      200: zeroOrgLogoResponseSchema,
+      200: orgLogoResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -34,7 +31,7 @@ export const zeroOrgLogoContract = c.router({
     contentType: "multipart/form-data",
     body: c.type<FormData>(),
     responses: {
-      200: zeroOrgLogoResponseSchema,
+      200: orgLogoResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -45,4 +42,4 @@ export const zeroOrgLogoContract = c.router({
   },
 });
 
-export type ZeroOrgLogoContract = typeof zeroOrgLogoContract;
+export type OrgLogoContract = typeof orgLogoContract;
