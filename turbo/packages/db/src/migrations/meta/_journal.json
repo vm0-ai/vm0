@@ -785,6 +785,13 @@
       "when": 1786617147388,
       "tag": "0919_clammy_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 920,
+      "version": "7",
+      "when": 1786638786640,
+      "tag": "0920_drop_legacy_chat_event_search",
+      "breakpoints": true
     }
   ]
 }
