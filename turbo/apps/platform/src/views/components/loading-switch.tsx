@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { Switch, cn } from "@vm0/ui";
+import { Switch, cn } from "@okouai/ui";
 
 interface LoadingSwitchProps {
   checked: boolean;

@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   integrationsTelegramBotListContract,
   integrationsTelegramMessageContract,
@@ -14,7 +14,7 @@ import {
   type TelegramUploadCompleteResponse,
   type TelegramUploadInitBody,
   type TelegramUploadInitResponse,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 import {
   ApiRequestError,
   getBaseUrl,

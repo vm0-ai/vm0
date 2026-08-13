@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.23.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.0...guest-download-v0.23.1) (2026-08-13)
+
+## [0.23.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.28...guest-download-v0.23.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
 ## [0.22.28](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.27...guest-download-v0.22.28) (2026-08-12)
 
 ## [0.22.27](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.26...guest-download-v0.22.27) (2026-08-12)

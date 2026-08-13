@@ -1,4 +1,4 @@
-import { sharedThreadsContract } from "@vm0/api-contracts/contracts/shared-threads";
+import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 

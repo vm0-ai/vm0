@@ -32,7 +32,7 @@ export function createVoiceGenerateCommand(
     .addOption(new Option("--text <text>", "Alias for --prompt").hideHelp())
     .option(
       "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name (heygen, elevenlabs, ...) to get its skill-invocation guidance",
+      "Provider: 'built-in' to run Okou's pipeline, or a connector name (heygen, elevenlabs, ...) to get its skill-invocation guidance",
     )
     .option(
       "--all",

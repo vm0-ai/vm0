@@ -92,7 +92,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("USE_MOCK_CLAUDE", "true"),
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
-        ("VM0_RUN_ID", run_id.as_str()),
+        (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
         (
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             run_payload_path.as_str(),
@@ -209,7 +209,7 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
         ("USE_MOCK_CLAUDE", "true"),
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
-        ("VM0_RUN_ID", run_id.as_str()),
+        (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
         (
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             run_payload_path.as_str(),

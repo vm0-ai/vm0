@@ -26,6 +26,7 @@
     "VITE_VAPID_PUBLIC_KEY_PREVIEW",
     "VITE_VAPID_PUBLIC_KEY_PROD",
     "VM0_DESKTOP_PLATFORM_URL",
+    "OKOU_COMPUTER_OUTPUT_DIR",
     "VM0_COMPUTER_OUTPUT_DIR",
     "OKOU_TOKEN",
     "ZERO_TOKEN",
@@ -34,11 +35,11 @@
     "OKOU_CHAT_THREAD_ID",
     "ZERO_CHAT_THREAD_ID",
     "VM0_RUNNER_TOKEN",
+    "OKOU_API_BACKEND_URL",
     "VM0_API_BACKEND_URL",
     "OKOU_APP_URL",
     "ZERO_APP_URL",
     "FEISHU_CALLBACK_BASE_URL",
-    "VM0_APPEND_SYSTEM_PROMPT",
     "VM0_WEB_URL",
     "MINIMAX_ANTHROPIC_BASE_URL",
     "MINIMAX_API_KEY",
@@ -126,6 +127,7 @@
     "AGENTPHONE_PHONE_NUMBER",
     "AGENTPHONE_WEBHOOK_SECRET",
 
+    "OKOU_RUN_ID",
     "VM0_RUN_ID",
     "OKOU_AGENT_ID",
     "ZERO_AGENT_ID",
@@ -314,7 +316,7 @@
         ".source/**"
       ]
     },
-    "@vm0/app#build": {
+    "@okouai/app#build": {
       "dependsOn": ["^build"],
       "env": ["VITE_GIT_COMMIT_SHA"],
       "inputs": [

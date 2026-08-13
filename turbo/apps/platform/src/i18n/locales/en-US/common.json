@@ -810,7 +810,7 @@
       "changeDescription": "Choose a new total slot quantity or stop renewal.",
       "changeOptionsAria": "Concurrency subscription change options",
       "changeQuantityOption": "Change slots",
-      "changeQuantityOptionDescription": "Enter the total number of slots you want. You'll review the prorated change before confirming.",
+      "changeQuantityOptionDescription": "Increases apply immediately. Decreases start on the next billing date.",
       "changeTitle": "Change concurrency",
       "concurrentRun_one": "{{value}} concurrent run",
       "concurrentRun_other": "{{value}} concurrent runs",
@@ -830,6 +830,8 @@
       "reviewChange": "Review change",
       "reviewDescription": "Review the amount due now and your updated monthly subscription.",
       "reviewTitle": "Review concurrency change",
+      "scheduledChange": "Changes to {{quantity}} on {{date}}",
+      "scheduledReviewDescription": "Your current slots stay active through this billing period. The lower quantity starts at renewal with no refund or account credit.",
       "slot_one": "{{value}} slot",
       "slot_other": "{{value}} slots",
       "slots": "Slots",
@@ -1023,7 +1025,7 @@
       "concurrencyCanceled": "Concurrency subscription canceled.",
       "concurrencyCanceledDate": "Concurrency subscription canceled. Slots stay active until {{date}}.",
       "concurrencyChanged": "Concurrency change confirmed. Your slot count will update after Stripe processes the change.",
-      "concurrencyReduced": "Concurrency reduction submitted. Your new slot count will appear after Stripe confirms the change.",
+      "concurrencyReduced": "Concurrency reduction scheduled for the next billing date.",
       "concurrencyRestored": "Concurrency subscription restored.",
       "creditsAdded": "Credits added. You can continue chatting with Zero.",
       "downgradeScheduledDate": "Downgrade scheduled. Your current plan stays active until {{date}}.",
@@ -1041,6 +1043,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} left",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} credits",
         "remainingAria": "Usage allowance {{label}} remaining",
         "resets": "Resets {{date}}",
         "resetsRaw": "Resets {{value}}",
@@ -1636,6 +1639,7 @@
       "removeVideo": "Remove video template {{title}}",
       "removeWebsite": "Remove website template {{title}}",
       "removeWorkflow": "Remove workflow template {{title}}",
+      "videoModelLabel": "Video model {{model}}",
       "videoOptions": "Video options",
       "videoOptionsAudio": "Generate audio",
       "videoOptionsDuration": "Duration",
@@ -4022,6 +4026,7 @@
         "usage": {
           "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
+          "balanceUsageDescription": "Your team's credit balance and usage.",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"
         }
@@ -4601,12 +4606,17 @@
       "yesterday": "Yesterday"
     },
     "records": {
-      "emptyBillingPeriod": "No usage in this billing period.",
-      "emptyRange": "No usage in this time range.",
+      "empty": {
+        "billingPeriodTitle": "No usage in this billing period",
+        "description": "Credits you spend on chats, automations, and channels show up here.",
+        "noBillingPeriodDescription": "Team usage appears once a billing period starts.",
+        "noBillingPeriodTitle": "No active billing period",
+        "rangeTitle": "No usage in this time range",
+        "teamDescription": "Credits your team spends on chats, automations, and channels show up here."
+      },
       "loadError": "Could not load your usage.",
       "loadMore": "Load more",
       "myUsage": "My usage",
-      "noActiveBillingPeriod": "No active billing period.",
       "teamLoadError": "Could not load team usage.",
       "teamUsage": "Team usage",
       "untitled": "(untitled)"

@@ -67,7 +67,7 @@ cd turbo && pnpm install && pnpm -F web db:migrate && pnpm build && pnpm test
 ```
 
 - `db:migrate` sets up the local database schema
-- `pnpm build` builds shared packages (e.g. `@vm0/core`)
+- `pnpm build` builds shared packages (e.g. `@okouai/core`)
 
 See [Database Migrations](turbo/packages/db/MIGRATIONS.md) for migration rollout,
 validation, and online SQL patterns.

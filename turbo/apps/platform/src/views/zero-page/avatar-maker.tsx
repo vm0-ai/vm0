@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { Wand, ChevronLeft, ChevronRight, Dices } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";

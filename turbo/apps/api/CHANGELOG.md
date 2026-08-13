@@ -1,5 +1,89 @@
 # Changelog
 
+## [1.442.0](https://github.com/vm0-ai/vm0/compare/api-v1.441.2...api-v1.442.0) (2026-08-13)
+
+
+### Features
+
+* **api:** show source run on chat-run-finished automations ([#26805](https://github.com/vm0-ai/vm0/issues/26805)) ([e52c30d](https://github.com/vm0-ai/vm0/commit/e52c30d572c8d477e2bbb5f63753825e32f7cdfc))
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+
+### Performance Improvements
+
+* **api:** bound unified unread indicators ([#26816](https://github.com/vm0-ai/vm0/issues/26816)) ([b036c02](https://github.com/vm0-ai/vm0/commit/b036c02de532c72c678d636dfc47885bf025e0c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.327.3
+    * @okouai/connectors bumped to 1.205.2
+    * @okouai/core bumped to 8.553.3
+    * @okouai/db bumped to 1.197.9
+    * @okouai/pi-agent-runtime bumped to 1.4.6
+
+## [1.441.2](https://github.com/vm0-ai/vm0/compare/api-v1.441.1...api-v1.441.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **billing:** merge concurrency into plan subscription ([#26393](https://github.com/vm0-ai/vm0/issues/26393)) ([837a57d](https://github.com/vm0-ai/vm0/commit/837a57d8c302bdc0f96bb010866d01da52736f73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.2
+    * @vm0/core bumped to 8.553.2
+    * @vm0/db bumped to 1.197.8
+    * @vm0/pi-agent-runtime bumped to 1.4.5
+
+## [1.441.1](https://github.com/vm0-ai/vm0/compare/api-v1.441.0...api-v1.441.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.1
+    * @vm0/core bumped to 8.553.1
+    * @vm0/db bumped to 1.197.7
+    * @vm0/pi-agent-runtime bumped to 1.4.4
+
+## [1.441.0](https://github.com/vm0-ai/vm0/compare/api-v1.440.2...api-v1.441.0) (2026-08-13)
+
+
+### Features
+
+* **api:** retire chat event reads and force app upgrade ([#26755](https://github.com/vm0-ai/vm0/issues/26755)) ([7be323f](https://github.com/vm0-ai/vm0/commit/7be323f3f555183be738a3ee0fe158d3d4327e0a))
+
+
+### Bug Fixes
+
+* **api:** unify custom and builtin firewall auth flow ([#26726](https://github.com/vm0-ai/vm0/issues/26726)) ([2a9e6e6](https://github.com/vm0-ai/vm0/commit/2a9e6e668330fb9fdc7a1a7cf6f95bb840fce2fd))
+
+
+### Refactoring
+
+* **connectors:** remove legacy secret placeholder compatibility ([#26742](https://github.com/vm0-ai/vm0/issues/26742)) ([6065464](https://github.com/vm0-ai/vm0/commit/60654644244bfa0932b1861507a1b0481e029c4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.0
+    * @vm0/core bumped to 8.553.0
+    * @vm0/db bumped to 1.197.6
+    * @vm0/pi-agent-runtime bumped to 1.4.3
+
 ## [1.440.2](https://github.com/vm0-ai/vm0/compare/api-v1.440.1...api-v1.440.2) (2026-08-13)
 
 

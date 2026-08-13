@@ -1,7 +1,7 @@
 import {
   customConnectorHttpUpdateBodySchema,
   customConnectorMcpUpdateBodySchema,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import { z } from "zod";
 
 const customConnectorDefinitionFileSchema = z

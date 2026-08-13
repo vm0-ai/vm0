@@ -2,11 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../mocks/server";
-import {
-  getModelSwitchGuidance,
-  switchCommand,
-  zeroModelCommand,
-} from "../index";
+import { switchCommand, zeroModelCommand } from "../index";
 
 const MODEL_POLICIES_RESPONSE = {
   workspaceDefaultModel: "claude-sonnet-4-6",
@@ -87,20 +83,7 @@ describe("okou model command", () => {
     expect(logCalls).toContain("okou model-provider set --help");
   });
 
-  it("should point web users at the input-side model selector", async () => {
-    vi.stubEnv(
-      "VM0_APPEND_SYSTEM_PROMPT",
-      "You are currently running inside: Web\n\nYou are communicating with the user through the web chat UI.",
-    );
-
-    await switchCommand.parseAsync(["node", "cli"]);
-
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "model selector next to the input box in the web chat",
-    );
-  });
-
-  it("should point Telegram users at /model", async () => {
+  it("should ignore the inherited legacy prompt when showing switch guidance", async () => {
     vi.stubEnv(
       "VM0_APPEND_SYSTEM_PROMPT",
       "You are currently running inside: Telegram",
@@ -108,14 +91,8 @@ describe("okou model command", () => {
 
     await switchCommand.parseAsync(["node", "cli"]);
 
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "Use /model in Telegram",
-    );
-  });
-
-  it("should point other environments at app.okou.ai", () => {
-    expect(getModelSwitchGuidance("schedule")).toContain(
-      "Open https://app.okou.ai",
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      "Open https://app.okou.ai and switch models from the model selector next to the input box.",
     );
   });
 });

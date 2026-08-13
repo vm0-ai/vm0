@@ -1,4 +1,4 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { eq } from "drizzle-orm";
 
 import { db } from "../lib/db";

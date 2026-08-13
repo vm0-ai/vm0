@@ -1,5 +1,5 @@
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
 
 import type { Db } from "../external/db";
 

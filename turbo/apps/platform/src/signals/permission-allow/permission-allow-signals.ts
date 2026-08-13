@@ -5,11 +5,11 @@ import {
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
   zeroUserPermissionGrantsContract,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";

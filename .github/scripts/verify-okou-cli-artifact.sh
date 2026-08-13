@@ -55,7 +55,7 @@ jq -e \
 
 package_json="$(tar -xOf "$artifact_dir/package.tgz" package/package.json)"
 jq -e '
-  .name == "@vm0/okou-cli"
+  .name == "@okouai/cli"
   and .private == true
   and (.bin | type == "object")
   and ((.bin | keys) == ["okou"])

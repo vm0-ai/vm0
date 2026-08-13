@@ -1,4 +1,4 @@
-# @vm0/core
+# @okouai/core
 
 Core utilities package for the Turbo monorepo.
 
@@ -33,7 +33,7 @@ pnpm check-types
 ## Usage
 
 ```typescript
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 console.log(FeatureSwitchKey.ConnectorCategories);
 ```

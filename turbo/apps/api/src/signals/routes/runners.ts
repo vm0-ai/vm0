@@ -20,21 +20,21 @@ import {
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import {
   runStatusSchema,
   type RunStatus,
-} from "@vm0/api-contracts/contracts/runs";
-import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+} from "@okouai/api-contracts/contracts/runs";
+import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { blobs } from "@okouai/db/schema/blob";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
   runnerState,
   type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
   type RunnerHeldWorkspaceState as PersistedRunnerHeldWorkspaceState,
-} from "@vm0/db/schema/runner-state";
+} from "@okouai/db/schema/runner-state";
 import {
   and,
   desc,

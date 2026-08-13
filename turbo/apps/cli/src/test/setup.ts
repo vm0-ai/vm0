@@ -8,6 +8,7 @@ beforeAll(() => {
 
 // Baseline: no auth, no API URL. Test files override in their own beforeEach.
 beforeEach(() => {
+  vi.stubEnv("OKOU_API_BACKEND_URL", undefined);
   vi.stubEnv("VM0_API_BACKEND_URL", undefined);
   vi.stubEnv("OKOU_APP_URL", undefined);
   vi.stubEnv("ZERO_APP_URL", undefined);

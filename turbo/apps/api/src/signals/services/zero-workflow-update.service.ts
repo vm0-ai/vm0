@@ -1,7 +1,7 @@
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
-import type { ZeroWorkflowUpdateRequest } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { getCustomSkillStorageName } from "@okouai/core/storage-names";
+import { synthesizeWorkflowSkillMd } from "@okouai/core/zero-workflow-skill";
+import type { ZeroWorkflowUpdateRequest } from "@okouai/api-contracts/contracts/zero-workflows";
+import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 

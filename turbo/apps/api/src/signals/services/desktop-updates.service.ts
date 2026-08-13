@@ -7,13 +7,13 @@ import {
   type DesktopUpdateLine,
   type DesktopUpdatePlatform,
   type SquirrelMacReleases,
-} from "@vm0/api-contracts/contracts/desktop-updates";
+} from "@okouai/api-contracts/contracts/desktop-updates";
 import {
   DESKTOP_PRODUCTS,
   DESKTOP_PRODUCT_OKOU,
   DESKTOP_PRODUCT_ZERO,
   type DesktopProduct,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 import { z } from "zod";
 
 import { testOverride } from "../../lib/singleton";

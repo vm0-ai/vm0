@@ -5,7 +5,7 @@ import {
   jsonb,
   primaryKey,
 } from "drizzle-orm/pg-core";
-import type { UserFeatureSwitches } from "@vm0/db/jsonb-contracts/user-feature-switches";
+import type { UserFeatureSwitches } from "@okouai/db/jsonb-contracts/user-feature-switches";
 
 export const userFeatureSwitches = pgTable(
   "user_feature_switches",

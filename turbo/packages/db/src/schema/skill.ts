@@ -10,7 +10,7 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { storages } from "./storage";
-import type { SkillFrontmatter } from "@vm0/db/jsonb-contracts/skill";
+import type { SkillFrontmatter } from "@okouai/db/jsonb-contracts/skill";
 
 /**
  * Skills table

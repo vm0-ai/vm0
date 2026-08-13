@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { UserMessageInputDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageInputDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";

@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
-} from "@vm0/api-contracts/contracts/zero-integrations-slack";
+} from "@okouai/api-contracts/contracts/zero-integrations-slack";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";

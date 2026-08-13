@@ -1,6 +1,6 @@
 {
-  "name": "@vm0/db",
-  "version": "1.197.5",
+  "name": "@okouai/db",
+  "version": "1.197.9",
   "private": true,
   "type": "module",
   "exports": {
@@ -38,16 +38,16 @@
     "@aws-sdk/client-kms": "^3.1104.0",
     "@aws-sdk/client-s3": "^3.1104.0",
     "@clerk/backend": "^3.13.1",
-    "@vm0/api-contracts": "workspace:*",
-    "@vm0/core": "workspace:*",
+    "@okouai/api-contracts": "workspace:*",
+    "@okouai/core": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "drizzle-kit": "^0.31.9",
     "eslint": "^9.34.0",
     "oxlint": "^1.75.0",

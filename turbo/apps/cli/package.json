@@ -1,8 +1,8 @@
 {
-  "name": "@vm0/okou-cli",
+  "name": "@okouai/cli",
   "version": "9.279.4",
   "private": true,
-  "description": "Okou command-line interface for vm0",
+  "description": "Okou command-line interface",
   "repository": {
     "type": "git",
     "url": "https://github.com/vm0-ai/vm0",
@@ -20,13 +20,13 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/okou-cli\"; delete this.scripts; delete this.devDependencies; this.bin={okou:\"okou.js\"}; this.files=[\"*.js\",\"*.js.map\",\"migrations/*.sql\"]'",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@okouai/cli\"; delete this.scripts; delete this.devDependencies; this.bin={okou:\"okou.js\"}; this.files=[\"*.js\",\"*.js.map\",\"migrations/*.sql\"]'",
     "dev": "tsup --watch",
     "bench:startup": "pnpm build && ZERO_STARTUP_BENCH=1 vitest run src/__tests__/okou-startup.bench.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "pnpm --filter @vm0/pi-agent-runtime run build && tsc --noEmit"
+    "check-types": "pnpm --filter @okouai/pi-agent-runtime run build && tsc --noEmit"
   },
   "devDependencies": {
     "@earendil-works/pi-session-backend-sqlite-node": "0.84.1",
@@ -37,12 +37,12 @@
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@types/tar": "^6.1.13",
-    "@vm0/api-contracts": "workspace:*",
-    "@vm0/connectors": "workspace:*",
-    "@vm0/core": "workspace:*",
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/pi-agent-runtime": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/api-contracts": "workspace:*",
+    "@okouai/connectors": "workspace:*",
+    "@okouai/core": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/pi-agent-runtime": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "ably": "^2.21.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.0",

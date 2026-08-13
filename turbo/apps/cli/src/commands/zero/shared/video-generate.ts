@@ -7,7 +7,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   findVideoTemplate,
   listVideoTemplates,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { createVideoTemplateAuthoringPacket } from "./video-template-authoring";
 import {
@@ -385,7 +385,7 @@ export function createVideoGenerateCommand(
     .option("--prompt <text>", "Video prompt; can also be piped via stdin")
     .option(
       "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+      "Provider: 'built-in' to run Okou's pipeline, or a connector name to get its skill-invocation guidance",
     )
     .option("--template <id>", "Registered video template id")
     .option(

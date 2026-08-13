@@ -3,7 +3,7 @@ import type {
   ModelProviderResponse,
   ModelProviderType,
   OrgModelPoliciesResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import {
   personalModelProviders$,

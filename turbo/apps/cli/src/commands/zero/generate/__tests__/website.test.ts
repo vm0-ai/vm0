@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
-import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
 
@@ -66,14 +66,14 @@ describe("okou generate website command", () => {
       "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
     );
     expect(stdout).toContain(
-      "The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
+      "The Website index includes Okou built-in R2 template packages as template entries with `source.archive`.",
     );
     expect(stdout).toContain(
       "Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
     );
     expect(stdout).toContain("observability launch site");
     expect(stdout).toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
     );
     expect(stdout).toContain(
       "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
@@ -83,6 +83,8 @@ describe("okou generate website command", () => {
     );
     expect(stdout).toContain("Built-in Website template release: previous");
     expect(stdout).not.toContain("use `seedream4` by default");
+    expect(stdout).not.toContain("Keep at most 3 image generations");
+    expect(stdout).not.toContain("Embed this URL in HTML");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
@@ -109,6 +111,12 @@ describe("okou generate website command", () => {
     expect(stdout).toContain("Built-in Website template release: latest");
     expect(stdout).toContain(
       "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(stdout).toContain(
+      "Keep at most 3 image generations in flight at once",
+    );
+    expect(stdout).toContain(
+      "Embed the `Embed this URL in HTML` value returned by the generator",
     );
   });
 
@@ -146,7 +154,7 @@ describe("okou generate website command", () => {
     );
     expect(stdout).toContain("Use the explicitly selected template.");
     expect(stdout).not.toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
     );
     expect(stdout).not.toContain(
       "Selected template package: okou resource pull template:web-prototype",

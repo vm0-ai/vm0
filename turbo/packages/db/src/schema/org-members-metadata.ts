@@ -8,8 +8,8 @@ import {
   jsonb,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { OrgMembersPinnedAgentIds } from "@vm0/db/jsonb-contracts/org-members-metadata";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { OrgMembersPinnedAgentIds } from "@okouai/db/jsonb-contracts/org-members-metadata";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 
 /**
  * org_members_metadata — source of truth for per-member preferences.

@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";

@@ -1,4 +1,4 @@
-import type { UserMessagePart } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessagePart } from "@okouai/api-contracts/contracts/chat-threads";
 
 type UserMessageSourcePart = Extract<
   UserMessagePart,

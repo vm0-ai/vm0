@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { readGlobalCss, readUiGlobalCss } from "./global-css.ts";
 
 /**
- * The platform re-declares `--color-*` names that `@vm0/ui` already defines.
+ * The platform re-declares `--color-*` names that `@okouai/ui` already defines.
  * Tailwind resolves utilities from `--color-*`, and the platform sheet is
  * imported after the design system's, so each of these wins over the shipped
  * value for the whole web app.

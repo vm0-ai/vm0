@@ -3,23 +3,23 @@ import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getAllFeatureStates,
   isFeatureEnabled,
-} from "@vm0/core/feature-switch";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/core/feature-switch";
+import { SEED_SKILLS } from "@okouai/core/zero-seed-skills";
+import { getCustomSkillStorageName } from "@okouai/core/storage-names";
+import { synthesizeWorkflowSkillMd } from "@okouai/core/zero-workflow-skill";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflowWebhookAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { and, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

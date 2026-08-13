@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 const DETAIL_PAGE_CONTENT_CLASS = "mx-auto w-full max-w-[900px]";

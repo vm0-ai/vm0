@@ -1,10 +1,10 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";

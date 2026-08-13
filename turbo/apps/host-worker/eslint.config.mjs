@@ -1,4 +1,4 @@
-import { config, oxlint } from "@vm0/eslint-config/base";
+import { config, oxlint } from "@okouai/eslint-config/base";
 
 export default [
   ...config,

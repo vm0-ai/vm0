@@ -12,8 +12,8 @@ import {
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
   desktopProductFromClientHeader,
-} from "@vm0/api-contracts/contracts/client-headers";
-import { serializeError } from "@vm0/core/log-utils";
+} from "@okouai/api-contracts/contracts/client-headers";
+import { serializeError } from "@okouai/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";

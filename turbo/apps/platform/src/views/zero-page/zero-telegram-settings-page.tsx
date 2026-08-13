@@ -24,9 +24,9 @@ import {
   type TelegramBotStatus,
   type TelegramSetupStatus,
   OFFICIAL_TELEGRAM_BOT_ID,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { Button } from "@vm0/ui/components/ui/button";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import { Button } from "@okouai/ui/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -35,21 +35,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@vm0/ui/components/ui/dialog";
-import { Input } from "@vm0/ui/components/ui/input";
+} from "@okouai/ui/components/ui/dialog";
+import { Input } from "@okouai/ui/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui/components/ui/select";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";

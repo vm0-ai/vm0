@@ -275,7 +275,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
     name: "generate",
     description:
-      "Generate assets via vm0's built-in pipelines or get connector skill-invocation guidance",
+      "Generate assets via Okou's built-in pipelines or get connector skill-invocation guidance",
     load: async () => {
       return (await import("./commands/zero/generate")).generateCommand;
     },
@@ -606,7 +606,7 @@ declare const __CLI_VERSION__: string;
 
 program
   .name("okou")
-  .description("Okou CLI — interact with vm0 from inside the sandbox")
+  .description("Okou CLI — interact with Okou from inside the sandbox")
   .version(__CLI_VERSION__)
   .addHelpText("after", () => {
     return buildZeroHelpText();

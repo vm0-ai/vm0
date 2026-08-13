@@ -2,7 +2,7 @@ import {
   testConnectorCredentialStorageStateContract,
   type TestConnectorCredentialStorageStateActionBody,
   type TestConnectorCredentialStorageStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
+} from "@okouai/api-contracts/contracts/test-connector-credential-storage-state";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { createApp } from "../../../../app-factory";

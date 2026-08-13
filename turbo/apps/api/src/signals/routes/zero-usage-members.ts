@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";

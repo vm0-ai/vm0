@@ -1389,7 +1389,7 @@ async fn execute_job_pi_system_prompt_validation_failure_skips_sandbox_create() 
 
     assert_ne!(outcome.exit_code(), 0);
     let error = outcome.error().unwrap();
-    assert!(error.contains("VM0_PI_SYSTEM_PROMPT"));
+    assert!(error.contains(guest_contracts::env::PI_SYSTEM_PROMPT_ENV));
     assert!(error.contains("NUL"));
     assert!(!error.contains(secret));
     assert!(outcome.sandbox.is_none());

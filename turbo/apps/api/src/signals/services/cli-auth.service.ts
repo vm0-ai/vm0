@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
+import { cliTokens } from "@okouai/db/schema/cli-tokens";
+import { orgCache } from "@okouai/db/schema/org-cache";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { userCache } from "@okouai/db/schema/user-cache";
 import { command, computed, type Computed } from "ccstate";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 

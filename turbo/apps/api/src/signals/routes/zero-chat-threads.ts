@@ -5,7 +5,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";

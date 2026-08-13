@@ -3,9 +3,9 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   getFeatureSwitchMetadata,
   type FeatureSwitchMetadata,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { Switch, Button, cn } from "@vm0/ui";
+} from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { Switch, Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
   featureSwitch$,

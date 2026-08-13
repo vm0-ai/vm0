@@ -12,7 +12,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { sql } from "drizzle-orm";
 
 export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [

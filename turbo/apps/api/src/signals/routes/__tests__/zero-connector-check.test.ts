@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   type ConnectorCheckRequest,
   zeroConnectorCheckContract,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/zero-connector-check";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 

@@ -2,12 +2,12 @@ import {
   zeroBillingStatusContract,
   zeroBillingUsagePackCreditsContract,
   type UsagePackCreditsResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   zeroUsageRecordContract,
   type UsageRecordRow,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-usage-record";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -276,8 +276,8 @@ describe("personal usage settings", () => {
     );
 
     await openUsageSettings(false);
-    // Without a usage pack a member has no organization balance to read, but
-    // their own usage records stay available in their own section.
+    // Without the new pricing a member has neither an organization balance nor
+    // a records section to open.
     expect(
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Credit balance";
@@ -287,7 +287,7 @@ describe("personal usage settings", () => {
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Credit usage";
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
     expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
     expect(usagePackCreditRequests).toBe(0);
   });
@@ -600,6 +600,26 @@ describe("personal usage settings", () => {
     const orgCredits = await screen.findByTestId("credit-balance-info");
     expect(within(orgCredits).getByText("Org credits")).toBeInTheDocument();
     expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
+  });
+
+  it("shows an illustrated empty state when the range has no usage", async () => {
+    mockPersonalUsageStory([]);
+    await openUsageSettings(true, "usage-records");
+
+    const empty = await screen.findByTestId("usage-records-empty");
+    expect(
+      within(empty).getByText("No usage in this time range"),
+    ).toBeInTheDocument();
+    expect(
+      within(empty).getByText(
+        "Credits you spend on chats, automations, and channels show up here.",
+      ),
+    ).toBeInTheDocument();
+    // The illustration is decorative, so it must stay out of the accessible name.
+    expect(within(empty).getByRole("presentation")).toHaveAttribute(
+      "src",
+      expect.stringContaining("empty-usage-"),
+    );
   });
 
   it("shows personal usage, loads more, and changes the usage range", async () => {

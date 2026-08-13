@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

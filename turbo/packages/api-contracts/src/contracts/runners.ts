@@ -8,7 +8,7 @@ import {
   firewallSchema,
   networkPolicySchema,
   networkPoliciesSchema,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";

@@ -1,4 +1,4 @@
-import { webhookClerkContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookClerkContract } from "@okouai/api-contracts/contracts/webhooks";
 import { command } from "ccstate";
 
 import { optionalEnv } from "../../lib/env";

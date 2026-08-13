@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   eq,

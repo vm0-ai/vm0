@@ -460,7 +460,7 @@ export const avatarVideoCommand = new Command()
   .option("--voice-use-case <use-case>", "Voice use-case filter")
   .option(
     "--provider <name>",
-    "Provider: 'built-in' to use vm0 credits, or a connector name for skill guidance",
+    "Provider: 'built-in' to use Okou credits, or a connector name for skill guidance",
   )
   .option(
     "--all",
@@ -475,10 +475,10 @@ Examples:
   Generate from audio:   okou generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --audio-url https://example.com/voice.mp3
   Pipe a script:         cat script.txt | okou generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural
 
-Built-in workflow (vm0 credits):
+Built-in workflow (Okou credits):
   1. okou generate avatar-video --provider built-in --list-avatars
   2. okou generate avatar-video --provider built-in --list-voices --voice-language english
-  3. okou generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Welcome to vm0"
+  3. okou generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Welcome to Okou"
 
 JoggAI connector workflow (BYOK):
   1. okou connector status joggai
@@ -493,7 +493,7 @@ Notes:
   - Run the command with no script/audio to reflect built-in and connector choices.
   - Use exactly one of --script (or piped stdin) and --audio-url.
   - Public avatar and voice IDs are discoverable with the list flags.
-  - Built-in generation uses vm0-managed JoggAI credentials and charges org credits.
+  - Built-in generation uses Okou-managed JoggAI credentials and charges org credits.
   - Connector generation uses the connected JoggAI account and provider credits.
   - Authenticates via OKOU_TOKEN and requires file:write capability.`,
   )

@@ -1,4 +1,4 @@
-import { brandedApiNamespace } from "@vm0/api-contracts/contracts/api-namespaces";
+import { brandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
 import {
   DESKTOP_UPDATE_LINE_LEGACY_OKOU,
   DESKTOP_UPDATE_LINE_OKOU,
@@ -7,7 +7,7 @@ import {
   desktopZeroMigrationPolicySchema,
   type DesktopZeroMigrationPolicy,
   type DesktopUpdateLine,
-} from "@vm0/api-contracts/contracts/desktop-updates";
+} from "@okouai/api-contracts/contracts/desktop-updates";
 import { command } from "ccstate";
 
 import { notFound } from "../../lib/error";

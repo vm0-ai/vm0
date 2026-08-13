@@ -19,7 +19,7 @@ import type {
   AgentRunStorageMounts,
   AgentRunVars,
   AgentSessionStorageMounts,
-} from "@vm0/db/jsonb-contracts/agent-run-session-conversation";
+} from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 
 /**
  * Agent Runs table

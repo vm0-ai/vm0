@@ -2,9 +2,9 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
-} from "@vm0/api-contracts/contracts/zero-mail";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { cn } from "@vm0/ui";
+} from "@okouai/api-contracts/contracts/zero-mail";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 

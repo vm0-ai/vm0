@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
-import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
+import { createErrorResponse } from "@okouai/api-contracts/contracts/errors";
+import { zeroImageShareXContract } from "@okouai/api-contracts/contracts/zero-image-share-x";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

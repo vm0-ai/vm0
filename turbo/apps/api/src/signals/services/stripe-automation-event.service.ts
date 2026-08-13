@@ -2,23 +2,23 @@ import {
   stripeInvoicePaidEventConfigSchema,
   stripeInvoiceBillingReasonSchema,
   type StripeInvoiceBillingReason,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import type {
   StripeAutomationEventSnapshot,
   StripeAutomationEventSnapshotLine,
   StripeAutomationEventSnapshotMetadata,
-} from "@vm0/db/jsonb-contracts/stripe-automation-event";
-import { connectors } from "@vm0/db/schema/connector";
+} from "@okouai/db/jsonb-contracts/stripe-automation-event";
+import { connectors } from "@okouai/db/schema/connector";
 import {
   stripeWorkflowAutomationHealth,
   stripeWorkflowDeliveries,
-} from "@vm0/db/schema/stripe-automation-event";
+} from "@okouai/db/schema/stripe-automation-event";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+} from "@okouai/db/schema/zero-workflow";
+import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { z } from "zod";

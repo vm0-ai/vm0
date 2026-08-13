@@ -1,20 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
 import { WebPushError } from "web-push";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import {
   resolveChatEventRecommendedFollowups,
   type GenerationTemplateRequest,
   type ChatEvent,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { testBrowserReconcileContract } from "@vm0/api-contracts/contracts/test-browser-reconcile";
-import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
+import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
-} from "@vm0/core";
+} from "@okouai/core";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";

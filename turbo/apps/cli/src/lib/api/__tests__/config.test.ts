@@ -78,6 +78,29 @@ describe("Okou configuration", () => {
     await expect(getActiveOrg()).resolves.toBeUndefined();
   });
 
+  it("prefers OKOU_API_BACKEND_URL when both backend names are set", async () => {
+    vi.stubEnv("OKOU_API_BACKEND_URL", "canonical.example.test");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://legacy.example.test");
+
+    await expect(getApiUrl()).resolves.toBe("https://canonical.example.test");
+  });
+
+  it.each([undefined, ""])(
+    "uses VM0_API_BACKEND_URL when OKOU_API_BACKEND_URL is %s",
+    async (canonicalUrl) => {
+      vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
+      vi.stubEnv("VM0_API_BACKEND_URL", "preview.vm0.ai");
+
+      await expect(getApiUrl()).resolves.toBe("https://preview.vm0.ai");
+    },
+  );
+
+  it("preserves configured protocols and trailing slashes", async () => {
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://canonical.example.test/");
+
+    await expect(getApiUrl()).resolves.toBe("http://canonical.example.test/");
+  });
+
   it("uses VM0_API_BACKEND_URL for routing", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "preview.vm0.ai");
 

@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroGoalsContract,
   type ZeroGoalResponse,
-} from "@vm0/api-contracts/contracts/zero-goals";
+} from "@okouai/api-contracts/contracts/zero-goals";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

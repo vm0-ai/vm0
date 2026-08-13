@@ -1,7 +1,7 @@
-import type { PresentationTemplateSummary } from "@vm0/api-contracts/contracts/zero-presentation-templates";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { presentationTemplates } from "@vm0/db/schema/presentation-template";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { presentationTemplates } from "@okouai/db/schema/presentation-template";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, desc, eq } from "drizzle-orm";
 
 import { buildFileUrlFromKey } from "../../lib/file-url";

@@ -1,7 +1,7 @@
 import {
   chatEventCompatibilityRole,
   isChatEventContentTextType,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 import { escapeHtmlTags } from "../../lib/markdown/pipeline.ts";
 import { messageDocumentToDisplayText } from "../zero-page/user-message-document-codec.ts";
 import {

@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { command } from "ccstate";
-import { users } from "@vm0/db/schema/user";
+import { users } from "@okouai/db/schema/user";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";

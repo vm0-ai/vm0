@@ -1,6 +1,6 @@
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { zeroStrapiIntegrationsContract } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
 import { command, computed } from "ccstate";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";

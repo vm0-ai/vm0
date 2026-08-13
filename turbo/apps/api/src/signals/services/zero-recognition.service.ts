@@ -6,7 +6,7 @@ import {
   zeroRecognitionImageMimeTypeSchema,
   type ZeroRecognitionRequest,
   type ZeroRecognitionResponse,
-} from "@vm0/api-contracts/contracts/zero-recognition";
+} from "@okouai/api-contracts/contracts/zero-recognition";
 import { command } from "ccstate";
 
 import { insufficientCredits, notConfigured, notFound } from "../../lib/error";

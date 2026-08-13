@@ -1,8 +1,8 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { githubChatThreadRoutes } from "@vm0/db/schema/github-chat-thread-route";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
+import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";

@@ -45,25 +45,25 @@ import {
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { parseScheduledAtTime } from "@vm0/core/timezone";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { stripeWorkflowAutomationHealth } from "@vm0/db/schema/stripe-automation-event";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { parseScheduledAtTime } from "@okouai/core/timezone";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { stripeWorkflowAutomationHealth } from "@okouai/db/schema/stripe-automation-event";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   strapiIntegrations,
   zeroWorkflowStrapiAutomations,
-} from "@vm0/db/schema/strapi-integration";
+} from "@okouai/db/schema/strapi-integration";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflowWebhookAutomations,
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { and, asc, eq } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";

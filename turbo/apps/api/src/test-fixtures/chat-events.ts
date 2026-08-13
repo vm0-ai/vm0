@@ -1,30 +1,30 @@
 import { randomUUID } from "node:crypto";
 
-import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
-import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
+import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
+import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
 import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageAssets,
   ChatSlackMessageFiles,
-} from "@vm0/db/jsonb-contracts/chat-slack-context";
-import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
-import type { JsonObject } from "@vm0/db/jsonb-contracts/shared";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
-import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
-import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
-import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
-import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
+} from "@okouai/db/jsonb-contracts/chat-slack-context";
+import type { ChatTeamsMessageFiles } from "@okouai/db/jsonb-contracts/chat-teams-context";
+import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
+import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
+import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 

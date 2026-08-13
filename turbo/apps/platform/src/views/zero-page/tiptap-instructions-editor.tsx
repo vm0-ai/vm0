@@ -21,7 +21,7 @@ import {
   Quote,
   Code,
 } from "lucide-react";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import "highlight.js/styles/github.css";
 

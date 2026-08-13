@@ -1,9 +1,9 @@
 import {
   testStorageFixtureContract,
   type TestStorageStateActionBody,
-} from "@vm0/api-contracts/contracts/test-storage-fixture";
-import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/api-contracts/contracts/test-storage-fixture";
+import { VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
 import { and, desc, eq } from "drizzle-orm";
 

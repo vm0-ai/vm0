@@ -2,8 +2,8 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Sun, Moon, Monitor, Keyboard, Loader2, Palette } from "lucide-react";
-import { cn } from "@vm0/ui";
-import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { cn } from "@okouai/ui";
+import type { SendMode } from "@okouai/api-contracts/contracts/zero-user-preferences";
 
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import {
