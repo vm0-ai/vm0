@@ -958,6 +958,10 @@ describe("chat lifecycle", () => {
         screen.queryByText("Existing context before follow-up"),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Send a message to start the conversation"),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
     });
 
     otherThreadMessagesGate.resolve(undefined);

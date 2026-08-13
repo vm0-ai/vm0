@@ -66,7 +66,7 @@ export interface MessageListSignals {
   readonly readyScrollAfterRenderRequest$: Computed<
     Promise<ReadyScrollAfterRenderRequest | null>
   >;
-  readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly initialEventsReady$: Computed<boolean>;
   readonly assistantErrorRecovery$: Computed<
     Promise<AssistantErrorRecovery | null>
   >;
@@ -127,7 +127,6 @@ export interface ChatPanelSignals {
   readonly threadTitle$: Computed<string | null>;
   readonly threadTitleEmoji$: Computed<string | null>;
   readonly threadTitleText$: Computed<string>;
-  readonly threadSettledInServer$: Computed<boolean>;
   readonly assistantErrorRecovery$: Computed<
     Promise<AssistantErrorRecovery | null>
   >;
@@ -185,7 +184,7 @@ export interface ChatPanelSignals {
   // -- Paged events (sole rendering path) ----------------------------------
   readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   readonly latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly initialEventsReady$: Computed<boolean>;
   readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;

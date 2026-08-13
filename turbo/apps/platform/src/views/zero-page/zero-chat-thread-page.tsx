@@ -3148,11 +3148,9 @@ function ChatThreadSessionError({ thread }: { thread: ChatPanelSignals }) {
 
 function ChatThreadEmptyState({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
-  const renderedGroupsReady =
-    useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
-  const threadSettledInServer = useGet(thread.threadSettledInServer$);
+  const initialEventsReady = useGet(thread.initialEventsReady$);
   const hasEvents = useLastResolved(thread.hasEvents$);
-  if (!renderedGroupsReady || !threadSettledInServer || hasEvents !== false) {
+  if (!initialEventsReady || hasEvents !== false) {
     return null;
   }
   return (
@@ -4371,8 +4369,8 @@ function RunGroupFoldRow({
 }
 
 function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
-  const chatSkeletonVisible = useGet(thread.chatSkeletonVisible$);
-  if (!chatSkeletonVisible) {
+  const initialEventsReady = useGet(thread.initialEventsReady$);
+  if (initialEventsReady) {
     return null;
   }
 
@@ -4382,7 +4380,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
       className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
     >
       <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
-        <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+        <div className="zero-chat-skeleton-reveal w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
           <ChatSkeleton />
         </div>
       </main>
