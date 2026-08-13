@@ -10,7 +10,7 @@ import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$ } from "../route.ts";
-import { setLoop } from "../utils.ts";
+import { onRejection, setLoop } from "../utils.ts";
 import type {
   AgentEvent,
   AgentEventsResponse,
@@ -251,7 +251,14 @@ export const setupActivityEvents$ = command(
 
     set(internalActivityEventsState$, { phase: "loading", runId });
     const client = get(zeroClient$)(zeroRunAgentEventsContract);
-    const initial = await fetchAgentEventBatch(client, runId, {}, signal);
+    const initial = await onRejection(
+      fetchAgentEventBatch(client, runId, {}, signal),
+      () => {
+        if (!signal.aborted) {
+          set(internalActivityEventsState$, { phase: "unavailable", runId });
+        }
+      },
+    );
     signal.throwIfAborted();
     if (!initial) {
       set(internalActivityEventsState$, { phase: "unavailable", runId });
@@ -355,6 +362,7 @@ export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
 });
 
 export const zeroActivityVisibleGroups$ = computed(async (get) => {
+  const runId = get(currentRunId$);
   const [detail, events] = await Promise.all([
     get(zeroActivityDetail$),
     get(zeroActivityEvents$),
@@ -362,7 +370,7 @@ export const zeroActivityVisibleGroups$ = computed(async (get) => {
   const loading = get(zeroActivityEventsLoading$);
   if (!detail || !events || events.runId !== detail.id) {
     return {
-      runId: events?.runId ?? null,
+      runId,
       groups: [],
       loading,
     } satisfies ZeroActivityVisibleGroups;
