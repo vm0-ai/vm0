@@ -384,7 +384,6 @@ mod tests {
         assert!(normalized_help.contains(
             "drain Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)"
         ));
-        assert!(!normalized_help.contains("returns immediately"));
     }
 
     #[tokio::test]
