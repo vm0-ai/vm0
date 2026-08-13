@@ -8969,6 +8969,7 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
 
   const validConnectorId = "26669000-0000-4000-8000-000000000001";
   const invalidConnectorId = "26669000-0000-4000-8000-000000000002";
+  const overflowConnectorId = "26669000-0000-4000-8000-000000000003";
   const fields = [
     {
       key: "secret",
@@ -9146,6 +9147,70 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
     await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
       invalidConnectorId,
     ]);
+
+    const utf16BoundaryTemplate = `${"😀".repeat(1019)}{{secret}}`;
+    assert.equal(utf16BoundaryTemplate.length, 2048);
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "auth_mode",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26669-org',
+          '_legacy-secret-overflow',
+          'Legacy Secret Overflow',
+          '["https://overflow.example.test/"]'::jsonb,
+          $2::jsonb,
+          $3::jsonb,
+          '[]'::jsonb,
+          'manual',
+          'issue-26669-user'
+        )
+      `,
+      [
+        overflowConnectorId,
+        JSON.stringify(fields),
+        JSON.stringify([
+          { name: "Authorization", valueTemplate: utf16BoundaryTemplate },
+        ]),
+      ],
+    );
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_MIGRATION,
+      ),
+      /exceeds canonical limit/u,
+    );
+    const overflowRolledBack = await client.query<{
+      valueTemplate: string;
+    }>(
+      `
+        SELECT "entry"."injection" ->> 'valueTemplate' AS "valueTemplate"
+        FROM "org_custom_connectors" AS "connector"
+        CROSS JOIN LATERAL jsonb_array_elements(
+          "connector"."header_injections"
+        ) AS "entry"("injection")
+        WHERE "connector"."id" = $1
+      `,
+      [overflowConnectorId],
+    );
+    assert.deepEqual(overflowRolledBack.rows, [
+      { valueTemplate: utf16BoundaryTemplate },
+    ]);
+
+    await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
+      overflowConnectorId,
+    ]);
     await applyMigrationsUpToTag(
       client,
       CUSTOM_CONNECTOR_SECRET_PLACEHOLDER_MIGRATION,
@@ -9221,6 +9286,9 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
     assert.deepEqual(await readMigratedFixture(), expectedMigratedFixture);
 
     console.log("   ✅ ambiguous matching data aborts without partial writes");
+    console.log(
+      "   ✅ canonical UTF-16 overflows abort without partial writes",
+    );
     console.log(
       "   ✅ header and query templates canonicalize exactly in order",
     );
