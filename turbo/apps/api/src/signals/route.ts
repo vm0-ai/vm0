@@ -189,8 +189,8 @@ import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
 import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
-import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
-import { zeroWebFileUrlRoutes } from "./routes/zero-web-file-url";
+import { webDownloadRoutes } from "./routes/web-download";
+import { webFileUrlRoutes } from "./routes/web-file-url";
 
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
@@ -312,8 +312,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVoiceIoQuotaRoutes,
   ...zeroVoiceIoSpeechRoutes,
   ...zeroVoiceIoSttRoutes,
-  ...zeroWebDownloadRoutes,
-  ...zeroWebFileUrlRoutes,
+  ...webDownloadRoutes,
+  ...webFileUrlRoutes,
   ...zeroQueuePositionRoutes,
   ...realtimeTokenRoutes,
   ...imageRecognitionRoutes,

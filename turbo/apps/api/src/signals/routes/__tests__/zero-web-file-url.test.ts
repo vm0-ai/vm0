@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
-import { zeroWebFilesContract } from "@okouai/api-contracts/contracts/zero-web-files";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { zeroWebFileUrlRoutes } from "../zero-web-file-url";
+import { webFileUrlRoutes } from "../web-file-url";
 import { expectApiError } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
@@ -19,9 +19,7 @@ const BUCKET = "test-user-artifacts";
 const PRESIGNED_URL = "https://r2.example.com/artifacts/photo.png?sig=test";
 
 function client() {
-  return setupApp({ context, routes: zeroWebFileUrlRoutes })(
-    zeroWebFilesContract,
-  );
+  return setupApp({ context, routes: webFileUrlRoutes })(webFilesContract);
 }
 
 function currentSecond(): number {
