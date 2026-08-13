@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   chatEventSearchDocs,
   chatEventSearchMessages,
@@ -7,7 +9,7 @@ import {
   chatEventSearchWatermarks,
 } from "@okouai/db/schema/chat-event-search";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import {
@@ -102,22 +104,29 @@ export async function insertChatSearchProjectionCoverageFixture(args: {
   readonly assistantText: string;
   readonly errorText: string;
   readonly terminalText: string;
-}): Promise<{ readonly assistantRunId: string }> {
+}): Promise<{
+  readonly prompt: { readonly id: string; readonly seqId: number };
+  readonly assistant: { readonly id: string; readonly seqId: number };
+  readonly assistantRunId: string;
+}> {
   const assistantRunId = randomUUID();
-  await db().transaction(async (tx) => {
-    await insertChatEvent(tx, {
+  const messages = await db().transaction(async (tx) => {
+    const prompt = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
       eventType: "input.prompt",
       contextType: "web",
       userMessage: createUserMessageDocument({ text: args.promptText }),
       runId: null,
     });
-    await insertChatEvent(tx, {
+    const assistant = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
       eventType: "output.message",
       content: args.assistantText,
       runId: assistantRunId,
     });
+    if (!prompt || !assistant) {
+      throw new Error("Expected chat search coverage messages");
+    }
     await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
       eventType: "output.message",
@@ -137,8 +146,63 @@ export async function insertChatSearchProjectionCoverageFixture(args: {
       content: args.terminalText,
       runId: randomUUID(),
     });
+    return { prompt, assistant };
   });
-  return { assistantRunId };
+  return { ...messages, assistantRunId };
+}
+
+/**
+ * Simulates retention after the durable projection has caught up. Product APIs
+ * cannot delete append-only source events, so the fixture removes only rows
+ * owned by the test's unique threads while preserving both search projections.
+ */
+export async function removeChatSearchSourceEventsFixture(
+  chatThreadIds: readonly string[],
+): Promise<number> {
+  const removed = await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .delete(chatEvents)
+      .where(inArray(chatEvents.chatThreadId, [...chatThreadIds]))
+      .returning({ id: chatEvents.id });
+  });
+  return removed.length;
+}
+
+/**
+ * Changes source-thread ownership and agent metadata after projection so a
+ * reader test can prove those fields are not reloaded from chat_threads.
+ */
+export async function updateChatSearchSourceThreadFixture(args: {
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly agentComposeId: string;
+}): Promise<void> {
+  const updated = await db()
+    .update(chatThreads)
+    .set({
+      userId: args.userId,
+      agentComposeId: args.agentComposeId,
+    })
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .returning({ id: chatThreads.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one chat search source thread to update");
+  }
+}
+
+export async function renameChatSearchAgentComposeFixture(args: {
+  readonly agentComposeId: string;
+  readonly name: string;
+}): Promise<void> {
+  const updated = await db()
+    .update(agentComposes)
+    .set({ name: args.name })
+    .where(eq(agentComposes.id, args.agentComposeId))
+    .returning({ id: agentComposes.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one chat search agent compose to rename");
+  }
 }
 
 export async function insertSearchablePromptFixture(args: {

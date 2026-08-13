@@ -563,16 +563,9 @@ async fn spawn_mitmdump(
         .process_group(0);
     cmd.kill_on_drop(true);
 
-    // SAFETY: `set_pdeathsig` calls `prctl(PR_SET_PDEATHSIG)` which is
-    // async-signal-safe. This covers the direct PyInstaller bootloader; its
-    // forked application child is covered by managed process-group shutdown
-    // and marker-based reconciliation.
-    unsafe {
-        cmd.pre_exec(|| {
-            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
-                .map_err(std::io::Error::from)
-        });
-    }
+    // This covers the direct PyInstaller bootloader; managed process-group
+    // shutdown and marker reconciliation cover its forked application child.
+    crate::parent_death::configure_parent_death_signal(&mut cmd);
 
     info!(port, bin = %config.mitmdump_bin.display(), "starting mitmdump");
 

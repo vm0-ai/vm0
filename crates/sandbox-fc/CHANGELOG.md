@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.210](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.209...sandbox-fc-v0.37.210) (2026-08-13)
+
+
+### Documentation
+
+* **sandbox-fc:** correct prewarm credential comment ([#26927](https://github.com/vm0-ai/vm0/issues/26927)) ([63f3634](https://github.com/vm0-ai/vm0/commit/63f363433df8c4586fb4bbf4fde0b10d6a247227))
+
 ## [0.37.209](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.208...sandbox-fc-v0.37.209) (2026-08-13)
 
 

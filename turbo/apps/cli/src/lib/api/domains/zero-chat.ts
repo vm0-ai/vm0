@@ -39,11 +39,6 @@ type ZeroChatEventRowsPage =
   | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
   | { readonly kind: "expired" };
 
-interface ZeroQueuedChatEvent {
-  readonly eventId: string;
-  readonly seqId: number;
-}
-
 const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
     CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
@@ -257,20 +252,6 @@ export async function listZeroChatEventRows(options: {
     return { kind: "expired" };
   }
   handleError(result, "Failed to list chat event rows");
-}
-
-export async function listZeroQueuedChatEvents(options: {
-  readonly threadId: string;
-}): Promise<readonly ZeroQueuedChatEvent[]> {
-  const config = await getClientConfig();
-  const client = initClient(chatThreadEventsContract, config);
-  const result = await client.queued({
-    params: { threadId: options.threadId },
-  });
-  if (result.status === 200) {
-    return result.body.events;
-  }
-  handleError(result, "Failed to list queued chat events");
 }
 
 export async function updateZeroChatThreadModelSelection(options: {

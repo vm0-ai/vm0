@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -75,8 +75,8 @@ export async function handleWorkflowAutomationInternalCallback(
 
   const [automation] = await db
     .select(workflowAutomationColumns())
-    .from(zeroWorkflowAutomations)
-    .where(eq(zeroWorkflowAutomations.id, payload.data.automationId))
+    .from(workflowAutomations)
+    .where(eq(workflowAutomations.id, payload.data.automationId))
     .limit(1);
   signal?.throwIfAborted();
 
@@ -101,7 +101,7 @@ export async function handleWorkflowAutomationInternalCallback(
   });
 
   await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       consecutiveFailures,
       ...(shouldDisable && { enabled: false }),
@@ -110,8 +110,8 @@ export async function handleWorkflowAutomationInternalCallback(
     })
     .where(
       and(
-        eq(zeroWorkflowAutomations.id, payload.data.automationId),
-        eq(zeroWorkflowAutomations.enabled, true),
+        eq(workflowAutomations.id, payload.data.automationId),
+        eq(workflowAutomations.enabled, true),
       ),
     );
   signal?.throwIfAborted();

@@ -1489,8 +1489,11 @@ export const chatEventsContract = c.router({
 
 /**
  * Single chat message in a search result.
- * `content` is guaranteed non-null because the search route filters out
- * placeholder rows where content is NULL.
+ * `(chatThreadId, seqId)` is the stable identity and `runId` carries optional
+ * run ownership. `messageId` and `sequenceNumber` bridge old Platform/App
+ * clients for the ~2-day client-skew window. #26921 migrates current clients
+ * to the stable identity and removes these fields after that deployment has
+ * aged past 2 days.
  */
 const chatSearchMessageSchema = z.object({
   messageId: z.string(),

@@ -6,7 +6,9 @@ use crate::network::{GUEST_NETWORK, generate_boot_args};
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
 ///
 /// **Note:** Do NOT wrap this in another user transition — the vsock-guest exec
-/// handler already uses non-login `su` with an explicit `/bin/sh` in release builds.
+/// handler already applies the sandbox credentials directly (`setgroups`,
+/// `setgid`, and `setuid`) before executing an explicit non-login `/bin/sh` in
+/// release builds.
 /// Double-wrapping creates nested sessions where inner processes escape the
 /// process group, surviving SIGKILL on timeout as orphans frozen into the
 /// snapshot.

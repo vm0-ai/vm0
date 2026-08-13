@@ -120,7 +120,6 @@ async fn try_start(
     interface_pattern: &str,
     network_log_manager: NetworkLogManager,
 ) -> std::io::Result<DnsProxy> {
-    let expected_parent = nix::unistd::getpid();
     let mut command = tokio::process::Command::new("dnsmasq");
     command
         .args(dnsmasq_args(port, interface_pattern))
@@ -128,20 +127,9 @@ async fn try_start(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
 
-    // SAFETY: `set_pdeathsig` and `getppid` are async-signal-safe. Checking the
-    // parent after installing the signal closes the fork-to-prctl race: if the
-    // runner already exited, the child fails before exec instead of creating an
-    // unowned wildcard listener.
-    unsafe {
-        command.pre_exec(move || {
-            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
-                .map_err(std::io::Error::from)?;
-            if nix::unistd::getppid() != expected_parent {
-                return Err(std::io::Error::from_raw_os_error(nix::libc::ESRCH));
-            }
-            Ok(())
-        });
-    }
+    // Prevent dnsmasq from creating an unowned wildcard listener if the runner
+    // exits during spawn.
+    crate::parent_death::configure_parent_death_signal(&mut command);
 
     let mut child = command.spawn()?;
 

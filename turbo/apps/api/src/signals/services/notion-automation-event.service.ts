@@ -22,9 +22,9 @@ import {
 } from "@okouai/db/schema/notion-event";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -1121,12 +1121,12 @@ async function loadNotionChildPageAutomations(
 ): Promise<readonly AutomationRow[]> {
   const rows = await args.db
     .select(workflowAutomationColumns())
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.eventType, "notion-child-page-created"),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.eventType, "notion-child-page-created"),
       ),
     );
   signal.throwIfAborted();
@@ -1141,12 +1141,12 @@ async function loadNotionDatabaseItemAutomations(
 ): Promise<readonly AutomationRow[]> {
   const rows = await args.db
     .select(workflowAutomationColumns())
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.eventType, "notion-database-item-created"),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.eventType, "notion-database-item-created"),
       ),
     );
   signal.throwIfAborted();
@@ -1161,12 +1161,12 @@ async function loadNotionPageContentUpdatedAutomations(
 ): Promise<readonly AutomationRow[]> {
   const rows = await args.db
     .select(workflowAutomationColumns())
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.eventType, "notion-page-content-updated"),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.eventType, "notion-page-content-updated"),
       ),
     );
   signal.throwIfAborted();
@@ -1818,30 +1818,27 @@ async function loadDueNotionAutomationRow(
   const [row] = await args.db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
-    .where(eq(zeroWorkflowAutomations.id, args.automationId))
+    .where(eq(workflowAutomations.id, args.automationId))
     .limit(1);
   signal.throwIfAborted();
   return row ?? null;

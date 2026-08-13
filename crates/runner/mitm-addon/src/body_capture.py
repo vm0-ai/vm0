@@ -50,6 +50,8 @@ _UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\x00-\x08\x0A-\x1F\x7F]")
 _HTTP_OPTIONAL_WHITESPACE = " \t"
 _MAX_CAPTURE_HEADER_NAME_LENGTH = 256
 _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE = 256
+_MAX_CAPTURE_HEADER_FIELDS = 512
+_MAX_CAPTURE_HEADER_BYTES = 32 * 1024
 _REDACTED_HEADER_NAME = "[redacted-header-name]"
 _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES = frozenset(
     {
@@ -236,18 +238,29 @@ def _sanitize_header_name_for_capture(name: str) -> str:
     return name
 
 
-def _sanitize_headers_for_capture(headers) -> dict:
-    """Build a dict of captured headers safe for persistent network logs."""
-    result = {}
+def _sanitize_headers_for_capture(headers: http.Headers) -> tuple[dict[str, str], bool]:
+    """Build a bounded header prefix safe for persistent network logs."""
+    result: dict[str, str] = {}
     seen_names: set[str] = set()
-    for name, value in headers.items(multi=True):
+    captured_bytes = 0
+    for index, (raw_name, raw_value) in enumerate(headers.fields):
+        field_bytes = len(raw_name) + len(raw_value)
+        if (
+            index >= _MAX_CAPTURE_HEADER_FIELDS
+            or field_bytes > _MAX_CAPTURE_HEADER_BYTES - captured_bytes
+        ):
+            return result, True
+        captured_bytes += field_bytes
+
+        name = raw_name.decode("utf-8", "surrogateescape")
+        value = raw_value.decode("utf-8", "surrogateescape")
         captured_name = _sanitize_header_name_for_capture(name)
         case_insensitive_name = captured_name.lower()
         if case_insensitive_name in seen_names:
-            continue  # keep first occurrence only (headers.items gives all)
+            continue  # keep first occurrence only (raw fields contain all)
         seen_names.add(case_insensitive_name)
         result[captured_name] = _sanitize_header_value_for_capture(captured_name, value)
-    return result
+    return result, False
 
 
 def _set_body_fields(
@@ -287,9 +300,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Add capture-mode request/response fields to ``log_entry`` in place.
 
     # [NETWORK_LOG_FIELDS] — capture-only fields in the shared network log schema.
-    # Fields: request_headers, request_body, request_body_encoding,
-    #         request_body_truncated, response_headers, response_body,
-    #         response_body_encoding, response_body_truncated
+    # Fields: request_headers, request_headers_truncated, request_body,
+    #         request_body_encoding, request_body_truncated, response_headers,
+    #         response_headers_truncated, response_body, response_body_encoding,
+    #         response_body_truncated
 
     Request bodies prefer request streaming metadata when requestheaders()
     installed a safe capped stream before mitmproxy buffered the body.
@@ -301,7 +315,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     buffer metadata exists.
     """
     # Request headers (always available)
-    log_entry["request_headers"] = _sanitize_headers_for_capture(flow.request.headers)
+    request_headers, request_headers_truncated = _sanitize_headers_for_capture(flow.request.headers)
+    log_entry["request_headers"] = request_headers
+    if request_headers_truncated:
+        log_entry["request_headers_truncated"] = True
 
     # Request body
     if flow.metadata.get(metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE):
@@ -345,7 +362,12 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     # Response headers
     if flow.response:
-        log_entry["response_headers"] = _sanitize_headers_for_capture(flow.response.headers)
+        response_headers, response_headers_truncated = _sanitize_headers_for_capture(
+            flow.response.headers
+        )
+        log_entry["response_headers"] = response_headers
+        if response_headers_truncated:
+            log_entry["response_headers_truncated"] = True
 
     if flow.response:
         stream_body = response_streaming.captured_response_stream_body(flow)

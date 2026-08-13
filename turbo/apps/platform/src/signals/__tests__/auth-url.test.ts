@@ -49,6 +49,12 @@ describe("platform auth URLs", () => {
     expect(deriveServiceOrigin("https://pr-18532-app.omby.ai", "api")).toBe(
       "https://pr-18532-api.vm6.ai",
     );
+    expect(deriveServiceOrigin("https://app.okou.ai", "api")).toBe(
+      "https://api.okou.ai",
+    );
+    expect(deriveServiceOrigin("https://app.okou.ai", "www")).toBe(
+      "https://www.vm0.ai",
+    );
   });
 
   it("builds app auth URLs on the current origin without a domain hint", () => {
@@ -126,7 +132,7 @@ describe("platform auth URLs", () => {
     ).toStrictEqual([
       "https://app.okou.ai",
       "https://www.vm0.ai",
-      "https://api.vm0.ai",
+      "https://api.okou.ai",
       "https://app.vm0.ai",
     ]);
     expect(

@@ -1,8 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import {
-  zeroWorkflowAutomations,
-  zeroWorkflowWebhookAutomations,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflowWebhookAutomations,
+} from "@okouai/db/schema/workflow";
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
@@ -42,34 +42,34 @@ export async function disableIneligibleWorkflowWebhookAutomationsForOrg(
     }
 
     const webhookAutomationIds = tx
-      .select({ automationId: zeroWorkflowWebhookAutomations.automationId })
-      .from(zeroWorkflowWebhookAutomations);
+      .select({ automationId: workflowWebhookAutomations.automationId })
+      .from(workflowWebhookAutomations);
     const currentTime = nowDate();
     const disabled = await tx
-      .update(zeroWorkflowAutomations)
+      .update(workflowAutomations)
       .set({ enabled: false, updatedAt: currentTime })
       .where(
         and(
-          eq(zeroWorkflowAutomations.orgId, args.orgId),
-          eq(zeroWorkflowAutomations.enabled, true),
-          inArray(zeroWorkflowAutomations.id, webhookAutomationIds),
+          eq(workflowAutomations.orgId, args.orgId),
+          eq(workflowAutomations.enabled, true),
+          inArray(workflowAutomations.id, webhookAutomationIds),
         ),
       )
-      .returning({ id: zeroWorkflowAutomations.id });
+      .returning({ id: workflowAutomations.id });
     signal.throwIfAborted();
     if (disabled.length === 0) {
       return 0;
     }
 
     await tx
-      .update(zeroWorkflowWebhookAutomations)
+      .update(workflowWebhookAutomations)
       .set({
         disabledReason: "paid_plan_required",
         updatedAt: currentTime,
       })
       .where(
         inArray(
-          zeroWorkflowWebhookAutomations.automationId,
+          workflowWebhookAutomations.automationId,
           disabled.map((automation) => {
             return automation.id;
           }),

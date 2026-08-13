@@ -449,7 +449,7 @@ function expectZeroPreCreateSource(runId: string, source: string): void {
   );
 }
 
-describe("zero workflows", () => {
+describe("workflows", () => {
   it("lets any public workflow viewer detect connector readiness", async () => {
     const owner = user({ orgId: STAFF_ORG_ID });
     const viewer = user({
