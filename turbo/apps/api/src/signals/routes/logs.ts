@@ -8,7 +8,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
-import { zeroLogDetail, zeroLogsList } from "../services/zero-logs.service";
+import { logDetail, logsList } from "../services/logs.service";
 import type { RouteEntry } from "../route-entry";
 
 const runReadAuth = {
@@ -23,7 +23,7 @@ const getLogsListInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(logsListContract.list));
   const result = await get(
-    zeroLogsList({
+    logsList({
       userId: auth.userId,
       orgId: auth.orgId,
       cursor: query.cursor,
@@ -43,7 +43,7 @@ const getLogByIdInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(logsByIdContract.getById));
   const detail = await get(
-    zeroLogDetail({
+    logDetail({
       runId: params.id,
       userId: auth.userId,
       orgId: auth.orgId,
@@ -55,7 +55,7 @@ const getLogByIdInner$ = computed(async (get) => {
   return { status: 200 as const, body: detail };
 });
 
-export const zeroLogsRoutes: readonly RouteEntry[] = [
+export const logsRoutes: readonly RouteEntry[] = [
   {
     route: logsListContract.list,
     handler: authRoute(runReadAuth, getLogsListInner$),
