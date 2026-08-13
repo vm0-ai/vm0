@@ -148,9 +148,12 @@ end
 
 cleanup_source = File.read(ARGV.fetch(1))
 cleanup = YAML.load_file(ARGV.fetch(1))
-expected_cleanup_group = "pr-${{ github.event.pull_request.number }}"
-unless cleanup.fetch("concurrency").fetch("group") == expected_cleanup_group
-  raise "cleanup must cancel the matching PR Turbo run before deleting Pages deployments"
+expected_cleanup_concurrency = {
+  "group" => "cleanup-pr-${{ github.event.pull_request.number }}",
+  "cancel-in-progress" => true,
+}
+unless cleanup.fetch("concurrency") == expected_cleanup_concurrency
+  raise "cleanup must deduplicate without cancelling the matching PR Turbo run"
 end
 
 pages_cleanup = cleanup.fetch("jobs").fetch("cleanup-app-pages-deployments")
