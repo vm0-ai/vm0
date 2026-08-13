@@ -41,6 +41,13 @@ import {
 } from "../src/schema/chat-event";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { validateAgentRunMetadataStage2IndexDraft } from "./test-agent-run-metadata-stage-2-index-draft";
+import {
+  validateAgentRunMetadataStage2FinalDraft,
+  validateAgentRunMetadataStage2RunnerDraft,
+} from "./test-agent-run-metadata-stage-2-final-draft";
+import { validateAgentRunMetadataStage2LockDraft } from "./test-agent-run-metadata-stage-2-lock-draft";
+import { validateAgentRunMetadataStage2PreflightDraft } from "./test-agent-run-metadata-stage-2-preflight-draft";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -9989,6 +9996,11 @@ async function main(): Promise<void> {
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateAgentRunMetadataExpansion();
+    await validateAgentRunMetadataStage2PreflightDraft();
+    await validateAgentRunMetadataStage2LockDraft();
+    await validateAgentRunMetadataStage2IndexDraft();
+    await validateAgentRunMetadataStage2FinalDraft();
+    await validateAgentRunMetadataStage2RunnerDraft();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
