@@ -55,6 +55,8 @@ Notes:
         const row = [
           agent.agentId.padEnd(idWidth),
           (agent.displayName ?? "-").padEnd(displayWidth),
+          // Commit-addressed CLI/backend responses may omit visibility. Remove
+          // after #26761 verifies producers and queued/active contexts have drained.
           (agent.visibility ?? "-").padEnd(visibilityWidth),
         ].join("  ");
         console.log(row);

@@ -16,12 +16,16 @@ import { server } from "../../../../mocks/server";
 import { createCommand } from "../create";
 import chalk from "chalk";
 
-const mockAgent = {
+const mockAgentWithoutVisibility = {
   agentId: "comp_xyz789",
   displayName: "New Agent",
   description: null,
   sound: null,
   avatarUrl: null,
+};
+
+const mockAgent = {
+  ...mockAgentWithoutVisibility,
   visibility: "private",
 };
 
@@ -123,6 +127,25 @@ describe("okou agent create command", () => {
       expect(capturedBody?.visibility).toBe("public");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Visibility:   public");
+    });
+
+    it("should handle a create response without visibility", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/okou/agents", () => {
+          return HttpResponse.json(mockAgentWithoutVisibility, { status: 201 });
+        }),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--display-name",
+        "New Agent",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain('Agent "comp_xyz789" created');
+      expect(logCalls).not.toContain("Visibility:");
     });
 
     it("should send preset avatar in request body", async () => {

@@ -17,11 +17,15 @@ import {
 import { viewCommand } from "../view";
 import chalk from "chalk";
 
-const mockAgent = {
+const mockAgentWithoutVisibility = {
   agentId: "comp_abc123",
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
+};
+
+const mockAgent = {
+  ...mockAgentWithoutVisibility,
   visibility: "private",
 };
 
@@ -166,6 +170,27 @@ describe("okou agent view command", () => {
       expect(logCalls).toContain(
         "preset:2 (medium skin, pink hair, neutral, chill)",
       );
+    });
+
+    it("should handle an agent response without visibility", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+          return HttpResponse.json(mockAgentWithoutVisibility);
+        }),
+        http.get(
+          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledConnectorSlugs: [] });
+          },
+        ),
+        mockConnectorListHandler(),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Agent ID:     comp_abc123");
+      expect(logCalls).not.toContain("Visibility:");
     });
 
     it("should display custom svg avatar", async () => {

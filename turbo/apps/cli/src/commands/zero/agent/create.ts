@@ -111,6 +111,8 @@ Examples:
         if (agent.displayName) {
           console.log(`  Display Name: ${agent.displayName}`);
         }
+        // Commit-addressed CLI/backend responses may omit visibility. Remove
+        // after #26761 verifies producers and queued/active contexts have drained.
         if (agent.visibility) {
           console.log(`  Visibility:   ${agent.visibility}`);
         }
