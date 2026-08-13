@@ -1186,11 +1186,12 @@ test("forward composer stays inside the modal on narrow screens", async ({
 
   const dialog = page.getByRole("dialog", { name: "Forward to" });
   await dialog.getByRole("option").first().click();
-  const composer = dialog.locator(".zero-composer");
+  const composerDialog = page.getByRole("dialog");
+  const composer = composerDialog.locator(".zero-composer");
 
   for (const width of [360, 320]) {
     await page.setViewportSize({ width, height: 780 });
-    await expectInside(composer, dialog);
+    await expectInside(composer, composerDialog);
   }
 });
 
