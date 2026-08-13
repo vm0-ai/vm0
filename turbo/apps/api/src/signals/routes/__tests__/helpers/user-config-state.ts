@@ -2,7 +2,7 @@ import {
   testUserConfigStateContract,
   type TestUserConfigStateActionBody,
   type TestUserConfigStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-user-config-state";
+} from "@okouai/api-contracts/contracts/test-user-config-state";
 
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

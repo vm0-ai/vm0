@@ -5,11 +5,11 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import type {
   ZeroWorkflowSummary,
   ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   CalendarClock,
   Clock,
@@ -23,7 +23,7 @@ import {
   Tag,
   Video,
 } from "lucide-react";
-import { Button, Switch, cn, BrandGithub, BrandStripe } from "@vm0/ui";
+import { Button, Switch, cn, BrandGithub, BrandStripe } from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
@@ -31,8 +31,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui/components/ui/dialog";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import { agents$ } from "../../signals/agent.ts";

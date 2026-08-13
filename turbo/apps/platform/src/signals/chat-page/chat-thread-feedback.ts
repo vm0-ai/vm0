@@ -7,9 +7,9 @@ import {
   type State,
 } from "ccstate";
 import { delay } from "signal-timers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isEditableTarget, matchShortcut } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isEditableTarget, matchShortcut } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {

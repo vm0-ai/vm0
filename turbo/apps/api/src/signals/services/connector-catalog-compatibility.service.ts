@@ -5,26 +5,26 @@ import {
   type ConnectorCatalogCompatibilityReason,
   type ConnectorCatalogFilteredAuthMethod,
   type ConnectorCatalogFilteringStatus,
-} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+} from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import {
   connectorAuthMethodIdSchema,
   connectorSlugSchema,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS,
   getConnectorAuthProviderRegistrationCapabilities,
   type ConnectorAuthProviderMethodContract,
   type ConnectorAuthProviderRegistrationCapability,
-} from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/auth-providers";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
   connectorCatalogSyncState,
-} from "@vm0/db/schema/connector-catalog";
+} from "@okouai/db/schema/connector-catalog";
 import type {
   ConnectorCatalogCompatibilityEvaluationPayload,
   ConnectorCatalogCompatibilityFilteredAuthMethod,
-} from "@vm0/db/jsonb-contracts/connector-catalog";
+} from "@okouai/db/jsonb-contracts/connector-catalog";
 import { command } from "ccstate";
 import { and, eq, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";

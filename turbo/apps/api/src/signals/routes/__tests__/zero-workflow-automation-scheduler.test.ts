@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";

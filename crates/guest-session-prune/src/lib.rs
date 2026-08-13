@@ -5,6 +5,8 @@
 //! modifying live JSONL files.
 
 mod codex;
+#[cfg(test)]
+mod property_tests;
 
 use std::collections::HashSet;
 use std::fs::File;

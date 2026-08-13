@@ -9,7 +9,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { OrgCustomConnectorOAuthAuthorizationParams } from "@vm0/db/jsonb-contracts/org-custom-connector-oauth-config";
+import type { OrgCustomConnectorOAuthAuthorizationParams } from "@okouai/db/jsonb-contracts/org-custom-connector-oauth-config";
 
 import { orgCustomConnectors } from "./org-custom-connector";
 

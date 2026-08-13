@@ -2,14 +2,14 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
-import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflowWebhookDeliveries,
   zeroWorkflowWebhookAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { env } from "../../lib/env";
 import { verifyCallbackRequest } from "../../lib/event-consumer/verify-signature";
 import { testOverride } from "../../lib/singleton";

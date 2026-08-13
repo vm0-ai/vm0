@@ -1,8 +1,8 @@
 import { command } from "ccstate";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

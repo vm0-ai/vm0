@@ -7,9 +7,9 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
   agentCustomConnectorToggleSaving$,

@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import type {
   ModelProviderResponse,
   ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { reloadPersonalModelProviders$ } from "../external/personal-model-providers.ts";
 import { personalConfiguredProviders$ } from "./settings/personal-model-providers.ts";
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
-import { connectorOauthStartResponseSchema } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
+import { connectorOauthStartResponseSchema } from "@okouai/api-contracts/contracts/connector-schemas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";

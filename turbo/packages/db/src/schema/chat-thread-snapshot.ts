@@ -7,8 +7,8 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ChatThreadSnapshotProjections } from "@vm0/db/jsonb-contracts/chat-thread-snapshot";
-export type { ChatThreadSnapshotProjection } from "@vm0/db/jsonb-contracts/chat-thread-snapshot";
+import type { ChatThreadSnapshotProjections } from "@okouai/db/jsonb-contracts/chat-thread-snapshot";
+export type { ChatThreadSnapshotProjection } from "@okouai/db/jsonb-contracts/chat-thread-snapshot";
 
 export const chatThreadSnapshots = pgTable(
   "chat_thread_snapshots",

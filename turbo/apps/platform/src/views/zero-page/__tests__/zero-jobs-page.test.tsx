@@ -12,11 +12,11 @@ import {
   zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 import {
   type TeamComposeItem,
   zeroTeamContract,
-} from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/zero-team";
 
 const context = testContext();
 

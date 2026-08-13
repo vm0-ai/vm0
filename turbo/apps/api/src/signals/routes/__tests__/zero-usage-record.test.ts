@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
-import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
+import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 

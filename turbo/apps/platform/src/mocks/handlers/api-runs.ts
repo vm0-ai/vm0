@@ -4,9 +4,9 @@ import {
   zeroRunsCancelContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+} from "@okouai/api-contracts/contracts/zero-runs";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiRunsHandlers = [

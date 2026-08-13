@@ -1,9 +1,9 @@
 import { command } from "ccstate";
 import { and, eq, ne } from "drizzle-orm";
-import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";

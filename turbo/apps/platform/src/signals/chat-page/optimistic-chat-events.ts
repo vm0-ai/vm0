@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
 import { parseChatEventBodyBlocks } from "./chat-event-body-blocks.ts";
 import type {

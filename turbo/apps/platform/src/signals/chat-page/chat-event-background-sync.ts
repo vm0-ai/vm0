@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";

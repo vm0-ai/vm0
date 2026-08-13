@@ -789,17 +789,17 @@ export {
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
   validateBaseUrl,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 export {
   collectAndValidatePermissions,
   validateRule,
-} from "@vm0/connectors/firewall-expander";
+} from "@okouai/connectors/firewall-expander";
 
 export {
   matchFirewallPath,
   findMatchingPermissions,
-} from "@vm0/connectors/firewall-rule-matcher";
+} from "@okouai/connectors/firewall-rule-matcher";
 
 export {
   userPreferencesResponseSchema,

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import { logger } from "../../lib/log";
 import { apiStartTime$, authorization$ } from "../context/hono";

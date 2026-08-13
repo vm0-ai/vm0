@@ -1,23 +1,23 @@
 import { command, computed, type Computed } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { usagePackAllocations } from "@vm0/db/schema/usage-pack-subscription";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
+import { orgCache } from "@okouai/db/schema/org-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { usagePackAllocations } from "@okouai/db/schema/usage-pack-subscription";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import type { OrgResponse } from "@okouai/api-contracts/contracts/orgs";
 import {
   orgRoleSchema,
   type OrgMessageResponse,
   type OrgMember,
   type OrgMembersResponse,
   type OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
-import { usagePackUsdSchema } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/org-members";
+import { usagePackUsdSchema } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$, type ClerkUser } from "../external/clerk";

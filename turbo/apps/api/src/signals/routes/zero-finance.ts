@@ -1,4 +1,4 @@
-import { zeroFinanceContract } from "@vm0/api-contracts/contracts/zero-finance";
+import { zeroFinanceContract } from "@okouai/api-contracts/contracts/zero-finance";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

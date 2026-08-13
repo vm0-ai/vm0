@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { testBillingReconciliationStateContract } from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
+import { testBillingReconciliationStateContract } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
 import {
   type BillingStatusResponse,
   USAGE_PACKS_USD,
@@ -15,19 +15,19 @@ import {
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isStaffOrg } from "@vm0/core/staff-org";
+} from "@okouai/api-contracts/contracts/zero-org-members";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isStaffOrg } from "@okouai/core/staff-org";
 import {
   webhookClerkContract,
   webhookStripeContract,
-} from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
 import StripeSDK from "stripe";
 import { onTestFinished } from "vitest";

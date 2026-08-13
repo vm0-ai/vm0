@@ -2,12 +2,12 @@ import { command } from "ccstate";
 import {
   testConnectorCredentialStorageStateContract,
   type TestConnectorCredentialStorageStateActionBody,
-} from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
-import { connectors } from "@vm0/db/schema/connector";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/api-contracts/contracts/test-connector-credential-storage-state";
+import { connectors } from "@okouai/db/schema/connector";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { request$ } from "../context/hono";

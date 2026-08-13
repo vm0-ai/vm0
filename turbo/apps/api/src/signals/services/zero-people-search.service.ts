@@ -12,7 +12,7 @@ import {
   type ZeroPeopleSearchRequest,
   type ZeroPeopleSearchResponse,
   type ZeroPeopleSearchSource,
-} from "@vm0/api-contracts/contracts/zero-people-search";
+} from "@okouai/api-contracts/contracts/zero-people-search";
 import { command } from "ccstate";
 import { z } from "zod";
 

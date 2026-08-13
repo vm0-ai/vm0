@@ -1,9 +1,9 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   zeroBillingStatusContract,
   zeroBillingCreditCheckoutContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 

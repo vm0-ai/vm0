@@ -57,7 +57,7 @@ describe.skipIf(!SHOULD_RUN)("Okou startup benchmark", () => {
   it("keeps the built Okou help path fast", () => {
     expect(
       existsSync(OKOU_DIST_PATH),
-      "Run `pnpm -F @vm0/okou-cli build` before the startup benchmark.",
+      "Run `pnpm -F @okouai/cli build` before the startup benchmark.",
     ).toBe(true);
 
     const env = benchmarkEnv();

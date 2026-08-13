@@ -316,7 +316,7 @@
         ".source/**"
       ]
     },
-    "@vm0/app#build": {
+    "@okouai/app#build": {
       "dependsOn": ["^build"],
       "env": ["VITE_GIT_COMMIT_SHA"],
       "inputs": [

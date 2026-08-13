@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type {
   TestComputerUseStateGetResponse,
   TestComputerUseStatePostResponse,
-} from "@vm0/api-contracts/contracts/test-computer-use-state";
+} from "@okouai/api-contracts/contracts/test-computer-use-state";
 import {
   COMPUTER_USE_FILESYSTEM_PLUGIN,
   COMPUTER_USE_PLUGIN_CALL_KIND,
   computerUseMcpServerCapability,
   computerUsePluginCapability,
   computerUsePluginToolCapability,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

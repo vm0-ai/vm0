@@ -1,8 +1,8 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Button, Input } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { Button, Input } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import {

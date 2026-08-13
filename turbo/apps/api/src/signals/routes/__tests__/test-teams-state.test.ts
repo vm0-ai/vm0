@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import type {
   TestTeamsStatePostResponse,
   TestTeamsStateResponse,
-} from "@vm0/api-contracts/contracts/test-teams-state";
+} from "@okouai/api-contracts/contracts/test-teams-state";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

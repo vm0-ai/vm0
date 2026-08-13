@@ -20,9 +20,9 @@ import {
   type CreditPurchasePreviewResponse,
   type MemberUsagePack,
   type UsagePackMigrationStateResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";

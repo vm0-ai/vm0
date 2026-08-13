@@ -1,8 +1,8 @@
-import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import { createErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import type {
   ModelProviderType,
   ModelProviderFramework,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 
 import {
   parseCodexAuthJson,

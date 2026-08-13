@@ -1,4 +1,4 @@
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { z } from "zod";
 
 import { throwOAuthError } from "./error";

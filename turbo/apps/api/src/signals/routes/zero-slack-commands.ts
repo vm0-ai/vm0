@@ -1,4 +1,4 @@
-import { zeroSlackCommandsContract } from "@vm0/api-contracts/contracts/zero-slack-commands";
+import { zeroSlackCommandsContract } from "@okouai/api-contracts/contracts/zero-slack-commands";
 
 import type { RouteEntry } from "../route-entry";
 import { handleZeroSlackCommands$ } from "../services/zero-slack-webhooks.service";

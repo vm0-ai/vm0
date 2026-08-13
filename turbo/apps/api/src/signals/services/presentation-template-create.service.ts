@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { presentationTemplates } from "@vm0/db/schema/presentation-template";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { eq } from "drizzle-orm";
 
 import { conflict, badRequestMessage, notFound } from "../../lib/error";

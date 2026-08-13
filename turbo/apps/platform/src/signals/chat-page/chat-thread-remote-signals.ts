@@ -7,7 +7,7 @@ import {
   chatThreadModelSelectionContract,
   type PersistedAttachment,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";

@@ -19,7 +19,7 @@
  * ❌ NEVER edit existing migration files!
  * ❌ NEVER manually create snapshot files!
  *
- * ✅ ALWAYS use `pnpm -F @vm0/db db:generate` to auto-generate migrations
+ * ✅ ALWAYS use `pnpm -F @okouai/db db:generate` to auto-generate migrations
  * ✅ ALWAYS let Drizzle Kit manage the snapshot system
  * ✅ ALWAYS test with `pnpm test:migration-consistency` before merging
  *
@@ -1027,14 +1027,16 @@ async function validateSnapshotFiles(): Promise<void> {
       `\n   This means the snapshot system is corrupted and needs to be rebuilt.`,
     );
     console.error(`\n   🔧 How to fix:`);
-    console.error(`      1. Reset database: pnpm -F @vm0/db db:reset`);
+    console.error(`      1. Reset database: pnpm -F @okouai/db db:reset`);
     console.error(`      2. Delete your manual migration file (if any)`);
     console.error(`      3. Remove migration entry from meta/_journal.json`);
-    console.error(`      4. Generate migration: pnpm -F @vm0/db db:generate`);
-    console.error(`      5. Apply migration: pnpm -F @vm0/db db:migrate`);
+    console.error(
+      `      4. Generate migration: pnpm -F @okouai/db db:generate`,
+    );
+    console.error(`      5. Apply migration: pnpm -F @okouai/db db:migrate`);
     console.error(`\n   ⚠️  IMPORTANT: Never manually write migration files!`);
     console.error(
-      `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
+      `      Always use 'pnpm -F @okouai/db db:generate' to auto-generate migrations.`,
     );
     console.error(`      Manual migrations break the snapshot chain.\n`);
     throw new Error("Snapshot chain broken");
@@ -5540,7 +5542,7 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
         console.error(`      ${diff}`);
       }
       console.error(`\n   🔧 How to fix:`);
-      console.error(`      1. Reset database: pnpm -F @vm0/db db:reset`);
+      console.error(`      1. Reset database: pnpm -F @okouai/db db:reset`);
       console.error(
         `      2. Delete the latest migration file (${String(latestIdx).padStart(4, "0")}_*.sql)`,
       );
@@ -5548,13 +5550,15 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       console.error(
         `      4. Delete the latest snapshot (${String(latestIdx).padStart(4, "0")}_snapshot.json)`,
       );
-      console.error(`      5. Generate migration: pnpm -F @vm0/db db:generate`);
-      console.error(`      6. Apply migration: pnpm -F @vm0/db db:migrate`);
+      console.error(
+        `      5. Generate migration: pnpm -F @okouai/db db:generate`,
+      );
+      console.error(`      6. Apply migration: pnpm -F @okouai/db db:migrate`);
       console.error(
         `\n   ⚠️  IMPORTANT: Never manually write migration files!`,
       );
       console.error(
-        `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
+        `      Always use 'pnpm -F @okouai/db db:generate' to auto-generate migrations.`,
       );
       console.error(
         `      Manual migrations cause snapshot/database mismatches.\n`,
@@ -9428,23 +9432,23 @@ async function main(): Promise<void> {
       console.log(`      ${TEST_DB_2}`);
       console.log(`\n   For detailed analysis, run:`);
       console.log(
-        `     pnpm -F @vm0/db exec tsx scripts/compare-schemas-normalized.ts "<${TEST_DB_1}-url>" "<${TEST_DB_2}-url>"`,
+        `     pnpm -F @okouai/db exec tsx scripts/compare-schemas-normalized.ts "<${TEST_DB_1}-url>" "<${TEST_DB_2}-url>"`,
       );
       console.log(`\n   🔧 How to fix:`);
       console.log(`      1. Check if you manually edited any migration files`);
-      console.log(`      2. Reset database: pnpm -F @vm0/db db:reset`);
+      console.log(`      2. Reset database: pnpm -F @okouai/db db:reset`);
       console.log(`      3. Delete the problematic migration files`);
       console.log(
         `      4. Remove corresponding entries from meta/_journal.json`,
       );
       console.log(`      5. Delete corresponding snapshots`);
-      console.log(`      6. Regenerate: pnpm -F @vm0/db db:generate`);
-      console.log(`      7. Apply: pnpm -F @vm0/db db:migrate`);
+      console.log(`      6. Regenerate: pnpm -F @okouai/db db:generate`);
+      console.log(`      7. Apply: pnpm -F @okouai/db db:migrate`);
       console.log(
         `\n   ⚠️  IMPORTANT: Never manually write or edit migration files!`,
       );
       console.log(
-        `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
+        `      Always use 'pnpm -F @okouai/db db:generate' to auto-generate migrations.`,
       );
       console.log(
         `      Manual edits break the snapshot system and cause schema mismatches.\n`,

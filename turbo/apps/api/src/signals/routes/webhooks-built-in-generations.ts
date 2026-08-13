@@ -4,7 +4,7 @@ import {
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationJoggAiContract,
   webhookBuiltInGenerationMiniMaxContract,
-} from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/webhooks";
 
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";

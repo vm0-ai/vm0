@@ -2,12 +2,12 @@ import Ably from "ably";
 import type {
   BrowserSessionChangedPayload,
   UserPreferenceChangedPayload,
-} from "@vm0/api-contracts/contracts/realtime";
+} from "@okouai/api-contracts/contracts/realtime";
 import type {
   ConnectorRuntimeTarget,
   RunnerPreference,
-} from "@vm0/api-contracts/contracts/runners";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+} from "@okouai/api-contracts/contracts/runners";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";

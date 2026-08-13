@@ -1,8 +1,8 @@
 import { command, computed, type Computed } from "ccstate";
-import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onboarding";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";

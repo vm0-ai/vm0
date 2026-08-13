@@ -1,4 +1,4 @@
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   resolvePlatformOriginForTarget,
   rewritePlatformHostname,

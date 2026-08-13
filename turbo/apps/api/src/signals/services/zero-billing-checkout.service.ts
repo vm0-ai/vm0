@@ -6,9 +6,9 @@ import type {
   CreditPurchaseConfirmResponse,
   CreditPurchasePreviewResponse,
   UsagePackUsd,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 

@@ -59,7 +59,7 @@ enum ServiceCommand {
     Install(ServiceRunArgs),
     /// Uninstall the runner service (stop + disable + remove unit)
     Uninstall(ServiceUninstallArgs),
-    /// Drain the runner (SIGUSR1, non-blocking — returns immediately)
+    /// Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)
     Drain(drain_resume::DrainArgs),
     /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
     Resume(drain_resume::ResumeArgs),

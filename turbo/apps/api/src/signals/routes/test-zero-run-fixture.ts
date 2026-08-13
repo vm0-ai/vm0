@@ -2,10 +2,10 @@ import { command } from "ccstate";
 import {
   authHeadersSchema,
   initContract,
-} from "@vm0/api-contracts/contracts/base";
-import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
-import { createRunResponseSchema } from "@vm0/api-contracts/contracts/runs";
-import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/base";
+import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
+import { createRunResponseSchema } from "@okouai/api-contracts/contracts/runs";
+import { zeroRunCreateBodySchema } from "@okouai/api-contracts/contracts/zero-runs";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";

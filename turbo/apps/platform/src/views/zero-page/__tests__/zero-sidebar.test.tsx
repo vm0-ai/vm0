@@ -11,13 +11,13 @@ import {
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import {
   zeroTeamContract,
   type TeamComposeItem,
-} from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/zero-team";
 
 import {
   createMockWorkflowAutomation,

@@ -5,15 +5,15 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
   type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroBillingCheckoutContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
-import { zeroRunsByIdContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroRunsByIdContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
 import {
   click,
   fill,

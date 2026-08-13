@@ -6,8 +6,8 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import type { ConcurrencyInfo } from "@vm0/api-contracts/contracts/runs";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ConcurrencyInfo } from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Sheet,
   SheetContent,
@@ -16,7 +16,7 @@ import {
   SheetTitle,
   Button,
   Input,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { Crown, Minus, Plus } from "lucide-react";
 import {
   CONCURRENCY_QUANTITY_MAX,

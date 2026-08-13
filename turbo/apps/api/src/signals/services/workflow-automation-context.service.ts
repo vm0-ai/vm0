@@ -1,4 +1,4 @@
-import { zeroAutomationEventTypeSchema } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroAutomationEventTypeSchema } from "@okouai/api-contracts/contracts/zero-workflows";
 import { z } from "zod";
 
 export const workflowAutomationEventTypeSchema =

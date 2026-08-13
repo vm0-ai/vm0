@@ -7,25 +7,25 @@ import {
   isSupportedRunModel,
   normalizeRunModelId,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   telegramMessages,
   type TelegramMessageEntity,
-} from "@vm0/db/schema/telegram-message";
-import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/telegram-message";
+import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread-route";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { escapeHtml } from "../../lib/telegram-format";

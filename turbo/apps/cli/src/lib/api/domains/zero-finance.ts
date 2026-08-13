@@ -5,8 +5,8 @@ import {
   type ZeroFinanceQuoteRequest,
   type ZeroFinanceResponse,
   type ZeroFinanceSearchRequest,
-} from "@vm0/api-contracts/contracts/zero-finance";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/zero-finance";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
