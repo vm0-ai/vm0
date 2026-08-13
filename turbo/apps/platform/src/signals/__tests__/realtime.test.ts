@@ -403,6 +403,39 @@ describe("realtime signals", () => {
     expect(payloadCatchUps).toBe(1);
   });
 
+  it("rebuilds a failed realtime client when the network comes back", async () => {
+    mockSignedInUser();
+    const topic = "test:failed-online-recovery";
+    const subscriber = testSubscriber();
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: loop$ },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.triggerFailure("terminal connection failure");
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+
+    window.dispatchEvent(new Event("online"));
+
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(runs).toBe(1);
+    });
+  });
+
   it("waits for the next foreground catch-up after rebuilding fails", async () => {
     mockSignedInUser();
     const topic = "test:failed-rebuild-retry";

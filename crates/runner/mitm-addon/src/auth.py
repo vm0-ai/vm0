@@ -20,17 +20,19 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import matching
 from auth_base_forwarder import (
-    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     AuthBaseForwardingSaturatedError,
+    forward_request,
+    release_forward_request_admission_from_flow,
+    take_forward_request_admission_from_flow,
+)
+from auth_base_transport import (
+    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     ForwardedRequestTooLargeError,
     InvalidAuthBaseRequestHeadersError,
     InvalidResolvedAuthHeaderError,
-    forward_request,
     forwarded_auth_base_client_header_pairs,
     header_pairs,
-    release_forward_request_admission_from_flow,
     resolved_auth_header_pairs,
-    take_forward_request_admission_from_flow,
 )
 from aws_sigv4 import (
     AwsSigV4BodyHash,
