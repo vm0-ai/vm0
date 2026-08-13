@@ -192,8 +192,8 @@ function ForwardComposerSurface({
   readonly composer: ComposerSignals;
 }) {
   return (
-    <div className="px-5 pb-5 pt-4" data-chat-composer>
-      <ZeroChatComposer signals={composer} />
+    <div className="w-full min-w-0 px-5 pb-5 pt-4" data-chat-composer>
+      <ZeroChatComposer signals={composer} showPendingItems={false} />
     </div>
   );
 }
@@ -206,7 +206,7 @@ function ForwardComposer({
   const ready = useGet(state.ready$);
   const setLifecycleRef = useSet(state.setLifecycleRef$);
   return (
-    <div ref={setLifecycleRef}>
+    <div ref={setLifecycleRef} className="min-w-0">
       {ready ? (
         <ForwardComposerSurface composer={state.composer} />
       ) : (
