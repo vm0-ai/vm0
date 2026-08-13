@@ -83,6 +83,8 @@ describe("okou generate website command", () => {
     );
     expect(stdout).toContain("Built-in Website template release: previous");
     expect(stdout).not.toContain("use `seedream4` by default");
+    expect(stdout).not.toContain("Keep at most 3 image generations");
+    expect(stdout).not.toContain("Embed this URL in HTML");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
@@ -109,6 +111,12 @@ describe("okou generate website command", () => {
     expect(stdout).toContain("Built-in Website template release: latest");
     expect(stdout).toContain(
       "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(stdout).toContain(
+      "Keep at most 3 image generations in flight at once",
+    );
+    expect(stdout).toContain(
+      "Embed the `Embed this URL in HTML` value returned by the generator",
     );
   });
 
