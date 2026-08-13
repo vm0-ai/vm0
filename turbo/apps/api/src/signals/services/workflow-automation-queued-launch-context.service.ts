@@ -2,7 +2,9 @@ import {
   EVENT_POLICY,
   restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
+  workflowAutomationAgentPrompt,
   workflowAutomationAppendSystemPrompt,
+  workflowAutomationEventUsesUserFriendlyMessage,
   workflowAutomationEventTypeSchema,
   workflowAutomationPrompt,
   type WorkflowAutomationEventPayload,
@@ -15,7 +17,7 @@ import {
 
 interface WorkflowAutomationQueuedLaunchMaterial {
   readonly prompt: string;
-  readonly appendSystemPrompt: string;
+  readonly appendSystemPrompt: string | undefined;
   readonly callbacks: ReturnType<typeof buildWorkflowAutomationCallbacks>;
   readonly activePreviousRunPolicy: "block" | "allow";
   readonly recordLastRunId: boolean;
@@ -39,6 +41,9 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
     return null;
   }
   const eventType = workflowAutomationEventTypeSchema.parse(args.eventType);
+  const useUserFriendlyMessage = workflowAutomationEventUsesUserFriendlyMessage(
+    args.eventPayload,
+  );
   const eventPayload = restoredWorkflowAutomationEventPayload(
     args.eventPayload,
   );
@@ -51,8 +56,12 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
     eventPayload,
   });
   return {
-    prompt: workflowAutomationPrompt(context),
-    appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
+    prompt: useUserFriendlyMessage
+      ? workflowAutomationAgentPrompt(context)
+      : workflowAutomationPrompt(context),
+    appendSystemPrompt: useUserFriendlyMessage
+      ? undefined
+      : workflowAutomationAppendSystemPrompt(context),
     callbacks:
       eventType === "schedule"
         ? buildWorkflowAutomationCallbacks(
