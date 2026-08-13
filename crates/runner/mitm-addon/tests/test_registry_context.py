@@ -29,6 +29,7 @@ class TestGetVmInfo:
                         "10.200.0.1": {
                             "runId": "good-run",
                             "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                         },
                         "10.200.0.2": "broken",
                     },
@@ -65,6 +66,7 @@ class TestGetVmInfo:
                         "10.200.0.1": {
                             "runId": "run-recovered",
                             "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                         },
                     },
                     "updatedAt": 1,
@@ -80,6 +82,7 @@ class TestGetVmInfo:
         assert registry.get_vm_info("10.200.0.1", str(path)) == {
             "runId": "run-recovered",
             "billableFirewalls": [],
+            "cliAgentType": "claude-code",
         }
 
 
@@ -139,6 +142,7 @@ class TestGetVmContext:
                         "10.200.0.1": {
                             "runId": "good-run",
                             "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                         },
                         "10.200.0.2": "broken",
                     },

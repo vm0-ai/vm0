@@ -608,7 +608,7 @@ def _store_registered_request_metadata(
     flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
     flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
     flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
-    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
+    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info["cliAgentType"]
 
 
 def _store_trusted_authority_metadata(
