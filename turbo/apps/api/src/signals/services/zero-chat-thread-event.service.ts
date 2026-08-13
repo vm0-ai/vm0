@@ -66,6 +66,7 @@ export async function appendChatThreadEvent(
     readonly serviceTier?: ChatThreadServiceTier | null;
     readonly computerUseHostId?: string | null;
     readonly cloudBrowserEnabled?: boolean;
+    readonly selectedVideoModel?: string | null;
     readonly createdAt?: Date;
   },
 ): Promise<void> {
@@ -100,6 +101,7 @@ export async function appendChatThreadEvent(
       serviceTier: args.serviceTier ?? null,
       computerUseHostId: args.computerUseHostId ?? null,
       cloudBrowserEnabled: args.cloudBrowserEnabled ?? false,
+      selectedVideoModel: args.selectedVideoModel ?? null,
       ...(args.createdAt !== undefined ? { createdAt: args.createdAt } : {}),
     })
     .onConflictDoNothing({ target: chatThreadEvents.id });
@@ -140,6 +142,7 @@ export async function getChatThreadSnapshot(
           serviceTier: thread.serviceTier ?? null,
           computerUseHostId: thread.computerUseHostId ?? null,
           cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
+          selectedVideoModel: thread.selectedVideoModel ?? null,
         };
       }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
@@ -158,6 +161,7 @@ type ChatThreadEventRow = {
   readonly serviceTier: ChatThreadServiceTier | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
+  readonly selectedVideoModel: string | null;
   readonly createdAt: Date;
 };
 
@@ -179,6 +183,7 @@ function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
     serviceTier: row.serviceTier,
     computerUseHostId: row.computerUseHostId,
     cloudBrowserEnabled: row.cloudBrowserEnabled,
+    selectedVideoModel: row.selectedVideoModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -218,6 +223,7 @@ export async function getChatThreadEventsSince(
           serviceTier: pageChatThreadEvent.serviceTier,
           computerUseHostId: pageChatThreadEvent.computerUseHostId,
           cloudBrowserEnabled: pageChatThreadEvent.cloudBrowserEnabled,
+          selectedVideoModel: pageChatThreadEvent.selectedVideoModel,
           createdAt: pageChatThreadEvent.createdAt,
         },
       })
@@ -258,6 +264,7 @@ export async function getChatThreadEventsSince(
         serviceTier: chatThreadEvents.serviceTier,
         computerUseHostId: chatThreadEvents.computerUseHostId,
         cloudBrowserEnabled: chatThreadEvents.cloudBrowserEnabled,
+        selectedVideoModel: chatThreadEvents.selectedVideoModel,
         createdAt: chatThreadEvents.createdAt,
       })
       .from(chatThreadEvents)

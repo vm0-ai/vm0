@@ -150,6 +150,10 @@ const chatThreadSnapshotProjectionSchema = z.object({
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
+  // Optional like cloudBrowserEnabled so rows written by an older bundle still
+  // parse, and loose like selectedModel so a pin whose model has since left the
+  // catalog still parses. The strict enum applies on the write path.
+  selectedVideoModel: z.string().nullable().optional(),
 });
 
 const chatThreadEventSchema = z.object({
@@ -165,6 +169,7 @@ const chatThreadEventSchema = z.object({
     "model_selection_updated",
     "service_tier_updated",
     "computer_use_host_updated",
+    "video_model_updated",
     "sort_touched",
   ]),
   chatThreadId: z.string().uuid(),
@@ -174,6 +179,7 @@ const chatThreadEventSchema = z.object({
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
+  selectedVideoModel: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 

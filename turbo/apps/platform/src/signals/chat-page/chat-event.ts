@@ -160,6 +160,7 @@ export const deleteChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
@@ -221,6 +222,7 @@ export const pinChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
@@ -256,6 +258,7 @@ export const unpinChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
@@ -307,6 +310,7 @@ export const renameChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
