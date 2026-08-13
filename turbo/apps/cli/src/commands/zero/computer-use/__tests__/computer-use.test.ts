@@ -1,9 +1,9 @@
 /**
  * Tests for computer-use command registration and visibility.
  *
- * Entry point: registerZeroCommands()
+ * Entry points: registerZeroCommands(), formatComputerUseResultForConsole()
  * Mock (external): none
- * Real (internal): Command registration, capability checking
+ * Real (internal): Command registration, capability checking, filesystem output
  */
 
 import {
@@ -24,6 +24,7 @@ import {
   formatComputerUseResultForConsole,
   zeroComputerUseCommand,
 } from "../index";
+import { computerUseOutputDir } from "../output-artifacts";
 import { registerZeroCommands } from "../../../../okou";
 
 let testOutputDir = "";
@@ -85,7 +86,7 @@ describe("computer-use command visibility", () => {
 
   beforeEach(async () => {
     testOutputDir = await mkdtemp(path.join(tmpdir(), "computer-use-output-"));
-    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", testOutputDir);
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", testOutputDir);
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -204,10 +205,39 @@ describe("computer-use command visibility", () => {
       "okou computer-use get-app-state --app <bundleId>",
     );
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
-    expect(helpOutput).toContain("/tmp/vm0/computer-use");
+    expect(helpOutput).toContain("/tmp/okou/computer-use");
     expect(helpOutput).toContain("overwrites the same files");
     expect(helpOutput).toContain("shift+semicolon");
     expect(helpOutput).toContain("Control_L+J");
+  });
+
+  it("should prefer the trimmed canonical output directory", () => {
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
+    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", path.join(testOutputDir, "legacy"));
+
+    expect(computerUseOutputDir()).toBe(testOutputDir);
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["blank", " \t "],
+  ])(
+    "should use the trimmed legacy output directory when the canonical variable is %s",
+    (_case, canonical) => {
+      vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", canonical);
+      vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
+
+      expect(computerUseOutputDir()).toBe(testOutputDir);
+    },
+  );
+
+  it("should default computer-use artifacts to the Okou temp directory", () => {
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", undefined);
+    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", undefined);
+
+    expect(computerUseOutputDir()).toBe(
+      path.join(tmpdir(), "okou", "computer-use"),
+    );
   });
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {

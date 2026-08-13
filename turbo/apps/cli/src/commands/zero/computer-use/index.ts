@@ -142,7 +142,7 @@ Workflow:
      only when the target is visible in the returned screenshot but has no useful
      accessibility element.
   5. Read the JSON result. Screenshot and App State data are saved under
-     /tmp/vm0/computer-use and replaced with local file paths in CLI output.
+     /tmp/okou/computer-use and replaced with local file paths in CLI output.
      Files are named from app and snapshotId; rerunning the same snapshot
      overwrites the same files.
 
