@@ -2,11 +2,30 @@ use crate::support::*;
 use httpmock::prelude::*;
 use serde_json::json;
 use std::time::Duration;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 // =========================================================================
 // Heartbeat
 // =========================================================================
+
+async fn wait_for_heartbeat_requests(
+    server: &crate::common::ControlledHttpServer,
+    expected: usize,
+) {
+    for _ in 0..1_000 {
+        if server.request_count() >= expected {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    assert!(
+        server.request_count() >= expected,
+        "expected at least {expected} heartbeat requests, observed {}",
+        server.request_count(),
+    );
+}
 
 #[tokio::test]
 async fn heartbeat_first_success() {
@@ -55,6 +74,95 @@ async fn heartbeat_first_success() {
         .expect("initial-success heartbeat loop should stop after cancellation within 30 seconds")
         .expect("initial-success heartbeat task should not panic");
     assert!(result.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
+async fn heartbeat_does_not_replay_overdue_ticks_after_slow_request() {
+    const INTERVAL: Duration = Duration::from_millis(20);
+    const SLOW_REQUEST_DURATION: Duration = Duration::from_millis(55);
+
+    let mut server = crate::common::ControlledHttpServer::start()
+        .await
+        .expect("start controlled heartbeat server");
+    let http = guest_agent::http::HttpClient::with_api_config(
+        server.base_url.clone(),
+        "test-token-abc123",
+        "test-bypass-value",
+        TEST_RUN_ID,
+        Duration::ZERO,
+    )
+    .expect("build heartbeat HTTP client");
+    let shutdown = CancellationToken::new();
+    let shutdown_clone = shutdown.clone();
+    let handle = tokio::spawn(async move {
+        guest_agent::heartbeat::heartbeat_loop_for_run_with_interval(
+            TEST_RUN_ID.to_string(),
+            http,
+            shutdown_clone,
+            INTERVAL,
+        )
+        .await
+    });
+    let clock_guard = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+
+    let started_at = Instant::now();
+    wait_for_heartbeat_requests(&server, 1).await;
+    let first_request = server
+        .next_request(MOCK_CALL_TIMEOUT)
+        .await
+        .expect("initial heartbeat should arrive immediately");
+    assert_eq!(Instant::now(), started_at);
+
+    tokio::time::advance(SLOW_REQUEST_DURATION).await;
+    first_request
+        .respond(200)
+        .expect("release slow initial heartbeat");
+
+    wait_for_heartbeat_requests(&server, 2).await;
+    let second_request = server
+        .next_request(MOCK_CALL_TIMEOUT)
+        .await
+        .expect("one overdue heartbeat should run after the slow request");
+    assert_eq!(
+        Instant::now().duration_since(started_at),
+        SLOW_REQUEST_DURATION
+    );
+    second_request
+        .respond(200)
+        .expect("complete overdue heartbeat");
+
+    tokio::time::advance(INTERVAL - Duration::from_millis(1)).await;
+    for _ in 0..32 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        server.request_count(),
+        2,
+        "the next heartbeat must wait a full interval instead of replaying another overdue tick"
+    );
+
+    tokio::time::advance(Duration::from_millis(1)).await;
+    wait_for_heartbeat_requests(&server, 3).await;
+    let third_request = server
+        .next_request(MOCK_CALL_TIMEOUT)
+        .await
+        .expect("heartbeat should resume after one full interval");
+    assert_eq!(
+        Instant::now().duration_since(started_at),
+        SLOW_REQUEST_DURATION + INTERVAL
+    );
+    third_request
+        .respond(200)
+        .expect("complete resumed heartbeat");
+
+    shutdown.cancel();
+    let result = handle.await.expect("heartbeat task should not panic");
+    clock_guard.abort();
+    assert!(result.is_ok(), "heartbeat should stop cleanly: {result:?}");
 }
 
 #[tokio::test]
