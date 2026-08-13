@@ -1543,12 +1543,22 @@ describe("workflow queue", () => {
       runId: null,
       chatThreadId: webhookAutomation.threadId,
     });
-    await expect(
-      pendingWorkflowAutomationIds(webhookAutomation.threadId),
-    ).resolves.toStrictEqual([
-      webhookAutomation.automationId,
-      scheduleAutomation.automationId,
-    ]);
+    const pendingAfterManual = await pendingAutomationEvents(
+      webhookAutomation.threadId,
+    );
+    expect(pendingAfterManual).toHaveLength(2);
+    expect(pendingAfterManual[0]?.id).toBe(orphanedEvent.id);
+    const scheduleEvent = pendingAfterManual[1];
+    if (!scheduleEvent) {
+      throw new Error("Expected the manual schedule event to remain queued");
+    }
+    const schedulePrompt = chatEventDisplayText(scheduleEvent);
+    if (schedulePrompt === null) {
+      throw new Error("Expected the manual schedule event display prompt");
+    }
+    expect(schedulePrompt).toMatch(
+      /^\/workflow-queue-workflow\nTrigger: manual run requested at .+\.$/,
+    );
 
     await accept(
       automationsClient().delete({
@@ -1582,9 +1592,20 @@ describe("workflow queue", () => {
     if (!scheduleRunId) {
       throw new Error("Expected the next automation event to create a run");
     }
+    const claimedScheduleEvent = events.find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        event.revokesEventId === scheduleEvent.id
+      );
+    });
+    if (claimedScheduleEvent?.eventType !== "input.prompt") {
+      throw new Error("Expected the queued schedule event to be claimed");
+    }
+    expect(claimedScheduleEvent.runId).toBe(scheduleRunId);
+    expect(chatEventDisplayText(claimedScheduleEvent)).toBe(schedulePrompt);
     await expect(
-      readWorkflowRunTriggerSourceFixture(scheduleRunId),
-    ).resolves.toBe("automation-schedule");
+      runsApi.readRun(scenario.actor, scheduleRunId),
+    ).resolves.toMatchObject({ prompt: schedulePrompt });
     await runsApi.requestCancelRun(scenario.actor, scheduleRunId, [200]);
   });
 
