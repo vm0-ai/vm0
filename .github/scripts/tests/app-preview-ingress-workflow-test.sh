@@ -4,7 +4,12 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 ruby -ryaml - "${repo_root}/.github/workflows/turbo.yml" \
-  "${repo_root}/.github/workflows/cleanup.yml" <<'RUBY'
+  "${repo_root}/.github/workflows/cleanup.yml" \
+  "${repo_root}/.github/workflows/cleanup-stale.yml" <<'RUBY'
+def named_step(job, name)
+  job.fetch("steps").find { |step| step["name"] == name }
+end
+
 turbo = YAML.load_file(ARGV.fetch(0))
 jobs = turbo.fetch("jobs")
 deploy_app = jobs.fetch("deploy-app")
@@ -158,15 +163,70 @@ end
 
 pages_cleanup = cleanup.fetch("jobs").fetch("cleanup-app-pages-deployments")
 pages_cleanup_steps = pages_cleanup.fetch("steps")
-pages_cleanup_step = pages_cleanup_steps.find do |step|
-  step["name"] == "Delete Cloudflare Pages app preview deployments"
+unless pages_cleanup.fetch("permissions") == {
+  "actions" => "read",
+  "contents" => "read",
+  "pull-requests" => "read",
+}
+  raise "app Pages cleanup must have only the permissions needed for the owner barrier"
 end
+pages_cleanup_handoff = named_step(pages_cleanup, "Wait for active CI owners before app Pages cleanup")
+raise "missing app Pages owner barrier" unless pages_cleanup_handoff
+unless pages_cleanup_handoff.dig("env", "GH_TOKEN") == "${{ github.token }}" &&
+    pages_cleanup_handoff.dig("env", "GITHUB_REPOSITORY") == "${{ github.repository }}" &&
+    pages_cleanup_handoff.dig("env", "GITHUB_RUN_ID") == "${{ github.run_id }}" &&
+    pages_cleanup_handoff.dig("env", "PR_NUMBER") == "${{ github.event.pull_request.number }}" &&
+    pages_cleanup_handoff.dig("env", "RUNNER_OWNER_SCOPE") == "closed-pr-cleanup" &&
+    pages_cleanup_handoff.fetch("run") == ".github/scripts/cancel-superseded-merge-group-runs.sh" &&
+    !pages_cleanup_handoff.key?("continue-on-error")
+  raise "app Pages cleanup owner barrier must wait without cancelling or swallowing failures"
+end
+pages_cleanup_step = named_step(pages_cleanup, "Delete Cloudflare Pages app preview deployments")
 raise "missing app Pages deployment cleanup step" unless pages_cleanup_step
 unless pages_cleanup_step.fetch("run").include?("delete-okou-pages-preview-deployments.sh")
   raise "app Pages cleanup must use the audited deletion script"
 end
 unless pages_cleanup_step.fetch("env").fetch("PAGES_BRANCH") == "pr-${{ github.event.pull_request.number }}-app"
   raise "app Pages cleanup branch must derive only from the closed PR number"
+end
+pages_cleanup_names = pages_cleanup_steps.map { |step| step["name"] }
+unless pages_cleanup_names.index("Wait for active CI owners before app Pages cleanup") <
+    pages_cleanup_names.index("Delete Cloudflare Pages app preview deployments")
+  raise "app Pages deletion must wait for active same-PR publishers"
+end
+
+stale_cleanup = YAML.load_file(ARGV.fetch(2)).fetch("jobs").fetch("cleanup-app-pages-deployments")
+unless stale_cleanup.fetch("permissions") == {
+  "actions" => "read",
+  "contents" => "read",
+  "pull-requests" => "read",
+}
+  raise "stale app Pages cleanup must have only the permissions needed for the owner barrier"
+end
+stale_checkout = stale_cleanup.fetch("steps").find do |step|
+  step.fetch("uses", "").start_with?("actions/checkout@")
+end
+unless stale_checkout&.dig("with", "ref") == "${{ github.event.repository.default_branch }}" &&
+    stale_checkout&.dig("with", "persist-credentials") == false
+  raise "stale app Pages cleanup must execute trusted default-branch scripts"
+end
+stale_step = named_step(stale_cleanup, "Cleanup stale Cloudflare Pages app preview deployments")
+raise "missing stale app Pages deployment cleanup step" unless stale_step
+unless stale_step.dig("env", "GH_TOKEN") == "${{ github.token }}" &&
+    stale_step.dig("env", "GITHUB_REPOSITORY") == "${{ github.repository }}" &&
+    stale_step.dig("env", "GITHUB_RUN_ID") == "${{ github.run_id }}" &&
+    stale_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
+  raise "stale app Pages cleanup must receive owner API and dry-run context"
+end
+stale_source = stale_step.fetch("run")
+list_index = stale_source.index("list-okou-pages-preview-pr-numbers.sh")
+dry_run_index = stale_source.index('if [ "$DRY_RUN" = "true" ]')
+handoff_index = stale_source.index("RUNNER_OWNER_SCOPE=closed-pr-cleanup")
+delete_index = stale_source.index("delete-okou-pages-preview-deployments.sh")
+unless list_index && dry_run_index && handoff_index && delete_index &&
+    list_index < dry_run_index && dry_run_index < handoff_index && handoff_index < delete_index &&
+    stale_source.scan('PR_STATE="$(resolve_pr_state "$PR_NUMBER")"').length == 2
+  raise "stale app Pages cleanup must discover actual branches, await publishers, revalidate, then delete"
 end
 
 legacy_cleanup_markers = [
