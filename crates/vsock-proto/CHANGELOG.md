@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.29](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.28...vsock-proto-v0.18.29) (2026-08-13)
+
+
+### Documentation
+
+* **rust:** document batch write result truncation ([#26901](https://github.com/vm0-ai/vm0/issues/26901)) ([f27b7f2](https://github.com/vm0-ai/vm0/commit/f27b7f22ef7e3bb51e4fe06d19473f2b76334558))
+
 ## [0.18.28](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.27...vsock-proto-v0.18.28) (2026-08-10)
 
 

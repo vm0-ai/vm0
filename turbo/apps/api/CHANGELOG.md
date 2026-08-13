@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.444.0](https://github.com/vm0-ai/vm0/compare/api-v1.443.0...api-v1.444.0) (2026-08-13)
+
+
+### Features
+
+* **api:** add member default video model ([#26841](https://github.com/vm0-ai/vm0/issues/26841)) ([4690e37](https://github.com/vm0-ai/vm0/commit/4690e379ae93f4103dbc41267d4a925a1bd45fb1))
+* **api:** add per-thread video model endpoint ([#26831](https://github.com/vm0-ai/vm0/issues/26831)) ([d12287f](https://github.com/vm0-ai/vm0/commit/d12287ff2412e1f37fd531a8ea3ac373dc61a66b))
+* confirm saved-billing credit purchases in app ([#26806](https://github.com/vm0-ai/vm0/issues/26806)) ([135585d](https://github.com/vm0-ai/vm0/commit/135585db4ea65e2c93cd37c7053012d268eedf86))
+
+
+### Refactoring
+
+* **connectors:** reuse shared oauth state primitives ([#26865](https://github.com/vm0-ai/vm0/issues/26865)) ([82e9c6c](https://github.com/vm0-ai/vm0/commit/82e9c6cfdd3aa2e87498e1a11c70beea80b220be))
+* remove sandbox presentation import pipeline ([#26646](https://github.com/vm0-ai/vm0/issues/26646)) ([54601f1](https://github.com/vm0-ai/vm0/commit/54601f1aedeb78825f2e8c63760b9c94b41009c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.0
+    * @okouai/core bumped to 8.555.0
+    * @okouai/db bumped to 1.198.1
+    * @okouai/pi-agent-runtime bumped to 1.4.8
+
 ## [1.443.0](https://github.com/vm0-ai/vm0/compare/api-v1.442.0...api-v1.443.0) (2026-08-13)
 
 
