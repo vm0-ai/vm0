@@ -39,6 +39,7 @@ const WATCH_INVALIDATION_FLAGS: AddWatchFlags = AddWatchFlags::IN_DELETE_SELF
     .union(AddWatchFlags::IN_MOVE_SELF)
     .union(AddWatchFlags::IN_UNMOUNT)
     .union(AddWatchFlags::IN_IGNORED);
+const MAX_EVENT_READ_BATCHES_PER_CHANGE: usize = 16;
 
 /// Advisory cache mutation observed from the host-shared filesystem.
 ///
@@ -121,10 +122,14 @@ impl WorkspaceCacheWatcher {
             let mut changed = false;
             let mut reconcile_entry_watches = false;
             let mut committed_cache_keys = BTreeSet::new();
-            loop {
+            let mut drained_all_events = false;
+            for _ in 0..MAX_EVENT_READ_BATCHES_PER_CHANGE {
                 let events = match self.inotify.get_ref().0.read_events() {
                     Ok(events) => events,
-                    Err(Errno::EAGAIN) => break,
+                    Err(Errno::EAGAIN) => {
+                        drained_all_events = true;
+                        break;
+                    }
                     Err(error) => return Err(watcher_error("read events", error)),
                 };
                 for event in events {
@@ -192,6 +197,13 @@ impl WorkspaceCacheWatcher {
                         changed = true;
                     }
                 }
+            }
+            if !drained_all_events {
+                // Bound one reactor turn even when producers keep the queue
+                // continuously readable. Reconciliation covers events beyond
+                // the batch budget, which remain queued for the next turn.
+                changed = true;
+                reconcile_entry_watches = true;
             }
 
             if reconcile_entry_watches {
