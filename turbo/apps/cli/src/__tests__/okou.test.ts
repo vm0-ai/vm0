@@ -17,6 +17,16 @@ describe("Okou CLI program", () => {
     );
   });
 
+  it("should use Okou branding for the generate entry-point description", () => {
+    const generateCommand = program.commands.find((command) => {
+      return command.name() === "generate";
+    });
+
+    expect(generateCommand?.description()).toBe(
+      "Generate assets via Okou's built-in pipelines or get connector skill-invocation guidance",
+    );
+  });
+
   it("should register all expected Okou commands", () => {
     const expectedCommands = [
       "model",

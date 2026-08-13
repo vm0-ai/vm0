@@ -200,7 +200,7 @@ export function createImageGenerateCommand(
     )
     .option(
       "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+      "Provider: 'built-in' to run Okou's pipeline, or a connector name to get its skill-invocation guidance",
     )
     .option(
       "--all",

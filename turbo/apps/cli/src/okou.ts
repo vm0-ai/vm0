@@ -275,7 +275,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
     name: "generate",
     description:
-      "Generate assets via vm0's built-in pipelines or get connector skill-invocation guidance",
+      "Generate assets via Okou's built-in pipelines or get connector skill-invocation guidance",
     load: async () => {
       return (await import("./commands/zero/generate")).generateCommand;
     },

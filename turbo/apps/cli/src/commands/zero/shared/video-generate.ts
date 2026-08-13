@@ -385,7 +385,7 @@ export function createVideoGenerateCommand(
     .option("--prompt <text>", "Video prompt; can also be piped via stdin")
     .option(
       "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+      "Provider: 'built-in' to run Okou's pipeline, or a connector name to get its skill-invocation guidance",
     )
     .option("--template <id>", "Registered video template id")
     .option(
