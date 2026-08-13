@@ -26,6 +26,7 @@ import {
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
+const BACKGROUND_UNREAD_THREAD_LIMIT = 30;
 const THREAD_START_SEQ_ID = 0;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -205,10 +206,13 @@ const catchUpUnreadChatThreadEvents$ = command(
     await foregroundReady.promise;
     signal.throwIfAborted();
 
-    const unreadThreadIds = await get(allUnreadThreadIds$);
+    const unreadThreadIds = Array.from(await get(allUnreadThreadIds$)).slice(
+      0,
+      BACKGROUND_UNREAD_THREAD_LIMIT,
+    );
     signal.throwIfAborted();
     await Promise.all(
-      Array.from(unreadThreadIds, (threadId) => {
+      unreadThreadIds.map((threadId) => {
         return set(
           handleUserChannelMessage$,
           { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
@@ -242,7 +246,10 @@ const syncInitialUnreadAndActiveChatThreadEvents$ = command(
     ]);
     signal.throwIfAborted();
 
-    const threadIds = new Set([...unreadThreadIds, ...activeThreadIds]);
+    const threadIds = new Set([
+      ...Array.from(unreadThreadIds).slice(0, BACKGROUND_UNREAD_THREAD_LIMIT),
+      ...activeThreadIds,
+    ]);
     await Promise.all(
       Array.from(threadIds, (threadId) => {
         return set(
