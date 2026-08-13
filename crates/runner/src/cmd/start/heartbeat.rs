@@ -90,46 +90,55 @@ pub(super) struct HeartbeatController<'a> {
 
 struct HeartbeatRequest {
     force_send: bool,
-    refresh_workspace_cache: bool,
-    workspace_cache_change: Option<WorkspaceCacheChange>,
+    workspace_cache_refresh: WorkspaceCacheRefresh,
+}
+
+enum WorkspaceCacheRefresh {
+    LoadedSnapshot,
+    FullScan,
+    AfterChange(WorkspaceCacheChange),
+}
+
+impl WorkspaceCacheRefresh {
+    fn merge(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::FullScan, _) | (_, Self::FullScan) => Self::FullScan,
+            (Self::LoadedSnapshot, refresh) | (refresh, Self::LoadedSnapshot) => refresh,
+            (Self::AfterChange(mut existing), Self::AfterChange(incoming)) => {
+                existing.merge(incoming);
+                Self::AfterChange(existing)
+            }
+        }
+    }
 }
 
 impl HeartbeatRequest {
     fn ordinary() -> Self {
         Self {
             force_send: true,
-            refresh_workspace_cache: true,
-            workspace_cache_change: None,
+            workspace_cache_refresh: WorkspaceCacheRefresh::FullScan,
         }
     }
 
     fn initial_workspace_cache_snapshot() -> Self {
         Self {
             force_send: true,
-            refresh_workspace_cache: false,
-            workspace_cache_change: None,
+            workspace_cache_refresh: WorkspaceCacheRefresh::LoadedSnapshot,
         }
     }
 
     fn workspace_cache(change: WorkspaceCacheChange) -> Self {
         Self {
             force_send: false,
-            refresh_workspace_cache: true,
-            workspace_cache_change: Some(change),
+            workspace_cache_refresh: WorkspaceCacheRefresh::AfterChange(change),
         }
     }
 
     fn merge(mut self, other: Self) -> Self {
         self.force_send |= other.force_send;
-        self.refresh_workspace_cache |= other.refresh_workspace_cache;
-        match (
-            self.workspace_cache_change.as_mut(),
-            other.workspace_cache_change,
-        ) {
-            (Some(existing), Some(incoming)) => existing.merge(incoming),
-            (None, Some(incoming)) => self.workspace_cache_change = Some(incoming),
-            (Some(_) | None, None) => {}
-        }
+        self.workspace_cache_refresh = self
+            .workspace_cache_refresh
+            .merge(other.workspace_cache_refresh);
         self
     }
 }
@@ -446,23 +455,36 @@ async fn send_heartbeat(
         mode,
     );
     drop(pool);
-    let cache_change = request.workspace_cache_change.as_ref();
+    let cache_change = match &request.workspace_cache_refresh {
+        WorkspaceCacheRefresh::AfterChange(change) => Some(change),
+        WorkspaceCacheRefresh::LoadedSnapshot | WorkspaceCacheRefresh::FullScan => None,
+    };
     let previous_workspace_states = cache_change.map(|_| {
         hb.workspace_cache_snapshot
             .current_held_workspace_states(hb.active_runs, None)
     });
-    let refresh = if request.refresh_workspace_cache {
-        refresh_workspace_cache_snapshot_after_change(
-            &hb.workspace_cache_snapshot,
-            hb.workspace_cache.as_ref(),
-            hb.profiles,
-            cache_change,
-        )
-        .await
-    } else {
-        WorkspaceCacheRefreshOutcome {
+    let refresh = match &request.workspace_cache_refresh {
+        WorkspaceCacheRefresh::LoadedSnapshot => WorkspaceCacheRefreshOutcome {
             states: hb.workspace_cache_snapshot.loaded_workspace_cache_states(),
             changed: false,
+        },
+        WorkspaceCacheRefresh::FullScan => {
+            refresh_workspace_cache_snapshot_after_change(
+                &hb.workspace_cache_snapshot,
+                hb.workspace_cache.as_ref(),
+                hb.profiles,
+                None,
+            )
+            .await
+        }
+        WorkspaceCacheRefresh::AfterChange(change) => {
+            refresh_workspace_cache_snapshot_after_change(
+                &hb.workspace_cache_snapshot,
+                hb.workspace_cache.as_ref(),
+                hb.profiles,
+                Some(change),
+            )
+            .await
         }
     };
     state.held_sandbox_states =
@@ -951,6 +973,33 @@ mod tests {
                     .is_some_and(|actual| actual == message)
             })
             .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+    }
+
+    fn workspace_cache_change(cache_key: &str) -> WorkspaceCacheChange {
+        WorkspaceCacheChange {
+            observed_at: tokio::time::Instant::now(),
+            committed_cache_keys: BTreeSet::from([cache_key.to_owned()]),
+        }
+    }
+
+    #[test]
+    fn ordinary_heartbeat_dominates_cache_commit_wait_when_coalesced() {
+        let cache_then_ordinary = HeartbeatRequest::workspace_cache(workspace_cache_change("a"))
+            .merge(HeartbeatRequest::ordinary());
+        let ordinary_then_cache = HeartbeatRequest::ordinary().merge(
+            HeartbeatRequest::workspace_cache(workspace_cache_change("b")),
+        );
+
+        assert!(cache_then_ordinary.force_send);
+        assert!(matches!(
+            cache_then_ordinary.workspace_cache_refresh,
+            WorkspaceCacheRefresh::FullScan
+        ));
+        assert!(ordinary_then_cache.force_send);
+        assert!(matches!(
+            ordinary_then_cache.workspace_cache_refresh,
+            WorkspaceCacheRefresh::FullScan
+        ));
     }
 
     #[test]
