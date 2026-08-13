@@ -7,12 +7,6 @@ const c = initContract();
 export const featureSwitchesResponseSchema = z.object({
   switches: z.record(z.string(), z.boolean()),
   effectiveSwitches: z.record(z.string(), z.boolean()),
-  apiCapabilities: z
-    .object({
-      feedbackLocationV1: z.literal(true),
-    })
-    .strict()
-    .optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  CLIENT_TYPE_APP,
-  CLIENT_TYPE_HEADER,
-  CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { UserMessageInputDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
@@ -125,23 +121,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     expect(saved.body).toStrictEqual({
       draftUserMessage,
       draftAttachments: [attachment],
-    });
-
-    const previousAppDraft = await accept(
-      draftsClient().get({
-        params: { id: fixture.agentId },
-        headers: authHeaders(),
-        extraHeaders: {
-          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: CLIENT_VERSION,
-        },
-      }),
-      [200],
-    );
-    expect(previousAppDraft.body.draftUserMessage?.parts[2]).toStrictEqual({
-      type: "feedback",
-      quote: "draft text",
-      note: [{ type: "text", text: "Tighten this draft." }],
     });
 
     await accept(

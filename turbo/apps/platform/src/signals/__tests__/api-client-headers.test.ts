@@ -33,7 +33,7 @@ beforeEach(() => {
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const EXPECTED_CLIENT_VERSION = "0.540.0+feedback-location-v1";
+const EXPECTED_CLIENT_VERSION = "0.540.0";
 
 interface ObservedClientHeaders {
   readonly requestId: string | null;

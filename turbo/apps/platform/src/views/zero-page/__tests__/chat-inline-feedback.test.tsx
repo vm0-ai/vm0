@@ -2,14 +2,10 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
-  chatFeedbackLocationEventsContract,
   chatThreadByIdContract,
-  type ChatEventSendBody,
   type UserMessageDocument,
-  userMessageDocumentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
@@ -29,20 +25,6 @@ const context = testContext();
 
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-// This pins the strict feedback object accepted by the previous API. The new
-// App must keep producing this shape until API capability negotiation succeeds.
-const previousApiUserMessageDocumentSchema = userMessageDocumentSchema.refine(
-  (document) => {
-    return document.parts.every((part) => {
-      return (
-        part.type !== "feedback" ||
-        (part.eventId === undefined && part.range === undefined)
-      );
-    });
-  },
-  { message: "Previous API rejects feedback location fields" },
-);
-
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
   readonly selectedModel: string;
@@ -823,105 +805,6 @@ describe("chat inline feedback", () => {
           eventId: "msg-legacy-feedback-assistant",
           range: selectedRange,
           note: [{ type: "text", text: "Name the owner." }],
-        },
-      ],
-    });
-  });
-
-  it("falls back to the previous API shape after a post-bootstrap rollback", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b0000000-0000-4000-a000-000000000708";
-    const assistantReply = "The rollout needs a named owner.";
-    const selectedQuote = "named owner";
-    const selectedRange = {
-      start: assistantReply.indexOf(selectedQuote),
-      end: assistantReply.indexOf(selectedQuote) + selectedQuote.length,
-    };
-    const versionedRequests: ChatEventSendBody[] = [];
-    const sentMessages: RunCreateCapture[] = [];
-    let capabilityReads = 0;
-    let apiRolledBack = false;
-
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      capabilityReads += 1;
-      return respond(200, {
-        switches: {},
-        effectiveSwitches: {},
-        apiCapabilities: { feedbackLocationV1: true },
-      });
-    });
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Previous API feedback",
-      chatEvents: [
-        {
-          id: "msg-previous-api-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-previous-api-feedback",
-          createdAt: "2026-08-12T11:00:00Z",
-        },
-      ],
-      onRunCreate: (body) => {
-        sentMessages.push(body);
-      },
-    });
-    context.mocks.api(
-      chatFeedbackLocationEventsContract.send,
-      ({ body, respond }) => {
-        if (!apiRolledBack) {
-          throw new Error("Versioned feedback send preceded the API rollback");
-        }
-        versionedRequests.push(body);
-        return respond(404, {
-          error: {
-            code: "NOT_FOUND",
-            message: "Feedback location endpoint not found",
-          },
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    const assistantReplyElement = await screen.findByText(assistantReply);
-    await waitFor(() => {
-      expect(capabilityReads).toBeGreaterThan(0);
-    });
-    apiRolledBack = true;
-    selectTextForInlineFeedback(assistantReplyElement, selectedRange);
-    await user.click(await screen.findByText("Quote"));
-    pastePlainText(await findFeedbackNote(), "Assign the owner.");
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(versionedRequests).toHaveLength(1);
-      expect(sentMessages).toHaveLength(1);
-    });
-    expect(versionedRequests[0]?.userMessage).toMatchObject({
-      version: 1,
-      parts: [
-        {
-          type: "feedback",
-          quote: selectedQuote,
-          eventId: "msg-previous-api-feedback-assistant",
-          range: selectedRange,
-          note: [{ type: "text", text: "Assign the owner." }],
-        },
-      ],
-    });
-    expect(
-      previousApiUserMessageDocumentSchema.parse(sentMessages[0]?.userMessage),
-    ).toStrictEqual({
-      version: 1,
-      parts: [
-        {
-          type: "feedback",
-          quote: selectedQuote,
-          note: [{ type: "text", text: "Assign the owner." }],
         },
       ],
     });

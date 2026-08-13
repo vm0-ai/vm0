@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { expect } from "vitest";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import {
-  chatFeedbackLocationEventsContract,
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
@@ -12,7 +11,6 @@ import {
   chatThreadEventsContract,
   chatEventsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-  type ChatEventSendBody,
   type ChatRunOptionsRequest,
   type ChatThreadServiceTier,
   type CodexServiceTier,
@@ -778,13 +776,14 @@ export function mockChatLifecycle(
       serviceTier: body.serviceTier ?? null,
     });
   });
-  const sendChatEventResponse = async (body: ChatEventSendBody) => {
+  // Unified chat event endpoint (creates thread + run + association)
+  context.mocks.api(chatEventsContract.send, async ({ body, respond }) => {
     if (isRecallEventBody(body)) {
-      return appendRecallControlEvent(body);
+      return respond(201, appendRecallControlEvent(body));
     }
 
     if (isInterruptEventBody(body)) {
-      return appendInterruptControlEvent(body);
+      return respond(201, appendInterruptControlEvent(body));
     }
     if (body.prompt === undefined) {
       throw new Error("Expected prompt for a normal chat event send");
@@ -805,18 +804,8 @@ export function mockChatLifecycle(
     const responseBody = hasActiveRun()
       ? await appendQueuedUserMessage(body)
       : await startRunFromUserMessage(body);
-    return responseBody;
-  };
-  // Unified chat event endpoints (create thread + run + association).
-  context.mocks.api(chatEventsContract.send, async ({ body, respond }) => {
-    return respond(201, await sendChatEventResponse(body));
+    return respond(201, responseBody);
   });
-  context.mocks.api(
-    chatFeedbackLocationEventsContract.send,
-    async ({ body, respond }) => {
-      return respond(201, await sendChatEventResponse(body));
-    },
-  );
   context.mocks.api(logsByIdContract.getById, ({ respond }) => {
     return respond(200, {
       id: "a0000000-0000-4000-a000-000000000001",

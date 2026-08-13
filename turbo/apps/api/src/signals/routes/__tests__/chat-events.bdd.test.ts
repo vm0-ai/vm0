@@ -24,13 +24,6 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
-  CLIENT_TYPE_APP,
-  CLIENT_TYPE_HEADER,
-  CLIENT_VERSION_HEADER,
-  clientVersionWithTag,
-} from "@vm0/api-contracts/contracts/client-headers";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
 import {
@@ -158,34 +151,6 @@ const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
-// This pins the strict feedback shape shipped by the previous App build. Its
-// reader rejects unknown keys, so this schema must consume the projected wire
-// part rather than the current additive contract.
-const previousAppFeedbackPartSchema = z
-  .object({
-    type: z.literal("feedback"),
-    quote: z.string().min(1),
-    note: z
-      .array(
-        z
-          .object({
-            type: z.literal("text"),
-            text: z.string().min(1),
-          })
-          .strict(),
-      )
-      .min(1),
-    source: z
-      .object({
-        type: z.literal("mail"),
-        id: z.string().min(1),
-        status: z.enum(["draft", "sent"]),
-        sentId: z.string().min(1).optional(),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict();
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
 An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
@@ -7146,71 +7111,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     });
 
-    const previousAppPage = await accept(
-      chatThreadEventsClient().list({
-        headers: sessionHeaders(actor),
-        extraHeaders: {
-          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.734.0",
-        },
-        params: { threadId: sent.threadId },
-        query: { limit: 50 },
-      }),
-      [200],
-    );
-    const previousAppMessage = previousAppPage.body.events.find((event) => {
-      return event.eventType === "input.prompt" && event.runId === sent.runId;
-    });
-    if (previousAppMessage?.eventType !== "input.prompt") {
-      throw new Error("Expected the previous App input event projection");
-    }
-    const previousAppFeedback = previousAppMessage.userMessage.parts.find(
-      (part) => {
-        return part.type === "feedback" && part.quote === "First quote";
-      },
-    );
-    expect(
-      previousAppFeedbackPartSchema.parse(previousAppFeedback),
-    ).toStrictEqual({
-      type: "feedback",
-      quote: "First quote",
-      note: [{ type: "text", text: "Clarify this point" }],
-      source: {
-        type: "mail",
-        id: mailDraftId,
-        status: "draft",
-      },
-    });
-
-    const taggedAppPage = await accept(
-      chatThreadEventsClient().list({
-        headers: sessionHeaders(actor),
-        extraHeaders: {
-          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: clientVersionWithTag(
-            "0.734.0",
-            CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
-          ),
-        },
-        params: { threadId: sent.threadId },
-        query: { limit: 50 },
-      }),
-      [200],
-    );
-    const taggedAppMessage = taggedAppPage.body.events.find((event) => {
-      return event.eventType === "input.prompt" && event.runId === sent.runId;
-    });
-    if (taggedAppMessage?.eventType !== "input.prompt") {
-      throw new Error("Expected the tagged App input event");
-    }
-    expect(
-      taggedAppMessage.userMessage.parts.find((part) => {
-        return part.type === "feedback" && part.quote === "First quote";
-      }),
-    ).toMatchObject({
-      eventId: "assistant-event-first-quote",
-      range: { start: 0, end: 11 },
-    });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 

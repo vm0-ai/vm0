@@ -1,11 +1,9 @@
 import {
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
-  CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
   CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
-  clientVersionWithTag,
 } from "@vm0/api-contracts/contracts/client-headers";
 
 import { getBuildVersion } from "../lib/build-info.ts";
@@ -15,7 +13,7 @@ function readClientVersion(): string {
   if (version === null) {
     throw new Error("VITE_APP_VERSION is required for client headers");
   }
-  return clientVersionWithTag(version, CLIENT_FEEDBACK_LOCATION_VERSION_TAG);
+  return version;
 }
 
 const clientVersion = readClientVersion();

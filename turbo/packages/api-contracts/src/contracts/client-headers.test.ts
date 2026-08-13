@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
-  CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
   CLIENT_HEADER_NAMES,
   CLIENT_PRODUCT_HEADER,
   CLIENT_REQUEST_ID_HEADER,
@@ -16,8 +15,6 @@ import {
   CLIENT_VERSION_HEADER,
   DESKTOP_PRODUCT_OKOU,
   DESKTOP_PRODUCT_ZERO,
-  clientVersionHasTag,
-  clientVersionWithTag,
   desktopProductFromClientHeader,
 } from "./client-headers";
 
@@ -71,25 +68,5 @@ describe("client header contract", () => {
 
   it("keeps the force upgrade status stable for app clients", () => {
     expect(CLIENT_FORCE_UPGRADE_STATUS).toBe(426);
-  });
-
-  it("advertises additive App reader capabilities in version build metadata", () => {
-    const taggedVersion = clientVersionWithTag(
-      "0.734.0",
-      CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
-    );
-    const taggedExistingBuild = clientVersionWithTag(
-      "0.734.0+preview",
-      CLIENT_FEEDBACK_LOCATION_VERSION_TAG,
-    );
-
-    expect(taggedVersion).toBe("0.734.0+feedback-location-v1");
-    expect(taggedExistingBuild).toBe("0.734.0+preview.feedback-location-v1");
-    expect(
-      clientVersionHasTag(taggedVersion, CLIENT_FEEDBACK_LOCATION_VERSION_TAG),
-    ).toBe(true);
-    expect(
-      clientVersionHasTag("0.734.0", CLIENT_FEEDBACK_LOCATION_VERSION_TAG),
-    ).toBe(false);
   });
 });

@@ -30,9 +30,6 @@ function featureSwitchResponseBody(params: {
   return {
     switches: params.switches,
     effectiveSwitches: registeredEffectiveSwitches,
-    apiCapabilities: {
-      feedbackLocationV1: true as const,
-    },
   };
 }
 
