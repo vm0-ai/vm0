@@ -648,9 +648,13 @@ function billingStatusResponse(args: {
           currentPeriodEnd:
             subscription.currentPeriodEnd?.toISOString() ?? null,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-          scheduledQuantity: subscription.scheduledQuantity,
-          scheduledChangeAt:
-            subscription.scheduledChangeAt?.toISOString() ?? null,
+          ...(subscription.scheduledQuantity !== null
+            ? {
+                scheduledQuantity: subscription.scheduledQuantity,
+                scheduledChangeAt:
+                  subscription.scheduledChangeAt?.toISOString() ?? null,
+              }
+            : {}),
           ...(subscription.quantity > 1 && !subscription.cancelAtPeriodEnd
             ? { canReduce: true as const }
             : {}),

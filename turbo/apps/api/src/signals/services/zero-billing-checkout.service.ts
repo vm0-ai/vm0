@@ -61,6 +61,7 @@ interface StartConcurrencyPurchaseArgs {
   readonly quantity: number;
   readonly priceId: string;
   readonly existingSubscriptionId?: string;
+  readonly hasScheduledConcurrencyChange: boolean;
   readonly successUrl: string;
 }
 
@@ -560,6 +561,7 @@ export const previewInitialConcurrencyPurchase$ = command(
         priceId: args.priceId,
         quantity: args.quantity,
         mode: "absolute",
+        hasScheduledConcurrencyChange: false,
       },
       signal,
     );
@@ -582,6 +584,7 @@ export const startConcurrencyPurchase$ = command(
           subscriptionId: args.existingSubscriptionId,
           quantity: args.quantity,
           mode: "increase",
+          hasScheduledConcurrencyChange: args.hasScheduledConcurrencyChange,
         },
         signal,
       );

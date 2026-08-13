@@ -220,6 +220,9 @@ const concurrencyCheckoutAuthed$ = command(
         quantity,
         priceId: target.priceId,
         existingSubscriptionId: target.existingSubscription?.id,
+        hasScheduledConcurrencyChange:
+          target.existingSubscription?.scheduledQuantity !== null &&
+          target.existingSubscription?.scheduledQuantity !== undefined,
         successUrl,
       },
       signal,
@@ -238,7 +241,7 @@ const concurrencyCheckoutAuthed$ = command(
           );
         }
         case "pending_update": {
-          return badRequestMessage(
+          return conflict(
             "Complete the pending concurrency update before adding slots",
           );
         }

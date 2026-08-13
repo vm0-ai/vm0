@@ -52,6 +52,7 @@ interface StripeConcurrencySubscriptionChangeArgs {
   readonly subscriptionId: string;
   readonly quantity: number;
   readonly mode: "absolute" | "increase" | "reduce";
+  readonly hasScheduledConcurrencyChange: boolean;
 }
 
 interface AddStripeConcurrencySubscriptionItemArgs {
@@ -67,7 +68,7 @@ type CancelConcurrencySubscriptionResult =
     }
   | {
       readonly ok: false;
-      readonly reason: "not_found";
+      readonly reason: "not_found" | "pending_update";
     };
 
 type PreviewConcurrencySubscriptionChangeResult =
@@ -456,6 +457,9 @@ export const addStripeConcurrencySubscriptionItem$ = command(
         subscription,
       };
     }
+    if (stripeObjectId(subscription.schedule) !== null) {
+      return { ok: false, reason: "pending_update" };
+    }
 
     const updatedSubscription = await stripe.subscriptions.update(
       subscription.id,
@@ -600,6 +604,7 @@ interface StripeConcurrencySubscriptionPreviewArgs {
   readonly priceId?: string;
   readonly quantity: number;
   readonly mode: "absolute" | "increase";
+  readonly hasScheduledConcurrencyChange: boolean;
 }
 
 function previewTargetQuantity(
@@ -709,6 +714,9 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
       return { ok: false, reason: "invalid_quantity" };
     }
     const scheduleId = stripeObjectId(subscription.schedule);
+    if (scheduleId !== null && !args.hasScheduledConcurrencyChange) {
+      return { ok: false, reason: "pending_update" };
+    }
     const scheduledChange = scheduleId !== null;
     if (targetQuantity === currentQuantity && !scheduledChange) {
       return { ok: false, reason: "no_change" };
@@ -844,6 +852,9 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
         : { ok: false, reason: "pending_update" };
     }
     const scheduleId = stripeObjectId(subscription.schedule);
+    if (scheduleId !== null && !args.hasScheduledConcurrencyChange) {
+      return { ok: false, reason: "pending_update" };
+    }
     if (targetQuantity === item.quantity && scheduleId === null) {
       return {
         ok: true,
@@ -920,7 +931,11 @@ export const previewConcurrencySubscriptionChange$ = command(
     }
     return await set(
       previewStripeConcurrencySubscriptionChange$,
-      { ...args, mode: "absolute" },
+      {
+        ...args,
+        mode: "absolute",
+        hasScheduledConcurrencyChange: subscription.scheduledQuantity !== null,
+      },
       signal,
     );
   },
@@ -949,6 +964,7 @@ export const changeConcurrencySubscription$ = command(
         subscriptionId: args.subscriptionId,
         quantity: args.quantity,
         mode: "absolute",
+        hasScheduledConcurrencyChange: subscription.scheduledQuantity !== null,
       },
       signal,
     );
@@ -988,6 +1004,13 @@ export const cancelConcurrencySubscription$ = command(
         args.subscriptionId,
       );
       signal.throwIfAborted();
+      if (
+        stripeObjectId(stripeSubscription.schedule) !== null &&
+        subscription.scheduledQuantity === null &&
+        !subscription.cancelAtPeriodEnd
+      ) {
+        return { ok: false, reason: "pending_update" };
+      }
       await scheduleConcurrencyChange(stripeSubscription, 0, signal);
     } else {
       await stripe.subscriptions.update(args.subscriptionId, {
@@ -1052,6 +1075,7 @@ export const reduceConcurrencySubscription$ = command(
         subscriptionId: args.subscriptionId,
         quantity: args.quantity,
         mode: "reduce",
+        hasScheduledConcurrencyChange: subscription.scheduledQuantity !== null,
       },
       signal,
     );

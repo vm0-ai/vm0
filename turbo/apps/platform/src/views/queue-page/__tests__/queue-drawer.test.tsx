@@ -204,6 +204,18 @@ function getButtonByText(text: string): HTMLElement {
   return button;
 }
 
+function getButtonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+
+  if (!button) {
+    throw new Error(`Could not find button with label: ${label}`);
+  }
+
+  return button;
+}
+
 async function openDrawer(memberUsageEnabled = false): Promise<void> {
   mockQueuedThread();
   detachedSetupPage({
@@ -467,18 +479,14 @@ describe("queue drawer", () => {
       name: "Quantity",
     });
     expect(
-      screen.getByRole("button", {
-        name: "Decrease concurrency quantity",
-      }),
+      getButtonByLabel("Decrease concurrency quantity"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
-        name: "Increase concurrency quantity",
-      }),
+      getButtonByLabel("Increase concurrency quantity"),
     ).toBeInTheDocument();
     fireEvent.change(quantityInput, { target: { value: "" } });
     expect(quantityInput).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Buy $0/month" })).toBeDisabled();
+    expect(getButtonByText("Buy $0/month")).toBeDisabled();
     fireEvent.change(quantityInput, { target: { value: "5" } });
     await waitFor(() => {
       expect(screen.getByText("Buy $500/month")).toBeInTheDocument();
