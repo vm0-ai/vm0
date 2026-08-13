@@ -41,10 +41,7 @@ import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/z
 import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
-import {
-  zeroModelProvidersByTypeContract,
-  zeroModelProvidersMainContract,
-} from "@okouai/api-contracts/contracts/zero-model-providers";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
@@ -1262,68 +1259,6 @@ export function createBddIntegrationApi(context: TestContext) {
           body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
         }),
         [200],
-      );
-    },
-
-    async configureUnpinnedSlackModelRoute(actor: ApiTestUser): Promise<void> {
-      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
-        zeroModelProvidersMainContract,
-      );
-      // openrouter-api-key is a claude-code provider whose catalog entry has
-      // no default model, so runs admitted through it keep selectedModel null.
-      await accept(
-        providers.upsert({
-          headers: authenticate(context, routeMocks, actor),
-          body: { type: "openrouter-api-key", secret: "bdd-openrouter-key" },
-        }),
-        [200, 201],
-      );
-      const openai = await accept(
-        providers.upsert({
-          headers: authenticate(context, routeMocks, actor),
-          body: { type: "openai-api-key", secret: "bdd-openai-key" },
-        }),
-        [200, 201],
-      );
-      await accept(
-        setupApp({ context, routes: zeroModelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
-        ).update({
-          headers: authenticate(context, routeMocks, actor),
-          body: {
-            policies: [
-              {
-                model: "gpt-5.6-sol",
-                isDefault: true,
-                defaultProviderType: "openai-api-key",
-                credentialScope: "org",
-                modelProviderId: openai.body.provider.id,
-              },
-            ],
-          },
-        }),
-        [200],
-      );
-      await accept(
-        setupApp({ context, routes: zeroModelProvidersRoutes })(
-          zeroModelProvidersByTypeContract,
-        ).delete({
-          headers: authenticate(context, routeMocks, actor),
-          params: { type: "openai-api-key" },
-        }),
-        [204],
-      );
-      // Onboarding seeds an org "vm0" no-secret provider pinned to a model;
-      // delete it too so unpinned runs resolve the org openrouter provider,
-      // which carries no selected model.
-      await accept(
-        setupApp({ context, routes: zeroModelProvidersRoutes })(
-          zeroModelProvidersByTypeContract,
-        ).delete({
-          headers: authenticate(context, routeMocks, actor),
-          params: { type: "vm0" },
-        }),
-        [204],
       );
     },
 
