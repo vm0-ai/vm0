@@ -1513,6 +1513,81 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, runId, [200]);
   });
 
+  it("rejects a deleted automation's queued event and drains the next automation", async () => {
+    const scenario = await setup();
+    const webhookAutomation = await createWebhookAutomation(scenario);
+    const runningRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(webhookAutomation, "running before deletion"),
+      webhookAutomation.threadId,
+    );
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(webhookAutomation, "orphaned after deletion"),
+    );
+    const orphanedEvent = (
+      await pendingAutomationEvents(webhookAutomation.threadId)
+    )[0];
+    if (!orphanedEvent) {
+      throw new Error("Expected the webhook event to remain queued");
+    }
+
+    const scheduleAutomation = await createScheduleAutomation(scenario);
+    expect(scheduleAutomation.threadId).toBe(webhookAutomation.threadId);
+    const manual = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: scheduleAutomation.automationId },
+      }),
+      [201],
+    );
+    expect(manual.body).toStrictEqual({
+      runId: null,
+      chatThreadId: webhookAutomation.threadId,
+    });
+    await expect(
+      pendingWorkflowAutomationIds(webhookAutomation.threadId),
+    ).resolves.toStrictEqual([
+      webhookAutomation.automationId,
+      scheduleAutomation.automationId,
+    ]);
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: webhookAutomation.automationId },
+      }),
+      [204],
+    );
+
+    await completeRunThroughSandbox(scenario, runningRunId);
+
+    const events = await readProjectedChatEvents(context, {
+      threadId: webhookAutomation.threadId,
+      headers: authHeaders(),
+    });
+    const rejectedEvent = events.find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === orphanedEvent.id
+      );
+    });
+    if (rejectedEvent?.eventType !== "input.rejected") {
+      throw new Error("Expected the orphaned automation event to be rejected");
+    }
+    expect(rejectedEvent.error).toBe("Workflow automation no longer exists");
+    expect(rejectedEvent.userMessage).toStrictEqual(orphanedEvent.userMessage);
+
+    const runIds = await workflowRunIds(webhookAutomation.threadId);
+    expect(runIds).toHaveLength(2);
+    const scheduleRunId = runIds[1];
+    if (!scheduleRunId) {
+      throw new Error("Expected the next automation event to create a run");
+    }
+    await expect(
+      readWorkflowRunTriggerSourceFixture(scheduleRunId),
+    ).resolves.toBe("automation-schedule");
+    await runsApi.requestCancelRun(scenario.actor, scheduleRunId, [200]);
+  });
+
   it("rejects only the failed webhook trigger and accepts the next event", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);

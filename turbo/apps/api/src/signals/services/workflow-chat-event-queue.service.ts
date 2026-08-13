@@ -185,9 +185,9 @@ export async function admitWorkflowAutomationEvent(
 export interface PendingWorkflowQueueEvent {
   readonly id: string;
   readonly userId: string;
-  readonly automationId: string;
+  readonly automationId: string | null;
   readonly chatThreadId: string;
-  readonly triggerSource: TriggerSource;
+  readonly triggerSource: TriggerSource | null;
   readonly triggerBrief: string | null;
   readonly workflowName: string | null;
   readonly workflowAutomationEventType: string | null;
@@ -195,8 +195,10 @@ export interface PendingWorkflowQueueEvent {
 }
 
 /**
- * Load the runnable automation head. Pending user events always win and any
- * active run blocks the whole thread.
+ * Load the automation queue head. Pending user events always win and any
+ * active run blocks the whole thread. Missing automation context is returned
+ * with null launch fields so the drain can reject the persisted input and
+ * continue instead of leaving the thread stuck.
  *
  * A concurrently deleted thread can remove the selected event before this
  * lookup; that canonical deletion race returns null rather than failing.
@@ -254,15 +256,12 @@ export async function loadNextWorkflowQueueEvent(
     if (!event) {
       return null;
     }
-    if (!event.automationId || !event.automationKind) {
-      throw new Error(
-        `Workflow queue event ${event.id} is missing its typed payload`,
-      );
-    }
     return {
       ...event,
-      automationId: event.automationId,
-      triggerSource: manualTriggerSource({ kind: event.automationKind }),
+      triggerSource:
+        event.automationKind === null
+          ? null
+          : manualTriggerSource({ kind: event.automationKind }),
     };
   });
 }
@@ -274,7 +273,6 @@ async function loadAutomationRejectionPayload(
   const [event] = await db
     .select({
       automationId: chatAutomationContext.automationId,
-      automationKind: workflowAutomations.kind,
       triggerBrief: chatAutomationContext.triggerBrief,
       userMessage: canonicalChatEventUserMessage(),
       workflowId: workflows.id,
@@ -329,7 +327,7 @@ export async function rejectWorkflowQueueEvent(
       return false;
     }
     const payload = await loadAutomationRejectionPayload(tx, args.eventId);
-    if (!payload?.automationId || !payload.automationKind) {
+    if (!payload) {
       return false;
     }
     const userMessage =
@@ -358,7 +356,9 @@ export async function rejectWorkflowQueueEvent(
       userMessage,
       runId: null,
       error: args.reason,
-      automationId: payload.automationId,
+      ...(payload.automationId === null
+        ? {}
+        : { automationId: payload.automationId }),
       triggerBrief: payload.triggerBrief,
     });
     return rejected !== null;
