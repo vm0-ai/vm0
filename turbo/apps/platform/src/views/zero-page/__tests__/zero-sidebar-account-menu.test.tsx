@@ -540,13 +540,15 @@ describe("zero sidebar account menu", () => {
     });
 
     await waitFor(() => {
-      expect(context.mocks.ably.hasSubscription("billing:changed")).toBe(true);
-      expect(context.mocks.ably.hasSubscription("threadListChanged")).toBe(
-        true,
-      );
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(
+        context.mocks.ably.hasSubscription("threadListChanged"),
+      ).toBeTruthy();
       expect(
         context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBe(true);
+      ).toBeTruthy();
       expect(billingRequests).toBeGreaterThan(0);
       expect(indicatorRequests).toBeGreaterThan(0);
     });
