@@ -1409,8 +1409,7 @@
       "search": "Search agents and chats...",
       "sent": "Forwarded successfully",
       "threads": "Chats",
-      "title": "Forward to",
-      "to": "Forward to"
+      "title": "Forward to"
     },
     "mail": {
       "bcc": "bcc",
