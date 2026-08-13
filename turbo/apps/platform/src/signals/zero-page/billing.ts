@@ -437,13 +437,10 @@ export const reloadAccountMenuBillingStatus$ = command(
       return;
     }
 
-    const foregroundResult = await settle(foregroundReady.promise, signal);
+    await settle(foregroundReady.promise, signal);
     signal.throwIfAborted();
     const currentReloadVersion = get(billingReload$);
-    if (
-      !foregroundResult.ok ||
-      get(completedForegroundBillingReload$) !== currentReloadVersion
-    ) {
+    if (get(completedForegroundBillingReload$) !== currentReloadVersion) {
       set(reloadBillingStatus$);
     }
   },
