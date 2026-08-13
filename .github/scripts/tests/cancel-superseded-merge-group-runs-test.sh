@@ -149,6 +149,26 @@ run_cancel() {
     bash "$script"
 }
 
+run_closed_pr_cleanup() {
+  env -i \
+    PATH="${fake_bin}:$PATH" \
+    HOME="${HOME:-/tmp}" \
+    GH_TOKEN=test-token \
+    GITHUB_REPOSITORY=vm0-ai/vm0 \
+    GITHUB_RUN_ID=400 \
+    PR_NUMBER=42 \
+    RUNNER_OWNER_SCOPE=closed-pr-cleanup \
+    MOCK_GH_LOG="${tmp_dir}/gh.log" \
+    MOCK_CANCEL_LOG="${tmp_dir}/cancel.log" \
+    MOCK_SLEEP_LOG="${tmp_dir}/sleep.log" \
+    MOCK_RUNS_RELEASED="${tmp_dir}/runs-released" \
+    MOCK_QUEUED_QUERY_COUNT="${tmp_dir}/queued-query-count" \
+    SUPERSEDED_RUN_POLL_SECONDS=0 \
+    SUPERSEDED_RUN_TIMEOUT_SECONDS=10 \
+    "$@" \
+    bash "$script"
+}
+
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
 : >"${tmp_dir}/sleep.log"
@@ -160,6 +180,34 @@ cancelled_runs=$(cat "${tmp_dir}/cancel.log")
   fail "expected only older same-PR consumer runs to be cancelled, got: ${cancelled_runs}"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
   fail "already-completed superseded runs must not poll"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+output=$(run_closed_pr_cleanup MOCK_DELAY_COMPLETION=1)
+grep -q "All active runner-owner CI runs completed before closed-PR resource cleanup starts" <<<"$output" ||
+  fail "expected closed-PR cleanup to await every active runner owner"
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "closed-PR cleanup must not cancel active required checks"
+grep -q "Waiting for active runner-owner CI runs" <<<"$output" ||
+  fail "closed-PR cleanup must retain an explicit terminal-state barrier"
+[ "$(wc -l <"${tmp_dir}/sleep.log")" -eq 1 ] ||
+  fail "closed-PR cleanup must wait for active owners to finish naturally"
+
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+if run_closed_pr_cleanup \
+  MOCK_DELAY_COMPLETION=1 \
+  SUPERSEDED_RUN_TIMEOUT_SECONDS=0 \
+  >"${tmp_dir}/closed-timeout.out" 2>"${tmp_dir}/closed-timeout.err"; then
+  fail "closed-PR cleanup must fail closed when an active owner outlives the barrier"
+fi
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "timed-out closed-PR cleanup must not cancel the active owner"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "zero-timeout ownership barrier must fail before polling"
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"

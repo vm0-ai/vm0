@@ -52,6 +52,7 @@ bin_dir=""
 runner_dir=""
 rootfs_hash_map="{}"
 snapshot_hash_map="{}"
+runner_sha_map="{}"
 
 while IFS= read -r group; do
   group_id="$(jq -r '.id' <<<"$group")"
@@ -75,11 +76,16 @@ while IFS= read -r group; do
 
   group_bin_dir="$(output_value bin-dir "$group_output")"
   group_runner_dir="$(output_value runner-dir "$group_output")"
+  group_runner_sha="$(output_value runner-sha "$group_output")"
   group_rootfs_hash_map="$(output_value rootfs-hash-map "$group_output")"
   group_snapshot_hash_map="$(output_value snapshot-hash-map "$group_output")"
 
-  if [ -z "$group_bin_dir" ] || [ -z "$group_runner_dir" ]; then
-    echo "error: runner image manifest for $group_id did not emit bin-dir and runner-dir" >&2
+  if [ -z "$group_bin_dir" ] || [ -z "$group_runner_dir" ] || [ -z "$group_runner_sha" ]; then
+    echo "error: runner image manifest for $group_id did not emit bin-dir, runner-dir, and runner-sha" >&2
+    exit 1
+  fi
+  if [[ ! "$group_runner_sha" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "error: runner image manifest for $group_id emitted an invalid runner-sha" >&2
     exit 1
   fi
 
@@ -94,11 +100,16 @@ while IFS= read -r group; do
 
   bin_dir="$group_bin_dir"
   runner_dir="$group_runner_dir"
+  runner_sha_map="$(jq -c \
+    --arg target "$target" \
+    --arg sha "$group_runner_sha" \
+    '. + {($target): $sha}' <<<"$runner_sha_map")"
   rootfs_hash_map="$(merge_json_map "$rootfs_hash_map" "$group_rootfs_hash_map")"
   snapshot_hash_map="$(merge_json_map "$snapshot_hash_map" "$group_snapshot_hash_map")"
 done < <(jq -c '.[]' <<<"$groups_json")
 
 emit "bin-dir" "$bin_dir"
 emit "runner-dir" "$runner_dir"
+emit "runner-sha-map" "$runner_sha_map"
 emit "rootfs-hash-map" "$rootfs_hash_map"
 emit "snapshot-hash-map" "$snapshot_hash_map"

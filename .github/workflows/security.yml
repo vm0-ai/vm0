@@ -232,6 +232,7 @@ jobs:
           shellcheck \
             .github/scripts/audit-okou-cli-cutover.sh \
             .github/scripts/build-okou-desktop-artifact.sh \
+            .github/scripts/cancel-superseded-merge-group-runs.sh \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/cloudflare-ssh-command.sh \
@@ -241,6 +242,7 @@ jobs:
             .github/scripts/download-verified.sh \
             .github/scripts/fetch-okou-desktop-artifact.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
+            .github/scripts/reconcile-runner-binary-groups.sh \
             .github/scripts/resolve-desktop-version-change.sh \
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
@@ -250,6 +252,7 @@ jobs:
             .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/audit-okou-cli-cutover-test.sh \
+            .github/scripts/tests/cancel-superseded-merge-group-runs-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/checkout-depth-test.sh \
@@ -268,6 +271,8 @@ jobs:
             .github/scripts/tests/release-tool-downloads-test.sh \
             .github/scripts/tests/resolve-desktop-version-change-test.sh \
             .github/scripts/tests/runner-promotion-ansible-test.sh \
+            .github/scripts/tests/reconcile-runner-binary-groups-test.sh \
+            .github/scripts/tests/runner-lifecycle-ownership-workflow-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
             .github/scripts/tests/runner-behavior-balloon-test.sh \

@@ -155,6 +155,11 @@ jq -e '
   any(.jobs.asset.steps[];
     .name == "Publish runner binary cache object" and
     (. | has("if") | not)
+  ) and
+  any(.jobs.asset.steps[];
+    .name == "Upload reusable runner binary manifest" and
+    .with.path == "runner-binary-asset/manifest.json" and
+    .with["retention-days"] == 7
   )
 ' <<<"$workflow_json" >/dev/null || fail "reusable publication must run only for compiled misses"
 

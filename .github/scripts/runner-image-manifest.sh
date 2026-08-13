@@ -102,6 +102,7 @@ validate() {
   emit "manifest-path" "$MANIFEST_PATH"
   emit "bin-dir" "$bin_dir"
   emit "runner-dir" "$runner_dir"
+  emit "runner-sha" "$runner_sha"
   emit "rootfs-hash-map" "$rootfs_map"
   emit "snapshot-hash-map" "$snapshot_map"
 

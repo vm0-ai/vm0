@@ -36,8 +36,15 @@ jobs:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Check if cleanup needed
         id: check
@@ -51,6 +58,16 @@ jobs:
           else
             echo "should-cleanup=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Wait for active CI owners before runner cleanup
+        if: steps.check.outputs.should-cleanup == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUNNER_OWNER_SCOPE: closed-pr-cleanup
+        run: .github/scripts/cancel-superseded-merge-group-runs.sh
 
       - name: Install Ansible
         if: steps.check.outputs.should-cleanup == 'true'
