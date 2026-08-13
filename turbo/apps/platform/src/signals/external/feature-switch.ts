@@ -78,6 +78,10 @@ export const reloadFeatureSwitch$ = command(
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
+      set(writeConnectionDiagnostic$, {
+        action: "set-enabled",
+        enabled: false,
+      });
       return;
     }
 

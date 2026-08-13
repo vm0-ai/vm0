@@ -1,5 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
@@ -49,6 +50,51 @@ function buttonByText(text: string): HTMLElement {
 }
 
 describe("connection diagnostics settings", () => {
+  it("captures startup waits while feature switch hydration is pending", async () => {
+    const user = userEvent.setup();
+    const featureSwitchRequestStarted = context.mocks.deferred<void>();
+    const releaseFeatureSwitchResponse = context.mocks.deferred<void>();
+    context.mocks.api(zeroFeatureSwitchesContract.get, async ({ respond }) => {
+      featureSwitchRequestStarted.resolve();
+      await releaseFeatureSwitchResponse.promise;
+      return respond(200, {
+        switches: { [FeatureSwitchKey.ZeroDebug]: true },
+        effectiveSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=debug",
+      cachedFeatureSwitches: {
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    await featureSwitchRequestStarted.promise;
+    const diagnosticsSummary = await findDiagnosticsSummary();
+    await waitFor(() => {
+      expect(diagnosticsSummary).toHaveTextContent("connection: connected");
+      expect(diagnosticsSummary).toHaveTextContent("channel: attached");
+    });
+
+    await user.click(diagnosticsSummary);
+    await waitFor(() => {
+      expect(
+        screen.getByText(/realtime\.initial-connection · start/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/realtime\.initial-connection · finish/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/realtime\.auth-callback · finish/),
+      ).toBeInTheDocument();
+    });
+    expect(releaseFeatureSwitchResponse.settled()).toBeFalsy();
+
+    releaseFeatureSwitchResponse.resolve();
+  });
+
   it("exports lifecycle, auth recovery, and sanitized Ably state events", async () => {
     const user = userEvent.setup();
     const clipboard = context.mocks.browser.clipboardWriteText();
