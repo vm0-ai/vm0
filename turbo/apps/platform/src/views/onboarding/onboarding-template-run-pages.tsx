@@ -5,7 +5,7 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
   VIDEO_TEMPLATE_ITEMS,
-} from "@vm0/core";
+} from "@okouai/core";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -18,7 +18,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { onboardingVideoPrompt } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import { OnboardingRunAction } from "./onboarding-run-action.tsx";
-import { Textarea, cn } from "@vm0/ui";
+import { Textarea, cn } from "@okouai/ui";
 import {
   ONBOARDING_TEXTAREA_CLASS,
   OnboardingShell,

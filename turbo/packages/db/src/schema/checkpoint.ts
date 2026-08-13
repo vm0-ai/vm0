@@ -4,7 +4,7 @@ import { conversations } from "./conversation";
 import type {
   CheckpointAgentComposeSnapshot,
   CheckpointStorageMounts,
-} from "@vm0/db/jsonb-contracts/checkpoint";
+} from "@okouai/db/jsonb-contracts/checkpoint";
 
 /**
  * Checkpoints table

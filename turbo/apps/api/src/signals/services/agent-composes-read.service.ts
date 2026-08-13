@@ -1,9 +1,9 @@
 import { computed, type Computed } from "ccstate";
-import type { ComposeResponse } from "@vm0/api-contracts/contracts/composes";
+import type { ComposeResponse } from "@okouai/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+} from "@okouai/db/schema/agent-compose";
 import { and, eq, like } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";

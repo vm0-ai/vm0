@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const CLOUDFLARE_AUTHORIZATION_URL = "https://dash.cloudflare.com/oauth2/auth";

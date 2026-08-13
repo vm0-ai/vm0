@@ -10,7 +10,7 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
   type UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 import { i18n } from "../../i18n/index.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";

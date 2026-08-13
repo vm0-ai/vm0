@@ -1,6 +1,6 @@
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

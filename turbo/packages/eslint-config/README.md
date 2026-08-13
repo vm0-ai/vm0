@@ -1,3 +1,3 @@
-# `@vm0/eslint-config`
+# `@okouai/eslint-config`
 
 Collection of internal eslint configurations.

@@ -1,19 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { cronExecuteMorningBriefsContract } from "@vm0/api-contracts/contracts/cron";
-import type { TestEmailOutboxStateItem } from "@vm0/api-contracts/contracts/test-email-outbox-state";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { cronExecuteMorningBriefsContract } from "@okouai/api-contracts/contracts/cron";
+import type { TestEmailOutboxStateItem } from "@okouai/api-contracts/contracts/test-email-outbox-state";
 import {
-  chatThreadEventsContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
-import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroMorningBriefContract } from "@okouai/api-contracts/contracts/zero-morning-brief";
+import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { createStore } from "ccstate";
 import { Cron } from "croner";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -35,6 +34,7 @@ import { createEmailOutboxStateApi } from "./helpers/email-outbox-state";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -516,17 +516,10 @@ async function readMorningBriefThreadEvents(
   scenario: Scenario,
   threadId: string,
 ) {
-  const messages = await accept(
-    setupApp({ context, routes: zeroChatThreadRoutes })(
-      chatThreadEventsContract,
-    ).list({
-      headers: actorHeaders(),
-      params: { threadId },
-      query: { limit: 50 },
-    }),
-    [200],
-  );
-  return messages.body.events;
+  return await readProjectedChatEvents(context, {
+    threadId,
+    headers: actorHeaders(),
+  });
 }
 
 async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{

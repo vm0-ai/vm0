@@ -5,9 +5,9 @@ import {
   type ConnectorRuntimeSyncResult,
   type ConnectorRuntimeTarget,
   type ConnectorRuntimeTargetRegistration,
-} from "@vm0/api-contracts/contracts/runners";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+} from "@okouai/api-contracts/contracts/runners";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

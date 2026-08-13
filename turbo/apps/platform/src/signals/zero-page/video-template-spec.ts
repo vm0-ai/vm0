@@ -1,15 +1,18 @@
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
+import { parseAvatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import {
   VIDEO_MODEL_CONFIGS,
   resolveVideoGenerationOptions,
-} from "@vm0/core/video-model-catalog";
-import { i18n } from "../../i18n/index.ts";
+} from "@okouai/core/video-model-catalog";
 
 /**
  * Every parameter a text-to-video run takes, resolved against the model catalog
  * so the composer chip and a sent message both show what the run will actually
  * use even when the user overrode none of them.
+ *
+ * Audio is deliberately absent: it is a two-state toggle that most runs leave
+ * on, so it earns its place in the settings popover but not in a summary the
+ * user reads inside a prompt sentence.
  */
 export interface VideoTemplateSpec {
   readonly model: string;
@@ -34,22 +37,18 @@ export function videoTemplateSpec(
   }
   const resolved = resolveVideoGenerationOptions(selection.videoOptions);
   const config = VIDEO_MODEL_CONFIGS[resolved.model];
-  const audio = resolved.generateAudio
-    ? i18n.t(($) => {
-        return $.chat.templates.videoSpecAudioOn;
-      })
-    : i18n.t(($) => {
-        return $.chat.templates.videoSpecAudioOff;
-      });
   return {
     model: config.label,
     core: [resolved.aspectRatio, resolved.duration],
-    rest: config.supportsGenerateAudio
-      ? [resolved.resolution, audio]
-      : [resolved.resolution],
+    rest: [resolved.resolution],
   };
 }
 
 export function videoTemplateSpecText(spec: VideoTemplateSpec): string {
   return [spec.model, ...spec.core, ...spec.rest].join(" · ");
+}
+
+/** Everything the chip's settings zone shows, with the model left to its own zone. */
+export function videoTemplateSettingsText(spec: VideoTemplateSpec): string {
+  return [...spec.core, ...spec.rest].join(" · ");
 }

@@ -1,4 +1,4 @@
-import { connectorAuthMethodIdSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorAuthMethodIdSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 import { connectorCatalogVersionSchema, privateNameSchema } from "./common";
 

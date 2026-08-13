@@ -2,22 +2,22 @@ import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/zero-connector-check";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import {
   matchFirewallBaseUrl,
   matchFirewallRequestDecision,
   type FirewallRequestDecision,
-} from "@vm0/connectors/firewall-rule-matcher";
-import type { NetworkPolicies } from "@vm0/connectors/firewall-types";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { connectors } from "@vm0/db/schema/connector";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/connectors/firewall-rule-matcher";
+import type { NetworkPolicies } from "@okouai/connectors/firewall-types";
+import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import { connectors } from "@okouai/db/schema/connector";
+import { variables } from "@okouai/db/schema/variable";
 import { command } from "ccstate";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 

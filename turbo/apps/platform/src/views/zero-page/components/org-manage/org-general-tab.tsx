@@ -15,9 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
+} from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import type { OrgResponse } from "@okouai/api-contracts/contracts/orgs";
 import { org$, isOrgAdmin$ } from "../../../../signals/org.ts";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { settingsDialogSignal$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";

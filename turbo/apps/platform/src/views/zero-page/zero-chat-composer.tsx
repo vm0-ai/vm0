@@ -5,7 +5,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
-import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
+import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
   useGet,
   useSet,
@@ -57,31 +57,31 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { Button } from "@vm0/ui/components/ui/button";
-import { Card, CardContent } from "@vm0/ui/components/ui/card";
-import { Input } from "@vm0/ui/components/ui/input";
+} from "@okouai/ui/components/ui/dialog";
+import { Button } from "@okouai/ui/components/ui/button";
+import { Card, CardContent } from "@okouai/ui/components/ui/card";
+import { Input } from "@okouai/ui/components/ui/input";
 import {
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
+} from "@okouai/ui/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
-import { cn } from "@vm0/ui/lib/utils";
-import { processShortcut, type KeyboardEventLike } from "@vm0/ui";
+} from "@okouai/ui/components/ui/tooltip";
+import { cn } from "@okouai/ui/lib/utils";
+import { processShortcut, type KeyboardEventLike } from "@okouai/ui";
 import {
   bestEffort,
   detach,
@@ -101,11 +101,11 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   ZeroAvatarVideoAvatar,
   ZeroAvatarVideoVoice,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
@@ -117,33 +117,33 @@ import {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   type IllustrationTemplateItem,
-} from "@vm0/core/illustration-template-items";
+} from "@okouai/core/illustration-template-items";
 import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   type PresentationTemplateItem,
-} from "@vm0/core/presentation-template-items";
+} from "@okouai/core/presentation-template-items";
 import {
   VIDEO_TEMPLATE_ITEMS,
   findVideoTemplateItem,
   type VideoTemplateItem,
-} from "@vm0/core/video-template-items";
+} from "@okouai/core/video-template-items";
 import {
   WEBSITE_TEMPLATE_ITEMS,
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,
-} from "@vm0/core/website-template-items";
+} from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
   findWorkflowTemplateItem,
   type WorkflowTemplateItem,
-} from "@vm0/core/workflow-template-items";
-import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/core/workflow-template-items";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -183,6 +183,7 @@ import {
   customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
+  videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -197,7 +198,7 @@ import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permi
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import type {
   TemplateCardHtmlPreviewState,
   VideoTemplateOptionsAnchor,
@@ -226,7 +227,14 @@ import {
   AvatarTemplatePickerContent,
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
-import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
+import {
+  VideoModelPickerRow,
+  VideoTemplateOptionsPopover,
+} from "./video-template-options-popover.tsx";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
@@ -866,10 +874,16 @@ function isSelectedVideoTemplate(
 
 function toVideoGenerationTemplate(
   item: VideoTemplateItem,
+  model: VideoModel,
 ): GenerationTemplateRequest {
   return {
     type: "video",
-    selection: { stylePresetId: item.id },
+    selection: {
+      stylePresetId: item.id,
+      // Only a non-default model is worth storing; the rest follows the
+      // catalog so a later change of default is picked up.
+      ...(model === DEFAULT_VIDEO_MODEL ? {} : { videoOptions: { model } }),
+    },
   };
 }
 
@@ -4867,6 +4881,9 @@ function TemplatePickerDialog({
     signals.template.openWebsiteTemplatePreview$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
+  const videoModel = useGet(signals.template.videoTemplateModel$);
+  const setVideoModel = useSet(signals.template.setVideoTemplateModel$);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
   const illustrationVariantIndex = useGet(
     signals.template.illustrationVariantIndex$,
   );
@@ -4910,6 +4927,10 @@ function TemplatePickerDialog({
   });
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
+  // Video generation is the expensive decision, so the model sits in the
+  // dialog's own header band rather than in the scrolling template area.
+  const showVideoModelPicker =
+    selectedCategory === "video" && hasVideoTab && videoOptionsEnabled;
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -4957,7 +4978,7 @@ function TemplatePickerDialog({
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
-    onChange(toVideoGenerationTemplate(item));
+    onChange(toVideoGenerationTemplate(item, videoModel));
     closeTemplatePicker();
   };
 
@@ -5166,7 +5187,9 @@ function TemplatePickerDialog({
                 <div
                   className={cn(
                     "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                    showTemplatePickerSearch || showAvatarPickerToolbar
+                    showTemplatePickerSearch ||
+                      showAvatarPickerToolbar ||
+                      showVideoModelPicker
                       ? "flex"
                       : "hidden sm:flex",
                   )}
@@ -5179,6 +5202,12 @@ function TemplatePickerDialog({
                   ) : null}
                   {showAvatarPickerToolbar ? (
                     <AvatarTemplatePickerToolbar signals={signals} />
+                  ) : null}
+                  {showVideoModelPicker ? (
+                    <VideoModelPickerRow
+                      model={videoModel}
+                      onChange={setVideoModel}
+                    />
                   ) : null}
                 </div>
                 <TemplatePickerCategoryContent

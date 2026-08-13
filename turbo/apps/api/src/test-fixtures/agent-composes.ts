@@ -10,8 +10,8 @@ import { createStore } from "ccstate";
 import type {
   ComposeResponse,
   agentComposeApiContentSchema,
-} from "@vm0/api-contracts/contracts/composes";
-import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/composes";
+import type { ApiErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import type { z } from "zod";
 
 import { createAgentCompose$ } from "../signals/services/agent-composes-create.service";

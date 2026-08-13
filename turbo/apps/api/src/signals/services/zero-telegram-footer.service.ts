@@ -1,16 +1,16 @@
 import { computed, type Computed } from "ccstate";
-import { getRunModelDisplayName } from "@vm0/core/model-display-name";
+import { getRunModelDisplayName } from "@okouai/core/model-display-name";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { isOfficialTelegramBotId } from "../external/telegram-official";

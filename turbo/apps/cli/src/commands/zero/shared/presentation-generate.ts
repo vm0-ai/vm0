@@ -7,7 +7,7 @@ import {
   findPresentationRunbookPackage,
   listPresentationRunbookPackages,
   resolvePresentationRunbookColorToken,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import { canonicalizeRegistryId } from "./resource-listing";
 
 type PresentationRunbookPackage = ReturnType<

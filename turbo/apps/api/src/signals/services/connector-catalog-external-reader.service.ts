@@ -1,6 +1,6 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
@@ -14,11 +14,11 @@ import type {
   PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
-} from "@vm0/db/schema/connector-catalog";
+} from "@okouai/db/schema/connector-catalog";
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

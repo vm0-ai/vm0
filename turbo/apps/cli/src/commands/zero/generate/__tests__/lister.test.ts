@@ -199,6 +199,24 @@ describe("okou generate lister", () => {
     return mockConsoleLog.mock.calls.flat().join("\n");
   }
 
+  it("uses Okou branding in generate help", () => {
+    let helpOutput = "";
+    generateCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    generateCommand.outputHelp();
+
+    expect(helpOutput).toContain(
+      "Generate assets via Okou's built-in pipelines",
+    );
+    expect(helpOutput).toContain(
+      "--provider for Okou or connector execution guidance",
+    );
+  });
+
   it("lists ready image generation connectors for the current agent", async () => {
     server.use(
       stubConnectors([
@@ -222,7 +240,7 @@ describe("okou generate lister", () => {
     expect(text).toContain("OpenAI");
     expect(text).not.toContain("replicate-user");
     expect(text).toContain("Built-in command:");
-    expect(text).toContain("vm0");
+    expect(text).toContain("Okou  Built-in image generation");
     expect(text).toContain("Built-in image generation");
     expect(text).toContain(
       "Models: fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2",
@@ -571,6 +589,34 @@ describe("okou generate lister", () => {
     expect(text).toContain("ElevenLabs");
     expect(text).toContain("@elevenlabs-user");
     expect(text).not.toContain("Built-in command:");
+  });
+
+  it("uses Okou branding when a subtype has no built-in pipeline", async () => {
+    const musicCommand = generateCommand.commands.find((command) => {
+      return command.name() === "music";
+    });
+    let helpOutput = "";
+    musicCommand?.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    musicCommand?.outputHelp();
+    expect(helpOutput).toContain(
+      "Okou does not provide a built-in music pipeline.",
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "music",
+      "--provider",
+      "built-in",
+    ]);
+    expect(output()).toContain(
+      "Okou has no built-in music generation pipeline.",
+    );
   });
 
   it("rejects unknown generation types via Commander", async () => {

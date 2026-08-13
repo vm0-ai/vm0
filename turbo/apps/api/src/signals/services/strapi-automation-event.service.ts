@@ -1,19 +1,19 @@
 import { Buffer } from "node:buffer";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { strapiEntryPublishedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { strapiEntryPublishedEventConfigSchema } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import {
   strapiIntegrations,
   strapiWebhookDeliveries,
   strapiWorkflowPendingEvents,
   zeroWorkflowStrapiAutomations,
-} from "@vm0/db/schema/strapi-integration";
+} from "@okouai/db/schema/strapi-integration";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod";

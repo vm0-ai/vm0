@@ -9,7 +9,7 @@ import {
 import type {
   RunSkillSnapshot,
   RunSkillSnapshotEntry,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 
 import type { PiRunSkills } from "./types";
 

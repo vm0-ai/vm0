@@ -2,18 +2,18 @@ import { command } from "ccstate";
 import {
   githubOauthContract,
   type GithubOauthConnectQuery,
-} from "@vm0/api-contracts/contracts/github-oauth";
+} from "@okouai/api-contracts/contracts/github-oauth";
 import {
   connectorGrantScopes,
   resolveConnectorAuthClient,
   isStaticConfidentialConnectorAuthClient,
   type StaticConfidentialConnectorAuthClient,
-} from "@vm0/connectors/connector-auth-method";
-import { exchangeConnectorAuthCodeWithMethod } from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/connector-auth-method";
+import { exchangeConnectorAuthCodeWithMethod } from "@okouai/connectors/auth-providers";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
-} from "@vm0/connectors/auth-providers/connectors/github/oauth";
+} from "@okouai/connectors/auth-providers/connectors/github/oauth";
 
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { queryOf } from "../context/request";

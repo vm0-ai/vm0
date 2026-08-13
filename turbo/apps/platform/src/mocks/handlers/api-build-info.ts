@@ -1,4 +1,4 @@
-import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
+import { buildInfoContract } from "@okouai/api-contracts/contracts/build-info";
 
 import { mockApi } from "../msw-contract.ts";
 

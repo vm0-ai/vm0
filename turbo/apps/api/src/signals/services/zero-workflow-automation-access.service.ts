@@ -1,5 +1,5 @@
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";

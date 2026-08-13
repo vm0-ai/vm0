@@ -1,5 +1,5 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { connectorChangedPayloadSchema } from "@vm0/api-contracts/contracts/realtime";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { connectorChangedPayloadSchema } from "@okouai/api-contracts/contracts/realtime";
 
 export function isConnectorChangedPayloadFor(
   payload: unknown,

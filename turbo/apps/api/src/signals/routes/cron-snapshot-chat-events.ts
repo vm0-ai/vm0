@@ -1,4 +1,4 @@
-import { cronSnapshotChatEventsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
@@ -11,7 +11,7 @@ const snapshotChatEventsRoute$ = command(
       return cronUnauthorized();
     }
 
-    const result = await set(snapshotChatEvents$, signal);
+    const result = await set(snapshotChatEvents$, { kind: "global" }, signal);
     signal.throwIfAborted();
     return {
       status: 200 as const,

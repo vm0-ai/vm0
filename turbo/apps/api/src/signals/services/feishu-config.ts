@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";

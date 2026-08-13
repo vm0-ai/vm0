@@ -23,7 +23,7 @@ import {
 
 /**
  * Detect if running inside an agent sandbox.
- * Uses OKOU_AGENT_ID (not VM0_RUN_ID) because the Okou CLI operates in the
+ * Uses OKOU_AGENT_ID (not OKOU_RUN_ID) because the Okou CLI operates in the
  * okou agent context where OKOU_AGENT_ID is the canonical sandbox indicator.
  */
 function isInsideSandbox(): boolean {

@@ -67,9 +67,9 @@ import {
   getCustomSkillStorageName,
   synthesizeWorkflowSkillMd,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core";
-import { automations } from "@vm0/db/schema/automation";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/core";
+import { automations } from "@okouai/db/schema/automation";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";

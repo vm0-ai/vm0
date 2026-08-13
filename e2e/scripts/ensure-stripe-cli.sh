@@ -6,7 +6,7 @@ if command -v stripe >/dev/null 2>&1; then
   exit 0
 fi
 
-version="${STRIPE_CLI_VERSION:-1.41.2}"
+version="1.41.2"
 
 case "$(uname -s)" in
   Linux)
@@ -21,9 +21,11 @@ esac
 case "$(uname -m)" in
   x86_64 | amd64)
     arch="x86_64"
+    sha256="35684521fc6c2d994e6461ef28330f2c77fbf7d588a7b93fee5e8d4aa52d0c65"
     ;;
   aarch64 | arm64)
     arch="arm64"
+    sha256="04d86663e840ec1fc71ec0f1ccceb9345a5bd783614746f590b05e4bf1f61b9b"
     ;;
   *)
     echo "Unsupported Stripe CLI architecture: $(uname -m)" >&2
@@ -34,13 +36,12 @@ esac
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-curl --fail --show-error --silent --location \
-  --retry 5 \
-  --retry-delay 2 \
-  --retry-max-time 60 \
-  --retry-all-errors \
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+download_script="${repo_root}/.github/scripts/download-verified.sh"
+bash "$download_script" \
   "https://github.com/stripe/stripe-cli/releases/download/v${version}/stripe_${version}_${os}_${arch}.tar.gz" \
-  -o "$tmp_dir/stripe.tar.gz"
+  "$sha256" \
+  "$tmp_dir/stripe.tar.gz"
 tar -xzf "$tmp_dir/stripe.tar.gz" -C "$tmp_dir"
 
 install_dir="${STRIPE_CLI_INSTALL_DIR:-$HOME/.local/bin}"

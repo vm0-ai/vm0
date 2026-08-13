@@ -1,12 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
-import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
+import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import {
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
   type RunContextResponse,
-} from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/zero-runs";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";

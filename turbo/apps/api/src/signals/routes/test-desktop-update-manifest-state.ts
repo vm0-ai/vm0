@@ -1,4 +1,4 @@
-import { testDesktopUpdateManifestStateContract } from "@vm0/api-contracts/contracts/test-desktop-update-manifest-state";
+import { testDesktopUpdateManifestStateContract } from "@okouai/api-contracts/contracts/test-desktop-update-manifest-state";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
-import { zeroBillingUsagePackCreditsContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
+import { zeroBillingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

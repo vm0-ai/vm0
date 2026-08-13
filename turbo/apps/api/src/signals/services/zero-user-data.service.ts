@@ -5,23 +5,23 @@ import {
   type UserLocale,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
 import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,
-} from "@vm0/api-contracts/contracts/zero-user-model-preference";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { isVideoModelId } from "@vm0/api-contracts/contracts/video-models";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   SecretResponse,
   SecretType,
-} from "@vm0/api-contracts/contracts/secrets";
-import type { VariableListResponse } from "@vm0/api-contracts/contracts/variables";
-import { morningBriefSchedules } from "@vm0/db/schema/morning-brief";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/api-contracts/contracts/secrets";
+import type { VariableListResponse } from "@okouai/api-contracts/contracts/variables";
+import { morningBriefSchedules } from "@okouai/db/schema/morning-brief";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

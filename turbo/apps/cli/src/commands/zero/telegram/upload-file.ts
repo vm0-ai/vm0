@@ -61,8 +61,8 @@ Output:
 
 Notes:
   - Uses the Telegram bot token on the server side
-  - Uploads through VM0 storage first, then asks Telegram to fetch the file URL
-  - VM0 does not apply file type or size restrictions before calling Telegram`,
+  - Uploads through Okou storage first, then asks Telegram to fetch the file URL
+  - Okou does not apply file type or size restrictions before calling Telegram`,
   )
   .action(
     withErrorHandler(

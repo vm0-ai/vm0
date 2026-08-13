@@ -4,7 +4,7 @@ import {
   ZERO_TRANSLATION_MAX_RESULT_TEXT_CHARS,
   type ZeroTranslationRequest,
   type ZeroTranslationResponse,
-} from "@vm0/api-contracts/contracts/zero-translation";
+} from "@okouai/api-contracts/contracts/zero-translation";
 import { command } from "ccstate";
 
 import { insufficientCredits, notConfigured } from "../../lib/error";

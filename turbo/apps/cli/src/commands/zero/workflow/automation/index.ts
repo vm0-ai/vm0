@@ -9,13 +9,13 @@ import type {
   GithubWorkflowRunConclusion,
   StripeInvoiceBillingReason,
   ZeroWorkflowSchedule,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   isFeatureEnabled,
   type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+} from "@okouai/core/feature-switch";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,

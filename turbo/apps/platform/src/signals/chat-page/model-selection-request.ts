@@ -4,7 +4,7 @@ import type {
   CodexServiceTier,
   UserMessageDocument,
   UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 /**

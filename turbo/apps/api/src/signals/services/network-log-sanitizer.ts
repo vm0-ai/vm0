@@ -8,7 +8,7 @@ import {
   networkLogActionSchema,
   networkLogEntrySchema,
   type NetworkLogEntry,
-} from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/api-contracts/contracts/runs";
 
 type UnknownRecord = Record<string, unknown>;
 type UpstreamBindingField = Extract<

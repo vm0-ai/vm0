@@ -883,7 +883,10 @@ async fn resume_with_ops(
     resume_after_preflight_with_ops(unit, &base_dir, status.started_at, ops).await
 }
 
-/// `service drain` — send SIGUSR1 and disable the unit without waiting for jobs.
+/// `service drain` — send SIGUSR1 and disable the unit without waiting for active jobs.
+///
+/// The command may wait for systemd operations and bounded drain-signal
+/// convergence before returning.
 pub(super) async fn run_drain(args: DrainArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;

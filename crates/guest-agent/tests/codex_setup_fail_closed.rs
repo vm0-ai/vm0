@@ -170,7 +170,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
         .env("CLI_AGENT_TYPE", "codex")
         .env("USE_MOCK_CODEX", "true")
         .env("VM0_MOCK_CODEX_PATH", args.fake_codex)
-        .env("VM0_RUN_ID", args.run_id)
+        .env(guest_contracts::env::RUN_ID_ENV, args.run_id)
         .env(
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             args.run_payload_path,

@@ -4,7 +4,7 @@ import {
   zeroModelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
   type UpdateModelProviderConnectionRequest,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

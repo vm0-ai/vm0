@@ -1,35 +1,35 @@
 import {
   logsByIdContract,
   logsListContract,
-} from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/logs";
 import type { z } from "zod";
-import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
-import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
-import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
+import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
+import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
+import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
 import type {
   ModelProviderType,
   OrgModelPoliciesResponse,
   UpsertModelProviderRequest,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   type WorkflowFileEntry,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/zero-model-providers";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
 import {
   zeroUserPreferencesContract,
   updateUserPreferencesRequestSchema,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";

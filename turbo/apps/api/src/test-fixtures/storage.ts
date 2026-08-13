@@ -4,7 +4,7 @@
  * Reading a storage's stored S3 identity is unreachable through product APIs
  * because list responses do not expose `s3_prefix` or version `s3_key`.
  */
-import { storages } from "@vm0/db/schema/storage";
+import { storages } from "@okouai/db/schema/storage";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

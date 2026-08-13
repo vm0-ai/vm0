@@ -12,7 +12,19 @@ describe("Okou CLI program", () => {
 
   it("should use the canonical Okou product identity", () => {
     expect(program.name()).toBe("okou");
-    expect(program.description()).toContain("Okou CLI");
+    expect(program.description()).toBe(
+      "Okou CLI — interact with Okou from inside the sandbox",
+    );
+  });
+
+  it("should use Okou branding for the generate entry-point description", () => {
+    const generateCommand = program.commands.find((command) => {
+      return command.name() === "generate";
+    });
+
+    expect(generateCommand?.description()).toBe(
+      "Generate assets via Okou's built-in pipelines or get connector skill-invocation guidance",
+    );
   });
 
   it("should register all expected Okou commands", () => {

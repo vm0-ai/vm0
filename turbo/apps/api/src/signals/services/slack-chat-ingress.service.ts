@@ -1,10 +1,10 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   slackChatIngress,
   type SlackChatIngressStatus,
-} from "@vm0/db/schema/slack-chat-ingress";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
+} from "@okouai/db/schema/slack-chat-ingress";
+import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";

@@ -19,9 +19,9 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
 

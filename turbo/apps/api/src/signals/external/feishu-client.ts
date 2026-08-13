@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import type { Db } from "./db";
 import { nowDate } from "../../lib/time";

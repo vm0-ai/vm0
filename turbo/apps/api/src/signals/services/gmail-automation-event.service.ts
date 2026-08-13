@@ -10,16 +10,16 @@ import {
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type GmailAutomationEventConfig,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   gmailProcessedEvents,
   gmailWatchStates,
-} from "@vm0/db/schema/gmail-event";
+} from "@okouai/db/schema/gmail-event";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";

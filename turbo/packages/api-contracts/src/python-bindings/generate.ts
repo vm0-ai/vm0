@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { PUBLIC_DESTINATION_ADDRESS_POLICY } from "@vm0/connectors/public-destination-policy";
+import { PUBLIC_DESTINATION_ADDRESS_POLICY } from "@okouai/connectors/public-destination-policy";
 
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "../contracts/model-price-tiers";
 
@@ -57,7 +57,7 @@ function renderModelUsageContract(): string {
     '"""Generated model usage contracts shared with TypeScript.',
     "",
     "Do not edit by hand; regenerate with",
-    "``cd turbo && pnpm -F @vm0/api-contracts generate:python``.",
+    "``cd turbo && pnpm -F @okouai/api-contracts generate:python``.",
     '"""',
     "",
     "from typing import Final",
@@ -77,7 +77,7 @@ function renderPublicDestinationPolicyContract(): string {
     '"""Generated public destination policy shared with TypeScript.',
     "",
     "Do not edit by hand; regenerate with",
-    "``cd turbo && pnpm -F @vm0/api-contracts generate:python``.",
+    "``cd turbo && pnpm -F @okouai/api-contracts generate:python``.",
     '"""',
     "",
     "from typing import Final",

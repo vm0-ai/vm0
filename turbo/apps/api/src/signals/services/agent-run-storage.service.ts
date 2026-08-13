@@ -1,22 +1,22 @@
-import type { StoredStorageMountEntry } from "@vm0/api-contracts/contracts/runners";
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import { expandVariablesInString } from "@vm0/core/variable-expander";
+import type { StoredStorageMountEntry } from "@okouai/api-contracts/contracts/runners";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import { expandVariablesInString } from "@okouai/core/variable-expander";
 import {
   getInstructionsFilename,
   type SupportedFramework,
-} from "@vm0/core/frameworks";
+} from "@okouai/core/frameworks";
 import {
   getInstructionsStorageName,
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
+} from "@okouai/core/storage-names";
 import {
   isValidVersionPrefix,
   MIN_VERSION_PREFIX_LENGTH,
   VERSION_ID_LENGTH,
-} from "@vm0/core/version-id";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import type { PersistedStorageMount } from "@vm0/db/types";
+} from "@okouai/core/version-id";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
+import type { PersistedStorageMount } from "@okouai/db/types";
 import { computed, type Computed } from "ccstate";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";

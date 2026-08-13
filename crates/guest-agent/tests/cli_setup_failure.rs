@@ -21,7 +21,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
 
     unsafe {
         common::clear_guest_agent_bootstrap_env_for_test();
-        std::env::set_var("VM0_RUN_ID", &run_id);
+        std::env::set_var(guest_contracts::env::RUN_ID_ENV, &run_id);
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             runtime_dir.as_os_str(),

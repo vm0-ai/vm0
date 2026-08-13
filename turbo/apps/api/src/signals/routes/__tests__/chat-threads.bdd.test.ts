@@ -4,25 +4,30 @@ import { HttpResponse, http } from "msw";
 import {
   cronCompactChatThreadSnapshotsContract,
   cronProjectChatEventSearchContract,
-} from "@vm0/api-contracts/contracts/cron";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { testCronCleanupSandboxesStateContract } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+} from "@okouai/api-contracts/contracts/cron";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   chatThreadsContract,
   type ChatEvent,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import {
+  clearMockNow,
+  mockNow,
+  now,
+  withMockNowForTest,
+} from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -527,11 +532,6 @@ const malformedChatThreadIdRequests = [
     method: "POST",
     path: "/api/zero/chat-threads/:id/rename",
     paramName: "id",
-  },
-  {
-    method: "GET",
-    path: "/api/zero/chat-threads/:id/events",
-    paramName: "threadId",
   },
   {
     method: "GET",
@@ -1733,6 +1733,97 @@ describe("CHAT-01 chat thread read state", () => {
     });
   }, 120_000);
 
+  it("limits unified unread indicators to seven days without limiting active threads", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Bounded indicator window agent",
+    );
+    const currentTime = now();
+
+    await withMockNowForTest(currentTime, async () => {
+      mockNow(currentTime - 7 * DAY_MS - 1);
+      const expiredRun = await completeChatRunInThread(actor, runnerGroup, {
+        agentId,
+        prompt: "expired unread indicator",
+      });
+
+      mockNow(currentTime);
+      const recentRun = await completeChatRunInThread(actor, runnerGroup, {
+        agentId,
+        prompt: "recent unread indicator",
+      });
+
+      mockNow(currentTime - 7 * DAY_MS - 1);
+      const activeRun = await sendChatRun(actor, {
+        agentId,
+        prompt: "old active indicator",
+      });
+
+      mockNow(currentTime);
+      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
+        new Set([expiredRun.threadId, recentRun.threadId]),
+      );
+      await expect(chat.listIndicators(actor)).resolves.toStrictEqual({
+        agents: { [agentId]: "active" },
+        threads: {
+          [recentRun.threadId]: "unread",
+          [activeRun.threadId]: "active",
+        },
+      });
+    });
+  }, 120_000);
+
+  it("returns the 50 newest unread indicators across the organization", async () => {
+    const {
+      actor,
+      agentId: agentA,
+      runnerGroup,
+    } = await entitledChatActor("Bounded indicator agent A");
+    const agentB = (
+      await bdd.createAgent(actor, {
+        displayName: "Bounded indicator agent B",
+        visibility: "private",
+      })
+    ).agentId;
+    const firstCompletedAt = now() - 60_000;
+
+    await withMockNowForTest(firstCompletedAt, async () => {
+      const runs: { readonly runId: string; readonly threadId: string }[] = [];
+      for (let index = 0; index < 51; index += 1) {
+        mockNow(firstCompletedAt + index * 1000);
+        runs.push(
+          await completeChatRunInThread(actor, runnerGroup, {
+            agentId: index % 2 === 0 ? agentA : agentB,
+            prompt: `bounded unread indicator ${index}`,
+          }),
+        );
+      }
+
+      mockNow(firstCompletedAt + 60_000);
+      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
+        new Set(
+          runs.map((run) => {
+            return run.threadId;
+          }),
+        ),
+      );
+
+      const indicators = await chat.listIndicators(actor);
+      expect(indicators.agents).toStrictEqual({
+        [agentA]: "unread",
+        [agentB]: "unread",
+      });
+      expect(Object.keys(indicators.threads)).toHaveLength(50);
+      const oldestRun = runs[0];
+      if (!oldestRun) {
+        throw new Error("Expected an oldest completed run");
+      }
+      expect(indicators.threads).not.toHaveProperty(oldestRun.threadId);
+      for (const run of runs.slice(1)) {
+        expect(indicators.threads[run.threadId]).toBe("unread");
+      }
+    });
+  }, 240_000);
+
   it("excludes unread chat threads that have active runs or goals", async () => {
     const {
       actor: owner,
@@ -1876,7 +1967,7 @@ describe("CHAT-01 chat thread read state", () => {
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
   }, 120_000);
 
-  it("pages thread events with since and before cursors", async () => {
+  it("tails thread event rows after a sequence cursor", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(owner, {
@@ -1928,7 +2019,7 @@ describe("CHAT-01 chat thread read state", () => {
     expect(new Set(seqIds).size).toBe(seqIds.length);
     const [
       firstQueuedUserMessage,
-      firstReplacementMessage,
+      ,
       firstAssistantMessage,
       secondQueuedUserMessage,
       secondReplacementMessage,
@@ -1936,7 +2027,6 @@ describe("CHAT-01 chat thread read state", () => {
     ] = full.events;
     if (
       !firstQueuedUserMessage ||
-      !firstReplacementMessage ||
       !firstAssistantMessage ||
       !secondQueuedUserMessage ||
       !secondReplacementMessage ||
@@ -1945,14 +2035,10 @@ describe("CHAT-01 chat thread read state", () => {
       throw new Error("Expected six messages across the two sends");
     }
     const firstQueuedUser = firstQueuedUserMessage.id;
-    const firstReplacement = firstReplacementMessage.id;
-    const firstAssistant = firstAssistantMessage.id;
     const secondQueuedUser = secondQueuedUserMessage.id;
     const secondReplacement = secondReplacementMessage.id;
     const secondAssistant = secondAssistantMessage.id;
     const firstAssistantSeqId = firstAssistantMessage.seqId;
-    const secondQueuedUserSeqId = secondQueuedUserMessage.seqId;
-    const secondAssistantSeqId = secondAssistantMessage.seqId;
     expect(full.events[1]).toMatchObject({
       eventType: "input.rejected",
       error: "insufficient_credits",
@@ -1964,18 +2050,7 @@ describe("CHAT-01 chat thread read state", () => {
       revokesEventId: secondQueuedUser,
     });
 
-    // Latest page overflow: only the newest rows, with history behind them.
-    const latest = await chat.listThreadEvents(owner, threadId, {
-      limit: 2,
-    });
-    expect(
-      latest.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([secondReplacement, secondAssistant]);
-    expect(latest.events[0]?.seqId).toBeGreaterThan(1);
-
-    // Forward pagination strictly after the cursor.
+    // Raw-row tailing is strictly after the cursor.
     const since = await chat.listThreadEvents(owner, threadId, {
       sinceSeqId: firstAssistantSeqId,
     });
@@ -1984,27 +2059,6 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
-    // Backward pagination strictly before the cursor.
-    const before = await chat.listThreadEvents(owner, threadId, {
-      beforeSeqId: secondQueuedUserSeqId,
-      limit: 3,
-    });
-    expect(
-      before.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
-    expect(before.events[0]?.seqId).toBe(1);
-    const beforeOverflow = await chat.listThreadEvents(owner, threadId, {
-      beforeSeqId: secondAssistantSeqId,
-      limit: 2,
-    });
-    expect(
-      beforeOverflow.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([secondQueuedUser, secondReplacement]);
-    expect(beforeOverflow.events[0]?.seqId).toBeGreaterThan(1);
   }, 30_000);
 
   it("serializes concurrent message sequence writes through commit", async () => {

@@ -10,12 +10,12 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
   setConnectorsPageTab$,
@@ -70,7 +70,7 @@ import {
   managedConnectorAccessSlug$,
   setManagedConnectorAccessSlug$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -82,7 +82,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   Input,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { i18n } from "../../i18n/index.ts";
 
 function connectorCategoryTranslation(

@@ -134,7 +134,7 @@ fi
 # -----------------------------------------------------------------------------
 echo "8. Running database migrations..."
 cd "$TURBO_DIR"
-if pnpm --filter @vm0/db db:migrate; then
+if pnpm --filter @okouai/db db:migrate; then
   echo -e "${GREEN}   Database migrations complete${NC}"
 else
   echo -e "${RED}   Error: Database migrations failed${NC}"

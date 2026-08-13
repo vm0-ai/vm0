@@ -1,5 +1,51 @@
 # Changelog
 
+## [8.553.3](https://github.com/vm0-ai/vm0/compare/core-v8.553.2...core-v8.553.3) (2026-08-13)
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.327.3
+
+## [8.553.2](https://github.com/vm0-ai/vm0/compare/core-v8.553.1...core-v8.553.2) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.2
+
+## [8.553.1](https://github.com/vm0-ai/vm0/compare/core-v8.553.0...core-v8.553.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.1
+
+## [8.553.0](https://github.com/vm0-ai/vm0/compare/core-v8.552.2...core-v8.553.0) (2026-08-13)
+
+
+### Features
+
+* **core:** enable meta ads connector globally ([#26764](https://github.com/vm0-ai/vm0/issues/26764)) ([80d5479](https://github.com/vm0-ai/vm0/commit/80d54798c6810dc0dcbd318c03c96e10c76c7c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.0
+
 ## [8.552.2](https://github.com/vm0-ai/vm0/compare/core-v8.552.1...core-v8.552.2) (2026-08-13)
 
 

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import type { ArtifactSummary } from "@vm0/api-contracts/contracts/artifact-catalog";
+import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";

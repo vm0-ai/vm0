@@ -2,7 +2,7 @@ import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Loader2, AlertCircle, CircleCheck, ArrowLeft } from "lucide-react";
-import { Button, BrandSlack } from "@vm0/ui";
+import { Button, BrandSlack } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";

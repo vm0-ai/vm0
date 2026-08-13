@@ -7,9 +7,9 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Menu, Package, Share2, UserPlus } from "lucide-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { Button, cn } from "@vm0/ui";
+import { Button, cn } from "@okouai/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";

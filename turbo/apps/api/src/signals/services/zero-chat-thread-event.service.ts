@@ -5,14 +5,14 @@ import type {
   ChatThreadServiceTier,
   ChatThreadSnapshotProjection,
   CodexServiceTier,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import {
   chatThreadEventSequences,
   chatThreadEvents,
   type ChatThreadEventKind,
-} from "@vm0/db/schema/chat-thread-event";
-import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
+} from "@okouai/db/schema/chat-thread-event";
+import { chatThreadSnapshots } from "@okouai/db/schema/chat-thread-snapshot";
 
 import type { ReadonlyDb } from "../external/db";
 import type { Tx } from "../../lib/db-types";
@@ -142,6 +142,12 @@ export async function getChatThreadSnapshot(
           serviceTier: thread.serviceTier ?? null,
           computerUseHostId: thread.computerUseHostId ?? null,
           cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
+          // Rollout fallback: snapshot rows compacted before this migration
+          // carry no selectedVideoModel key. Bounded by the compaction
+          // staleness cutoff (CHAT_THREAD_SNAPSHOT_STALE_MS, 24h) plus batch
+          // drain, not by a deploy window. Remove once every snapshot row has
+          // been recompacted. Follow-up:
+          // https://github.com/vm0-ai/vm0/issues/26765
           selectedVideoModel: thread.selectedVideoModel ?? null,
         };
       }) ?? [],

@@ -5,7 +5,7 @@ import {
   MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES,
   MAX_PRESENTATION_TEMPLATE_PAGES,
   presentationTemplateImportErrorCodeSchema,
-} from "@vm0/api-contracts/contracts/zero-presentation-templates";
+} from "@okouai/api-contracts/contracts/zero-presentation-templates";
 import { Command, InvalidArgumentError } from "commander";
 
 import { ApiRequestError } from "../../../lib/api/core/client-factory";

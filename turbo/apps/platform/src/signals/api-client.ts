@@ -9,7 +9,7 @@ import type {
   AppRouter,
   InitClientArgs,
   InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import { authRecovery$ } from "./auth.ts";
 import {
   resolveApiBase,

@@ -1,7 +1,7 @@
 import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 export type ReplayChatThreadEvent = Omit<ChatThreadEvent, "seqId">;
 
@@ -135,6 +135,14 @@ function applyEvent(
   });
 }
 
+/**
+ * Rollout fallback: `selectedVideoModel` is optional on the wire, so a snapshot
+ * or event from an API deployed before this change (DB/API skew, observed max
+ * ~102min) or from an IndexedDB row an older bundle wrote (old web clients,
+ * ~2d) arrives without it and must replay as an unset pin. Remove with the
+ * contract's optional marker once the client floor passes the build that
+ * introduced the field. Follow-up: https://github.com/vm0-ai/vm0/issues/26765
+ */
 export function replayChatThreadEvents(
   snapshot: readonly ChatThreadSnapshotProjection[],
   events: readonly ReplayChatThreadEvent[],

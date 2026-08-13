@@ -1,5 +1,5 @@
 {
-  "name": "@vm0/api-services",
+  "name": "@okouai/api-services",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -20,8 +20,8 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",

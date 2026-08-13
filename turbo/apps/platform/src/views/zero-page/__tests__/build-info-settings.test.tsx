@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";

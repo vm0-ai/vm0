@@ -10,7 +10,10 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
     let mut bootstrap_env = HashMap::from([
         ("BASH_ENV".to_string(), "super-secret-bash-env".to_string()),
         ("NORMAL_KEY".to_string(), "normal-secret-value".to_string()),
-        ("VM0_RUN_ID".to_string(), "runner-secret-value".to_string()),
+        (
+            guest_contracts::env::RUN_ID_ENV.to_string(),
+            "runner-secret-value".to_string(),
+        ),
         (
             "VM0_SECRET_VALUES".to_string(),
             "stored-secret-value".to_string(),
@@ -65,7 +68,7 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
     );
     assert!(rendered.contains("BASH_ENV"));
     assert!(rendered.contains("BIG_VALUE"));
-    assert!(rendered.contains("VM0_RUN_ID"));
+    assert!(rendered.contains(guest_contracts::env::RUN_ID_ENV));
     assert!(!rendered.contains("super-secret-bash-env"));
     assert!(!rendered.contains("user-secret-bash-env"));
     assert!(!rendered.contains("largest-secret-value"));

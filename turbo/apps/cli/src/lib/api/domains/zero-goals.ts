@@ -1,10 +1,10 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   zeroGoalsContract,
   type ZeroGoalCreateRequest,
   type ZeroGoalEditRequest,
   type ZeroGoalResponse,
-} from "@vm0/api-contracts/contracts/zero-goals";
+} from "@okouai/api-contracts/contracts/zero-goals";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function createGoal(

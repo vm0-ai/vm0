@@ -2,8 +2,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import {
   chatEventTerminalPredicate,
   chatEvents,
-} from "@vm0/db/schema/chat-event";
-import type { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/chat-event";
+import type { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import type { Db } from "../external/db";
 

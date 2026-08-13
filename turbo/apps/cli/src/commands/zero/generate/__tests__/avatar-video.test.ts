@@ -84,7 +84,8 @@ describe("okou generate avatar-video command", () => {
 
     avatarVideoCommand.outputHelp();
 
-    expect(helpOutput).toContain("Built-in workflow (vm0 credits):");
+    expect(helpOutput).toContain("Provider: 'built-in' to use Okou credits");
+    expect(helpOutput).toContain("Built-in workflow (Okou credits):");
     expect(helpOutput).toContain(
       "okou generate avatar-video --provider built-in --list-avatars",
     );
@@ -95,6 +96,10 @@ describe("okou generate avatar-video command", () => {
     expect(helpOutput).toContain("okou connector status joggai");
     expect(helpOutput).toContain(
       "okou generate avatar-video --provider joggai",
+    );
+    expect(helpOutput).toContain('--script "Welcome to Okou"');
+    expect(helpOutput).toContain(
+      "Built-in generation uses Okou-managed JoggAI credentials",
     );
   });
 

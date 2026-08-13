@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
+import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
 import { accept } from "../../lib/accept.ts";
 import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { zeroClient$ } from "../api-client.ts";
