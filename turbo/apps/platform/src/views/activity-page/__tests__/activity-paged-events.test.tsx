@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -111,9 +112,9 @@ describe("activity paged events", () => {
     await secondPageStarted.promise;
 
     expect(screen.queryByText("Page one content")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Test Agent" }),
-    ).not.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "Test Agent" }),
+    ).resolves.toBeInTheDocument();
 
     releaseSecondPage.resolve();
 
@@ -240,6 +241,7 @@ describe("activity paged events", () => {
 
   it("polls until the terminal event watermark is visible and then stops", async () => {
     let requestCount = 0;
+    const requestedSequences: (number | undefined)[] = [];
 
     context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
@@ -247,8 +249,9 @@ describe("activity paged events", () => {
     });
     context.mocks.api(
       zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
+      ({ query, respond }) => {
         requestCount++;
+        requestedSequences.push(query.since);
         if (requestCount === 1) {
           return respond(200, {
             events: [makeAssistantEvent(0, "Running event")],
@@ -260,7 +263,7 @@ describe("activity paged events", () => {
         }
         if (requestCount === 2) {
           return respond(200, {
-            events: [makeAssistantEvent(0, "Running event")],
+            events: [],
             hasMore: false,
             framework: "claude-code",
             status: "completed",
@@ -268,10 +271,7 @@ describe("activity paged events", () => {
           } satisfies AgentEventsResponse);
         }
         return respond(200, {
-          events: [
-            makeAssistantEvent(0, "Running event"),
-            makeAssistantEvent(1, "Final indexed event"),
-          ],
+          events: [makeAssistantEvent(1, "Final indexed event")],
           hasMore: false,
           framework: "claude-code",
           status: "completed",
@@ -289,6 +289,154 @@ describe("activity paged events", () => {
     expect(finalEvent).toBeInTheDocument();
     expect(screen.getByText("Running event")).toBeInTheDocument();
     expect(requestCount).toBe(3);
+    expect(requestedSequences).toStrictEqual([undefined, 0, 0]);
+  });
+
+  it("polls safely while waiting for the first indexed event", async () => {
+    let requestCount = 0;
+    const requestedSequences: (number | undefined)[] = [];
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "running" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ query, respond }) => {
+        requestCount++;
+        requestedSequences.push(query.since);
+        if (requestCount === 1) {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+            status: "running",
+            lastEventSequence: null,
+          } satisfies AgentEventsResponse);
+        }
+        return respond(200, {
+          events: [makeAssistantEvent(0, "First indexed event")],
+          hasMore: false,
+          framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 0,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    await expect(
+      screen.findByText("First indexed event"),
+    ).resolves.toBeInTheDocument();
+    expect(requestedSequences).toStrictEqual([undefined, undefined]);
+  });
+
+  it("stops polling a terminal run when an event gap never closes", async () => {
+    let requestCount = 0;
+    const requestedSequences: (number | undefined)[] = [];
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "completed" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ query, respond }) => {
+        requestCount++;
+        requestedSequences.push(query.since);
+        return respond(200, {
+          events:
+            query.since === undefined
+              ? [makeAssistantEvent(0, "Only indexed event")]
+              : [],
+          hasMore: false,
+          framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 2,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    await setupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    expect(screen.getByText("Only indexed event")).toBeInTheDocument();
+    expect(requestCount).toBe(31);
+    expect(requestedSequences[0]).toBeUndefined();
+    expect(
+      requestedSequences.slice(1).every((sequence) => {
+        return sequence === 0;
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps activity details visible while the event route rolls out", async () => {
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "completed" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Route not found" },
+        });
+      },
+    );
+
+    await setupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Test Agent" }),
+    ).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").map((tab) => {
+        return tab.textContent?.trim();
+      }),
+    ).toStrictEqual(["Steps", "Context", "Runner", "Network"]);
+  });
+
+  it("keeps activity details visible when event loading fails", async () => {
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "completed" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(500, {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Event storage unavailable",
+          },
+        });
+      },
+    );
+
+    await setupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Test Agent" }),
+    ).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").map((tab) => {
+        return tab.textContent?.trim();
+      }),
+    ).toStrictEqual(["Steps", "Context", "Runner", "Network"]);
   });
 
   it("starts a fresh event poller when navigating between activity runs", async () => {

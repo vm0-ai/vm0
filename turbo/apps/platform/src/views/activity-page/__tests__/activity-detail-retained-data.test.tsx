@@ -138,6 +138,9 @@ describe("activity retained diagnostic data", () => {
         screen.getByRole("heading", { name: "Checkout Export" }),
       ).toBeInTheDocument();
     });
+    await expect(
+      screen.findByText("Checkout diagnostics exported"),
+    ).resolves.toBeInTheDocument();
 
     click(screen.getByLabelText("Download raw data"));
     await waitFor(() => {

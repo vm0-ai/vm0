@@ -48,7 +48,6 @@ import {
   zeroActivityVisibleGroups$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
-  activityEventsPollerRef$,
   formatLogTime,
   formatDuration,
   currentRunId$,
@@ -504,7 +503,8 @@ function ActivityStepsContent({
   const visibleGroupsLoading =
     visibleGroupsLoadable.state === "loading" ||
     (visibleGroupsLoadable.state === "hasData" &&
-      visibleGroupsLoadable.data.runId !== detail.id);
+      (visibleGroupsLoadable.data.runId !== detail.id ||
+        visibleGroupsLoadable.data.loading));
   const { prompt, showSystemPrompt, appendSystemPrompt } = prepareRenderData(
     detail,
     features,
@@ -1070,7 +1070,6 @@ function ActivityDetailContent({
 
 export function ZeroActivityDetailPage() {
   const { t } = useTranslation();
-  const activityEventsPollerRef = useSet(activityEventsPollerRef$);
   const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
@@ -1092,7 +1091,7 @@ export function ZeroActivityDetailPage() {
     eventsLoadable.state === "hasData" &&
     eventsLoadable.data?.runId === currentRunId
       ? eventsLoadable.data.events
-      : null;
+      : [];
 
   if (!detail || isStale) {
     if (detailLoadable.state === "hasError") {
@@ -1102,18 +1101,12 @@ export function ZeroActivityDetailPage() {
   }
 
   return (
-    <div key={currentRunId} ref={activityEventsPollerRef} className="contents">
-      {events === null ? (
-        <ActivitySkeleton />
-      ) : (
-        <ActivityDetailContent
-          detail={detail}
-          displayName={displayName}
-          events={events}
-          features={features}
-        />
-      )}
-    </div>
+    <ActivityDetailContent
+      detail={detail}
+      displayName={displayName}
+      events={events}
+      features={features}
+    />
   );
 }
 
