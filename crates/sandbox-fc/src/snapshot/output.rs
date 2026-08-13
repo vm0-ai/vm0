@@ -28,7 +28,7 @@ pub enum SnapshotOutputValidation {
     Complete,
     /// A required artifact or the completion marker is absent.
     MissingFile(PathBuf),
-    /// A required snapshot artifact exists but is not a regular file.
+    /// A required snapshot artifact or the completion marker is not a regular file.
     NotRegularFile(PathBuf),
     /// The completion marker exists but does not contain the exact expected bytes.
     InvalidCompleteMarker(PathBuf),
@@ -101,6 +101,21 @@ pub async fn validate_snapshot_output(
     output: &SnapshotOutputPaths,
 ) -> io::Result<SnapshotOutputValidation> {
     let marker = output.complete_marker();
+    match tokio::fs::symlink_metadata(&marker).await {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Ok(_) => return Ok(SnapshotOutputValidation::NotRegularFile(marker)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return Ok(SnapshotOutputValidation::MissingFile(marker));
+        }
+        Err(e) => {
+            return Err(io_error_with_path(
+                "stat snapshot complete marker",
+                &marker,
+                e,
+            ));
+        }
+    }
+
     match tokio::fs::read(&marker).await {
         Ok(content) if content == SNAPSHOT_COMPLETE_MARKER_CONTENT => {}
         Ok(_) => return Ok(SnapshotOutputValidation::InvalidCompleteMarker(marker)),
@@ -662,16 +677,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn validate_snapshot_output_propagates_marker_read_errors() {
+    async fn validate_snapshot_output_reports_non_regular_marker() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
         tokio::fs::create_dir_all(output.complete_marker())
             .await
             .expect("create marker directory");
 
+        assert_eq!(
+            validate_snapshot_output(&output)
+                .await
+                .expect("validate directory marker"),
+            SnapshotOutputValidation::NotRegularFile(output.complete_marker())
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_snapshot_output_rejects_symlinked_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        let target = dir.path().join("complete-marker-target");
+        tokio::fs::write(&target, SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write marker symlink target");
+        std::os::unix::fs::symlink(&target, output.complete_marker())
+            .expect("create complete marker symlink");
+
+        assert_eq!(
+            validate_snapshot_output(&output)
+                .await
+                .expect("validate symlinked marker"),
+            SnapshotOutputValidation::NotRegularFile(output.complete_marker())
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_snapshot_output_propagates_marker_metadata_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output_dir = dir.path().join("snapshot-output");
+        std::os::unix::fs::symlink("snapshot-output", &output_dir)
+            .expect("create output directory symlink loop");
+        let output = SnapshotOutputPaths::new(output_dir);
+
         let err = validate_snapshot_output(&output)
             .await
-            .expect_err("marker directory should fail to read as marker content");
+            .expect_err("marker metadata should fail through a symlink loop");
+        assert!(
+            err.to_string().contains("stat snapshot complete marker"),
+            "error should include metadata action: {err}"
+        );
         assert!(
             err.to_string()
                 .contains(&output.complete_marker().display().to_string()),
