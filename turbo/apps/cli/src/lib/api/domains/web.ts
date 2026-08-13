@@ -254,6 +254,7 @@ interface GenerateWebImageResult {
   contentType: string;
   size: number;
   url: string;
+  embedUrl?: string;
   creditsCharged: number;
   model: string;
   provider: string;
