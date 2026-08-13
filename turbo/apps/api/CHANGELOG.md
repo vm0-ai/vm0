@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.440.2](https://github.com/vm0-ai/vm0/compare/api-v1.440.1...api-v1.440.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **api:** respect canonical model policy order ([#26749](https://github.com/vm0-ai/vm0/issues/26749)) ([056f63e](https://github.com/vm0-ai/vm0/commit/056f63ecb43baef69f975aa4b51144a04de57ef7))
+* **chat:** enable snapshot object garbage collection ([#26751](https://github.com/vm0-ai/vm0/issues/26751)) ([4d8f49b](https://github.com/vm0-ai/vm0/commit/4d8f49b6153a7fb601db4027c7a77b1396e3b98e))
+
+
+### Refactoring
+
+* remove feedback location rollout compatibility ([#26752](https://github.com/vm0-ai/vm0/issues/26752)) ([4a65c75](https://github.com/vm0-ai/vm0/commit/4a65c75f8c3b2256b6dbbbb6a4150888436539b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.2
+    * @vm0/core bumped to 8.552.2
+    * @vm0/db bumped to 1.197.5
+    * @vm0/pi-agent-runtime bumped to 1.4.2
+
 ## [1.440.1](https://github.com/vm0-ai/vm0/compare/api-v1.440.0...api-v1.440.1) (2026-08-12)
 
 
