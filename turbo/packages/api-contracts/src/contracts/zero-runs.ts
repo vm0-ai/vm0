@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   executionFirewallBuiltinEntrySchema,
+  executionFirewallInlineEntrySchema,
   networkPoliciesSchema,
 } from "@okouai/connectors/firewall-types";
 import {
@@ -114,7 +115,9 @@ export const zeroRunsQueueContract = c.router({
 });
 
 /**
- * Run context snapshot — sanitized execution context for debugging.
+ * Run context snapshot — launch-time execution context for debugging.
+ * Environment secret values are redacted. Firewall auth retains the prepared
+ * execution templates, including secret references, but never resolves them.
  * Dynamic fields (environment, firewalls, volumes, artifact) are stored in Axiom.
  * Static fields (prompt, vars, secretNames) are merged from agent_runs at query time.
  */
@@ -151,6 +154,7 @@ const runContextSanitizedFirewallSchema = z.object({
 
 const runContextFirewallSchema = z.union([
   executionFirewallBuiltinEntrySchema,
+  executionFirewallInlineEntrySchema,
   runContextSanitizedFirewallSchema,
 ]);
 
@@ -172,7 +176,7 @@ export const runContextResponseSchema = z.object({
 
 /**
  * Zero run context contract (GET /api/okou/runs/:id/context)
- * Returns sanitized execution context snapshot for debugging
+ * Returns a launch-time execution context snapshot for debugging
  */
 export const zeroRunContextContract = c.router({
   getContext: {

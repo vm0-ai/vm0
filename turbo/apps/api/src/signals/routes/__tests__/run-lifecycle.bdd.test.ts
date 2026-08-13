@@ -10237,6 +10237,42 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(customApi.auth?.query?.scope).toBe(
       `\${{ secrets.${scopeVariableKey} }}`,
     );
+    const runContextSnapshot = runContextSnapshotForRun(run.runId);
+    expect(runContextSnapshot.firewalls).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "inline",
+          name: internalName,
+          customConnectorId: saved.connector.id,
+          apis: expect.arrayContaining([
+            expect.objectContaining({
+              base: `https://xn--mnich-kva.${rand}.test/v1/`,
+              auth: {
+                headerEntries: [
+                  {
+                    name: "Authorization",
+                    value: `Bearer \${{ secrets.${secretKey} }}`,
+                  },
+                ],
+                queryEntries: [
+                  {
+                    name: "tenant",
+                    value: `\${{ secrets.${variableKey} }}`,
+                  },
+                  {
+                    name: "scope",
+                    value: `\${{ secrets.${scopeVariableKey} }}`,
+                  },
+                ],
+              },
+            }),
+          ]),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(runContextSnapshot)).not.toContain(
+      "runtime-proposal-secret",
+    );
 
     const authBody = {
       encryptedSecrets: fw.encryptedSecretsBody({}),
@@ -11074,6 +11110,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     ).toContain("zendesk");
     expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
+      kind: "builtin",
+      name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    });
+    expect(runContextSnapshotForRun(run.runId).firewalls).toContainEqual({
       kind: "builtin",
       name: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },

@@ -108,7 +108,17 @@ interface DecisionPermission {
 }
 
 type RunContextFirewall = RunContextResponse["firewalls"][number];
-type RunContextInlineFirewall = Extract<RunContextFirewall, { apis: unknown }>;
+type RunContextBuiltinFirewall = Extract<
+  RunContextFirewall,
+  { kind: "builtin" }
+>;
+type RunContextExecutionInlineFirewall = Extract<
+  RunContextFirewall,
+  { kind: "inline" }
+>;
+type RunContextInlineFirewall =
+  | Extract<RunContextFirewall, { apis: unknown }>
+  | RunContextExecutionInlineFirewall["firewall"];
 type RunContextInlinePermission =
   RunContextInlineFirewall["apis"][number]["permissions"] extends
     | readonly (infer Permission)[]
@@ -457,7 +467,7 @@ function configFromInlineRunContext(
 }
 
 function completeRunBaseUrlVars(
-  firewall: Exclude<RunContextFirewall, { apis: unknown }>,
+  firewall: RunContextBuiltinFirewall,
   requiredNames: readonly string[],
 ): Readonly<Record<string, string>> | null {
   if (requiredNames.length === 0) {
@@ -475,6 +485,12 @@ function completeRunBaseUrlVars(
     values[name] = value;
   }
   return values;
+}
+
+function runContextFirewallName(firewall: RunContextFirewall): string {
+  return "kind" in firewall && firewall.kind === "inline"
+    ? firewall.firewall.name
+    : firewall.name;
 }
 
 async function loadRunRoutingConfigs(
@@ -501,11 +517,18 @@ async function loadRunRoutingConfigs(
 
   const configs: ConnectorCheckRoutingConfig[] = [];
   for (const firewall of runContext.firewalls) {
-    if (!snapshot.serverFirewalls.has(firewall.name)) {
+    const firewallName = runContextFirewallName(firewall);
+    if (!snapshot.serverFirewalls.has(firewallName)) {
       continue;
     }
-    const connectorSlug = firewall.name;
+    const connectorSlug = firewallName;
     const view = await loadView(connectorSlug);
+    if ("kind" in firewall && firewall.kind === "inline") {
+      configs.push(
+        configFromInlineRunContext(firewall.firewall, connectorSlug, view),
+      );
+      continue;
+    }
     if ("apis" in firewall) {
       configs.push(configFromInlineRunContext(firewall, connectorSlug, view));
       continue;
