@@ -273,16 +273,21 @@ impl WorkspaceCacheWatcher {
         }
         let entries = std::fs::read_dir(self.cache.workspace_image_cache_dir())
             .map_err(|error| watcher_io_error("scan entries", error.kind()))?;
-        for entry in entries {
+        for entry in entries.take(MAX_HELD_WORKSPACE_STATES) {
             if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
                 break;
             }
-            let entry = entry.map_err(|error| watcher_io_error("read entry", error.kind()))?;
-            if !entry
-                .file_type()
-                .map_err(|error| watcher_io_error("read entry type", error.kind()))?
-                .is_dir()
-            {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(watcher_io_error("read entry", error.kind())),
+            };
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(watcher_io_error("read entry type", error.kind())),
+            };
+            if !file_type.is_dir() {
                 continue;
             }
             let Some(cache_key) = entry.file_name().to_str().map(str::to_owned) else {

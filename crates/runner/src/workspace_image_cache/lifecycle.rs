@@ -689,7 +689,7 @@ impl WorkspaceImageCache {
                 };
             }
             Err(e) => {
-                warn!(path = %root.display(), error = %e, "failed to scan workspace image cache");
+                warn!(error = %e, "failed to scan workspace image cache");
                 return HeldWorkspaceStateScan {
                     states: cap_held_workspace_states(states),
                     locked_commit_keys,

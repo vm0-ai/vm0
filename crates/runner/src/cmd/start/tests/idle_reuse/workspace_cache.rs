@@ -67,6 +67,21 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     let before_publication = env.handle.heartbeat_count();
 
+    let invalid_cache_key = "d".repeat(64);
+    let invalid_staging = home
+        .workspace_image_cache_dir()
+        .with_file_name("invalid-workspace-cache-staging");
+    tokio::fs::create_dir_all(&invalid_staging).await.unwrap();
+    tokio::fs::write(invalid_staging.join("metadata.json"), b"{}")
+        .await
+        .unwrap();
+    tokio::fs::rename(
+        &invalid_staging,
+        home.workspace_image_cache_dir().join(invalid_cache_key),
+    )
+    .await
+    .unwrap();
+
     let reuse_key = "thread:external-workspace-cache";
     let expected_workspace = WorkspaceCacheCapability {
         profile: "vm0/default".to_string(),
@@ -96,10 +111,13 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
         .await,
         "external publication should be advertised without the routine heartbeat tick",
     );
+    assert_eq!(
+        env.handle.heartbeat_count(),
+        before_publication + 1,
+        "invalid cache events must not create an extra provider heartbeat",
+    );
 
     let before_removal = env.handle.heartbeat_count();
-    let held = publisher_cache.held_workspace_states().await;
-    assert_eq!(held.len(), 1);
     let cache_key = crate::paths::scoped_workspace_image_cache_key(
         &group,
         "vm0/default",
@@ -107,13 +125,21 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
         api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
         16 * 1024 * 1024,
     );
-    tokio::fs::remove_file(
-        home.workspace_image_cache_dir()
-            .join(cache_key)
-            .join("metadata.json"),
+    let metadata = home
+        .workspace_image_cache_dir()
+        .join(cache_key)
+        .join("metadata.json");
+    let duplicate_metadata = metadata.with_extension("duplicate");
+    tokio::fs::write(
+        &duplicate_metadata,
+        tokio::fs::read(&metadata).await.unwrap(),
     )
     .await
     .unwrap();
+    tokio::fs::rename(&duplicate_metadata, &metadata)
+        .await
+        .unwrap();
+    tokio::fs::remove_file(&metadata).await.unwrap();
 
     assert!(
         wait_heartbeat_matching_after(
@@ -129,6 +155,11 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
         )
         .await,
         "external removal should promptly withdraw the advertised capability",
+    );
+    assert_eq!(
+        env.handle.heartbeat_count(),
+        before_removal + 1,
+        "duplicate unchanged publication must coalesce with the effective removal",
     );
 
     shutdown(&env, run_handle).await;
@@ -172,24 +203,55 @@ async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tic
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
-    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let cache_root = config.paths.home.workspace_image_cache_dir();
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let home = config.paths.home.clone();
+    let group = config.runner.group.clone();
+    let cache_root = home.workspace_image_cache_dir();
     tokio::fs::write(&cache_root, b"not a directory")
         .await
         .unwrap();
     let workspace_cache = WorkspaceImageCache::shared(
         RunnerPaths::new(config.paths.base_dir.clone()),
-        &config.paths.home,
-        &config.runner.group,
+        &home,
+        &group,
     );
     Arc::get_mut(&mut config.exec_config)
         .unwrap()
-        .workspace_cache = Some(workspace_cache);
+        .workspace_cache = Some(workspace_cache.clone());
 
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    tokio::fs::remove_file(cache_root).await.unwrap();
+    let runner_paths = RunnerPaths::new(env._temp_dir.path().join("fallback-publisher"));
+    tokio::fs::create_dir_all(runner_paths.base_dir())
+        .await
+        .unwrap();
+    let publisher_cache = WorkspaceImageCache::shared(runner_paths.clone(), &home, &group);
+    seed_workspace_cache_state(
+        &publisher_cache,
+        &runner_paths,
+        "thread:routine-fallback",
+        "vm0/default",
+        1024 * 1024,
+    )
+    .await;
+    let before = env.handle.heartbeat_count();
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    assert!(
+        wait_heartbeat_matching_after(&env.handle, before, Duration::from_secs(5), |heartbeat| {
+            heartbeat
+                .held_workspace_states
+                .iter()
+                .any(|state| state.reuse_key == "thread:routine-fallback")
+        })
+        .await,
+        "routine heartbeat must converge after watcher setup failure",
+    );
 
     shutdown(&env, run_handle).await;
 }
