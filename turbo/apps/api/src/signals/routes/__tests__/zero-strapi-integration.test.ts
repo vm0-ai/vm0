@@ -13,7 +13,10 @@ import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { chatEventAutomationPart } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { zeroStrapiIntegrationsRoutes } from "../zero-strapi-integrations";
@@ -536,6 +539,9 @@ describe("Strapi integration", () => {
     expect(
       chatEventAutomationPart(runsForAutomation[0]!)?.automationBrief,
     ).toContain("(2 locales)");
+    expect(chatEventDisplayText(runsForAutomation[0]!)).toBe(
+      'Strapi entry "article-document-1" was published in Marketing CMS.',
+    );
 
     const runId = runsForAutomation[0]?.runId;
     if (!runId) {
@@ -543,12 +549,15 @@ describe("Strapi integration", () => {
     }
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(runId);
-    expect(claim.appendSystemPrompt).toContain('"locales": [');
-    expect(claim.appendSystemPrompt).toContain('"en"');
-    expect(claim.appendSystemPrompt).toContain('"zh-CN"');
-    expect(claim.appendSystemPrompt).not.toContain(
+    expect(claim.prompt).toContain('"locales": [');
+    expect(claim.prompt).toContain('"en"');
+    expect(claim.prompt).toContain('"zh-CN"');
+    expect(claim.prompt).not.toContain(
       createdIntegration.body.authorizationHeader,
     );
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
+    expect(claim.appendSystemPrompt).not.toContain("# This run's event");
 
     const nextPublishStartedAt = publishStartedAt + 47_000;
     mockNow(nextPublishStartedAt);

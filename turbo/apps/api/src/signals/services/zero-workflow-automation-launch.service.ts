@@ -102,7 +102,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly prompt: string;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
-  readonly appendSystemPrompt: string;
+  readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
   readonly autonomyBudget: number;
@@ -118,7 +118,7 @@ interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArg
 
 interface WorkflowAutomationRunInput {
   readonly prompt: string;
-  readonly appendSystemPrompt: string;
+  readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
 }
@@ -227,14 +227,14 @@ export function scheduleTriggerContext(args: {
 }
 
 function appendComputerUseSystemPrompt(
-  prompt: string,
+  prompt: string | undefined,
   grant: ComputerUseHostGrant,
-): string {
+): string | undefined {
   if (!grant) {
     return prompt;
   }
   return [
-    prompt,
+    ...(prompt ? [prompt] : []),
     "# Computer Use",
     `Computer Use is enabled for this run on ${grant.displayName}.`,
   ].join("\n\n");
