@@ -23,7 +23,7 @@ export function readGlobalCss(): string {
 
 /**
  * Reads the design system's global stylesheet as text, so a test can compare
- * what the platform declares against what `@vm0/ui` already ships.
+ * what the platform declares against what `@okouai/ui` already ships.
  */
 export function readUiGlobalCss(): string {
   const candidates = [

@@ -226,6 +226,11 @@ async fn rejects_invalid_env_entries_before_submit() {
             "runner-owned environment variables",
         ),
         (
+            vec!["OKOU_RUN_ID=user-controlled".to_string()],
+            Vec::new(),
+            "runner-owned environment variables",
+        ),
+        (
             Vec::new(),
             vec!["CLI_AGENT_TYPE=codex".to_string()],
             "runner-owned environment variables",

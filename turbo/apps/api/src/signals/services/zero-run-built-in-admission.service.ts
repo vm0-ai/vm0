@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
+import { runBuiltInAdmissions } from "@okouai/db/schema/run-built-in-admission";
 import { and, count, eq, lte, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";

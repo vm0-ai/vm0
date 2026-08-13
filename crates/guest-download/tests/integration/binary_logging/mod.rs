@@ -48,10 +48,12 @@ impl BinaryLoggingFixture {
 
     pub(super) fn command(&self) -> Command {
         let mut command = guest_download_command();
-        command.env("VM0_RUN_ID", &self.run_id).env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            &self.logs.runtime_dir,
-        );
+        command
+            .env(guest_contracts::env::RUN_ID_ENV, &self.run_id)
+            .env(
+                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                &self.logs.runtime_dir,
+            );
         command
     }
 

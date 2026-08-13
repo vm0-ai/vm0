@@ -12,7 +12,7 @@ import {
 import type {
   ZeroBrowserStatus,
   ZeroBrowserSuspensionReason,
-} from "@vm0/api-contracts/contracts/zero-browser";
+} from "@okouai/api-contracts/contracts/zero-browser";
 
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";

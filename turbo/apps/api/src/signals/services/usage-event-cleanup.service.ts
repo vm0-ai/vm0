@@ -1,6 +1,6 @@
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usageEventHourlyRollup } from "@okouai/db/schema/usage-event-hourly-rollup";
 import { eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";

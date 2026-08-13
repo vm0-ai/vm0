@@ -99,7 +99,7 @@ jobs:
             args+=(--org-id "$ORG_ID")
           fi
           cd turbo
-          pnpm --filter @vm0/db exec tsx \
+          pnpm --filter @okouai/db exec tsx \
             scripts/migrations/011-backfill-acquisition-attribution/backfill.ts \
             "${args[@]}"
 

@@ -4,8 +4,8 @@ import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
-import { deviceCodes } from "@vm0/db/schema/device-codes";
+} from "@okouai/api-contracts/contracts/cli-auth";
+import { deviceCodes } from "@okouai/db/schema/device-codes";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

@@ -42,6 +42,20 @@ describe("okou github upload-file command", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("uses Okou branding in upload help while preserving repository examples", () => {
+    let helpOutput = "";
+    uploadFileCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    uploadFileCommand.outputHelp();
+
+    expect(helpOutput).toContain("Uploads through Okou storage first");
+    expect(helpOutput).toContain("vm0-ai/vm0");
+  });
+
   it("uploads a file to R2 and posts a GitHub file comment", async () => {
     let putReceivedContentType: string | null = null;
     let completeBody: Record<string, unknown> | undefined;

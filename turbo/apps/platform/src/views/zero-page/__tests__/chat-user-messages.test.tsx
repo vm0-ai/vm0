@@ -7,11 +7,14 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { ILLUSTRATION_TEMPLATE_ITEMS, VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { logsListContract } from "@vm0/api-contracts/contracts/logs";
-import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+} from "@okouai/core";
+import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { logsListContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroBrowserContract } from "@okouai/api-contracts/contracts/zero-browser";
 
 import {
   detachedSetupPage,
@@ -167,12 +170,13 @@ describe("user messages", () => {
     // title that repeats the spec. No dialog opens from this variant.
     const reference = await screen.findByTitle(
       `Video \u00b7 ${templateItem.title} \u00b7 ` +
-        "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
+        "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p",
     );
     expect(reference.tagName).toBe("SPAN");
-    // Every parameter is echoed, not only the one the user changed.
+    // Every parameter is echoed, not only the one the user changed. Audio is
+    // the exception: it stays in the detail dialog below.
     expect(reference).toHaveTextContent(
-      "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
+      "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p",
     );
 
     await user.click(reference);

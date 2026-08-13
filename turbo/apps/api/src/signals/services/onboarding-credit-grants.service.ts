@@ -1,5 +1,5 @@
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { sql } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

@@ -1,6 +1,6 @@
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
+import { usageAllowanceAllocations } from "@okouai/db/schema/org-usage-allowance";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usageEventHourlyRollup } from "@okouai/db/schema/usage-event-hourly-rollup";
 import { command } from "ccstate";
 import {
   and,

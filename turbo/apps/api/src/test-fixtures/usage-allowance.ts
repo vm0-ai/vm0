@@ -8,7 +8,7 @@
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
-} from "@vm0/db/schema/org-usage-allowance";
+} from "@okouai/db/schema/org-usage-allowance";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 

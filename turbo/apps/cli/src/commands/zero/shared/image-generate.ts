@@ -3,8 +3,11 @@ import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api/domains/web";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
-import { findImageStyle, listImageStyles } from "@vm0/core/resource-registry";
-import { imageModelOutputFormats } from "@vm0/core/image-model-output-formats";
+import {
+  findImageStyle,
+  listImageStyles,
+} from "@okouai/core/resource-registry";
+import { imageModelOutputFormats } from "@okouai/core/image-model-output-formats";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
@@ -220,7 +223,7 @@ export function createImageGenerateCommand(
     )
     .option(
       "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+      "Provider: 'built-in' to run Okou's pipeline, or a connector name to get its skill-invocation guidance",
     )
     .option(
       "--all",

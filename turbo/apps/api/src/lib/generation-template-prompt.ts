@@ -7,23 +7,23 @@ import {
   resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import {
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,
-} from "@vm0/core/website-template-items";
-import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
+} from "@okouai/core/website-template-items";
+import { findWorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import {
   parseAvatarTemplateStylePresetId,
   readAvatarTemplateOptions,
   type AvatarTemplateOptions,
-} from "@vm0/core/avatar-template";
+} from "@okouai/core/avatar-template";
 import {
   DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
   type VideoModelConfig,
-} from "@vm0/core/video-model-catalog";
-import type { VideoGenerationOptions } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/core/video-model-catalog";
+import type { VideoGenerationOptions } from "@okouai/api-contracts/contracts/chat-threads";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";

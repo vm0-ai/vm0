@@ -7,11 +7,11 @@ import {
   zeroBillingUsagePackMigrationContract,
   type MemberUsagePack,
   type UsagePackCatalogItem,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { adAttributionMetadataSchema } from "@vm0/api-contracts/contracts/zero-attribution";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/zero-attribution";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";

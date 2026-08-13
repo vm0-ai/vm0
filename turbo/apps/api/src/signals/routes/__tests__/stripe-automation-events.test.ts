@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { testStripeAutomationEventFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-automation-events";
-import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import { testStripeAutomationEventFixtureContract } from "@okouai/api-contracts/contracts/test-stripe-automation-events";
+import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 

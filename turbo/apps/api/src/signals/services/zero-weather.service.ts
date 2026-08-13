@@ -5,7 +5,7 @@ import {
   type ZeroWeatherForecastHourlyRequest,
   type ZeroWeatherHistoryHourlyRequest,
   type ZeroWeatherConditionsResponse,
-} from "@vm0/api-contracts/contracts/zero-weather";
+} from "@okouai/api-contracts/contracts/zero-weather";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";

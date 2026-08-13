@@ -1,29 +1,29 @@
 import {
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { command } from "ccstate";
 import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
-} from "@vm0/api-contracts/contracts/test-runtime-state";
-import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
+} from "@okouai/api-contracts/contracts/test-runtime-state";
+import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
   browserSessionTabSnapshots,
   browserSessions,
-} from "@vm0/db/schema/browser-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { hostedSites } from "@vm0/db/schema/hosted-site";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/browser-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { hostedSites } from "@okouai/db/schema/hosted-site";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
 import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";

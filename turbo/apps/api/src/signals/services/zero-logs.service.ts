@@ -6,17 +6,17 @@ import {
   type LogStatus,
   type LogsFilters,
   type TriggerSource,
-} from "@vm0/api-contracts/contracts/logs";
-import { isSupportedFramework } from "@vm0/core/frameworks";
+} from "@okouai/api-contracts/contracts/logs";
+import { isSupportedFramework } from "@okouai/core/frameworks";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { conversations } from "@vm0/db/schema/conversation";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { conversations } from "@okouai/db/schema/conversation";
 import {
   and,
   count,

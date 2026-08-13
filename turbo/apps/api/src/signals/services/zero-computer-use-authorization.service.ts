@@ -5,17 +5,17 @@ import { and, eq, isNull } from "drizzle-orm";
 import type {
   ComputerUseAuthorizationSource,
   ComputerUseHostListResponse,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   computerUseAuthorizationRequests,
   computerUseHosts,
-} from "@vm0/db/schema/computer-use-host";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/computer-use-host";
+import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
+import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";

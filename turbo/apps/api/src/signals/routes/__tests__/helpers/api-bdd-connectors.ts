@@ -10,21 +10,21 @@ import type {
   ConnectorOauthStartResponse,
   ConnectorResponse,
   ScopeDiffResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
-import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
+import { githubOauthContract } from "@okouai/api-contracts/contracts/github-oauth";
 import {
   integrationsGithubContract,
   type GithubInstallationResponse,
-} from "@vm0/api-contracts/contracts/integrations-github";
+} from "@okouai/api-contracts/contracts/integrations-github";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
@@ -39,8 +39,8 @@ import {
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
   type UpdateCustomConnectorBody,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorExternalCodeSessionContract,
@@ -51,7 +51,7 @@ import {
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
   type ConnectorSearchResponse,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 import { http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
 import { z } from "zod";

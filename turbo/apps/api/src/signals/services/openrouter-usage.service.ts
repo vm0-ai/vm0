@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, eq, inArray } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 

@@ -8,7 +8,7 @@
 
 - **main branch is always stable** - All code merged to main has passed CI (build + tests). If your branch fails to build or pass tests, the issue is in your branch code, not main.
 - **Use the API dev script for local development with external callbacks** - Run `cd turbo && pnpm -F api dev` to start the API server and its public tunnel.
-- **Run `pnpm -F @vm0/db db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
+- **Run `pnpm -F @okouai/db db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
 - **Run `scripts/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
 - **Run `scripts/prepare.sh` when local dev or tests fail unexpectedly** - Before debugging test failures, verify your environment is set up correctly. This script checks Node.js, pnpm, PostgreSQL, syncs env files, installs dependencies, runs migrations, and seeds dev data.
 - **API endpoints live in `apps/api`** - Implement every new or changed API endpoint in `turbo/apps/api` (Hono, `apps/api/src/signals/routes/`). Frontend apps must not add API route handlers or thin proxy route handlers. Browser clients should call the canonical API service directly. When a `/api/*` path must stay reachable on a frontend origin (external webhooks or OAuth callbacks), configure it in that frontend's active deployment layer while keeping the handler in `turbo/apps/api`.
@@ -170,9 +170,9 @@ The root `lefthook.yml` selects formatting and static checks from staged file pa
 1. **Run one vitest process at a time** - Wait for it to fully exit before starting the next. Never launch parallel vitest processes.
 2. **Prefer workspace-scoped testing** - Instead of running all tests with `pnpm vitest`, target a specific workspace for faster, isolated runs:
    ```
-   pnpm -F @vm0/app exec vitest
+   pnpm -F @okouai/app exec vitest
    ```
-   Replace `@vm0/app` with the workspace name relevant to your changes (e.g. `@vm0/okou-cli`, `api`).
+   Replace `@okouai/app` with the workspace name relevant to your changes (e.g. `@okouai/cli`, `api`).
 3. **Limit full-suite worker concurrency** - When an all-workspace run is necessary, cap file workers to avoid resource-contention timeouts:
    ```
    pnpm vitest run --maxWorkers=4 --silent=passed-only

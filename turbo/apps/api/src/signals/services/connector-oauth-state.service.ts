@@ -1,5 +1,5 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { and, eq, gt, isNotNull, isNull, type SQL } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

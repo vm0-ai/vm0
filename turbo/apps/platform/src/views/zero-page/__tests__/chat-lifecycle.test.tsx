@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/zero-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {

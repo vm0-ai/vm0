@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 
 import { requiredAuthContext$, setAuthContext$ } from "../auth/auth-context";
 import { createPlatformUserRealtimeToken } from "../external/realtime";

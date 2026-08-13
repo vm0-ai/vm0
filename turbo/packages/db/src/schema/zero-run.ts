@@ -10,7 +10,7 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
 import { zeroWorkflowAutomations } from "./zero-workflow";

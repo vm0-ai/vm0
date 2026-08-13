@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
@@ -15,10 +15,7 @@ import {
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
 import { receiveActiveChatEvents$ } from "./chat-event-signal-registry.ts";
-import {
-  allUnreadThreadIds$,
-  sidebarActiveThreadIds$,
-} from "./chat-thread-indicators.ts";
+import { allUnreadThreadIds$ } from "./chat-thread-indicators.ts";
 import {
   chatEventDebugSummaries,
   chatEventTraceTime,
@@ -26,6 +23,7 @@ import {
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
+const BACKGROUND_UNREAD_THREAD_LIMIT = 10;
 const THREAD_START_SEQ_ID = 0;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -205,10 +203,13 @@ const catchUpUnreadChatThreadEvents$ = command(
     await foregroundReady.promise;
     signal.throwIfAborted();
 
-    const unreadThreadIds = await get(allUnreadThreadIds$);
+    const unreadThreadIds = Array.from(await get(allUnreadThreadIds$)).slice(
+      0,
+      BACKGROUND_UNREAD_THREAD_LIMIT,
+    );
     signal.throwIfAborted();
     await Promise.all(
-      Array.from(unreadThreadIds, (threadId) => {
+      unreadThreadIds.map((threadId) => {
         return set(
           handleUserChannelMessage$,
           { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
@@ -234,17 +235,17 @@ const subscribeChatEventBackgroundSync$ = command(
   },
 );
 
-const syncInitialUnreadAndActiveChatThreadEvents$ = command(
+const syncInitialUnreadChatThreadEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const [unreadThreadIds, activeThreadIds] = await Promise.all([
-      get(allUnreadThreadIds$),
-      get(sidebarActiveThreadIds$),
-    ]);
+    const unreadThreadIds = await get(allUnreadThreadIds$);
     signal.throwIfAborted();
 
-    const threadIds = new Set([...unreadThreadIds, ...activeThreadIds]);
+    const threadIds = Array.from(unreadThreadIds).slice(
+      0,
+      BACKGROUND_UNREAD_THREAD_LIMIT,
+    );
     await Promise.all(
-      Array.from(threadIds, (threadId) => {
+      threadIds.map((threadId) => {
         return set(
           handleUserChannelMessage$,
           { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
@@ -259,7 +260,7 @@ export const setupChatEventBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await Promise.all([
       set(subscribeChatEventBackgroundSync$, signal),
-      set(syncInitialUnreadAndActiveChatThreadEvents$, signal),
+      set(syncInitialUnreadChatThreadEvents$, signal),
     ]);
   },
 );

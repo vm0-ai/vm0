@@ -1,38 +1,38 @@
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   zeroBrowserContract,
   type ZeroBrowserSession,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";

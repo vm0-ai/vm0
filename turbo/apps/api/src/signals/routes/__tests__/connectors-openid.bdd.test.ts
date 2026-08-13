@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
+import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsBySlugContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { zeroSteamPlayerContract } from "@okouai/api-contracts/contracts/zero-steam-player";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 

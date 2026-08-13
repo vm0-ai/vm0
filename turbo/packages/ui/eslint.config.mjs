@@ -1,4 +1,4 @@
-import { config, oxlint } from "@vm0/eslint-config/react-internal";
+import { config, oxlint } from "@okouai/eslint-config/react-internal";
 
 /** @type {import("eslint").Linter.Config} */
 export default [

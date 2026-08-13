@@ -1,14 +1,14 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import {
   IMAGE_OUTPUT_FORMATS,
   imageModelOutputFormats,
   type ImageOutputFormat,
-} from "@vm0/core/image-model-output-formats";
+} from "@okouai/core/image-model-output-formats";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { env } from "../../lib/env";

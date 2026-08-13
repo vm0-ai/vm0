@@ -1,4 +1,4 @@
-import type { StripeAutomationEventSnapshot } from "@vm0/db/jsonb-contracts/stripe-automation-event";
+import type { StripeAutomationEventSnapshot } from "@okouai/db/jsonb-contracts/stripe-automation-event";
 import { sql } from "drizzle-orm";
 import {
   boolean,

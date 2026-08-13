@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   zeroWorkflowAutomations,
   zeroWorkflowWebhookAutomations,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";

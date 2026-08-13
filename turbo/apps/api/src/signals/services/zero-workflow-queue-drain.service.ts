@@ -1,7 +1,7 @@
 import {
   zeroWorkflows,
   zeroWorkflowAutomations,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/log";

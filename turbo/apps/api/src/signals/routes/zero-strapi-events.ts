@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { zeroStrapiEventsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import { zeroStrapiEventsContract } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";

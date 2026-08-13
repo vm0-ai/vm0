@@ -4,17 +4,17 @@ import { command, computed, type Computed } from "ccstate";
 import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { hostedDeployments } from "@vm0/db/schema/hosted-site";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { hostedDeployments } from "@okouai/db/schema/hosted-site";
 import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/run-uploaded-file";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq, exists, or } from "drizzle-orm";
 import { z } from "zod";
 import { ZipArchive } from "archiver";

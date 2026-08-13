@@ -5,14 +5,14 @@ import type {
   ChatThreadServiceTier,
   ChatThreadSnapshotProjection,
   CodexServiceTier,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import {
   chatThreadEventSequences,
   chatThreadEvents,
   type ChatThreadEventKind,
-} from "@vm0/db/schema/chat-thread-event";
-import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
+} from "@okouai/db/schema/chat-thread-event";
+import { chatThreadSnapshots } from "@okouai/db/schema/chat-thread-snapshot";
 
 import type { ReadonlyDb } from "../external/db";
 import type { Tx } from "../../lib/db-types";

@@ -26,7 +26,7 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
         crate::common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
         std::env::set_var("VM0_API_TOKEN", "test-token-abc123");
-        std::env::set_var("VM0_RUN_ID", TEST_RUN_ID);
+        std::env::set_var(guest_contracts::env::RUN_ID_ENV, TEST_RUN_ID);
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             MOCK_RUNTIME_DIR.as_os_str(),

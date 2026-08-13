@@ -2,7 +2,7 @@ import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageAssets,
   ChatSlackMessageFiles,
-} from "@vm0/db/jsonb-contracts/chat-slack-context";
+} from "@okouai/db/jsonb-contracts/chat-slack-context";
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";

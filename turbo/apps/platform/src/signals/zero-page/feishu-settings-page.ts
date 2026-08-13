@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { i18n } from "../../i18n/index.ts";
 import { ZeroFeishuSettingsPage } from "../../views/zero-page/feishu-card.tsx";

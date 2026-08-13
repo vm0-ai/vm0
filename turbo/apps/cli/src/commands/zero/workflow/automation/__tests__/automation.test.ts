@@ -17,7 +17,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { zeroWorkflowCommand } from "../../index";
 import { automationCommand, createAutomationAddCommand } from "../index";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";

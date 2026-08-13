@@ -30,10 +30,10 @@ function apiRuntimeWorkspaceDependencyPaths(): string[] {
 
   return Object.entries(apiPackage.dependencies ?? {})
     .filter(([name, specifier]) => {
-      return name.startsWith("@vm0/") && specifier === "workspace:*";
+      return name.startsWith("@okouai/") && specifier === "workspace:*";
     })
     .map(([name]) => {
-      return `turbo/packages/${name.replace("@vm0/", "")}`;
+      return `turbo/packages/${name.replace("@okouai/", "")}`;
     });
 }
 

@@ -18,7 +18,7 @@ import {
   CLIENT_TYPE_CLI,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";

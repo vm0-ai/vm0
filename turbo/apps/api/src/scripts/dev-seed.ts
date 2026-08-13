@@ -4,18 +4,18 @@ import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
-import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
-import { resolveSkillRef } from "@vm0/core/github-url";
+import { VM0_MODEL_TO_PROVIDER } from "@okouai/api-contracts/contracts/model-providers";
+import { resolveSkillRef } from "@okouai/core/github-url";
 import {
   getSkillStorageName,
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { GOAL_SKILL_NAME, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { skills } from "@vm0/db/schema/skill";
-import { storages } from "@vm0/db/schema/storage";
+} from "@okouai/core/storage-names";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@okouai/core/zero-seed-skills";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
+import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { skills } from "@okouai/db/schema/skill";
+import { storages } from "@okouai/db/schema/storage";
 import { createStore } from "ccstate";
 
 import { closeDbPool, db } from "../lib/db";

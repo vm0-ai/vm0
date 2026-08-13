@@ -6,8 +6,8 @@ import {
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";

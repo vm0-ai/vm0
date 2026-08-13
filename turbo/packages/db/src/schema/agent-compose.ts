@@ -8,7 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import type { AgentComposeVersionContent } from "@vm0/db/jsonb-contracts/agent-compose";
+import type { AgentComposeVersionContent } from "@okouai/db/jsonb-contracts/agent-compose";
 /**
  * Agent Composes table
  * Metadata table for agent composes with HEAD pointer to current version

@@ -1,4 +1,4 @@
-import { presentationTemplates } from "@vm0/db/schema/presentation-template";
+import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

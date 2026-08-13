@@ -5,8 +5,8 @@ import {
   type HostedSiteFilesResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
-} from "@vm0/api-contracts/contracts/zero-host";
-import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
+} from "@okouai/api-contracts/contracts/zero-host";
+import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

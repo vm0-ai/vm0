@@ -1,9 +1,9 @@
 /**
  * Tests for computer-use command registration and visibility.
  *
- * Entry point: registerZeroCommands()
+ * Entry points: registerZeroCommands(), formatComputerUseResultForConsole()
  * Mock (external): none
- * Real (internal): Command registration, capability checking
+ * Real (internal): Command registration, capability checking, filesystem output
  */
 
 import {
@@ -24,6 +24,7 @@ import {
   formatComputerUseResultForConsole,
   zeroComputerUseCommand,
 } from "../index";
+import { computerUseOutputDir } from "../output-artifacts";
 import { registerZeroCommands } from "../../../../okou";
 
 let testOutputDir = "";
@@ -85,7 +86,7 @@ describe("computer-use command visibility", () => {
 
   beforeEach(async () => {
     testOutputDir = await mkdtemp(path.join(tmpdir(), "computer-use-output-"));
-    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", testOutputDir);
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", testOutputDir);
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -199,15 +200,91 @@ describe("computer-use command visibility", () => {
     zeroComputerUseCommand.outputHelp();
 
     expect(helpOutput).toContain("Workflow:");
+    expect(helpOutput).toContain(
+      "Start the Okou Desktop app and make sure Computer Use is online",
+    );
     expect(helpOutput).toContain("okou computer-use list-apps");
     expect(helpOutput).toContain(
       "okou computer-use get-app-state --app <bundleId>",
     );
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
-    expect(helpOutput).toContain("/tmp/vm0/computer-use");
+    expect(helpOutput).toContain("/tmp/okou/computer-use");
     expect(helpOutput).toContain("overwrites the same files");
     expect(helpOutput).toContain("shift+semicolon");
     expect(helpOutput).toContain("Control_L+J");
+    expect(helpOutput).not.toContain("Zero Desktop");
+  });
+
+  it("should use Okou Desktop branding in plugin help", () => {
+    const pluginCommand = zeroComputerUseCommand.commands.find((command) => {
+      return command.name() === "plugin";
+    });
+    const filesystemCommand = pluginCommand?.commands.find((command) => {
+      return command.name() === "filesystem";
+    });
+    const mcpCommand = pluginCommand?.commands.find((command) => {
+      return command.name() === "mcp";
+    });
+    expect(filesystemCommand).toBeDefined();
+    expect(mcpCommand).toBeDefined();
+
+    let filesystemHelpOutput = "";
+    filesystemCommand!.configureOutput({
+      writeOut: (text: string) => {
+        filesystemHelpOutput += text;
+      },
+    });
+    filesystemCommand!.outputHelp();
+
+    let mcpHelpOutput = "";
+    mcpCommand!.configureOutput({
+      writeOut: (text: string) => {
+        mcpHelpOutput += text;
+      },
+    });
+    mcpCommand!.outputHelp();
+
+    expect(filesystemHelpOutput).toContain(
+      "Use the Okou Desktop filesystem plugin",
+    );
+    expect(filesystemHelpOutput).toContain(
+      "List directories enabled in Okou Desktop",
+    );
+    expect(mcpHelpOutput).toContain(
+      "Use custom MCP servers configured in the Okou Desktop app",
+    );
+    expect(`${filesystemHelpOutput}\n${mcpHelpOutput}`).not.toContain(
+      "Zero Desktop",
+    );
+  });
+
+  it("should prefer the trimmed canonical output directory", () => {
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
+    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", path.join(testOutputDir, "legacy"));
+
+    expect(computerUseOutputDir()).toBe(testOutputDir);
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["blank", " \t "],
+  ])(
+    "should use the trimmed legacy output directory when the canonical variable is %s",
+    (_case, canonical) => {
+      vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", canonical);
+      vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
+
+      expect(computerUseOutputDir()).toBe(testOutputDir);
+    },
+  );
+
+  it("should default computer-use artifacts to the Okou temp directory", () => {
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", undefined);
+    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", undefined);
+
+    expect(computerUseOutputDir()).toBe(
+      path.join(tmpdir(), "okou", "computer-use"),
+    );
   });
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
@@ -235,6 +312,9 @@ describe("computer-use command visibility", () => {
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Computer Use authorization required");
     expect(errorOutput).toContain(
+      "ask the user to select an Okou Desktop host for this chat or Slack thread",
+    );
+    expect(errorOutput).toContain(
       "okou connector permission-request computer-use --permission computer-use:write",
     );
     expect(errorOutput).toContain(
@@ -243,6 +323,7 @@ describe("computer-use command visibility", () => {
     expect(errorOutput).not.toContain(
       "403: Missing required capability: computer-use:write",
     );
+    expect(errorOutput).not.toContain("Zero Desktop");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -971,6 +1052,31 @@ describe("computer-use command visibility", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Lancy's Mac (online): notes, figma");
+  });
+
+  it("should guide empty mcp setup to Okou Desktop", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+
+    server.use(
+      http.get("http://localhost:3000/api/okou/computer-use/hosts", () => {
+        return HttpResponse.json({ hosts: [] });
+      }),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "plugin",
+      "mcp",
+      "list",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(
+      "Configure and enable them in the Okou Desktop app's Developer Tools section",
+    );
+    expect(output).not.toContain("Zero Desktop");
   });
 
   it("should download pointer-backed screenshots through the API proxy", async () => {

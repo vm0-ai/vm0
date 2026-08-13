@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadByIdContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

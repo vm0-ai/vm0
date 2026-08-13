@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.441.2](https://github.com/vm0-ai/vm0/compare/api-v1.441.1...api-v1.441.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **billing:** merge concurrency into plan subscription ([#26393](https://github.com/vm0-ai/vm0/issues/26393)) ([837a57d](https://github.com/vm0-ai/vm0/commit/837a57d8c302bdc0f96bb010866d01da52736f73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.2
+    * @vm0/core bumped to 8.553.2
+    * @vm0/db bumped to 1.197.8
+    * @vm0/pi-agent-runtime bumped to 1.4.5
+
+## [1.441.1](https://github.com/vm0-ai/vm0/compare/api-v1.441.0...api-v1.441.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.1
+    * @vm0/core bumped to 8.553.1
+    * @vm0/db bumped to 1.197.7
+    * @vm0/pi-agent-runtime bumped to 1.4.4
+
 ## [1.441.0](https://github.com/vm0-ai/vm0/compare/api-v1.440.2...api-v1.441.0) (2026-08-13)
 
 

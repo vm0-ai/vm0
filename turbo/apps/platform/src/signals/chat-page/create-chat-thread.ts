@@ -7,8 +7,8 @@ import {
   type State,
 } from "ccstate";
 import { delay, timeout } from "signal-timers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
 import { onRef, onRejection, resetSignal, setLoop, settle } from "../utils.ts";
@@ -60,14 +60,14 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
   type UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";

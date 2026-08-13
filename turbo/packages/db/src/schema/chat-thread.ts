@@ -11,13 +11,13 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
   ChatThreadDraftUserMessage,
-} from "@vm0/db/jsonb-contracts/chat-thread";
+} from "@okouai/db/jsonb-contracts/chat-thread";
 import { agentRuns, agentSessions } from "./agent-run-session-conversation";
 
 /**

@@ -1,4 +1,4 @@
-import { zeroSeoContract } from "@vm0/api-contracts/contracts/zero-seo";
+import { zeroSeoContract } from "@okouai/api-contracts/contracts/zero-seo";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

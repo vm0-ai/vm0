@@ -4,8 +4,8 @@ import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProviderAccountsByIdContract,
   type ResetPersonalModelProviderSubscriptionUsageResponse,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

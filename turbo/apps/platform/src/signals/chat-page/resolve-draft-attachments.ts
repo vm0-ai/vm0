@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import type { ResolvedAttachFile } from "@vm0/api-contracts/contracts/chat-threads";
-import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
+import type { ResolvedAttachFile } from "@okouai/api-contracts/contracts/chat-threads";
+import { getModelImageInputSupport } from "@okouai/api-contracts/contracts/model-providers";
 import type {
   DraftSignals,
   ZeroChatAttachment,

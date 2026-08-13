@@ -7,10 +7,10 @@ import {
   type UsageRecordSource,
   usageRecordKindSchema,
   usageRecordSourceSchema,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/zero-usage-record";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   asc,

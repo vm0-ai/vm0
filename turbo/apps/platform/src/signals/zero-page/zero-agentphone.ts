@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroIntegrationsAgentPhoneContract,
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
-} from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
+} from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";

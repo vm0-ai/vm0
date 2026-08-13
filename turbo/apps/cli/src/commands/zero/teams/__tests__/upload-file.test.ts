@@ -44,6 +44,19 @@ describe("okou teams upload-file command", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("uses Okou branding in upload help", () => {
+    let helpOutput = "";
+    uploadFileCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    uploadFileCommand.outputHelp();
+
+    expect(helpOutput).toContain("Uploads through Okou storage first");
+  });
+
   it("uploads a file to R2 and completes Teams delivery", async () => {
     let putReceivedContentType: string | null = null;
     let completeBody: Record<string, unknown> | undefined;
