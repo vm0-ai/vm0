@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { chatEventRowV4Schema } from "./chat-event-rows";
+import { chatEventRowSchema } from "./chat-event-rows";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
@@ -19,6 +20,9 @@ import {
 } from "./zero-avatar-video";
 
 const c = initContract();
+const chatEventReadHeadersSchema = authHeadersSchema.extend({
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string().optional(),
+});
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -1514,25 +1518,29 @@ export const chatSearchContract = c.router({
 export const chatThreadEventsContract = c.router({
   /**
    * Snapshot-read cold start: a presigned download for the thread's head
-   * archive object. The object is gzip NDJSON of chatEventRowV4Schema lines
+   * archive object. The object is gzip NDJSON of chatEventRowSchema lines
    * stored with `Content-Encoding: gzip`, so a browser fetch decompresses it
-   * transparently. 404 also covers threads whose head has not reached the
-   * current archive schema version yet.
+   * transparently. The request header selects the Chat Event schema version;
+   * a missing header temporarily means V5 for rollout compatibility.
    */
   snapshot: {
     method: "GET",
     path: "/api/okou/chat-threads/:threadId/event-snapshot",
-    headers: authHeadersSchema,
+    headers: chatEventReadHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     responses: {
       200: z.object({
         url: z.string().url(),
         expiresInSeconds: z.number().int().positive(),
+        lastEventId: z.string().uuid().optional(),
         lastSeqId: z.number().int().positive(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
+      426: apiErrorSchema,
     },
     summary: "Get a presigned download for the thread's chat event snapshot",
   },
@@ -1545,21 +1553,24 @@ export const chatThreadEventsContract = c.router({
   rows: {
     method: "GET",
     path: "/api/okou/chat-threads/:threadId/event-rows",
-    headers: authHeadersSchema,
+    headers: chatEventReadHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
       sinceSeqId: z.coerce.number().int().nonnegative(),
+      sinceEventId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {
       200: z.object({
-        rows: z.array(chatEventRowV4Schema),
+        rows: z.array(chatEventRowSchema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       410: apiErrorSchema,
+      426: apiErrorSchema,
     },
     summary: "Get raw chat event rows after a seq cursor",
   },

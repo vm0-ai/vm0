@@ -1,8 +1,13 @@
 import { command } from "ccstate";
 import {
-  chatEventRowV4Schema,
-  type ChatEventRowV4,
+  chatEventRowSchema,
+  type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -11,8 +16,24 @@ import { logger } from "../log.ts";
 const L = logger("ChatEventRowRemote");
 export const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 
+const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+    CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+});
+
+function assertChatEventSchemaVersion(headers: Headers): void {
+  const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
+  // Old API deployments do not echo the header during the rollout overlap.
+  if (
+    version !== null &&
+    version !== CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()
+  ) {
+    throw new Error(`Unexpected Chat Event schema version ${version}`);
+  }
+}
+
 type ChatEventRowsPage =
-  | { readonly kind: "rows"; readonly rows: readonly ChatEventRowV4[] }
+  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
   | { readonly kind: "expired" };
 
 export const listRowsAfter$ = command(
@@ -20,15 +41,20 @@ export const listRowsAfter$ = command(
     { get },
     {
       threadId,
-      sinceSeqId,
-    }: { readonly threadId: string; readonly sinceSeqId: number },
+      cursor,
+    }: { readonly threadId: string; readonly cursor: ChatEventCursor },
     signal: AbortSignal,
   ): Promise<ChatEventRowsPage> => {
     const client = get(zeroClient$)(chatThreadEventsContract);
     const result = await accept(
       client.rows({
+        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
         params: { threadId },
-        query: { sinceSeqId, limit: CHAT_EVENT_ROWS_PAGE_LIMIT },
+        query: {
+          sinceSeqId: cursor.lastSeqId,
+          sinceEventId: cursor.lastEventId ?? undefined,
+          limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+        },
         fetchOptions: { signal },
       }),
       [200, 410],
@@ -36,13 +62,14 @@ export const listRowsAfter$ = command(
       { showErrorToast: false },
     );
     signal.throwIfAborted();
+    assertChatEventSchemaVersion(result.headers);
     if (result.status === 410) {
-      L.debug("listRowsAfter$: cursor expired", { threadId, sinceSeqId });
+      L.debug("listRowsAfter$: cursor expired", { threadId, cursor });
       return { kind: "expired" };
     }
     L.debug("listRowsAfter$", {
       threadId,
-      sinceSeqId,
+      cursor,
       count: result.body.rows.length,
     });
     return { kind: "rows", rows: result.body.rows };
@@ -62,12 +89,14 @@ export const fetchChatEventSnapshotRows$ = command(
     threadId: string,
     signal: AbortSignal,
   ): Promise<{
-    readonly rows: readonly ChatEventRowV4[];
+    readonly rows: readonly ChatEventRow[];
+    readonly lastEventId: string | null;
     readonly lastSeqId: number;
   } | null> => {
     const client = get(zeroClient$)(chatThreadEventsContract);
     const download = await accept(
       client.snapshot({
+        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
         params: { threadId },
         fetchOptions: { signal },
       }),
@@ -75,6 +104,7 @@ export const fetchChatEventSnapshotRows$ = command(
       signal,
     );
     signal.throwIfAborted();
+    assertChatEventSchemaVersion(download.headers);
     if (download.status === 404) {
       L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
       return null;
@@ -95,13 +125,17 @@ export const fetchChatEventSnapshotRows$ = command(
       .slice(0, -1)
       .split("\n")
       .map((line) => {
-        return chatEventRowV4Schema.parse(JSON.parse(line));
+        return chatEventRowSchema.parse(JSON.parse(line));
       });
     L.debug("fetchChatEventSnapshotRows$", {
       threadId,
       count: rows.length,
       lastSeqId: download.body.lastSeqId,
     });
-    return { rows, lastSeqId: download.body.lastSeqId };
+    return {
+      rows,
+      lastEventId: download.body.lastEventId ?? rows.at(-1)?.id ?? null,
+      lastSeqId: download.body.lastSeqId,
+    };
   },
 );

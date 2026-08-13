@@ -771,6 +771,20 @@
       "when": 1786595337179,
       "tag": "0917_early_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 918,
+      "version": "7",
+      "when": 1786599434316,
+      "tag": "0918_chat_event_snapshot_version_pointers",
+      "breakpoints": true
+    },
+    {
+      "idx": 919,
+      "version": "7",
+      "when": 1786599682945,
+      "tag": "0919_chat_event_snapshot_cursor",
+      "breakpoints": true
     }
   ]
 }

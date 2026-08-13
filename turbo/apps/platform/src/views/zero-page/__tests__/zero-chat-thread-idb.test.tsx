@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -450,7 +450,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         seqId: 2,
         createdAt: "2026-03-10T00:00:02Z",
       },
-    ] satisfies ChatEventRowV4[];
+    ] satisfies ChatEventRow[];
     await Promise.all(
       cachedRows.map((row) => {
         return runtimeDb.put(CHAT_EVENT_ROWS_STORE, row);
@@ -545,7 +545,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         seqId: 3,
         createdAt: "2026-08-12T06:22:02.000Z",
       },
-    ] satisfies ChatEventRowV4[];
+    ] satisfies ChatEventRow[];
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {

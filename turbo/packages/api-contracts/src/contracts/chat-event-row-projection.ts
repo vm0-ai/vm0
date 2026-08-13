@@ -1,4 +1,4 @@
-import type { ChatEventRowV4 } from "./chat-event-rows";
+import type { ChatEventRow } from "./chat-event-rows";
 import { chatEventSchema, type ChatEvent } from "./chat-threads";
 
 function requiredRowField<T>(
@@ -19,7 +19,7 @@ function requiredRowField<T>(
  * control.interrupt target is emitted as interruptsRunId, never as run
  * ownership.
  */
-export function chatEventFromRow(row: ChatEventRowV4): ChatEvent {
+export function chatEventFromRow(row: ChatEventRow): ChatEvent {
   const payload = row.payload;
   const base = {
     id: row.id,
@@ -46,7 +46,7 @@ export function chatEventFromRow(row: ChatEventRowV4): ChatEvent {
     createdAt: row.createdAt,
   };
 
-  const candidates: Record<ChatEventRowV4["eventType"], () => unknown> = {
+  const candidates: Record<ChatEventRow["eventType"], () => unknown> = {
     "input.prompt": () => {
       return {
         ...base,

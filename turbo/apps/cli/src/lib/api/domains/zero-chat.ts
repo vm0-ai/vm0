@@ -15,7 +15,11 @@ import {
   type ChatSearchResponse,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
-import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
@@ -32,13 +36,18 @@ interface ZeroChatEventSnapshotDownload {
 }
 
 type ZeroChatEventRowsPage =
-  | { readonly kind: "rows"; readonly rows: readonly ChatEventRowV4[] }
+  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
   | { readonly kind: "expired" };
 
 interface ZeroQueuedChatEvent {
   readonly eventId: string;
   readonly seqId: number;
 }
+
+const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+    CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+});
 
 function requireSupportedModel(model: string) {
   if (!isSupportedRunModel(model)) {
@@ -217,6 +226,7 @@ export async function getZeroChatEventSnapshot(options: {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.snapshot({
+    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
     params: { threadId: options.threadId },
   });
   if (result.status === 200) {
@@ -236,6 +246,7 @@ export async function listZeroChatEventRows(options: {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.rows({
+    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
     params: { threadId: options.threadId },
     query: { sinceSeqId: options.sinceSeqId, limit: options.limit },
   });

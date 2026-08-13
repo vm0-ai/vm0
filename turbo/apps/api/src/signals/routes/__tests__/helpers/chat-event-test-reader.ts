@@ -1,5 +1,5 @@
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatEventSchema,
   chatThreadEventsContract,
@@ -13,7 +13,7 @@ import { zeroChatThreadRoutes } from "../../zero-chat-threads";
 const MAX_EVENT_ROWS_PER_PAGE = 50;
 
 export function projectChatEventRows(
-  rows: readonly ChatEventRowV4[],
+  rows: readonly ChatEventRow[],
 ): readonly ChatEvent[] {
   return rows.map((row) => {
     const serialized = JSON.stringify(chatEventFromRow(row));
@@ -38,7 +38,7 @@ export async function readProjectedChatEvents(
     chatThreadEventsContract,
   );
   const limit = args.limit ?? MAX_EVENT_ROWS_PER_PAGE;
-  const rows: ChatEventRowV4[] = [];
+  const rows: ChatEventRow[] = [];
   let sinceSeqId = args.sinceSeqId ?? 0;
 
   while (true) {

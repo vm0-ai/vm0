@@ -24,7 +24,7 @@ import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
-import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
+import { count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -1267,6 +1267,20 @@ async function chatEventFixtureActionResponse(
     return { status: 200 as const, body: { ok: true as const } };
   }
   if (body.action === "set-chat-event-snapshot-head-version") {
+    const [pointer] = await db
+      .select({ id: chatEventSnapshots.id })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .orderBy(
+        desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.createdAt),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!pointer) {
+      throw new Error("set-chat-event-snapshot-head-version missing pointer");
+    }
     const updated = await db
       .update(chatEventSnapshots)
       .set({
@@ -1275,16 +1289,11 @@ async function chatEventFixtureActionResponse(
           ? {}
           : { objectKey: body.object_key }),
       })
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, body.thread_id),
-          eq(chatEventSnapshots.isHead, true),
-        ),
-      )
+      .where(eq(chatEventSnapshots.id, pointer.id))
       .returning({ id: chatEventSnapshots.id });
     signal.throwIfAborted();
     if (updated.length === 0) {
-      throw new Error("set-chat-event-snapshot-head-version missing head");
+      throw new Error("set-chat-event-snapshot-head-version missing pointer");
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
@@ -1292,15 +1301,16 @@ async function chatEventFixtureActionResponse(
     db
       .select({
         archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        lastEventId: chatEventSnapshots.lastEventId,
         lastSeqId: chatEventSnapshots.lastSeqId,
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, body.thread_id),
-          eq(chatEventSnapshots.isHead, true),
-        ),
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .orderBy(
+        desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.createdAt),
       )
       .limit(1),
     db
@@ -1319,6 +1329,7 @@ async function chatEventFixtureActionResponse(
       chat_event_snapshot_head: head
         ? {
             archive_schema_version: head.archiveSchemaVersion,
+            last_event_id: head.lastEventId,
             last_seq_id: head.lastSeqId,
             object_key: head.objectKey,
             snapshot_count: snapshotCount.value,

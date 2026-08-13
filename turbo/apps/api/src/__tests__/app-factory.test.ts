@@ -1,6 +1,7 @@
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CLIENT_PRODUCT_HEADER,
   CLIENT_TYPE_APP,
   CLIENT_TYPE_CLI,
@@ -844,7 +845,7 @@ describe("createApp", () => {
           origin: "https://app.vm0.ai",
           "access-control-request-method": "GET",
           "access-control-request-headers":
-            "authorization,x-client-version,x-client-type,x-client-product,x-client-session-id,x-client-request-id",
+            "authorization,x-client-version,x-client-type,x-client-product,x-client-session-id,x-client-request-id,x-chat-event-schema-version",
         },
       });
 
@@ -864,6 +865,10 @@ describe("createApp", () => {
       expect(allowHeaders).toContain("X-Client-Product");
       expect(allowHeaders).toContain("X-Client-Session-Id");
       expect(allowHeaders).toContain("X-Client-Request-Id");
+      expect(allowHeaders).toContain(CHAT_EVENT_SCHEMA_VERSION_HEADER);
+      expect(
+        response.headers.get("access-control-expose-headers") ?? "",
+      ).toContain(CHAT_EVENT_SCHEMA_VERSION_HEADER);
     });
 
     it("answers preview preflight before enforcing the automation bypass", async () => {

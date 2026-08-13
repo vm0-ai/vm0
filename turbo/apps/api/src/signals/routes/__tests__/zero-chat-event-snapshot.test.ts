@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
-import { chatEventRowV4Schema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
@@ -27,6 +28,7 @@ import {
   installFakeChatEventR2,
   readFakeChatEventObject,
   writeFakeChatEventObject,
+  type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
 import {
   readChatEventSnapshotHead,
@@ -151,7 +153,9 @@ describe("chat event snapshot read endpoints", () => {
     installFakeChatEventR2(context);
   });
 
-  it("serves a presigned download only for a current-version head", async () => {
+  it("negotiates Snapshot versions without persisting downgraded pointers", async () => {
+    const recordedPuts: RecordedChatEventPut[] = [];
+    installFakeChatEventR2(context, recordedPuts);
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Snapshot download agent",
@@ -198,9 +202,11 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
+    expect(download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
     expect(download.body).toStrictEqual({
       url: FAKE_CHAT_EVENT_SNAPSHOT_URL,
       expiresInSeconds: 900,
+      lastEventId: head.last_event_id,
       lastSeqId: head.last_seq_id,
     });
 
@@ -213,7 +219,7 @@ describe("chat event snapshot read endpoints", () => {
       .trim()
       .split("\n")
       .map((line) => {
-        return chatEventFromRow(chatEventRowV4Schema.parse(JSON.parse(line)));
+        return chatEventFromRow(chatEventRowSchema.parse(JSON.parse(line)));
       });
     const archivedInput = archivedEvents.find((event) => {
       return event.eventType === "input.prompt";
@@ -232,18 +238,53 @@ describe("chat event snapshot read endpoints", () => {
       range: { start: 4, end: 13 },
     });
 
-    // Unsupported heads fail closed instead of entering a rewrite fallback.
-    await setChatEventSnapshotHeadVersion(context, threadId, 2);
-    await accept(
+    const downgraded = await accept(
       eventsClient().snapshot({
-        headers: authenticate(owner),
+        headers: {
+          ...authenticate(owner),
+          [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "4",
+        },
         params: { threadId },
       }),
-      [404],
+      [200],
     );
-    // The snapshot cron scope is global, so an unsupported head left behind
-    // would fail every later pass in the suite.
-    await setChatEventSnapshotHeadVersion(context, threadId, 5);
+    expect(downgraded.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("4");
+    expect(downgraded.body).toStrictEqual(download.body);
+    const downgradedPut = recordedPuts.at(-1);
+    if (downgradedPut === undefined) {
+      throw new Error("Expected a transient downgraded Snapshot object");
+    }
+    const downgradedEvents = gunzipSync(downgradedPut.body)
+      .toString("utf8")
+      .trim()
+      .split("\n")
+      .map((line) => {
+        return chatEventFromRow(chatEventRowSchema.parse(JSON.parse(line)));
+      });
+    const downgradedInput = downgradedEvents.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    if (downgradedInput?.eventType !== "input.prompt") {
+      throw new Error("Expected the downgraded feedback input");
+    }
+    expect(
+      downgradedInput.userMessage.parts.find((part) => {
+        return part.type === "feedback";
+      }),
+    ).toStrictEqual({
+      type: "feedback",
+      quote: "Snapshot feedback quote",
+      note: [{ type: "text", text: "Keep the canonical location." }],
+    });
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toMatchObject({
+      archive_schema_version: 5,
+      last_event_id: head.last_event_id,
+      last_seq_id: head.last_seq_id,
+      object_key: head.object_key,
+      snapshot_count: 1,
+    });
 
     const stranger = bdd.user({ orgId: `org_${randomUUID()}` });
     const strangerResponse = await accept(
@@ -258,6 +299,61 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
+  it("applies the same schema-version errors to Snapshot and Raw Event reads", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Schema negotiation agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `schema-negotiation-${randomUUID()}`,
+    });
+    const request = async (endpoint: "snapshot" | "rows", version: string) => {
+      const headers = {
+        ...authenticate(owner),
+        [CHAT_EVENT_SCHEMA_VERSION_HEADER]: version,
+      };
+      return endpoint === "snapshot"
+        ? await eventsClient().snapshot({ headers, params: { threadId } })
+        : await eventsClient().rows({
+            headers,
+            params: { threadId },
+            query: { sinceSeqId: 0 },
+          });
+    };
+    const cases = [
+      {
+        version: "invalid",
+        status: 400,
+        message: "Invalid Chat Event schema version",
+        code: "CHAT_EVENT_SCHEMA_VERSION_INVALID",
+      },
+      {
+        version: "3",
+        status: 426,
+        message: "The requested Chat Event schema version is retired",
+        code: "CHAT_EVENT_SCHEMA_VERSION_RETIRED",
+      },
+      {
+        version: "6",
+        status: 409,
+        message:
+          "The requested Chat Event schema version is newer than this API",
+        code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
+      },
+    ] as const;
+
+    for (const endpoint of ["snapshot", "rows"] as const) {
+      for (const testCase of cases) {
+        const response = await request(endpoint, testCase.version);
+        expect(response.status).toBe(testCase.status);
+        expect(response.body).toStrictEqual({
+          error: { message: testCase.message, code: testCase.code },
+        });
+      }
+    }
+  }, 60_000);
+
   it("serves projectable raw rows from sequence cursors", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
@@ -267,6 +363,19 @@ describe("chat event snapshot read endpoints", () => {
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       prompt: `${marker} first`,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: `${marker} first` },
+          {
+            type: "feedback",
+            quote: "Raw feedback quote",
+            note: [{ type: "text", text: "Keep the Raw Event location." }],
+            eventId: "raw-feedback-source-event",
+            range: { start: 2, end: 8 },
+          },
+        ],
+      },
     });
     await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
@@ -282,21 +391,76 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
-    const firstSeqId = fromStart.body.rows[0]?.seqId;
-    if (firstSeqId === undefined) {
+    expect(fromStart.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    const firstRow = fromStart.body.rows[0];
+    if (firstRow === undefined) {
       throw new Error("Expected seeded chat events");
     }
+    const firstSeqId = firstRow.seqId;
+
+    const v5Input = fromStart.body.rows
+      .map((row) => {
+        return chatEventFromRow(row);
+      })
+      .find((event) => {
+        return event.eventType === "input.prompt";
+      });
+    if (v5Input?.eventType !== "input.prompt") {
+      throw new Error("Expected the V5 feedback input");
+    }
+    expect(
+      v5Input.userMessage.parts.find((part) => {
+        return part.type === "feedback";
+      }),
+    ).toMatchObject({
+      type: "feedback",
+      eventId: "raw-feedback-source-event",
+      range: { start: 2, end: 8 },
+    });
+
+    const downgraded = await accept(
+      eventsClient().rows({
+        headers: {
+          ...authenticate(owner),
+          [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "4",
+        },
+        params: { threadId },
+        query: { sinceSeqId: 0 },
+      }),
+      [200],
+    );
+    expect(downgraded.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("4");
+    const v4Input = downgraded.body.rows
+      .map((row) => {
+        return chatEventFromRow(row);
+      })
+      .find((event) => {
+        return event.eventType === "input.prompt";
+      });
+    if (v4Input?.eventType !== "input.prompt") {
+      throw new Error("Expected the V4 feedback input");
+    }
+    expect(
+      v4Input.userMessage.parts.find((part) => {
+        return part.type === "feedback";
+      }),
+    ).toStrictEqual({
+      type: "feedback",
+      quote: "Raw feedback quote",
+      note: [{ type: "text", text: "Keep the Raw Event location." }],
+    });
 
     const rows = await accept(
       eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: { sinceSeqId: firstSeqId },
+        query: { sinceSeqId: firstSeqId, sinceEventId: firstRow.id },
       }),
       [200],
     );
+    expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
     for (const row of rows.body.rows) {
-      chatEventRowV4Schema.parse(row);
+      chatEventRowSchema.parse(row);
       expect(row.chatThreadId).toBe(threadId);
       expect(row).not.toHaveProperty("content");
       expect(row).not.toHaveProperty("userMessage");
@@ -332,6 +496,21 @@ describe("chat event snapshot read endpoints", () => {
 
     expect(fromStart.body.rows[0]?.seqId).toBe(firstSeqId);
     expect(fromStart.body.rows).toHaveLength(rows.body.rows.length + 1);
+
+    const mismatchedPair = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: { sinceSeqId: firstSeqId, sinceEventId: randomUUID() },
+      }),
+      [410],
+    );
+    expect(mismatchedPair.body).toStrictEqual({
+      error: {
+        message: "Chat events cursor has expired",
+        code: "CHAT_EVENTS_EXPIRED",
+      },
+    });
 
     const expired = await accept(
       eventsClient().rows({
@@ -399,53 +578,35 @@ describe("chat event snapshot read endpoints", () => {
     await api.requestCancelRun(owner, active.body.runId, [200]);
   }, 60_000);
 
-  it("immediately retires snapshot versions below the supported minimum", async () => {
+  it("preserves the only Snapshot when no lossless upgrade exists", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot version retirement agent",
+      displayName: "Snapshot fail-closed agent",
     });
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
-      prompt: `snapshot-version-retirement-${randomUUID()}`,
+      prompt: `snapshot-fail-closed-${randomUUID()}`,
     });
 
     await projectChatEventSearch(threadId);
     await runSnapshotCron([threadId]);
     const retiredKey = await replaceHeadWithRetiredVersion(threadId);
 
-    const retired = await runSnapshotCron([threadId]);
-    expect(retired.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(1);
-    expect(readFakeChatEventObject(retiredKey)).toBeUndefined();
-    const current = await readChatEventSnapshotHead(context, threadId);
-    expect(current).toMatchObject({
-      archive_schema_version: 5,
-      snapshot_count: 1,
-    });
-  }, 60_000);
-
-  it("keeps database retirement successful when R2 deletion fails", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot best-effort cleanup agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `snapshot-best-effort-${randomUUID()}`,
-    });
-
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const retiredKey = await replaceHeadWithRetiredVersion(threadId);
-    installFakeChatEventR2(context, undefined, undefined, () => {
-      return Promise.reject(new Error("R2 delete unavailable"));
-    });
-
-    const retired = await runSnapshotCron([threadId]);
-    expect(retired.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(1);
+    await expect(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(runSnapshotCron([threadId])).rejects.toThrow(
+      "Unknown response status 500",
+    );
     expect(readFakeChatEventObject(retiredKey)).toBeDefined();
-    const current = await readChatEventSnapshotHead(context, threadId);
-    expect(current).toMatchObject({
-      archive_schema_version: 5,
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toMatchObject({
+      archive_schema_version: 3,
+      object_key: retiredKey,
       snapshot_count: 1,
     });
   }, 60_000);

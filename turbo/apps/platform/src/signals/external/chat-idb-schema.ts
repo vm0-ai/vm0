@@ -1,49 +1,14 @@
 import type { IDBPDatabase } from "idb";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
-const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
-// The artifacts page reads its pages straight from the artifact catalog API, so
-// the mirrored artifact history is gone. Bumping the version drops the stores
-// from browser databases that still carry a full history from the old page.
-const ARTIFACT_CACHE_REMOVED_VERSION = 20;
-const CHAT_IDB_CHAT_EVENT_RESET_VERSION = 21;
-const CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION = 22;
-// userMessage is now the only source for persisted user-input rendering.
-// Rebuild every chat event cache so documents written by older App bundles
-// cannot reintroduce content-only events after the server migration.
-const CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION = 23;
-// input.prompt and input.rejected now require content=null. Rebuild persisted
-// event caches so strict reads cannot encounter the retired input projection.
-const CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION = 24;
-// ChatEvent origin metadata now arrives through one projection field instead
-// of the source-specific fields cached by older App bundles.
-const CHAT_IDB_ANNOTATION_CUTOVER_VERSION = 25;
-// Source, automation, and goal display metadata now lives inside userMessage.
-// Rebuild event caches that still carry the retired projection fields.
-const CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION = 26;
-// Morning Brief identity now lives in userMessage. Rebuild event caches whose
-// documents predate the dedicated non-content part.
-const CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION = 27;
-// Canonical ChatEvent reads no longer accept retired goal-marker or follow-up
-// payload shapes. Rebuild all event-bearing stores so v27 cache entries cannot
-// re-enter the v28 fold.
-const CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION = 28;
-// Raw chat_events rows were cached by the snapshot-read pipeline in v29. Since
-// v30 the store persists strict canonical v4 rows, so the upgrade drops any
-// earlier raw-row store before it can reach the canonical reader; the next
-// sync re-fetches from snapshot plus tail.
-const CHAT_IDB_CANONICAL_EVENT_ROWS_VERSION = 30;
-// Snapshot-backed canonical rows are now the only chat-event cache. Drop the
-// projected ChatEvent store left by the retired reader path.
-const CHAT_IDB_PROJECTED_EVENT_CACHE_REMOVAL_VERSION = 31;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_PROJECTED_EVENT_CACHE_REMOVAL_VERSION;
-const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
-const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
-const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
-const LEGACY_CHAT_MESSAGES_STORE = "chat_messages";
+/** Local cache shape changes bump this base; Chat Event requests add their version. */
+export const CHAT_IDB_CACHE_SCHEMA_VERSION_BASE = 31_000;
 
-export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
+export const CHAT_IDB_VERSION =
+  CHAT_IDB_CACHE_SCHEMA_VERSION_BASE + CURRENT_CHAT_EVENT_SCHEMA_VERSION;
 export const CHAT_EVENT_ROWS_STORE = "chat_events";
 export const CHAT_EVENT_ROWS_ORDER_INDEX = "byThreadAndSeq";
+export const CHAT_EVENT_CURSOR_STORE = "chat_event_cursors";
 export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
@@ -54,6 +19,10 @@ function createChatEventRowsStore(db: IDBPDatabase): void {
   store.createIndex(CHAT_EVENT_ROWS_ORDER_INDEX, ["chatThreadId", "seqId"], {
     unique: true,
   });
+}
+
+function createChatEventCursorStore(db: IDBPDatabase): void {
+  db.createObjectStore(CHAT_EVENT_CURSOR_STORE, { keyPath: "threadId" });
 }
 
 function createChatThreadSnapshotStore(db: IDBPDatabase): void {
@@ -73,84 +42,21 @@ function createChatThreadEventSyncStore(db: IDBPDatabase): void {
   db.createObjectStore(CHAT_THREAD_EVENT_SYNC_STORE, { keyPath: "id" });
 }
 
-function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
-  if (db.objectStoreNames.contains(storeName)) {
+function deleteLocalCacheStores(db: IDBPDatabase): void {
+  for (const storeName of Array.from(db.objectStoreNames)) {
     db.deleteObjectStore(storeName);
   }
 }
 
-function deleteLocalCacheStores(db: IDBPDatabase): void {
-  deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-  deleteChatThreadEventStores(db);
-  deleteArtifactCacheStores(db);
-  deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
-}
-
-function deleteChatThreadEventStores(db: IDBPDatabase): void {
-  deleteObjectStoreIfExists(db, CHAT_THREAD_SNAPSHOT_STORE);
-  deleteObjectStoreIfExists(db, CHAT_THREAD_EVENTS_STORE);
-  deleteObjectStoreIfExists(db, CHAT_THREAD_EVENT_SYNC_STORE);
-}
-
-function deleteArtifactCacheStores(db: IDBPDatabase): void {
-  deleteObjectStoreIfExists(db, LEGACY_ARTIFACT_ITEMS_STORE);
-  deleteObjectStoreIfExists(db, LEGACY_ARTIFACT_SYNC_STORE);
-}
-
 export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
-  if (oldVersion < CHAT_IDB_SEQ_ID_RESET_VERSION) {
+  if (oldVersion > 0 && oldVersion < CHAT_IDB_VERSION) {
     deleteLocalCacheStores(db);
-  } else if (oldVersion < ARTIFACT_CACHE_REMOVED_VERSION) {
-    deleteArtifactCacheStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_CHAT_EVENT_RESET_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-  }
-
-  if (oldVersion < CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION) {
-    deleteChatThreadEventStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-    deleteChatThreadEventStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-    deleteChatThreadEventStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_ANNOTATION_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-    deleteChatThreadEventStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-    deleteChatThreadEventStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-    deleteChatThreadEventStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
-    deleteChatThreadEventStores(db);
-  }
-
-  if (oldVersion < CHAT_IDB_CANONICAL_EVENT_ROWS_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_EVENT_ROWS_STORE);
-  }
-
-  if (oldVersion < CHAT_IDB_PROJECTED_EVENT_CACHE_REMOVAL_VERSION) {
-    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
   }
   if (!db.objectStoreNames.contains(CHAT_EVENT_ROWS_STORE)) {
     createChatEventRowsStore(db);
+  }
+  if (!db.objectStoreNames.contains(CHAT_EVENT_CURSOR_STORE)) {
+    createChatEventCursorStore(db);
   }
   if (!db.objectStoreNames.contains(CHAT_THREAD_SNAPSHOT_STORE)) {
     createChatThreadSnapshotStore(db);

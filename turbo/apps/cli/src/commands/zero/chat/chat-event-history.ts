@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 
-import { chatEventRowV4Schema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 
 import {
   getZeroChatEventSnapshot,
@@ -102,7 +102,7 @@ async function localHistoryState(args: {
       if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
         return { kind: "invalid" };
       }
-      const row = chatEventRowV4Schema.parse(JSON.parse(text.slice(0, -1)));
+      const row = chatEventRowSchema.parse(JSON.parse(text.slice(0, -1)));
       if (row.chatThreadId !== args.threadId || row.seqId !== event.seqId) {
         return { kind: "invalid" };
       }
@@ -134,7 +134,7 @@ async function downloadSnapshot(url: string): Promise<string> {
     throw new Error("Chat event snapshot must be newline-delimited JSON");
   }
   for (const line of text.slice(0, -1).split("\n")) {
-    chatEventRowV4Schema.parse(JSON.parse(line));
+    chatEventRowSchema.parse(JSON.parse(line));
   }
   return text;
 }

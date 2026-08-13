@@ -209,6 +209,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   chat_event_snapshot_head: z
     .object({
       archive_schema_version: z.int().positive(),
+      last_event_id: z.uuid(),
       last_seq_id: z.int().positive(),
       object_key: z.string(),
       snapshot_count: z.int().positive(),

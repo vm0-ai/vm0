@@ -6,14 +6,16 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";
 import {
   clearIndexedDbChatEventRows$,
+  loadIndexedDbChatEventCursor$,
   loadIndexedDbChatEventRowsAfter$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
@@ -121,7 +123,6 @@ function createStoredChatEventsComputed({
 
 interface RowSyncDependencies {
   readonly threadId: string;
-  readonly persistentEvents$: PersistentChatEvents$;
   readonly mergePersistentEvents$: Command<
     Promise<void>,
     [PersistedChatEvent[], AbortSignal]
@@ -137,13 +138,10 @@ interface RowSyncDependencies {
  */
 function createSyncRemoteRowsCommand({
   threadId,
-  persistentEvents$,
   mergePersistentEvents$,
 }: RowSyncDependencies): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const mergeRows = async (
-      rows: readonly ChatEventRowV4[],
-    ): Promise<void> => {
+  return command(async ({ set }, signal: AbortSignal): Promise<void> => {
+    const mergeRows = async (rows: readonly ChatEventRow[]): Promise<void> => {
       if (rows.length === 0) {
         return;
       }
@@ -162,7 +160,7 @@ function createSyncRemoteRowsCommand({
      * not reached yet has no snapshot, so the whole thread is still in
      * Postgres and the tail below reads it from the beginning.
      */
-    const loadColdStartCursor = async (): Promise<number> => {
+    const loadColdStartCursor = async (): Promise<ChatEventCursor> => {
       const snapshot = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
@@ -171,12 +169,20 @@ function createSyncRemoteRowsCommand({
         throw snapshot.error;
       }
       if (snapshot.value === null) {
-        return THREAD_START_SEQ_ID;
+        return { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID };
       }
-      await set(writeIndexedDbChatEventRows$, snapshot.value.rows, signal);
+      const cursor = {
+        lastEventId: snapshot.value.lastEventId,
+        lastSeqId: snapshot.value.lastSeqId,
+      };
+      await set(
+        writeIndexedDbChatEventRows$,
+        { threadId, rows: snapshot.value.rows, cursor },
+        signal,
+      );
       signal.throwIfAborted();
       await mergeRows(snapshot.value.rows);
-      return snapshot.value.lastSeqId;
+      return cursor;
     };
 
     // True once the cursor came from the server rather than the local cache.
@@ -188,20 +194,24 @@ function createSyncRemoteRowsCommand({
     // subscription is live. Confirm the server-derived cursor once more after
     // that first response so the event is not stranded in the gap.
     let needsColdStartTailConfirmation = false;
-    let sinceSeqId: number;
-    const cachedLastSeqId = get(persistentEvents$).at(-1)?.seqId;
-    if (cachedLastSeqId === undefined) {
-      sinceSeqId = await loadColdStartCursor();
+    let cursor: ChatEventCursor;
+    const cachedCursor = await set(
+      loadIndexedDbChatEventCursor$,
+      threadId,
+      signal,
+    );
+    if (cachedCursor === null) {
+      cursor = await loadColdStartCursor();
       signal.throwIfAborted();
       cursorFromServer = true;
       needsColdStartTailConfirmation = true;
     } else {
-      sinceSeqId = cachedLastSeqId;
+      cursor = cachedCursor;
     }
 
     let shouldLoadNextPage = true;
     while (shouldLoadNextPage) {
-      const page = await set(listRowsAfter$, { threadId, sinceSeqId }, signal);
+      const page = await set(listRowsAfter$, { threadId, cursor }, signal);
       signal.throwIfAborted();
       if (page.kind === "expired") {
         if (cursorFromServer) {
@@ -211,20 +221,24 @@ function createSyncRemoteRowsCommand({
         }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         signal.throwIfAborted();
-        sinceSeqId = await loadColdStartCursor();
+        cursor = await loadColdStartCursor();
         signal.throwIfAborted();
         cursorFromServer = true;
         needsColdStartTailConfirmation = true;
         continue;
       }
-      await set(writeIndexedDbChatEventRows$, page.rows, signal);
-      signal.throwIfAborted();
-      await mergeRows(page.rows);
-      signal.throwIfAborted();
       const lastRow = page.rows.at(-1);
       if (lastRow !== undefined) {
-        sinceSeqId = lastRow.seqId;
+        cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
+        await set(
+          writeIndexedDbChatEventRows$,
+          { threadId, rows: page.rows, cursor },
+          signal,
+        );
+        signal.throwIfAborted();
       }
+      await mergeRows(page.rows);
+      signal.throwIfAborted();
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
       shouldLoadNextPage =
@@ -313,7 +327,6 @@ export function createChatEventStorageSignals({
   );
   const syncRemoteEvents$ = createSyncRemoteRowsCommand({
     threadId,
-    persistentEvents$: persistentChatEvents$,
     mergePersistentEvents$,
   });
   const rowCache = createRowCacheSignals(threadId, persistentChatEvents$);

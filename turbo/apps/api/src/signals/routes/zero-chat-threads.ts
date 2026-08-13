@@ -1,4 +1,5 @@
-import { computed } from "ccstate";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { command, computed } from "ccstate";
 import {
   chatSearchContract,
   chatThreadByIdContract,
@@ -11,6 +12,7 @@ import { z } from "zod";
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
+import { request$, setResHeader$ } from "../context/hono";
 import { db$ } from "../external/db";
 import { notFound } from "../../lib/error";
 import {
@@ -33,6 +35,7 @@ import {
   zeroChatThreadEventRows,
   zeroChatThreadEventSnapshot,
 } from "../services/zero-chat-event-snapshot.service";
+import { resolveChatEventSchemaVersion } from "../services/chat-event-schema-version.service";
 import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
@@ -153,72 +156,104 @@ const listZeroIndicatorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: indicators };
 });
 
-const getChatEventSnapshotInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.snapshot));
-  const snapshot = await get(
-    zeroChatThreadEventSnapshot({
-      threadId: params.threadId,
-      userId: auth.userId,
-    }),
-  );
-  if (snapshot.kind === "thread-not-found") {
-    return chatThreadNotFound();
-  }
-  if (snapshot.kind === "snapshot-not-found") {
-    return {
-      status: 404 as const,
-      body: {
-        error: {
-          message: "Chat event snapshot not found",
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+const getChatEventSnapshotInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const params = get(pathParamsOf(chatThreadEventsContract.snapshot));
+    const version = resolveChatEventSchemaVersion(
+      get(request$).header(CHAT_EVENT_SCHEMA_VERSION_HEADER),
+    );
+    if (version.kind === "error") {
+      return version.response;
+    }
+    set(
+      setResHeader$,
+      CHAT_EVENT_SCHEMA_VERSION_HEADER,
+      version.version.toString(),
+    );
+    const snapshot = await set(
+      zeroChatThreadEventSnapshot({
+        threadId: params.threadId,
+        userId: auth.userId,
+        schemaVersion: version.version,
+      }),
+      signal,
+    );
+    if (snapshot.kind === "thread-not-found") {
+      return chatThreadNotFound();
+    }
+    if (snapshot.kind === "snapshot-not-found") {
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: "Chat event snapshot not found",
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          },
         },
+      };
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        url: snapshot.url,
+        expiresInSeconds: snapshot.expiresInSeconds,
+        lastEventId: snapshot.lastEventId,
+        lastSeqId: snapshot.lastSeqId,
       },
     };
-  }
+  },
+);
 
-  return {
-    status: 200 as const,
-    body: {
-      url: snapshot.url,
-      expiresInSeconds: snapshot.expiresInSeconds,
-      lastSeqId: snapshot.lastSeqId,
-    },
-  };
-});
-
-const listChatEventRowsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.rows));
-  const query = get(queryOf(chatThreadEventsContract.rows));
-  const page = await get(
-    zeroChatThreadEventRows({
-      threadId: params.threadId,
-      userId: auth.userId,
-      sinceSeqId: query.sinceSeqId,
-      limit: query.limit,
-    }),
-  );
-  if (page.kind === "thread-not-found") {
-    return chatThreadNotFound();
-  }
-  if (page.kind === "expired") {
-    return {
-      status: 410 as const,
-      body: {
-        error: {
-          message: "Chat events cursor has expired",
-          code: "CHAT_EVENTS_EXPIRED",
+const listChatEventRowsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const params = get(pathParamsOf(chatThreadEventsContract.rows));
+    const query = get(queryOf(chatThreadEventsContract.rows));
+    const version = resolveChatEventSchemaVersion(
+      get(request$).header(CHAT_EVENT_SCHEMA_VERSION_HEADER),
+    );
+    if (version.kind === "error") {
+      return version.response;
+    }
+    set(
+      setResHeader$,
+      CHAT_EVENT_SCHEMA_VERSION_HEADER,
+      version.version.toString(),
+    );
+    const page = await get(
+      zeroChatThreadEventRows({
+        threadId: params.threadId,
+        userId: auth.userId,
+        schemaVersion: version.version,
+        sinceSeqId: query.sinceSeqId,
+        sinceEventId: query.sinceEventId,
+        limit: query.limit,
+      }),
+    );
+    signal.throwIfAborted();
+    if (page.kind === "thread-not-found") {
+      return chatThreadNotFound();
+    }
+    if (page.kind === "expired") {
+      return {
+        status: 410 as const,
+        body: {
+          error: {
+            message: "Chat events cursor has expired",
+            code: "CHAT_EVENTS_EXPIRED",
+          },
         },
-      },
-    };
-  }
+      };
+    }
 
-  return {
-    status: 200 as const,
-    body: { rows: [...page.rows] },
-  };
-});
+    return {
+      status: 200 as const,
+      body: { rows: [...page.rows] },
+    };
+  },
+);
 
 const listQueuedChatEventsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);

@@ -8,7 +8,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
 import { createDeferredPromise } from "../../utils";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -18,7 +17,6 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   installFakeChatEventR2,
-  readFakeChatEventObject,
   writeFakeChatEventObject,
   type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
@@ -33,7 +31,6 @@ const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
-const RETIRED_ARCHIVE_SCHEMA_VERSION = 1;
 const PREVIOUS_ARCHIVE_SCHEMA_VERSION = 4;
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
@@ -183,7 +180,7 @@ describe("cron snapshot chat events", () => {
     });
   });
 
-  it("rebuilds canonical full-thread snapshots from database rows", async () => {
+  it("bootstraps once from Raw Events, then appends tails to the Snapshot", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Snapshot agent",
@@ -217,6 +214,7 @@ describe("cron snapshot chat events", () => {
     expect(firstRaw).toContain(`${marker} second`);
     const firstHead = await readChatEventSnapshotHead(context, threadId);
     expect(firstHead.archive_schema_version).toBe(5);
+    expect(firstHead.last_event_id).toBe(firstLines.at(-1)?.id);
     expect(firstHead.object_key).toBe(firstPut.key);
 
     // Nothing new to archive: the same pass again must not touch the thread.
@@ -249,6 +247,7 @@ describe("cron snapshot chat events", () => {
     expect(secondRaw).toContain(`${marker} third`);
     const secondHead = await readChatEventSnapshotHead(context, threadId);
     expect(secondHead.archive_schema_version).toBe(5);
+    expect(secondHead.last_event_id).toBe(secondLines.at(-1)?.id);
     expect(secondHead.object_key).toBe(secondPut.key);
 
     await runSnapshotCron([threadId]);
@@ -308,6 +307,7 @@ describe("cron snapshot chat events", () => {
     expectArchiveInvariants(put, threadId, lastPhysicalRow.seqId);
     expect(OBJECT_KEY_PATTERN.exec(put.key)?.[2]).toBe(coveredSeqId.toString());
     const head = await readChatEventSnapshotHead(context, threadId);
+    expect(head.last_event_id).toBe(lastPhysicalRow.id);
     expect(head.last_seq_id).toBe(coveredSeqId);
 
     await sendNoCreditMessage(owner, {
@@ -328,7 +328,7 @@ describe("cron snapshot chat events", () => {
     );
   }, 60_000);
 
-  it("upgrades an idle v4 head in place when canonical bytes are unchanged", async () => {
+  it("refuses V4 to V5 when no lossless Snapshot migration exists", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Version-only snapshot agent",
@@ -352,23 +352,22 @@ describe("cron snapshot chat events", () => {
       PREVIOUS_ARCHIVE_SCHEMA_VERSION,
     );
 
-    const rebuilt = await runSnapshotCron([threadId]);
-    expect(rebuilt.success).toBeTruthy();
-    expect(rebuilt.nonV4SnapshotHeads).toBe(0);
-    expect(putsForThread(threadId)).toHaveLength(2);
-    const rebuiltPut = putsForThread(threadId)[1];
-    expect(rebuiltPut?.key).toBe(firstPut.key);
-    expect(rebuiltPut?.body).toStrictEqual(firstPut.body);
-    const rebuiltHead = await readChatEventSnapshotHead(context, threadId);
-    expect(rebuiltHead.archive_schema_version).toBe(5);
-    expect(rebuiltHead.object_key).toBe(firstPut.key);
-    expect(rebuiltHead.snapshot_count).toBe(firstHead.snapshot_count);
-
-    await runSnapshotCron([threadId]);
-    expect(putsForThread(threadId)).toHaveLength(2);
+    await expect(runSnapshotCron([threadId])).rejects.toThrow(
+      "Unknown response status 500",
+    );
+    expect(putsForThread(threadId)).toHaveLength(1);
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toMatchObject({
+      archive_schema_version: PREVIOUS_ARCHIVE_SCHEMA_VERSION,
+      last_event_id: firstHead.last_event_id,
+      last_seq_id: firstHead.last_seq_id,
+      object_key: firstPut.key,
+      snapshot_count: firstHead.snapshot_count,
+    });
   }, 60_000);
 
-  it("falls back to a canonical rebuild when the head object is damaged", async () => {
+  it("fails closed instead of rebuilding Raw history when a Snapshot is damaged", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Corruption agent",
@@ -380,6 +379,7 @@ describe("cron snapshot chat events", () => {
     });
     await projectChatEventSearch(threadId);
     await runSnapshotCron([threadId]);
+    const originalHead = await readChatEventSnapshotHead(context, threadId);
 
     const headPut = putsForThread(threadId)[0];
     if (headPut === undefined) {
@@ -399,71 +399,14 @@ describe("cron snapshot chat events", () => {
       prompt: `corruption-tail-${randomUUID()}`,
     });
     await projectChatEventSearch(threadId);
-    const rebuilt = await runSnapshotCron([threadId]);
-    expect(rebuilt.success).toBeTruthy();
-    expect(rebuilt.unreadableParents).toBeGreaterThanOrEqual(1);
-    expect(putsForThread(threadId)).toHaveLength(2);
-    const rebuiltHead = await readChatEventSnapshotHead(context, threadId);
-    expect(rebuiltHead.object_key).not.toBe(headPut.key);
+    await expect(runSnapshotCron([threadId])).rejects.toThrow(
+      "Unknown response status 500",
+    );
+    expect(putsForThread(threadId)).toHaveLength(1);
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(originalHead);
   }, 60_000);
-
-  it("reclaims retired heads while a bounded rebuild resumes", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Resumable snapshot agent",
-    });
-    const threadIds = await Promise.all(
-      ["first", "second"].map(async (suffix) => {
-        return await sendNoCreditMessage(owner, {
-          agentId: agent.agentId,
-          prompt: `resumable-${suffix}-${randomUUID()}`,
-        });
-      }),
-    );
-    await projectChatEventSearch(...threadIds);
-    await runSnapshotCron(threadIds);
-
-    const retiredObjectKeys: string[] = [];
-    for (const threadId of threadIds) {
-      const head = await readChatEventSnapshotHead(context, threadId);
-      const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
-      const body = readFakeChatEventObject(head.object_key);
-      if (body === undefined) {
-        throw new Error("Expected the v4 fixture object");
-      }
-      writeFakeChatEventObject(priorObjectKey, body);
-      retiredObjectKeys.push(priorObjectKey);
-      await setChatEventSnapshotHeadVersion(
-        context,
-        threadId,
-        RETIRED_ARCHIVE_SCHEMA_VERSION,
-        priorObjectKey,
-      );
-    }
-
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "1");
-    const firstPass = await runSnapshotCron(threadIds);
-    expect(firstPass).toMatchObject({
-      snapshots: 1,
-      nonV4SnapshotHeads: 0,
-    });
-    expect(firstPass.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(
-      2,
-    );
-    for (const objectKey of retiredObjectKeys) {
-      expect(readFakeChatEventObject(objectKey)).toBeUndefined();
-    }
-
-    const secondPass = await runSnapshotCron(threadIds);
-    expect(secondPass).toMatchObject({
-      snapshots: 1,
-      nonV4SnapshotHeads: 0,
-    });
-    for (const threadId of threadIds) {
-      const head = await readChatEventSnapshotHead(context, threadId);
-      expect(head.archive_schema_version).toBe(5);
-    }
-  }, 90_000);
 
   it("uses the exact parent metadata as a publication CAS", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
@@ -504,7 +447,7 @@ describe("cron snapshot chat events", () => {
     ]);
     expect(arrivals).toBe(2);
     const head = await readChatEventSnapshotHead(context, threadId);
-    expect(head.snapshot_count).toBe(parentHead.snapshot_count + 1);
+    expect(head.snapshot_count).toBe(parentHead.snapshot_count);
     expect(head.archive_schema_version).toBe(5);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);
     expect(head.object_key).not.toBe(parentHead.object_key);
