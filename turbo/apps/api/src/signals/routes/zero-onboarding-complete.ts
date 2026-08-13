@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { onboardingCompleteContract } from "@vm0/api-contracts/contracts/onboarding";
+import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

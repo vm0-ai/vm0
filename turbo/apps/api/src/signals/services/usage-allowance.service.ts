@@ -2,8 +2,8 @@ import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
   usageAllowanceAllocations,
-} from "@vm0/db/schema/org-usage-allowance";
-import { agentRuns } from "@vm0/db/schema/agent-run";
+} from "@okouai/db/schema/org-usage-allowance";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   and,
   asc,

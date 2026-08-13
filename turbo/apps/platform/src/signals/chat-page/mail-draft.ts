@@ -11,7 +11,7 @@ import {
   type ZeroMailAttachment,
   type ZeroMailDraft,
   type ZeroMailInlineImage,
-} from "@vm0/api-contracts/contracts/zero-mail";
+} from "@okouai/api-contracts/contracts/zero-mail";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

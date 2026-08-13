@@ -61,7 +61,7 @@ Output:
 
 Notes:
   - Uses the GitHub App installation on the server side
-  - Uploads through VM0 storage first, then posts a GitHub comment containing the file URL`,
+  - Uploads through Okou storage first, then posts a GitHub comment containing the file URL`,
   )
   .action(
     withErrorHandler(

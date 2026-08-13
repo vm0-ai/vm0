@@ -1,8 +1,8 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
-import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -1480,23 +1480,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       );
     });
     expect(listedMessage).toMatchObject({
-      userMessage: {
-        parts: expect.arrayContaining([
-          expect.objectContaining({ type: "file", fileId: assetId }),
-        ]),
-      },
-    });
-    if (!listedMessage) {
-      throw new Error("Expected a canonical Slack input message");
-    }
-
-    const fetchedMessage = await chat.getThreadEvent(
-      actor,
-      chatThreadId,
-      listedMessage.id,
-    );
-    expect(fetchedMessage).toMatchObject({
-      id: listedMessage.id,
       userMessage: {
         parts: expect.arrayContaining([
           expect.objectContaining({ type: "file", fileId: assetId }),

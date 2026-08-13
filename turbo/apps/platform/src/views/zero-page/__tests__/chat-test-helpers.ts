@@ -15,15 +15,15 @@ import {
   type ChatThreadServiceTier,
   type CodexServiceTier,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import {
   zeroRunsCancelContract,
   zeroRunsByIdContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
-import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/api-contracts/contracts/zero-runs";
+import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import type { RunStatus } from "@okouai/api-contracts/contracts/runs";
 import {
   mockChatEventRows,
   normalizeMockChatEvents,

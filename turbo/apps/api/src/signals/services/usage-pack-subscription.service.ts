@@ -2,14 +2,14 @@ import {
   USAGE_PACKS_USD,
   type UsagePackCatalogItem,
   type UsagePackUsd,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   USAGE_PACK_ALLOCATION_STATUSES,
   usagePackAllocations,
   usagePackInvoiceFulfillments,
   usagePackSubscriptions,
-} from "@vm0/db/schema/usage-pack-subscription";
+} from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
 import {
   and,
@@ -1217,6 +1217,13 @@ function invoiceLineAmount(line: UsagePackInvoiceLineInput): number | null {
     : null;
 }
 
+function invoiceHasUsagePackLine(invoice: UsagePackInvoiceInput): boolean {
+  return invoice.lines.data.some((line) => {
+    const priceId = invoiceLinePriceId(line);
+    return priceId !== null && usagePackUsdForKnownPriceId(priceId) !== null;
+  });
+}
+
 function invoiceLineIsProration(line: UsagePackInvoiceLineInput): boolean {
   if (line.parent?.type === "subscription_item_details") {
     return (
@@ -1824,6 +1831,9 @@ export async function handleUsagePackInvoicePaid(
   );
   if (changeOutcome.handled) {
     return changeOutcome;
+  }
+  if (!invoiceHasUsagePackLine(invoice)) {
+    return { handled: false, orgId: null };
   }
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   if (

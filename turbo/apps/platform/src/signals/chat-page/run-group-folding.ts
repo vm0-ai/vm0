@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
-import type { ChatEventUsagePayload } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatEventUsagePayload } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 
 interface RunSegment {
   readonly runId: string;

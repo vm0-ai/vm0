@@ -2,7 +2,7 @@ import {
   initClient,
   type ServerInferRequest,
   type ServerInferResponseBody,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
@@ -10,7 +10,7 @@ import {
   type WorkflowFileEntry,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type ZeroWorkflowAutomationCreateRequest = ServerInferRequest<

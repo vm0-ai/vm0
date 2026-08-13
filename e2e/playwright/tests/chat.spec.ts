@@ -72,18 +72,21 @@ async function waitForAgentDraftClear(
   await draftCleared;
 }
 
-function isInitialChatThreadEventsResponse(
+function isChatThreadEventRowsResponse(
   response: Response,
   threadId: string,
 ): boolean {
   const request = response.request();
   const url = new URL(response.url());
+  const rawSinceSeqId = url.searchParams.get("sinceSeqId");
+  const sinceSeqId = Number(rawSinceSeqId);
   return (
     response.ok() &&
     request.method() === "GET" &&
-    url.pathname === `/api/okou/chat-threads/${threadId}/events` &&
-    !url.searchParams.has("sinceSeqId") &&
-    !url.searchParams.has("beforeSeqId")
+    url.pathname === `/api/okou/chat-threads/${threadId}/event-rows` &&
+    rawSinceSeqId !== null &&
+    Number.isSafeInteger(sinceSeqId) &&
+    sinceSeqId >= 0
   );
 }
 
@@ -91,11 +94,11 @@ async function navigateToMockChatThread(
   page: Page,
   threadId: string,
 ): Promise<void> {
-  const initialEventsLoaded = page.waitForResponse((response) => {
-    return isInitialChatThreadEventsResponse(response, threadId);
+  const rowsLoaded = page.waitForResponse((response) => {
+    return isChatThreadEventRowsResponse(response, threadId);
   });
   await page.goto(new URL(`/chats/${threadId}`, appUrl).href);
-  await initialEventsLoaded;
+  await rowsLoaded;
 }
 
 async function clearComposerEditor(editor: Locator): Promise<void> {
@@ -293,6 +296,36 @@ interface MockChatThreadOptions {
   readonly title: string;
 }
 
+function toMockChatEventRow(
+  event: Readonly<Record<string, unknown>>,
+  threadId: string,
+): Readonly<Record<string, unknown>> {
+  const payload = Object.fromEntries(
+    ["content", "userMessage", "thinking", "error", "usage"].flatMap((key) => {
+      const value = event[key];
+      return value === undefined || value === null
+        ? []
+        : ([[key, value]] as const);
+    }),
+  );
+  const runGroupId = event.runGroupId;
+
+  return {
+    id: event.id,
+    chatThreadId: threadId,
+    runId: event.runId ?? event.interruptsRunId ?? null,
+    revokesEventId: event.revokesEventId ?? null,
+    eventType: event.eventType,
+    payload: Object.keys(payload).length === 0 ? null : payload,
+    contextType: typeof runGroupId === "string" ? "goal" : null,
+    contextId: typeof runGroupId === "string" ? runGroupId : null,
+    runEventSequenceNumber: event.sequenceNumber ?? null,
+    runEventId: event.runEventId ?? null,
+    seqId: event.seqId,
+    createdAt: event.createdAt,
+  };
+}
+
 async function mockChatThread(
   page: Page,
   options: MockChatThreadOptions,
@@ -347,14 +380,24 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname === `/api/okou/chat-threads/${options.threadId}/events`,
+      url.pathname === `/api/okou/chat-threads/${options.threadId}/event-rows`,
     async (route) => {
       const requestUrl = new URL(route.request().url());
-      const isIncremental =
-        requestUrl.searchParams.has("sinceSeqId") ||
-        requestUrl.searchParams.has("beforeSeqId");
+      const sinceSeqId = Number(
+        requestUrl.searchParams.get("sinceSeqId") ?? "0",
+      );
+      if (!Number.isSafeInteger(sinceSeqId) || sinceSeqId < 0) {
+        throw new Error("Chat event row cursor is invalid");
+      }
+      const rows = options.events
+        .map((event) => {
+          return toMockChatEventRow(event, options.threadId);
+        })
+        .filter((row) => {
+          return typeof row.seqId === "number" && row.seqId > sinceSeqId;
+        });
       await route.fulfill({
-        json: { events: isIncremental ? [] : options.events },
+        json: { rows },
       });
     },
   );
@@ -1060,13 +1103,13 @@ test("image preview frames stay fixed while delayed images load", async ({
   const routes = await setupDelayedImageRoutes(page);
   await mockDelayedImageLayoutThread(page, agentId, routes);
 
-  const initialEventsLoaded = page.waitForResponse((response) => {
-    return isInitialChatThreadEventsResponse(response, imageLayoutThreadId);
+  const rowsLoaded = page.waitForResponse((response) => {
+    return isChatThreadEventRowsResponse(response, imageLayoutThreadId);
   });
   await page.goto(new URL(`/chats/${imageLayoutThreadId}`, appUrl).href, {
     waitUntil: "domcontentloaded",
   });
-  await initialEventsLoaded;
+  await rowsLoaded;
 
   const user = delayedImagePreview(
     page,

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
 

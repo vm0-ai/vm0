@@ -1,15 +1,15 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import type { SharedMessage } from "@vm0/api-contracts/contracts/shared-threads";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
 import {
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
-import type { ChatRecommendedFollowup } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-events";
+import type { ChatRecommendedFollowup } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   chatEvents,
   type ChatEventUserMessage,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   and,
   desc,

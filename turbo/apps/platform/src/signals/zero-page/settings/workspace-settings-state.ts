@@ -5,20 +5,20 @@ import {
   zeroOrgContract,
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+} from "@okouai/api-contracts/contracts/zero-org";
+import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
+} from "@okouai/api-contracts/contracts/zero-org-members";
 import type {
   OrgInvitationPurchasePreviewResponse,
   OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
-import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/org-members";
+import type { UsagePackUsd } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";

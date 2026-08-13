@@ -59,14 +59,14 @@ function buildGenerateHelpText(): string {
   ];
 
   return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "okou generate <type>" with no --prompt to list generation choices for that type.
-  - Media and connector-backed generation types may expose --provider for vm0 or connector execution guidance.
+  - Media and connector-backed generation types may expose --provider for Okou or connector execution guidance.
   - HTML artifact types use registry-backed --design-system and --template selection.`;
 }
 
 export const generateCommand = new Command()
   .name("generate")
   .description(
-    "Generate assets via vm0's built-in pipelines or get connector skill-invocation guidance",
+    "Generate assets via Okou's built-in pipelines or get connector skill-invocation guidance",
   )
   .addCommand(imageCommand)
   .addCommand(presentationCommand)

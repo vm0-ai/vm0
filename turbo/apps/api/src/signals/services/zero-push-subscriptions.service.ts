@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
+import { pushSubscriptions } from "@okouai/db/schema/push-subscription";
 import { and, eq, lt, sql } from "drizzle-orm";
 
 import { now } from "../../lib/time";

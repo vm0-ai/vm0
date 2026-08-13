@@ -17,7 +17,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { AlertTriangle, Trash } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../../signals/page-signal.ts";

@@ -16,7 +16,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import type {
   MemberUsagePack,
   UsagePackCatalogItem,
@@ -25,7 +25,7 @@ import type {
   UsagePackSubscriptionChangePreviewResponse,
   UsagePackMigrationPreviewResponse,
   UsagePackMigrationRevisionPreviewResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { MouseEvent, ReactNode } from "react";

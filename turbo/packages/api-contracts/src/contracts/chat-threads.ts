@@ -150,9 +150,15 @@ const chatThreadSnapshotProjectionSchema = z.object({
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
-  // Optional like cloudBrowserEnabled so rows written by an older bundle still
-  // parse, and loose like selectedModel so a pin whose model has since left the
-  // catalog still parses. The strict enum applies on the write path.
+  // Rollout fallback. Optional so a payload without the field still parses:
+  // from an API deployed before this change (DB/API skew, observed max ~102min)
+  // and from IndexedDB rows an older bundle wrote (old web clients, ~2d).
+  // Loose rather than the catalog enum so a pin whose model later leaves the
+  // catalog still parses; the strict enum applies on the write path.
+  // Remove once the client floor passes the build that introduced the field and
+  // cached rows have resynced, together with the two `?? null` reads in
+  // zero-chat-thread-event.service.ts and chat-thread-event-replay.ts.
+  // Follow-up: https://github.com/vm0-ai/vm0/issues/26765
   selectedVideoModel: z.string().nullable().optional(),
 });
 
@@ -1103,10 +1109,6 @@ const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
 const chatThreadThreadIdPathParamsSchema = z.object({
   threadId: z.string().uuid(),
 });
-const chatThreadEventPathParamsSchema =
-  chatThreadThreadIdPathParamsSchema.extend({
-    eventId: z.string().uuid(),
-  });
 
 export const chatThreadByIdContract = c.router({
   get: {
@@ -1557,39 +1559,6 @@ export const chatSearchContract = c.router({
 
 /** Canonical ChatEvent read contract. */
 export const chatThreadEventsContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/okou/chat-threads/:threadId/events",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: z.object({
-      sinceSeqId: z.coerce.number().int().positive().optional(),
-      beforeSeqId: z.coerce.number().int().positive().optional(),
-      limit: z.coerce.number().min(1).max(50).default(50),
-    }),
-    responses: {
-      200: z.object({
-        events: z.array(chatEventSchema),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get paginated chat events for a thread",
-  },
-  get: {
-    method: "GET",
-    path: "/api/okou/chat-threads/:threadId/events/:eventId",
-    headers: authHeadersSchema,
-    pathParams: chatThreadEventPathParamsSchema,
-    responses: {
-      200: chatEventSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get a chat event by id for a thread",
-  },
   /**
    * Snapshot-read cold start: a presigned download for the thread's head
    * archive object. The object is gzip NDJSON of chatEventRowV4Schema lines

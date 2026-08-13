@@ -2,7 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   integrationsTelegramUploadCompleteContract,
   type TelegramUploadCompleteBody,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

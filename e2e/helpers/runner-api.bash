@@ -141,12 +141,17 @@ runner_e2e_wait_for_run_status() {
     return 1
 }
 
+runner_e2e_shell_prompt() {
+    local script="$1"
+    printf '@shell@\n%s\n@end-shell@' "$script"
+}
+
 runner_e2e_start_chat_run() {
     local agent_id="$1"
     local prompt="$2"
     local capture_network_bodies="${3:-false}"
     local shell_prompt
-    shell_prompt=$(printf '@shell@\n%s' "$prompt")
+    shell_prompt=$(runner_e2e_shell_prompt "$prompt")
     runner_chat_send \
         "$agent_id" \
         "$shell_prompt" \
@@ -161,7 +166,7 @@ runner_e2e_continue_chat_run() {
     local thread_id="$2"
     local prompt="$3"
     local shell_prompt
-    shell_prompt=$(printf '@shell@\n%s' "$prompt")
+    shell_prompt=$(runner_e2e_shell_prompt "$prompt")
     runner_chat_send "$agent_id" "$shell_prompt" "$thread_id" ""
 }
 
@@ -195,12 +200,11 @@ runner_e2e_wait_for_chat_event() {
     local last_events='{}'
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if last_events=$(runner_api_curl \
-            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+        if last_events=$(runner_chat_event_rows "$thread_id" 2>&1) &&
             jq -e \
                 --arg runId "$run_id" \
                 --arg eventType "$event_type" \
-                'any(.events[]?; .runId == $runId and .eventType == $eventType)' \
+                'any(.rows[]?; .runId == $runId and .eventType == $eventType)' \
                 <<<"$last_events" >/dev/null; then
             printf '%s\n' "$last_events"
             return 0
@@ -222,16 +226,15 @@ runner_e2e_wait_for_usage_event() {
     local last_events='{}'
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if last_events=$(runner_api_curl \
-            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+        if last_events=$(runner_chat_event_rows "$thread_id" 2>&1) &&
             jq -e \
                 --arg runId "$run_id" \
                 --arg provider "$provider" '
-                    any(.events[]?;
+                    any(.rows[]?;
                         .runId == $runId and
                         .eventType == "usage.recorded" and
-                        (.usage.totalCredits > 0) and
-                        any(.usage.breakdown[]?;
+                        (.payload.usage.totalCredits > 0) and
+                        any(.payload.usage.breakdown[]?;
                             .kind == "model" and
                             any(.providers[]?;
                                 .provider == $provider and .credits > 0
@@ -297,11 +300,10 @@ runner_e2e_assert_no_usage_for_thread() {
     local events record
 
     while :; do
-        events=$(runner_api_curl \
-            "/api/okou/chat-threads/${thread_id}/events?limit=50") || return
+        events=$(runner_chat_event_rows "$thread_id") || return
         record=$(runner_e2e_usage_record) || return
         if ! jq -e --arg runId "$run_id" '
-            all(.events[]?;
+            all(.rows[]?;
                 .runId != $runId or .eventType != "usage.recorded"
             )
         ' <<<"$events" >/dev/null; then
@@ -383,13 +385,12 @@ runner_e2e_wait_for_chat_text() {
     local matched_text=""
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if last_events=$(runner_api_curl \
-            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+        if last_events=$(runner_chat_event_rows "$thread_id" 2>&1) &&
             matched_text=$(jq -er --arg runId "$run_id" --arg expected "$expected" '
                 [
-                    .events[]?
+                    .rows[]?
                     | select(.eventType == "output.message" and .runId == $runId)
-                    | .content
+                    | .payload.content
                     | select(type == "string" and contains($expected))
                 ]
                 | last // empty
@@ -417,13 +418,12 @@ runner_e2e_wait_for_active_chat_text() {
     local run_status=""
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if last_events=$(runner_api_curl \
-            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+        if last_events=$(runner_chat_event_rows "$thread_id" 2>&1) &&
             matched_text=$(jq -er --arg runId "$run_id" --arg expected "$expected" '
                 [
-                    .events[]?
+                    .rows[]?
                     | select(.eventType == "output.message" and .runId == $runId)
-                    | .content
+                    | .payload.content
                     | select(type == "string" and contains($expected))
                 ]
                 | last // empty

@@ -1,13 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import {
-  chatEventsContract,
-  chatThreadEventsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { testCronCleanupSandboxesStateContract } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
-import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
-import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
+import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { onTestFinished, test as vitestTest } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -32,6 +29,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   chatEventAutomationPart,
   chatEventDisplayText,
@@ -110,12 +108,6 @@ function cleanupSandboxesClient() {
 function chatEventsClient() {
   return setupApp({ context, routes: zeroChatEventsRoutes })(
     chatEventsContract,
-  );
-}
-
-function chatThreadEventsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadEventsContract,
   );
 }
 
@@ -1474,15 +1466,11 @@ describe("workflow queue", () => {
     await expect(
       pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(0);
-    const failedEvents = await accept(
-      chatThreadEventsClient().list({
-        headers: authHeaders(),
-        params: { threadId: automation.threadId },
-        query: {},
-      }),
-      [200],
-    );
-    const rejectedEvent = failedEvents.body.events.find((event) => {
+    const failedEvents = await readProjectedChatEvents(context, {
+      threadId: automation.threadId,
+      headers: authHeaders(),
+    });
+    const rejectedEvent = failedEvents.find((event) => {
       return event.eventType === "input.rejected";
     });
     if (!rejectedEvent?.revokesEventId) {
@@ -1500,7 +1488,7 @@ describe("workflow queue", () => {
         `^/${WORKFLOW_NAME}\\nTrigger: signed workflow webhook received an HTTP POST at 2026-07-25T12:00:00.000Z \\(delivery .+\\)\\.$`,
       ),
     );
-    const admittedEvent = failedEvents.body.events.find((event) => {
+    const admittedEvent = failedEvents.find((event) => {
       return event.id === rejectedEvent.revokesEventId;
     });
     if (admittedEvent?.eventType !== "input.automation") {

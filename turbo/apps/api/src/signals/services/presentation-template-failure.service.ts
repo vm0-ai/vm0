@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { presentationTemplates } from "@vm0/db/schema/presentation-template";
+import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

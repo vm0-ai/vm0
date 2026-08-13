@@ -1,4 +1,4 @@
-import type { ConnectorCatalogDiagnostics } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import type { ConnectorCatalogDiagnostics } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import { command } from "ccstate";
 
 import { db$ } from "../external/db";

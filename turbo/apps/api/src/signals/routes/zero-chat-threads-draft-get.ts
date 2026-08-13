@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { chatThreadDraftContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadDraftContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

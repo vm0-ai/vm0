@@ -1,24 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import { chatEventRowV4Schema } from "@vm0/api-contracts/contracts/chat-event-rows";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import { chatEventRowV4Schema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  cronProjectChatEventSearchContract,
-  cronSnapshotChatEventsContract,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
+import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
-import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
-import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
+import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
+import { testChatEventSnapshotRoutes } from "../test-chat-event-snapshot";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -49,7 +46,6 @@ const trackFakeChatEventObject = createFixtureTracker(
   deleteFakeChatEventObject,
 );
 
-const CRON_SECRET = "test-cron-secret";
 const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const R2_GC_SHARD_GROUP_COUNT = 16 ** 2;
 
@@ -85,24 +81,35 @@ function eventsClient() {
   );
 }
 
-async function runSnapshotCron() {
-  const client = setupApp({ context, routes: cronSnapshotChatEventsRoutes })(
-    cronSnapshotChatEventsContract,
-  );
+async function runSnapshotCron(
+  chatThreadIds: readonly string[],
+  r2ObjectKeys: readonly string[] = [],
+) {
+  const client = setupApp({
+    context,
+    routes: testChatEventSnapshotRoutes,
+  })(testChatEventSnapshotContract);
   const response = await accept(
-    client.snapshot({ headers: { authorization: `Bearer ${CRON_SECRET}` } }),
+    client.snapshot({
+      body: {
+        chat_thread_ids: [...chatThreadIds],
+        r2_object_keys: [...r2ObjectKeys],
+      },
+    }),
     [200],
   );
   return response.body;
 }
 
-async function projectChatEventSearch(): Promise<void> {
+async function projectChatEventSearch(
+  ...chatThreadIds: readonly string[]
+): Promise<void> {
   const client = setupApp({
     context,
-    routes: cronProjectChatEventSearchRoutes,
-  })(cronProjectChatEventSearchContract);
+    routes: testChatEventSearchProjectionRoutes,
+  })(testChatEventSearchProjectionContract);
   await accept(
-    client.project({ headers: { authorization: `Bearer ${CRON_SECRET}` } }),
+    client.project({ body: { chat_thread_ids: [...chatThreadIds] } }),
     [200],
   );
 }
@@ -142,10 +149,6 @@ async function replaceHeadWithRetiredVersion(
 describe("chat event snapshot read endpoints", () => {
   beforeEach(() => {
     installFakeChatEventR2(context);
-    // Drain every candidate thread in the shared test database in one pass so
-    // assertions about this file's threads never depend on batch ordering.
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "10000");
-    mockOptionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE", "10000");
   });
 
   it("serves a presigned download only for a current-version head", async () => {
@@ -184,8 +187,8 @@ describe("chat event snapshot read endpoints", () => {
       },
     });
 
-    await projectChatEventSearch();
-    await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
     const head = await readChatEventSnapshotHead(context, threadId);
 
     const download = await accept(
@@ -229,29 +232,6 @@ describe("chat event snapshot read endpoints", () => {
       range: { start: 4, end: 13 },
     });
 
-    const canonicalEvents = await accept(
-      eventsClient().list({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: {},
-      }),
-      [200],
-    );
-    const canonicalInput = canonicalEvents.body.events.find((event) => {
-      return event.eventType === "input.prompt";
-    });
-    if (canonicalInput?.eventType !== "input.prompt") {
-      throw new Error("Expected the canonical feedback input");
-    }
-    expect(
-      canonicalInput.userMessage.parts.find((part) => {
-        return part.type === "feedback";
-      }),
-    ).toMatchObject({
-      eventId: "snapshot-feedback-source-event",
-      range: { start: 4, end: 13 },
-    });
-
     // Unsupported heads fail closed instead of entering a rewrite fallback.
     await setChatEventSnapshotHeadVersion(context, threadId, 2);
     await accept(
@@ -278,7 +258,7 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
-  it("serves raw rows whose projection matches the events endpoint", async () => {
+  it("serves projectable raw rows from sequence cursors", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Row parity agent",
@@ -294,15 +274,15 @@ describe("chat event snapshot read endpoints", () => {
       prompt: `${marker} second`,
     });
 
-    const events = await accept(
-      eventsClient().list({
+    const fromStart = await accept(
+      eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: {},
+        query: { sinceSeqId: 0 },
       }),
       [200],
     );
-    const firstSeqId = events.body.events[0]?.seqId;
+    const firstSeqId = fromStart.body.rows[0]?.seqId;
     if (firstSeqId === undefined) {
       throw new Error("Expected seeded chat events");
     }
@@ -328,30 +308,28 @@ describe("chat event snapshot read endpoints", () => {
     const projected = rows.body.rows.map((row) => {
       return chatEventFromRow(row);
     });
-    const expected = events.body.events.filter((event) => {
-      return event.seqId > firstSeqId;
-    });
-    // Compare wire shapes: drop the projection's explicit-undefined optional
-    // keys the same way JSON serialization does for the HTTP response.
-    const wireShape = projected.map((event) => {
-      return Object.fromEntries(
-        Object.entries(event).filter(([, value]) => {
-          return value !== undefined;
-        }),
-      );
-    });
-    expect(wireShape).toStrictEqual(expected);
-
-    // Cold start for a thread the archiver has not reached yet: nothing was
-    // archived away, so seq 0 reads the thread from its first event.
-    const fromStart = await accept(
-      eventsClient().rows({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: { sinceSeqId: 0 },
+    expect(projected).toHaveLength(rows.body.rows.length);
+    expect(rows.body.rows).toStrictEqual(
+      fromStart.body.rows.filter((row) => {
+        return row.seqId > firstSeqId;
       }),
-      [200],
     );
+    expect(projected).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "input.prompt",
+          userMessage: expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: `${marker} second`,
+              }),
+            ]),
+          }),
+        }),
+      ]),
+    );
+
     expect(fromStart.body.rows[0]?.seqId).toBe(firstSeqId);
     expect(fromStart.body.rows).toHaveLength(rows.body.rows.length + 1);
 
@@ -431,11 +409,11 @@ describe("chat event snapshot read endpoints", () => {
       prompt: `snapshot-version-retirement-${randomUUID()}`,
     });
 
-    await projectChatEventSearch();
-    await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
     const retiredKey = await replaceHeadWithRetiredVersion(threadId);
 
-    const retired = await runSnapshotCron();
+    const retired = await runSnapshotCron([threadId]);
     expect(retired.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(1);
     expect(readFakeChatEventObject(retiredKey)).toBeUndefined();
     const current = await readChatEventSnapshotHead(context, threadId);
@@ -455,14 +433,14 @@ describe("chat event snapshot read endpoints", () => {
       prompt: `snapshot-best-effort-${randomUUID()}`,
     });
 
-    await projectChatEventSearch();
-    await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
     const retiredKey = await replaceHeadWithRetiredVersion(threadId);
     installFakeChatEventR2(context, undefined, undefined, () => {
       return Promise.reject(new Error("R2 delete unavailable"));
     });
 
-    const retired = await runSnapshotCron();
+    const retired = await runSnapshotCron([threadId]);
     expect(retired.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(1);
     expect(readFakeChatEventObject(retiredKey)).toBeDefined();
     const current = await readChatEventSnapshotHead(context, threadId);
@@ -482,9 +460,8 @@ describe("chat event snapshot read endpoints", () => {
       prompt: `snapshot-maintenance-${randomUUID()}`,
     });
 
-    await projectChatEventSearch();
-    // The cron scope is global, so only this thread's own head is asserted.
-    await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
 
     const head = await readChatEventSnapshotHead(context, threadId);
     expect(readFakeChatEventObject(head.object_key)).toBeDefined();
@@ -497,7 +474,7 @@ describe("chat event snapshot read endpoints", () => {
       head.object_key,
       new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
     );
-    const protectedHead = await runSnapshotCron();
+    const protectedHead = await runSnapshotCron([threadId], [head.object_key]);
     expect(protectedHead.r2ObjectsDeleted).toBe(0);
     expect(readFakeChatEventObject(head.object_key)).toBeDefined();
 
@@ -508,7 +485,7 @@ describe("chat event snapshot read endpoints", () => {
       orphanKey,
       new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
     );
-    const orphanGc = await runSnapshotCron();
+    const orphanGc = await runSnapshotCron([threadId], [orphanKey]);
     expect(orphanGc).toMatchObject({
       r2ObjectsMeasured: 1,
       r2ObjectsDeleted: 1,
@@ -520,8 +497,8 @@ describe("chat event snapshot read endpoints", () => {
       threadId,
       prompt: `snapshot-replacement-${randomUUID()}`,
     });
-    await projectChatEventSearch();
-    const replacement = await runSnapshotCron();
+    await projectChatEventSearch(threadId);
+    const replacement = await runSnapshotCron([threadId], [head.object_key]);
     expect(replacement.r2ObjectsDeleted).toBe(1);
     expect(readFakeChatEventObject(head.object_key)).toBeUndefined();
     const newHead = await readChatEventSnapshotHead(context, threadId);
@@ -545,7 +522,7 @@ describe("chat event snapshot read endpoints", () => {
       new Date(now() + 8 * 24 * 60 * 60 * 1000),
     );
 
-    const result = await runSnapshotCron();
+    const result = await runSnapshotCron([], keys);
 
     expect(
       result.retiredSnapshotReferencesDeleted + result.r2ObjectsDeleted,

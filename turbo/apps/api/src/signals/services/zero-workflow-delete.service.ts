@@ -1,12 +1,12 @@
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { storages } from "@vm0/db/schema/storage";
+} from "@okouai/core/storage-names";
+import { storages } from "@okouai/db/schema/storage";
 import {
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

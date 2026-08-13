@@ -1,7 +1,7 @@
 import type {
   GenerationOutputKind,
   GenerationTarget,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 
 /** Generation targets authored as static HTML from a target-specific resource index. */
 export type HtmlArtifactKind = Extract<
@@ -150,7 +150,7 @@ export function createHtmlArtifactAuthoringPacket(
     ...(options.kind === "website"
       ? [
           "- For a selected entry with `source.archive`, run its exact `source.pull.command`, then use `source.pull.resolvedPath`. Do not construct or guess a direct R2 URL.",
-          "- The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
+          "- The Website index includes Okou built-in R2 template packages as template entries with `source.archive`.",
           "- Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
         ]
       : []),

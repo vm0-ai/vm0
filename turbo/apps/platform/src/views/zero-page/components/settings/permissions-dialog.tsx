@@ -24,16 +24,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   Input,
-} from "@vm0/ui";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { groupFirewallMetadataPermissionsByCategory } from "@vm0/connectors/firewall-metadata/policy";
+} from "@okouai/ui";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { groupFirewallMetadataPermissionsByCategory } from "@okouai/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/connectors/firewall-types";
+import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,

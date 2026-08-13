@@ -6,7 +6,7 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
 

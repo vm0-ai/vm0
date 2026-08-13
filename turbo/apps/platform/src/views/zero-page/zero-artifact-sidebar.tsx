@@ -25,7 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import type { ArtifactRef } from "../../signals/chat-page/thread-sidebar.ts";
 import {
@@ -48,7 +48,7 @@ import {
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
-import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   ArtifactActionSeparator,
   ArtifactActionTooltip,

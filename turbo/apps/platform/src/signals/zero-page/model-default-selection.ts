@@ -3,7 +3,7 @@ import {
   isCodexFastModeModel,
   isSupportedRunModel,
   type OrgModelPoliciesResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import {

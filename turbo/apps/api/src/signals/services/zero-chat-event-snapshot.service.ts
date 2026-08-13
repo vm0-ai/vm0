@@ -1,9 +1,9 @@
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { computed, type Computed } from "ccstate";
 import { and, asc, eq, gt } from "drizzle-orm";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";

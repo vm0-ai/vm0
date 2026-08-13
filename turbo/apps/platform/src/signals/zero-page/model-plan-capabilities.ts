@@ -3,7 +3,7 @@ import {
   isLimitedFree1RestrictedRunModel,
   type ModelProviderType,
   type OrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 
 import { orgPlanCapabilities$ } from "./org-plan-capabilities.ts";
 

@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { emailMorningBriefUnsubscribeContract } from "@vm0/api-contracts/contracts/email-morning-brief-unsubscribe";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { emailMorningBriefUnsubscribeContract } from "@okouai/api-contracts/contracts/email-morning-brief-unsubscribe";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 
 import { queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";

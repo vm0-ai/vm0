@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import {
   ZERO_RECOGNITION_MAX_FILE_BYTES,
   ZERO_RECOGNITION_MAX_PROMPT_CHARS,
-} from "@vm0/api-contracts/contracts/zero-recognition";
+} from "@okouai/api-contracts/contracts/zero-recognition";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -225,5 +225,18 @@ describe("okou recognize command", () => {
       return option.attributeName();
     });
     expect(optionNames).toStrictEqual(["file", "prompt"]);
+  });
+
+  it("uses Okou branding in recognition help", () => {
+    let helpOutput = "";
+    zeroRecognizeCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    zeroRecognizeCommand.outputHelp();
+
+    expect(helpOutput).toContain("Uses a fixed Okou-managed recognition model");
   });
 });

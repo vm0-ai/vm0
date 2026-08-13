@@ -10,7 +10,7 @@ import type { DesktopMainModule } from "./desktop-main-module";
 // Crash-resilient entry point (package.json "main"). It owns the auto-updater
 // so a fixed release can still be installed when the main bundle fails at
 // module-load time. It must stay trivially safe to load: no workspace
-// (`@vm0/*`) imports, directly or transitively — guarded by
+// (`@okouai/*`) imports, directly or transitively — guarded by
 // bootstrap-imports.test.ts and scripts/check-bootstrap-bundle.mjs.
 
 const config = resolveDesktopConfig();

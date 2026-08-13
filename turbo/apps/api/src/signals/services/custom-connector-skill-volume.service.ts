@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import {
   getCustomConnectorSkillName,
   getCustomConnectorSkillStorageName,
-} from "@vm0/core/storage-names";
-import { synthesizeSkillMd } from "@vm0/core/zero-workflow-skill";
+} from "@okouai/core/storage-names";
+import { synthesizeSkillMd } from "@okouai/core/zero-workflow-skill";
 
 import type { Db } from "../external/db";
 import {

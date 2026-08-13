@@ -1,16 +1,16 @@
 import { isDeepStrictEqual } from "node:util";
 
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-auth-method";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
+} from "@okouai/connectors/connector-auth-method";
+import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
 import {
   createFirewallMetadataPolicyResolver,
   type FirewallMetadataPolicyResolver,
   type FirewallPermissionPolicyDefaultMetadata,
-} from "@vm0/connectors/firewall-metadata/policy";
+} from "@okouai/connectors/firewall-metadata/policy";
 import {
   extractSecretNamesFromApis,
   normalizeFirewallFixedHost,
@@ -18,7 +18,7 @@ import {
   type FirewallBaseHostPolicy,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 import type {
   ConnectorCatalogArtifact,

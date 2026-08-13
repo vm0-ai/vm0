@@ -34,8 +34,8 @@ export interface RustTypeModuleDoc {
 }
 
 export const rustTypeRootDoc = [
-  "Generated Rust DTOs for selected `@vm0/api-contracts` request and response bodies.",
-  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
+  "Generated Rust DTOs for selected `@okouai/api-contracts` request and response bodies.",
+  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @okouai/api-contracts generate:rust`.",
   "These types preserve the TypeScript wire contract for Rust runner and guest-agent code.",
 ] as const;
 

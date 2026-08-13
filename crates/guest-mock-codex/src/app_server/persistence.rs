@@ -42,6 +42,9 @@ pub(super) fn persist_input_events(
                 "child_env_custom_user_env": std::env::var("CUSTOM_USER_ENV").ok(),
                 "child_env_openai_model": std::env::var("OPENAI_MODEL").ok(),
                 "child_env_openai_base_url": std::env::var("OPENAI_BASE_URL").ok(),
+                "child_env_has_pi_session_id": std::env::var_os(guest_contracts::env::PI_SESSION_ID_ENV).is_some(),
+                "child_env_has_pi_system_prompt": std::env::var_os(guest_contracts::env::PI_SYSTEM_PROMPT_ENV).is_some(),
+                "child_env_has_pi_model_config": std::env::var_os(guest_contracts::env::PI_MODEL_CONFIG_ENV).is_some(),
             })
         })
         .collect::<Vec<_>>();

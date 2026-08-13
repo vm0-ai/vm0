@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
-import type { AutoRechargeConfig } from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
+import type { AutoRechargeConfig } from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import { eq } from "drizzle-orm";
 
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";

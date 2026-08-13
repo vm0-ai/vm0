@@ -13,8 +13,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@vm0/ui";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/ui";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,

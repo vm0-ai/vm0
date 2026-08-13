@@ -8,13 +8,12 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
-import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/core";
+import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
+import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   chatEventsContract,
-  chatThreadEventsContract,
   chatThreadsContract,
   resolveChatEventRecommendedFollowups,
   type ChatRunOptionsRequest,
@@ -23,24 +22,24 @@ import {
   type ChatEvent,
   type UserMessageDocument,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
-import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
+import { cronSteerRunTimeBudgetContract } from "@okouai/api-contracts/contracts/cron";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
-} from "@vm0/api-contracts/contracts/runners";
-import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+} from "@okouai/api-contracts/contracts/runners";
+import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
@@ -915,12 +914,6 @@ function chatThreadsClient() {
   );
 }
 
-function chatThreadEventsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadEventsContract,
-  );
-}
-
 describe("CHAT-02: thread run admission invariant", () => {
   it("rejects thread-bound run creation without a queue association at both service boundaries", async () => {
     await expect(createUnassociatedThreadBoundZeroRunFixture()).rejects.toThrow(
@@ -1236,52 +1229,6 @@ describe("CHAT-02: web chat send and client ids", () => {
     });
     expect(original?.runId).toBeUndefined();
     expect(original).not.toHaveProperty("revokesEventId");
-
-    const originalById = await chat.getThreadEvent(
-      actor,
-      clientThreadId,
-      clientEventId,
-    );
-    expect(originalById).toMatchObject({
-      id: clientEventId,
-      threadId: clientThreadId,
-      eventType: "input.prompt",
-      content: null,
-    });
-    expect(originalById).not.toHaveProperty("revokesEventId");
-
-    const eventPage = await accept(
-      chatThreadEventsClient().list({
-        headers: sessionHeaders(actor),
-        params: { threadId: clientThreadId },
-        query: { limit: 50 },
-      }),
-      [200],
-    );
-    const originalEvent = eventPage.body.events.find((event) => {
-      return event.id === clientEventId;
-    });
-    expect(originalEvent).toMatchObject({
-      id: clientEventId,
-      threadId: clientThreadId,
-      eventType: "input.prompt",
-      content: null,
-    });
-    await expect(
-      accept(
-        chatThreadEventsClient().get({
-          headers: sessionHeaders(actor),
-          params: { threadId: clientThreadId, eventId: clientEventId },
-        }),
-        [200],
-      ),
-    ).resolves.toMatchObject({
-      body: {
-        id: clientEventId,
-        threadId: clientThreadId,
-        eventType: "input.prompt",
-      },
-    });
 
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {

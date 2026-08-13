@@ -1,6 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";

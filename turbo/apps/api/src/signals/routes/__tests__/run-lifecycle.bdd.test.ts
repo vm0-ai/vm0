@@ -6,26 +6,26 @@ import {
   getVm0ConcreteProviderType,
   type ModelProviderType,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
-} from "@vm0/api-contracts/contracts/runners";
-import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
+} from "@okouai/api-contracts/contracts/runners";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
-} from "@vm0/core/storage-names";
+} from "@okouai/core/storage-names";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
   type FirewallApi,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";

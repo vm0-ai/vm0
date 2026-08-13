@@ -1,20 +1,20 @@
 import { command, computed, type Computed } from "ccstate";
-import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
+import type { ComposeListItem } from "@okouai/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { storages } from "@vm0/db/schema/storage";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { storages } from "@okouai/db/schema/storage";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import {
   getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
+} from "@okouai/core/storage-names";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";

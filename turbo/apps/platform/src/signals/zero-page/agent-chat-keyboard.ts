@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { matchShortcut } from "@vm0/ui";
+import { matchShortcut } from "@okouai/ui";
 import { currentChatThreadListIds$ } from "../agent-chat.ts";
 import { onDomEventFn } from "../utils.ts";
 import { navigateToChat$ } from "./zero-nav.ts";

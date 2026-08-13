@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";

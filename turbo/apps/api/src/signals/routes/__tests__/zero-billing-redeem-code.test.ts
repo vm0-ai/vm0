@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingRedeemCodeContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { http, HttpResponse } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";

@@ -1,9 +1,9 @@
-import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
 import {
   createRunnerRuntimeFirewallCatalog,
   projectRunnerRuntimeFirewall,
-} from "@vm0/connectors/firewall-metadata/runner-runtime-catalog";
-import type { Firewall } from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-metadata/runner-runtime-catalog";
+import type { Firewall } from "@okouai/connectors/firewall-types";
 
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";

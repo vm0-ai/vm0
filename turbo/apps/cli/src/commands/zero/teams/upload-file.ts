@@ -52,7 +52,7 @@ Output:
     {"activityId":"...","conversationId":"19:...","filename":"report.pdf","mimetype":"application/pdf","size":12345,"url":"https://..."}
 
 Notes:
-  - Uploads through VM0 storage first, then sends the Teams message with the file URL
+  - Uploads through Okou storage first, then sends the Teams message with the file URL
   - Use the Conversation ID and Activity ID from the current Teams run prompt`,
   )
   .action(

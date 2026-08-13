@@ -325,6 +325,12 @@ export {
   type TestBrowserReconcileContract,
 } from "./test-browser-reconcile";
 export {
+  testChatEventSearchProjectionBodySchema,
+  testChatEventSearchProjectionContract,
+  type TestChatEventSearchProjectionBody,
+  type TestChatEventSearchProjectionContract,
+} from "./test-chat-event-search-projection";
+export {
   testRuntimeStateActionBodySchema,
   testRuntimeStateActionResponseSchema,
   testRuntimeStateContract,
@@ -386,6 +392,11 @@ export {
   type TestCronCleanupSandboxesStateActionResponse,
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
+export {
+  testChatEventSnapshotBodySchema,
+  testChatEventSnapshotContract,
+  type TestChatEventSnapshotContract,
+} from "./test-chat-event-snapshot";
 export {
   testSlackStateContract,
   testSlackStateErrorSchema,
@@ -778,17 +789,17 @@ export {
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
   validateBaseUrl,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 export {
   collectAndValidatePermissions,
   validateRule,
-} from "@vm0/connectors/firewall-expander";
+} from "@okouai/connectors/firewall-expander";
 
 export {
   matchFirewallPath,
   findMatchingPermissions,
-} from "@vm0/connectors/firewall-rule-matcher";
+} from "@okouai/connectors/firewall-rule-matcher";
 
 export {
   userPreferencesResponseSchema,

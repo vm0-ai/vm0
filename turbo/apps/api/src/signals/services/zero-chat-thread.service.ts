@@ -2,7 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -10,7 +10,6 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type CodexServiceTier,
-  type ChatEvent,
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
@@ -18,31 +17,29 @@ import {
   type ZeroIndicators,
   persistedAttachmentSchema,
   zeroIndicatorSchema,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
-} from "@vm0/api-contracts/contracts/zero-host";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatEventSearchDocs } from "@vm0/db/schema/chat-event-search";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
+} from "@okouai/api-contracts/contracts/zero-host";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSearchDocs } from "@okouai/db/schema/chat-event-search";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/run-uploaded-file";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import {
   and,
@@ -72,6 +69,7 @@ import {
   pgIntegerDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
+import { now } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   canonicalChatEventContent,
@@ -100,10 +98,6 @@ import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.ser
 import { listPendingChatQueueEvents } from "./chat-event-queue.service";
 
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
-
-type ChatEventRow = Omit<ChatEventRowV4, "createdAt"> & {
-  readonly createdAt: Date;
-};
 
 type ChatSearchMessageRow = {
   readonly messageId: string;
@@ -160,25 +154,6 @@ function publicChatEventRunId() {
   END`
     .mapWith(nullableDriverValueDecoder(chatEvents.runId))
     .as("effective_run_id");
-}
-
-const eventColumns = {
-  id: chatEvents.id,
-  chatThreadId: chatEvents.chatThreadId,
-  eventType: chatEvents.eventType,
-  runId: chatEvents.runId,
-  payload: chatEvents.payload,
-  contextType: chatEvents.contextType,
-  contextId: chatEvents.contextId,
-  runEventId: chatEvents.runEventId,
-  seqId: chatEvents.seqId,
-  runEventSequenceNumber: chatEvents.runEventSequenceNumber,
-  createdAt: chatEvents.createdAt,
-  revokesEventId: chatEvents.revokesEventId,
-} as const;
-
-function selectChatEvents(db: Pick<Db, "select">) {
-  return db.select(eventColumns).from(chatEvents);
 }
 
 const searchMessageColumns = {
@@ -342,14 +317,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function toChatEvent(row: ChatEventRow): ChatEvent {
-  return chatEventFromRow({
-    ...row,
-    createdAt: row.createdAt.toISOString(),
-  });
-}
-
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+const INDICATOR_UNREAD_LIMIT = 50;
+const INDICATOR_UNREAD_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const zeroIndicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
 
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
@@ -529,8 +499,10 @@ export function zeroChatThreadUnreadThreadIds(args: {
 
 /**
  * Active and unread indicators for the user's agents and threads in the
- * current organization. Active threads are computed once and reused to keep
- * unread classification and indicator precedence within one database snapshot.
+ * current organization. Active threads are complete; unread threads are the
+ * latest 50 terminal markers from the last seven days. Active threads are
+ * computed once and reused to keep unread classification and indicator
+ * precedence within one database snapshot.
  */
 export function zeroChatIndicators(args: {
   readonly userId: string;
@@ -538,6 +510,7 @@ export function zeroChatIndicators(args: {
 }): Computed<Promise<ZeroIndicators>> {
   return computed(async (get): Promise<ZeroIndicators> => {
     const db = get(db$);
+    const unreadCutoff = new Date(now() - INDICATOR_UNREAD_LOOKBACK_MS);
     const activeThreads = db.$with("active_threads").as(
       db
         .selectDistinct({
@@ -572,13 +545,21 @@ export function zeroChatIndicators(args: {
             eq(chatThreads.userId, args.userId),
             eq(zeroAgents.orgId, args.orgId),
             isNull(activeThreads.threadId),
+            gte(chatThreads.lastMessageAt, unreadCutoff),
+            or(
+              isNull(chatThreads.lastReadAt),
+              gt(chatThreads.lastMessageAt, chatThreads.lastReadAt),
+            ),
+            gte(lastRunFinish.createdAt, unreadCutoff),
             or(
               isNull(chatThreads.lastReadAt),
               gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
             ),
             noActiveGoalsForCurrentThreadCondition(db),
           ),
-        ),
+        )
+        .orderBy(desc(lastRunFinish.createdAt), desc(chatThreads.id))
+        .limit(INDICATOR_UNREAD_LIMIT),
     );
     const indicatorRows = db.$with("indicator_rows").as(
       unionAll(
@@ -1114,92 +1095,6 @@ export function zeroChatSearch(args: {
     });
 
     return { results, hasMore };
-  });
-}
-
-export function zeroChatThreadEventsPage(args: {
-  readonly threadId: string;
-  readonly userId: string;
-  readonly sinceSeqId: number | undefined;
-  readonly beforeSeqId: number | undefined;
-  readonly limit: number;
-}): Computed<Promise<readonly ChatEvent[] | null>> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const [owned] = await db
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
-    if (!owned) {
-      return null;
-    }
-
-    const cursors = [args.sinceSeqId, args.beforeSeqId].filter((cursor) => {
-      return cursor !== undefined;
-    });
-    if (cursors.length > 1) {
-      throw new Error("after and before cursors are mutually exclusive");
-    }
-
-    const threadFilter = eq(chatEvents.chatThreadId, args.threadId);
-    let rows: ChatEventRow[];
-
-    if (args.sinceSeqId !== undefined) {
-      rows = await selectChatEvents(db)
-        .where(and(threadFilter, gt(chatEvents.seqId, args.sinceSeqId)))
-        .orderBy(asc(chatEvents.seqId))
-        .limit(args.limit);
-    } else if (args.beforeSeqId !== undefined) {
-      rows = (
-        await selectChatEvents(db)
-          .where(and(threadFilter, lt(chatEvents.seqId, args.beforeSeqId)))
-          .orderBy(desc(chatEvents.seqId))
-          .limit(args.limit)
-      ).reverse();
-    } else {
-      rows = (
-        await selectChatEvents(db)
-          .where(threadFilter)
-          .orderBy(desc(chatEvents.seqId))
-          .limit(args.limit)
-      ).reverse();
-    }
-
-    return rows.map(toChatEvent);
-  });
-}
-
-export function zeroChatThreadEventById(args: {
-  readonly threadId: string;
-  readonly userId: string;
-  readonly eventId: string;
-}): Computed<Promise<ChatEvent | null>> {
-  return computed(async (get) => {
-    const owned = await get(ownedChatThread(args.threadId, args.userId));
-    if (!owned) {
-      return null;
-    }
-
-    const db = get(db$);
-    const [row] = await selectChatEvents(db)
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.threadId),
-        ),
-      )
-      .limit(1);
-    if (!row) {
-      return null;
-    }
-
-    return toChatEvent(row);
   });
 }
 

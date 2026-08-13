@@ -3,9 +3,9 @@ import { inArray } from "drizzle-orm";
 import type {
   MemberUsage,
   UsageMembersResponse,
-} from "@vm0/api-contracts/contracts/zero-usage";
-import type { UsageRecordRange } from "@vm0/api-contracts/contracts/zero-usage-record";
-import { userCache } from "@vm0/db/schema/user-cache";
+} from "@okouai/api-contracts/contracts/zero-usage";
+import type { UsageRecordRange } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { userCache } from "@okouai/db/schema/user-cache";
 import { clerk$, type ClerkUser } from "../external/clerk";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";

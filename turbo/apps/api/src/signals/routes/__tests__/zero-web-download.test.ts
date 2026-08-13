@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv } from "../../../lib/env";

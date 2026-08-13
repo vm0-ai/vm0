@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 

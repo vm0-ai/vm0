@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   closeCustomConnectorDialog$,
   deleteCustomConnector$,

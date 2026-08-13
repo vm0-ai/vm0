@@ -62,7 +62,7 @@ EOF
     assert_success
     assert_output "$assistant_text"
 
-    run runner_api_curl "/api/zero/chat-threads/${THREAD_ID}/events?limit=50"
+    run runner_chat_event_rows "$THREAD_ID"
     echo "$output"
     assert_success
     local chat_events="$output"
@@ -70,13 +70,13 @@ EOF
         --arg runId "$RUN_ID" \
         --arg assistantText "$assistant_text" \
         --arg protocolNoise "$protocol_noise" '
-        [.events[]? |
+        [.rows[]? |
             select(.eventType == "output.message" and .runId == $runId) |
-            .content
+            .payload.content
         ] as $outputs |
         ($outputs == [$assistantText]) and
         all($outputs[]; contains($protocolNoise) | not) and
-        any(.events[]?;
+        any(.rows[]?;
             .eventType == "run.completed" and .runId == $runId
         )
     ' <<<"$chat_events"
@@ -114,16 +114,16 @@ EOF
     assert_success
     assert_output "Done."
 
-    run runner_api_curl "/api/zero/chat-threads/${THREAD_ID}/events?limit=50"
+    run runner_chat_event_rows "$THREAD_ID"
     echo "$output"
     assert_success
     local chat_events="$output"
     run jq -e --arg runId "$RUN_ID" '
-        ([.events[]? |
+        ([.rows[]? |
             select(.eventType == "output.message" and .runId == $runId) |
-            .content
+            .payload.content
         ] == ["Done."]) and
-        any(.events[]?;
+        any(.rows[]?;
             .eventType == "run.completed" and .runId == $runId
         )
     ' <<<"$chat_events"

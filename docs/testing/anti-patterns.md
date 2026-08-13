@@ -186,8 +186,8 @@ tests can still catch actual race conditions.
 Sometimes you see code like this:
 
 ```typescript
-vi.mock("@vm0/core", async () => {
-  const actual = await vi.importActual("@vm0/core");
+vi.mock("@okouai/core", async () => {
+  const actual = await vi.importActual("@okouai/core");
   return {
     ...actual,
     extractVariableReferences: vi.fn(),
@@ -201,7 +201,7 @@ This partial mocking—where you import the real module and selectively replace 
 The solution is to use the real implementation. If your tests require partial mocking to pass, that often indicates a design issue in the production code—maybe it's doing too much, or has too many dependencies.
 
 ```typescript
-// Use real @vm0/core implementation
+// Use real @okouai/core implementation
 import { extractRequiredVarNames } from "../cook";
 
 it("should extract and combine vars and secrets", () => {
@@ -390,7 +390,7 @@ it("should create a provider", async () => {
 
 ```typescript
 // ✅ Good — testing through the API endpoint
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 

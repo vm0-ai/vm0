@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   SlidersHorizontal,
   Bug,
@@ -25,7 +25,7 @@ import {
   ReceiptText,
   Users,
 } from "lucide-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
@@ -107,8 +107,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
-  const showUsage =
-    isAdmin || (features[FeatureSwitchKey.UsagePackPlans] ?? false);
+  const usagePackPlansEnabled =
+    features[FeatureSwitchKey.UsagePackPlans] ?? false;
+  const showUsage = isAdmin || usagePackPlansEnabled;
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -232,11 +233,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             },
           ]
         : []),
-      {
-        id: "usage-records" as const,
-        label: sectionMeta["usage-records"].title,
-        icon: History,
-      },
+      ...(usagePackPlansEnabled
+        ? [
+            {
+              id: "usage-records" as const,
+              label: sectionMeta["usage-records"].title,
+              icon: History,
+            },
+          ]
+        : []),
       ...(isAdmin
         ? [
             {
@@ -264,10 +269,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const resolvedSection: SettingsSection =
     (!showDebug && activeSection === "debug") ||
     (!showUsage && activeSection === "usage") ||
+    (!usagePackPlansEnabled && activeSection === "usage-records") ||
     (!isAdmin && isAdminOnlySettingsSection(activeSection))
       ? "preference"
       : activeSection;
-  const meta = sectionMeta[resolvedSection];
+  const meta =
+    resolvedSection === "usage" && !usagePackPlansEnabled
+      ? {
+          title: sectionMeta.usage.title,
+          description: t(($) => {
+            return $.settings.dialog.sections.usage.balanceUsageDescription;
+          }),
+        }
+      : sectionMeta[resolvedSection];
 
   const handleSectionChange = (section: SettingsSection) => {
     setActiveSection(section);

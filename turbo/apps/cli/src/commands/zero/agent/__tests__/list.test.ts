@@ -13,11 +13,16 @@ import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
 
-const mockAgent = {
+const mockAgentWithoutVisibility = {
   agentId: "my-agent",
   displayName: "My Agent",
   description: null,
   sound: null,
+};
+
+const mockAgent = {
+  ...mockAgentWithoutVisibility,
+  visibility: "private",
 };
 
 describe("okou agent list command", () => {
@@ -54,6 +59,8 @@ describe("okou agent list command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-agent");
       expect(logCalls).toContain("My Agent");
+      expect(logCalls).toContain("VISIBILITY");
+      expect(logCalls).toContain("private");
     });
 
     it("should display empty state message when no agents", async () => {
@@ -67,6 +74,21 @@ describe("okou agent list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No agents found");
+    });
+
+    it("should show a placeholder when visibility is missing", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/okou/agents", () => {
+          return HttpResponse.json([mockAgentWithoutVisibility]);
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const agentRow = mockConsoleLog.mock.calls.flat().find((line) => {
+        return line.includes("my-agent");
+      });
+      expect(agentRow).toMatch(/My Agent\s+-\s*$/);
     });
   });
 

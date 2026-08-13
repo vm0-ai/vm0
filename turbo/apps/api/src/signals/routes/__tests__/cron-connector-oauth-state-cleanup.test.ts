@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorOauthStartContract } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   afterEach,
   beforeEach,

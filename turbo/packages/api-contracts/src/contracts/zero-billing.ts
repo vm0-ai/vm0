@@ -58,6 +58,10 @@ const concurrencySubscriptionSchema = z.object({
   // version-skew window. Remove the optional field with #26152 after #26116
   // has been deployed beyond that window.
   canChangeInApp: z.boolean().optional(),
+  // Optional while older API deployments can still serve an already-loaded
+  // web/app client during rollout.
+  scheduledQuantity: z.number().int().positive().nullable().optional(),
+  scheduledChangeAt: z.string().nullable().optional(),
 });
 
 const usageAllowanceWindowSchema = z.object({
@@ -84,6 +88,7 @@ const billingStatusResponseSchema = z.object({
    */
   paymentMethodManagementAvailable: z.boolean().optional(),
   canBuyConcurrency: z.boolean().optional(),
+  concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),
   memberInvitationAllowed: z.boolean().optional(),
@@ -400,6 +405,9 @@ const concurrencyCheckoutRequestSchema = z.object({
   cancelUrl: stripeRedirectUrlSchema,
 });
 
+const concurrencyCheckoutPreviewRequestSchema =
+  concurrencyCheckoutRequestSchema.pick({ quantity: true });
+
 const concurrencySubscriptionReduceRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
   successUrl: stripeRedirectUrlSchema,
@@ -411,11 +419,12 @@ const concurrencySubscriptionChangeRequestSchema = z.object({
 });
 
 const concurrencySubscriptionChangePreviewResponseSchema = z.object({
-  currentQuantity: z.number().int().min(1).max(1000),
+  currentQuantity: z.number().int().min(0).max(1000),
   targetQuantity: z.number().int().min(1).max(1000),
   immediateAmountCents: z.number().int().nonnegative(),
   nextRecurringAmountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
+  effectiveAt: z.iso.datetime().optional(),
 });
 
 const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
@@ -424,14 +433,17 @@ const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
     z.object({
       status: z.literal("processing"),
       hostedInvoiceUrl: z.null(),
+      effectiveAt: z.iso.datetime().optional(),
     }),
     z.object({
       status: z.literal("pending_payment"),
       hostedInvoiceUrl: z.string().url(),
+      effectiveAt: z.iso.datetime().optional(),
     }),
     z.object({
       status: z.literal("completed"),
       hostedInvoiceUrl: z.null(),
+      effectiveAt: z.iso.datetime().optional(),
     }),
   ],
 );
@@ -820,6 +832,22 @@ export type ZeroBillingUsagePackMigrationContract =
  * Zero contract for POST /api/okou/billing/concurrency-checkout
  */
 export const zeroBillingConcurrencyCheckoutContract = c.router({
+  preview: {
+    method: "POST",
+    path: "/api/zero/billing/concurrency-checkout/preview",
+    headers: authHeadersSchema,
+    body: concurrencyCheckoutPreviewRequestSchema,
+    responses: {
+      200: concurrencySubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a Stripe purchase for concurrency add-on slots",
+  },
   create: {
     method: "POST",
     path: "/api/okou/billing/concurrency-checkout",
@@ -830,6 +858,7 @@ export const zeroBillingConcurrencyCheckoutContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
@@ -916,6 +945,7 @@ export const zeroBillingConcurrencySubscriptionContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },

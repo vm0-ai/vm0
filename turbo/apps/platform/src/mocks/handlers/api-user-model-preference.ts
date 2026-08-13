@@ -1,7 +1,7 @@
 import {
   type UserModelPreferenceResponse,
   zeroUserModelPreferenceContract,
-} from "@vm0/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 

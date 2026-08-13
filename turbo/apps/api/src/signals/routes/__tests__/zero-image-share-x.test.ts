@@ -1,4 +1,4 @@
-import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
+import { zeroImageShareXContract } from "@okouai/api-contracts/contracts/zero-image-share-x";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 

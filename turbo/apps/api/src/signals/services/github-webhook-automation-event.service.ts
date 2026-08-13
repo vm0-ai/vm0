@@ -18,14 +18,14 @@ import {
   type GithubWorkflowRunConclusion,
   type GithubAutomationEventConfig,
   type ZeroAutomationEventType,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflowGithubProcessedEvents,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";

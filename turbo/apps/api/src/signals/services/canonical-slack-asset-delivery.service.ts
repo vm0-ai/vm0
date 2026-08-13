@@ -3,7 +3,7 @@ import {
   CANONICAL_ASSET_VERSION,
   canonicalAssetDeliveries,
   runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
+} from "@okouai/db/schema/run-uploaded-file";
 import { and, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
 
 import type { SlackClient } from "../external/slack-message-client";

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { integrationsSlackUploadInitContract } from "@vm0/api-contracts/contracts/integrations";
+import { integrationsSlackUploadInitContract } from "@okouai/api-contracts/contracts/integrations";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
+import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
 import { createStore } from "ccstate";
 import { onTestFinished } from "vitest";
 

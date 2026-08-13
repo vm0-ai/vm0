@@ -2,7 +2,7 @@ import { Check, Loader2, Globe } from "lucide-react";
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Button } from "@vm0/ui/components/ui/button";
+import { Button } from "@okouai/ui/components/ui/button";
 
 import {
   applyBrowserAuthorizationRequest$,

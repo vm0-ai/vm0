@@ -1,4 +1,4 @@
-import type { ChatThreadEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadEvent } from "@okouai/api-contracts/contracts/chat-threads";
 
 type WithoutSeqId<T> = T extends unknown
   ? Omit<T, "seqId"> & { readonly seqId?: never }
