@@ -69,6 +69,7 @@ import {
   pgIntegerDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
+import { now } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   canonicalChatEventContent,
@@ -317,6 +318,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+const INDICATOR_UNREAD_LIMIT = 50;
+const INDICATOR_UNREAD_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const zeroIndicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
 
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
@@ -496,8 +499,10 @@ export function zeroChatThreadUnreadThreadIds(args: {
 
 /**
  * Active and unread indicators for the user's agents and threads in the
- * current organization. Active threads are computed once and reused to keep
- * unread classification and indicator precedence within one database snapshot.
+ * current organization. Active threads are complete; unread threads are the
+ * latest 50 terminal markers from the last seven days. Active threads are
+ * computed once and reused to keep unread classification and indicator
+ * precedence within one database snapshot.
  */
 export function zeroChatIndicators(args: {
   readonly userId: string;
@@ -505,6 +510,7 @@ export function zeroChatIndicators(args: {
 }): Computed<Promise<ZeroIndicators>> {
   return computed(async (get): Promise<ZeroIndicators> => {
     const db = get(db$);
+    const unreadCutoff = new Date(now() - INDICATOR_UNREAD_LOOKBACK_MS);
     const activeThreads = db.$with("active_threads").as(
       db
         .selectDistinct({
@@ -539,13 +545,21 @@ export function zeroChatIndicators(args: {
             eq(chatThreads.userId, args.userId),
             eq(zeroAgents.orgId, args.orgId),
             isNull(activeThreads.threadId),
+            gte(chatThreads.lastMessageAt, unreadCutoff),
+            or(
+              isNull(chatThreads.lastReadAt),
+              gt(chatThreads.lastMessageAt, chatThreads.lastReadAt),
+            ),
+            gte(lastRunFinish.createdAt, unreadCutoff),
             or(
               isNull(chatThreads.lastReadAt),
               gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
             ),
             noActiveGoalsForCurrentThreadCondition(db),
           ),
-        ),
+        )
+        .orderBy(desc(lastRunFinish.createdAt), desc(chatThreads.id))
+        .limit(INDICATOR_UNREAD_LIMIT),
     );
     const indicatorRows = db.$with("indicator_rows").as(
       unionAll(
