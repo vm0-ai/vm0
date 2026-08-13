@@ -52,6 +52,7 @@ interface StableRealtimeChannel {
     topic: string | null,
     callback: ChannelCallback,
   ) => void;
+  readonly suspend: () => void;
   readonly replace: (channel: RealtimeChannel) => Promise<void>;
 }
 
@@ -483,7 +484,7 @@ function createStableRealtimeChannel(
   initialChannel: RealtimeChannel,
 ): StableRealtimeChannel {
   const subscriptions = new Map<ChannelCallback, ActiveChannelSubscription>();
-  let currentChannel = initialChannel;
+  let currentChannel: RealtimeChannel | null = initialChannel;
   let replacement: Promise<void> | null = null;
 
   const attach = async (
@@ -515,6 +516,9 @@ function createStableRealtimeChannel(
       const activeReplacement = replacement;
       if (!activeReplacement) {
         const channel = currentChannel;
+        if (!channel) {
+          return Promise.resolve();
+        }
         subscription.channels.add(channel);
         return subscribeToRealtimeChannel(channel, subscription);
       }
@@ -524,7 +528,10 @@ function createStableRealtimeChannel(
         if (subscriptions.get(callback) !== subscription) {
           return;
         }
-        await attach(currentChannel, subscription);
+        const channel = currentChannel;
+        if (channel) {
+          await attach(channel, subscription);
+        }
       })();
     },
     unsubscribe: (_topic, callback) => {
@@ -537,6 +544,15 @@ function createStableRealtimeChannel(
         unsubscribeFromRealtimeChannel(channel, subscription);
       }
       subscription.channels.clear();
+    },
+    suspend: () => {
+      currentChannel = null;
+      for (const subscription of subscriptions.values()) {
+        for (const channel of subscription.channels) {
+          unsubscribeFromRealtimeChannel(channel, subscription);
+        }
+        subscription.channels.clear();
+      }
     },
     replace: async (channel) => {
       const activeReplacement = replacement;
@@ -650,6 +666,19 @@ const connectRealtimeClient$ = command(
   },
 );
 
+const closeRealtimeWhileHidden$ = command(({ get }) => {
+  if (document.visibilityState === "visible") {
+    return;
+  }
+  const session = get(internalRealtimeSession$);
+  if (!session) {
+    return;
+  }
+  L.debug("page hidden, closing realtime connection");
+  session.channel.suspend();
+  session.close();
+});
+
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const session = get(internalRealtimeSession$);
@@ -658,8 +687,13 @@ const foregroundRealtimeCatchUp$ = command(
       return;
     }
 
-    if (session.ably.connection.state === "failed") {
-      L.debug("foreground catch-up rebuilding failed realtime connection");
+    const connectionState = session.ably.connection.state;
+    if (
+      connectionState === "failed" ||
+      connectionState === "closing" ||
+      connectionState === "closed"
+    ) {
+      L.debug("foreground catch-up rebuilding inactive realtime connection");
       const connected = await set(connectRealtimeClient$, signal);
       signal.throwIfAborted();
       await onRejection(session.channel.replace(connected.channel), () => {
@@ -672,6 +706,11 @@ const foregroundRealtimeCatchUp$ = command(
         close: connected.close,
       });
       session.close();
+    }
+
+    if (document.visibilityState !== "visible") {
+      set(closeRealtimeWhileHidden$);
+      return;
     }
 
     L.debug("foreground catch-up ready, poking subscribers");
@@ -719,6 +758,14 @@ export const setupRealtime$ = command(
       close: connected.close,
     });
     set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        set(closeRealtimeWhileHidden$);
+      },
+      { signal },
+    );
+    set(closeRealtimeWhileHidden$);
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {
