@@ -922,11 +922,15 @@ fn replacement_name() -> OsString {
 }
 
 /// Policy for an existing final entry during private atomic replacement.
+///
+/// These target guarantees apply on Unix. Non-Unix platforms accept the
+/// policy for API consistency without claiming equivalent file-type,
+/// permission, ownership, or symlink validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrivateFileReplacementTarget {
-    /// Require the target to be missing or an existing private regular file.
+    /// On Unix, require a missing target or an existing private regular file.
     PrivateFileOrMissing,
-    /// Replace the final directory entry without opening or following it.
+    /// On Unix, replace the final entry without opening or following it.
     ReplaceFinalEntry,
 }
 
@@ -1065,7 +1069,8 @@ fn replace_private_atomic_non_unix(
 /// permissions. [`PrivateFileReplacementTarget::ReplaceFinalEntry`] replaces
 /// an existing non-directory final entry without opening or following it.
 /// Existing readers therefore observe either the previous complete file or
-/// the new complete file.
+/// the new complete file. On non-Unix platforms, the target policy adds no
+/// guarantees beyond the platform's rename behavior.
 pub fn replace_private_atomic(
     path: impl AsRef<Path>,
     bytes: impl AsRef<[u8]>,
