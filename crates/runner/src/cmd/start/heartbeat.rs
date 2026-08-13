@@ -90,6 +90,7 @@ pub(super) struct HeartbeatController<'a> {
 
 struct HeartbeatRequest {
     force_send: bool,
+    refresh_workspace_cache: bool,
     workspace_cache_change: Option<WorkspaceCacheChange>,
 }
 
@@ -97,6 +98,15 @@ impl HeartbeatRequest {
     fn ordinary() -> Self {
         Self {
             force_send: true,
+            refresh_workspace_cache: true,
+            workspace_cache_change: None,
+        }
+    }
+
+    fn initial_workspace_cache_snapshot() -> Self {
+        Self {
+            force_send: true,
+            refresh_workspace_cache: false,
             workspace_cache_change: None,
         }
     }
@@ -104,12 +114,14 @@ impl HeartbeatRequest {
     fn workspace_cache(change: WorkspaceCacheChange) -> Self {
         Self {
             force_send: false,
+            refresh_workspace_cache: true,
             workspace_cache_change: Some(change),
         }
     }
 
     fn merge(mut self, other: Self) -> Self {
         self.force_send |= other.force_send;
+        self.refresh_workspace_cache |= other.refresh_workspace_cache;
         match (
             self.workspace_cache_change.as_mut(),
             other.workspace_cache_change,
@@ -142,6 +154,13 @@ impl<'a> HeartbeatController<'a> {
         change: WorkspaceCacheChange,
     ) -> RunnerResult<()> {
         self.request_inner(mode, HeartbeatRequest::workspace_cache(change))
+    }
+
+    pub(super) fn request_initial_workspace_cache_snapshot(
+        &mut self,
+        mode: RunnerMode,
+    ) -> RunnerResult<()> {
+        self.request_inner(mode, HeartbeatRequest::initial_workspace_cache_snapshot())
     }
 
     pub(super) fn request_initial_workspace_cache(
@@ -393,6 +412,10 @@ impl WorkspaceCacheStateSnapshot {
         )
     }
 
+    fn loaded_workspace_cache_states(&self) -> Vec<HeldWorkspaceState> {
+        self.lock_inner().workspace_cache_states.clone()
+    }
+
     fn lock_inner(&self) -> MutexGuard<'_, WorkspaceCacheStateSnapshotInner> {
         self.inner
             .lock()
@@ -428,13 +451,20 @@ async fn send_heartbeat(
         hb.workspace_cache_snapshot
             .current_held_workspace_states(hb.active_runs, None)
     });
-    let refresh = refresh_workspace_cache_snapshot_after_change(
-        &hb.workspace_cache_snapshot,
-        hb.workspace_cache.as_ref(),
-        hb.profiles,
-        cache_change,
-    )
-    .await;
+    let refresh = if request.refresh_workspace_cache {
+        refresh_workspace_cache_snapshot_after_change(
+            &hb.workspace_cache_snapshot,
+            hb.workspace_cache.as_ref(),
+            hb.profiles,
+            cache_change,
+        )
+        .await
+    } else {
+        WorkspaceCacheRefreshOutcome {
+            states: hb.workspace_cache_snapshot.loaded_workspace_cache_states(),
+            changed: false,
+        }
+    };
     state.held_sandbox_states =
         filter_current_held_sandbox_states(state.held_sandbox_states, hb.active_runs, None);
     state.held_workspace_states =
@@ -1116,6 +1146,77 @@ mod tests {
         assert_eq!(
             cached_states[0].workspace_caches,
             vec![workspace_cache("vm0/default")]
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_workspace_cache_heartbeat_uses_loaded_snapshot() {
+        let reuse_key = "thread:loaded-initial-snapshot";
+        let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 1,
+        })));
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = WorkspaceImageCache::new(paths.clone());
+        seed_workspace_cache_state(&cache, &paths, reuse_key, "2026-06-01T00:00:00.000Z").await;
+        let profiles = test_profiles();
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let active_runs = test_active_runs();
+        let (provider, handle) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
+        let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
+        refresh_snapshot(
+            &workspace_cache_snapshot,
+            vec![held_workspace_state(
+                reuse_key,
+                "2026-06-01T00:00:00.000Z",
+                &["vm0/default"],
+            )],
+        );
+        let cache_key = crate::paths::scoped_workspace_image_cache_key(
+            "",
+            "vm0/default",
+            reuse_key,
+            CANONICAL_WORKING_DIR,
+            1024 * 1024,
+        );
+        let metadata = paths
+            .workspace_image_cache_dir()
+            .join(cache_key)
+            .join("metadata.json");
+        tokio::fs::remove_file(metadata).await.unwrap();
+        let hb = HeartbeatContext::new(HeartbeatContextInit {
+            idle_pool: &idle_pool,
+            runner_id: "runner-1",
+            name: "test-runner",
+            group: "vm0/test",
+            snapshot_generation: 7,
+            profiles: &profiles,
+            budget: &budget,
+            provider: provider.as_ref(),
+            workspace_cache: Some(cache),
+            active_runs: &active_runs,
+            workspace_cache_snapshot,
+        });
+
+        send_heartbeat(
+            &hb,
+            RunnerMode::Running,
+            42,
+            HeartbeatRequest::initial_workspace_cache_snapshot(),
+        )
+        .await;
+
+        let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(heartbeats.len(), 1);
+        assert_eq!(
+            heartbeats[0].held_workspace_states,
+            vec![held_workspace_state(
+                reuse_key,
+                "2026-06-01T00:00:00.000Z",
+                &["vm0/default"],
+            )]
         );
     }
 

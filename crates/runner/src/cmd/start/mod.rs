@@ -1585,7 +1585,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     if startup_mode == RunnerMode::Running {
         if initial_workspace_cache.locked_commit_keys.is_empty() {
             if !initial_workspace_cache.states.is_empty() {
-                heartbeat.request(startup_mode)?;
+                heartbeat.request_initial_workspace_cache_snapshot(startup_mode)?;
             }
         } else {
             heartbeat.request_initial_workspace_cache(
