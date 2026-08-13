@@ -967,15 +967,11 @@
       "upgradeTo": "Passer à {{plan}}",
       "usagePacks": {
         "bonusCredits": "Crédits bonus",
-        "changePlan": "Changer de forfait",
         "choosePlan": "Choisissez un forfait",
         "concurrentSlots": "Emplacements simultanés",
         "configurePackages": "Configurer les forfaits des membres",
-        "configurePackagesDescription": "Choisissez un forfait obligatoire pour chaque membre, puis vérifiez le total mensuel combiné.",
         "creditsPerMember": "{{credits}} crédits par membre",
         "currentMember": "Membre actuel",
-        "description": "Choisissez un forfait d’utilisation mensuel pour chaque membre.",
-        "discountBonusCredits": "Crédits bonus liés à la remise",
         "everythingOnPlus": "Tout {{plan}}, plus :",
         "existingPackagesUnchanged": "Les forfaits actuels des membres restent inchangés.",
         "management": {
@@ -1013,15 +1009,16 @@
         },
         "monthlyTotal": "Total mensuel",
         "orderSummary": "Récapitulatif de la commande",
+        "packCredits": "{{credits}} crédits",
+        "packCreditsDiscount": "{{credits}} crédits · {{discount}} % de remise",
         "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",
         "planChangeError": "Impossible de préparer la modification de l’abonnement. Réessayez.",
         "planStep": "Forfait",
         "purchasedCredits": "Crédits achetés",
-        "selectedPlan": "Forfait sélectionné",
         "selectPlan": "Commencer avec {{plan}}",
         "selectUsage": "Utilisation de {{name}}",
         "stepOfTotal": "Étape {{current}} sur {{total}}",
-        "totalCredits": "Crédits totaux"
+        "totalCreditsWithBonus": "{{credits}} crédits · {{bonus}} en bonus"
       }
     },
     "restore": {

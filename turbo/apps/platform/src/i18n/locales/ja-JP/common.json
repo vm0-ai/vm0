@@ -946,15 +946,11 @@
       "upgradeTo": "{{plan}} にアップグレードする",
       "usagePacks": {
         "bonusCredits": "ボーナスクレジット",
-        "changePlan": "プランを変更",
         "choosePlan": "プランを選択",
         "concurrentSlots": "同時実行スロット",
         "configurePackages": "メンバーパッケージを設定",
-        "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
         "creditsPerMember": "メンバーごとに {{credits}} クレジット",
         "currentMember": "現在のメンバー",
-        "description": "各メンバーに月額利用パックを選択します。",
-        "discountBonusCredits": "割引によるボーナスクレジット",
         "everythingOnPlus": "{{plan}} のすべてに加えて:",
         "existingPackagesUnchanged": "既存のメンバーパッケージは変更されません。",
         "management": {
@@ -992,15 +988,16 @@
         },
         "monthlyTotal": "月額合計",
         "orderSummary": "注文内容",
+        "packCredits": "{{credits}} クレジット",
+        "packCreditsDiscount": "{{credits}} クレジット · {{discount}}% オフ",
         "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
         "planChangeError": "サブスクリプションの変更を準備できませんでした。もう一度お試しください。",
         "planStep": "プラン",
         "purchasedCredits": "購入クレジット",
-        "selectedPlan": "選択したプラン",
         "selectPlan": "{{plan}} で始める",
         "selectUsage": "{{name}} の利用設定",
         "stepOfTotal": "ステップ {{current}}/{{total}}",
-        "totalCredits": "合計クレジット"
+        "totalCreditsWithBonus": "{{credits}} クレジット · ボーナス {{bonus}}"
       }
     },
     "restore": {

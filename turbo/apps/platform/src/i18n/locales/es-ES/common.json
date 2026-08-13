@@ -967,15 +967,11 @@
       "upgradeTo": "Actualizar a {{plan}}",
       "usagePacks": {
         "bonusCredits": "Créditos de bonificación",
-        "changePlan": "Cambiar plan",
         "choosePlan": "Elige un plan",
         "concurrentSlots": "Espacios simultáneos",
         "configurePackages": "Configurar paquetes de miembros",
-        "configurePackagesDescription": "Elige un paquete obligatorio para cada miembro y revisa el total mensual combinado.",
         "creditsPerMember": "{{credits}} créditos por miembro",
         "currentMember": "Miembro actual",
-        "description": "Elige un paquete de uso mensual para cada miembro.",
-        "discountBonusCredits": "Créditos extra por descuento",
         "everythingOnPlus": "Todo lo de {{plan}}, y además:",
         "existingPackagesUnchanged": "Los paquetes actuales de los miembros no cambian.",
         "management": {
@@ -1013,15 +1009,16 @@
         },
         "monthlyTotal": "Total mensual",
         "orderSummary": "Resumen del pedido",
+        "packCredits": "{{credits}} créditos",
+        "packCreditsDiscount": "{{credits}} créditos · {{discount}} % de descuento",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",
         "planChangeError": "No se pudo preparar el cambio de suscripción. Inténtalo de nuevo.",
         "planStep": "Plan",
         "purchasedCredits": "Créditos comprados",
-        "selectedPlan": "Plan seleccionado",
         "selectPlan": "Empezar con {{plan}}",
         "selectUsage": "Uso de {{name}}",
         "stepOfTotal": "Paso {{current}} de {{total}}",
-        "totalCredits": "Créditos totales"
+        "totalCreditsWithBonus": "{{credits}} créditos · {{bonus}} de bonificación"
       }
     },
     "restore": {

@@ -11,7 +11,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -407,6 +406,131 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
   );
 }
 
+/* Every ledger row lands on the same three columns: who or what the line is,
+   the control, and the money. */
+const LEDGER_ROW =
+  "grid grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_4.5rem] items-center gap-3 py-2.5";
+const LEDGER_RULE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
+
+function LedgerPrice({
+  strong = false,
+  value,
+}: {
+  readonly strong?: boolean;
+  readonly value: number;
+}) {
+  return (
+    <span
+      className={
+        strong
+          ? "text-right text-3xl font-light tracking-tight tabular-nums text-foreground"
+          : "text-right text-sm font-medium tabular-nums text-foreground"
+      }
+    >
+      {formatUsd(value, 0)}
+      <span
+        className={`font-normal text-muted-foreground ${strong ? "text-[13px] tracking-normal" : "text-xs"}`}
+      >
+        {i18n.t(($) => {
+          return $.billing.plans.perMonth;
+        })}
+      </span>
+    </span>
+  );
+}
+
+function usagePackCreditsLabel(item: UsagePackCatalogItem): string {
+  const discount = Math.round((item.bonusCredits / item.totalCredits) * 100);
+  const credits = formatLocalizedNumber(item.totalCredits);
+  return discount > 0
+    ? i18n.t(
+        ($) => {
+          return $.billing.plans.usagePacks.packCreditsDiscount;
+        },
+        { credits, discount },
+      )
+    : i18n.t(
+        ($) => {
+          return $.billing.plans.usagePacks.packCredits;
+        },
+        { credits },
+      );
+}
+
+function planSummaryLine(tier: UsagePackPlanTier): string {
+  const features = planFeatures(tier);
+  return `${features[0]} · ${features[features.length - 1]}`;
+}
+
+function LedgerPlanRow({ plan }: { readonly plan: UsagePackPlan }) {
+  return (
+    <div className={LEDGER_ROW}>
+      <div className="flex min-w-0 items-center gap-3">
+        <img
+          src={plan.image}
+          alt=""
+          loading="lazy"
+          className="h-8 w-8 shrink-0 object-contain"
+        />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.namedPlan;
+              },
+              { plan: planName(plan.tier) },
+            )}
+          </span>
+          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+            {planSummaryLine(plan.tier)}
+          </span>
+        </span>
+      </div>
+      <div />
+      <LedgerPrice value={plan.basePriceUsd} />
+    </div>
+  );
+}
+
+function LedgerTotalRow({
+  bonusCredits,
+  credits,
+  totalUsd,
+}: {
+  readonly bonusCredits: number;
+  readonly credits: number;
+  readonly totalUsd: number;
+}) {
+  return (
+    <div className={`${LEDGER_ROW} border-t-[0.7px] border-border py-4`}>
+      <span className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.monthlyTotal;
+        })}
+      </span>
+      <span className="truncate text-xs text-muted-foreground">
+        {bonusCredits > 0
+          ? i18n.t(
+              ($) => {
+                return $.billing.plans.usagePacks.totalCreditsWithBonus;
+              },
+              {
+                bonus: formatLocalizedNumber(bonusCredits),
+                credits: formatLocalizedNumber(credits),
+              },
+            )
+          : i18n.t(
+              ($) => {
+                return $.billing.plans.usagePacks.packCredits;
+              },
+              { credits: formatLocalizedNumber(credits) },
+            )}
+      </span>
+      <LedgerPrice strong value={totalUsd} />
+    </div>
+  );
+}
+
 function MemberUsageRow({
   catalog,
   disabled = false,
@@ -443,7 +567,7 @@ function MemberUsageRow({
         )
     : null;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)] items-center gap-3 px-4 py-3">
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_4.5rem] items-center gap-3 py-2.5">
       <MemberIdentity member={member} />
       <div className="min-w-0">
         <Select
@@ -454,7 +578,7 @@ function MemberUsageRow({
           }}
         >
           <SelectTrigger
-            className="h-9 w-full bg-background text-xs"
+            className="h-9 w-full text-sm"
             aria-label={i18n.t(
               ($) => {
                 return $.billing.plans.usagePacks.selectUsage;
@@ -462,7 +586,11 @@ function MemberUsageRow({
               { name: member.name },
             )}
           >
-            <SelectValue />
+            {/* The price lives in its own column, so the trigger only carries
+                what the package buys. */}
+            <span className="truncate">
+              {usagePackCreditsLabel(usagePackCatalogItem(catalog, selection))}
+            </span>
           </SelectTrigger>
           <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
             {catalog.map((pack) => {
@@ -484,38 +612,18 @@ function MemberUsageRow({
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-function MemberUsageHeader() {
-  return (
-    <div className="border-b border-border/60 px-4 py-4">
-      <div>
-        <h4 className="text-sm font-medium text-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.memberUsage;
-          })}
-        </h4>
-        <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.description;
-          })}
-        </p>
-      </div>
+      <LedgerPrice value={usagePackCatalogItem(catalog, selection).priceUsd} />
     </div>
   );
 }
 
 function MemberUsageFooter() {
   return (
-    <div className="border-t border-border/60 px-4 py-3">
-      <p className="text-[11px] text-muted-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.memberExclusive;
-        })}
-      </p>
-    </div>
+    <p className="text-xs leading-relaxed text-muted-foreground">
+      {i18n.t(($) => {
+        return $.billing.plans.usagePacks.memberExclusive;
+      })}
+    </p>
   );
 }
 
@@ -535,12 +643,16 @@ function MemberUsageConfiguration({
   members,
   onSelectionChange,
   pendingMembers = [],
+  plan,
+  totals,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly management: UsagePackManagementResponse | null;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly onSelectionChange?: () => void;
   readonly pendingMembers?: readonly MemberDisplay[];
+  readonly plan: UsagePackPlan;
+  readonly totals: MemberUsageTotals;
 }) {
   const selections = useGet(memberUsageSelections$);
   const setSelection = useSet(setMemberUsageSelection$);
@@ -557,11 +669,11 @@ function MemberUsageConfiguration({
     <section
       role="group"
       aria-label={memberUsageLabel}
-      className="rounded-xl bg-card zero-border"
+      className="flex flex-col"
     >
-      <MemberUsageHeader />
+      <LedgerPlanRow plan={plan} />
 
-      {displayedMembers.map((member, index) => {
+      {displayedMembers.map((member) => {
         const pendingUsagePack = pendingMemberUsagePack(management, member);
         const selection =
           pendingUsagePack ?? memberUsageSelection(selections, member.id);
@@ -594,10 +706,7 @@ function MemberUsageConfiguration({
               }
             : null);
         return (
-          <div
-            key={member.id}
-            className={index === 0 ? undefined : "border-t border-border/50"}
-          >
+          <div key={member.id} className={LEDGER_RULE}>
             <MemberUsageRow
               catalog={catalog}
               disabled={pendingUsagePack !== null}
@@ -613,7 +722,11 @@ function MemberUsageConfiguration({
         );
       })}
 
-      <MemberUsageFooter />
+      <LedgerTotalRow
+        bonusCredits={totals.bonusCredits}
+        credits={totals.totalCredits}
+        totalUsd={plan.basePriceUsd + totals.totalUsd}
+      />
     </section>
   );
 }
@@ -917,57 +1030,8 @@ function PricingPageHeader({
               return $.billing.plans.usagePacks.configurePackages;
             })
       }
-      description={
-        step === 1
-          ? undefined
-          : t(($) => {
-              return $.billing.plans.usagePacks.configurePackagesDescription;
-            })
-      }
       trailing={<PricingStepIndicator current={step} />}
     />
-  );
-}
-
-function SelectedPlanSummary({
-  onChange,
-  plan,
-}: {
-  readonly onChange?: () => void;
-  readonly plan: UsagePackPlan;
-}) {
-  const name = planName(plan.tier);
-  return (
-    <section className="flex items-center gap-4 rounded-xl bg-card px-4 py-3 zero-border">
-      <img
-        src={plan.image}
-        alt=""
-        className="h-12 w-12 shrink-0 object-contain"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.selectedPlan;
-          })}
-        </p>
-        <p className="mt-0.5 text-sm font-medium text-foreground">{name}</p>
-      </div>
-      <p className="shrink-0 text-sm font-semibold text-foreground">
-        {i18n.t(
-          ($) => {
-            return $.billing.plans.pricePerMonth;
-          },
-          { price: formatUsd(plan.basePriceUsd, 0) },
-        )}
-      </p>
-      {onChange && (
-        <Button type="button" variant="outline" size="sm" onClick={onChange}>
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.changePlan;
-          })}
-        </Button>
-      )}
-    </section>
   );
 }
 
@@ -975,99 +1039,26 @@ function OrderSummary({
   checkoutDisabled,
   checkoutError,
   checkoutLoading,
-  memberUsageBonusCredits,
-  memberUsageCredits,
-  memberUsageTotalUsd,
   onCheckout,
   plan,
 }: {
   readonly checkoutDisabled: boolean;
   readonly checkoutError: string | null;
   readonly checkoutLoading: boolean;
-  readonly memberUsageBonusCredits: number;
-  readonly memberUsageCredits: number;
-  readonly memberUsageTotalUsd: number;
   readonly onCheckout: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly plan: UsagePackPlan;
 }) {
-  const totalUsd = plan.basePriceUsd + memberUsageTotalUsd;
   return (
     <section
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
-      className="rounded-xl bg-card p-4 zero-border"
     >
-      <h4 className="text-sm font-medium text-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.orderSummary;
-        })}
-      </h4>
-      <div className="mt-4 space-y-2.5 text-[13px]">
-        <div className="flex items-center justify-between gap-4 text-muted-foreground">
-          <span>
-            {i18n.t(
-              ($) => {
-                return $.billing.plans.namedPlan;
-              },
-              { plan: planName(plan.tier) },
-            )}
-          </span>
-          <span>{formatUsd(plan.basePriceUsd, 0)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 text-muted-foreground">
-          <span>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.concurrentSlots;
-            })}
-          </span>
-          <span>{formatLocalizedNumber(planConcurrentSlots(plan.tier))}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 text-muted-foreground">
-          <span>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.memberPackages;
-            })}
-          </span>
-          <span>{formatUsd(memberUsageTotalUsd, 0)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 text-muted-foreground">
-          <span>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.totalCredits;
-            })}
-          </span>
-          <span>{formatLocalizedNumber(memberUsageCredits)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 text-muted-foreground">
-          <span>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.discountBonusCredits;
-            })}
-          </span>
-          <span>{formatLocalizedNumber(memberUsageBonusCredits)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
-          <span className="font-semibold">
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.monthlyTotal;
-            })}
-          </span>
-          <span className="text-lg font-semibold">
-            {i18n.t(
-              ($) => {
-                return $.billing.plans.pricePerMonth;
-              },
-              { price: formatUsd(totalUsd, 0) },
-            )}
-          </span>
-        </div>
-      </div>
       {checkoutError && (
-        <p className="mt-3 text-xs text-destructive">{checkoutError}</p>
+        <p className="mb-3 text-xs text-destructive">{checkoutError}</p>
       )}
       <Button
-        className="mt-4 h-10 w-full text-sm font-medium"
+        className="h-10 w-full text-sm font-medium"
         disabled={checkoutDisabled || checkoutLoading}
         onClick={onCheckout}
       >
@@ -1110,9 +1101,6 @@ function CheckoutOrderSummary({
       checkoutDisabled={!members}
       checkoutError={checkoutError}
       checkoutLoading={checkoutLoading}
-      memberUsageBonusCredits={totals.bonusCredits}
-      memberUsageCredits={totals.totalCredits}
-      memberUsageTotalUsd={totals.totalUsd}
       onCheckout={(event) => {
         if (!members) {
           return;
@@ -2081,13 +2069,15 @@ function PackageConfigurationStep({
   return (
     <>
       <PricingPageHeader onBack={onBack} step={2} />
-      <SelectedPlanSummary plan={plan} onChange={onBack} />
       <MemberUsageConfiguration
         catalog={catalog}
         management={management}
         members={members}
         pendingMembers={paidPendingMembers}
+        plan={plan}
+        totals={totals}
       />
+      <MemberUsageFooter />
       {management ? (
         <ManagedSubscriptionOrderSummary
           currentTotals={managedMemberUsageTotals(management, members, catalog)}
@@ -2701,12 +2691,14 @@ export function UsagePackMigrationPage({
       ) : (
         <>
           <PricingPageHeader onBack={onBack} step={2} />
-          <SelectedPlanSummary plan={plan} />
           <MemberUsageConfiguration
             catalog={catalog}
             management={null}
             members={members}
+            plan={plan}
+            totals={totals}
           />
+          <MemberUsageFooter />
           {configuration && migrationId ? (
             <>
               <MigrationRevisionOrderSummary

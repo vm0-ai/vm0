@@ -496,9 +496,9 @@ describe("organization billing settings", () => {
     const pendingUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for pending@example.com",
     });
-    expect(alexUsage).toHaveTextContent("$20 · 21,234 credits · 6% off");
-    expect(samUsage).toHaveTextContent("$20 · 21,234 credits · 6% off");
-    expect(pendingUsage).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    expect(alexUsage).toHaveTextContent("21,234 credits · 6% off");
+    expect(samUsage).toHaveTextContent("21,234 credits · 6% off");
+    expect(pendingUsage).toHaveTextContent("21,234 credits · 6% off");
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
@@ -508,26 +508,18 @@ describe("organization billing settings", () => {
       ),
     ).not.toBeInTheDocument();
     expect(
-      within(memberUsage).getByText(
+      screen.getByText(
         "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
       ),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("Team plan")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$160")).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Team plan")).toBeInTheDocument();
+    expect(within(memberUsage).getByText("$160")).toBeInTheDocument();
     expect(
-      within(orderSummary).getByText("Concurrent slots").parentElement,
-    ).toHaveTextContent("Concurrent slots10");
-    expect(
-      within(orderSummary).getByText("Member packages"),
+      within(memberUsage).getByText("10 concurrent runs · Priority support"),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$60")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("Total credits")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("63,702")).toBeInTheDocument();
-    expect(
-      within(orderSummary).getByText("Bonus credits from discount"),
-    ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("3,702")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$220/month")).toBeInTheDocument();
+    expect(memberUsage).toHaveTextContent(
+      "Monthly total63,702 credits · 3,702 bonus$220/month",
+    );
     expect(buttonByText("Upgrade to Team", orderSummary)).not.toBeDisabled();
 
     click(alexUsage);
@@ -538,7 +530,7 @@ describe("organization billing settings", () => {
       name: "$50 · 54,321 credits · 8% off",
     });
     click(alexFiftyDollarPack);
-    expect(within(orderSummary).getByText("$250/month")).toBeInTheDocument();
+    expect(memberUsage).toHaveTextContent("$250/month");
 
     click(pendingUsage);
     click(
@@ -547,9 +539,9 @@ describe("organization billing settings", () => {
       }),
     );
 
-    expect(within(orderSummary).getByText("$330/month")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("185,554")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("15,554")).toBeInTheDocument();
+    expect(memberUsage).toHaveTextContent(
+      "Monthly total185,554 credits · 15,554 bonus$330/month",
+    );
     expect(
       within(memberUsage).queryByText(
         "100,000 purchased credits + 9,999 bonus credits",
@@ -559,7 +551,7 @@ describe("organization billing settings", () => {
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
 
-    click(buttonByText("Change plan"));
+    click(screen.getByRole("button", { name: "Back" }));
     const returnedChoosePlanHeading = await screen.findByRole("heading", {
       name: "Choose a plan",
     });
@@ -602,18 +594,13 @@ describe("organization billing settings", () => {
       within(resetMemberUsage).getByRole("combobox", {
         name: "Usage for Alex Chen",
       }),
-    ).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    ).toHaveTextContent("21,234 credits · 6% off");
     expect(
       within(resetMemberUsage).getByRole("combobox", {
         name: "Usage for pending@example.com",
       }),
-    ).toHaveTextContent("$20 · 21,234 credits · 6% off");
-    const resetOrderSummary = screen.getByRole("region", {
-      name: "Order summary",
-    });
-    expect(
-      within(resetOrderSummary).getByText("$220/month"),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("21,234 credits · 6% off");
+    expect(resetMemberUsage).toHaveTextContent("$220/month");
 
     const resetAlexUsage = within(resetMemberUsage).getByRole("combobox", {
       name: "Usage for Alex Chen",
@@ -2207,7 +2194,7 @@ describe("organization billing settings", () => {
     const packageSelect = await screen.findByRole("combobox", {
       name: "Usage for Alex Chen",
     });
-    expect(packageSelect).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    expect(packageSelect).toHaveTextContent("21,234 credits · 6% off");
     expect(packageSelect).not.toBeDisabled();
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",

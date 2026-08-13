@@ -946,15 +946,11 @@
       "upgradeTo": "{{plan}} में अपग्रेड करें",
       "usagePacks": {
         "bonusCredits": "बोनस क्रेडिट",
-        "changePlan": "प्लान बदलें",
         "choosePlan": "प्लान चुनें",
         "concurrentSlots": "समवर्ती स्लॉट",
         "configurePackages": "सदस्य पैकेज कॉन्फ़िगर करें",
-        "configurePackagesDescription": "हर सदस्य के लिए एक आवश्यक पैकेज चुनें, फिर संयुक्त मासिक कुल की समीक्षा करें।",
         "creditsPerMember": "प्रति सदस्य {{credits}} क्रेडिट",
         "currentMember": "मौजूदा सदस्य",
-        "description": "हर सदस्य के लिए मासिक उपयोग पैक चुनें।",
-        "discountBonusCredits": "छूट से बोनस क्रेडिट",
         "everythingOnPlus": "{{plan}} की सभी सुविधाएँ, साथ में:",
         "existingPackagesUnchanged": "सदस्यों के मौजूदा पैकेज अपरिवर्तित रहेंगे।",
         "management": {
@@ -992,15 +988,16 @@
         },
         "monthlyTotal": "मासिक कुल",
         "orderSummary": "ऑर्डर सारांश",
+        "packCredits": "{{credits}} क्रेडिट",
+        "packCreditsDiscount": "{{credits}} क्रेडिट · {{discount}}% छूट",
         "packOption": "{{price}} · {{credits}} क्रेडिट · {{discount}}% की छूट",
         "planChangeError": "सदस्यता परिवर्तन तैयार नहीं किया जा सका। फिर से कोशिश करें।",
         "planStep": "प्लान",
         "purchasedCredits": "खरीदे गए क्रेडिट",
-        "selectedPlan": "चुना गया प्लान",
         "selectPlan": "{{plan}} के साथ शुरू करें",
         "selectUsage": "{{name}} के लिए उपयोग",
         "stepOfTotal": "चरण {{current}} / {{total}}",
-        "totalCredits": "कुल क्रेडिट"
+        "totalCreditsWithBonus": "{{credits}} क्रेडिट · {{bonus}} बोनस"
       }
     },
     "restore": {

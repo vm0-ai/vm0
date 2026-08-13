@@ -946,15 +946,11 @@
       "upgradeTo": "Upgrade to {{plan}}",
       "usagePacks": {
         "bonusCredits": "Bonus credits",
-        "changePlan": "Change plan",
         "choosePlan": "Choose a plan",
         "concurrentSlots": "Concurrent slots",
         "configurePackages": "Configure member packages",
-        "configurePackagesDescription": "Choose a required package for every member, then review the combined monthly total.",
         "creditsPerMember": "{{credits}} credits per member",
         "currentMember": "Current member",
-        "description": "Choose a monthly usage pack for every member.",
-        "discountBonusCredits": "Bonus credits from discount",
         "everythingOnPlus": "Everything on {{plan}}, plus:",
         "existingPackagesUnchanged": "Existing member packages stay unchanged.",
         "management": {
@@ -992,15 +988,16 @@
         },
         "monthlyTotal": "Monthly total",
         "orderSummary": "Order summary",
+        "packCredits": "{{credits}} credits",
+        "packCreditsDiscount": "{{credits}} credits · {{discount}}% off",
         "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
         "planChangeError": "Could not prepare the subscription change. Try again.",
         "planStep": "Plan",
         "purchasedCredits": "Purchased credits",
-        "selectedPlan": "Selected plan",
         "selectPlan": "Start with {{plan}}",
         "selectUsage": "Usage for {{name}}",
         "stepOfTotal": "Step {{current}} of {{total}}",
-        "totalCredits": "Total credits"
+        "totalCreditsWithBonus": "{{credits}} credits · {{bonus}} bonus"
       }
     },
     "restore": {

@@ -946,15 +946,11 @@
       "upgradeTo": "Tingkatkan ke {{plan}}",
       "usagePacks": {
         "bonusCredits": "Kredit bonus",
-        "changePlan": "Ubah paket",
         "choosePlan": "Pilih paket",
         "concurrentSlots": "Slot bersamaan",
         "configurePackages": "Konfigurasikan paket anggota",
-        "configurePackagesDescription": "Pilih paket wajib untuk setiap anggota, lalu tinjau total bulanan gabungan.",
         "creditsPerMember": "{{credits}} kredit per anggota",
         "currentMember": "Anggota saat ini",
-        "description": "Pilih paket penggunaan bulanan untuk setiap anggota.",
-        "discountBonusCredits": "Bonus kredit dari diskon",
         "everythingOnPlus": "Semua di {{plan}}, ditambah:",
         "existingPackagesUnchanged": "Paket anggota yang ada tetap tidak berubah.",
         "management": {
@@ -992,15 +988,16 @@
         },
         "monthlyTotal": "Total bulanan",
         "orderSummary": "Ringkasan pesanan",
+        "packCredits": "{{credits}} kredit",
+        "packCreditsDiscount": "{{credits}} kredit · diskon {{discount}}%",
         "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
         "planChangeError": "Perubahan langganan tidak dapat disiapkan. Coba lagi.",
         "planStep": "Paket",
         "purchasedCredits": "Kredit yang dibeli",
-        "selectedPlan": "Paket yang dipilih",
         "selectPlan": "Mulai dengan {{plan}}",
         "selectUsage": "Penggunaan untuk {{name}}",
         "stepOfTotal": "Langkah {{current}} dari {{total}}",
-        "totalCredits": "Total kredit"
+        "totalCreditsWithBonus": "{{credits}} kredit · bonus {{bonus}}"
       }
     },
     "restore": {

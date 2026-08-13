@@ -946,15 +946,11 @@
       "upgradeTo": "{{plan}}으로 업그레이드",
       "usagePacks": {
         "bonusCredits": "보너스 크레딧",
-        "changePlan": "플랜 변경",
         "choosePlan": "플랜 선택",
         "concurrentSlots": "동시 실행 슬롯",
         "configurePackages": "구성원 패키지 설정",
-        "configurePackagesDescription": "각 구성원에게 필수 패키지를 선택한 다음 월간 합계를 확인하세요.",
         "creditsPerMember": "멤버당 {{credits}} 크레딧",
         "currentMember": "현재 구성원",
-        "description": "각 구성원의 월간 사용량 패키지를 선택하세요.",
-        "discountBonusCredits": "할인 보너스 크레딧",
         "everythingOnPlus": "{{plan}}의 모든 기능에 더해:",
         "existingPackagesUnchanged": "기존 멤버 패키지는 변경되지 않습니다.",
         "management": {
@@ -992,15 +988,16 @@
         },
         "monthlyTotal": "월간 합계",
         "orderSummary": "주문 요약",
+        "packCredits": "{{credits}} 크레딧",
+        "packCreditsDiscount": "{{credits}} 크레딧 · {{discount}}% 할인",
         "packOption": "{{price}} · {{credits}} 크레딧 · {{discount}}% 할인",
         "planChangeError": "구독 변경을 준비하지 못했습니다. 다시 시도하세요.",
         "planStep": "플랜",
         "purchasedCredits": "구매 크레딧",
-        "selectedPlan": "선택한 플랜",
         "selectPlan": "{{plan}} 시작하기",
         "selectUsage": "{{name}} 사용량",
         "stepOfTotal": "{{total}}단계 중 {{current}}단계",
-        "totalCredits": "총 크레딧"
+        "totalCreditsWithBonus": "{{credits}} 크레딧 · 보너스 {{bonus}}"
       }
     },
     "restore": {
