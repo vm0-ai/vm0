@@ -27,7 +27,6 @@ import {
   type UserMessageInputDocument,
   type ZeroIndicators,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import {
   artifactCatalogContract,
   type ArtifactCatalogKind,
@@ -78,6 +77,10 @@ import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { ApiTestUser } from "./api-bdd";
+import {
+  projectChatEventRows,
+  readProjectedChatEvents,
+} from "./chat-event-test-reader";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 interface AuthHeaders {
@@ -933,19 +936,12 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly limit?: number;
       } = {},
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
-      const response = await accept(
-        threadEventsClient().rows({
-          headers: authenticate(context, actor),
-          params: { threadId },
-          query: {
-            sinceSeqId: query.sinceSeqId ?? 0,
-            ...(query.limit === undefined ? {} : { limit: query.limit }),
-          },
-        }),
-        [200],
-      );
       return {
-        events: response.body.rows.map(chatEventFromRow),
+        events: await readProjectedChatEvents(context, {
+          threadId,
+          headers: authenticate(context, actor),
+          ...query,
+        }),
       };
     },
 
@@ -974,7 +970,7 @@ export function createChatFilesBddApi(context: TestContext) {
       }
       return {
         ...response,
-        body: { events: response.body.rows.map(chatEventFromRow) },
+        body: { events: projectChatEventRows(response.body.rows) },
       };
     },
 
