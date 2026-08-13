@@ -1,8 +1,8 @@
 import {
-  ZERO_AIR_QUALITY_ATTRIBUTION,
-  type ZeroAirQualityCurrentRequest,
-  type ZeroAirQualityResponse,
-} from "@okouai/api-contracts/contracts/zero-weather";
+  AIR_QUALITY_ATTRIBUTION,
+  type AirQualityCurrentRequest,
+  type AirQualityResponse,
+} from "@okouai/api-contracts/contracts/weather";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
@@ -32,14 +32,14 @@ interface AirQualityErrorResponse {
   };
 }
 
-type ZeroAirQualityCommandResponse =
-  | { readonly status: 200; readonly body: ZeroAirQualityResponse }
+type AirQualityCommandResponse =
+  | { readonly status: 200; readonly body: AirQualityResponse }
   | AirQualityErrorResponse
   | ManagedUsageErrorResponse;
 
 interface AuthedAirQualityArgs {
   readonly auth: AuthContext & { readonly orgId: string };
-  readonly body: ZeroAirQualityCurrentRequest;
+  readonly body: AirQualityCurrentRequest;
 }
 
 function errorBody(message: string, code: string) {
@@ -93,16 +93,16 @@ function runIdForUsage(auth: AuthContext): string | undefined {
     : undefined;
 }
 
-export const zeroAirQualityCurrent$ = command(
+export const airQualityCurrent$ = command(
   async (
     { set },
     args: AuthedAirQualityArgs,
     signal: AbortSignal,
-  ): Promise<ZeroAirQualityCommandResponse> => {
+  ): Promise<AirQualityCommandResponse> => {
     const apiKey = env("OKOU_WEATHER_GOOGLE_WEATHER_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Weather Google Air Quality provider is not configured",
+        "Okou Weather Google Air Quality provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -117,7 +117,7 @@ export const zeroAirQualityCurrent$ = command(
           provider: PROVIDER,
           category: CURRENT_CATEGORY,
         },
-        label: "Zero Weather",
+        label: "Okou Weather",
       },
       signal,
     );
@@ -173,7 +173,7 @@ export const zeroAirQualityCurrent$ = command(
       body: {
         operation: "air-quality.current",
         provider: PROVIDER,
-        attribution: ZERO_AIR_QUALITY_ATTRIBUTION,
+        attribution: AIR_QUALITY_ATTRIBUTION,
         creditsCharged,
         billingCategory: CURRENT_CATEGORY,
         billingQuantity: 1,

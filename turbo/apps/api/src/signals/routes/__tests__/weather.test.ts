@@ -2,12 +2,12 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
-  ZERO_AIR_QUALITY_ATTRIBUTION,
-  ZERO_WEATHER_ATTRIBUTION,
-  zeroWeatherContract,
-  type ZeroAirQualityResponse,
-  type ZeroWeatherConditionsResponse,
-} from "@okouai/api-contracts/contracts/zero-weather";
+  AIR_QUALITY_ATTRIBUTION,
+  WEATHER_ATTRIBUTION,
+  weatherContract,
+  type AirQualityResponse,
+  type WeatherConditionsResponse,
+} from "@okouai/api-contracts/contracts/weather";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -21,7 +21,7 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroWeatherRoutes } from "../zero-weather";
+import { weatherRoutes } from "../weather";
 
 const context = testContext();
 const GOOGLE_WEATHER_CURRENT_URL =
@@ -85,9 +85,9 @@ const WEATHER_PRICING_ROWS = [
 function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
   return setupApp({
     context,
-    routes: zeroWeatherRoutes,
+    routes: weatherRoutes,
     usagePricingResolution,
-  })(zeroWeatherContract);
+  })(weatherContract);
 }
 
 function configureProvider(): void {
@@ -98,7 +98,7 @@ async function prepareFreeWeatherActor(
   actor: ApiTestUser,
 ): Promise<UsagePricingFixture> {
   if (!actor.orgId) {
-    throw new Error("Zero Weather test actor must belong to an organization");
+    throw new Error("Weather test actor must belong to an organization");
   }
   const completed = await createBddApi(context).completeOnboarding(actor);
   expect(completed.status).toBe(200);
@@ -111,24 +111,24 @@ async function prepareFreeWeatherActor(
 }
 
 function expectFreeWeatherResponse(
-  body: ZeroWeatherConditionsResponse,
-  operation: ZeroWeatherConditionsResponse["operation"],
+  body: WeatherConditionsResponse,
+  operation: WeatherConditionsResponse["operation"],
 ): void {
   expect(body).toMatchObject({
     operation,
     provider: "google-weather",
-    attribution: ZERO_WEATHER_ATTRIBUTION,
+    attribution: WEATHER_ATTRIBUTION,
     creditsCharged: 0,
     billingCategory: operation,
     billingQuantity: 1,
   });
 }
 
-function expectFreeAirQualityResponse(body: ZeroAirQualityResponse): void {
+function expectFreeAirQualityResponse(body: AirQualityResponse): void {
   expect(body).toMatchObject({
     operation: "air-quality.current",
     provider: "google-air-quality",
-    attribution: ZERO_AIR_QUALITY_ATTRIBUTION,
+    attribution: AIR_QUALITY_ATTRIBUTION,
     creditsCharged: 0,
     billingCategory: "current",
     billingQuantity: 1,

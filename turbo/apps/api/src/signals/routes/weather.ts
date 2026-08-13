@@ -1,25 +1,23 @@
-import { zeroWeatherContract } from "@okouai/api-contracts/contracts/zero-weather";
+import { weatherContract } from "@okouai/api-contracts/contracts/weather";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { zeroAirQualityCurrent$ } from "../services/zero-air-quality.service";
+import { airQualityCurrent$ } from "../services/air-quality.service";
 import {
-  zeroWeatherCurrent$,
-  zeroWeatherForecastDaily$,
-  zeroWeatherForecastHourly$,
-  zeroWeatherHistoryHourly$,
-} from "../services/zero-weather.service";
+  weatherCurrent$,
+  weatherForecastDaily$,
+  weatherForecastHourly$,
+  weatherHistoryHourly$,
+} from "../services/weather.service";
 
-const currentBody$ = bodyResultOf(zeroWeatherContract.current);
-const forecastHourlyBody$ = bodyResultOf(zeroWeatherContract.forecastHourly);
-const forecastDailyBody$ = bodyResultOf(zeroWeatherContract.forecastDaily);
-const historyHourlyBody$ = bodyResultOf(zeroWeatherContract.historyHourly);
-const airQualityCurrentBody$ = bodyResultOf(
-  zeroWeatherContract.airQualityCurrent,
-);
+const currentBody$ = bodyResultOf(weatherContract.current);
+const forecastHourlyBody$ = bodyResultOf(weatherContract.forecastHourly);
+const forecastDailyBody$ = bodyResultOf(weatherContract.forecastDaily);
+const historyHourlyBody$ = bodyResultOf(weatherContract.historyHourly);
+const airQualityCurrentBody$ = bodyResultOf(weatherContract.airQualityCurrent);
 
 const currentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -28,11 +26,7 @@ const currentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  return await set(
-    zeroWeatherCurrent$,
-    { auth, body: bodyResult.data },
-    signal,
-  );
+  return await set(weatherCurrent$, { auth, body: bodyResult.data }, signal);
 });
 
 const forecastHourlyInner$ = command(
@@ -44,7 +38,7 @@ const forecastHourlyInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroWeatherForecastHourly$,
+      weatherForecastHourly$,
       { auth, body: bodyResult.data },
       signal,
     );
@@ -60,7 +54,7 @@ const forecastDailyInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroWeatherForecastDaily$,
+      weatherForecastDaily$,
       { auth, body: bodyResult.data },
       signal,
     );
@@ -76,7 +70,7 @@ const historyHourlyInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroWeatherHistoryHourly$,
+      weatherHistoryHourly$,
       { auth, body: bodyResult.data },
       signal,
     );
@@ -92,7 +86,7 @@ const airQualityCurrentInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroAirQualityCurrent$,
+      airQualityCurrent$,
       { auth, body: bodyResult.data },
       signal,
     );
@@ -105,25 +99,25 @@ const weatherAuth = {
   requiredCapability: "weather:read",
 } as const;
 
-export const zeroWeatherRoutes: readonly RouteEntry[] = [
+export const weatherRoutes: readonly RouteEntry[] = [
   {
-    route: zeroWeatherContract.current,
+    route: weatherContract.current,
     handler: authRoute(weatherAuth, currentInner$),
   },
   {
-    route: zeroWeatherContract.forecastHourly,
+    route: weatherContract.forecastHourly,
     handler: authRoute(weatherAuth, forecastHourlyInner$),
   },
   {
-    route: zeroWeatherContract.forecastDaily,
+    route: weatherContract.forecastDaily,
     handler: authRoute(weatherAuth, forecastDailyInner$),
   },
   {
-    route: zeroWeatherContract.historyHourly,
+    route: weatherContract.historyHourly,
     handler: authRoute(weatherAuth, historyHourlyInner$),
   },
   {
-    route: zeroWeatherContract.airQualityCurrent,
+    route: weatherContract.airQualityCurrent,
     handler: authRoute(weatherAuth, airQualityCurrentInner$),
   },
 ];
