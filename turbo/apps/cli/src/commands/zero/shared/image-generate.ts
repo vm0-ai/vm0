@@ -4,6 +4,7 @@ import { generateWebImage } from "../../../lib/api/domains/web";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
 import { findImageStyle, listImageStyles } from "@vm0/core/resource-registry";
+import { imageModelOutputFormats } from "@vm0/core/image-model-output-formats";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
@@ -71,6 +72,25 @@ function unknownStyleError(id: string, usageCommand: string): Error {
     `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..." --compile`,
   ].join("\n");
   return new Error(message);
+}
+
+function assertModelSupportsFormat(model: string, format: string): void {
+  const formats = imageModelOutputFormats(model);
+  // An unrecognized model is the API's to reject; the CLI only checks the
+  // combination for models it knows about.
+  if (!formats) {
+    return;
+  }
+  if (
+    formats.some((supported) => {
+      return supported === format;
+    })
+  ) {
+    return;
+  }
+  throw new Error(
+    `${model} cannot output ${format}. Supported formats: ${formats.join(", ")}`,
+  );
 }
 
 function parseCompression(value: string | undefined): number | undefined {
@@ -227,7 +247,11 @@ export function createImageGenerateCommand(
       "Background: auto, opaque, or transparent when supported",
       "auto",
     )
-    .option("--format <format>", "Output format: png, webp, or jpeg", "png")
+    .option(
+      "--format <format>",
+      "Output format: png, webp, or jpeg; support varies by model (seedream4 is png only)",
+      "png",
+    )
     .option("--compression <0-100>", "Output compression for jpeg/webp only")
     .option(
       "--moderation <moderation>",
@@ -378,6 +402,7 @@ ${formatRegistryListing(styles, "image styles")}`;
           return;
         }
 
+        assertModelSupportsFormat(options.model, options.format);
         const compression = parseCompression(options.compression);
         const inputFidelity = parseInputFidelity(options.inputFidelity);
         const imagePromptStrength = parseImagePromptStrength(

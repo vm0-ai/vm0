@@ -116,6 +116,62 @@ describe("okou generate image command", () => {
     expect(stdout).toContain("Provider: fal");
   });
 
+  it("should reject a format the selected model cannot emit without calling the API", async () => {
+    let called = false;
+    server.use(
+      http.post(IMAGE_URL, () => {
+        called = true;
+        return HttpResponse.json(IMAGE_RESULT);
+      }),
+    );
+
+    await expect(
+      generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--raw-prompt",
+        "A watercolor fox",
+        "--model",
+        "seedream4",
+        "--format",
+        "jpeg",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(called).toBeFalsy();
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("seedream4 cannot output jpeg");
+    expect(stderr).toContain("Supported formats: png");
+  });
+
+  it("should allow a format the selected model supports", async () => {
+    let capturedBody: unknown;
+    server.use(
+      http.post(IMAGE_URL, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ ...IMAGE_RESULT, outputFormat: "jpeg" });
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--raw-prompt",
+      "A watercolor fox",
+      "--model",
+      "qwen-image",
+      "--format",
+      "jpeg",
+    ]);
+
+    expect(capturedBody).toMatchObject({
+      model: "qwen-image",
+      outputFormat: "jpeg",
+    });
+  });
+
   it("should surface the CDN embed URL when it differs from the file URL", async () => {
     const embedUrl =
       "https://cdn.vm7.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/artifacts/abc.png";

@@ -4,6 +4,11 @@ import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
+import {
+  IMAGE_OUTPUT_FORMATS,
+  imageModelOutputFormats,
+  type ImageOutputFormat,
+} from "@vm0/core/image-model-output-formats";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -56,7 +61,6 @@ const IMAGE_PRICING_CATEGORIES = [
 
 const IMAGE_QUALITIES = ["low", "medium", "high", "auto"] as const;
 const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
-const IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
 const IMAGE_MODERATIONS = ["auto", "low"] as const;
 const IMAGE_SAFETY_TOLERANCES = ["1", "2", "3", "4", "5", "6"] as const;
 const IMAGE_INPUT_FIDELITIES = ["low", "high"] as const;
@@ -67,7 +71,6 @@ const STANDARD_GPT_IMAGE_SIZES = [
   "1536x1024",
   "1024x1536",
 ] as const;
-const FAL_IMAGE_OUTPUT_FORMATS = ["png", "jpeg"] as const;
 const FAL_IMAGE_ASPECT_RATIOS = [
   "21:9",
   "16:9",
@@ -105,7 +108,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: undefined,
-    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: false,
@@ -130,7 +132,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
-    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: true,
@@ -155,7 +156,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
-    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: true,
@@ -180,7 +180,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
-    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: true,
@@ -205,7 +204,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
-    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
     billingMode: "megapixel",
     supportsTransparentBackground: false,
@@ -230,7 +228,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
-    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: false,
@@ -255,7 +252,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
-    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
     billingMode: "megapixel",
     supportsTransparentBackground: false,
@@ -280,7 +276,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
-    outputFormats: ["png"],
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: false,
@@ -305,7 +300,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
-    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: false,
@@ -330,7 +324,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: undefined,
-    outputFormats: ["png"],
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: true,
@@ -355,7 +348,6 @@ const IMAGE_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: undefined,
-    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
     billingMode: "megapixel",
     supportsTransparentBackground: false,
@@ -378,7 +370,6 @@ const L = logger("ZeroImageIoGenerate");
 
 type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
-type ImageOutputFormat = (typeof IMAGE_OUTPUT_FORMATS)[number];
 type ImageModeration = (typeof IMAGE_MODERATIONS)[number];
 type ImageSafetyTolerance = (typeof IMAGE_SAFETY_TOLERANCES)[number];
 type ImageInputFidelity = (typeof IMAGE_INPUT_FIDELITIES)[number];
@@ -807,6 +798,20 @@ function parseImageBackground(
   return background;
 }
 
+// Every configured model alias has an entry in the shared table, so a miss is a
+// programming error rather than a state to tolerate.
+function modelOutputFormats(
+  modelConfig: ImageModelConfig,
+): readonly ImageOutputFormat[] {
+  const formats = imageModelOutputFormats(modelConfig.alias);
+  if (!formats) {
+    throw new Error(
+      `Missing output formats for image model ${modelConfig.alias}`,
+    );
+  }
+  return formats;
+}
+
 function parseImageOutputOptions(
   body: Record<string, unknown>,
   modelConfig: ImageModelConfig,
@@ -816,7 +821,7 @@ function parseImageOutputOptions(
   if (!includesString(IMAGE_OUTPUT_FORMATS, outputFormat)) {
     return badRequest(`Unsupported image output format: ${outputFormat}`);
   }
-  if (!hasString(modelConfig.outputFormats, outputFormat)) {
+  if (!hasString(modelOutputFormats(modelConfig), outputFormat)) {
     return badRequest(
       `Unsupported image output format for ${modelConfig.alias}: ${outputFormat}`,
     );
@@ -1383,7 +1388,7 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
       ? { aspect_ratio: falAspectRatio(options) }
       : { image_size: falImageSize(options) }),
     num_images: 1,
-    ...(hasString(modelConfig.outputFormats, options.outputFormat) &&
+    ...(hasString(modelOutputFormats(modelConfig), options.outputFormat) &&
     modelConfig.alias !== "seedream4"
       ? { output_format: options.outputFormat }
       : {}),

@@ -45,6 +45,11 @@ export {
   type R2ImageTransformOptions,
 } from "./r2-image-transform";
 export {
+  IMAGE_OUTPUT_FORMATS,
+  imageModelOutputFormats,
+  type ImageOutputFormat,
+} from "./image-model-output-formats";
+export {
   initContract,
   apiErrorSchema,
   ApiError,
