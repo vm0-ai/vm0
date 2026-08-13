@@ -274,6 +274,11 @@ function zoomWheelEvent(
   return event;
 }
 
+function transformedScale(element: HTMLElement): number {
+  const match = element.style.transform.match(/scale\(([^)]+)\)/);
+  return Number(match?.[1]);
+}
+
 function clipboardFileItem(file: File): DataTransferItem {
   return {
     kind: "file",
@@ -698,7 +703,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("scales trackpad zoom by gesture magnitude and supports Command", async () => {
+  it("uses proportional trackpad zoom with capped deltas and supports Command", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -739,7 +744,7 @@ describe("zero attachment chips", () => {
 
     expect(commandWheelEvent.defaultPrevented).toBeTruthy();
     await waitFor(() => {
-      expect(transformContent.style.transform).toContain("scale(1.2)");
+      expect(transformedScale(transformContent)).toBeCloseTo(Math.exp(0.3), 5);
     });
 
     const pinchWheelEvent = zoomWheelEvent(transformWrapper, {
@@ -752,7 +757,20 @@ describe("zero attachment chips", () => {
 
     expect(pinchWheelEvent.defaultPrevented).toBeTruthy();
     await waitFor(() => {
-      expect(transformContent.style.transform).toContain("scale(1.6)");
+      expect(transformedScale(transformContent)).toBeCloseTo(Math.exp(0.6), 5);
+    });
+
+    const zoomOutWheelEvent = zoomWheelEvent(transformWrapper, {
+      clientX: 400,
+      clientY: 300,
+      ctrlKey: true,
+      deltaY: 10,
+    });
+    fireEvent(transformWrapper, zoomOutWheelEvent);
+
+    expect(zoomOutWheelEvent.defaultPrevented).toBeTruthy();
+    await waitFor(() => {
+      expect(transformedScale(transformContent)).toBeCloseTo(Math.exp(0.3), 5);
     });
 
     click(screen.getByLabelText("Close"));
@@ -798,15 +816,17 @@ describe("zero attachment chips", () => {
       expect(lightboxImage).toHaveStyle({ width: "28px" });
     });
 
-    const maxZoomEvent = zoomWheelEvent(transformWrapper, {
-      clientX: 400,
-      clientY: 300,
-      ctrlKey: true,
-      deltaY: -10_000,
-    });
-    fireEvent(transformWrapper, maxZoomEvent);
+    for (let index = 0; index < 13; index += 1) {
+      const maxZoomEvent = zoomWheelEvent(transformWrapper, {
+        clientX: 400,
+        clientY: 300,
+        ctrlKey: true,
+        deltaY: -10_000,
+      });
+      fireEvent(transformWrapper, maxZoomEvent);
+      expect(maxZoomEvent.defaultPrevented).toBeTruthy();
+    }
 
-    expect(maxZoomEvent.defaultPrevented).toBeTruthy();
     await waitFor(() => {
       expect(transformContent.style.transform).toContain("scale(42.855)");
       expect(screen.getByLabelText("Zoom in")).toBeDisabled();

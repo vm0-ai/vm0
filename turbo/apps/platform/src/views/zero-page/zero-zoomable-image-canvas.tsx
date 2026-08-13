@@ -1,6 +1,15 @@
-import type { ReactNode, Ref, SyntheticEvent } from "react";
+import type {
+  ReactNode,
+  Ref,
+  SyntheticEvent,
+  WheelEvent as ReactWheelEvent,
+} from "react";
 import { useGet, useSet } from "ccstate-react";
-import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import {
+  type ReactZoomPanPinchContext,
+  TransformComponent,
+  TransformWrapper,
+} from "react-zoom-pan-pinch";
 import { cn } from "@vm0/ui";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
@@ -14,11 +23,58 @@ import {
 
 const IMAGE_ZOOM_STEP = Math.log(1.15);
 const IMAGE_DOUBLE_CLICK_ZOOM_STEP = Math.log(2);
-const IMAGE_TRACKPAD_ZOOM_STEP = 0.02;
+const IMAGE_TRACKPAD_ZOOM_SENSITIVITY = 0.03;
+const IMAGE_TRACKPAD_ZOOM_MAX_DELTA = 10;
+const IMAGE_WHEEL_LINE_HEIGHT = 16;
 const IMAGE_MAX_WIDTH_VIEWPORT_RATIO = 1.5;
 
 function isImageWheelZoomActivated(keys: string[]): boolean {
   return keys.includes("Control") || keys.includes("Meta");
+}
+
+function normalizedImageWheelDelta(
+  event: ReactWheelEvent<HTMLDivElement>,
+): number {
+  let delta = event.deltaY;
+  if (event.deltaMode === 1) {
+    delta *= IMAGE_WHEEL_LINE_HEIGHT;
+  } else if (event.deltaMode === 2) {
+    delta *= event.currentTarget.clientHeight;
+  }
+
+  return Math.max(
+    -IMAGE_TRACKPAD_ZOOM_MAX_DELTA,
+    Math.min(IMAGE_TRACKPAD_ZOOM_MAX_DELTA, delta),
+  );
+}
+
+function proportionalImageWheelStep(
+  event: ReactWheelEvent<HTMLDivElement>,
+  scale: number,
+): number {
+  const rawDelta = Math.abs(event.deltaY);
+  if (rawDelta === 0) {
+    return 0;
+  }
+
+  const normalizedDelta = normalizedImageWheelDelta(event);
+  const targetScale =
+    scale * Math.exp(-normalizedDelta * IMAGE_TRACKPAD_ZOOM_SENSITIVITY);
+  return Math.abs(targetScale - scale) / rawDelta;
+}
+
+function proportionalImageWheelHandler(instance: ReactZoomPanPinchContext) {
+  return (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+
+    // Convert the exponential target into the linear step expected by the library.
+    instance.setup.wheel.step = proportionalImageWheelStep(
+      event,
+      instance.state.scale,
+    );
+  };
 }
 
 type ZoomableArtifactImageSurface =
@@ -285,10 +341,10 @@ export function ZoomableArtifactImageCanvas({
       trackPadPanning={{ disabled: false }}
       wheel={{
         activationKeys: isImageWheelZoomActivated,
-        step: IMAGE_TRACKPAD_ZOOM_STEP,
+        step: 0,
       }}
     >
-      {({ resetTransform, zoomIn, zoomOut }) => {
+      {({ instance, resetTransform, zoomIn, zoomOut }) => {
         const controls = controlsFromTransformState({
           displayZoom,
           maxZoom,
@@ -316,6 +372,9 @@ export function ZoomableArtifactImageCanvas({
               <TransformComponent
                 contentStyle={{ height: "100%", width: "100%" }}
                 wrapperClass="h-full min-h-0 w-full"
+                wrapperProps={{
+                  onWheelCapture: proportionalImageWheelHandler(instance),
+                }}
                 wrapperStyle={{
                   height: "100%",
                   touchAction: "none",
