@@ -162,18 +162,30 @@ async function captureStripeCheckoutFailure(
   const fileStem = target.fileName.replace(/\.json$/u, "");
   await mkdir(diagnosticDirectory, { recursive: true });
 
-  const state = await collectStripeCheckoutState(page);
-  await Promise.all([
-    writeFile(
+  const results = await Promise.allSettled([
+    writeStripeCheckoutState(
+      page,
       join(diagnosticDirectory, `${fileStem}.json`),
-      `${JSON.stringify(state, null, 2)}\n`,
-      { encoding: "utf8", mode: 0o600 },
     ),
     page.screenshot({
       fullPage: true,
       path: join(diagnosticDirectory, `${fileStem}.png`),
     }),
   ]);
+  if (!results.some((result) => result.status === "fulfilled")) {
+    throw new Error("Unable to capture any Stripe Checkout diagnostic");
+  }
+}
+
+async function writeStripeCheckoutState(
+  page: Page,
+  path: string,
+): Promise<void> {
+  const state = await collectStripeCheckoutState(page);
+  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 function requiredEnvironmentVariable(name: string): string {
