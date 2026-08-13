@@ -1042,16 +1042,16 @@ export {
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,
-  zeroCodexDeviceAuthContract,
+  codexDeviceAuthContract,
   type CodexDeviceAuthScope,
-  type ZeroCodexDeviceAuthContract,
-} from "./zero-codex-device-auth";
+  type CodexDeviceAuthContract,
+} from "./codex-device-auth";
 export {
   claudeCodeDeviceAuthScopeSchema,
-  zeroClaudeCodeDeviceAuthContract,
+  claudeCodeDeviceAuthContract,
   type ClaudeCodeDeviceAuthScope,
-  type ZeroClaudeCodeDeviceAuthContract,
-} from "./zero-claude-code-device-auth";
+  type ClaudeCodeDeviceAuthContract,
+} from "./claude-code-device-auth";
 export {
   zeroOrgContract,
   zeroOrgLeaveContract,
