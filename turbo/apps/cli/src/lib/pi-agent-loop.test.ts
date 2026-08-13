@@ -28,6 +28,21 @@ const CONFIG: PiSandboxAgentConfig = {
   databasePath: CANONICAL_PI_SESSION_DATABASE_PATH,
 };
 
+function piEnv(runIdEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...runIdEnv,
+    VM0_PI_SESSION_ID: SESSION_ID,
+    VM0_PI_SYSTEM_PROMPT: CONFIG.systemPrompt,
+    VM0_PI_MODEL_CONFIG: JSON.stringify({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-v4-flash",
+      apiKeyEnv: "OPENAI_API_KEY",
+    }),
+    OPENAI_API_KEY: "test-api-key",
+  };
+}
+
 const ZERO_USAGE = {
   input: 5,
   output: 3,
@@ -72,21 +87,67 @@ class FakeIo implements PiAgentLoopIo {
 }
 
 describe("sandbox Pi agent loop", () => {
-  it("resolves the Chat Thread session and model credential from runner env", () => {
+  it("accepts the legacy VM0 run id from an old guest", () => {
     expect(
-      piSandboxAgentConfigFromEnv({
-        VM0_RUN_ID: RUN_ID,
-        VM0_PI_SESSION_ID: SESSION_ID,
-        VM0_PI_SYSTEM_PROMPT: CONFIG.systemPrompt,
-        VM0_PI_MODEL_CONFIG: JSON.stringify({
-          provider: "deepseek",
-          baseUrl: "https://api.deepseek.com/",
-          model: "deepseek-v4-flash",
-          apiKeyEnv: "OPENAI_API_KEY",
+      piSandboxAgentConfigFromEnv(
+        piEnv({
+          VM0_RUN_ID: RUN_ID,
         }),
-        OPENAI_API_KEY: "test-api-key",
-      }),
+      ),
     ).toEqual(CONFIG);
+  });
+
+  it("accepts the canonical OKOU run id from a new guest", () => {
+    expect(
+      piSandboxAgentConfigFromEnv(
+        piEnv({
+          OKOU_RUN_ID: RUN_ID,
+        }),
+      ),
+    ).toEqual(CONFIG);
+  });
+
+  it("accepts equal canonical and legacy run ids from a new guest", () => {
+    expect(
+      piSandboxAgentConfigFromEnv(
+        piEnv({
+          OKOU_RUN_ID: RUN_ID,
+          VM0_RUN_ID: RUN_ID,
+        }),
+      ),
+    ).toEqual(CONFIG);
+  });
+
+  it("fails closed without exposing mismatched run ids", () => {
+    const canonicalRunId = "canonical-sensitive-run-id";
+    const legacyRunId = "legacy-sensitive-run-id";
+
+    expect(() => {
+      return piSandboxAgentConfigFromEnv(
+        piEnv({
+          OKOU_RUN_ID: canonicalRunId,
+          VM0_RUN_ID: legacyRunId,
+        }),
+      );
+    }).toThrowError("Pi run identity environment mismatch");
+    try {
+      piSandboxAgentConfigFromEnv(
+        piEnv({
+          OKOU_RUN_ID: canonicalRunId,
+          VM0_RUN_ID: legacyRunId,
+        }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).not.toContain(canonicalRunId);
+      expect(message).not.toContain(legacyRunId);
+    }
+  });
+
+  it("uses the canonical name when the run id is missing", () => {
+    expect(() => {
+      return piSandboxAgentConfigFromEnv(piEnv({}));
+    }).toThrowError("OKOU_RUN_ID is required for Pi execution");
   });
 
   it("runs one native SQLite turn and emits only the chat projection", async () => {

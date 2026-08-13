@@ -50,8 +50,8 @@ pub enum RuntimePathError {
 impl std::fmt::Display for RuntimePathError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingRunId => f.write_str("VM0_RUN_ID is required for guest runtime paths"),
-            Self::InvalidRunId => f.write_str("VM0_RUN_ID must be a single safe path segment"),
+            Self::MissingRunId => f.write_str("OKOU_RUN_ID is required for guest runtime paths"),
+            Self::InvalidRunId => f.write_str("OKOU_RUN_ID must be a single safe path segment"),
             Self::MissingHome => f.write_str("HOME is required for guest runtime paths"),
             Self::InvalidRuntimeDir => {
                 f.write_str("VM0_GUEST_RUNTIME_DIR must be an absolute path")

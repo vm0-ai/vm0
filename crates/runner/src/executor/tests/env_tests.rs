@@ -207,6 +207,10 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
         ("VM0_PROMPT".into(), "ignored\0secret".into()),
+        (
+            guest_contracts::env::RUN_ID_ENV.into(),
+            "ignored\0run-identity".into(),
+        ),
         ("CUSTOM_ENV".into(), "kept".into()),
     ]));
 
@@ -214,6 +218,7 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
     let user_env = build_user_env_json(&ctx);
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert!(!user_env.contains_key("VM0_PROMPT"));
+    assert!(!user_env.contains_key(guest_contracts::env::RUN_ID_ENV));
 }
 
 #[test]
@@ -378,7 +383,11 @@ fn build_env_json_required_keys() {
         env.get("VM0_API_BACKEND_URL").unwrap(),
         "https://api.example.com"
     );
-    assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
+    assert_eq!(
+        env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
+        &RunId::nil().to_string()
+    );
+    assert!(!env.contains_key("VM0_RUN_ID"));
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
         env.get(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV)
@@ -535,6 +544,11 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     ctx.cli_agent_type = "codex".into();
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_ENV".into(), "kept".into()),
+        ("OKOU_TOKEN".into(), "legitimate-okou-token".into()),
+        (
+            guest_contracts::env::RUN_ID_ENV.into(),
+            "user-controlled-run-id".into(),
+        ),
         (
             guest_contracts::env::PROMPT_ENV.into(),
             "user prompt".into(),
@@ -606,6 +620,10 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     );
     assert_eq!(bootstrap_env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
+        bootstrap_env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
+        &ctx.run_id.to_string()
+    );
+    assert_eq!(
         bootstrap_env
             .get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
@@ -613,7 +631,9 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     );
     assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
+    assert_eq!(user_env.get("OKOU_TOKEN").unwrap(), "legitimate-okou-token");
     for key in [
+        guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::API_TOKEN_ENV,
         guest_contracts::env::WORKING_DIR_ENV,
@@ -692,6 +712,7 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
         );
     }
     for key in [
+        guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
@@ -699,9 +720,10 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     ] {
         assert!(
             is_runner_owned_env_key(key),
-            "non-VM0 runner key {key} should be runner-owned"
+            "explicit runner key {key} should be runner-owned"
         );
     }
+    assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
 }
 
 #[test]
