@@ -551,7 +551,7 @@ describe("organization billing settings", () => {
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
 
-    click(screen.getByRole("button", { name: "Back" }));
+    click(screen.getByLabelText("Back"));
     const returnedChoosePlanHeading = await screen.findByRole("heading", {
       name: "Choose a plan",
     });

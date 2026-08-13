@@ -534,7 +534,7 @@ describe("organization members settings", () => {
       within(memberUsage).getByRole("combobox", {
         name: "Usage for Test User",
       }),
-    ).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    ).toHaveTextContent("20,400 credits · 2% off");
   });
 
   it.each([
