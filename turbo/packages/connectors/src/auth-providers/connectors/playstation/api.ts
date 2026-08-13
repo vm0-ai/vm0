@@ -14,7 +14,17 @@ export const PLAYSTATION_PROFILE_USERS_URL =
   "https://m.np.playstation.com/api/userProfile/v1/internal/users";
 export const PLAYSTATION_REDIRECT_URI =
   "com.scee.psxandroid.scecompcall://redirect";
+export const PLAYSTATION_WEB_SESSION_SIGNIN_URL =
+  "https://web.np.playstation.com/api/session/v1/signin";
+export const PLAYSTATION_WEB_SESSION_CALLBACK_URL =
+  "https://web.np.playstation.com/api/session/v1/session";
 const PLAYSTATION_CLIENT_SECRET = "ucPjka5tntB2KqsP";
+const PLAYSTATION_STORE_REDIRECT_URL = "https://store.playstation.com/";
+const PLAYSTATION_WEB_SESSION_COOKIE_NAME = "pdccws_p";
+const PLAYSTATION_WEB_SESSION_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+  "AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Chrome/140.0.0.0 Safari/537.36";
 
 interface PlaystationAuthToken {
   readonly accessToken: string;
@@ -79,7 +89,7 @@ function invalidNpssoError(): OAuthProviderHttpError {
   );
 }
 
-function normalizePlaystationNpsso(input: string): string {
+export function normalizePlaystationNpsso(input: string): string {
   const trimmed = input.trim();
   let value = trimmed;
 
@@ -100,6 +110,169 @@ function normalizePlaystationNpsso(input: string): string {
     throw invalidNpssoError();
   }
   return value;
+}
+
+function playstationWebSessionError(
+  message: string,
+  status: number,
+): OAuthProviderHttpError {
+  return new OAuthProviderHttpError(
+    `PlayStation web session exchange failed: ${message}`,
+    status,
+    "invalid_grant",
+  );
+}
+
+function validatedRedirectLocation(
+  response: Response,
+  expected: { readonly hostname: string; readonly pathname: string },
+): URL {
+  const location = response.headers.get("location");
+  if (!location) {
+    throw playstationWebSessionError(
+      `missing redirect (${response.status})`,
+      response.status,
+    );
+  }
+
+  let url: URL;
+  try {
+    url = new URL(location);
+  } catch {
+    throw playstationWebSessionError(
+      `invalid redirect (${response.status})`,
+      response.status,
+    );
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.hostname !== expected.hostname ||
+    url.port !== "" ||
+    url.pathname !== expected.pathname
+  ) {
+    throw playstationWebSessionError(
+      `unexpected redirect (${response.status})`,
+      response.status,
+    );
+  }
+  return url;
+}
+
+function responseSetCookieHeaders(headers: Headers): readonly string[] {
+  return headers.getSetCookie();
+}
+
+function cookiePairFromSetCookie(setCookie: string): string | null {
+  const pair = setCookie.split(";", 1)[0]?.trim();
+  if (!pair) {
+    return null;
+  }
+  const equalsIndex = pair.indexOf("=");
+  if (equalsIndex <= 0) {
+    return null;
+  }
+  const name = pair.slice(0, equalsIndex);
+  const value = pair.slice(equalsIndex + 1);
+  if (
+    !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u.test(name) ||
+    !value ||
+    hasInvalidNpssoCookieCharacter(value)
+  ) {
+    return null;
+  }
+  return `${name}=${value}`;
+}
+
+function responseCookiePairs(headers: Headers): readonly string[] {
+  return responseSetCookieHeaders(headers).flatMap((setCookie) => {
+    const pair = cookiePairFromSetCookie(setCookie);
+    return pair === null ? [] : [pair];
+  });
+}
+
+function cookieValue(
+  pairs: readonly string[],
+  expectedName: string,
+): string | null {
+  for (const pair of pairs) {
+    const equalsIndex = pair.indexOf("=");
+    if (pair.slice(0, equalsIndex) === expectedName) {
+      return pair.slice(equalsIndex + 1);
+    }
+  }
+  return null;
+}
+
+export async function exchangePlaystationNpssoForWebSessionToken(
+  rawNpsso: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const npsso = normalizePlaystationNpsso(rawNpsso);
+  const signinUrl = new URL(PLAYSTATION_WEB_SESSION_SIGNIN_URL);
+  signinUrl.searchParams.set("redirect_uri", PLAYSTATION_STORE_REDIRECT_URL);
+  signinUrl.searchParams.set("smcid", "web:store");
+
+  const signinResponse = await fetch(signinUrl, {
+    headers: { "User-Agent": PLAYSTATION_WEB_SESSION_USER_AGENT },
+    redirect: "manual",
+    signal,
+  });
+  const authorizeUrl = validatedRedirectLocation(signinResponse, {
+    hostname: "ca.account.sony.com",
+    pathname: "/api/authz/v3/oauth/authorize",
+  });
+  const signinCookiePairs = responseCookiePairs(signinResponse.headers);
+  const initialWebSessionToken = cookieValue(
+    signinCookiePairs,
+    PLAYSTATION_WEB_SESSION_COOKIE_NAME,
+  );
+  if (!initialWebSessionToken) {
+    throw playstationWebSessionError(
+      `missing ${PLAYSTATION_WEB_SESSION_COOKIE_NAME} cookie`,
+      signinResponse.status,
+    );
+  }
+
+  const authorizeResponse = await fetch(authorizeUrl, {
+    headers: {
+      Cookie: `npsso=${npsso}`,
+      "User-Agent": PLAYSTATION_WEB_SESSION_USER_AGENT,
+    },
+    redirect: "manual",
+    signal,
+  });
+  const callbackUrl = validatedRedirectLocation(authorizeResponse, {
+    hostname: "web.np.playstation.com",
+    pathname: "/api/session/v1/session",
+  });
+  if (!callbackUrl.searchParams.get("code")) {
+    throw playstationWebSessionError(
+      `missing authorization code (${authorizeResponse.status})`,
+      authorizeResponse.status,
+    );
+  }
+
+  const callbackResponse = await fetch(callbackUrl, {
+    headers: {
+      Cookie: signinCookiePairs.join("; "),
+      "User-Agent": PLAYSTATION_WEB_SESSION_USER_AGENT,
+    },
+    redirect: "manual",
+    signal,
+  });
+  if (!callbackResponse.ok && callbackResponse.status !== 302) {
+    throw playstationWebSessionError(
+      `callback failed (${callbackResponse.status})`,
+      callbackResponse.status,
+    );
+  }
+  const callbackWebSessionToken = cookieValue(
+    responseCookiePairs(callbackResponse.headers),
+    PLAYSTATION_WEB_SESSION_COOKIE_NAME,
+  );
+  return callbackWebSessionToken ?? initialWebSessionToken;
 }
 
 function hasInvalidNpssoCookieCharacter(value: string): boolean {
