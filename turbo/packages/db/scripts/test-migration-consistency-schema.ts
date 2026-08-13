@@ -2026,6 +2026,17 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
+  // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
+  // Pre-stage-3 API revisions and callbacks write metadata only to zero_runs.
+  // Remove in #26924 stage 4 after the stage-3 writer is fully promoted, all
+  // pre-stage-3 writers and callbacks are drained, and rollback is closed.
+  {
+    definition:
+      "CREATE TRIGGER sync_zero_run_metadata_to_agent_runs AFTER INSERT OR UPDATE OF trigger_source, autonomy_budget, workflow_automation_id, goal_id, model_provider, model_provider_id, model_provider_credential_scope, selected_model, codex_service_tier, selected_video_model, chat_thread_id, api_started_at, first_assistant_event_acknowledged_at, summary, trigger_brief ON public.zero_runs FOR EACH ROW EXECUTE FUNCTION sync_zero_run_metadata_to_agent_runs()",
+    schemaName: "public",
+    tableName: "zero_runs",
+    triggerName: "sync_zero_run_metadata_to_agent_runs",
+  },
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
@@ -2116,6 +2127,14 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
     functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same DB/API rollout fallback and #26924 stage-4 removal gate as its trigger.
+  {
+    bodyHash: "63665b45e2bb69f78d27ded47ef8f2d4",
+    functionName: "sync_zero_run_metadata_to_agent_runs",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -9306,6 +9325,691 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
   }
 }
 
+// DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
+// Pre-stage-3 API revisions and callbacks write metadata only to zero_runs.
+// Remove this validator with the bridge in #26924 stage 4 after the stage-3
+// writer is fully promoted, old writers/callbacks drain, and rollback is closed.
+const AGENT_RUN_METADATA_EXPANSION_PREVIOUS_MIGRATION =
+  "0918_add_video_model_columns";
+const AGENT_RUN_METADATA_EXPANSION_MIGRATION = "0919_clammy_mastermind";
+const AGENT_RUN_METADATA_COLUMNS = [
+  {
+    name: "trigger_source",
+    sqlType: "varchar(20)",
+    dataType: "character varying",
+    maximumLength: 20,
+  },
+  {
+    name: "autonomy_budget",
+    sqlType: "integer",
+    dataType: "integer",
+    maximumLength: null,
+  },
+  {
+    name: "workflow_automation_id",
+    sqlType: "uuid",
+    dataType: "uuid",
+    maximumLength: null,
+  },
+  {
+    name: "goal_id",
+    sqlType: "uuid",
+    dataType: "uuid",
+    maximumLength: null,
+  },
+  {
+    name: "model_provider",
+    sqlType: "varchar(100)",
+    dataType: "character varying",
+    maximumLength: 100,
+  },
+  {
+    name: "model_provider_id",
+    sqlType: "uuid",
+    dataType: "uuid",
+    maximumLength: null,
+  },
+  {
+    name: "model_provider_credential_scope",
+    sqlType: "varchar(20)",
+    dataType: "character varying",
+    maximumLength: 20,
+  },
+  {
+    name: "selected_model",
+    sqlType: "varchar(255)",
+    dataType: "character varying",
+    maximumLength: 255,
+  },
+  {
+    name: "codex_service_tier",
+    sqlType: "varchar(20)",
+    dataType: "character varying",
+    maximumLength: 20,
+  },
+  {
+    name: "selected_video_model",
+    sqlType: "varchar(255)",
+    dataType: "character varying",
+    maximumLength: 255,
+  },
+  {
+    name: "chat_thread_id",
+    sqlType: "uuid",
+    dataType: "uuid",
+    maximumLength: null,
+  },
+  {
+    name: "api_started_at",
+    sqlType: "timestamp",
+    dataType: "timestamp without time zone",
+    maximumLength: null,
+  },
+  {
+    name: "first_assistant_event_acknowledged_at",
+    sqlType: "timestamp",
+    dataType: "timestamp without time zone",
+    maximumLength: null,
+  },
+  {
+    name: "summary",
+    sqlType: "text",
+    dataType: "text",
+    maximumLength: null,
+  },
+  {
+    name: "trigger_brief",
+    sqlType: "text",
+    dataType: "text",
+    maximumLength: null,
+  },
+] as const;
+
+const AGENT_RUN_METADATA_EXPANSION_FIXTURE = {
+  composeId: "00000000-0000-4000-8000-000000091901",
+  sessionId: "00000000-0000-4000-8000-000000091902",
+  historicalRunId: "00000000-0000-4000-8000-000000091911",
+  sequentialRunId: "00000000-0000-4000-8000-000000091912",
+  cteRunId: "00000000-0000-4000-8000-000000091913",
+  historicalModelProviderId: "00000000-0000-4000-8000-000000091921",
+  sequentialModelProviderId: "00000000-0000-4000-8000-000000091922",
+  cteModelProviderId: "00000000-0000-4000-8000-000000091923",
+  agentOnlyWorkflowAutomationId: "00000000-0000-4000-8000-000000091931",
+  agentOnlyGoalId: "00000000-0000-4000-8000-000000091932",
+  agentOnlyChatThreadId: "00000000-0000-4000-8000-000000091933",
+  userId: "migration-agent-run-metadata-user",
+  orgId: "migration-agent-run-metadata-org",
+} as const;
+
+const AGENT_RUN_METADATA_PRESERVED_LIFECYCLE = {
+  status: "completed",
+  prompt: "lifecycle values stay untouched",
+  startedAt: "2026-08-11 02:03:04",
+  completedAt: "2026-08-11 03:04:05",
+  lastHeartbeatAt: "2026-08-11 04:05:06",
+  error: "preserved lifecycle error",
+  runnerGroup: "preserved-runner-group",
+} as const;
+
+type RunMetadataValue = string | number | null;
+
+interface AgentRunMetadataProbe {
+  readonly agentMetadata: RunMetadataValue[];
+  readonly zeroMetadata: RunMetadataValue[] | null;
+  readonly agentTupleId: string;
+  readonly status: string;
+  readonly prompt: string;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+  readonly lastHeartbeatAt: string | null;
+  readonly error: string | null;
+  readonly runnerGroup: string | null;
+}
+
+async function readAgentRunMetadataProbe(
+  client: Client,
+  runId: string,
+): Promise<AgentRunMetadataProbe> {
+  const result = await client.query<AgentRunMetadataProbe>(
+    `
+      SELECT
+        jsonb_build_array(
+          "agent_run"."trigger_source",
+          "agent_run"."autonomy_budget",
+          "agent_run"."workflow_automation_id",
+          "agent_run"."goal_id",
+          "agent_run"."model_provider",
+          "agent_run"."model_provider_id",
+          "agent_run"."model_provider_credential_scope",
+          "agent_run"."selected_model",
+          "agent_run"."codex_service_tier",
+          "agent_run"."selected_video_model",
+          "agent_run"."chat_thread_id",
+          "agent_run"."api_started_at",
+          "agent_run"."first_assistant_event_acknowledged_at",
+          "agent_run"."summary",
+          "agent_run"."trigger_brief"
+        ) AS "agentMetadata",
+        CASE
+          WHEN "zero_run"."id" IS NULL THEN NULL
+          ELSE jsonb_build_array(
+            "zero_run"."trigger_source",
+            "zero_run"."autonomy_budget",
+            "zero_run"."workflow_automation_id",
+            "zero_run"."goal_id",
+            "zero_run"."model_provider",
+            "zero_run"."model_provider_id",
+            "zero_run"."model_provider_credential_scope",
+            "zero_run"."selected_model",
+            "zero_run"."codex_service_tier",
+            "zero_run"."selected_video_model",
+            "zero_run"."chat_thread_id",
+            "zero_run"."api_started_at",
+            "zero_run"."first_assistant_event_acknowledged_at",
+            "zero_run"."summary",
+            "zero_run"."trigger_brief"
+          )
+        END AS "zeroMetadata",
+        "agent_run"."ctid"::text AS "agentTupleId",
+        "agent_run"."status",
+        "agent_run"."prompt",
+        "agent_run"."started_at"::text AS "startedAt",
+        "agent_run"."completed_at"::text AS "completedAt",
+        "agent_run"."last_heartbeat_at"::text AS "lastHeartbeatAt",
+        "agent_run"."error",
+        "agent_run"."runner_group" AS "runnerGroup"
+      FROM "agent_runs" AS "agent_run"
+      LEFT JOIN "zero_runs" AS "zero_run"
+        ON "zero_run"."id" = "agent_run"."id"
+      WHERE "agent_run"."id" = $1
+    `,
+    [runId],
+  );
+  const [row] = result.rows;
+  assert.ok(row);
+  assert.equal(result.rows.length, 1);
+  return row;
+}
+
+function assertAgentRunMetadataExpansionMigrationShape(
+  migrationSql: string,
+): void {
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  assert.equal(statements.length, AGENT_RUN_METADATA_COLUMNS.length + 2);
+  for (const [index, column] of AGENT_RUN_METADATA_COLUMNS.entries()) {
+    assert.equal(
+      statements[index],
+      `ALTER TABLE "agent_runs" ADD COLUMN "${column.name}" ${column.sqlType};`,
+    );
+  }
+
+  const functionStatement = statements[AGENT_RUN_METADATA_COLUMNS.length];
+  const triggerStatement = statements[AGENT_RUN_METADATA_COLUMNS.length + 1];
+  assert.ok(functionStatement);
+  assert.ok(triggerStatement);
+  assert.ok(
+    functionStatement.startsWith(
+      "-- DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.",
+    ),
+  );
+  assert.match(
+    functionStatement,
+    /CREATE FUNCTION "sync_zero_run_metadata_to_agent_runs"\(\) RETURNS trigger/u,
+  );
+  assert.match(functionStatement, /UPDATE "agent_runs" AS "agent_run"/u);
+  assert.ok(functionStatement.includes(") IS DISTINCT FROM ROW("));
+  assert.doesNotMatch(functionStatement, /UPDATE "zero_runs"/u);
+  assert.match(
+    triggerStatement,
+    /^CREATE TRIGGER "sync_zero_run_metadata_to_agent_runs"[\s\S]*AFTER INSERT OR UPDATE OF/u,
+  );
+  assert.match(triggerStatement, /ON "zero_runs"/u);
+  assert.doesNotMatch(triggerStatement, /\bDELETE\b/u);
+  assert.doesNotMatch(triggerStatement, /ON "agent_runs"/u);
+  for (const column of AGENT_RUN_METADATA_COLUMNS) {
+    assert.ok(
+      functionStatement.includes(`"${column.name}" = NEW."${column.name}"`),
+    );
+    assert.ok(triggerStatement.includes(`"${column.name}"`));
+  }
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
+}
+
+async function insertPreExpansionAgentRunMetadataFixture(
+  client: Client,
+): Promise<void> {
+  const fixture = AGENT_RUN_METADATA_EXPANSION_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES ($1, $2, 'agent-run-metadata-expansion', $3)
+    `,
+    [fixture.composeId, fixture.userId, fixture.orgId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id", "user_id", "org_id", "agent_compose_id"
+      ) VALUES ($1, $2, $3, $4)
+    `,
+    [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "session_id", "status", "prompt", "org_id",
+        "last_heartbeat_at"
+      ) VALUES (
+        $1, $2, $3, 'completed', 'historical metadata remains unmigrated',
+        $4, '2026-08-10 01:02:03'
+      )
+    `,
+    [fixture.historicalRunId, fixture.userId, fixture.sessionId, fixture.orgId],
+  );
+  await client.query(
+    `
+      INSERT INTO "zero_runs" (
+        "id", "trigger_source", "autonomy_budget", "model_provider",
+        "model_provider_id", "model_provider_credential_scope",
+        "selected_model", "codex_service_tier", "selected_video_model",
+        "api_started_at", "first_assistant_event_acknowledged_at",
+        "summary", "trigger_brief"
+      ) VALUES (
+        $1, 'workflow', 4, 'historical-provider', $2, 'org',
+        'historical-model', 'flex', 'historical-video-model',
+        '2026-08-10 01:02:04', '2026-08-10 01:02:05',
+        'historical summary', 'historical trigger brief'
+      )
+    `,
+    [fixture.historicalRunId, fixture.historicalModelProviderId],
+  );
+}
+
+async function readAgentRunsRelationFileNode(
+  client: Client,
+): Promise<{ relationFileNode: string }[]> {
+  const result = await client.query<{ relationFileNode: string }>(`
+    SELECT pg_relation_filenode('agent_runs'::regclass)::text
+      AS "relationFileNode"
+  `);
+  return result.rows;
+}
+
+async function validateAgentRunMetadataColumnShape(
+  client: Client,
+): Promise<void> {
+  const columnNames = AGENT_RUN_METADATA_COLUMNS.map((column) => {
+    return column.name;
+  });
+  const columns = await client.query<{
+    columnName: string;
+    dataType: string;
+    maximumLength: number | null;
+    isNullable: string;
+    columnDefault: string | null;
+  }>(
+    `
+      SELECT
+        "column_name" AS "columnName",
+        "data_type" AS "dataType",
+        "character_maximum_length" AS "maximumLength",
+        "is_nullable" AS "isNullable",
+        "column_default" AS "columnDefault"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'agent_runs'
+        AND "column_name" = ANY($1::text[])
+      ORDER BY array_position($1::text[], "column_name")
+    `,
+    [columnNames],
+  );
+  assert.deepEqual(
+    columns.rows,
+    AGENT_RUN_METADATA_COLUMNS.map((column) => {
+      return {
+        columnName: column.name,
+        dataType: column.dataType,
+        maximumLength: column.maximumLength,
+        isNullable: "YES",
+        columnDefault: null,
+      };
+    }),
+  );
+}
+
+async function validateAgentRunMetadataHasNoSchemaObjects(
+  client: Client,
+): Promise<void> {
+  const columnNames = AGENT_RUN_METADATA_COLUMNS.map((column) => {
+    return column.name;
+  });
+  const metadataConstraints = await client.query<{ name: string }>(
+    `
+      SELECT "constraint"."conname" AS "name"
+      FROM "pg_constraint" AS "constraint"
+      INNER JOIN "pg_class" AS "table_class"
+        ON "table_class"."oid" = "constraint"."conrelid"
+      WHERE "table_class"."relname" = 'agent_runs'
+        AND EXISTS (
+          SELECT 1
+          FROM unnest("constraint"."conkey") AS "key"("attributeNumber")
+          INNER JOIN "pg_attribute" AS "attribute"
+            ON "attribute"."attrelid" = "constraint"."conrelid"
+            AND "attribute"."attnum" = "key"."attributeNumber"
+          WHERE "attribute"."attname" = ANY($1::text[])
+        )
+    `,
+    [columnNames],
+  );
+  assert.deepEqual(metadataConstraints.rows, []);
+
+  const metadataIndexes = await client.query<{ name: string }>(
+    `
+      SELECT "index_class"."relname" AS "name"
+      FROM "pg_index" AS "index"
+      INNER JOIN "pg_class" AS "table_class"
+        ON "table_class"."oid" = "index"."indrelid"
+      INNER JOIN "pg_class" AS "index_class"
+        ON "index_class"."oid" = "index"."indexrelid"
+      WHERE "table_class"."relname" = 'agent_runs'
+        AND EXISTS (
+          SELECT 1
+          FROM unnest("index"."indkey") AS "key"("attributeNumber")
+          INNER JOIN "pg_attribute" AS "attribute"
+            ON "attribute"."attrelid" = "index"."indrelid"
+            AND "attribute"."attnum" = "key"."attributeNumber"
+          WHERE "attribute"."attname" = ANY($1::text[])
+        )
+    `,
+    [columnNames],
+  );
+  assert.deepEqual(metadataIndexes.rows, []);
+}
+
+async function validateHistoricalAgentRunMetadataIsNotBackfilled(
+  client: Client,
+): Promise<void> {
+  const historical = await readAgentRunMetadataProbe(
+    client,
+    AGENT_RUN_METADATA_EXPANSION_FIXTURE.historicalRunId,
+  );
+  assert.deepEqual(
+    historical.agentMetadata,
+    AGENT_RUN_METADATA_COLUMNS.map(() => {
+      return null;
+    }),
+  );
+  assert.notDeepEqual(historical.agentMetadata, historical.zeroMetadata);
+}
+
+async function validateSequentialAgentRunMetadataCreate(
+  client: Client,
+): Promise<AgentRunMetadataProbe> {
+  const fixture = AGENT_RUN_METADATA_EXPANSION_FIXTURE;
+  await client.query("BEGIN");
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "session_id", "status", "prompt", "org_id",
+        "last_heartbeat_at"
+      ) VALUES (
+        $1, $2, $3, 'pending', 'sequential old-shaped create', $4,
+        '2026-08-11 01:02:03'
+      )
+    `,
+    [fixture.sequentialRunId, fixture.userId, fixture.sessionId, fixture.orgId],
+  );
+  await client.query(
+    `
+      INSERT INTO "zero_runs" (
+        "id", "trigger_source", "autonomy_budget", "model_provider",
+        "model_provider_id", "model_provider_credential_scope",
+        "selected_model", "codex_service_tier", "selected_video_model",
+        "api_started_at", "first_assistant_event_acknowledged_at",
+        "summary", "trigger_brief"
+      ) VALUES (
+        $1, 'chat', 7, 'openai-api-key', $2, 'org',
+        'gpt-5.6-sol', 'priority', 'veo-3.1',
+        '2026-08-11 01:02:04', '2026-08-11 01:02:05',
+        'sequential summary', 'sequential trigger brief'
+      )
+    `,
+    [fixture.sequentialRunId, fixture.sequentialModelProviderId],
+  );
+  const beforeCommit = await readAgentRunMetadataProbe(
+    client,
+    fixture.sequentialRunId,
+  );
+  assert.deepEqual(beforeCommit.agentMetadata, beforeCommit.zeroMetadata);
+  await client.query("COMMIT");
+
+  const afterCommit = await readAgentRunMetadataProbe(
+    client,
+    fixture.sequentialRunId,
+  );
+  assert.deepEqual(afterCommit.agentMetadata, afterCommit.zeroMetadata);
+  return afterCommit;
+}
+
+async function validateAgentRunMetadataUpdateDirectionAndNullClearing(
+  client: Client,
+  sequentialAfterCommit: AgentRunMetadataProbe,
+): Promise<AgentRunMetadataProbe> {
+  const fixture = AGENT_RUN_METADATA_EXPANSION_FIXTURE;
+  await client.query(
+    `
+      UPDATE "agent_runs"
+      SET
+        "workflow_automation_id" = $2,
+        "goal_id" = $3,
+        "chat_thread_id" = $4,
+        "summary" = 'agent-only summary',
+        "status" = 'completed',
+        "prompt" = 'lifecycle values stay untouched',
+        "started_at" = '2026-08-11 02:03:04',
+        "completed_at" = '2026-08-11 03:04:05',
+        "last_heartbeat_at" = '2026-08-11 04:05:06',
+        "error" = 'preserved lifecycle error',
+        "runner_group" = 'preserved-runner-group'
+      WHERE "id" = $1
+    `,
+    [
+      fixture.sequentialRunId,
+      fixture.agentOnlyWorkflowAutomationId,
+      fixture.agentOnlyGoalId,
+      fixture.agentOnlyChatThreadId,
+    ],
+  );
+  const agentOnlyUpdate = await readAgentRunMetadataProbe(
+    client,
+    fixture.sequentialRunId,
+  );
+  assert.deepEqual(
+    agentOnlyUpdate.zeroMetadata,
+    sequentialAfterCommit.zeroMetadata,
+  );
+  assert.notDeepEqual(
+    agentOnlyUpdate.agentMetadata,
+    agentOnlyUpdate.zeroMetadata,
+  );
+
+  await client.query(
+    `UPDATE "zero_runs" SET "summary" = NULL WHERE "id" = $1`,
+    [fixture.sequentialRunId],
+  );
+  const nullCleared = await readAgentRunMetadataProbe(
+    client,
+    fixture.sequentialRunId,
+  );
+  assert.deepEqual(nullCleared.agentMetadata, nullCleared.zeroMetadata);
+  assert.equal(nullCleared.agentMetadata[2], null);
+  assert.equal(nullCleared.agentMetadata[3], null);
+  assert.equal(nullCleared.agentMetadata[10], null);
+  assert.equal(nullCleared.agentMetadata[13], null);
+  assert.deepEqual(
+    {
+      status: nullCleared.status,
+      prompt: nullCleared.prompt,
+      startedAt: nullCleared.startedAt,
+      completedAt: nullCleared.completedAt,
+      lastHeartbeatAt: nullCleared.lastHeartbeatAt,
+      error: nullCleared.error,
+      runnerGroup: nullCleared.runnerGroup,
+    },
+    AGENT_RUN_METADATA_PRESERVED_LIFECYCLE,
+  );
+  return nullCleared;
+}
+
+async function validateIdenticalAgentRunMetadataWriteIsNoOp(
+  client: Client,
+  nullCleared: AgentRunMetadataProbe,
+): Promise<void> {
+  const runId = AGENT_RUN_METADATA_EXPANSION_FIXTURE.sequentialRunId;
+  await client.query(
+    `
+      UPDATE "zero_runs"
+      SET "selected_model" = "selected_model"
+      WHERE "id" = $1
+    `,
+    [runId],
+  );
+  const identicalWrite = await readAgentRunMetadataProbe(client, runId);
+  assert.equal(identicalWrite.agentTupleId, nullCleared.agentTupleId);
+  assert.deepEqual(identicalWrite.agentMetadata, identicalWrite.zeroMetadata);
+}
+
+async function validateDataModifyingCteAgentRunMetadataCreate(
+  client: Client,
+): Promise<AgentRunMetadataProbe> {
+  const fixture = AGENT_RUN_METADATA_EXPANSION_FIXTURE;
+  await client.query("BEGIN");
+  // This matches the atomic launch statement: the zero-run sibling consumes
+  // the inserted agent-run CTE's RETURNING id before its immediate trigger.
+  const cteInsert = await client.query<{ id: string }>(
+    `
+      WITH "inserted_launch_run" AS (
+        INSERT INTO "agent_runs" (
+          "id", "user_id", "session_id", "status", "prompt", "org_id",
+          "last_heartbeat_at"
+        ) VALUES (
+          $1, $2, $3, 'queued', 'data-modifying CTE old-shaped create', $4,
+          '2026-08-12 01:02:03'
+        )
+        RETURNING "id"
+      ),
+      "inserted_launch_zero_run" AS (
+        INSERT INTO "zero_runs" (
+          "id", "trigger_source", "autonomy_budget", "model_provider",
+          "model_provider_id", "model_provider_credential_scope",
+          "selected_model", "codex_service_tier", "selected_video_model",
+          "api_started_at", "first_assistant_event_acknowledged_at",
+          "summary", "trigger_brief"
+        ) VALUES (
+          (SELECT "id" FROM "inserted_launch_run"),
+          'workflow', 3, 'anthropic-api-key', $5, 'user',
+          'claude-opus-4-8', 'flex', 'sora-3',
+          '2026-08-12 01:02:04', '2026-08-12 01:02:05',
+          'cte summary', 'cte trigger brief'
+        )
+      )
+      SELECT "id" FROM "inserted_launch_run"
+    `,
+    [
+      fixture.cteRunId,
+      fixture.userId,
+      fixture.sessionId,
+      fixture.orgId,
+      fixture.cteModelProviderId,
+    ],
+  );
+  assert.deepEqual(cteInsert.rows, [{ id: fixture.cteRunId }]);
+  const beforeCommit = await readAgentRunMetadataProbe(
+    client,
+    fixture.cteRunId,
+  );
+  assert.deepEqual(beforeCommit.agentMetadata, beforeCommit.zeroMetadata);
+  await client.query("COMMIT");
+
+  const afterCommit = await readAgentRunMetadataProbe(client, fixture.cteRunId);
+  assert.deepEqual(afterCommit.agentMetadata, afterCommit.zeroMetadata);
+  return afterCommit;
+}
+
+async function validateZeroRunMetadataDeleteIsOneWay(
+  client: Client,
+  cteAfterCommit: AgentRunMetadataProbe,
+): Promise<void> {
+  const runId = AGENT_RUN_METADATA_EXPANSION_FIXTURE.cteRunId;
+  await client.query(`DELETE FROM "zero_runs" WHERE "id" = $1`, [runId]);
+  const afterDelete = await readAgentRunMetadataProbe(client, runId);
+  assert.equal(afterDelete.zeroMetadata, null);
+  assert.deepEqual(afterDelete.agentMetadata, cteAfterCommit.agentMetadata);
+  assert.equal(afterDelete.agentTupleId, cteAfterCommit.agentTupleId);
+}
+
+async function validateAgentRunMetadataExpansion(): Promise<void> {
+  console.log("=== Validate agent-run metadata expansion bridge ===\n");
+  const testDb = "migration_agent_run_metadata_expansion_test";
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, `${AGENT_RUN_METADATA_EXPANSION_MIGRATION}.sql`),
+    "utf8",
+  );
+  assertAgentRunMetadataExpansionMigrationShape(migrationSql);
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      AGENT_RUN_METADATA_EXPANSION_PREVIOUS_MIGRATION,
+    );
+    await insertPreExpansionAgentRunMetadataFixture(client);
+    const relationBefore = await readAgentRunsRelationFileNode(client);
+    await applyMigrationsUpToTag(
+      client,
+      AGENT_RUN_METADATA_EXPANSION_MIGRATION,
+    );
+    const relationAfter = await readAgentRunsRelationFileNode(client);
+    assert.deepEqual(relationAfter, relationBefore);
+
+    await validateAgentRunMetadataColumnShape(client);
+    await validateAgentRunMetadataHasNoSchemaObjects(client);
+    await validateHistoricalAgentRunMetadataIsNotBackfilled(client);
+    const sequentialAfterCommit =
+      await validateSequentialAgentRunMetadataCreate(client);
+    const nullCleared =
+      await validateAgentRunMetadataUpdateDirectionAndNullClearing(
+        client,
+        sequentialAfterCommit,
+      );
+    await validateIdenticalAgentRunMetadataWriteIsNoOp(client, nullCleared);
+    const cteAfterCommit =
+      await validateDataModifyingCteAgentRunMetadataCreate(client);
+    await validateZeroRunMetadataDeleteIsOneWay(client, cteAfterCommit);
+
+    console.log("   ✅ all 15 target columns are nullable and unconstrained");
+    console.log("   ✅ additive DDL preserves the agent_runs relation file");
+    console.log("   ✅ historical zero_runs rows are not backfilled");
+    console.log("   ✅ sequential and data-modifying CTE creates synchronize");
+    console.log("   ✅ NULL clearing and lifecycle preservation synchronize");
+    console.log("   ✅ identical writes do not update the target tuple");
+    console.log("   ✅ agent_runs writes and zero_runs deletes stay one-way\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -9340,6 +10044,7 @@ async function main(): Promise<void> {
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
+    await validateAgentRunMetadataExpansion();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -9408,6 +10113,9 @@ async function main(): Promise<void> {
       console.log("   ✅ Legacy Teams message file scope is backfilled");
       console.log(
         "   ✅ Zero-run Codex tier readers survive the pre-expansion schema",
+      );
+      console.log(
+        "   ✅ Old run creation paths synchronize metadata into agent_runs",
       );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
