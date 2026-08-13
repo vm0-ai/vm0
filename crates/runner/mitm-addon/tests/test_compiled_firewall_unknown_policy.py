@@ -214,7 +214,7 @@ def test_compiled_blocks_path_beyond_validation_budget():
         ],
         name="example",
     )
-    nested_encoding = "%25252525252e"
+    nested_encoding = "%2525252561"
     path = "/" + nested_encoding
     path += "a" * (path_security.MAX_PATH_VALIDATION_CHARACTERS + 1 - len(path))
     policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
