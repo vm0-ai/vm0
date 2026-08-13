@@ -44,6 +44,7 @@ import {
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
+  setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
@@ -385,8 +386,8 @@ async function allThreadEvents(actor: ApiTestUser) {
   return response.body.events;
 }
 
-/** Cheapest visible message writer: the no-credit send persists a user and an
- * assistant row without creating a run. */
+/** Cheapest visible message writer: the no-credit send persists a searchable
+ * user row plus a non-searchable output.error without creating a run. */
 async function sendNoCreditMessage(
   actor: ApiTestUser,
   body: {
@@ -1018,6 +1019,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "claude-sonnet-5",
       { eventId: modelSelectionEventId },
     );
+    await setChatThreadVideoModelFixture(liveThread.id, "fal-ai/veo3.1/fast");
 
     const incrementalSnapshotAt = initialSnapshotAt + 1000;
     mockNow(incrementalSnapshotAt);
@@ -1049,6 +1051,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         title: "Renamed compact title",
         renamedAt: expect.any(String),
         selectedModel: "claude-sonnet-5",
+        // The compaction projection is hand-written SQL, so a column missing
+        // from it survives every read until compaction runs and drops it.
+        selectedVideoModel: "fal-ai/veo3.1/fast",
       }),
     ]);
 
@@ -2703,18 +2708,16 @@ describe("CHAT-01 chat search", () => {
       throw new Error("Expected one okapi match");
     }
     expect(match.matchedMessage.content).toBe("the okapi was here");
-    expect(match.contextBefore).toHaveLength(2);
-    expect(match.contextAfter).toHaveLength(2);
     expect(
       match.contextBefore.map((message) => {
         return message.content;
       }),
-    ).toContain("context round one");
+    ).toStrictEqual(["context round one"]);
     expect(
       match.contextAfter.map((message) => {
         return message.content;
       }),
-    ).toContain("context round three");
+    ).toStrictEqual(["context round three"]);
     const matchedAt = Date.parse(match.matchedMessage.createdAt);
     for (const message of match.contextBefore) {
       expect(Date.parse(message.createdAt)).toBeLessThan(matchedAt);
@@ -2843,9 +2846,20 @@ describe("CHAT-01 chat search", () => {
     expect(beta.chatThreadId).toBe(threadA);
     expect(gamma.chatThreadId).toBe(threadB);
 
+    const expectedContextLengths = new Map([
+      [alphaPrompt, { before: 1, after: 2 }],
+      [betaPrompt, { before: 2, after: 1 }],
+      [gammaPrompt, { before: 1, after: 1 }],
+    ]);
     for (const match of contextual.results) {
-      expect(match.contextBefore).toHaveLength(2);
-      expect(match.contextAfter).toHaveLength(2);
+      const expectedLengths = expectedContextLengths.get(
+        match.matchedMessage.content,
+      );
+      if (!expectedLengths) {
+        throw new Error("Unexpected batched chat-search match");
+      }
+      expect(match.contextBefore).toHaveLength(expectedLengths.before);
+      expect(match.contextAfter).toHaveLength(expectedLengths.after);
       expect(
         [...match.contextBefore, ...match.contextAfter].every((message) => {
           return message.chatThreadId === match.chatThreadId;

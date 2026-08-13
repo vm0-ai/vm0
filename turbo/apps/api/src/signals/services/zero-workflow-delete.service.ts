@@ -3,10 +3,7 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
 import { storages } from "@okouai/db/schema/storage";
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -30,12 +27,12 @@ export const deleteZeroWorkflow$ = command(
 
     const result = await writeDb.transaction(async (tx) => {
       const [workflow] = await tx
-        .select({ id: zeroWorkflows.id })
-        .from(zeroWorkflows)
+        .select({ id: workflows.id })
+        .from(workflows)
         .where(
           and(
-            eq(zeroWorkflows.orgId, args.orgId),
-            eq(zeroWorkflows.id, args.workflowId),
+            eq(workflows.orgId, args.orgId),
+            eq(workflows.id, args.workflowId),
           ),
         )
         .limit(1);
@@ -46,15 +43,15 @@ export const deleteZeroWorkflow$ = command(
 
       const automations = await tx
         .select({
-          orgId: zeroWorkflowAutomations.orgId,
-          ownerUserId: zeroWorkflowAutomations.ownerUserId,
-          eventType: zeroWorkflowAutomations.eventType,
-          eventConfig: zeroWorkflowAutomations.eventConfig,
+          orgId: workflowAutomations.orgId,
+          ownerUserId: workflowAutomations.ownerUserId,
+          eventType: workflowAutomations.eventType,
+          eventConfig: workflowAutomations.eventConfig,
         })
-        .from(zeroWorkflowAutomations)
-        .where(eq(zeroWorkflowAutomations.workflowId, workflow.id));
+        .from(workflowAutomations)
+        .where(eq(workflowAutomations.workflowId, workflow.id));
 
-      await tx.delete(zeroWorkflows).where(eq(zeroWorkflows.id, workflow.id));
+      await tx.delete(workflows).where(eq(workflows.id, workflow.id));
 
       const storageName = getCustomSkillStorageName(workflow.id);
       const [storage] = await tx

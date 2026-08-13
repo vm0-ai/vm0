@@ -5429,6 +5429,40 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     );
   });
 
+  it("starts configured GitHub user OAuth with connector state", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    integrations.clearGithubAppProvider();
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", "bdd-github-client-id");
+    mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "bdd-github-client-secret");
+    await installApiTestConnectorCatalog();
+
+    const actor = integrations.user();
+    const response = await integrations.requestGithubOauthConnect(
+      actor,
+      {},
+      [307],
+    );
+    const location = response.headers.get("location");
+    if (!location) {
+      throw new Error("Expected GitHub authorization redirect");
+    }
+    const authorizationUrl = new URL(location);
+    expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+      "https://github.com/login/oauth/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "bdd-github-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://www.vm0.test/api/connectors/github/callback",
+    );
+    expect(authorizationUrl.searchParams.get("state")).toMatch(
+      /^[0-9a-f]{64}$/u,
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
   it("keeps GitHub user OAuth callback errors visible through redirects", async () => {
     const githubError = await integrations.requestGithubOauthConnectCallback(
       {

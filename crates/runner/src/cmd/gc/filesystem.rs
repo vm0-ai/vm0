@@ -2,6 +2,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::SystemTime;
 
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -126,19 +127,121 @@ pub(super) struct DirStats {
     pub(super) root_metadata: Option<std::fs::Metadata>,
 }
 
+struct DirStatsEntryReader {
+    #[cfg(test)]
+    after_entry: Option<Box<dyn FnMut() -> std::io::Result<()> + Send>>,
+}
+
+impl DirStatsEntryReader {
+    const fn new() -> Self {
+        Self {
+            #[cfg(test)]
+            after_entry: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn after_entry(after_entry: impl FnMut() -> std::io::Result<()> + Send + 'static) -> Self {
+        Self {
+            after_entry: Some(Box::new(after_entry)),
+        }
+    }
+
+    fn next_entry_warn(
+        &mut self,
+        entries: &mut std::fs::ReadDir,
+        label: &str,
+        dir: &Path,
+    ) -> std::io::Result<Option<std::fs::DirEntry>> {
+        let entry = match entries.next().transpose() {
+            Ok(entry) => entry,
+            Err(error) => {
+                warn_next_entry_error(label, dir, &error);
+                return Err(error);
+            }
+        };
+
+        #[cfg(test)]
+        if entry.is_some()
+            && let Some(after_entry) = &mut self.after_entry
+            && let Err(error) = after_entry()
+        {
+            warn_next_entry_error(label, dir, &error);
+            return Err(error);
+        }
+
+        Ok(entry)
+    }
+}
+
 /// Compute directory stats while retaining the root metadata fetched for the walk.
 pub(super) async fn collect_dir_stats(dir: &Path) -> DirStats {
-    let mut entry_reader = GcDirEntryReader::new();
-    collect_dir_stats_with_reader(dir, &mut entry_reader).await
+    collect_dir_stats_with_reader(
+        dir,
+        DirStatsEntryReader::new(),
+        #[cfg(test)]
+        None,
+    )
+    .await
 }
 
 async fn collect_dir_stats_with_reader(
     dir: &Path,
-    entry_reader: &mut GcDirEntryReader,
+    entry_reader: DirStatsEntryReader,
+    #[cfg(test)] task_submissions: Option<&std::sync::atomic::AtomicUsize>,
+) -> DirStats {
+    let cancel = CancellationToken::new();
+    collect_dir_stats_with_cancel(
+        dir,
+        entry_reader,
+        cancel,
+        #[cfg(test)]
+        task_submissions,
+    )
+    .await
+}
+
+async fn collect_dir_stats_with_cancel(
+    dir: &Path,
+    entry_reader: DirStatsEntryReader,
+    cancel: CancellationToken,
+    #[cfg(test)] task_submissions: Option<&std::sync::atomic::AtomicUsize>,
+) -> DirStats {
+    let dir = dir.to_path_buf();
+    let cancel_on_drop = cancel.clone().drop_guard();
+
+    #[cfg(test)]
+    if let Some(task_submissions) = task_submissions {
+        task_submissions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    let result = tokio::task::spawn_blocking(move || {
+        collect_dir_stats_blocking(&dir, entry_reader, &cancel)
+    })
+    .await;
+    let _cancel = cancel_on_drop.disarm();
+    match result {
+        Ok(stats) => stats,
+        Err(error) => std::panic::resume_unwind(error.into_panic()),
+    }
+}
+
+fn collect_dir_stats_blocking(
+    dir: &Path,
+    mut entry_reader: DirStatsEntryReader,
+    cancel: &CancellationToken,
 ) -> DirStats {
     const BYTES_PER_BLOCK: u64 = 512;
 
-    let root_meta = match tokio::fs::symlink_metadata(dir).await {
+    if cancel.is_cancelled() {
+        return DirStats {
+            size: 0,
+            mtime: SystemTime::UNIX_EPOCH,
+            root_metadata: None,
+        };
+    }
+
+    let root_meta = match std::fs::symlink_metadata(dir) {
         Ok(meta) => meta,
         Err(_) => {
             return DirStats {
@@ -160,8 +263,13 @@ async fn collect_dir_stats_with_reader(
     let mut total_bytes = 0u64;
     let mut complete = true;
     let mut stack = vec![dir.to_path_buf()];
-    while let Some(current) = stack.pop() {
-        let current_meta = match tokio::fs::symlink_metadata(&current).await {
+    'walk: while let Some(current) = stack.pop() {
+        if cancel.is_cancelled() {
+            complete = false;
+            break;
+        }
+
+        let current_meta = match std::fs::symlink_metadata(&current) {
             Ok(metadata) => metadata,
             Err(_) => {
                 complete = false;
@@ -173,7 +281,12 @@ async fn collect_dir_stats_with_reader(
             continue;
         }
 
-        let mut entries = match tokio::fs::read_dir(&current).await {
+        if cancel.is_cancelled() {
+            complete = false;
+            break;
+        }
+
+        let mut entries = match std::fs::read_dir(&current) {
             Ok(rd) => rd,
             Err(_) => {
                 complete = false;
@@ -181,10 +294,12 @@ async fn collect_dir_stats_with_reader(
             }
         };
         loop {
-            let entry = match entry_reader
-                .next_entry_warn(&mut entries, "dir_stats", &current)
-                .await
-            {
+            if cancel.is_cancelled() {
+                complete = false;
+                break 'walk;
+            }
+
+            let entry = match entry_reader.next_entry_warn(&mut entries, "dir_stats", &current) {
                 Ok(Some(entry)) => entry,
                 Ok(None) => break,
                 Err(_) => {
@@ -192,8 +307,14 @@ async fn collect_dir_stats_with_reader(
                     break;
                 }
             };
+
+            if cancel.is_cancelled() {
+                complete = false;
+                break 'walk;
+            }
+
             let path = entry.path();
-            let meta = match tokio::fs::symlink_metadata(&path).await {
+            let meta = match std::fs::symlink_metadata(&path) {
                 Ok(metadata) => metadata,
                 Err(_) => {
                     complete = false;
@@ -251,10 +372,108 @@ mod tests {
         let root = dir.path().join("root");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("archive.tar.gz"), vec![1u8; 4096]).unwrap();
-        let mut entry_reader = GcDirEntryReader::failing_after(0);
+        let entry_reader = DirStatsEntryReader::after_entry(|| {
+            Err(std::io::Error::other(
+                "injected directory iteration failure",
+            ))
+        });
 
-        let stats = collect_dir_stats_with_reader(&root, &mut entry_reader).await;
+        let stats = collect_dir_stats_with_reader(&root, entry_reader, None).await;
 
         assert!(stats.root_metadata.is_none());
+    }
+
+    #[tokio::test]
+    async fn collect_dir_stats_submits_one_blocking_task_for_high_entry_tree() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        const DIRECTORY_COUNT: usize = 8;
+        const FILES_PER_DIRECTORY: usize = 128;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        for directory_index in 0..DIRECTORY_COUNT {
+            let child = root.join(format!("dir-{directory_index}"));
+            std::fs::create_dir_all(&child).unwrap();
+            for file_index in 0..FILES_PER_DIRECTORY {
+                std::fs::File::create(child.join(format!("file-{file_index}"))).unwrap();
+            }
+        }
+        let expected_mtime = std::fs::symlink_metadata(&root)
+            .unwrap()
+            .modified()
+            .unwrap();
+        let task_submissions = AtomicUsize::new(0);
+
+        let stats = collect_dir_stats_with_reader(
+            &root,
+            DirStatsEntryReader::new(),
+            Some(&task_submissions),
+        )
+        .await;
+
+        assert_eq!(task_submissions.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.mtime, expected_mtime);
+        assert!(stats.root_metadata.is_some());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dropping_collect_dir_stats_stops_the_blocking_walk() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        struct Completion {
+            entry_count: Arc<AtomicUsize>,
+            finished: mpsc::Sender<usize>,
+        }
+
+        impl Drop for Completion {
+            fn drop(&mut self) {
+                let _ = self.finished.send(self.entry_count.load(Ordering::Relaxed));
+            }
+        }
+
+        const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("first.bin"), vec![1u8; 4096]).unwrap();
+        std::fs::write(root.join("second.bin"), vec![2u8; 4096]).unwrap();
+
+        let (reached_tx, reached_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let entry_count = Arc::new(AtomicUsize::new(0));
+        let observed_entry_count = Arc::clone(&entry_count);
+        let completion = Completion {
+            entry_count,
+            finished: finished_tx,
+        };
+        let mut pause = Some((reached_tx, resume_rx));
+        let entry_reader = DirStatsEntryReader::after_entry(move || {
+            let _completion = &completion;
+            if observed_entry_count.fetch_add(1, Ordering::Relaxed) == 0
+                && let Some((reached, resume)) = pause.take()
+            {
+                reached.send(()).unwrap();
+                resume.recv().unwrap();
+            }
+            Ok(())
+        });
+        let cancel = CancellationToken::new();
+        let task_cancel = cancel.clone();
+        let task = tokio::spawn(async move {
+            collect_dir_stats_with_cancel(&root, entry_reader, task_cancel, None).await
+        });
+
+        reached_rx.recv_timeout(WAIT_TIMEOUT).unwrap();
+        task.abort();
+        assert!(matches!(task.await, Err(error) if error.is_cancelled()));
+        assert!(cancel.is_cancelled());
+        resume_tx.send(()).unwrap();
+        assert_eq!(finished_rx.recv_timeout(WAIT_TIMEOUT).unwrap(), 1);
     }
 }

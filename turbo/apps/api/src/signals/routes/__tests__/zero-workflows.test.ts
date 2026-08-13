@@ -19,7 +19,7 @@ import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@okouai/core/zero-workflow-skill";
+import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
@@ -449,7 +449,7 @@ function expectZeroPreCreateSource(runId: string, source: string): void {
   );
 }
 
-describe("zero workflows", () => {
+describe("workflows", () => {
   it("lets any public workflow viewer detect connector readiness", async () => {
     const owner = user({ orgId: STAFF_ORG_ID });
     const viewer = user({

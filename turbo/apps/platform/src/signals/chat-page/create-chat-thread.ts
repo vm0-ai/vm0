@@ -429,14 +429,6 @@ function createThreadTitleParts(threadMeta$: Computed<ThreadMeta | null>) {
   return { threadTitle$, threadTitleEmoji$, threadTitleText$ };
 }
 
-function createThreadSettledInServer(threadId: string) {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  return computed((get): boolean => {
-    return !get(optimisticCreateUnsettled$);
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Sub-factory: composer model override
 // ---------------------------------------------------------------------------
@@ -2251,8 +2243,8 @@ function createChatThreadMessagePipeline(
     },
     ownerSignal,
   );
-  const chatSkeletonVisible$ = computed((get): boolean => {
-    return !get(initialEventsReady$);
+  const initialEventsReadyView$ = computed((get): boolean => {
+    return get(initialEventsReady$);
   });
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
@@ -2290,7 +2282,7 @@ function createChatThreadMessagePipeline(
     scroll,
     sidebar: effects.sidebar,
     ...lifecycle,
-    chatSkeletonVisible$,
+    initialEventsReady$: initialEventsReadyView$,
     ...assistantErrorRecovery,
     ...projections,
     ...resources.publicSignals,
@@ -3610,7 +3602,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
     readyScrollAfterRenderRequest$: events.readyScrollAfterRenderRequest$,
-    chatSkeletonVisible$: events.chatSkeletonVisible$,
+    initialEventsReady$: events.initialEventsReady$,
     assistantErrorRecovery$: events.assistantErrorRecovery$,
     retryAssistantError$: events.retryAssistantError$,
     resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
@@ -3861,7 +3853,6 @@ function createChatPanelSignalsWithDraft(
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
-  const threadSettledInServer$ = createThreadSettledInServer(threadId);
   const container = createChatThreadContainerSignals();
   const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
@@ -3906,7 +3897,6 @@ function createChatPanelSignalsWithDraft(
     threadDraft$,
     threadMeta$,
     ...threadTitle,
-    threadSettledInServer$,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
     scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,

@@ -921,6 +921,37 @@ def test_tweet_create_unparseable_body_stays_conservative(x_usage, tmp_path, rea
 @pytest.mark.parametrize(
     "request_body",
     [
+        pytest.param(b"[]", id="array"),
+        pytest.param(b"null", id="null"),
+        pytest.param(b"123", id="number"),
+        pytest.param(b'"text"', id="string"),
+    ],
+)
+def test_tweet_create_non_object_json_body_stays_conservative(
+    x_usage, tmp_path, real_flow, request_body
+):
+    """Valid non-object JSON cannot refine tweet-create billing."""
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = request_body
+
+    p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
+@pytest.mark.parametrize(
+    "request_body",
+    [
         pytest.param(json_body_that_exceeds_nesting_limit(), id="excessive-nesting"),
         pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
     ],

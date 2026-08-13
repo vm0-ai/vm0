@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -144,4 +145,19 @@ export async function insertChatThreadEventTransactionFixture(
     throw new Error("Expected the chat-thread event insert");
   }
   return event;
+}
+
+/**
+ * Pins a thread's video model without a write endpoint. Lets the snapshot
+ * compaction test prove the column survives the hand-written jsonb projection,
+ * which a null-valued thread cannot show.
+ */
+export async function setChatThreadVideoModelFixture(
+  chatThreadId: string,
+  selectedVideoModel: string,
+): Promise<void> {
+  await db()
+    .update(chatThreads)
+    .set({ selectedVideoModel })
+    .where(eq(chatThreads.id, chatThreadId));
 }

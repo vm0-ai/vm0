@@ -45,6 +45,7 @@ import { nowDate } from "../../../../lib/time.ts";
 import { getCreditUsageDisplayName } from "../../../../lib/credit-usage-display.ts";
 import { Link } from "../../../router/link.tsx";
 import { MemberUsageTable } from "../org-manage/org-usage-tab.tsx";
+import { emptyUsageImg } from "../../platform-assets.ts";
 import { useTranslation } from "react-i18next";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import {
@@ -480,15 +481,45 @@ function UsageRecordSkeleton() {
   );
 }
 
-function emptyMessage(range: UsageRecordRange): string {
+function emptyTitle(range: UsageRecordRange): string {
   if (range === "billingPeriod") {
     return i18n.t(($) => {
-      return $.usage.records.emptyBillingPeriod;
+      return $.usage.records.empty.billingPeriodTitle;
     });
   }
   return i18n.t(($) => {
-    return $.usage.records.emptyRange;
+    return $.usage.records.empty.rangeTitle;
   });
+}
+
+// The list, the skeleton, and this share the same card so switching ranges does
+// not change the shape of the section.
+function UsageRecordEmpty({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      className="flex flex-col items-center rounded-xl bg-card px-6 py-12 text-center"
+      style={{ border: CARD_BORDER }}
+      data-testid="usage-records-empty"
+    >
+      <img
+        src={emptyUsageImg}
+        alt=""
+        role="presentation"
+        loading="lazy"
+        className="h-24 w-24 object-contain opacity-80"
+      />
+      <p className="mt-3 text-sm font-medium text-foreground">{title}</p>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        {description}
+      </p>
+    </div>
+  );
 }
 
 // Summary + type legend above the list. The credit total is range-wide (from
@@ -624,7 +655,12 @@ function UsageRecordContent({
       )}
       {loadable.state === "hasData" &&
         (loadable.data.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
+          <UsageRecordEmpty
+            title={emptyTitle(range)}
+            description={t(($) => {
+              return $.usage.records.empty.description;
+            })}
+          />
         ) : (
           <UsageRecordList data={loadable.data} scope={scope} />
         ))}
@@ -661,13 +697,21 @@ function TeamMemberUsageContent({
       )}
       {loadable.state === "hasData" &&
         (!loadable.data.period ? (
-          <p className="text-sm text-muted-foreground">
-            {t(($) => {
-              return $.usage.records.noActiveBillingPeriod;
+          <UsageRecordEmpty
+            title={t(($) => {
+              return $.usage.records.empty.noBillingPeriodTitle;
             })}
-          </p>
+            description={t(($) => {
+              return $.usage.records.empty.noBillingPeriodDescription;
+            })}
+          />
         ) : loadable.data.members.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
+          <UsageRecordEmpty
+            title={emptyTitle(range)}
+            description={t(($) => {
+              return $.usage.records.empty.teamDescription;
+            })}
+          />
         ) : (
           <MemberUsageTable
             members={loadable.data.members}

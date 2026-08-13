@@ -91,9 +91,11 @@ function CollapsibleSection({
 function HeadersSection({
   title,
   headers,
+  truncated,
 }: {
   title: string;
   headers: Record<string, string>;
+  truncated: boolean | undefined;
 }) {
   const { t } = useTranslation();
   const entries = Object.entries(headers);
@@ -111,6 +113,7 @@ function HeadersSection({
         },
         { title, formattedCount: formatAppNumber(entries.length) },
       )}
+      truncated={truncated}
       copyText={copyText}
     >
       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
@@ -220,26 +223,33 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
     !responseBody &&
     (entry.response_body_encoding !== undefined ||
       entry.response_body_truncated !== undefined);
+  const requestHeaderMetadata = entry.request_headers_truncated !== undefined;
+  const responseHeaderMetadata = entry.response_headers_truncated !== undefined;
 
-  if (
-    !requestHeaders &&
-    !responseHeaders &&
-    !requestBody &&
-    !responseBody &&
-    !requestBodyMetadata &&
-    !responseBodyMetadata
-  ) {
+  const hasCaptureData = [
+    requestHeaders,
+    responseHeaders,
+    requestHeaderMetadata,
+    responseHeaderMetadata,
+    requestBody,
+    responseBody,
+    requestBodyMetadata,
+    responseBodyMetadata,
+  ].some(Boolean);
+
+  if (!hasCaptureData) {
     return null;
   }
 
   return (
     <div className="mt-3 space-y-2">
-      {requestHeaders && (
+      {(requestHeaders || requestHeaderMetadata) && (
         <HeadersSection
           title={t(($) => {
             return $.activity.network.capture.requestHeaders;
           })}
-          headers={requestHeaders}
+          headers={requestHeaders ?? {}}
+          truncated={entry.request_headers_truncated}
         />
       )}
       {requestBody && (
@@ -261,12 +271,13 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
           truncated={entry.request_body_truncated}
         />
       )}
-      {responseHeaders && (
+      {(responseHeaders || responseHeaderMetadata) && (
         <HeadersSection
           title={t(($) => {
             return $.activity.network.capture.responseHeaders;
           })}
-          headers={responseHeaders}
+          headers={responseHeaders ?? {}}
+          truncated={entry.response_headers_truncated}
         />
       )}
       {responseBody && (

@@ -4,10 +4,7 @@ import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -106,7 +103,7 @@ export type PersistWorkflowQueueSourceTransition = (
 ) => Promise<void>;
 
 interface WorkflowQueueAdmissionArgs {
-  readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+  readonly automation: typeof workflowAutomations.$inferSelect;
   readonly workflowName: string;
   readonly displayPrompt: string;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
@@ -232,7 +229,7 @@ export async function loadNextWorkflowQueueEvent(
         id: chatEvents.id,
         userId: chatThreads.userId,
         automationId: chatAutomationContext.automationId,
-        automationKind: zeroWorkflowAutomations.kind,
+        automationKind: workflowAutomations.kind,
         chatThreadId: chatEvents.chatThreadId,
         triggerBrief: chatAutomationContext.triggerBrief,
         workflowName: chatAutomationContext.workflowName,
@@ -249,8 +246,8 @@ export async function loadNextWorkflowQueueEvent(
         ),
       )
       .leftJoin(
-        zeroWorkflowAutomations,
-        eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+        workflowAutomations,
+        eq(workflowAutomations.id, chatAutomationContext.automationId),
       )
       .where(eq(chatEvents.id, head.id))
       .limit(1);
@@ -277,11 +274,11 @@ async function loadAutomationRejectionPayload(
   const [event] = await db
     .select({
       automationId: chatAutomationContext.automationId,
-      automationKind: zeroWorkflowAutomations.kind,
+      automationKind: workflowAutomations.kind,
       triggerBrief: chatAutomationContext.triggerBrief,
       userMessage: canonicalChatEventUserMessage(),
-      workflowId: zeroWorkflows.id,
-      workflowName: zeroWorkflows.name,
+      workflowId: workflows.id,
+      workflowName: workflows.name,
     })
     .from(chatEvents)
     .leftJoin(
@@ -292,13 +289,10 @@ async function loadAutomationRejectionPayload(
       ),
     )
     .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+      workflowAutomations,
+      eq(workflowAutomations.id, chatAutomationContext.automationId),
     )
-    .leftJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
+    .leftJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;

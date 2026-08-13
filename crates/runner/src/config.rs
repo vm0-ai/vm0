@@ -47,6 +47,10 @@ use std::path::{Path, PathBuf};
 use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 
+use guest_contracts::process_containment::{
+    MIN_PROFILE_MEMORY_MB, MIN_PROFILE_VCPU, WorkloadResourcePolicy,
+};
+
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
 use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
@@ -118,9 +122,9 @@ pub struct ProfileConfig {
     /// Host-local snapshot identity, covering rootfs identity plus VM shape,
     /// workspace disk size, and provider/runtime inputs.
     pub snapshot_hash: String,
-    /// Guest vCPU count. Must be non-zero and ≤ 1024.
+    /// Guest vCPU count. Must support Guest workload containment and be ≤ 1024.
     pub vcpu: u32,
-    /// Guest RAM in MiB. Must be non-zero and ≤ 1 TiB.
+    /// Guest RAM in MiB. Must support Guest workload containment and be ≤ 1 TiB.
     pub memory_mb: u32,
     /// Rootfs disk in MiB. Used to size the bootable rootfs image.
     /// Must be non-zero and ≤ 1 TiB.
@@ -541,12 +545,29 @@ async fn validate(
                 profile.vcpu
             )));
         }
+        if profile.vcpu < MIN_PROFILE_VCPU {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: vcpu ({}) is below workload-containment minimum ({MIN_PROFILE_VCPU})",
+                profile.vcpu
+            )));
+        }
         if profile.memory_mb > MAX_MEMORY_MB {
             return Err(RunnerError::Config(format!(
                 "profile {name}: memory_mb ({}) exceeds maximum ({MAX_MEMORY_MB})",
                 profile.memory_mb
             )));
         }
+        if profile.memory_mb < MIN_PROFILE_MEMORY_MB {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: memory_mb ({}) is below workload-containment minimum ({MIN_PROFILE_MEMORY_MB})",
+                profile.memory_mb
+            )));
+        }
+        WorkloadResourcePolicy::for_guest_capacity(
+            profile.vcpu,
+            u64::from(profile.memory_mb) * 1024 * 1024,
+        )
+        .map_err(|error| RunnerError::Config(format!("profile {name}: {error}")))?;
         if profile.rootfs_disk_mb > MAX_DISK_MB {
             return Err(RunnerError::Config(format!(
                 "profile {name}: rootfs_disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",

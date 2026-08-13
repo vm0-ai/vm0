@@ -15,9 +15,9 @@ import {
 } from "@okouai/db/schema/stripe-automation-event";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
@@ -606,10 +606,10 @@ async function loadStripeInvoiceFanoutCandidates(
     })
     .from(connectors)
     .innerJoin(
-      zeroWorkflowAutomations,
+      workflowAutomations,
       and(
-        eq(zeroWorkflowAutomations.orgId, connectors.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, connectors.userId),
+        eq(workflowAutomations.orgId, connectors.orgId),
+        eq(workflowAutomations.ownerUserId, connectors.userId),
       ),
     )
     .where(
@@ -617,13 +617,13 @@ async function loadStripeInvoiceFanoutCandidates(
         eq(connectors.connectorSlug, "stripe"),
         eq(connectors.authMethod, "oauth"),
         inArray(connectors.id, connectorIds),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.eventType, "stripe-invoice-paid"),
-        eq(zeroWorkflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, "stripe-invoice-paid"),
+        eq(workflowAutomations.enabled, true),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.id))
-    .for("update", { of: zeroWorkflowAutomations });
+    .orderBy(asc(workflowAutomations.id))
+    .for("update", { of: workflowAutomations });
   signal.throwIfAborted();
   return rows;
 }
@@ -959,29 +959,26 @@ async function loadDeliveryTarget(
   const [row] = await db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
       connectorId: connectors.id,
       connectorNeedsReconnect: connectors.needsReconnect,
       connectorExternalId: connectors.externalId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
@@ -989,13 +986,13 @@ async function loadDeliveryTarget(
       connectors,
       and(
         eq(connectors.id, delivery.connectorId),
-        eq(connectors.orgId, zeroWorkflowAutomations.orgId),
-        eq(connectors.userId, zeroWorkflowAutomations.ownerUserId),
+        eq(connectors.orgId, workflowAutomations.orgId),
+        eq(connectors.userId, workflowAutomations.ownerUserId),
         eq(connectors.connectorSlug, "stripe"),
         eq(connectors.authMethod, "oauth"),
       ),
     )
-    .where(eq(zeroWorkflowAutomations.id, delivery.automationId))
+    .where(eq(workflowAutomations.id, delivery.automationId))
     .limit(1);
   signal.throwIfAborted();
   if (!row || !row.chatThreadId || !row.connectorId) {
@@ -1117,11 +1114,11 @@ async function lockDeliveryTargetState(
   signal.throwIfAborted();
   const [automation] = await args.tx
     .select({
-      orgId: zeroWorkflowAutomations.orgId,
-      ownerUserId: zeroWorkflowAutomations.ownerUserId,
+      orgId: workflowAutomations.orgId,
+      ownerUserId: workflowAutomations.ownerUserId,
     })
-    .from(zeroWorkflowAutomations)
-    .where(eq(zeroWorkflowAutomations.id, args.delivery.automationId))
+    .from(workflowAutomations)
+    .where(eq(workflowAutomations.id, args.delivery.automationId))
     .limit(1)
     .for("update");
   signal.throwIfAborted();

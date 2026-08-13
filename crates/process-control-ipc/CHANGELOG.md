@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.3...process-control-ipc-v0.3.4) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
 ## [0.3.3](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.2...process-control-ipc-v0.3.3) (2026-07-16)
 
 

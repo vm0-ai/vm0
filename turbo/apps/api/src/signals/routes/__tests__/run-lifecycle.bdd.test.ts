@@ -11,6 +11,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   type ConnectorRuntimeSyncResult,
+  type ExecutionContext,
   type Job as RunnerJob,
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
@@ -430,8 +431,6 @@ const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
   "custom_connector_runtime_missing_required_count_bucket",
   "custom_connector_runtime_no_auth_injection_count_bucket",
   "custom_connector_runtime_invalid_prefix_count_bucket",
-  "custom_connector_runtime_pinned_routing_count_bucket",
-  "custom_connector_runtime_unpinned_routing_count_bucket",
 ] as const;
 const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_builtin_permission_indexes",
@@ -628,6 +627,24 @@ type AvailableCustomConnectorRuntime = Extract<
   ConnectorRuntimeSyncResult,
   { readonly state: "available"; readonly target: { readonly kind: "custom" } }
 >;
+
+function customConnectorRuntimeRegistration(
+  context: ExecutionContext,
+  customConnectorId: string,
+): Extract<
+  ExecutionContext["connectorRuntimeTargets"][number],
+  { readonly kind: "custom" }
+> {
+  const registration = context.connectorRuntimeTargets.find((target) => {
+    return (
+      target.kind === "custom" && target.customConnectorId === customConnectorId
+    );
+  });
+  if (!registration || registration.kind !== "custom") {
+    throw new Error("Expected a custom connector runtime registration");
+  }
+  return registration;
+}
 
 function availableCustomConnectorRuntime(
   result: ConnectorRuntimeSyncResult | undefined,
@@ -9482,7 +9499,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const expiredClaim = await api.claimRunnerJob(expiredRun.runId);
     expect(expiredClaim.connectorRuntimeTargets).toContainEqual(target);
     const [runtimeResult] = await api.syncConnectorRuntime(expiredRun.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(expiredClaim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: authBody } = customConnectorRuntimeAuthBody(
@@ -9619,7 +9636,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "Bearer custom-oauth-initial-access-token",
     );
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(claim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
@@ -9859,7 +9876,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(firstRun.runId);
     const [runtimeResult] = await api.syncConnectorRuntime(firstRun.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(claim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
@@ -9885,7 +9902,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const [reconnectRuntimeResult] = await api.syncConnectorRuntime(
       firstRun.runId,
-      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+      { targets: [customConnectorRuntimeRegistration(claim, custom.id)] },
     );
     const reconnectRuntime = availableCustomConnectorRuntime(
       reconnectRuntimeResult,
@@ -9928,7 +9945,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const [secondRuntimeResult] = await api.syncConnectorRuntime(
       secondRun.runId,
-      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+      {
+        targets: [customConnectorRuntimeRegistration(secondClaim, custom.id)],
+      },
     );
     const secondRuntime = availableCustomConnectorRuntime(secondRuntimeResult);
     const { body: secondAuthBody } = customConnectorRuntimeAuthBody(
@@ -10237,6 +10256,42 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(customApi.auth?.query?.scope).toBe(
       `\${{ secrets.${scopeVariableKey} }}`,
     );
+    const runContextSnapshot = runContextSnapshotForRun(run.runId);
+    expect(runContextSnapshot.firewalls).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "inline",
+          name: internalName,
+          customConnectorId: saved.connector.id,
+          apis: expect.arrayContaining([
+            expect.objectContaining({
+              base: `https://xn--mnich-kva.${rand}.test/v1/`,
+              auth: {
+                headerEntries: [
+                  {
+                    name: "Authorization",
+                    value: `Bearer \${{ secrets.${secretKey} }}`,
+                  },
+                ],
+                queryEntries: [
+                  {
+                    name: "tenant",
+                    value: `\${{ secrets.${variableKey} }}`,
+                  },
+                  {
+                    name: "scope",
+                    value: `\${{ secrets.${scopeVariableKey} }}`,
+                  },
+                ],
+              },
+            }),
+          ]),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(runContextSnapshot)).not.toContain(
+      "runtime-proposal-secret",
+    );
 
     const authBody = {
       encryptedSecrets: fw.encryptedSecretsBody({}),
@@ -10453,7 +10508,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { api: runtimeApi, body: runtimeAuthBody } =
@@ -10781,7 +10836,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const saved = await connectors.saveCustomConnectorProposal(actor, {
       proposal: {
         operation: "create",
-        displayName: "BDD Unpinned Recovery Runtime",
+        displayName: "BDD Full Recovery Runtime",
         prefixTemplates: [
           `https://{{variables.subdomain}}.${rand}.recovery.test/v1/`,
         ],
@@ -10978,7 +11033,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     expect(runtime.firewall.customConnectorId).toBe(saved.connector.id);
@@ -11074,6 +11129,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     ).toContain("zendesk");
     expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
+      kind: "builtin",
+      name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    });
+    expect(runContextSnapshotForRun(run.runId).firewalls).toContainEqual({
       kind: "builtin",
       name: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
@@ -15006,6 +15066,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             latency_ms: 12,
             request_size: 100,
             response_size: 256,
+            request_headers: { accept: "application/json" },
+            request_headers_truncated: true,
+            response_headers: { server: "***" },
+            response_headers_truncated: true,
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
@@ -15081,6 +15145,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         url: "[truncated]",
         url_truncated: true,
         url_original_char_count: 1_000_001,
+        request_headers: { accept: "application/json" },
+        request_headers_truncated: true,
+        response_headers: { server: "***" },
+        response_headers_truncated: true,
         model_catalog_cache_status: "model_catalog_cold_stored",
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,

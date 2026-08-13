@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.160](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.159...guest-init-v0.16.160) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
 ## [0.16.159](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.158...guest-init-v0.16.159) (2026-08-13)
 
 ## [0.16.158](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.157...guest-init-v0.16.158) (2026-08-13)

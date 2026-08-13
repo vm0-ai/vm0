@@ -771,6 +771,13 @@
       "when": 1786595337179,
       "tag": "0917_early_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 918,
+      "version": "7",
+      "when": 1786603051878,
+      "tag": "0918_add_video_model_columns",
+      "breakpoints": true
     }
   ]
 }

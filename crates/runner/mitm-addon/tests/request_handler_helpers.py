@@ -86,6 +86,7 @@ def _shared_route_vm(tmp_path: Path, *, reverse: bool = False) -> dict[str, obje
         firewalls.reverse()
     return {
         "runId": "run-shared-route",
+        "billableFirewalls": [],
         "sandboxToken": "tok-shared-route",
         "encryptedSecrets": "iv:tag:data",
         "networkLogPath": str(tmp_path / "net.jsonl"),
@@ -118,6 +119,7 @@ def _vm_without_firewalls(
 ) -> dict[str, object]:
     vm_info: dict[str, object] = {
         "runId": run_id,
+        "billableFirewalls": [],
         "sandboxToken": sandbox_marker,
         "networkLogPath": str(tmp_path / "net.jsonl"),
         "proxyLogPath": str(tmp_path / "proxy.jsonl"),

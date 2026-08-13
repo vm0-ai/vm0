@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.74](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.73...nbd-cow-v0.4.74) (2026-08-13)
+
+
+### Refactoring
+
+* **rust:** centralize nbd orphan cleanup ownership ([#26880](https://github.com/vm0-ai/vm0/issues/26880)) ([0690874](https://github.com/vm0-ai/vm0/commit/069087456bdaf89f4ee8586ee1f5c1497c956f94))
+
+
+### Performance Improvements
+
+* **nbd-cow:** coalesce contiguous flush writes ([#26875](https://github.com/vm0-ai/vm0/issues/26875)) ([b574968](https://github.com/vm0-ai/vm0/commit/b5749682d32a907238135d83f4bc8de4015a560b))
+
 ## [0.4.73](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.72...nbd-cow-v0.4.73) (2026-08-06)
 
 

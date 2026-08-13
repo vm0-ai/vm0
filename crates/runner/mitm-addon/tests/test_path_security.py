@@ -1,5 +1,6 @@
 """Tests for URL path safety helpers."""
 
+import urllib.parse
 from unittest.mock import patch
 
 import pytest
@@ -150,6 +151,36 @@ def test_has_unsafe_path_blocks_invalid_percent_encoded_utf8(path):
 )
 def test_has_unsafe_path_allows_regular_segments(path):
     assert path_security.has_unsafe_path(path) is False
+
+
+def test_has_unsafe_path_allows_maximum_length_nested_encoding():
+    encoded = "%61"
+    for _ in range(4):
+        encoded = urllib.parse.quote(encoded, safe="")
+    path = "/" + encoded
+    path += "a" * (path_security.MAX_PATH_VALIDATION_CHARACTERS - len(path))
+
+    assert len(path) == path_security.MAX_PATH_VALIDATION_CHARACTERS
+    assert path_security.has_unsafe_path(path) is False
+
+
+def test_has_unsafe_path_blocks_over_budget_before_compatibility_pipeline():
+    encoded = "%2e"
+    for _ in range(5):
+        encoded = urllib.parse.quote(encoded, safe="")
+    path = "/" + encoded
+    path += "a" * (path_security.MAX_PATH_VALIDATION_CHARACTERS + 1 - len(path))
+
+    with (
+        patch.object(path_security.urllib.parse, "unquote_to_bytes") as percent_decode,
+        patch.object(path_security.unicodedata, "normalize") as unicode_normalize,
+    ):
+        unsafe = path_security.has_unsafe_path(path)
+
+    assert len(path) == path_security.MAX_PATH_VALIDATION_CHARACTERS + 1
+    assert unsafe is True
+    percent_decode.assert_not_called()
+    unicode_normalize.assert_not_called()
 
 
 def test_plain_ascii_path_bypasses_compatibility_pipeline():

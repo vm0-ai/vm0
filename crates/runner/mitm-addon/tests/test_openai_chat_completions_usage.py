@@ -263,6 +263,43 @@ class TestOpenAIChatCompletionsUsage:
         assert warnings[0]["event"] == "eventless"
         assert warnings[0]["error"] == "incomplete json"
 
+    def test_malformed_sse_clears_prior_usage_before_terminal_reporting(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = _chat_completions_flow(
+            tmp_path,
+            real_flow,
+            content_type="text/event-stream",
+        )
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        callback(
+            b"data: "
+            + _chat_payload(usage_payload={"prompt_tokens": 30, "completion_tokens": 5})
+            + b"\n\n"
+        )
+        callback(b'data: {"id":"chatcmpl_bad","usage":{"prompt_tokens":30}\n\n')
+
+        webhook = _run_response(flow, self._usage_webhook_api)
+
+        assert webhook.request_count == 0
+        assert webhook.usage_events() == []
+        assert webhook.model_usage_observation_events() == []
+        warnings = [
+            entry
+            for entry in read_jsonl_entries_after_flush(
+                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            )
+            if entry.get("message") == "Model provider SSE usage extraction failed"
+        ]
+        assert len(warnings) == 1
+        assert warnings[0]["usage_protocol"] == "openai_chat_completions_sse"
+        assert warnings[0]["event"] == "eventless"
+        assert warnings[0]["error"] == "incomplete json"
+
     @pytest.mark.parametrize("nested_usage", [False, True], ids=("top-level", "choice"))
     def test_non_streaming_json_reports_usage_without_buffering(
         self,

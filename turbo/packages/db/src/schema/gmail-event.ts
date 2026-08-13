@@ -9,7 +9,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
-import { zeroWorkflowAutomations } from "./zero-workflow";
+import { workflowAutomations } from "./workflow";
 
 export const gmailWatchStates = pgTable(
   "gmail_watch_states",
@@ -65,7 +65,7 @@ export const gmailProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

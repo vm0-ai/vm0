@@ -11,7 +11,7 @@ import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
-import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
+import { workflows } from "@okouai/db/schema/workflow";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -283,20 +283,20 @@ async function queryZeroRunWorkflowCandidates(
 ): Promise<RunWorkflowSourceRow[]> {
   return await db
     .select({
-      id: zeroWorkflows.id,
-      name: zeroWorkflows.name,
-      visibility: zeroWorkflows.visibility,
-      ownerUserId: zeroWorkflows.ownerUserId,
-      createdAt: zeroWorkflows.createdAt,
+      id: workflows.id,
+      name: workflows.name,
+      visibility: workflows.visibility,
+      ownerUserId: workflows.ownerUserId,
+      createdAt: workflows.createdAt,
     })
-    .from(zeroWorkflows)
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.agentId),
         or(
-          eq(zeroWorkflows.visibility, "public"),
-          eq(zeroWorkflows.ownerUserId, args.userId),
+          eq(workflows.visibility, "public"),
+          eq(workflows.ownerUserId, args.userId),
         ),
       ),
     );

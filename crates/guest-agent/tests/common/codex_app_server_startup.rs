@@ -6,11 +6,12 @@ use std::time::Duration;
 
 use crate::common;
 
-const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
     "analytics.enabled=false",
     "features.plugins=false",
     "features.apps=false",
     "features.goals=false",
+    "features.image_generation=false",
 ];
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];

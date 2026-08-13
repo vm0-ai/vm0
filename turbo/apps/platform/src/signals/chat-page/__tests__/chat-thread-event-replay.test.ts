@@ -22,6 +22,7 @@ function snapshotThread(
     serviceTier: null,
     computerUseHostId: null,
     cloudBrowserEnabled: false,
+    selectedVideoModel: null,
     ...params,
   };
 }
@@ -35,6 +36,7 @@ function event(
     | "serviceTier"
     | "computerUseHostId"
     | "cloudBrowserEnabled"
+    | "selectedVideoModel"
   > & {
     readonly id: string;
     readonly createdAt: string;
@@ -42,6 +44,7 @@ function event(
     readonly serviceTier?: "priority" | null;
     readonly computerUseHostId?: string | null;
     readonly cloudBrowserEnabled?: boolean;
+    readonly selectedVideoModel?: string | null;
   },
 ): ReplayChatThreadEvent {
   return {
@@ -50,6 +53,7 @@ function event(
     serviceTier: params.serviceTier ?? null,
     computerUseHostId: params.computerUseHostId ?? null,
     cloudBrowserEnabled: params.cloudBrowserEnabled ?? false,
+    selectedVideoModel: params.selectedVideoModel ?? null,
   };
 }
 
@@ -114,6 +118,7 @@ describe("replayChatThreadEvents", () => {
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
   });
@@ -293,6 +298,65 @@ describe("replayChatThreadEvents", () => {
     });
   });
 
+  it("replays the video model without touching the run model", () => {
+    const [thread] = replayChatThreadEvents(
+      [
+        snapshotThread({
+          id: "thread-a",
+          agentId: "agent-1",
+          selectedModel: "claude-sonnet-4-6",
+          sortAt: "2026-07-01T03:00:00.000Z",
+        }),
+      ],
+      [
+        event({
+          id: "event-1",
+          kind: "video_model_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+          createdAt: "2026-07-01T06:00:00.000Z",
+        }),
+      ],
+    );
+
+    expect(thread).toMatchObject({
+      selectedModel: "claude-sonnet-4-6",
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      sortAt: "2026-07-01T03:00:00.000Z",
+      updatedAt: "2026-07-01T06:00:00.000Z",
+    });
+  });
+
+  it("defers a video model update that arrives before creation", () => {
+    const createdAt = "2026-07-01T04:00:00.000Z";
+    const [thread] = replayChatThreadEvents(
+      [],
+      [
+        event({
+          id: "event-1",
+          kind: "video_model_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          selectedVideoModel: "MiniMax-H3",
+          createdAt,
+        }),
+        event({
+          id: "event-2",
+          kind: "created",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: "Created thread",
+          createdAt,
+        }),
+      ],
+    );
+
+    expect(thread).toMatchObject({ selectedVideoModel: "MiniMax-H3" });
+  });
+
   it("applies configuration updates that arrive before same-timestamp creation", () => {
     const sameTimestamp = "2026-07-01T05:00:00.000Z";
     const computerUseHostId = "11111111-1111-4111-8111-111111111111";
@@ -351,6 +415,7 @@ describe("replayChatThreadEvents", () => {
         serviceTier: "priority",
         computerUseHostId,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
   });
