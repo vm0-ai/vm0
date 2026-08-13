@@ -153,7 +153,7 @@ describe("activity retained diagnostic data", () => {
       unknown
     >;
 
-    expect(download.filename).toBe(`${RUN_ID}-activity.json`);
+    expect(download.filename).toBe(`${RUN_ID}-logs.json`);
     expect(downloaded.events).toStrictEqual([activityEvent()]);
     expect(downloaded.meta).toMatchObject({
       id: RUN_ID,
@@ -203,7 +203,8 @@ describe("activity retained diagnostic data", () => {
       unknown
     >;
 
-    expect(download.filename).toBe(`${RUN_ID}-activity.json`);
+    expect(download.filename).toBe(`${RUN_ID}-logs.json`);
+    expect(downloaded.events).toStrictEqual([]);
     expect(downloaded).not.toHaveProperty("context");
     expect(downloaded.networkLogs).toStrictEqual([]);
   });

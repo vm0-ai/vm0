@@ -67,6 +67,7 @@ import {
   loadNetworkLogsNextPage$,
 } from "../../signals/activity-page/activity-network-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { setActivityDetailScrollContainer$ } from "../../signals/activity-page/activity-detail-scroll.ts";
 import { ContextContent } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
@@ -975,6 +976,7 @@ function ActivityDetailContent({
   };
   const fetchExtra = useSet(fetchDownloadExtra$);
   const pageSignal = useGet(pageSignal$);
+  const setScrollContainer = useSet(setActivityDetailScrollContainer$);
 
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
@@ -982,7 +984,10 @@ function ActivityDetailContent({
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
+      <div
+        ref={setScrollContainer}
+        className="flex-1 flex flex-col min-h-0 overflow-auto"
+      >
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           {features?.[FeatureSwitchKey.ZeroDebug] && (
             <>
@@ -1264,10 +1269,8 @@ function downloadJson(
       agentId: detail.agentId,
       sessionId: detail.sessionId,
     },
+    events,
   };
-  if (events.length > 0) {
-    data.events = events;
-  }
   if (extra?.context) {
     data.context = extra.context;
   }
@@ -1279,7 +1282,7 @@ function downloadJson(
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${logId}-activity.json`;
+  a.download = `${logId}-logs.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

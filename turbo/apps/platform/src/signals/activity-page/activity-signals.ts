@@ -5,6 +5,7 @@ import type {
   InitClientArgs,
   InitClientReturn,
 } from "@okouai/api-contracts/contracts/trpc-contract";
+import { delay } from "signal-timers";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -21,6 +22,7 @@ import {
   formatActivityClockTime,
   formatActivityDurationMs,
 } from "./activity-time.ts";
+import { scrollToBottomActivityDetail$ } from "./activity-detail-scroll.ts";
 
 const AGENT_EVENTS_PAGE_LIMIT = 100;
 const AGENT_EVENTS_POLL_INTERVAL_MS = 1000;
@@ -152,6 +154,7 @@ function reachedTerminalEventWatermark(data: ZeroActivityEvents): boolean {
 const pollActivityEvents$ = command(
   async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
     let shouldReload = false;
+    let shouldScrollToBottom = true;
     await setLoop(
       async (loopSignal) => {
         if (shouldReload) {
@@ -162,6 +165,13 @@ const pollActivityEvents$ = command(
         shouldReload = true;
         const events = await get(zeroActivityEvents$);
         loopSignal.throwIfAborted();
+        if (shouldScrollToBottom) {
+          shouldScrollToBottom = false;
+          // Allow React to render the initial event history and bind the scroll
+          // container before restoring the pre-removal bottom position.
+          await delay(0, { signal: loopSignal });
+          set(scrollToBottomActivityDetail$);
+        }
         if (!events || reachedTerminalEventWatermark(events)) {
           return true;
         }
