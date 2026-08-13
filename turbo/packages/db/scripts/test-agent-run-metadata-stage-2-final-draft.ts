@@ -427,6 +427,11 @@ export async function validateAgentRunMetadataStage2FinalDraft(): Promise<void> 
           AS "digest",
         count(*) FILTER (
           WHERE "agent_run"."status" IS DISTINCT FROM 'failed'
+            OR "agent_run"."created_at" < timestamp '2026-03-30 00:00:00'
+            OR "agent_run"."created_at" >= timestamp '2026-04-09 00:00:00'
+            OR "agent_run"."started_at" IS NOT NULL
+            OR "agent_run"."sandbox_id" IS NOT NULL
+            OR "agent_run"."last_event_sequence" IS NOT NULL
             OR "agent_run"."trigger_source" IS NOT NULL
             OR "agent_run"."autonomy_budget" IS NOT NULL
             OR "agent_run"."workflow_automation_id" IS NOT NULL
