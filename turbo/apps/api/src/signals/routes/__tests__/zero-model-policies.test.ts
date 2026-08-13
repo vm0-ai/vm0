@@ -3,6 +3,7 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
+  SUPPORTED_RUN_MODELS,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
   type ModelProviderType,
@@ -534,7 +535,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     expect(preferenceResponse.body.selectedModel).toBe(keptModel);
   });
 
-  it("allows adding a supported model that was not seeded by default", async () => {
+  it("sorts configured models by canonical catalog order", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
@@ -545,7 +546,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const updates = [
       ...toUpdate(listResponse.body),
       makeVm0Policy("claude-opus-5"),
+      makeVm0Policy("deepseek-v4-pro"),
     ];
+    const configuredModels = new Set(
+      updates.map((policy) => {
+        return policy.model;
+      }),
+    );
 
     const response = await accept(
       client.update({
@@ -559,7 +566,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual([...DEFAULT_ORG_MODEL_POLICY_MODELS, "claude-opus-5"]);
+    ).toStrictEqual(
+      SUPPORTED_RUN_MODELS.filter((model) => {
+        return configuredModels.has(model);
+      }),
+    );
   });
 
   it("rejects restricted policy writes for limited-free-1 workspaces", async () => {
