@@ -49,11 +49,7 @@ export type PptxRenderErrorCode =
   | "unsupported_content"
   | "unsupported_format";
 
-export type PptxUnsupportedFeature =
-  | "equation"
-  | "macro"
-  | "ole"
-  | "vector-metafile";
+export type PptxUnsupportedFeature = "emf" | "equation" | "macro" | "ole";
 
 interface PptxRenderErrorOptions extends ErrorOptions {
   readonly feature?: PptxUnsupportedFeature;
@@ -125,7 +121,7 @@ const UNSUPPORTED_RULES: readonly UnsupportedRule[] = [
     pattern: /<(?:\w+:)?oMath(?:Para)?(?:\s|>)/i,
   },
   {
-    feature: "vector-metafile",
+    feature: "emf",
     message: "EMF image content is not supported",
     pattern: /(?:target|partname)="[^"]+\.emf(?:"|\?)|image\/(?:x-)?emf/i,
   },

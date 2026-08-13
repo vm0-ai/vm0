@@ -124,7 +124,7 @@ describe("pptx ignored content", () => {
       ),
     ).rejects.toMatchObject({
       code: "unsupported_content",
-      feature: "vector-metafile",
+      feature: "emf",
     });
     expect(target.childElementCount).toBe(0);
     target.remove();
