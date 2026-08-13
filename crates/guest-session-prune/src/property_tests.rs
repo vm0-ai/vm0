@@ -1039,7 +1039,11 @@ fn invalid_history(mutation: InvalidMutation, line_ending: LineEnding) -> Vec<Ve
                 line_ending,
             ));
         }
-        InvalidMutation::MalformedRecord => records.push(b"{not-json}\n".to_vec()),
+        InvalidMutation::MalformedRecord => {
+            let mut record = b"{not-json".to_vec();
+            record.extend_from_slice(line_ending.bytes());
+            records.push(record);
+        }
         InvalidMutation::OversizedRecord => records.push(neutral_record(
             GENERATED_LIMITS.record_max_bytes + 128,
             line_ending,
