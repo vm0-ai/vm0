@@ -297,7 +297,7 @@ describe("cron snapshot chat events", () => {
     );
   }, 60_000);
 
-  it("rebuilds an idle v4 head as v5 and reports convergence", async () => {
+  it("upgrades an idle v4 head in place when canonical bytes are unchanged", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Version-only snapshot agent",
@@ -314,22 +314,24 @@ describe("cron snapshot chat events", () => {
     if (firstPut === undefined) {
       throw new Error("Expected a first-generation snapshot object");
     }
-    const priorObjectKey = `chat-events/${threadId}/v4-${randomUUID()}.ndjson.gz`;
-    writeFakeChatEventObject(priorObjectKey, firstPut.body);
+    const firstHead = await readChatEventSnapshotHead(context, threadId);
     await setChatEventSnapshotHeadVersion(
       context,
       threadId,
       PREVIOUS_ARCHIVE_SCHEMA_VERSION,
-      priorObjectKey,
     );
 
     const rebuilt = await runSnapshotCron();
     expect(rebuilt.success).toBeTruthy();
     expect(rebuilt.nonV4SnapshotHeads).toBe(0);
     expect(putsForThread(threadId)).toHaveLength(2);
+    const rebuiltPut = putsForThread(threadId)[1];
+    expect(rebuiltPut?.key).toBe(firstPut.key);
+    expect(rebuiltPut?.body).toStrictEqual(firstPut.body);
     const rebuiltHead = await readChatEventSnapshotHead(context, threadId);
     expect(rebuiltHead.archive_schema_version).toBe(5);
     expect(rebuiltHead.object_key).toBe(firstPut.key);
+    expect(rebuiltHead.snapshot_count).toBe(firstHead.snapshot_count);
 
     await runSnapshotCron();
     expect(putsForThread(threadId)).toHaveLength(2);

@@ -329,6 +329,43 @@ async function publishSnapshotHead(
 }
 
 /**
+ * Advances an exact existing head to the current schema when rebuilding it
+ * produced the same immutable object. This is expected for threads without
+ * located feedback, where the v4 and v5 bytes are identical.
+ */
+async function stampSnapshotHeadVersion(
+  db: Db,
+  candidate: SnapshotCandidate,
+): Promise<boolean> {
+  if (
+    candidate.headId === null ||
+    candidate.headLastSeqId === null ||
+    candidate.headObjectKey === null ||
+    candidate.headArchiveSchemaVersion === null
+  ) {
+    throw new Error("chat event snapshot head metadata is incomplete");
+  }
+  const stamped = await db
+    .update(chatEventSnapshots)
+    .set({ archiveSchemaVersion: ARCHIVE_SCHEMA_VERSION })
+    .where(
+      and(
+        eq(chatEventSnapshots.id, candidate.headId),
+        eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
+        eq(chatEventSnapshots.isHead, true),
+        eq(
+          chatEventSnapshots.archiveSchemaVersion,
+          candidate.headArchiveSchemaVersion,
+        ),
+        eq(chatEventSnapshots.lastSeqId, candidate.headLastSeqId),
+        eq(chatEventSnapshots.objectKey, candidate.headObjectKey),
+      ),
+    )
+    .returning({ id: chatEventSnapshots.id });
+  return stamped.length > 0;
+}
+
+/**
  * The head object's decompressed body when it can seed the next generation.
  *
  * `absent` is the expected shape for a first archive and for a retired-version
@@ -427,6 +464,14 @@ async function archiveThread(
     }),
   );
   signal.throwIfAborted();
+
+  if (objectKey === candidate.headObjectKey) {
+    const stamped = await stampSnapshotHeadVersion(db, candidate);
+    return {
+      archivedEvents: stamped ? archive.count : null,
+      unreadableParent,
+    };
+  }
 
   // A deleted thread (foreign key) or a concurrent writer that already
   // published this thread's next head (unique head/object key) are expected
