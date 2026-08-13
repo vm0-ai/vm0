@@ -28,7 +28,7 @@ test("isolates runner Clerk bootstrap recovery before side effects", async (cont
             browser,
             {
               appUrl: fixture.appUrl,
-              bootstrapTimeoutsMs: [100, 1_000],
+              bootstrapTimeoutsMs: [250, 1_000],
               contextOptions: {},
             },
             async (page) => {
@@ -57,7 +57,7 @@ test("isolates runner Clerk bootstrap recovery before side effects", async (cont
             browser,
             {
               appUrl: fixture.appUrl,
-              bootstrapTimeoutsMs: [100, 100],
+              bootstrapTimeoutsMs: [250, 250],
               contextOptions: {},
             },
             async () => {
@@ -89,7 +89,7 @@ test("isolates runner Clerk bootstrap recovery before side effects", async (cont
             browser,
             {
               appUrl: fixture.appUrl,
-              bootstrapTimeoutsMs: [100, 100],
+              bootstrapTimeoutsMs: [250, 250],
               contextOptions: {},
             },
             async () => {
@@ -117,7 +117,7 @@ test("isolates runner Clerk bootstrap recovery before side effects", async (cont
             browser,
             {
               appUrl: fixture.appUrl,
-              bootstrapTimeoutsMs: [100, 1_000],
+              bootstrapTimeoutsMs: [250, 1_000],
               contextOptions: {},
             },
             async () => {

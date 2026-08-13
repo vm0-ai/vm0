@@ -209,17 +209,17 @@ async function loadClerkInContext(
   if (!frontendApi) {
     throw new Error("CLERK_FAPI environment variable is required");
   }
-  const frontendApiHostname = new URL(`https://${frontendApi}`).hostname;
+  const frontendApiHost = new URL(`https://${frontendApi}`).host;
   let lastRequest: ClerkBootstrapRequest | undefined;
   const recordRequest = (request: Request): void => {
-    const path = clerkFrontendApiPath(request, frontendApiHostname);
+    const path = clerkFrontendApiPath(request, frontendApiHost);
     if (path) {
       lastRequest = { method: request.method(), path, status: "pending" };
     }
   };
   const recordResponse = (response: Response): void => {
     const request = response.request();
-    const path = clerkFrontendApiPath(request, frontendApiHostname);
+    const path = clerkFrontendApiPath(request, frontendApiHost);
     if (path) {
       lastRequest = {
         method: request.method(),
@@ -229,7 +229,7 @@ async function loadClerkInContext(
     }
   };
   const recordFailedRequest = (request: Request): void => {
-    const path = clerkFrontendApiPath(request, frontendApiHostname);
+    const path = clerkFrontendApiPath(request, frontendApiHost);
     if (path) {
       lastRequest = { method: request.method(), path, status: "failed" };
     }
@@ -274,10 +274,10 @@ async function loadClerkInContext(
 
 function clerkFrontendApiPath(
   request: Request,
-  frontendApiHostname: string,
+  frontendApiHost: string,
 ): string | undefined {
   const url = new URL(request.url());
-  if (url.hostname === frontendApiHostname && url.pathname.startsWith("/v1/")) {
+  if (url.host === frontendApiHost && url.pathname.startsWith("/v1/")) {
     return url.pathname;
   }
   return undefined;
