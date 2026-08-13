@@ -1004,6 +1004,20 @@ const connectors = [
     ),
   }),
   connector({
+    connectorSlug: "google-meet",
+    label: "Google Meet",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "google-meet",
+        prefix: "GOOGLE_MEET",
+        tokenEnvironmentNames: ["GOOGLE_MEET_TOKEN"],
+      }),
+    ],
+    firewall: generatedFirewall([
+      bearerApi("https://meet.googleapis.com", "GOOGLE_MEET_TOKEN"),
+    ]),
+  }),
+  connector({
     connectorSlug: "google-maps",
     label: "Google Maps",
     authMethods: [
