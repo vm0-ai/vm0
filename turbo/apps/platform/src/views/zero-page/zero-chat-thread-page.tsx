@@ -6337,13 +6337,12 @@ function UserGroupFooterRow({
       {/* The label keeps its own width rather than filling the column: the
           sweep masks are sized from that box, so a full-width one would drag
           the boundary across empty space beside the text. */}
-      {/* The button stays last so it lands on the same right-hand rail it does
-          under a group with nothing to say — the acknowledgement moves over for
-          it rather than displacing it. */}
+      {/* Whatever is permanently visible takes the right-hand rail, and the
+          button — which only exists under the pointer — sits beside it. The
+          button still reserves its width while hidden, so putting it last
+          would leave the acknowledgement hanging short of the edge every
+          message lines up on, to make room for something nobody can see. */}
       <div className="flex min-h-5 items-center justify-end gap-2">
-        {steerCount > 0 ? (
-          <SteerAcknowledgementLabel count={steerCount} />
-        ) : null}
         {canCopy ? (
           <button
             type="button"
@@ -6355,6 +6354,9 @@ function UserGroupFooterRow({
           >
             {copied ? <Check size={18} /> : <Copy size={18} />}
           </button>
+        ) : null}
+        {steerCount > 0 ? (
+          <SteerAcknowledgementLabel count={steerCount} />
         ) : null}
       </div>
     </div>
