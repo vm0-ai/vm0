@@ -745,11 +745,15 @@ identity=/tmp/vm0-one-shot-containment.identity
 group_file=/tmp/vm0-one-shot-containment.group
 rm -f "$identity" "$group_file"
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
-own_group=${relative##*/}
-case "$own_group" in
-  exec-*) ;;
+case "$relative" in
+  /vm0-exec/exec-*/workload) ;;
   *) echo "unexpected one-shot cgroup: $relative" >&2; exit 1 ;;
 esac
+operation=${relative%/workload}
+own_group=${operation##*/}
+test -f "/sys/fs/cgroup$operation/workload/cpu.max"
+test -f "/sys/fs/cgroup$operation/workload/memory.max"
+test -f "/sys/fs/cgroup$operation/workload/pids.max"
 printf '%s\n' "$own_group" > "$group_file"
 setsid python3 -c 'import os, pathlib, signal, time; p=pathlib.Path("/tmp/vm0-one-shot-containment.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); signal.signal(signal.SIGTERM, signal.SIG_IGN); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >/dev/null 2>&1 &
 for _ in $(seq 1 100); do
@@ -781,7 +785,12 @@ if current_identity=$(awk '{sub(/^.*\) /, ""); print $1, $20}' "/proc/$pid/stat"
 fi
 base=/sys/fs/cgroup/vm0-exec
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
-own_group=${relative##*/}
+case "$relative" in
+  /vm0-exec/exec-*/workload) ;;
+  *) echo "unexpected verification cgroup: $relative" >&2; exit 1 ;;
+esac
+operation=${relative%/workload}
+own_group=${operation##*/}
 test -n "$own_group"
 test -d "$base/$own_group"
 old_group=$(cat "$group_file")

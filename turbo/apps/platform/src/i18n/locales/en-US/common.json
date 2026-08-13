@@ -333,7 +333,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Template import",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -790,6 +789,7 @@
       "confirm": "Confirm",
       "credits": "credits",
       "manage": "Manage",
+      "preparing": "Preparing...",
       "redirecting": "Redirecting...",
       "restore": "Restore",
       "retry": "Retry",
@@ -846,6 +846,9 @@
       "exchangeRate": "Credits never expire. 1 USD = {{credits}} credits.",
       "quickBuy": "Quick buy",
       "quickBuyAmount": "Quick buy {{amount}}",
+      "reviewDescription": "Confirm this one-time charge with your saved payment method.",
+      "reviewError": "Could not complete this credit purchase. Review your billing details and try again.",
+      "reviewTitle": "Review credit purchase",
       "title": "Buy credits"
     },
     "downgrade": {
@@ -1027,6 +1030,7 @@
       "concurrencyChanged": "Concurrency change confirmed. Your slot count will update after Stripe processes the change.",
       "concurrencyReduced": "Concurrency reduction scheduled for the next billing date.",
       "concurrencyRestored": "Concurrency subscription restored.",
+      "creditPurchaseConfirmed": "Payment confirmed. Credits will appear after Stripe processes the invoice.",
       "creditsAdded": "Credits added. You can continue chatting with Zero.",
       "downgradeScheduledDate": "Downgrade scheduled. Your current plan stays active until {{date}}.",
       "downgradeScheduledPeriod": "Downgrade scheduled. Your current plan stays active until the billing period ends.",
@@ -1410,8 +1414,7 @@
       "search": "Search agents and chats...",
       "sent": "Forwarded successfully",
       "threads": "Chats",
-      "title": "Forward to",
-      "to": "Forward to"
+      "title": "Forward to"
     },
     "mail": {
       "bcc": "bcc",
@@ -4585,6 +4588,7 @@
       "imageRecognize": "Image Recognize",
       "maps": "Maps",
       "peopleSearch": "People Search",
+      "seo": "SEO",
       "translation": "Translation",
       "usage": "Usage",
       "weather": "Weather",

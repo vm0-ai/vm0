@@ -11,6 +11,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   type ConnectorRuntimeSyncResult,
+  type ExecutionContext,
   type Job as RunnerJob,
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
@@ -430,8 +431,6 @@ const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
   "custom_connector_runtime_missing_required_count_bucket",
   "custom_connector_runtime_no_auth_injection_count_bucket",
   "custom_connector_runtime_invalid_prefix_count_bucket",
-  "custom_connector_runtime_pinned_routing_count_bucket",
-  "custom_connector_runtime_unpinned_routing_count_bucket",
 ] as const;
 const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_builtin_permission_indexes",
@@ -628,6 +627,24 @@ type AvailableCustomConnectorRuntime = Extract<
   ConnectorRuntimeSyncResult,
   { readonly state: "available"; readonly target: { readonly kind: "custom" } }
 >;
+
+function customConnectorRuntimeRegistration(
+  context: ExecutionContext,
+  customConnectorId: string,
+): Extract<
+  ExecutionContext["connectorRuntimeTargets"][number],
+  { readonly kind: "custom" }
+> {
+  const registration = context.connectorRuntimeTargets.find((target) => {
+    return (
+      target.kind === "custom" && target.customConnectorId === customConnectorId
+    );
+  });
+  if (!registration || registration.kind !== "custom") {
+    throw new Error("Expected a custom connector runtime registration");
+  }
+  return registration;
+}
 
 function availableCustomConnectorRuntime(
   result: ConnectorRuntimeSyncResult | undefined,
@@ -9482,7 +9499,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const expiredClaim = await api.claimRunnerJob(expiredRun.runId);
     expect(expiredClaim.connectorRuntimeTargets).toContainEqual(target);
     const [runtimeResult] = await api.syncConnectorRuntime(expiredRun.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(expiredClaim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: authBody } = customConnectorRuntimeAuthBody(
@@ -9619,7 +9636,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "Bearer custom-oauth-initial-access-token",
     );
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(claim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
@@ -9859,7 +9876,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(firstRun.runId);
     const [runtimeResult] = await api.syncConnectorRuntime(firstRun.runId, {
-      targets: [{ kind: "custom", customConnectorId: custom.id }],
+      targets: [customConnectorRuntimeRegistration(claim, custom.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
@@ -9885,7 +9902,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const [reconnectRuntimeResult] = await api.syncConnectorRuntime(
       firstRun.runId,
-      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+      { targets: [customConnectorRuntimeRegistration(claim, custom.id)] },
     );
     const reconnectRuntime = availableCustomConnectorRuntime(
       reconnectRuntimeResult,
@@ -9928,7 +9945,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const [secondRuntimeResult] = await api.syncConnectorRuntime(
       secondRun.runId,
-      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+      {
+        targets: [customConnectorRuntimeRegistration(secondClaim, custom.id)],
+      },
     );
     const secondRuntime = availableCustomConnectorRuntime(secondRuntimeResult);
     const { body: secondAuthBody } = customConnectorRuntimeAuthBody(
@@ -10489,7 +10508,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { api: runtimeApi, body: runtimeAuthBody } =
@@ -10817,7 +10836,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const saved = await connectors.saveCustomConnectorProposal(actor, {
       proposal: {
         operation: "create",
-        displayName: "BDD Unpinned Recovery Runtime",
+        displayName: "BDD Full Recovery Runtime",
         prefixTemplates: [
           `https://{{variables.subdomain}}.${rand}.recovery.test/v1/`,
         ],
@@ -11014,7 +11033,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     expect(runtime.firewall.customConnectorId).toBe(saved.connector.id);

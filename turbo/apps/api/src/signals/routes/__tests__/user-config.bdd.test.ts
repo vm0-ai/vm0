@@ -306,6 +306,7 @@ describe("AUTH-03 user model preference", () => {
     expect(defaults).toStrictEqual({
       selectedModel: null,
       serviceTier: null,
+      selectedVideoModel: null,
       updatedAt: null,
     });
 
@@ -326,12 +327,14 @@ describe("AUTH-03 user model preference", () => {
     expect(cleared).toStrictEqual({
       selectedModel: null,
       serviceTier: null,
+      selectedVideoModel: null,
       updatedAt: null,
     });
     const readCleared = await cfg.readModelPreference(admin);
     expect(readCleared).toStrictEqual({
       selectedModel: null,
       serviceTier: null,
+      selectedVideoModel: null,
       updatedAt: null,
     });
   });

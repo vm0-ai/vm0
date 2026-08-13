@@ -18,7 +18,7 @@ use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
-use crate::user::apply_write_file_identity;
+use crate::user::apply_command_identity;
 use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
@@ -260,7 +260,7 @@ fn spawn_write_file_command(
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_write_file_identity(&mut command, use_sudo)?;
+    apply_command_identity(&mut command, use_sudo)?;
     spawn_in_own_process_group(&mut command)
 }
 
@@ -271,7 +271,7 @@ fn spawn_write_files_command() -> io::Result<Child> {
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_write_file_identity(&mut command, false)?;
+    apply_command_identity(&mut command, false)?;
     spawn_in_own_process_group(&mut command)
 }
 

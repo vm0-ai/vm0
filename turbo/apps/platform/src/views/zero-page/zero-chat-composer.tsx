@@ -262,6 +262,7 @@ function isHappyDomTestEnvironment(): boolean {
 
 interface ZeroChatComposerProps {
   readonly signals: ComposerSignals;
+  readonly showPendingItems?: boolean;
 }
 
 interface ComposerConnectorReadState {
@@ -8237,12 +8238,18 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerSurface({ signals }: { signals: ComposerSignals }) {
+function ComposerSurface({
+  signals,
+  showPendingItems,
+}: {
+  signals: ComposerSignals;
+  showPendingItems: boolean;
+}) {
   return (
     <>
       <ComposerFileInput signals={signals} />
       <div className="relative flex w-full min-w-0 flex-col">
-        <PendingItemsStrip signals={signals} />
+        {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
@@ -8252,6 +8259,11 @@ function ComposerSurface({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-export function ZeroChatComposer({ signals }: ZeroChatComposerProps) {
-  return <ComposerSurface signals={signals} />;
+export function ZeroChatComposer({
+  signals,
+  showPendingItems = true,
+}: ZeroChatComposerProps) {
+  return (
+    <ComposerSurface signals={signals} showPendingItems={showPendingItems} />
+  );
 }

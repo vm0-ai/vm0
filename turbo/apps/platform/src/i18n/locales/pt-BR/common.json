@@ -347,7 +347,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Importação de modelo",
       "test": "Teste",
       "web": "Web",
       "webhook": "Webhook"
@@ -809,6 +808,7 @@
       "confirm": "Confirmar",
       "credits": "créditos",
       "manage": "Gerenciar",
+      "preparing": "Preparando...",
       "redirecting": "Redirecionando...",
       "restore": "Restaurar",
       "retry": "Tentar novamente",
@@ -867,6 +867,9 @@
       "exchangeRate": "Os créditos nunca expiram. 1 USD = {{credits}} créditos.",
       "quickBuy": "Compra rápida",
       "quickBuyAmount": "Compra rápida de {{amount}}",
+      "reviewDescription": "Confirme esta cobrança única com sua forma de pagamento salva.",
+      "reviewError": "Não foi possível concluir esta compra de créditos. Revise seus dados de cobrança e tente novamente.",
+      "reviewTitle": "Revisar compra de créditos",
       "title": "Comprar créditos"
     },
     "downgrade": {
@@ -1048,6 +1051,7 @@
       "concurrencyChanged": "Alteração de simultaneidade confirmada. A quantidade de vagas será atualizada depois que a Stripe processar a alteração.",
       "concurrencyReduced": "A redução de simultaneidade está programada para a próxima data de cobrança.",
       "concurrencyRestored": "Assinatura de simultaneidade restaurada.",
+      "creditPurchaseConfirmed": "Pagamento confirmado. Os créditos aparecerão depois que a Stripe processar a fatura.",
       "creditsAdded": "Créditos adicionados. Você pode continuar conversando com o Zero.",
       "downgradeScheduledDate": "Downgrade agendado. Seu plano atual permanece ativo até {{date}}.",
       "downgradeScheduledPeriod": "Downgrade agendado. Seu plano atual permanece ativo até o fim do período de cobrança.",
@@ -1439,8 +1443,7 @@
       "search": "Buscar agentes e conversas...",
       "sent": "Encaminhado com sucesso",
       "threads": "Conversas",
-      "title": "Encaminhar para",
-      "to": "Encaminhar para"
+      "title": "Encaminhar para"
     },
     "mail": {
       "bcc": "cco",
@@ -4637,6 +4640,7 @@
       "imageRecognize": "Reconhecimento de imagem",
       "maps": "Mapas",
       "peopleSearch": "Pesquisa de pessoas",
+      "seo": "SEO",
       "translation": "Tradução",
       "usage": "Uso",
       "weather": "Clima",

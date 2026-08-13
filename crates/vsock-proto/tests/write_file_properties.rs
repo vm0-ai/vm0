@@ -135,6 +135,22 @@ fn assert_strict_prefixes_rejected(
     Ok(())
 }
 
+#[test]
+fn write_files_result_truncates_oversized_utf8_at_character_boundary() {
+    let prefix = "A".repeat(u16::MAX as usize - 1);
+    let error = format!("{prefix}é");
+    let payload = encode_write_files_result(false, &error);
+
+    assert_eq!(payload.first(), Some(&0));
+    let declared_len = u16::from_be_bytes(payload.get(1..3).unwrap().try_into().unwrap());
+    assert_eq!(declared_len as usize, prefix.len());
+    assert_eq!(payload.len(), 3 + prefix.len());
+
+    let (success, decoded_error) = decode_write_files_result(&payload).unwrap();
+    assert!(!success);
+    assert_eq!(decoded_error, prefix);
+}
+
 proptest! {
     #![proptest_config(property_config())]
 

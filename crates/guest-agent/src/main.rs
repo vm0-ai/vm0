@@ -22,7 +22,7 @@ use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationReason, EventDeliveryDiagnostic, FailureClass,
-    FailureDiagnostic, FailureReason,
+    FailureDiagnostic, FailureReason, WorkloadResourceLimitDiagnostic,
 };
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
@@ -41,8 +41,7 @@ fn checkpoint_failure_reason(error: &AgentError) -> Option<FailureReason> {
         .then_some(FailureReason::SessionHistoryLimit)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     if let Some(exit_code) = helper_exit_code_from_args() {
         std::process::exit(exit_code);
     }
@@ -54,7 +53,20 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let exit_code = run(runtime).await;
+    let async_runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            log_error!(
+                LOG_TAG,
+                "Fatal: failed to initialize async runtime: {error}"
+            );
+            std::process::exit(1);
+        }
+    };
+    let exit_code = async_runtime.block_on(run(runtime));
     std::process::exit(exit_code);
 }
 
@@ -474,7 +486,8 @@ async fn execute(
         masker,
         heartbeat_monitor,
         http.clone(),
-        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref()),
+        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref())
+            .with_workload_containment(runtime.workload_containment.as_ref()),
         config,
         runtime_paths,
         start,
@@ -597,6 +610,30 @@ async fn execute(
             )
         }
     };
+    if let Some(workload_containment) = runtime.workload_containment.as_ref() {
+        match workload_containment.resource_diagnostics() {
+            Ok(diagnostics) => {
+                if let Some(pressure) = diagnostics.pressure {
+                    log_info!(LOG_TAG, "{pressure}");
+                }
+                if let Some(hard_limit) = diagnostics.hard_limit {
+                    let message = apply_workload_resource_limit(
+                        exit_code,
+                        &mut error_message,
+                        &mut failure_diagnostic,
+                        hard_limit,
+                    );
+                    log_warn!(LOG_TAG, "{message}");
+                }
+            }
+            Err(error) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to read workload resource diagnostics: {error}"
+                );
+            }
+        }
+    }
     let cli_elapsed = cli_start.elapsed();
     record_sandbox_op(
         "cli_execution",
@@ -638,6 +675,36 @@ async fn execute(
         runtime,
     )
     .await
+}
+
+fn apply_workload_resource_limit(
+    exit_code: i32,
+    error_message: &mut String,
+    failure_diagnostic: &mut Option<FailureDiagnostic>,
+    hard_limit: WorkloadResourceLimitDiagnostic,
+) -> String {
+    let message = format!(
+        "workload resource limit reached (memory_max={}, memory_oom={}, memory_oom_kill={}, memory_oom_group_kill={}, pids_max={})",
+        hard_limit.memory_max_events,
+        hard_limit.memory_oom_events,
+        hard_limit.memory_oom_kill_events,
+        hard_limit.memory_oom_group_kill_events,
+        hard_limit.pids_max_events,
+    );
+    if exit_code == 0 {
+        return message;
+    }
+
+    if error_message.is_empty() {
+        error_message.clone_from(&message);
+    } else {
+        error_message.push_str("; ");
+        error_message.push_str(&message);
+    }
+    if let Some(diagnostic) = failure_diagnostic.take() {
+        *failure_diagnostic = Some(diagnostic.with_workload_resource_limit(hard_limit));
+    }
+    message
 }
 
 fn event_delivery_failure_message(diagnostic: &EventDeliveryDiagnostic) -> String {
@@ -1016,6 +1083,7 @@ mod tests {
             None
         );
     }
+
     static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
     static MAIN_TEST_RUNTIME_ROOT: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
         let timestamp_nanos = std::time::SystemTime::now()
@@ -1064,6 +1132,7 @@ mod tests {
             config,
             paths: paths::GuestPaths::from_runtime_dir(test_runtime_dir()),
             http,
+            workload_containment: None,
         }
     }
 
@@ -1183,6 +1252,7 @@ mod tests {
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
+            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {
