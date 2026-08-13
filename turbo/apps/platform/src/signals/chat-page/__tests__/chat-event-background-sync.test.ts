@@ -31,13 +31,10 @@ const resetSubscriberSignal$ = resetSignal();
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
 const THIRD_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
-const FIRST_THIRTY_UNREAD_THREAD_IDS = Array.from(
-  { length: 30 },
-  (_, index) => {
-    return `c0000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`;
-  },
-);
-const THIRTY_FIRST_UNREAD_THREAD_ID = "c0000000-0000-4000-a000-000000000031";
+const FIRST_TEN_UNREAD_THREAD_IDS = Array.from({ length: 10 }, (_, index) => {
+  return `c0000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`;
+});
+const ELEVENTH_UNREAD_THREAD_ID = "c0000000-0000-4000-a000-000000000011";
 const FIRST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_EVENT_ID = "00000000-0000-4000-8000-000000000804";
@@ -154,7 +151,7 @@ function mockMissingSnapshots(): void {
 }
 
 describe("chat event background sync", () => {
-  it("prefetches the first 30 unread and all active threads once", async () => {
+  it("prefetches only the first 10 unread threads once", async () => {
     const initialThreadIdsReady = context.mocks.deferred<void>();
     const requestedThreadIds: string[] = [];
     let indicatorRequests = 0;
@@ -165,10 +162,10 @@ describe("chat event background sync", () => {
       return respond(200, {
         agents: {},
         threads: Object.fromEntries([
-          ...FIRST_THIRTY_UNREAD_THREAD_IDS.map((threadId) => {
+          ...FIRST_TEN_UNREAD_THREAD_IDS.map((threadId) => {
             return [threadId, "unread" as const];
           }),
-          [THIRTY_FIRST_UNREAD_THREAD_ID, "unread" as const],
+          [ELEVENTH_UNREAD_THREAD_ID, "unread" as const],
           [OTHER_THREAD_ID, "active" as const],
           [THIRD_THREAD_ID, "active" as const],
         ]),
@@ -190,19 +187,15 @@ describe("chat event background sync", () => {
     initialThreadIdsReady.resolve();
 
     await waitFor(() => {
-      expect(requestedThreadIds).toHaveLength(32);
+      expect(requestedThreadIds).toHaveLength(10);
     });
     expect(indicatorRequests).toBe(1);
     expect(new Set(requestedThreadIds)).toStrictEqual(
-      new Set([
-        ...FIRST_THIRTY_UNREAD_THREAD_IDS,
-        OTHER_THREAD_ID,
-        THIRD_THREAD_ID,
-      ]),
+      new Set(FIRST_TEN_UNREAD_THREAD_IDS),
     );
   });
 
-  it("catches up only the first 30 unread threads after reconnect", async () => {
+  it("catches up only the first 10 unread threads after reconnect", async () => {
     const requestedThreadIds: string[] = [];
     let unreadThreadIds = [THREAD_ID];
     let indicatorRequests = 0;
@@ -228,25 +221,23 @@ describe("chat event background sync", () => {
     await setupAuthenticatedBackgroundSync();
 
     await waitFor(() => {
-      expect(new Set(requestedThreadIds)).toStrictEqual(
-        new Set([THREAD_ID, OTHER_THREAD_ID]),
-      );
+      expect(requestedThreadIds).toStrictEqual([THREAD_ID]);
       expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
     requestedThreadIds.length = 0;
     unreadThreadIds = [
-      ...FIRST_THIRTY_UNREAD_THREAD_IDS,
-      THIRTY_FIRST_UNREAD_THREAD_ID,
+      ...FIRST_TEN_UNREAD_THREAD_IDS,
+      ELEVENTH_UNREAD_THREAD_ID,
     ];
 
     context.mocks.ably.triggerReconnect();
 
     await waitFor(() => {
       expect(indicatorRequests).toBe(2);
-      expect(requestedThreadIds).toHaveLength(30);
+      expect(requestedThreadIds).toHaveLength(10);
     });
     expect(new Set(requestedThreadIds)).toStrictEqual(
-      new Set(FIRST_THIRTY_UNREAD_THREAD_IDS),
+      new Set(FIRST_TEN_UNREAD_THREAD_IDS),
     );
   });
 
