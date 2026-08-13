@@ -1,6 +1,5 @@
 /**
  * Default instructions (AGENTS.md) for agent onboarding.
- * Source: https://github.com/vm0-ai/the-seed
  *
  * This canonical value is shared by API bootstrap and Platform agent creation.
  * See also: seed-skills.ts for the companion skill list.
