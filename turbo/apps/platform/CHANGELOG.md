@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.745.0](https://github.com/vm0-ai/vm0/compare/app-v0.744.0...app-v0.745.0) (2026-08-13)
+
+
+### Features
+
+* **chat:** roll out unified indicator api ([#26960](https://github.com/vm0-ai/vm0/issues/26960)) ([169409d](https://github.com/vm0-ai/vm0/commit/169409de2f824947ff3077e44b98e26d647f24b8))
+
+
+### Bug Fixes
+
+* **chat:** preserve unread agent actions during active runs ([#26975](https://github.com/vm0-ai/vm0/issues/26975)) ([08bef36](https://github.com/vm0-ai/vm0/commit/08bef367636c45e40fb5a5b78272c864a6bc9857))
+* **platform:** refine forward composer modal layout ([#26958](https://github.com/vm0-ai/vm0/issues/26958)) ([b0e448b](https://github.com/vm0-ai/vm0/commit/b0e448b7b1eab1da02602b52be1168d934c18bfb))
+
+
+### Refactoring
+
+* **agent:** canonicalize agent draft naming ([#26979](https://github.com/vm0-ai/vm0/issues/26979)) ([5403d6a](https://github.com/vm0-ai/vm0/commit/5403d6ae1ef87b4343751789c063aa88dbdc18f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.4
+    * @okouai/core bumped to 8.557.0
+
 ## [0.744.0](https://github.com/vm0-ai/vm0/compare/app-v0.743.0...app-v0.744.0) (2026-08-13)
 
 

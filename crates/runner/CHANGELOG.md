@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.5...runner-rs-v0.168.6) (2026-08-13)
+
+
+### Performance Improvements
+
+* **runner:** publish shared workspace cache changes promptly ([#26743](https://github.com/vm0-ai/vm0/issues/26743)) ([720569c](https://github.com/vm0-ai/vm0/commit/720569cbf6102160e77a67e688a1dc8c57470843))
+
 ## [0.168.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.4...runner-rs-v0.168.5) (2026-08-13)
 
 ## [0.168.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.3...runner-rs-v0.168.4) (2026-08-13)
