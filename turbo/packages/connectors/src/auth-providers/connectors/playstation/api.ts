@@ -272,7 +272,13 @@ export async function exchangePlaystationNpssoForWebSessionToken(
     responseCookiePairs(callbackResponse.headers),
     PLAYSTATION_WEB_SESSION_COOKIE_NAME,
   );
-  return callbackWebSessionToken ?? initialWebSessionToken;
+  if (!callbackWebSessionToken) {
+    throw playstationWebSessionError(
+      `callback missing ${PLAYSTATION_WEB_SESSION_COOKIE_NAME} cookie`,
+      callbackResponse.status,
+    );
+  }
+  return callbackWebSessionToken;
 }
 
 function hasInvalidNpssoCookieCharacter(value: string): boolean {

@@ -462,7 +462,7 @@ describe("PlayStation external-code provider", () => {
     });
   });
 
-  it("keeps the initial web session token when the callback does not rotate it", async () => {
+  it("rejects a callback without its final web session cookie", async () => {
     mockPlaystationGrant({ finalWebSessionToken: null });
 
     await expect(
@@ -474,10 +474,12 @@ describe("PlayStation external-code provider", () => {
         code: "test-npsso",
         signal: testSignal(),
       }),
-    ).resolves.toMatchObject({
-      outputs: {
-        webSessionToken: "playstation-web-session-initial",
-      },
+    ).rejects.toSatisfy((error: unknown) => {
+      return (
+        isOAuthProviderHttpError(error) &&
+        error.status === 200 &&
+        error.oauthError === "invalid_grant"
+      );
     });
   });
 
