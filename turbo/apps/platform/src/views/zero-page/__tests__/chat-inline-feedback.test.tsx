@@ -356,7 +356,7 @@ describe("chat inline feedback", () => {
     await user.keyboard("{ArrowDown}{Enter}");
 
     const feedbackNote = await findForwardFeedbackNote(dialog);
-    expect(within(dialog).getByText("Zero")).toBeInTheDocument();
+    expect(dialog).toHaveAccessibleName("Zero");
     expect(within(dialog).queryByText("Content")).toBeNull();
     expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);
     pastePlainText(feedbackNote, additionalContext);
@@ -364,7 +364,7 @@ describe("chat inline feedback", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: "Forward to" }),
+        screen.queryByRole("dialog", { name: "Zero" }),
       ).not.toBeInTheDocument();
       expect(sentRequests).toHaveLength(1);
     });
@@ -460,8 +460,7 @@ describe("chat inline feedback", () => {
     await user.keyboard("{ArrowDown}{Enter}");
 
     const feedbackNote = await findForwardFeedbackNote(dialog);
-    expect(within(dialog).getAllByText("Forward to")).toHaveLength(1);
-    expect(within(dialog).getByText("Launch ownership")).toBeInTheDocument();
+    expect(dialog).toHaveAccessibleName("Launch ownership");
     expect(within(dialog).queryByText("Content")).toBeNull();
     expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);
     pastePlainText(feedbackNote, additionalContext);
@@ -469,7 +468,7 @@ describe("chat inline feedback", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: "Forward to" }),
+        screen.queryByRole("dialog", { name: "Launch ownership" }),
       ).not.toBeInTheDocument();
       expect(sentRequests).toHaveLength(1);
     });
@@ -596,6 +595,7 @@ describe("chat inline feedback", () => {
     await findForwardFeedbackNote(dialog);
     await waitForDeferredSelectionCapture();
 
+    expect(dialog).toHaveAccessibleName("Rollout review");
     expect(within(dialog).queryByText(queuedContent)).not.toBeInTheDocument();
     expect(
       within(dialog).queryByText(automationContent),

@@ -359,6 +359,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.UserFriendlyAutomationMessage]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show natural trigger messages for workflow automations and provide automation context through the agent user prompt.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:

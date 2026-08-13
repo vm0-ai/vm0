@@ -312,8 +312,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "people-search",
     description: "Find professionals through managed Okou people search",
     load: async () => {
-      return (await import("./commands/zero/people-search"))
-        .zeroPeopleSearchCommand;
+      return (await import("./commands/people-search")).peopleSearchCommand;
     },
   },
   {
@@ -341,7 +340,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "finance",
     description: "Query financial instruments through managed Okou finance",
     load: async () => {
-      return (await import("./commands/zero/finance")).zeroFinanceCommand;
+      return (await import("./commands/finance")).financeCommand;
     },
   },
   {

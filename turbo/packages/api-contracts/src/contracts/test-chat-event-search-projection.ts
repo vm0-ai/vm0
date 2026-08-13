@@ -7,7 +7,6 @@ const c = initContract();
 
 export const testChatEventSearchProjectionBodySchema = z.object({
   chat_thread_ids: z.array(z.uuid()).min(1).max(20),
-  simulate_durable_schema_unavailable: z.boolean().optional(),
 });
 
 export const testChatEventSearchProjectionContract = c.router({

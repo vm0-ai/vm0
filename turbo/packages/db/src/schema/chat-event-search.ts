@@ -18,10 +18,11 @@ const tsvectorColumn = customType<{ data: string }>({
 });
 
 /**
- * Search projection over the canonical chat_events stream: one row per
- * searchable user prompt or assistant message. Rows are derived data — the
- * search projector cron rebuilds them from chat_events, so this table can be
- * dropped and replayed without data loss.
+ * Retained only to model the physical schema used by historical migrations.
+ * Runtime projection and search code must not read or write this table. Drop
+ * it in a later release after the Phase 3 API and its rollback target drain.
+ *
+ * @deprecated Use chatEventSearchMessages.
  */
 export const chatEventSearchDocs = pgTable(
   "chat_event_search_docs",
@@ -72,8 +73,11 @@ export const chatEventSearchDocs = pgTable(
 );
 
 /**
- * Per-thread projection watermark: chat_events with seq_id <=
- * indexed_seq_id are reflected in chat_event_search_docs.
+ * Retained only to model the physical schema used by historical migrations.
+ * Runtime projection and snapshot code must use the message watermark. Drop
+ * it with chat_event_search_docs in the later physical cleanup release.
+ *
+ * @deprecated Use chatEventSearchMessageWatermarks.
  */
 export const chatEventSearchWatermarks = pgTable(
   "chat_event_search_watermarks",
@@ -91,9 +95,9 @@ export const chatEventSearchWatermarks = pgTable(
 );
 
 /**
- * Durable searchable-message projection. Unlike chatEventSearchDocs, these
- * rows do not depend on a chat_events UUID and remain authoritative after the
- * canonical event row ages out of PostgreSQL.
+ * Durable searchable-message projection. These rows do not depend on a
+ * chat_events UUID and remain authoritative after the canonical event row
+ * ages out of PostgreSQL.
  */
 export const chatEventSearchMessages = pgTable(
   "chat_event_search_messages",
@@ -139,8 +143,7 @@ export const chatEventSearchMessages = pgTable(
 );
 
 /**
- * Independent durable-projection watermark. Missing rows intentionally mean
- * zero so the online backfill never inherits progress from the legacy index.
+ * Durable-projection watermark. Missing rows intentionally mean zero.
  */
 export const chatEventSearchMessageWatermarks = pgTable(
   "chat_event_search_message_watermarks",

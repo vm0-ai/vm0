@@ -232,15 +232,20 @@ jobs:
           shellcheck \
             .github/scripts/audit-okou-cli-cutover.sh \
             .github/scripts/build-okou-desktop-artifact.sh \
+            .github/scripts/cancel-superseded-merge-group-runs.sh \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
+            .github/scripts/cleanup-turbo-runner-namespace.sh \
             .github/scripts/cloudflare-ssh-command.sh \
             .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
             .github/scripts/deploy-okou-pages.sh \
             .github/scripts/download-verified.sh \
             .github/scripts/fetch-okou-desktop-artifact.sh \
+            .github/scripts/list-okou-pages-preview-pr-numbers.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
+            .github/scripts/reconcile-and-start-runner-groups.sh \
+            .github/scripts/reconcile-runner-binary-groups.sh \
             .github/scripts/resolve-desktop-version-change.sh \
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
@@ -248,8 +253,10 @@ jobs:
             .github/scripts/validate-desktop-migration-policy.sh \
             .github/scripts/verify-okou-cli-artifact.sh \
             .github/scripts/verify-okou-desktop-artifact.sh \
+            .github/scripts/with-runner-lifecycle-lock.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/audit-okou-cli-cutover-test.sh \
+            .github/scripts/tests/cancel-superseded-merge-group-runs-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/checkout-depth-test.sh \
@@ -263,11 +270,15 @@ jobs:
             .github/scripts/tests/deploy-okou-pages-workflow-test.sh \
             .github/scripts/tests/download-verified-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
+            .github/scripts/tests/list-okou-pages-preview-pr-numbers-test.sh \
             .github/scripts/tests/okou-desktop-artifact-test.sh \
             .github/scripts/tests/provision-runner-kvm-test.sh \
             .github/scripts/tests/release-tool-downloads-test.sh \
             .github/scripts/tests/resolve-desktop-version-change-test.sh \
             .github/scripts/tests/runner-promotion-ansible-test.sh \
+            .github/scripts/tests/reconcile-runner-binary-groups-test.sh \
+            .github/scripts/tests/runner-lifecycle-lock-test.sh \
+            .github/scripts/tests/runner-lifecycle-ownership-workflow-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
             .github/scripts/tests/runner-behavior-balloon-test.sh \

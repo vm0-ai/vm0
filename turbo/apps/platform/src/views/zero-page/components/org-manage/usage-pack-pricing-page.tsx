@@ -413,9 +413,11 @@ const LEDGER_ROW =
 const LEDGER_RULE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
 
 function LedgerPrice({
+  fractionDigits = 0,
   strong = false,
   value,
 }: {
+  readonly fractionDigits?: number;
   readonly strong?: boolean;
   readonly value: number;
 }) {
@@ -427,7 +429,7 @@ function LedgerPrice({
           : "text-right text-sm font-medium tabular-nums text-foreground"
       }
     >
-      {formatUsd(value, 0)}
+      {formatUsd(value, fractionDigits)}
       <span
         className={`font-normal text-muted-foreground ${strong ? "text-[13px] tracking-normal" : "text-xs"}`}
       >
@@ -1233,6 +1235,101 @@ function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
   ];
 }
 
+/* A review dialog is too narrow for the page ledger's control column, so its
+   rows keep only the two rails that matter on a confirmation screen: what the
+   line is, and the money. Every amount ends on the same right edge.
+
+   Exactly three type levels, so a reader can tell a heading from a row without
+   reading it: block name at 12px medium muted, row label at 14px medium ink,
+   qualifier at 11px muted on its own line. A qualifier never shares the label's
+   line -- one middot cannot mean "expires", "includes" and "consists of" at
+   once. Rule weight carries the structure: gray-200 opens a block, gray-100
+   separates rows inside it. */
+const REVIEW_ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3";
+const REVIEW_HAIRLINE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
+const REVIEW_RULE = "border-t-[0.7px] border-border";
+
+function ReviewSectionLabel({ label }: { readonly label: string }) {
+  return (
+    <p className="pb-0.5 pt-1 text-xs font-medium text-muted-foreground">
+      {label}
+    </p>
+  );
+}
+
+function ReviewRowLabel({
+  label,
+  meta,
+}: {
+  readonly label: string;
+  readonly meta?: string;
+}) {
+  return (
+    <span className="min-w-0">
+      <span className="block text-sm font-medium text-foreground">{label}</span>
+      {meta !== undefined && (
+        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+          {meta}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ReviewRow({
+  amount,
+  label,
+  meta,
+  rule = "hairline",
+  strong = false,
+}: {
+  readonly amount: string;
+  readonly label: string;
+  readonly meta?: string;
+  readonly rule?: "hairline" | "strong";
+  readonly strong?: boolean;
+}) {
+  return (
+    <div
+      className={`${REVIEW_ROW} ${strong ? "py-3.5" : "py-2.5"} ${
+        rule === "strong" ? REVIEW_RULE : REVIEW_HAIRLINE
+      }`}
+    >
+      <ReviewRowLabel label={label} {...(meta === undefined ? {} : { meta })} />
+      <span
+        className={
+          strong
+            ? "text-right text-3xl font-light tracking-tight tabular-nums text-foreground"
+            : "text-right text-sm font-medium tabular-nums text-foreground"
+        }
+      >
+        {amount}
+      </span>
+    </div>
+  );
+}
+
+/* The one line the workspace is agreeing to pay every month. It carries the
+   same weight as the page ledger's total so the two screens read as one. */
+function ReviewTotalRow({
+  fractionDigits,
+  value,
+}: {
+  readonly fractionDigits: number;
+  readonly value: number;
+}) {
+  return (
+    <div className={`${REVIEW_ROW} py-4 ${REVIEW_RULE}`}>
+      <ReviewRowLabel
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.monthlyTotal;
+        })}
+      />
+      <LedgerPrice strong fractionDigits={fractionDigits} value={value} />
+    </div>
+  );
+}
+
 function ManagedSubscriptionSummaryDetails({
   monthlyTotalCents,
   plan,
@@ -1246,70 +1343,59 @@ function ManagedSubscriptionSummaryDetails({
     monthlyTotalCents === undefined
       ? plan.basePriceUsd + totals.totalUsd
       : monthlyTotalCents / 100;
-  const monthlyTotalFractionDigits = Number.isInteger(monthlyTotalUsd) ? 0 : 2;
-  const purchasedCredits = totals.totalCredits - totals.bonusCredits;
+  const concurrentSlots = planConcurrentSlots(plan.tier);
   return (
-    <div className="mt-4 space-y-2.5 text-[13px]">
-      <div className="flex items-center justify-between gap-4 text-muted-foreground">
-        <span>
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.namedPlan;
-            },
-            { plan: planName(plan.tier) },
-          )}
-        </span>
-        <span>{formatUsd(plan.basePriceUsd, 0)}</span>
-      </div>
-      <div className="flex items-center justify-between gap-4 text-muted-foreground">
-        <span>
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.concurrentSlots;
-          })}
-        </span>
-        <span>{formatLocalizedNumber(planConcurrentSlots(plan.tier))}</span>
-      </div>
-      <div className="flex items-center justify-between gap-4 text-muted-foreground">
-        <span>
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.memberPackages;
-          })}
-        </span>
-        <span>{formatUsd(totals.totalUsd, 0)}</span>
-      </div>
-      <div className="flex items-center justify-between gap-4 text-muted-foreground">
-        <span>
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.purchasedCredits;
-          })}
-        </span>
-        <span>{formatLocalizedNumber(purchasedCredits)}</span>
-      </div>
-      <div className="flex items-center justify-between gap-4 text-muted-foreground">
-        <span>
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.bonusCredits;
-          })}
-        </span>
-        <span>{formatLocalizedNumber(totals.bonusCredits)}</span>
-      </div>
-      <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
-        <span className="font-semibold">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.monthlyTotal;
-          })}
-        </span>
-        <span className="text-lg font-semibold">
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.pricePerMonth;
-            },
-            {
-              price: formatUsd(monthlyTotalUsd, monthlyTotalFractionDigits),
-            },
-          )}
-        </span>
-      </div>
+    <div>
+      <ReviewSectionLabel
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.management.everyMonth;
+        })}
+      />
+      <ReviewRow
+        rule="strong"
+        label={i18n.t(
+          ($) => {
+            return $.billing.plans.namedPlan;
+          },
+          { plan: planName(plan.tier) },
+        )}
+        meta={i18n.t(
+          ($) => {
+            return $.billing.concurrency.concurrentRun;
+          },
+          {
+            count: concurrentSlots,
+            value: formatLocalizedNumber(concurrentSlots),
+          },
+        )}
+        amount={formatUsd(plan.basePriceUsd, 0)}
+      />
+      <ReviewRow
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.memberPackages;
+        })}
+        amount={formatUsd(totals.totalUsd, 0)}
+      />
+      <ReviewRow
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.credits;
+        })}
+        {...(totals.bonusCredits > 0
+          ? {
+              meta: i18n.t(
+                ($) => {
+                  return $.billing.plans.usagePacks.bonusIncluded;
+                },
+                { credits: formatLocalizedNumber(totals.bonusCredits) },
+              ),
+            }
+          : {})}
+        amount={formatLocalizedNumber(totals.totalCredits)}
+      />
+      <ReviewTotalRow
+        fractionDigits={Number.isInteger(monthlyTotalUsd) ? 0 : 2}
+        value={monthlyTotalUsd}
+      />
     </div>
   );
 }
@@ -1602,6 +1688,66 @@ export function UsagePackPaymentSummary({
   );
 }
 
+/* What confirming does right now: the charge, and the credits it buys. The
+   recurring subscription is a separate, separately named block below, so the
+   two large numerals answer two questions instead of competing. */
+function UsagePackChangeCharges({
+  preview,
+}: {
+  readonly preview: UsagePackPaymentPreview;
+}) {
+  const grant =
+    preview.immediateCreditGrant &&
+    preview.immediateCreditGrant.totalCredits > 0
+      ? preview.immediateCreditGrant
+      : null;
+  const hasImmediateAmount = preview.immediateAmountCents > 0;
+  if (!hasImmediateAmount && !grant) {
+    return null;
+  }
+  return (
+    <div>
+      <ReviewSectionLabel
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.management.today;
+        })}
+      />
+      {hasImmediateAmount && (
+        <ReviewRow
+          strong
+          rule="strong"
+          label={i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.immediateAmount;
+          })}
+          meta={i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.immediateAmountNote;
+          })}
+          amount={formatUsd(preview.immediateAmountCents / 100)}
+        />
+      )}
+      {grant && (
+        <ReviewRow
+          rule={hasImmediateAmount ? "hairline" : "strong"}
+          label={i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.immediateCredits;
+          })}
+          {...(grant.expiresAt === undefined
+            ? {}
+            : {
+                meta: i18n.t(
+                  ($) => {
+                    return $.billing.usage.expires;
+                  },
+                  { date: formatBillingDate(grant.expiresAt) },
+                ),
+              })}
+          amount={`+${formatLocalizedNumber(grant.totalCredits)}`}
+        />
+      )}
+    </div>
+  );
+}
+
 function UsagePackSubscriptionChangeDialog({
   confirming,
   error,
@@ -1641,8 +1787,8 @@ function UsagePackSubscriptionChangeDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        {preview && <UsagePackPaymentSummary preview={preview} />}
-        <SubscriptionOrderSummary plan={plan} totals={totals} />
+        {preview && <UsagePackChangeCharges preview={preview} />}
+        <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
         {error && <p className="text-xs text-destructive">{error}</p>}
         <DialogFooter>
           <Button
@@ -1667,31 +1813,6 @@ function UsagePackSubscriptionChangeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function SubscriptionOrderSummary({
-  monthlyTotalCents,
-  plan,
-  totals,
-}: {
-  readonly monthlyTotalCents?: number;
-  readonly plan: UsagePackPlan;
-  readonly totals: MemberUsageTotals;
-}) {
-  return (
-    <div className="pt-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.orderSummary;
-        })}
-      </p>
-      <ManagedSubscriptionSummaryDetails
-        monthlyTotalCents={monthlyTotalCents}
-        plan={plan}
-        totals={totals}
-      />
-    </div>
   );
 }
 
@@ -2462,7 +2583,7 @@ function MigrationPreviewDetails({
   };
   return (
     <>
-      <SubscriptionOrderSummary
+      <ManagedSubscriptionSummaryDetails
         monthlyTotalCents={preview.nextRecurringAmountCents}
         plan={usagePackPlan(preview.targetTier)}
         totals={previewTotals}

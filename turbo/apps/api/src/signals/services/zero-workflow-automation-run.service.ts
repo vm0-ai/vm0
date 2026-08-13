@@ -1,4 +1,6 @@
 import { command } from "ccstate";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { writeDb$ } from "../external/db";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
@@ -10,8 +12,10 @@ import {
 } from "./api-dispatch-timing.service";
 import {
   persistedWorkflowAutomationEventPayload,
+  workflowAutomationDisplayMessage,
   workflowAutomationPrompt,
 } from "./workflow-automation-context.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
@@ -44,15 +48,30 @@ export const runWorkflowAutomationNow$ = command(
       "api_dispatch_pre_create_zero_workflow_automation_queue_admission",
       "nested",
       async () => {
+        const featureSwitchContext = await loadUserFeatureSwitchContext(
+          db,
+          automation.orgId,
+          automation.ownerUserId,
+        );
+        signal.throwIfAborted();
+        const useUserFriendlyMessage = isFeatureEnabled(
+          FeatureSwitchKey.UserFriendlyAutomationMessage,
+          featureSwitchContext,
+        );
         return await admitWorkflowAutomationEvent(db, {
           automation,
           workflowName: args.automationContext.workflowName,
-          displayPrompt: workflowAutomationPrompt(args.automationContext),
+          displayPrompt: useUserFriendlyMessage
+            ? workflowAutomationDisplayMessage(args.automationContext)
+            : workflowAutomationPrompt(args.automationContext),
           agentRunSource: args.agentRunSource,
           workflowAutomationEventType: args.automationContext.eventType,
           workflowAutomationEventPayload:
             persistedWorkflowAutomationEventPayload(
               args.automationContext.event,
+              {
+                userFriendlyAutomationMessage: useUserFriendlyMessage,
+              },
             ),
           chatThreadId,
           triggerSource: args.triggerSource ?? "automation-schedule",

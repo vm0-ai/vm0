@@ -1042,16 +1042,16 @@ export {
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,
-  zeroCodexDeviceAuthContract,
+  codexDeviceAuthContract,
   type CodexDeviceAuthScope,
-  type ZeroCodexDeviceAuthContract,
-} from "./zero-codex-device-auth";
+  type CodexDeviceAuthContract,
+} from "./codex-device-auth";
 export {
   claudeCodeDeviceAuthScopeSchema,
-  zeroClaudeCodeDeviceAuthContract,
+  claudeCodeDeviceAuthContract,
   type ClaudeCodeDeviceAuthScope,
-  type ZeroClaudeCodeDeviceAuthContract,
-} from "./zero-claude-code-device-auth";
+  type ClaudeCodeDeviceAuthContract,
+} from "./claude-code-device-auth";
 export {
   zeroOrgContract,
   zeroOrgLeaveContract,
@@ -1061,11 +1061,11 @@ export {
   type ZeroOrgDeleteContract,
 } from "./zero-org";
 export {
-  zeroOrgLogoContract,
-  zeroOrgLogoResponseSchema,
-  type ZeroOrgLogoContract,
-  type ZeroOrgLogoResponse,
-} from "./zero-org-logo";
+  orgLogoContract,
+  orgLogoResponseSchema,
+  type OrgLogoContract,
+  type OrgLogoResponse,
+} from "./org-logo";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
@@ -1295,29 +1295,29 @@ export {
   type ZeroScrapeResponse,
 } from "./zero-scrape";
 export {
-  ZERO_FINANCE_DEFAULT_INTERVAL,
-  ZERO_FINANCE_DEFAULT_RANGE,
-  ZERO_FINANCE_MAX_QUERY_CHARS,
-  ZERO_FINANCE_MAX_SYMBOL_CHARS,
-  zeroFinanceChartRequestSchema,
-  zeroFinanceContract,
-  zeroFinanceIntervalSchema,
-  zeroFinanceOperationSchema,
-  zeroFinanceProfileRequestSchema,
-  zeroFinanceQuoteRequestSchema,
-  zeroFinanceRangeSchema,
-  zeroFinanceResponseSchema,
-  zeroFinanceSearchRequestSchema,
-  type ZeroFinanceChartRequest,
-  type ZeroFinanceContract,
-  type ZeroFinanceInterval,
-  type ZeroFinanceOperation,
-  type ZeroFinanceProfileRequest,
-  type ZeroFinanceQuoteRequest,
-  type ZeroFinanceRange,
-  type ZeroFinanceResponse,
-  type ZeroFinanceSearchRequest,
-} from "./zero-finance";
+  FINANCE_DEFAULT_INTERVAL,
+  FINANCE_DEFAULT_RANGE,
+  FINANCE_MAX_QUERY_CHARS,
+  FINANCE_MAX_SYMBOL_CHARS,
+  financeChartRequestSchema,
+  financeContract,
+  financeIntervalSchema,
+  financeOperationSchema,
+  financeProfileRequestSchema,
+  financeQuoteRequestSchema,
+  financeRangeSchema,
+  financeResponseSchema,
+  financeSearchRequestSchema,
+  type FinanceChartRequest,
+  type FinanceContract,
+  type FinanceInterval,
+  type FinanceOperation,
+  type FinanceProfileRequest,
+  type FinanceQuoteRequest,
+  type FinanceRange,
+  type FinanceResponse,
+  type FinanceSearchRequest,
+} from "./finance";
 export {
   ZERO_SEO_DEFAULT_ANALYSIS_LIMIT,
   ZERO_SEO_DEFAULT_LANGUAGE_CODE,
@@ -1350,28 +1350,28 @@ export {
   type ZeroSeoSerpRequest,
 } from "./zero-seo";
 export {
-  ZERO_PEOPLE_SEARCH_DEFAULT_LIMIT,
-  ZERO_PEOPLE_SEARCH_MAX_COMPANY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_LIMIT,
-  ZERO_PEOPLE_SEARCH_MAX_LOCATION_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_QUERY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCES,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS,
-  zeroPeopleSearchContract,
-  zeroPeopleSearchProfileSchema,
-  zeroPeopleSearchRequestSchema,
-  zeroPeopleSearchResponseSchema,
-  zeroPeopleSearchSourceSchema,
-  type ZeroPeopleSearchContract,
-  type ZeroPeopleSearchProfile,
-  type ZeroPeopleSearchRequest,
-  type ZeroPeopleSearchResponse,
-  type ZeroPeopleSearchSource,
-} from "./zero-people-search";
+  PEOPLE_SEARCH_DEFAULT_LIMIT,
+  PEOPLE_SEARCH_MAX_COMPANY_CHARS,
+  PEOPLE_SEARCH_MAX_LIMIT,
+  PEOPLE_SEARCH_MAX_LOCATION_CHARS,
+  PEOPLE_SEARCH_MAX_NAME_CHARS,
+  PEOPLE_SEARCH_MAX_QUERY_CHARS,
+  PEOPLE_SEARCH_MAX_SOURCES,
+  PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
+  PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS,
+  PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
+  PEOPLE_SEARCH_MAX_TITLE_CHARS,
+  peopleSearchContract,
+  peopleSearchProfileSchema,
+  peopleSearchRequestSchema,
+  peopleSearchResponseSchema,
+  peopleSearchSourceSchema,
+  type PeopleSearchContract,
+  type PeopleSearchProfile,
+  type PeopleSearchRequest,
+  type PeopleSearchResponse,
+  type PeopleSearchSource,
+} from "./people-search";
 export {
   ZERO_WEB_SEARCH_DEFAULT_LIMIT,
   ZERO_WEB_SEARCH_MAX_DATE_CHARS,
@@ -1599,13 +1599,13 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
-  zeroImageShareXContract,
-  zeroImageShareXRequestSchema,
-  zeroImageShareXResponseSchema,
-  type ZeroImageShareXContract,
-  type ZeroImageShareXRequest,
-  type ZeroImageShareXResponse,
-} from "./zero-image-share-x";
+  imageShareXContract,
+  imageShareXRequestSchema,
+  imageShareXResponseSchema,
+  type ImageShareXContract,
+  type ImageShareXRequest,
+  type ImageShareXResponse,
+} from "./image-share-x";
 export {
   zeroMailContract,
   zeroMailDraftSchema,
