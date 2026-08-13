@@ -15,6 +15,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use guest_contracts::diagnostics::WorkloadResourceLimitDiagnostic;
 use guest_contracts::process_containment::{
     CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX,
     MATERIAL_CPU_THROTTLED_USEC, WORKLOAD_CGROUP_NAME, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
@@ -37,8 +38,8 @@ pub struct WorkloadContainment {
 /// Resource enforcement observed for a completed workload.
 #[derive(Debug, Eq, PartialEq)]
 pub struct WorkloadResourceDiagnostics {
-    /// Hard memory or PID limit summary suitable for a failure message.
-    pub hard_limit: Option<String>,
+    /// Hard memory or PID limit counters suitable for structured attribution.
+    pub hard_limit: Option<WorkloadResourceLimitDiagnostic>,
     /// CPU throttling or memory-high summary suitable for an informational log.
     pub pressure: Option<String>,
 }
@@ -121,16 +122,14 @@ impl WorkloadContainment {
         let cpu_throttled_usec = value_or_zero(&cpu, "throttled_usec");
         let memory_high = value_or_zero(&memory, "high");
 
-        let hard_limit = (memory_max > 0
-            || memory_oom > 0
-            || memory_oom_kill > 0
-            || memory_oom_group_kill > 0
-            || pids_max > 0)
-            .then(|| {
-                format!(
-                    "workload resource limit reached (memory_max={memory_max}, memory_oom={memory_oom}, memory_oom_kill={memory_oom_kill}, memory_oom_group_kill={memory_oom_group_kill}, pids_max={pids_max})"
-                )
-            });
+        let hard_limit = WorkloadResourceLimitDiagnostic {
+            memory_max_events: memory_max,
+            memory_oom_events: memory_oom,
+            memory_oom_kill_events: memory_oom_kill,
+            memory_oom_group_kill_events: memory_oom_group_kill,
+            pids_max_events: pids_max,
+        };
+        let hard_limit = hard_limit.has_events().then_some(hard_limit);
         let pressure =
             (cpu_throttled_usec >= MATERIAL_CPU_THROTTLED_USEC || memory_high > 0).then(|| {
             format!(
@@ -184,7 +183,7 @@ fn test_allows_unmanaged_process_control() -> bool {
 fn deny_peer_process_inspection() -> io::Result<()> {
     // SAFETY: PR_SET_DUMPABLE changes only the current single-threaded Guest
     // Agent bootstrap process. Reapplying it here is required because the
-    // preceding `su` and exec transitions may reset the value set by
+    // preceding credential and exec transitions may reset the value set by
     // `vsock-guest` before exec.
     if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) } != 0 {
         return Err(io::Error::last_os_error());
@@ -395,10 +394,14 @@ mod tests {
         let diagnostics = containment.resource_diagnostics().unwrap();
 
         assert_eq!(
-            diagnostics.hard_limit.as_deref(),
-            Some(
-                "workload resource limit reached (memory_max=5, memory_oom=1, memory_oom_kill=1, memory_oom_group_kill=1, pids_max=6)"
-            )
+            diagnostics.hard_limit,
+            Some(WorkloadResourceLimitDiagnostic {
+                memory_max_events: 5,
+                memory_oom_events: 1,
+                memory_oom_kill_events: 1,
+                memory_oom_group_kill_events: 1,
+                pids_max_events: 6,
+            })
         );
         assert_eq!(
             diagnostics.pressure.as_deref(),

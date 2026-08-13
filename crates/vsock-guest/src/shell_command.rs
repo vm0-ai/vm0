@@ -68,7 +68,7 @@ const ENV_SCRIPT_SUFFIX: &str = ".sh";
 const ENV_SCRIPT_STALE_AFTER: Duration = Duration::from_secs(60 * 60);
 const CHOWN_UNCHANGED_UID: libc::uid_t = !0;
 
-fn shell_command_user() -> io::Result<Option<(&'static str, PathBuf)>> {
+fn shell_command_user_home() -> io::Result<Option<PathBuf>> {
     #[cfg(any(debug_assertions, feature = "test-support"))]
     {
         Ok(None)
@@ -77,10 +77,7 @@ fn shell_command_user() -> io::Result<Option<(&'static str, PathBuf)>> {
     #[cfg(not(any(debug_assertions, feature = "test-support")))]
     {
         // Default user for command execution (UID 1000)
-        Ok(Some((
-            crate::user::sandbox_user_name(),
-            crate::user::sandbox_user_home()?,
-        )))
+        crate::user::sandbox_user_home().map(Some)
     }
 }
 
@@ -91,8 +88,7 @@ fn shell_escape_value(val: &str) -> String {
 
 /// Build a Command to execute a shell command as the appropriate user.
 ///
-/// When `sudo` is true the command runs as root, bypassing `su` and the PAM
-/// overhead that comes with it.
+/// When `sudo` is true the command runs as root.
 ///
 /// In production-style builds, non-sudo commands run through a non-login
 /// `/bin/sh` selected explicitly rather than the sandbox user's login shell.
@@ -101,19 +97,18 @@ fn shell_escape_value(val: &str) -> String {
 /// persisted sandbox-owned profile files before the trusted command bootstrap.
 /// In debug/test-support builds, local tests run as the current user unless
 /// `sudo` explicitly requests elevation through `sudo sh -c`.
-pub(crate) fn build_shell_command(command: &str, sudo: bool) -> io::Result<Command> {
-    let user = shell_command_user()?;
+fn build_shell_command_program(command: &str, sudo: bool) -> io::Result<Command> {
+    let user_home = shell_command_user_home()?;
     Ok(build_shell_command_for_user(
         command,
         sudo,
-        user.as_ref()
-            .map(|(username, home)| (*username, home.as_path())),
+        user_home.as_deref(),
     ))
 }
 
-fn build_shell_command_for_user(command: &str, sudo: bool, user: Option<(&str, &Path)>) -> Command {
-    match user {
-        Some((user, home)) => {
+fn build_shell_command_for_user(command: &str, sudo: bool, user_home: Option<&Path>) -> Command {
+    match user_home {
+        Some(home) => {
             if sudo {
                 // Release: already root — run directly
                 let mut c = Command::new("sh");
@@ -121,12 +116,8 @@ fn build_shell_command_for_user(command: &str, sudo: bool, user: Option<(&str, &
                 c
             } else {
                 let command = format!(". /etc/profile\n{command}");
-                let mut c = Command::new("su");
-                c.arg("--shell")
-                    .arg("/bin/sh")
-                    .arg("--command")
-                    .arg(command)
-                    .arg(user);
+                let mut c = Command::new("/bin/sh");
+                c.arg("-c").arg(command);
                 c.current_dir(home);
                 c
             }
@@ -497,7 +488,7 @@ fn create_env_script_in_dir(
 
         let result = (|| -> io::Result<()> {
             file.write_all(script.as_bytes())?;
-            if effective_uid() == 0 && !sudo && shell_command_user()?.is_some() {
+            if effective_uid() == 0 && !sudo && shell_command_user_home()?.is_some() {
                 // Keep the per-run directory and script root-owned. The
                 // sandbox user only gets group read/traverse access; if it
                 // owned either path, an existing same-UID process could
@@ -541,7 +532,7 @@ fn script_invocation(path: &Path) -> io::Result<String> {
             "env script path must be valid UTF-8",
         )
     })?;
-    Ok(format!("/bin/bash {}", shell_escape_value(path)))
+    Ok(format!("exec /bin/bash {}", shell_escape_value(path)))
 }
 
 pub(crate) fn build_shell_command_with_env(
@@ -551,7 +542,7 @@ pub(crate) fn build_shell_command_with_env(
 ) -> io::Result<PreparedShellCommand> {
     if env.is_empty() {
         return Ok(PreparedShellCommand {
-            command: build_shell_command(command, sudo)?,
+            command: build_shell_command_program(command, sudo)?,
             env_script: None,
         });
     }
@@ -562,7 +553,7 @@ pub(crate) fn build_shell_command_with_env(
         .ok_or_else(|| io::Error::other("env script path missing"))?;
     let invocation = script_invocation(script_path)?;
     Ok(PreparedShellCommand {
-        command: build_shell_command(&invocation, sudo)?,
+        command: build_shell_command_program(&invocation, sudo)?,
         env_script: Some(env_script),
     })
 }
@@ -590,7 +581,7 @@ pub(crate) fn spawn_shell_command_with_pipes(
     process_containment: ExecProcessContainment,
 ) -> io::Result<SpawnedShellCommand> {
     let spawn_result = (|| -> io::Result<(Child, Option<EnvScriptGuard>)> {
-        let prepared_containment = process_containment.prepare_command().map_err(|error| {
+        let mut prepared_containment = process_containment.prepare_command().map_err(|error| {
             io::Error::other(format!("process containment setup failed: {error}"))
         })?;
         let PreparedShellCommand {
@@ -601,7 +592,12 @@ pub(crate) fn spawn_shell_command_with_pipes(
         if pipe_stdin {
             command.stdin(Stdio::piped());
         }
-        prepared_containment.configure_command(&mut command);
+        // Placement requires the root-opened cgroup descriptor. Drop to the
+        // sandbox identity only after placement, then restore non-dumpable
+        // state because setuid may reset it.
+        prepared_containment.configure_placement(&mut command);
+        crate::user::apply_command_identity(&mut command, sudo)?;
+        prepared_containment.configure_process_inspection(&mut command);
         let child = crate::process::spawn_in_own_process_group(&mut command)?;
         Ok((child, env_script))
     })();
@@ -765,7 +761,7 @@ mod tests {
         let script =
             create_env_script_in_dir(&dir, "echo \"$FOO\"", &[("FOO", secret)], true).unwrap();
         let invocation = script_invocation(script.path().unwrap()).unwrap();
-        let command = build_shell_command(&invocation, true).unwrap();
+        let command = build_shell_command_program(&invocation, true).unwrap();
         let argv = std::iter::once(command.get_program().to_string_lossy().to_string())
             .chain(
                 command
@@ -776,7 +772,7 @@ mod tests {
             .join("\0");
 
         assert!(!argv.contains(secret));
-        assert!(argv.contains("/bin/bash"));
+        assert!(argv.contains("exec /bin/bash"));
         assert!(argv.contains(script.path().unwrap().to_str().unwrap()));
     }
 
@@ -1085,33 +1081,16 @@ mod tests {
 
     #[test]
     fn build_shell_command_for_sandbox_user() {
-        let command = build_shell_command_for_user(
-            "echo hello",
-            false,
-            Some(("sandbox", Path::new("/home/sandbox"))),
-        );
+        let command =
+            build_shell_command_for_user("echo hello", false, Some(Path::new("/home/sandbox")));
         assert_eq!(command.get_current_dir(), Some(Path::new("/home/sandbox")));
-        assert_command(
-            command,
-            "su",
-            &[
-                "--shell",
-                "/bin/sh",
-                "--command",
-                ". /etc/profile\necho hello",
-                "sandbox",
-            ],
-        );
+        assert_command(command, "/bin/sh", &["-c", ". /etc/profile\necho hello"]);
     }
 
     #[test]
     fn build_privileged_shell_command_for_sandbox_user() {
         assert_command(
-            build_shell_command_for_user(
-                "reboot",
-                true,
-                Some(("sandbox", Path::new("/home/sandbox"))),
-            ),
+            build_shell_command_for_user("reboot", true, Some(Path::new("/home/sandbox"))),
             "sh",
             &["-c", "reboot"],
         );

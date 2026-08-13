@@ -121,8 +121,16 @@ grep -Eq '^[0-9]+$' "$parent/workload/memory.high"
 grep -Eq '^[0-9]+$' "$parent/workload/memory.max"
 grep -Eq '^[0-9]+$' "$parent/workload/pids.max"
 test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT:-}"
-control_pid=$(head -n 1 "$parent/control/cgroup.procs")
-test -n "$control_pid"
+control_member_count=$(wc -l < "$parent/control/cgroup.procs")
+if [ "$control_member_count" -ne 1 ]; then
+  echo "control cgroup must contain only Guest Agent; members=$(tr '\n' ' ' < "$parent/control/cgroup.procs")" >&2
+  exit 1
+fi
+control_pid=$(cat "$parent/control/cgroup.procs")
+if [ "$(cat "/proc/$control_pid/comm")" != "guest-agent" ]; then
+  echo "control cgroup member is not Guest Agent: pid=$control_pid comm=$(cat "/proc/$control_pid/comm")" >&2
+  exit 1
+fi
 if ls "/proc/$control_pid/fd" >/dev/null 2>&1; then
   echo "workload can inspect Guest Agent descriptors" >&2
   exit 1
@@ -623,6 +631,14 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 
 LOGS=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
   || fail "failed to read runner logs"
+MEMORY_FAILURE_LOG=$(printf '%s\n' "$LOGS" \
+  | grep -F "run_id=$MEMORY_RUN_ID" \
+  | grep -F 'job execution failed' \
+  | tail -1) \
+  || fail "missing memory-pressure terminal failure log"
+if ! grep -E 'workload_memory_oom(_kill)?_events=[1-9][0-9]*' <<<"$MEMORY_FAILURE_LOG" >/dev/null; then
+  fail "memory-pressure terminal log omitted structured workload OOM counters"
+fi
 LEAK_LINE=$(printf '%s\n' "$LOGS" \
   | grep -F 'exec process containment cleaned' \
   | grep -F 'descendants_observed=true' \

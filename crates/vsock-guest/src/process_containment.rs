@@ -81,9 +81,15 @@ pub(crate) struct PreparedProcessContainmentCommand {
 }
 
 impl PreparedProcessContainmentCommand {
-    pub(crate) fn configure_command(self, command: &mut Command) {
-        if let Some(outer_placement) = self.outer_placement {
-            install_child_placement(command, outer_placement, self.deny_process_inspection);
+    pub(crate) fn configure_placement(&mut self, command: &mut Command) {
+        if let Some(outer_placement) = self.outer_placement.take() {
+            install_child_placement(command, outer_placement);
+        }
+    }
+
+    pub(crate) fn configure_process_inspection(self, command: &mut Command) {
+        if self.deny_process_inspection {
+            install_process_inspection_denial(command);
         }
     }
 }
@@ -749,22 +755,23 @@ fn cleanup_cgroup(
     })
 }
 
-fn install_child_placement(
-    command: &mut Command,
-    placement: OwnedFd,
-    deny_process_inspection: bool,
-) {
+fn install_child_placement(command: &mut Command, placement: OwnedFd) {
     // SAFETY: the closure performs only raw writes and fcntl calls on already
     // open descriptors. These operations are async-signal-safe between fork
     // and exec.
     unsafe {
         command.pre_exec(move || {
             write_self_to_cgroup(placement.as_raw_fd())?;
-            if deny_process_inspection {
-                deny_unprivileged_process_inspection()?;
-            }
             Ok(())
         });
+    }
+}
+
+fn install_process_inspection_denial(command: &mut Command) {
+    // SAFETY: the closure performs one async-signal-safe prctl call in the
+    // child after its credential transition and before exec.
+    unsafe {
+        command.pre_exec(deny_unprivileged_process_inspection);
     }
 }
 
@@ -1024,10 +1031,12 @@ fn wait_until_empty(group_path: &Path, timeout: Duration) -> Result<bool, Proces
     }
 }
 
-fn remove_empty_cgroup(group_path: &Path) -> Result<(), ProcessContainmentError> {
+fn remove_empty_cgroup_until(
+    group_path: &Path,
+    deadline: Instant,
+) -> Result<(), ProcessContainmentError> {
     #[cfg(test)]
     remove_test_cgroup_interface_files(group_path);
-    let deadline = Instant::now() + EXEC_PROCESS_CONTAINMENT_REMOVE_TIMEOUT;
     loop {
         match fs::remove_dir(group_path) {
             Ok(()) => return Ok(()),
@@ -1037,7 +1046,8 @@ fn remove_empty_cgroup(group_path: &Path) -> Result<(), ProcessContainmentError>
                     Some(libc::EBUSY) | Some(libc::ENOTEMPTY)
                 ) && Instant::now() < deadline =>
             {
-                thread::sleep(POLL_INTERVAL);
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                thread::sleep(remaining.min(POLL_INTERVAL));
             }
             Err(error) => {
                 return Err(ProcessContainmentError::new("remove cgroup", error));
@@ -1070,14 +1080,15 @@ fn cgroup_leaf_paths(group_path: &Path) -> [PathBuf; 2] {
 }
 
 fn remove_cgroup_hierarchy(group_path: &Path) -> Result<(), ProcessContainmentError> {
+    let deadline = Instant::now() + EXEC_PROCESS_CONTAINMENT_REMOVE_TIMEOUT;
     for leaf_path in cgroup_leaf_paths(group_path) {
-        match remove_empty_cgroup(&leaf_path) {
+        match remove_empty_cgroup_until(&leaf_path, deadline) {
             Ok(()) => {}
             Err(error) if error.source.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
     }
-    remove_empty_cgroup(group_path)
+    remove_empty_cgroup_until(group_path, deadline)
 }
 
 #[cfg(test)]
@@ -1166,7 +1177,7 @@ mod tests {
         let child_fd: OwnedFd = placement.try_clone().unwrap().into();
         let mut command = Command::new("/bin/true");
         command.stdout(Stdio::null()).stderr(Stdio::null());
-        install_child_placement(&mut command, child_fd, false);
+        install_child_placement(&mut command, child_fd);
 
         let status = command.status().unwrap();
 
