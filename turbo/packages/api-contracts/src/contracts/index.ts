@@ -128,18 +128,18 @@ export {
   type QueueResponse,
 } from "./runs";
 export {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  ZERO_RECOGNITION_MAX_PROMPT_CHARS,
-  ZERO_RECOGNITION_MAX_TEXT_CHARS,
-  zeroRecognitionContract,
-  zeroRecognitionImageMimeTypeSchema,
-  zeroRecognitionRequestSchema,
-  zeroRecognitionResponseSchema,
-  type ZeroRecognitionContract,
-  type ZeroRecognitionImageMimeType,
-  type ZeroRecognitionRequest,
-  type ZeroRecognitionResponse,
-} from "./zero-recognition";
+  IMAGE_RECOGNITION_MAX_FILE_BYTES,
+  IMAGE_RECOGNITION_MAX_PROMPT_CHARS,
+  IMAGE_RECOGNITION_MAX_TEXT_CHARS,
+  imageRecognitionContract,
+  imageRecognitionMimeTypeSchema,
+  imageRecognitionRequestSchema,
+  imageRecognitionResponseSchema,
+  type ImageRecognitionContract,
+  type ImageRecognitionMimeType,
+  type ImageRecognitionRequest,
+  type ImageRecognitionResponse,
+} from "./image-recognition";
 export {
   TRANSLATION_MAX_LANGUAGE_CHARS,
   TRANSLATION_MAX_RESULT_TEXT_CHARS,
@@ -1042,16 +1042,16 @@ export {
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,
-  zeroCodexDeviceAuthContract,
+  codexDeviceAuthContract,
   type CodexDeviceAuthScope,
-  type ZeroCodexDeviceAuthContract,
-} from "./zero-codex-device-auth";
+  type CodexDeviceAuthContract,
+} from "./codex-device-auth";
 export {
   claudeCodeDeviceAuthScopeSchema,
-  zeroClaudeCodeDeviceAuthContract,
+  claudeCodeDeviceAuthContract,
   type ClaudeCodeDeviceAuthScope,
-  type ZeroClaudeCodeDeviceAuthContract,
-} from "./zero-claude-code-device-auth";
+  type ClaudeCodeDeviceAuthContract,
+} from "./claude-code-device-auth";
 export {
   zeroOrgContract,
   zeroOrgLeaveContract,
@@ -1061,11 +1061,11 @@ export {
   type ZeroOrgDeleteContract,
 } from "./zero-org";
 export {
-  zeroOrgLogoContract,
-  zeroOrgLogoResponseSchema,
-  type ZeroOrgLogoContract,
-  type ZeroOrgLogoResponse,
-} from "./zero-org-logo";
+  orgLogoContract,
+  orgLogoResponseSchema,
+  type OrgLogoContract,
+  type OrgLogoResponse,
+} from "./org-logo";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,

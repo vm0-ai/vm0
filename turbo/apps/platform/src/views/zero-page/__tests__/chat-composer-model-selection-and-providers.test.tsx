@@ -20,8 +20,8 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
-import { zeroClaudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
-import { zeroCodexDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-codex-device-auth";
+import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
+import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
@@ -30,7 +30,7 @@ import {
   type UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/zero-recognition";
+import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
@@ -2341,7 +2341,7 @@ describe("chat composer models", () => {
     ]);
     context.mocks.data.personalModelProviders([]);
     mockAgent();
-    context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-codex-device-session",
         type: "codex",
@@ -2353,18 +2353,15 @@ describe("chat composer models", () => {
         interval: 1,
       });
     });
-    context.mocks.api(
-      zeroCodexDeviceAuthContract.complete,
-      async ({ respond }) => {
-        await codexApproval.promise;
-        context.mocks.data.personalModelProviders([codexProvider]);
-        return respond(200, {
-          status: "complete",
-          provider: codexProvider,
-          created: true,
-        });
-      },
-    );
+    context.mocks.api(codexDeviceAuthContract.complete, async ({ respond }) => {
+      await codexApproval.promise;
+      context.mocks.data.personalModelProviders([codexProvider]);
+      return respond(200, {
+        status: "complete",
+        provider: codexProvider,
+        created: true,
+      });
+    });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
     await expectComposerModel("GPT 5.5");
@@ -2431,7 +2428,7 @@ describe("chat composer models", () => {
       }),
     ]);
     mockAgent();
-    context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-stale-codex-device-session",
         type: "codex",
@@ -2443,7 +2440,7 @@ describe("chat composer models", () => {
         interval: 1,
       });
     });
-    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
       return respond(200, { status: "pending", errorMessage: null });
     });
 
@@ -2483,7 +2480,7 @@ describe("chat composer models", () => {
     ]);
     context.mocks.data.personalModelProviders([]);
     mockAgent();
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-claude-code-device-session",
         type: "claude-code",
@@ -2493,20 +2490,17 @@ describe("chat composer models", () => {
         expiresIn: 30,
       });
     });
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        return respond(200, {
-          status: "complete",
-          provider: buildProvider({
-            id: "00000000-0000-4000-a000-000000000401",
-            type: "claude-code-oauth-token",
-            secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-          }),
-          created: true,
-        });
-      },
-    );
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      return respond(200, {
+        status: "complete",
+        provider: buildProvider({
+          id: "00000000-0000-4000-a000-000000000401",
+          type: "claude-code-oauth-token",
+          secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+        }),
+        created: true,
+      });
+    });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
     await expectComposerModel("Claude Opus 4.8");
@@ -2672,7 +2666,7 @@ describe("chat composer models", () => {
     });
     Object.defineProperty(oversizedImage, "size", {
       configurable: true,
-      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      value: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
     });
 
     await user.upload(fileInput, [

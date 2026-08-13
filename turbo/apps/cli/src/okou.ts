@@ -327,7 +327,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "recognize",
     description: "Recognize one image through a managed multimodal model",
     load: async () => {
-      return (await import("./commands/zero/recognize")).zeroRecognizeCommand;
+      return (await import("./commands/recognize")).recognizeCommand;
     },
   },
   {

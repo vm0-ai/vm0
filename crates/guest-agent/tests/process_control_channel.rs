@@ -187,10 +187,14 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         .take_stream_receiver()
         .ok_or("supervised exec should expose stdout stream")?;
 
+    let pre_ready_payload = guest_contracts::active_input::encode_active_input(
+        "1e208848-53bc-440a-85d8-adcd048e167c",
+        "before-ready",
+    )?;
     let pre_ready_ack = handle
         .control(
             PRE_READY_CONTROL_MESSAGE_ID,
-            br#"{"type":"active-input","deliveryId":"1e208848-53bc-440a-85d8-adcd048e167c","text":"before-ready"}"#,
+            &pre_ready_payload,
             Duration::from_secs(10),
         )
         .await?;
@@ -203,10 +207,14 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     )
     .await?;
 
+    let ready_payload = guest_contracts::active_input::encode_active_input(
+        "e6c121e3-9a6f-4835-87c0-a31b042f3008",
+        "after-ready",
+    )?;
     let ack = handle
         .control(
             READY_CONTROL_MESSAGE_ID,
-            br#"{"type":"active-input","deliveryId":"e6c121e3-9a6f-4835-87c0-a31b042f3008","text":"after-ready"}"#,
+            &ready_payload,
             Duration::from_secs(10),
         )
         .await?;

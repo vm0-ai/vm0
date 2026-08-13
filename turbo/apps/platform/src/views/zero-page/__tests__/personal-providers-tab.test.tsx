@@ -1,5 +1,5 @@
-import { zeroClaudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
-import { zeroCodexDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-codex-device-auth";
+import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
+import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
@@ -126,7 +126,7 @@ function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
     role,
   });
   context.mocks.data.personalModelProviders([stalePersonalCodexProvider()]);
-  context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
     return respond(200, {
       sessionToken: "mock-personal-codex-device-session",
       type: "codex",
@@ -138,7 +138,7 @@ function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
       interval: 1,
     });
   });
-  context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
     return respond(200, { status: "pending", errorMessage: null });
   });
 }
@@ -410,7 +410,7 @@ describe("personal model providers settings", () => {
       role: "member",
     });
     context.mocks.data.personalModelProviders([]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-personal-claude-code-session",
         type: "claude-code",
@@ -455,7 +455,7 @@ describe("personal model providers settings", () => {
       role: "member",
     });
     context.mocks.data.personalModelProviders([]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-personal-claude-code-session",
         type: "claude-code",
@@ -465,18 +465,15 @@ describe("personal model providers settings", () => {
         expiresIn: 30,
       });
     });
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        const provider = connectedPersonalClaudeCodeProvider();
-        context.mocks.data.personalModelProviders([provider]);
-        return respond(200, {
-          status: "complete",
-          provider,
-          created: true,
-        });
-      },
-    );
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      const provider = connectedPersonalClaudeCodeProvider();
+      context.mocks.data.personalModelProviders([provider]);
+      return respond(200, {
+        status: "complete",
+        provider,
+        created: true,
+      });
+    });
 
     await openModelSettings();
 
@@ -519,7 +516,7 @@ describe("personal model providers settings", () => {
       role: "member",
     });
     context.mocks.data.personalModelProviders([]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-personal-claude-code-session",
         type: "claude-code",
@@ -530,26 +527,23 @@ describe("personal model providers settings", () => {
       });
     });
     let completeCount = 0;
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        completeCount += 1;
-        if (completeCount === 1) {
-          return respond(400, {
-            error: {
-              message: "Invalid Claude authorization code",
-              code: "BAD_REQUEST",
-            },
-          });
-        }
-        return respond(503, {
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      completeCount += 1;
+      if (completeCount === 1) {
+        return respond(400, {
           error: {
-            message: "Claude authorization is unavailable",
-            code: "UNAVAILABLE",
+            message: "Invalid Claude authorization code",
+            code: "BAD_REQUEST",
           },
         });
-      },
-    );
+      }
+      return respond(503, {
+        error: {
+          message: "Claude authorization is unavailable",
+          code: "UNAVAILABLE",
+        },
+      });
+    });
 
     await openModelSettings();
 

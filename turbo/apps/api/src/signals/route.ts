@@ -78,11 +78,11 @@ import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
 import { zeroSharedThreadRoutes } from "./routes/zero-shared-threads";
-import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device-auth";
+import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
-import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
+import { codexDeviceAuthRoutes } from "./routes/codex-device-auth";
 import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
 import { zeroConnectorCheckRoutes } from "./routes/zero-connector-check";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
@@ -110,14 +110,14 @@ import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete"
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
 import { zeroOrgDeleteRoutes } from "./routes/zero-org-delete";
-import { zeroOrgLogoRoutes } from "./routes/zero-org-logo";
+import { orgLogoRoutes } from "./routes/org-logo";
 import { zeroOrgMembersRoutes } from "./routes/zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "./routes/zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
-import { zeroRecognitionRoutes } from "./routes/zero-recognition";
+import { imageRecognitionRoutes } from "./routes/image-recognition";
 import { translationRoutes } from "./routes/translation";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
@@ -269,11 +269,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroChatThreadRoutes,
   ...zeroChatEventsRoutes,
   ...zeroSharedThreadRoutes,
-  ...zeroClaudeCodeDeviceAuthRoutes,
+  ...claudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
-  ...zeroCodexDeviceAuthRoutes,
+  ...codexDeviceAuthRoutes,
   ...zeroConnectorCatalogRoutes,
   ...zeroConnectorCheckRoutes,
   ...zeroConnectorsExternalCodeRoutes,
@@ -316,7 +316,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroWebFileUrlRoutes,
   ...zeroQueuePositionRoutes,
   ...zeroRealtimeTokenRoutes,
-  ...zeroRecognitionRoutes,
+  ...imageRecognitionRoutes,
   ...translationRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
@@ -325,7 +325,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgDeleteRoutes,
-  ...zeroOrgLogoRoutes,
+  ...orgLogoRoutes,
   ...zeroOrgMembersRoutes,
   ...zeroOrgMembershipRequestsRoutes,
   ...zeroOrgReadRoutes,

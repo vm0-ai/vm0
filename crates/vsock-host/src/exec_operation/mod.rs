@@ -1,5 +1,5 @@
+use std::io;
 use std::time::Duration;
-use std::{fmt, io};
 
 mod diagnostics;
 mod dispatch;
@@ -20,7 +20,7 @@ pub use types::{
 
 pub(crate) use diagnostics::log_operations_closed;
 pub(crate) use dispatch::dispatch_incoming_frame;
-pub(crate) use handle::ExecOperationCancelOnDropGuard;
+pub(crate) use handle::{ExecOperationCancelOnDropGuard, ExecOperationWaitOutcome};
 pub(crate) use start::{
     append_diagnostic, exec_operation_capture_on_shared,
     exec_operation_capture_on_shared_with_write_admission,
@@ -50,25 +50,8 @@ const EXEC_OPERATION_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const EXEC_OPERATION_FRAME_WRITE_STARTED: u8 = 1;
 const EXEC_OPERATION_FRAME_WRITE_COMPLETED: u8 = 2;
 
-#[derive(Debug)]
-struct ExecOperationGuestError(String);
-
-impl fmt::Display for ExecOperationGuestError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for ExecOperationGuestError {}
-
 fn exec_operation_guest_error(message: String) -> io::Error {
-    io::Error::other(ExecOperationGuestError(message))
-}
-
-pub(crate) fn error_is_exec_operation_guest_error(error: &io::Error) -> bool {
-    error
-        .get_ref()
-        .is_some_and(|error| error.is::<ExecOperationGuestError>())
+    io::Error::other(message)
 }
 
 fn exec_operation_protocol_error(error: impl ToString) -> io::Error {

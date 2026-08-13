@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import type {
   ClaudeCodeDeviceAuthMode,
   ClaudeCodeDeviceAuthScope,
-} from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
+} from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";

@@ -53,7 +53,7 @@ import {
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
 } from "@okouai/api-contracts/contracts/zero-org";
-import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
@@ -96,7 +96,7 @@ import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
-import { zeroOrgLogoRoutes } from "../../zero-org-logo";
+import { orgLogoRoutes } from "../../org-logo";
 import { zeroOrgMembersRoutes } from "../../zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -216,7 +216,7 @@ const authOrgRoutes = [
   ...zeroOrgMembersRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgMembershipRequestsRoutes,
-  ...zeroOrgLogoRoutes,
+  ...orgLogoRoutes,
   ...zeroTeamRoutes,
   ...zeroAgentsRoutes,
   ...zeroComposesRoutes,
@@ -630,7 +630,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgLogoContract,
+        orgLogoContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor) }),

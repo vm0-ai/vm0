@@ -1,5 +1,5 @@
 {
-  "id": "19061669-6b2e-41d8-bb2c-6462ccd11374",
+  "id": "88e33a20-9f40-457f-bc07-ddf4f2ff177c",
   "prevId": "7f1e2fa1-fe50-4cca-9b06-2fcfe773f4cc",
   "version": "7",
   "dialect": "postgresql",
@@ -820,6 +820,96 @@
         "runner_group": {
           "name": "runner_group",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger_source": {
+          "name": "trigger_source",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "autonomy_budget": {
+          "name": "autonomy_budget",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workflow_automation_id": {
+          "name": "workflow_automation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "goal_id": {
+          "name": "goal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model_provider": {
+          "name": "model_provider",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model_provider_id": {
+          "name": "model_provider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model_provider_credential_scope": {
+          "name": "model_provider_credential_scope",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "selected_model": {
+          "name": "selected_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "codex_service_tier": {
+          "name": "codex_service_tier",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "selected_video_model": {
+          "name": "selected_video_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "api_started_at": {
+          "name": "api_started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_assistant_event_acknowledged_at": {
+          "name": "first_assistant_event_acknowledged_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger_brief": {
+          "name": "trigger_brief",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
