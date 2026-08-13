@@ -26,7 +26,13 @@ export const apiRunsHandlers = [
 
   // GET /api/okou/runs/:id/telemetry/agent
   mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-    respond(200, { events: [], hasMore: false, framework: "claude-code" }),
+    respond(200, {
+      events: [],
+      hasMore: false,
+      framework: "claude-code",
+      status: "completed",
+      lastEventSequence: null,
+    }),
   ),
 
   // GET /api/okou/runs/queue

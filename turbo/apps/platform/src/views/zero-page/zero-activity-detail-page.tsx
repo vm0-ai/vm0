@@ -48,6 +48,7 @@ import {
   zeroActivityVisibleGroups$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
+  activityEventsPollerRef$,
   formatLogTime,
   formatDuration,
   currentRunId$,
@@ -1064,6 +1065,7 @@ function ActivityDetailContent({
 
 export function ZeroActivityDetailPage() {
   const { t } = useTranslation();
+  const activityEventsPollerRef = useSet(activityEventsPollerRef$);
   const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
@@ -1087,7 +1089,7 @@ export function ZeroActivityDetailPage() {
       ? eventsLoadable.data.events
       : null;
 
-  if (!detail || isStale || events === null) {
+  if (!detail || isStale) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
     }
@@ -1095,12 +1097,18 @@ export function ZeroActivityDetailPage() {
   }
 
   return (
-    <ActivityDetailContent
-      detail={detail}
-      displayName={displayName}
-      events={events}
-      features={features}
-    />
+    <div ref={activityEventsPollerRef} className="contents">
+      {events === null ? (
+        <ActivitySkeleton />
+      ) : (
+        <ActivityDetailContent
+          detail={detail}
+          displayName={displayName}
+          events={events}
+          features={features}
+        />
+      )}
+    </div>
   );
 }
 

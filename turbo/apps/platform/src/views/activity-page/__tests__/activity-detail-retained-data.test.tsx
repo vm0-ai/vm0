@@ -114,6 +114,8 @@ describe("activity retained diagnostic data", () => {
           events: [activityEvent()],
           hasMore: false,
           framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 0,
         });
       },
     );

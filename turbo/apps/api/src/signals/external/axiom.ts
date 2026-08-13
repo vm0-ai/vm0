@@ -246,10 +246,10 @@ export async function flushAxiom(
   }
 }
 
-// Minimal options surface. `noCache` is used by the agent-event watermark wait
-// to bypass Axiom's per-request cache for freshly-completed runs; `cursor` is
-// used for Axiom-managed time pagination.
-export interface QueryAxiomOptions {
+// Minimal options surface. Agent-event reads bypass Axiom's per-request cache
+// while the frontend waits for the terminal event watermark; `cursor` is used
+// for Axiom-managed time pagination.
+interface QueryAxiomOptions {
   readonly noCache?: boolean;
   readonly cursor?: string;
 }
@@ -333,7 +333,7 @@ async function queryAxiomDirectWithCursor<T>(
   return mapAxiomMatches<T>(payload);
 }
 
-export async function queryAxiomDirect<T = Record<string, unknown>>(
+async function queryAxiomDirect<T = Record<string, unknown>>(
   apl: string,
   options?: QueryAxiomOptions,
 ): Promise<readonly T[]> {

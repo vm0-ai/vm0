@@ -1,9 +1,10 @@
 import { computed, type Computed } from "ccstate";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type {
-  AgentEventsResponse,
-  NetworkLogsResponse,
-  RunEvent,
+import {
+  runStatusSchema,
+  type AgentEventsResponse,
+  type NetworkLogsResponse,
+  type RunEvent,
 } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -11,10 +12,6 @@ import { and, eq } from "drizzle-orm";
 
 import { db$, type Db } from "../external/db";
 import { getDatasetName, queryAxiom } from "../external/axiom";
-import {
-  getAgentEventPageWatermarkTarget,
-  waitForRunEventWatermarkVisible,
-} from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
 import {
   buildAgentEventPaginationFilters,
@@ -174,52 +171,18 @@ interface AxiomAgentEvent {
   eventData: Record<string, unknown>;
 }
 
-// Decide whether the page read needs to wait for Axiom indexing and which
-// sequence to wait for.
-function getAgentEventsVisibilityTarget(
-  lastEventSequence: number | null,
-  since: number | undefined,
-  sinceTime: number | undefined,
-  limit: number,
-  order: "asc" | "desc",
-): number | null {
-  if (lastEventSequence === null) {
-    return null;
-  }
-
-  if (sinceTime !== undefined && since === undefined) {
-    return lastEventSequence;
-  }
-
-  if (order === "asc") {
-    return getAgentEventPageWatermarkTarget(
-      lastEventSequence,
-      since,
-      limit + 1,
-    );
-  }
-
-  if (since !== undefined && since >= lastEventSequence) {
-    return null;
-  }
-
-  return lastEventSequence;
-}
-
 export function zeroRunAgentEvents(
   params: AgentEventsParams,
 ): Computed<Promise<AgentEventsResponse | null>> {
   return computed(async (get): Promise<AgentEventsResponse | null> => {
     const db = get(db$);
 
-    // Verify ownership and get compose content for framework extraction.
-    // `lastEventSequence` is needed for the watermark wait below — without it
-    // the api would fall through to a cached Axiom read for runs whose events
-    // are still in-flight to the indexer. See issue #12424.
+    // Verify ownership and get the run metadata needed by the Activity reader.
     const [runWithCompose] = await db
       .select({
         id: agentRuns.id,
         createdAt: agentRuns.createdAt,
+        status: agentRuns.status,
         lastEventSequence: agentRuns.lastEventSequence,
         composeContent: agentComposeVersions.content,
       })
@@ -245,27 +208,10 @@ export function zeroRunAgentEvents(
       (await get(runContextCliAgentType(params.runId))) ??
       extractFramework(runWithCompose.composeContent);
 
-    const { since, limit, order } = params;
+    const { limit, order } = params;
     const previousCursorValue = sequenceCursorValue(params.cursor, order);
-    const sequenceSince = previousCursorValue ?? since;
-
-    const watermarkTarget = getAgentEventsVisibilityTarget(
-      runWithCompose.lastEventSequence,
-      sequenceSince,
-      params.sinceTime,
-      limit,
-      order,
-    );
-    if (watermarkTarget !== null) {
-      await waitForRunEventWatermarkVisible(params.runId, watermarkTarget, {
-        sinceTime: runWithCompose.createdAt.getTime(),
-      });
-    }
 
     const dataset = getDatasetName("agent-run-events");
-    // `since` is an exclusive sequenceNumber cursor (integer). The watermark
-    // wait above ensures Axiom can serve the contiguous prefix; the noCache
-    // hint below ensures we don't read a stale cached response.
     const paginationFilter = buildAgentEventPaginationFilters(params);
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
@@ -275,12 +221,7 @@ ${paginationFilter}
 | limit ${limit + 1}`;
 
     const events = (
-      await get(
-        queryAxiom<AxiomAgentEvent>(
-          apl,
-          watermarkTarget !== null ? { noCache: true } : undefined,
-        ),
-      )
+      await get(queryAxiom<AxiomAgentEvent>(apl, { noCache: true }))
     ).slice();
 
     const pageHasMore = events.length > limit;
@@ -305,6 +246,8 @@ ${paginationFilter}
       hasMore,
       ...(nextCursor ? { nextCursor } : {}),
       framework,
+      status: runStatusSchema.parse(runWithCompose.status),
+      lastEventSequence: runWithCompose.lastEventSequence,
     };
   });
 }

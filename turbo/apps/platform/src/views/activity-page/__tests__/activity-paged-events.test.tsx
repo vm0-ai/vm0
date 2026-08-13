@@ -71,6 +71,8 @@ describe("activity paged events", () => {
             hasMore: true,
             nextCursor: "second-page",
             framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
 
@@ -84,6 +86,8 @@ describe("activity paged events", () => {
             events: [makeAssistantEvent(1, "Page two content")],
             hasMore: false,
             framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
 
@@ -91,6 +95,8 @@ describe("activity paged events", () => {
           events: [],
           hasMore: false,
           framework: "claude-code",
+          status: "completed",
+          lastEventSequence: null,
         } satisfies AgentEventsResponse);
       },
     );
@@ -138,6 +144,8 @@ describe("activity paged events", () => {
             hasMore: true,
             nextCursor: "second-page",
             framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
 
@@ -145,6 +153,8 @@ describe("activity paged events", () => {
           events: [makeAssistantEvent(1, "Page two content")],
           hasMore: false,
           framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 1,
         } satisfies AgentEventsResponse);
       },
     );
@@ -184,6 +194,8 @@ describe("activity paged events", () => {
             events: [makeAssistantEvent(1, "Second cursor page")],
             hasMore: false,
             framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
         if (query.since !== undefined) {
@@ -191,6 +203,8 @@ describe("activity paged events", () => {
             events: [],
             hasMore: false,
             framework: "claude-code",
+            status: "completed",
+            lastEventSequence: null,
           } satisfies AgentEventsResponse);
         }
 
@@ -199,6 +213,8 @@ describe("activity paged events", () => {
           hasMore: true,
           nextCursor: "server-page-2",
           framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 1,
         } satisfies AgentEventsResponse);
       },
     );
@@ -219,5 +235,58 @@ describe("activity paged events", () => {
       { since: undefined, cursor: undefined },
       { since: undefined, cursor: "server-page-2" },
     ]);
+  });
+
+  it("polls until the terminal event watermark is visible and then stops", async () => {
+    let requestCount = 0;
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "running" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        requestCount++;
+        if (requestCount === 1) {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "Running event")],
+            hasMore: false,
+            framework: "claude-code",
+            status: "running",
+            lastEventSequence: null,
+          } satisfies AgentEventsResponse);
+        }
+        if (requestCount === 2) {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "Running event")],
+            hasMore: false,
+            framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 1,
+          } satisfies AgentEventsResponse);
+        }
+        return respond(200, {
+          events: [
+            makeAssistantEvent(0, "Running event"),
+            makeAssistantEvent(1, "Final indexed event"),
+          ],
+          hasMore: false,
+          framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 1,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    const finalEvent = await screen.findByText("Final indexed event");
+    expect(finalEvent).toBeInTheDocument();
+    expect(screen.getByText("Running event")).toBeInTheDocument();
+    expect(requestCount).toBe(3);
   });
 });
