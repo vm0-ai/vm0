@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.742.1](https://github.com/vm0-ai/vm0/compare/app-v0.742.0...app-v0.742.1) (2026-08-13)
+
+
+### Refactoring
+
+* **core:** canonicalize seed modules and onboarding copy ([#26900](https://github.com/vm0-ai/vm0/issues/26900)) ([929d020](https://github.com/vm0-ai/vm0/commit/929d0207440b7cccb8051d17890d8096cbd96ea1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.1
+    * @okouai/core bumped to 8.555.1
+
 ## [0.742.0](https://github.com/vm0-ai/vm0/compare/app-v0.741.0...app-v0.742.0) (2026-08-13)
 
 
