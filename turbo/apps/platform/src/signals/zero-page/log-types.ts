@@ -121,3 +121,10 @@ export interface AgentEvent {
   eventData: unknown;
   createdAt: string;
 }
+
+export interface AgentEventsResponse {
+  events: AgentEvent[];
+  hasMore: boolean;
+  nextCursor?: string | null;
+  framework: string;
+}

@@ -187,6 +187,16 @@ const getRunResponseSchema = z.object({
 });
 
 /**
+ * Run event schema
+ */
+const runEventSchema = z.object({
+  sequenceNumber: eventSequenceNumberSchema,
+  eventType: z.string(),
+  eventData: z.unknown(),
+  createdAt: z.string(),
+});
+
+/**
  * Run result schema (present when status = 'completed')
  */
 const runResultSchema = z.object({
@@ -236,9 +246,11 @@ const cancelRunResponseSchema = z.object({
   message: z.string(),
 });
 
+type LogPaginationCursorKind = "sequence" | "time";
 type LogPaginationOrder = "asc" | "desc";
 
 interface LogPaginationQueryOptions {
+  readonly cursorKind: LogPaginationCursorKind;
   readonly maxLimit?: number;
   readonly defaultLimit?: number;
   readonly defaultOrder?: LogPaginationOrder;
@@ -253,6 +265,33 @@ function rejectBlankQueryNumber(value: unknown): unknown {
   }
 
   return value;
+}
+
+const safeIntegerQueryNumberSchema = z.preprocess(
+  rejectBlankQueryNumber,
+  z.coerce.number().refine(Number.isSafeInteger, {
+    message: "Value must be a safe integer",
+  }),
+);
+
+const sequenceQueryNumberSchema = safeIntegerQueryNumberSchema
+  .refine(
+    (value) => {
+      return value >= -1;
+    },
+    { message: "Sequence cursor must be at least -1" },
+  )
+  .refine(
+    (value) => {
+      return value <= MAX_EVENT_SEQUENCE_NUMBER;
+    },
+    { message: "Sequence cursor is out of range" },
+  );
+
+function logSinceQuerySchema(cursorKind: LogPaginationCursorKind) {
+  return cursorKind === "time"
+    ? timestampQueryNumberSchema
+    : sequenceQueryNumberSchema;
 }
 
 function exactUtcTimestamp(value: string): string | null {
@@ -330,11 +369,18 @@ function timeCursorTieBreakerValue(rawValue: string): string | null {
   return hasControlCharacter(decoded) ? null : decoded;
 }
 
-interface ParsedLogCursor {
-  readonly order: LogPaginationOrder;
-  readonly timestamp: string;
-  readonly tieBreaker: string;
-}
+type ParsedLogCursor =
+  | {
+      readonly kind: "sequence";
+      readonly order: LogPaginationOrder;
+      readonly value: number;
+    }
+  | {
+      readonly kind: "time";
+      readonly order: LogPaginationOrder;
+      readonly timestamp: string;
+      readonly tieBreaker: string;
+    };
 
 function parseLogCursor(cursor: string): ParsedLogCursor | null {
   const timeMatch = /^time:(asc|desc):([^:]+):(.+)$/.exec(cursor);
@@ -354,9 +400,37 @@ function parseLogCursor(cursor: string): ParsedLogCursor | null {
     const tieBreaker = timeCursorTieBreakerValue(rawTieBreaker);
     return timestamp === null || tieBreaker === null
       ? null
-      : { order, timestamp, tieBreaker };
+      : { kind: "time", order, timestamp, tieBreaker };
   }
-  return null;
+
+  const sequenceMatch = /^sequence:(asc|desc):(-?\d+)$/.exec(cursor);
+  if (!sequenceMatch) {
+    return null;
+  }
+
+  const order = sequenceMatch[1];
+  const rawValue = sequenceMatch[2];
+  if ((order !== "asc" && order !== "desc") || rawValue === undefined) {
+    return null;
+  }
+
+  if (!/^-?\d+$/.test(rawValue)) {
+    return null;
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value)) {
+    return null;
+  }
+
+  return { kind: "sequence", order, value };
+}
+
+function sequenceCursorOutOfRange(cursor: ParsedLogCursor): boolean {
+  return (
+    cursor.kind === "sequence" &&
+    (cursor.value < -1 || cursor.value > MAX_EVENT_SEQUENCE_NUMBER)
+  );
 }
 
 export function createLogPaginationQuerySchema(
@@ -364,7 +438,7 @@ export function createLogPaginationQuerySchema(
 ) {
   return z
     .object({
-      since: timestampQueryNumberSchema.optional(),
+      since: logSinceQuerySchema(options.cursorKind).optional(),
       sinceTime: timestampQueryNumberSchema.optional(),
       cursor: z.string().min(1).optional(),
       limit: z
@@ -394,6 +468,14 @@ export function createLogPaginationQuerySchema(
         return;
       }
 
+      if (cursor.kind !== options.cursorKind) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cursor"],
+          message: `Cursor must be a ${options.cursorKind} cursor`,
+        });
+      }
+
       if (cursor.order !== query.order) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -401,8 +483,26 @@ export function createLogPaginationQuerySchema(
           message: "Cursor order must match query order",
         });
       }
+
+      if (sequenceCursorOutOfRange(cursor)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cursor"],
+          message: "Sequence cursor is out of range",
+        });
+      }
     });
 }
+
+/**
+ * Agent events response schema
+ */
+const agentEventsResponseSchema = z.object({
+  events: z.array(runEventSchema),
+  hasMore: z.boolean(),
+  nextCursor: z.string().nullable().optional(),
+  framework: z.string(),
+});
 
 /**
  * Network log action semantics:
@@ -632,8 +732,10 @@ export {
   runListItemSchema,
   runsListResponseSchema,
   cancelRunResponseSchema,
+  runEventSchema,
   runResultSchema,
   runStateSchema,
+  agentEventsResponseSchema,
   networkLogActionSchema,
   modelCatalogCacheStatusSchema,
   modelCatalogCacheBypassReasonSchema,
@@ -654,11 +756,13 @@ export {
 export type RunStatus = z.infer<typeof runStatusSchema>;
 export type RunResult = z.infer<typeof runResultSchema>;
 export type RunState = z.infer<typeof runStateSchema>;
+export type RunEvent = z.infer<typeof runEventSchema>;
 export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
 export type GetRunResponse = z.infer<typeof getRunResponseSchema>;
 export type RunListItem = z.infer<typeof runListItemSchema>;
 export type RunsListResponse = z.infer<typeof runsListResponseSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
+export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
 export type NetworkLogAction = z.infer<typeof networkLogActionSchema>;
 export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
 export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;

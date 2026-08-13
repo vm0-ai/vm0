@@ -36,7 +36,7 @@ import {
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
- * zero run detail reads, queue position, and log reads) plus the RUN-01/02
+ * zero run detail reads, queue position, event logs, and log reads) plus the RUN-01/02
  * direct-run create arms that
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
@@ -213,6 +213,7 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await api.requestReadRunQueue(null, [401])).body,
       (await api.requestCancelRun(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
+      (await reads.requestZeroRunAgentEvents(null, missingId, {}, [401])).body,
       (await reads.requestZeroRunNetworkLogs(null, missingId, {}, [401])).body,
       (await reads.requestListLogs(null, {}, [401])).body,
       (await reads.requestReadLogById(null, missingId, [401])).body,
@@ -226,6 +227,8 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await api.requestReadRunQueue(orgless, [401])).body,
       (await api.requestCancelRun(orgless, missingId, [401])).body,
       (await reads.requestListLogs(orgless, {}, [401])).body,
+      (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
+        .body,
       (await reads.requestZeroRunNetworkLogs(orgless, missingId, {}, [401]))
         .body,
     ];
@@ -1665,11 +1668,13 @@ describe("RUN-01: direct run admission boundaries", () => {
 });
 
 interface AxiomQueryRows {
+  readonly visibility?: readonly Record<string, unknown>[];
+  readonly events?: readonly Record<string, unknown>[];
   readonly network?: readonly unknown[];
   readonly runContext?: readonly Record<string, unknown>[];
 }
 
-/** Answers every retained Axiom read by APL shape and runId. */
+/** Answers Activity diagnostic Axiom reads by APL shape and runId. */
 function dispatchAxiomQueries(
   rowsByRun: Readonly<Record<string, AxiomQueryRows>>,
 ): void {
@@ -1684,6 +1689,12 @@ function dispatchAxiomQueries(
     if (!rows) {
       return Promise.resolve([]);
     }
+    if (apl.includes("| project sequenceNumber")) {
+      return Promise.resolve([...(rows.visibility ?? [])]);
+    }
+    if (apl.includes("['agent-run-events']")) {
+      return Promise.resolve(sequenceEventRows(apl, rows.events ?? []));
+    }
     if (apl.includes("['sandbox-telemetry-network']")) {
       return Promise.resolve(timeCursorRows(apl, rows.network ?? []));
     }
@@ -1692,6 +1703,36 @@ function dispatchAxiomQueries(
     }
     return Promise.resolve([]);
   });
+}
+
+function sequenceEventRows(
+  apl: string,
+  rows: readonly Record<string, unknown>[],
+): readonly Record<string, unknown>[] {
+  const boundaryMatch = /\| where sequenceNumber ([<>]) (-?\d+)/.exec(apl);
+  const boundary = boundaryMatch?.[2] ? Number(boundaryMatch[2]) : undefined;
+  const operator = boundaryMatch?.[1];
+  const order = apl.includes("| order by sequenceNumber desc") ? "desc" : "asc";
+  const limitMatch = /\| limit (\d+)/.exec(apl);
+  const limit = limitMatch?.[1] ? Number(limitMatch[1]) : rows.length;
+
+  return [...rows]
+    .filter((row) => {
+      if (boundary === undefined || typeof row.sequenceNumber !== "number") {
+        return boundary === undefined;
+      }
+      return operator === ">"
+        ? row.sequenceNumber > boundary
+        : row.sequenceNumber < boundary;
+    })
+    .sort((left, right) => {
+      const leftSequence = Number(left.sequenceNumber);
+      const rightSequence = Number(right.sequenceNumber);
+      return order === "asc"
+        ? leftSequence - rightSequence
+        : rightSequence - leftSequence;
+    })
+    .slice(0, limit);
 }
 
 function isAxiomRow(value: unknown): value is Record<string, unknown> {
@@ -1844,6 +1885,20 @@ function networkHardeningRows(
   ];
 }
 
+function agentEvent(
+  runId: string,
+  sequenceNumber: number,
+  text: string,
+): Record<string, unknown> {
+  return {
+    _time: "2026-06-10T10:30:00Z",
+    runId,
+    sequenceNumber,
+    eventType: "assistant",
+    eventData: { message: { content: [{ type: "text", text }] } },
+  };
+}
+
 function timeLogCursor(
   order: "asc" | "desc",
   timestamp: string,
@@ -1871,6 +1926,101 @@ function timeLogQueryPath(
 }
 
 describe("RUN-04: agent run telemetry families", () => {
+  it("serves paged Activity events without leaking another member's run", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const compose = await createClaudeCompose(actor, "bdd-activity-events");
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "inspect activity events",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    await completeRun(run.runId, claim.sandboxToken, {
+      lastEventSequence: 1,
+    });
+
+    dispatchAxiomQueries({
+      [run.runId]: {
+        visibility: [{ sequenceNumber: 0 }, { sequenceNumber: 1 }],
+        events: [
+          agentEvent(run.runId, 0, "First event"),
+          agentEvent(run.runId, 1, "Second event"),
+        ],
+        runContext: [{ runId: run.runId, cliAgentType: "claude-code" }],
+      },
+    });
+
+    const firstPage = await reads.requestZeroRunAgentEvents(
+      actor,
+      run.runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(firstPage.body).toStrictEqual({
+      events: [
+        {
+          sequenceNumber: 0,
+          eventType: "assistant",
+          eventData: {
+            message: { content: [{ type: "text", text: "First event" }] },
+          },
+          createdAt: "2026-06-10T10:30:00Z",
+        },
+      ],
+      hasMore: true,
+      nextCursor: "sequence:asc:0",
+      framework: "claude-code",
+    });
+
+    const cursor = firstPage.body.nextCursor;
+    if (!cursor) {
+      throw new Error(
+        "Expected the first Activity event page to have a cursor",
+      );
+    }
+    const secondPage = await reads.requestZeroRunAgentEvents(
+      actor,
+      run.runId,
+      { cursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(secondPage.body.events).toStrictEqual([
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: { content: [{ type: "text", text: "Second event" }] },
+        },
+        createdAt: "2026-06-10T10:30:00Z",
+      },
+    ]);
+    expect(secondPage.body.hasMore).toBeFalsy();
+
+    const memberPage = await reads.requestZeroRunAgentEvents(
+      member,
+      run.runId,
+      { limit: 1, order: "asc" },
+      [404],
+    );
+    expectApiError(memberPage.body);
+    expect(memberPage.body.error.message).toBe("Agent run not found");
+
+    const eventQueries = context.mocks.axiom.query.mock.calls.filter(
+      ([apl]) => {
+        return (
+          typeof apl === "string" &&
+          apl.includes("['agent-run-events']") &&
+          !apl.includes("| project sequenceNumber")
+        );
+      },
+    );
+    expect(eventQueries).toHaveLength(2);
+    expect(eventQueries[0]?.[0]).toContain(`| where runId == "${run.runId}"`);
+    expect(eventQueries[0]?.[0]).toContain("| order by sequenceNumber asc");
+    expect(eventQueries[1]?.[0]).toContain("| where sequenceNumber > 0");
+    expect(eventQueries[0]?.[1]).toStrictEqual({ noCache: true });
+  });
+
   it("hardens network log rows in the zero read API", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-network-hardening");

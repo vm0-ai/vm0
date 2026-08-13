@@ -1065,6 +1065,9 @@ vi.mock("../signals/external/axiom", async () => {
         return apiTestMocks.axiom.query(apl, options);
       });
     },
+    queryAxiomDirect: (apl: string, options?: unknown) => {
+      return apiTestMocks.axiom.query(apl, options);
+    },
     getDatasetName: (name: string) => {
       return name;
     },

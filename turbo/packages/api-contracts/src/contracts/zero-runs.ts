@@ -8,6 +8,7 @@ import {
 import {
   getRunResponseSchema,
   cancelRunResponseSchema,
+  agentEventsResponseSchema,
   queueResponseSchema,
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
@@ -45,7 +46,12 @@ export const zeroRunCreateBodySchema = unifiedRunRequestSchema
 
 const c = initContract();
 
+const zeroAgentEventPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "sequence",
+});
+
 const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "time",
   maxLimit: 500,
   defaultLimit: 500,
   defaultOrder: "asc",
@@ -110,6 +116,29 @@ export const zeroRunsQueueContract = c.router({
       403: apiErrorSchema,
     },
     summary: "Get org run queue status (zero proxy)",
+  },
+});
+
+/**
+ * Zero run agent events contract (GET /api/okou/runs/:id/telemetry/agent)
+ */
+export const zeroRunAgentEventsContract = c.router({
+  getAgentEvents: {
+    method: "GET",
+    path: "/api/okou/runs/:id/telemetry/agent",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.uuid("Run ID must be a valid UUID"),
+    }),
+    query: zeroAgentEventPaginationQuerySchema,
+    responses: {
+      200: agentEventsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get agent events with pagination",
   },
 });
 
@@ -256,6 +285,7 @@ export type RunRunnerResponse = z.infer<typeof runRunnerResponseSchema>;
 export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
 export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;
 export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;
+export type ZeroRunAgentEventsContract = typeof zeroRunAgentEventsContract;
 export type ZeroRunContextContract = typeof zeroRunContextContract;
 export type ZeroRunNetworkLogsContract = typeof zeroRunNetworkLogsContract;
 export type ZeroRunRunnerContract = typeof zeroRunRunnerContract;

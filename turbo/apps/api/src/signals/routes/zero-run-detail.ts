@@ -1,5 +1,6 @@
 import { computed } from "ccstate";
 import {
+  zeroRunAgentEventsContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
@@ -9,6 +10,7 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import {
+  zeroRunAgentEvents,
   zeroRunContext,
   zeroRunNetworkLogs,
 } from "../services/zero-run-detail.service";
@@ -57,6 +59,28 @@ const getNetworkLogsInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
+const getAgentEventsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroRunAgentEventsContract.getAgentEvents));
+  const query = get(queryOf(zeroRunAgentEventsContract.getAgentEvents));
+  const result = await get(
+    zeroRunAgentEvents({
+      runId: params.id,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      since: query.since,
+      sinceTime: query.sinceTime,
+      cursor: query.cursor,
+      limit: query.limit,
+      order: query.order,
+    }),
+  );
+  if (!result) {
+    return runNotFound;
+  }
+  return { status: 200 as const, body: result };
+});
+
 export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   {
     route: zeroRunContextContract.getContext,
@@ -65,5 +89,9 @@ export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   {
     route: zeroRunNetworkLogsContract.getNetworkLogs,
     handler: authRoute(runReadAuth, getNetworkLogsInner$),
+  },
+  {
+    route: zeroRunAgentEventsContract.getAgentEvents,
+    handler: authRoute(runReadAuth, getAgentEventsInner$),
   },
 ];

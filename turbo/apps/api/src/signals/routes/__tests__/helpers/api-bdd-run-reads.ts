@@ -4,7 +4,10 @@ import {
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { zeroRunNetworkLogsContract } from "@vm0/api-contracts/contracts/zero-runs";
+import {
+  zeroRunAgentEventsContract,
+  zeroRunNetworkLogsContract,
+} from "@vm0/api-contracts/contracts/zero-runs";
 
 import { createApp } from "../../../../app-factory";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -37,6 +40,9 @@ interface RunsListQuery {
   readonly until?: string;
   readonly limit?: number;
 }
+type ZeroAgentEventsQuery = z.input<
+  (typeof zeroRunAgentEventsContract.getAgentEvents)["query"]
+>;
 type ZeroNetworkLogsQuery = z.input<
   (typeof zeroRunNetworkLogsContract.getNetworkLogs)["query"]
 >;
@@ -144,6 +150,26 @@ export function createRunReadsApi(context: TestContext) {
             }
           : { status: 200 as const, body: result.body };
       return await accept(Promise.resolve(response), statuses);
+    },
+
+    async requestZeroRunAgentEvents<
+      TStatus extends 200 | 400 | 401 | 403 | 404,
+    >(
+      actor: ApiTestUser | null,
+      runId: string,
+      query: ZeroAgentEventsQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunAgentEventsContract,
+        ).getAgentEvents({
+          headers: authenticate(context, actor),
+          params: { id: runId },
+          query,
+        }),
+        statuses,
+      );
     },
 
     async requestZeroRunNetworkLogs<
