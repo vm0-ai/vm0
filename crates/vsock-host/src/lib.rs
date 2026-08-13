@@ -407,6 +407,7 @@ impl VsockHost {
             FrameWriteObserver::default(),
         )
         .await
+        .into_result()
         .map_err(FencedExecError::Operation)?;
         let fence = guard.complete().map_err(FencedExecError::Operation)?;
         Ok((result, fence))

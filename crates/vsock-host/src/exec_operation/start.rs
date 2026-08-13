@@ -13,8 +13,8 @@ use crate::{CompositeNormalOperation, FrameWriteObserver, Shared};
 
 use super::frame::{write_exec_start_frame, write_frame};
 use super::handle::{
-    ExecControlHandle, ExecOperationCancelOnDropGuard, ExecOperationHandle, ExecWaitCore,
-    SupervisedExecHandle,
+    ExecControlHandle, ExecOperationCancelOnDropGuard, ExecOperationHandle,
+    ExecOperationWaitOutcome, ExecWaitCore, SupervisedExecHandle,
 };
 use super::state::{
     ExecOperationLifecycle, ExecOperationRegistration, ExecOperationRegistrationInput,
@@ -418,7 +418,25 @@ async fn exec_operation_capture_on_shared_with_tracking_and_admission(
     write_admission: FrameWriteObserver,
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecOperationResult> {
-    let (handle, deadline) = start_exec_operation_on_shared_with_tracking_and_admission(
+    exec_operation_capture_on_shared_with_tracking_and_admission_outcome(
+        shared,
+        request,
+        tracking,
+        write_admission,
+        write_observer,
+    )
+    .await
+    .into_result()
+}
+
+async fn exec_operation_capture_on_shared_with_tracking_and_admission_outcome(
+    shared: &Arc<Shared>,
+    request: ExecCaptureRequest<'_>,
+    tracking: ExecOperationTracking<'_>,
+    write_admission: FrameWriteObserver,
+    write_observer: FrameWriteObserver,
+) -> ExecOperationWaitOutcome<ExecOperationResult> {
+    let start_result = start_exec_operation_on_shared_with_tracking_and_admission(
         shared,
         ExecOperationRequest {
             timeout_ms: request.timeout_ms,
@@ -441,8 +459,12 @@ async fn exec_operation_capture_on_shared_with_tracking_and_admission(
         write_admission,
         write_observer,
     )
-    .await?;
-    handle.wait_until(deadline).await
+    .await;
+    let (handle, deadline) = match start_result {
+        Ok(started) => started,
+        Err(error) => return ExecOperationWaitOutcome::unproven(error),
+    };
+    handle.wait_until_outcome(deadline).await
 }
 
 pub(crate) async fn exec_operation_stream_on_shared(
@@ -537,7 +559,29 @@ async fn exec_operation_cleanup_on_shared_with_tracking(
     tracking: ExecOperationTracking<'_>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecOperationResult> {
-    exec_operation_capture_on_shared_with_tracking(
+    exec_operation_cleanup_on_shared_with_tracking_outcome(
+        shared,
+        command,
+        timeout_ms,
+        env,
+        sudo,
+        tracking,
+        write_observer,
+    )
+    .await
+    .into_result()
+}
+
+async fn exec_operation_cleanup_on_shared_with_tracking_outcome(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+    tracking: ExecOperationTracking<'_>,
+    write_observer: FrameWriteObserver,
+) -> ExecOperationWaitOutcome<ExecOperationResult> {
+    exec_operation_capture_on_shared_with_tracking_and_admission_outcome(
         shared,
         ExecCaptureRequest {
             timeout_ms,
@@ -552,6 +596,7 @@ async fn exec_operation_cleanup_on_shared_with_tracking(
             wait_timeout: Duration::from_millis(timeout_ms as u64),
         },
         tracking,
+        FrameWriteObserver::default(),
         write_observer,
     )
     .await
@@ -565,8 +610,8 @@ pub(crate) async fn exec_operation_cleanup_with_composite_on_shared_and_observer
     sudo: bool,
     normal_operation: &mut CompositeNormalOperation,
     write_observer: FrameWriteObserver,
-) -> io::Result<ExecOperationResult> {
-    exec_operation_cleanup_on_shared_with_tracking(
+) -> ExecOperationWaitOutcome<ExecOperationResult> {
+    exec_operation_cleanup_on_shared_with_tracking_outcome(
         shared,
         command,
         timeout_ms,
@@ -583,11 +628,12 @@ pub(crate) async fn exec_operation_capture_with_composite_on_shared_and_observer
     request: ExecCaptureRequest<'_>,
     normal_operation: &mut CompositeNormalOperation,
     write_observer: FrameWriteObserver,
-) -> io::Result<ExecOperationResult> {
-    exec_operation_capture_on_shared_with_tracking(
+) -> ExecOperationWaitOutcome<ExecOperationResult> {
+    exec_operation_capture_on_shared_with_tracking_and_admission_outcome(
         shared,
         request,
         ExecOperationTracking::Composite(normal_operation),
+        FrameWriteObserver::default(),
         write_observer,
     )
     .await

@@ -10,6 +10,7 @@ use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE_RESULT, MSG_WRITE_F
 use crate::{
     CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput,
     FrameWriteObserver, Shared, VsockHost, exec_operation,
+    exec_operation::ExecOperationWaitOutcome,
     normal_request_on_shared_with_write_observer_frame_builder,
     request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
@@ -144,7 +145,7 @@ impl ChunkedWriteCleanupGuard {
         }
 
         let result = if let Some(shared) = self.shared.as_ref() {
-            cleanup_timeout(
+            cleanup_outcome_timeout(
                 exec_operation::exec_operation_cleanup_with_composite_on_shared_and_observer(
                     shared,
                     &self.command,
@@ -157,7 +158,8 @@ impl ChunkedWriteCleanupGuard {
                 CLEANUP_EXEC_TIMEOUT_MS,
             )
             .await
-            .and_then(|result| validate_cleanup_result(result).map_err(|err| err.error))
+            .and_then(validate_cleanup_result)
+            .into_result()
         } else {
             Ok(())
         };
@@ -165,6 +167,22 @@ impl ChunkedWriteCleanupGuard {
             self.disarm();
         }
         result
+    }
+}
+
+async fn cleanup_outcome_timeout<F>(
+    cleanup: F,
+    timeout_ms: u32,
+) -> ExecOperationWaitOutcome<ExecOperationResult>
+where
+    F: Future<Output = ExecOperationWaitOutcome<ExecOperationResult>>,
+{
+    match tokio::time::timeout(Duration::from_millis(timeout_ms as u64), cleanup).await {
+        Ok(outcome) => outcome,
+        Err(_) => ExecOperationWaitOutcome::unproven(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "cleanup command timed out",
+        )),
     }
 }
 
@@ -177,44 +195,15 @@ where
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "cleanup command timed out"))?
 }
 
-struct WriteHelperExecError {
-    error: io::Error,
-    terminal_proven: bool,
-}
-
-impl WriteHelperExecError {
-    fn terminal(error: io::Error) -> Self {
-        Self {
-            error,
-            terminal_proven: true,
-        }
-    }
-
-    fn unproven(error: io::Error) -> Self {
-        Self {
-            error,
-            terminal_proven: false,
-        }
-    }
-
-    fn from_exec_wait(error: io::Error) -> Self {
-        if exec_operation::error_is_exec_operation_guest_error(&error) {
-            Self::terminal(error)
-        } else {
-            Self::unproven(error)
-        }
-    }
-}
-
 fn write_helper_exec_output(
     context: &str,
     result: ExecOperationResult,
-) -> Result<(ExecTermination, Vec<u8>, String), WriteHelperExecError> {
+) -> io::Result<(ExecTermination, Vec<u8>, String)> {
     if result.stream_overflowed {
-        return Err(WriteHelperExecError::unproven(io::Error::new(
+        return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("{context} exec operation unexpectedly overflowed a stream queue"),
-        )));
+        ));
     }
 
     let ExecOperationResult {
@@ -238,13 +227,13 @@ fn write_helper_exec_captured_output(
     context: &str,
     name: &str,
     output: ExecOwnedCapturedOutput,
-) -> Result<(Vec<u8>, bool), WriteHelperExecError> {
+) -> io::Result<(Vec<u8>, bool)> {
     match output {
         ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes, truncated)),
-        ExecOwnedCapturedOutput::Discarded => Err(WriteHelperExecError::unproven(io::Error::new(
+        ExecOwnedCapturedOutput::Discarded => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("{context} exec result discarded {name} for capture request"),
-        ))),
+        )),
     }
 }
 
@@ -263,89 +252,70 @@ fn write_helper_terminal_message(prefix: String, stderr: &[u8], diagnostic: &str
     }
 }
 
-fn validate_cleanup_result(result: ExecOperationResult) -> Result<(), WriteHelperExecError> {
+fn validate_cleanup_result(result: ExecOperationResult) -> io::Result<()> {
     let (termination, stderr, diagnostic) = write_helper_exec_output("cleanup command", result)?;
     match termination {
         ExecTermination::Exited { exit_code: 0 } => Ok(()),
-        ExecTermination::Exited { exit_code } => {
-            Err(WriteHelperExecError::terminal(io::Error::other(format!(
-                "cleanup command failed with exit code {exit_code}: {}",
-                String::from_utf8_lossy(&stderr)
-            ))))
-        }
-        ExecTermination::TimedOut => Err(WriteHelperExecError::terminal(io::Error::new(
+        ExecTermination::Exited { exit_code } => Err(io::Error::other(format!(
+            "cleanup command failed with exit code {exit_code}: {}",
+            String::from_utf8_lossy(&stderr)
+        ))),
+        ExecTermination::TimedOut => Err(io::Error::new(
             io::ErrorKind::TimedOut,
             write_helper_terminal_message(
                 "cleanup command timed out".to_string(),
                 &stderr,
                 &diagnostic,
             ),
+        )),
+        ExecTermination::Cancelled => Err(io::Error::other(write_helper_terminal_message(
+            "cleanup command was cancelled".to_string(),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::Cancelled => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                "cleanup command was cancelled".to_string(),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::StartFailed => Err(io::Error::other(write_helper_terminal_message(
+            "cleanup command exec start failed".to_string(),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::StartFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                "cleanup command exec start failed".to_string(),
-                &stderr,
-                &diagnostic,
-            ),
-        ))),
-        ExecTermination::WaitFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                "cleanup command exec wait failed".to_string(),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::WaitFailed => Err(io::Error::other(write_helper_terminal_message(
+            "cleanup command exec wait failed".to_string(),
+            &stderr,
+            &diagnostic,
         ))),
     }
 }
 
-fn validate_rename_result(
-    path: &str,
-    result: ExecOperationResult,
-) -> Result<(), WriteHelperExecError> {
+fn validate_rename_result(path: &str, result: ExecOperationResult) -> io::Result<()> {
     let (termination, stderr, diagnostic) = write_helper_exec_output("rename command", result)?;
     match termination {
         ExecTermination::Exited { exit_code: 0 } => Ok(()),
-        ExecTermination::Exited { exit_code } => {
-            Err(WriteHelperExecError::terminal(io::Error::other(format!(
-                "failed to rename temp file to {path} with exit code {exit_code}: {}",
-                String::from_utf8_lossy(&stderr)
-            ))))
-        }
-        ExecTermination::TimedOut => Err(WriteHelperExecError::terminal(io::Error::new(
+        ExecTermination::Exited { exit_code } => Err(io::Error::other(format!(
+            "failed to rename temp file to {path} with exit code {exit_code}: {}",
+            String::from_utf8_lossy(&stderr)
+        ))),
+        ExecTermination::TimedOut => Err(io::Error::new(
             io::ErrorKind::TimedOut,
             write_helper_terminal_message(
                 format!("rename command timed out while moving temp file to {path}"),
                 &stderr,
                 &diagnostic,
             ),
+        )),
+        ExecTermination::Cancelled => Err(io::Error::other(write_helper_terminal_message(
+            format!("rename command was cancelled while moving temp file to {path}"),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::Cancelled => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                format!("rename command was cancelled while moving temp file to {path}"),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::StartFailed => Err(io::Error::other(write_helper_terminal_message(
+            format!("rename command exec start failed while moving temp file to {path}"),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::StartFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                format!("rename command exec start failed while moving temp file to {path}"),
-                &stderr,
-                &diagnostic,
-            ),
-        ))),
-        ExecTermination::WaitFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                format!("rename command exec wait failed while moving temp file to {path}"),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::WaitFailed => Err(io::Error::other(write_helper_terminal_message(
+            format!("rename command exec wait failed while moving temp file to {path}"),
+            &stderr,
+            &diagnostic,
         ))),
     }
 }
@@ -650,22 +620,25 @@ impl VsockHost {
                 write_observer,
             )
             .await
-            .map_err(WriteHelperExecError::from_exec_wait)
             .and_then(|result| validate_rename_result(path, result));
         match rename_result {
-            Ok(()) => {
+            ExecOperationWaitOutcome::Terminal(Ok(())) => {
                 cleanup_guard.disarm();
                 normal_operation.complete()?;
                 Ok(())
             }
-            Err(err) => {
+            ExecOperationWaitOutcome::Terminal(Err(error)) => {
                 // Terminal proof only releases the tracker after cleanup also
                 // succeeds; unproven helper failures remain fail-closed.
                 let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
-                if err.terminal_proven && cleanup_result.is_ok() {
+                if cleanup_result.is_ok() {
                     normal_operation.complete()?;
                 }
-                Err(err.error)
+                Err(error)
+            }
+            ExecOperationWaitOutcome::Unproven(error) => {
+                let _ = cleanup_guard.cleanup_now(&mut normal_operation).await;
+                Err(error)
             }
         }
     }
