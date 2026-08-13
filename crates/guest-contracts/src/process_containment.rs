@@ -36,6 +36,14 @@ pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 /// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
+/// Smallest Runner profile vCPU count validated for workload containment.
+pub const MIN_PROFILE_VCPU: u32 = 1;
+
+/// Smallest configured Runner profile memory size validated for workload
+/// containment. Guest startup independently derives its policy from the
+/// smaller capacity actually visible inside the VM.
+pub const MIN_PROFILE_MEMORY_MB: u32 = 1024;
+
 /// CPU bandwidth period used for workload cgroups.
 pub const WORKLOAD_CPU_PERIOD_US: u64 = 100_000;
 
@@ -175,5 +183,16 @@ mod tests {
         assert_eq!(policy.cpu_quota_us, 90_000);
         assert_eq!(policy.memory_max_bytes, 640 * 1024 * 1024);
         assert_eq!(policy.memory_high_bytes, 384 * 1024 * 1024);
+    }
+
+    #[test]
+    fn derives_policy_from_calibrated_minimum_guest_capacity() {
+        // A 1-vCPU/1024-MiB Firecracker Guest exposes this physical capacity
+        // after kernel reservations on the production-equivalent test host.
+        let policy = WorkloadResourcePolicy::for_guest_capacity(1, 1_033_928_704).unwrap();
+
+        assert_eq!(policy.cpu_quota_us, 90_000);
+        assert_eq!(policy.memory_max_bytes, 631_275_520);
+        assert_eq!(policy.memory_high_bytes, 362_840_064);
     }
 }

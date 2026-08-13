@@ -47,7 +47,9 @@ use std::path::{Path, PathBuf};
 use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 
-use guest_contracts::process_containment::WorkloadResourcePolicy;
+use guest_contracts::process_containment::{
+    MIN_PROFILE_MEMORY_MB, MIN_PROFILE_VCPU, WorkloadResourcePolicy,
+};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
@@ -543,9 +545,21 @@ async fn validate(
                 profile.vcpu
             )));
         }
+        if profile.vcpu < MIN_PROFILE_VCPU {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: vcpu ({}) is below workload-containment minimum ({MIN_PROFILE_VCPU})",
+                profile.vcpu
+            )));
+        }
         if profile.memory_mb > MAX_MEMORY_MB {
             return Err(RunnerError::Config(format!(
                 "profile {name}: memory_mb ({}) exceeds maximum ({MAX_MEMORY_MB})",
+                profile.memory_mb
+            )));
+        }
+        if profile.memory_mb < MIN_PROFILE_MEMORY_MB {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: memory_mb ({}) is below workload-containment minimum ({MIN_PROFILE_MEMORY_MB})",
                 profile.memory_mb
             )));
         }

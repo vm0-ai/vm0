@@ -522,7 +522,7 @@ async fn load_rejects_zero_memory_mb_in_profile() {
 }
 
 #[tokio::test]
-async fn load_accepts_profile_below_default_calibration() {
+async fn load_accepts_calibrated_minimum_profile() {
     let fixture = ConfigFixture::new().await;
     let yaml = fixture.yaml_with_profile(
         "vm0/default",
@@ -540,12 +540,12 @@ async fn load_accepts_profile_below_default_calibration() {
 }
 
 #[tokio::test]
-async fn load_rejects_memory_without_fixed_containment_headroom() {
+async fn load_rejects_memory_below_calibrated_minimum() {
     let fixture = ConfigFixture::without_image_artifacts().await;
     let yaml = fixture.yaml_with_profile(
         "vm0/default",
         ProfileConfig {
-            memory_mb: 640,
+            memory_mb: 1023,
             ..default_profile_config()
         },
         "",
@@ -554,7 +554,27 @@ async fn load_rejects_memory_without_fixed_containment_headroom() {
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(
         err.to_string()
-            .contains("cannot provide a workload high threshold"),
+            .contains("below workload-containment minimum (1024)"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn load_rejects_arithmetic_only_memory_remainder() {
+    let fixture = ConfigFixture::without_image_artifacts().await;
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            memory_mb: 641,
+            ..default_profile_config()
+        },
+        "",
+    );
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("below workload-containment minimum (1024)"),
         "got: {err}"
     );
 }
