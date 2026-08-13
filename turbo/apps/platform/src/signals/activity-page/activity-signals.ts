@@ -10,7 +10,7 @@ import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$ } from "../route.ts";
-import { setLoop, settle } from "../utils.ts";
+import { setLoop } from "../utils.ts";
 import type {
   AgentEvent,
   AgentEventsResponse,
@@ -86,8 +86,9 @@ async function fetchAgentEventPage(
       fetchOptions: { signal },
     }),
     // A newly promoted app can briefly reach an API version from before this
-    // additive Activity route existed. Remove after that API is outside the
-    // production rollback window; tracked by #27010.
+    // additive Activity route existed. Surface: app/API rollout and rollback,
+    // ~2 days. Remove after that API is outside the production rollback
+    // window; tracked by #27010.
     [200, 404],
     signal,
   );
@@ -250,18 +251,16 @@ export const setupActivityEvents$ = command(
 
     set(internalActivityEventsState$, { phase: "loading", runId });
     const client = get(zeroClient$)(zeroRunAgentEventsContract);
-    const initialResult = await settle(
-      fetchAgentEventBatch(client, runId, {}, signal),
-      signal,
-    );
-    if (!initialResult.ok || !initialResult.value) {
+    const initial = await fetchAgentEventBatch(client, runId, {}, signal);
+    signal.throwIfAborted();
+    if (!initial) {
       set(internalActivityEventsState$, { phase: "unavailable", runId });
       return;
     }
 
     let current = {
       runId,
-      ...initialResult.value,
+      ...initial,
     } satisfies ZeroActivityEvents;
     set(internalActivityEventsState$, { phase: "ready", data: current });
 

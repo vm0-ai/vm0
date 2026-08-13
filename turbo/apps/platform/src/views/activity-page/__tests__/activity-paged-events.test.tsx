@@ -423,15 +423,15 @@ describe("activity paged events", () => {
       },
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
       featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
-    expect(
-      screen.getByRole("heading", { name: "Test Agent" }),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "Test Agent" }),
+    ).resolves.toBeInTheDocument();
     expect(
       queryAllByRoleFast("tab").map((tab) => {
         return tab.textContent?.trim();
