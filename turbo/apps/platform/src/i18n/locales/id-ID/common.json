@@ -846,6 +846,9 @@
       "exchangeRate": "Kredit tidak pernah kedaluwarsa. 1 USD = {{credits}} kredit.",
       "quickBuy": "Beli cepat",
       "quickBuyAmount": "Beli cepat {{amount}}",
+      "reviewDescription": "Konfirmasikan tagihan satu kali ini dengan metode pembayaran tersimpan.",
+      "reviewError": "Pembelian kredit ini tidak dapat diselesaikan. Periksa detail penagihan Anda dan coba lagi.",
+      "reviewTitle": "Tinjau pembelian kredit",
       "title": "Beli kredit"
     },
     "downgrade": {
@@ -1027,6 +1030,7 @@
       "concurrencyChanged": "Perubahan kapasitas bersamaan dikonfirmasi. Jumlah slot akan diperbarui setelah Stripe memproses perubahan.",
       "concurrencyReduced": "Pengurangan concurrency dijadwalkan untuk tanggal penagihan berikutnya.",
       "concurrencyRestored": "Langganan kapasitas bersamaan dipulihkan.",
+      "creditPurchaseConfirmed": "Pembayaran dikonfirmasi. Kredit akan muncul setelah Stripe memproses faktur.",
       "creditsAdded": "Kredit ditambahkan. Anda dapat melanjutkan mengobrol dengan Zero.",
       "downgradeScheduledDate": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga {{date}}.",
       "downgradeScheduledPeriod": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga periode tagihan berakhir.",

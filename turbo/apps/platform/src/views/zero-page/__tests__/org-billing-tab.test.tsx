@@ -13,6 +13,7 @@ import {
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
+  type CreditCheckoutRequest,
   type UsagePackMigrationStateResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -3303,6 +3304,80 @@ describe("organization billing settings", () => {
       );
     });
     expect(successToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("previews and confirms a saved-billing credit purchase in the app", async () => {
+    let startRequest: CreditCheckoutRequest | null = null;
+    let confirmedPreviewToken: string | null = null;
+    let billingStatusRequests = 0;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Credit Preview Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingStatusRequests += 1;
+      return respond(200, {
+        ...activeProBillingStatus(),
+        canBuyCredits: true,
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      ({ body, respond }) => {
+        startRequest = body;
+        return respond(200, {
+          status: "preview",
+          credits: 20_000,
+          amountCents: 1800,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: "credit-preview-token",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.confirm,
+      ({ body, respond }) => {
+        confirmedPreviewToken = body.previewToken;
+        return respond(200, {
+          status: "completed",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    await openBillingTab();
+    const locationBeforePurchase = window.location.href;
+    click(screen.getByText("Quick buy $20.00"));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review credit purchase",
+    });
+    expect(
+      within(reviewDialog).getByText(
+        "Confirm this one-time charge with your saved payment method.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$18.00")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("+20,000")).toBeInTheDocument();
+    expect(startRequest).toMatchObject({
+      credits: 20_000,
+      previewExistingBilling: true,
+    });
+    expect(window.location.href).toBe(locationBeforePurchase);
+
+    click(buttonByText("Confirm", reviewDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Review credit purchase" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(confirmedPreviewToken).toBe("credit-preview-token");
+    expect(billingStatusRequests).toBeGreaterThan(1);
+    expect(window.location.href).toBe(locationBeforePurchase);
   });
 
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {

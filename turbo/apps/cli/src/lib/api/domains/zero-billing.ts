@@ -33,7 +33,10 @@ export async function createZeroCreditCheckout(body: {
 
   const result = await client.create({ body });
   if (result.status === 200) {
-    return result.body;
+    if ("url" in result.body) {
+      return result.body;
+    }
+    throw new Error("Credit checkout unexpectedly returned a preview");
   }
   handleError(result, "Failed to create credit checkout");
 }

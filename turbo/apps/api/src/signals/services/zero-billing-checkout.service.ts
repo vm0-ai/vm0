@@ -1,17 +1,25 @@
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+
 import { command } from "ccstate";
 import type {
   ConcurrencySubscriptionChangePreviewResponse,
+  CreditPurchaseConfirmResponse,
+  CreditPurchasePreviewResponse,
   UsagePackUsd,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { writeDb$, type ReadonlyDb } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import {
   getStripeClient,
+  type StripeClient,
+  type StripeInvoice,
+  type StripeInvoiceLine,
   type StripeMetadataParam,
   type StripeSubscription,
 } from "../external/stripe-client";
@@ -23,6 +31,7 @@ import {
   previewStripeConcurrencySubscriptionChange$,
 } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
+import { safeJsonParse } from "../utils";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -55,6 +64,19 @@ interface CreateCreditCheckoutSessionArgs {
   readonly successUrl: string;
   readonly cancelUrl: string;
 }
+
+interface PreviewExistingBillingCreditPurchaseArgs {
+  readonly orgId: string;
+  readonly credits: number;
+}
+
+type ConfirmExistingBillingCreditPurchaseResult =
+  | {
+      readonly status: "confirmed";
+      readonly response: CreditPurchaseConfirmResponse;
+    }
+  | { readonly status: "invalid_preview" }
+  | { readonly status: "billing_unavailable" };
 
 interface StartConcurrencyPurchaseArgs {
   readonly orgId: string;
@@ -92,6 +114,8 @@ type PreviewInitialConcurrencyPurchaseResult =
     };
 
 const CREDITS_PER_DOLLAR = 1000;
+const CREDIT_PURCHASE_PREVIEW_TTL_MS = 15 * 60 * 1000;
+const CREDIT_PURCHASE_PREVIEW_LINE_METADATA_KEY = "credit_purchase_preview_id";
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
@@ -109,6 +133,24 @@ async function orgPlanSubscriptionId(
     .limit(1);
   return plan?.stripeSubscriptionId ?? null;
 }
+
+const creditPurchasePreviewTokenSchema = z.object({
+  version: z.literal(1),
+  purchaseId: z.uuid(),
+  orgId: z.string().min(1),
+  customerId: z.string().min(1),
+  paymentMethodId: z.string().min(1),
+  priceId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  credits: z.number().int().positive(),
+  amountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  expiresAt: z.iso.datetime(),
+});
+
+type CreditPurchasePreviewToken = z.infer<
+  typeof creditPurchasePreviewTokenSchema
+>;
 
 function legacyPriceIdsForTier(
   tier: SubscriptionCheckoutTier,
@@ -292,6 +334,374 @@ export function checkoutTierConflictMessage(args: {
 export function activeCustomCreditUnitPriceId(): string | undefined {
   return env("OKOU_PRICE_CUSTOM_CREDIT_UNIT");
 }
+
+function creditPurchasePreviewTokenSignature(encodedPayload: string): Buffer {
+  return createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
+    .update(encodedPayload)
+    .digest();
+}
+
+function createCreditPurchasePreviewToken(
+  payload: CreditPurchasePreviewToken,
+): string {
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
+    "base64url",
+  );
+  const signature =
+    creditPurchasePreviewTokenSignature(encodedPayload).toString("base64url");
+  return `${encodedPayload}.${signature}`;
+}
+
+function parseCreditPurchasePreviewToken(
+  token: string,
+): CreditPurchasePreviewToken | null {
+  const [encodedPayload, encodedSignature, extra] = token.split(".");
+  if (!encodedPayload || !encodedSignature || extra !== undefined) {
+    return null;
+  }
+  const providedSignature = Buffer.from(encodedSignature, "base64url");
+  const expectedSignature = creditPurchasePreviewTokenSignature(encodedPayload);
+  if (
+    providedSignature.length !== expectedSignature.length ||
+    !timingSafeEqual(providedSignature, expectedSignature)
+  ) {
+    return null;
+  }
+  const parsed = safeJsonParse(
+    Buffer.from(encodedPayload, "base64url").toString("utf8"),
+  );
+  const result = creditPurchasePreviewTokenSchema.safeParse(parsed);
+  return result.success ? result.data : null;
+}
+
+interface ExistingCreditBilling {
+  readonly customerId: string;
+  readonly subscriptionId: string | null;
+}
+
+async function existingCreditBilling(
+  orgId: string,
+  db: ReadonlyDb,
+): Promise<ExistingCreditBilling | null> {
+  const [org] = await db
+    .select({
+      customerId: orgMetadata.stripeCustomerId,
+      subscriptionId: orgMetadata.stripeSubscriptionId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (!org?.customerId) {
+    return null;
+  }
+  return {
+    customerId: org.customerId,
+    subscriptionId: org.subscriptionId,
+  };
+}
+
+async function existingCreditPaymentMethodId(
+  stripe: StripeClient,
+  billing: ExistingCreditBilling,
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (billing.subscriptionId) {
+    const subscription = await stripe.subscriptions.retrieve(
+      billing.subscriptionId,
+    );
+    signal.throwIfAborted();
+    const subscriptionPaymentMethodId = stripeObjectId(
+      subscription.default_payment_method,
+    );
+    if (subscriptionPaymentMethodId) {
+      return subscriptionPaymentMethodId;
+    }
+  }
+
+  const customer = await stripe.customers.retrieve(billing.customerId);
+  signal.throwIfAborted();
+  if (!("deleted" in customer) || !customer.deleted) {
+    const customerPaymentMethodId = stripeObjectId(
+      customer.invoice_settings?.default_payment_method,
+    );
+    if (customerPaymentMethodId) {
+      return customerPaymentMethodId;
+    }
+  }
+
+  const paymentMethods = await stripe.paymentMethods.list({
+    customer: billing.customerId,
+    type: "card",
+    limit: 1,
+  });
+  signal.throwIfAborted();
+  return paymentMethods.data[0]?.id ?? null;
+}
+
+function creditPurchasePreviewLine(
+  invoice: StripeInvoice,
+  purchaseId: string,
+): StripeInvoiceLine {
+  const line = invoice.lines.data.find((candidate) => {
+    return (
+      candidate.metadata?.[CREDIT_PURCHASE_PREVIEW_LINE_METADATA_KEY] ===
+      purchaseId
+    );
+  });
+  if (!line) {
+    throw new Error("Stripe credit purchase preview is missing its line item");
+  }
+  return line;
+}
+
+function creditPurchasePreviewAmount(line: StripeInvoiceLine): number {
+  const subtotal = line.subtotal ?? line.amount;
+  const discounts = (line.discount_amounts ?? []).reduce((total, discount) => {
+    return total + discount.amount;
+  }, 0);
+  const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
+    return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
+  }, 0);
+  const amount = subtotal - discounts + exclusiveTax;
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw new Error("Stripe credit purchase preview has an invalid amount");
+  }
+  return amount;
+}
+
+export const previewExistingBillingCreditPurchase$ = command(
+  async (
+    { get },
+    args: PreviewExistingBillingCreditPurchaseArgs,
+    signal: AbortSignal,
+  ): Promise<CreditPurchasePreviewResponse | null> => {
+    const billing = await existingCreditBilling(args.orgId, get(db$));
+    signal.throwIfAborted();
+    if (!billing) {
+      return null;
+    }
+
+    const stripe = getStripeClient();
+    const paymentMethodId = await existingCreditPaymentMethodId(
+      stripe,
+      billing,
+      signal,
+    );
+    if (!paymentMethodId) {
+      return null;
+    }
+
+    const priceId = activeCustomCreditUnitPriceId();
+    if (!priceId) {
+      throw new Error("Custom credit price not configured");
+    }
+    const quantity = Math.ceil(args.credits / CREDITS_PER_DOLLAR);
+    const credits = quantity * CREDITS_PER_DOLLAR;
+    const purchaseId = randomUUID();
+    const invoice = await stripe.invoices.createPreview({
+      customer: billing.customerId,
+      preview_mode: "next",
+      invoice_items: [
+        {
+          price: priceId,
+          quantity,
+          metadata: {
+            [CREDIT_PURCHASE_PREVIEW_LINE_METADATA_KEY]: purchaseId,
+          },
+        },
+      ],
+    });
+    signal.throwIfAborted();
+    if (invoice.currency.length !== 3) {
+      throw new Error("Stripe credit purchase preview has an invalid currency");
+    }
+    const amountCents = creditPurchasePreviewAmount(
+      creditPurchasePreviewLine(invoice, purchaseId),
+    );
+    const expiresAt = new Date(
+      nowDate().getTime() + CREDIT_PURCHASE_PREVIEW_TTL_MS,
+    ).toISOString();
+    const payload: CreditPurchasePreviewToken = {
+      version: 1,
+      purchaseId,
+      orgId: args.orgId,
+      customerId: billing.customerId,
+      paymentMethodId,
+      priceId,
+      quantity,
+      credits,
+      amountCents,
+      currency: invoice.currency,
+      expiresAt,
+    };
+    return {
+      status: "preview",
+      credits,
+      amountCents,
+      currency: invoice.currency,
+      expiresAt,
+      previewToken: createCreditPurchasePreviewToken(payload),
+    };
+  },
+);
+
+async function payCreditPurchaseInvoice(
+  stripe: StripeClient,
+  invoice: StripeInvoice,
+  purchaseId: string,
+  signal: AbortSignal,
+): Promise<CreditPurchaseConfirmResponse> {
+  let current = invoice;
+  if (current.status === "draft") {
+    current = await stripe.invoices.finalizeInvoice(
+      current.id,
+      {},
+      { idempotencyKey: `credit-purchase:${purchaseId}:finalize` },
+    );
+    signal.throwIfAborted();
+  }
+  if (current.status === "open") {
+    current = await stripe.invoices.pay(
+      current.id,
+      {},
+      { idempotencyKey: `credit-purchase:${purchaseId}:pay` },
+    );
+    signal.throwIfAborted();
+  }
+  if (current.status === "paid") {
+    return { status: "completed", hostedInvoiceUrl: null };
+  }
+  if (current.hosted_invoice_url) {
+    return {
+      status: "pending_payment",
+      hostedInvoiceUrl: current.hosted_invoice_url,
+    };
+  }
+  throw new Error("Stripe credit purchase invoice could not be paid");
+}
+
+async function discardChangedCreditPurchaseInvoice(
+  stripe: StripeClient,
+  invoice: StripeInvoice,
+  purchaseId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  if (invoice.status === "draft") {
+    await stripe.invoices.del(
+      invoice.id,
+      {},
+      { idempotencyKey: `credit-purchase:${purchaseId}:delete` },
+    );
+    signal.throwIfAborted();
+    return;
+  }
+  if (invoice.status === "open" || invoice.status === "uncollectible") {
+    await stripe.invoices.voidInvoice(
+      invoice.id,
+      {},
+      { idempotencyKey: `credit-purchase:${purchaseId}:void` },
+    );
+    signal.throwIfAborted();
+    return;
+  }
+  if (invoice.status !== "void") {
+    throw new Error("Changed credit purchase invoice could not be discarded");
+  }
+}
+
+export const confirmExistingBillingCreditPurchase$ = command(
+  async (
+    { get },
+    orgId: string,
+    previewToken: string,
+    signal: AbortSignal,
+  ): Promise<ConfirmExistingBillingCreditPurchaseResult> => {
+    const preview = parseCreditPurchasePreviewToken(previewToken);
+    if (
+      !preview ||
+      preview.orgId !== orgId ||
+      new Date(preview.expiresAt) <= nowDate() ||
+      preview.priceId !== activeCustomCreditUnitPriceId()
+    ) {
+      return { status: "invalid_preview" };
+    }
+
+    const billing = await existingCreditBilling(orgId, get(db$));
+    signal.throwIfAborted();
+    if (!billing || billing.customerId !== preview.customerId) {
+      return { status: "billing_unavailable" };
+    }
+    const stripe = getStripeClient();
+    const paymentMethodId = await existingCreditPaymentMethodId(
+      stripe,
+      billing,
+      signal,
+    );
+    if (paymentMethodId !== preview.paymentMethodId) {
+      return { status: "invalid_preview" };
+    }
+
+    const metadata: StripeMetadataParam = {
+      purpose: "credit_purchase",
+      type: "credit_purchase",
+      orgId,
+      creditsAmountMode: "amount_subtotal",
+      requestedCreditsAmount: String(preview.credits),
+      creditPurchaseId: preview.purchaseId,
+      ...stripePreviewMetadata(),
+    };
+    const invoice = await stripe.invoices.create(
+      {
+        customer: preview.customerId,
+        auto_advance: false,
+        default_payment_method: preview.paymentMethodId,
+        metadata,
+      },
+      { idempotencyKey: `credit-purchase:${preview.purchaseId}:invoice` },
+    );
+    signal.throwIfAborted();
+    await stripe.invoiceItems.create(
+      {
+        invoice: invoice.id,
+        customer: preview.customerId,
+        pricing: { price: preview.priceId },
+        quantity: preview.quantity,
+        description: `Credit top-up: ${preview.credits.toLocaleString()} credits`,
+        metadata: {
+          [CREDIT_PURCHASE_PREVIEW_LINE_METADATA_KEY]: preview.purchaseId,
+        },
+      },
+      { idempotencyKey: `credit-purchase:${preview.purchaseId}:invoice-item` },
+    );
+    signal.throwIfAborted();
+    const confirmedInvoice = await stripe.invoices.retrieve(invoice.id);
+    signal.throwIfAborted();
+    const confirmedAmountCents = creditPurchasePreviewAmount(
+      creditPurchasePreviewLine(confirmedInvoice, preview.purchaseId),
+    );
+    if (
+      confirmedInvoice.currency !== preview.currency ||
+      confirmedAmountCents !== preview.amountCents
+    ) {
+      await discardChangedCreditPurchaseInvoice(
+        stripe,
+        confirmedInvoice,
+        preview.purchaseId,
+        signal,
+      );
+      return { status: "invalid_preview" };
+    }
+    return {
+      status: "confirmed",
+      response: await payCreditPurchaseInvoice(
+        stripe,
+        confirmedInvoice,
+        preview.purchaseId,
+        signal,
+      ),
+    };
+  },
+);
 
 function checkoutSessionMetadata(args: {
   readonly orgId: string;

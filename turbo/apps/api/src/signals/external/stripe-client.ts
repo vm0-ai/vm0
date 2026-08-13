@@ -230,6 +230,12 @@ export interface StripeInvoiceLine {
   readonly id?: string;
   readonly amount: number;
   readonly subtotal?: number | null;
+  readonly metadata?: Record<string, string> | null;
+  readonly discount_amounts?:
+    | readonly {
+        readonly amount: number;
+      }[]
+    | null;
   readonly quantity?: number | null;
   readonly price?: { readonly id: string } | null;
   readonly pricing?: {
@@ -454,8 +460,23 @@ export interface StripeInvoicesApi {
     },
     options?: StripeRequestOptions,
   ): Promise<StripeInvoice>;
+  del(
+    id: string,
+    params: Record<string, never>,
+    options: StripeRequestOptions,
+  ): Promise<{ readonly id: string; readonly deleted: true }>;
   finalizeInvoice(id: string): Promise<StripeInvoice>;
+  finalizeInvoice(
+    id: string,
+    params: Record<string, never>,
+    options: StripeRequestOptions,
+  ): Promise<StripeInvoice>;
   pay(id: string): Promise<StripeInvoice>;
+  pay(
+    id: string,
+    params: Record<string, never>,
+    options: StripeRequestOptions,
+  ): Promise<StripeInvoice>;
   retrieve(
     id: string,
     params?: { readonly expand?: readonly string[] },
@@ -475,6 +496,11 @@ export interface StripeInvoiceCreatePreviewParams {
   readonly subscription?: string;
   readonly schedule?: string;
   readonly preview_mode: "next" | "recurring";
+  readonly invoice_items?: {
+    readonly price: string;
+    readonly quantity: number;
+    readonly metadata?: StripeMetadataParam;
+  }[];
   readonly subscription_details?: {
     readonly items: StripeSubscriptionUpdateItemParam[];
     readonly proration_behavior?:
@@ -498,9 +524,12 @@ export interface StripeInvoiceItemsApi {
     params: {
       invoice?: string;
       customer: string;
-      amount: number;
-      currency: string;
+      amount?: number;
+      currency?: string;
       description?: string;
+      metadata?: StripeMetadataParam;
+      pricing?: { readonly price: string };
+      quantity?: number;
     },
     options?: StripeRequestOptions,
   ): Promise<{ readonly id: string }>;
