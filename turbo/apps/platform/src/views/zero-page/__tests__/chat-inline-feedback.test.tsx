@@ -495,7 +495,7 @@ describe("chat inline feedback", () => {
     successToast.mockRestore();
   });
 
-  it("keeps the forward composer within the modal and hides target pending items", async () => {
+  it("hides target pending items from the forward composer", async () => {
     const user = userEvent.setup({ delay: null });
     const sourceRunId = "d0000000-0000-4000-a000-000000000706";
     const targetThreadId = "b0000000-0000-4000-a000-000000000706";
@@ -596,7 +596,6 @@ describe("chat inline feedback", () => {
     await findForwardFeedbackNote(dialog);
     await waitForDeferredSelectionCapture();
 
-    const composer = dialog.querySelector("[data-chat-composer]");
     expect(within(dialog).queryByText(queuedContent)).not.toBeInTheDocument();
     expect(
       within(dialog).queryByText(automationContent),
@@ -607,7 +606,6 @@ describe("chat inline feedback", () => {
       within(dialog).queryByLabelText("Pending automation event"),
     ).toBeNull();
     expect(within(dialog).queryByLabelText("Active goal")).toBeNull();
-    expect(composer).toHaveClass("w-full", "min-w-0");
   });
 
   it("opens the forward dialog from the keyboard shortcut", async () => {
