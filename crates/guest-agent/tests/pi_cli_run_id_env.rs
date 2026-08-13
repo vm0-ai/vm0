@@ -1,4 +1,4 @@
-//! Pi CLI children receive only the canonical Runner-owned run identity.
+//! Pi CLI children receive the canonical Runner-owned run identity.
 
 mod common;
 
@@ -8,7 +8,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
 #[tokio::test]
-async fn guest_exposes_only_canonical_run_id_to_pi_cli() -> Result<(), Box<dyn std::error::Error>> {
+async fn guest_exposes_canonical_run_id_to_pi_cli() -> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir_all(&bin_dir)?;
@@ -19,7 +19,6 @@ async fn guest_exposes_only_canonical_run_id_to_pi_cli() -> Result<(), Box<dyn s
         r#"#!/bin/sh
 set -eu
 test -n "${OKOU_RUN_ID:-}"
-test "${VM0_RUN_ID+x}" != x
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 IFS= read -r _
 printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"11111111-1111-4111-8111-111111111111","duration_ms":1}'

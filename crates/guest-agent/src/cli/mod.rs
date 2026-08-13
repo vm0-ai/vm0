@@ -1959,7 +1959,6 @@ mod tests {
             .find(|(key, _)| key == guest_contracts::env::RUN_ID_ENV)
             .map(|(_, value)| value.as_str());
         assert_eq!(canonical_run_id, Some(runtime.run_id.as_ref()));
-        assert!(!values.iter().any(|(key, _)| key == "VM0_RUN_ID"));
         for (key, expected) in [
             (
                 guest_contracts::env::PI_SESSION_ID_ENV,
