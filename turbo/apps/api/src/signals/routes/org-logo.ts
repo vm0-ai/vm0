@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -141,13 +141,13 @@ const postOrgLogoInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
-export const zeroOrgLogoRoutes: readonly RouteEntry[] = [
+export const orgLogoRoutes: readonly RouteEntry[] = [
   {
-    route: zeroOrgLogoContract.get,
+    route: orgLogoContract.get,
     handler: authRoute({}, getOrgLogoInner$),
   },
   {
-    route: zeroOrgLogoContract.post,
+    route: orgLogoContract.post,
     handler: authRoute({}, postOrgLogoInner$),
   },
 ];

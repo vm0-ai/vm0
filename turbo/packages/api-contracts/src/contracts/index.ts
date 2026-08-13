@@ -1061,11 +1061,11 @@ export {
   type ZeroOrgDeleteContract,
 } from "./zero-org";
 export {
-  zeroOrgLogoContract,
-  zeroOrgLogoResponseSchema,
-  type ZeroOrgLogoContract,
-  type ZeroOrgLogoResponse,
-} from "./zero-org-logo";
+  orgLogoContract,
+  orgLogoResponseSchema,
+  type OrgLogoContract,
+  type OrgLogoResponse,
+} from "./org-logo";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
