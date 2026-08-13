@@ -4658,12 +4658,17 @@
       "yesterday": "Hier"
     },
     "records": {
-      "emptyBillingPeriod": "Aucune utilisation pendant cette période de facturation.",
-      "emptyRange": "Aucune utilisation pour cette plage horaire.",
+      "empty": {
+        "billingPeriodTitle": "Aucune utilisation pendant cette période de facturation",
+        "description": "Les crédits dépensés dans les chats, automatisations et canaux s'affichent ici.",
+        "noBillingPeriodDescription": "L'utilisation de l'équipe s'affiche dès qu'une période de facturation commence.",
+        "noBillingPeriodTitle": "Aucune période de facturation active",
+        "rangeTitle": "Aucune utilisation pour cette plage horaire",
+        "teamDescription": "Les crédits dépensés par votre équipe dans les chats, automatisations et canaux s'affichent ici."
+      },
       "loadError": "Impossible de charger votre utilisation.",
       "loadMore": "Charger plus",
       "myUsage": "Mon utilisation",
-      "noActiveBillingPeriod": "Aucune période de facturation active.",
       "teamLoadError": "Impossible de charger l'utilisation de l'équipe.",
       "teamUsage": "Utilisation de l'équipe",
       "untitled": "(sans titre)"

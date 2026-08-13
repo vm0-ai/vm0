@@ -488,9 +488,6 @@ fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a s
 }
 
 const PI_NODE_OPTIONS: &str = "--disable-warning=ExperimentalWarning";
-// Remove after the Phase 1 Runner release is live and every queued or active
-// context pinned to a legacy commit-addressed Pi CLI artifact has drained.
-const LEGACY_PI_RUN_ID_ENV: &str = "VM0_RUN_ID";
 
 fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<String>, AgentError> {
     for (name, value) in [
@@ -522,11 +519,12 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
     ])
 }
 
-fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 6] {
-    let run_id = runtime.run_id.to_string();
+fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] {
     [
-        (guest_contracts::env::RUN_ID_ENV.to_string(), run_id.clone()),
-        (LEGACY_PI_RUN_ID_ENV.to_string(), run_id),
+        (
+            guest_contracts::env::RUN_ID_ENV.to_string(),
+            runtime.run_id.to_string(),
+        ),
         (
             guest_contracts::env::PI_SESSION_ID_ENV.to_string(),
             runtime.pi_session_id.to_string(),
@@ -1929,7 +1927,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_child_env_keeps_run_id_compatible_and_controls_node_warnings() {
+    fn pi_child_env_uses_canonical_run_id_and_controls_node_warnings() {
         let user_env = HashMap::from([(
             "NODE_OPTIONS".to_string(),
             "--require /tmp/user-script.js".to_string(),
@@ -1960,12 +1958,7 @@ mod tests {
             .iter()
             .find(|(key, _)| key == guest_contracts::env::RUN_ID_ENV)
             .map(|(_, value)| value.as_str());
-        let legacy_run_id = values
-            .iter()
-            .find(|(key, _)| key == super::LEGACY_PI_RUN_ID_ENV)
-            .map(|(_, value)| value.as_str());
         assert_eq!(canonical_run_id, Some(runtime.run_id.as_ref()));
-        assert_eq!(legacy_run_id, canonical_run_id);
         for (key, expected) in [
             (
                 guest_contracts::env::PI_SESSION_ID_ENV,

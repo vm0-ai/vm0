@@ -602,6 +602,26 @@ describe("personal usage settings", () => {
     expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
   });
 
+  it("shows an illustrated empty state when the range has no usage", async () => {
+    mockPersonalUsageStory([]);
+    await openUsageSettings(true, "usage-records");
+
+    const empty = await screen.findByTestId("usage-records-empty");
+    expect(
+      within(empty).getByText("No usage in this time range"),
+    ).toBeInTheDocument();
+    expect(
+      within(empty).getByText(
+        "Credits you spend on chats, automations, and channels show up here.",
+      ),
+    ).toBeInTheDocument();
+    // The illustration is decorative, so it must stay out of the accessible name.
+    expect(within(empty).getByRole("presentation")).toHaveAttribute(
+      "src",
+      expect.stringContaining("empty-usage-"),
+    );
+  });
+
   it("shows personal usage, loads more, and changes the usage range", async () => {
     const user = userEvent.setup();
     const requestedRanges = mockPersonalUsageStory();
