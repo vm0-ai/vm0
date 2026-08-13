@@ -13,30 +13,6 @@ function formatPriceTier(tier: string | undefined): string {
   return tier ?? "unknown";
 }
 
-function getCurrentIntegration(): string | null {
-  const prompt = process.env.VM0_APPEND_SYSTEM_PROMPT;
-  if (!prompt) {
-    return null;
-  }
-
-  const match = prompt.match(/You are currently running inside:\s*([^\n]+)/i);
-  return match?.[1]?.trim().toLowerCase() ?? null;
-}
-
-export function getModelSwitchGuidance(integration = getCurrentIntegration()) {
-  const normalizedIntegration = integration?.toLowerCase();
-
-  if (normalizedIntegration === "web") {
-    return "Switch models from the model selector next to the input box in the web chat.";
-  }
-
-  if (normalizedIntegration === "telegram") {
-    return "Use /model in Telegram to switch models.";
-  }
-
-  return "Open https://app.okou.ai and switch models from the model selector next to the input box.";
-}
-
 const listCommand = new Command()
   .name("list")
   .alias("ls")
@@ -85,7 +61,9 @@ export const switchCommand = new Command()
   .name("switch")
   .description("Show how to switch models in the current environment")
   .action(() => {
-    console.log(getModelSwitchGuidance());
+    console.log(
+      "Open https://app.okou.ai and switch models from the model selector next to the input box.",
+    );
   });
 
 export const zeroModelCommand = new Command()
