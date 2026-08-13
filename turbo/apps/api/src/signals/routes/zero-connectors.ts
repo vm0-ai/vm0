@@ -22,7 +22,6 @@ import {
   providerUnavailable,
 } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
-import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
   authorizeConnectedConnector$,
@@ -50,7 +49,7 @@ import {
   getConnectorOAuthCallbackUrlForMethod,
   getConnectorOpenIdCallbackOriginForMethod,
 } from "./connector-oauth-origin";
-import { CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS } from "../../lib/connector-oauth-state";
+import { connectorOAuthStateExpiresAt } from "../../lib/connector-oauth-state";
 import {
   buildConnectorAuthCodeAuthUrlWithMethod,
   prepareConnectorAuthCodeStartWithMethod,
@@ -533,9 +532,7 @@ const startConnectorOauthInner$ = command(
       authorizationUrl: authResult.url,
       codeVerifier: authResult.codeVerifier,
       oauthContext: authResult.oauthContext,
-      expiresAt: new Date(
-        nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-      ),
+      expiresAt: connectorOAuthStateExpiresAt(),
     });
     signal.throwIfAborted();
 
@@ -633,9 +630,7 @@ const startConnectorOpenIdInner$ = command(
       redirectUri: prepared.expectedReturnTo,
       codeVerifier: authResult.codeVerifier,
       oauthContext: JSON.stringify({ realm: prepared.realm }),
-      expiresAt: new Date(
-        nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-      ),
+      expiresAt: connectorOAuthStateExpiresAt(),
     });
     signal.throwIfAborted();
 

@@ -5602,6 +5602,8 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     expect(stable.id).toBe(connected.id);
     expect(stable.externalUsername).toBe("bdd-github-user");
 
+    const expiringStartedAt = now();
+    mockNow(expiringStartedAt);
     const expiringStart = await connectorsApi.startOauth(
       actor,
       "github",
@@ -5610,7 +5612,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     const expiringState = stateFromAuthorizationUrl(
       expiringStart.authorizationUrl,
     );
-    mockNow(now() + 16 * 60 * 1000);
+    mockNow(expiringStartedAt + 15 * 60 * 1000);
     const expired = await connectorsApi.completeOauthCallback("github", {
       code: "github-late-code",
       state: expiringState,

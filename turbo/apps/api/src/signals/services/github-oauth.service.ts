@@ -1,10 +1,5 @@
 import { Buffer } from "node:buffer";
-import {
-  createHmac,
-  createSign,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHmac, createSign, timingSafeEqual } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@okouai/connectors/auth-providers";
@@ -25,7 +20,11 @@ import { githubUserLinks } from "@okouai/db/schema/github-user-link";
 
 import type { Db } from "../external/db";
 import { safeJsonParse, tapError } from "../utils";
-import { now, nowDate } from "../../lib/time";
+import {
+  connectorOAuthStateExpiresAt,
+  generateConnectorOAuthState,
+} from "../../lib/connector-oauth-state";
+import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -33,7 +32,6 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
 const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
-const GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS = 15 * 60;
 const GITHUB_OAUTH_AUTH_METHOD = "oauth";
 
 interface AppInstallation {
@@ -404,10 +402,6 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
 
-function generateConnectorOAuthState(): string {
-  return randomBytes(32).toString("hex");
-}
-
 export async function buildGithubUserConnectAuthorizationUrl(
   args: {
     readonly db: Db;
@@ -453,9 +447,7 @@ export async function buildGithubUserConnectAuthorizationUrl(
     redirectUri,
     codeVerifier: authResult.codeVerifier,
     oauthContext: authResult.oauthContext,
-    expiresAt: new Date(
-      nowDate().getTime() + GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS * 1000,
-    ),
+    expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();
 
