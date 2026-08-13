@@ -124,6 +124,7 @@ function setCorsHeaders(headers: Headers, request: Request): void {
 function corsResponse(response: Response, request: Request): Response {
   const headers = new Headers(response.headers);
   setCorsHeaders(headers, request);
+  headers.set("X-Robots-Tag", "noindex");
   return new Response(response.body, {
     headers,
     status: response.status,
