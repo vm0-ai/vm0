@@ -6,10 +6,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { HttpResponse, http } from "msw";
 
-import { server } from "../../../../mocks/server";
-import { zeroWeatherCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { weatherCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-weather-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "weather-home-"));
 const WEATHER_ATTRIBUTION = "Source: Includes weather data from Google";
 const AIR_QUALITY_ATTRIBUTION = "Source: Includes air quality data from Google";
 
@@ -71,7 +71,7 @@ describe("okou weather command", () => {
       ),
     );
 
-    await zeroWeatherCommand.parseAsync([
+    await weatherCommand.parseAsync([
       "node",
       "cli",
       "current",
@@ -151,7 +151,7 @@ describe("okou weather command", () => {
       ),
     );
 
-    await zeroWeatherCommand.parseAsync([
+    await weatherCommand.parseAsync([
       "node",
       "cli",
       "forecast",
@@ -207,7 +207,7 @@ describe("okou weather command", () => {
       ),
     );
 
-    await zeroWeatherCommand.parseAsync([
+    await weatherCommand.parseAsync([
       "node",
       "cli",
       "forecast",
@@ -275,7 +275,7 @@ describe("okou weather command", () => {
       ),
     );
 
-    await zeroWeatherCommand.parseAsync([
+    await weatherCommand.parseAsync([
       "node",
       "cli",
       "air-quality",
@@ -317,7 +317,7 @@ describe("okou weather command", () => {
       ),
     );
 
-    await zeroWeatherCommand.parseAsync([
+    await weatherCommand.parseAsync([
       "node",
       "cli",
       "forecast",
@@ -363,7 +363,7 @@ describe("okou weather command", () => {
       ),
     );
 
-    await zeroWeatherCommand.parseAsync([
+    await weatherCommand.parseAsync([
       "node",
       "cli",
       "history",
@@ -392,6 +392,6 @@ describe("okou weather command", () => {
   });
 
   it("does not expose a language option", () => {
-    expect(zeroWeatherCommand.helpInformation()).not.toContain("--language");
+    expect(weatherCommand.helpInformation()).not.toContain("--language");
   });
 });

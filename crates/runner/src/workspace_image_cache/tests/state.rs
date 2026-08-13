@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use tokio::fs;
@@ -21,7 +22,9 @@ use super::support::{
     TEST_PROFILE_NAME, local_cache, timestamp_for_index, write_current_cache_entry_for_profile,
 };
 use crate::ids::RunId;
-use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key, workspace_image_cache_key};
+use crate::paths::{
+    HomePaths, RunnerPaths, scoped_workspace_image_cache_key, workspace_image_cache_key,
+};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
     HeldWorkspaceState, MAX_HELD_WORKSPACE_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
@@ -280,6 +283,125 @@ async fn held_workspace_states_for_profiles_filters_and_aggregates_current_ident
             .await
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn commit_reconciliation_waits_for_entry_lock_before_validating() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = WorkspaceImageCache::new(paths);
+    let reuse_key = "thread:commit-lock";
+    let cache_key = write_current_cache_entry_for_profile(
+        &cache,
+        RunId::new_v4(),
+        TEST_PROFILE_NAME,
+        reuse_key,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:01.000Z",
+        "2026-05-01T00:00:01.000Z",
+    )
+    .await;
+    let image_size = format!("image-{reuse_key}").len() as u64;
+    let configured = BTreeMap::from([(TEST_PROFILE_NAME, image_size)]);
+    let committed = BTreeSet::from([cache_key.clone()]);
+    let held_lock = crate::lock::acquire(cache.entry_lock_path(&cache_key))
+        .await
+        .unwrap();
+
+    let cache_for_refresh = cache.clone();
+    let refresh = tokio::spawn(async move {
+        cache_for_refresh
+            .held_workspace_states_for_profiles_after_commits(
+                &configured,
+                &committed,
+                tokio::time::Instant::now() + Duration::from_secs(2),
+            )
+            .await
+    });
+    tokio::task::yield_now().await;
+    assert!(
+        !refresh.is_finished(),
+        "commit reconciliation must wait while the publisher owns the entry lock",
+    );
+
+    drop(held_lock);
+    let states = tokio::time::timeout(Duration::from_secs(2), refresh)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(states.len(), 1);
+    assert_eq!(states[0].reuse_key, reuse_key);
+}
+
+#[tokio::test]
+async fn initial_scan_returns_committed_entry_skipped_for_locking() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = WorkspaceImageCache::new(paths);
+    let reuse_key = "thread:initial-commit-lock";
+    let cache_key = write_current_cache_entry_for_profile(
+        &cache,
+        RunId::new_v4(),
+        TEST_PROFILE_NAME,
+        reuse_key,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:01.000Z",
+        "2026-05-01T00:00:01.000Z",
+    )
+    .await;
+    let image_size = format!("image-{reuse_key}").len() as u64;
+    let configured = BTreeMap::from([(TEST_PROFILE_NAME, image_size)]);
+    let held_lock = crate::lock::acquire(cache.entry_lock_path(&cache_key))
+        .await
+        .unwrap();
+
+    let (states, locked_commit_keys, _) = cache
+        .initial_held_workspace_states_for_profiles(&configured)
+        .await;
+
+    assert!(states.is_empty());
+    assert_eq!(locked_commit_keys, BTreeSet::from([cache_key]));
+    drop(held_lock);
+}
+
+#[tokio::test]
+async fn initial_scan_ignores_locked_foreign_scope_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    let observer_paths = RunnerPaths::new(dir.path().join("observer"));
+    let publisher_paths = RunnerPaths::new(dir.path().join("publisher"));
+    fs::create_dir_all(observer_paths.base_dir()).await.unwrap();
+    fs::create_dir_all(publisher_paths.base_dir())
+        .await
+        .unwrap();
+    let observer = WorkspaceImageCache::shared(observer_paths, &home, "group-a");
+    let publisher = WorkspaceImageCache::shared(publisher_paths, &home, "group-b");
+    let reuse_key = "thread:foreign-initial-commit-lock";
+    let cache_key = write_current_cache_entry_for_profile(
+        &publisher,
+        RunId::new_v4(),
+        TEST_PROFILE_NAME,
+        reuse_key,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:01.000Z",
+        "2026-05-01T00:00:01.000Z",
+    )
+    .await;
+    let image_size = format!("image-{reuse_key}").len() as u64;
+    let configured = BTreeMap::from([(TEST_PROFILE_NAME, image_size)]);
+    let held_lock = crate::lock::acquire(publisher.entry_lock_path(&cache_key))
+        .await
+        .unwrap();
+
+    let (states, locked_commit_keys, _) = observer
+        .initial_held_workspace_states_for_profiles(&configured)
+        .await;
+
+    assert!(states.is_empty());
+    assert!(locked_commit_keys.is_empty());
+    drop(held_lock);
 }
 
 #[test]

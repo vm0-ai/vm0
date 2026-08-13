@@ -100,9 +100,9 @@ import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { imageShareXRoutes } from "./routes/image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
-import { zeroMapsRoutes } from "./routes/zero-maps";
+import { mapsRoutes } from "./routes/maps";
 import { zeroMcpConnectorsRoutes } from "./routes/zero-mcp-connectors";
-import { zeroWeatherRoutes } from "./routes/zero-weather";
+import { weatherRoutes } from "./routes/weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
@@ -293,9 +293,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
   ...zeroMailRoutes,
-  ...zeroMapsRoutes,
+  ...mapsRoutes,
   ...zeroMcpConnectorsRoutes,
-  ...zeroWeatherRoutes,
+  ...weatherRoutes,
   ...zeroScrapeRoutes,
   ...peopleSearchRoutes,
   ...zeroWebSearchRoutes,

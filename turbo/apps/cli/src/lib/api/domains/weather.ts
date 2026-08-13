@@ -2,14 +2,14 @@ import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
 
-type ZeroWeatherOperation =
+type WeatherOperation =
   | "current"
   | "forecast/hourly"
   | "forecast/daily"
   | "history/hourly"
   | "air-quality/current";
 
-export interface ZeroWeatherResponse {
+export interface WeatherResponse {
   readonly operation?: string;
   readonly provider?: string;
   readonly attribution?: string;
@@ -59,10 +59,10 @@ async function parseErrorBody(
   return { message, code };
 }
 
-export async function callZeroWeather(
-  operation: ZeroWeatherOperation,
+export async function callWeather(
+  operation: WeatherOperation,
   body: Record<string, unknown>,
-): Promise<ZeroWeatherResponse> {
+): Promise<WeatherResponse> {
   const baseUrl = await getBaseUrl();
   const token = await getActiveToken();
   if (!token) {
@@ -83,5 +83,5 @@ export async function callZeroWeather(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  return (await response.json()) as ZeroWeatherResponse;
+  return (await response.json()) as WeatherResponse;
 }

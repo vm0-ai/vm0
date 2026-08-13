@@ -1,11 +1,11 @@
 import type {
-  ZeroMapsDirectionsRequest,
-  ZeroMapsGeocodeRequest,
-  ZeroMapsPlacesDetailsRequest,
-  ZeroMapsPlacesSearchRequest,
-  ZeroMapsResponse,
-  ZeroMapsReverseGeocodeRequest,
-} from "@okouai/api-contracts/contracts/zero-maps";
+  MapsDirectionsRequest,
+  MapsGeocodeRequest,
+  MapsPlacesDetailsRequest,
+  MapsPlacesSearchRequest,
+  MapsResponse,
+  MapsReverseGeocodeRequest,
+} from "@okouai/api-contracts/contracts/maps";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
@@ -47,8 +47,8 @@ const PLACE_DETAILS_ENTERPRISE_FIELD_MASK = `${PLACE_DETAILS_PRO_FIELD_MASK},pri
 const DEFAULT_LOCATION_BIAS_RADIUS_METERS = 50_000;
 
 type ErrorStatus = 400 | 402 | 502 | 503;
-type PlaceSearchFieldset = ZeroMapsPlacesSearchRequest["fields"];
-type PlaceDetailFieldset = ZeroMapsPlacesDetailsRequest["fields"];
+type PlaceSearchFieldset = MapsPlacesSearchRequest["fields"];
+type PlaceDetailFieldset = MapsPlacesDetailsRequest["fields"];
 
 export interface MapsErrorResponse {
   readonly status: ErrorStatus;
@@ -68,13 +68,13 @@ interface MapsUsageArgs {
   readonly category: string;
 }
 
-type ZeroMapsCommandResponse =
-  | { readonly status: 200; readonly body: ZeroMapsResponse }
+type MapsCommandResponse =
+  | { readonly status: 200; readonly body: MapsResponse }
   | MapsErrorResponse
   | ManagedUsageErrorResponse;
 
 interface CompleteGoogleMapsResultArgs {
-  readonly operation: ZeroMapsResponse["operation"];
+  readonly operation: MapsResponse["operation"];
   readonly result: unknown | MapsErrorResponse;
   readonly billingCategory: string;
   readonly validateLegacyGoogleStatus?: boolean;
@@ -309,7 +309,7 @@ export const checkMapsCredits$ = command(
           provider,
           category: args.category,
         },
-        label: "Zero Maps",
+        label: "Okou Maps",
       },
       signal,
     );
@@ -344,7 +344,7 @@ export const recordMapsUsage$ = command(
 
 async function completeGoogleMapsResult(
   args: CompleteGoogleMapsResultArgs,
-): Promise<ZeroMapsCommandResponse> {
+): Promise<MapsCommandResponse> {
   if (isMapsErrorResponse(args.result)) {
     return args.result;
   }
@@ -356,7 +356,7 @@ async function completeGoogleMapsResult(
   }
 
   const creditsCharged = await args.recordUsage();
-  const body: ZeroMapsResponse = {
+  const body: MapsResponse = {
     operation: args.operation,
     provider: PROVIDER,
     creditsCharged,
@@ -367,16 +367,16 @@ async function completeGoogleMapsResult(
   return { status: 200 as const, body };
 }
 
-export const zeroMapsGeocode$ = command(
+export const mapsGeocode$ = command(
   async (
     { set },
-    args: AuthedMapsArgs<ZeroMapsGeocodeRequest>,
+    args: AuthedMapsArgs<MapsGeocodeRequest>,
     signal: AbortSignal,
   ) => {
     const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Maps Google Maps provider is not configured",
+        "Okou Maps Google Maps provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -419,16 +419,16 @@ export const zeroMapsGeocode$ = command(
   },
 );
 
-export const zeroMapsReverseGeocode$ = command(
+export const mapsReverseGeocode$ = command(
   async (
     { set },
-    args: AuthedMapsArgs<ZeroMapsReverseGeocodeRequest>,
+    args: AuthedMapsArgs<MapsReverseGeocodeRequest>,
     signal: AbortSignal,
   ) => {
     const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Maps Google Maps provider is not configured",
+        "Okou Maps Google Maps provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -470,16 +470,16 @@ export const zeroMapsReverseGeocode$ = command(
   },
 );
 
-export const zeroMapsDirections$ = command(
+export const mapsDirections$ = command(
   async (
     { set },
-    args: AuthedMapsArgs<ZeroMapsDirectionsRequest>,
+    args: AuthedMapsArgs<MapsDirectionsRequest>,
     signal: AbortSignal,
   ) => {
     const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Maps Google Maps provider is not configured",
+        "Okou Maps Google Maps provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -533,16 +533,16 @@ export const zeroMapsDirections$ = command(
   },
 );
 
-export const zeroMapsPlacesSearch$ = command(
+export const mapsPlacesSearch$ = command(
   async (
     { set },
-    args: AuthedMapsArgs<ZeroMapsPlacesSearchRequest>,
+    args: AuthedMapsArgs<MapsPlacesSearchRequest>,
     signal: AbortSignal,
   ) => {
     const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Maps Google Maps provider is not configured",
+        "Okou Maps Google Maps provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -608,16 +608,16 @@ export const zeroMapsPlacesSearch$ = command(
   },
 );
 
-export const zeroMapsPlacesDetails$ = command(
+export const mapsPlacesDetails$ = command(
   async (
     { set },
-    args: AuthedMapsArgs<ZeroMapsPlacesDetailsRequest>,
+    args: AuthedMapsArgs<MapsPlacesDetailsRequest>,
     signal: AbortSignal,
   ) => {
     const apiKey = env("OKOU_MAPS_GOOGLE_MAPS_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Maps Google Maps provider is not configured",
+        "Okou Maps Google Maps provider is not configured",
         "NOT_CONFIGURED",
       );
     }
