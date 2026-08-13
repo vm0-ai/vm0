@@ -291,7 +291,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "maps",
     description: "Use managed Okou maps services",
     load: async () => {
-      return (await import("./commands/zero/maps")).zeroMapsCommand;
+      return (await import("./commands/maps")).mapsCommand;
     },
   },
   {

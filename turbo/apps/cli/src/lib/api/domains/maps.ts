@@ -2,7 +2,7 @@ import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
 
-type ZeroMapsOperation =
+type MapsOperation =
   | "geocode"
   | "reverse-geocode"
   | "directions"
@@ -11,7 +11,7 @@ type ZeroMapsOperation =
   | "osm/download"
   | "osm/render";
 
-export interface ZeroMapsResponse {
+export interface MapsResponse {
   readonly operation?: string;
   readonly provider?: string;
   readonly creditsCharged?: number;
@@ -60,10 +60,10 @@ async function parseErrorBody(
   return { message, code };
 }
 
-export async function callZeroMaps(
-  operation: ZeroMapsOperation,
+export async function callMaps(
+  operation: MapsOperation,
   body: Record<string, unknown>,
-): Promise<ZeroMapsResponse> {
+): Promise<MapsResponse> {
   const baseUrl = await getBaseUrl();
   const token = await getActiveToken();
   if (!token) {
@@ -84,5 +84,5 @@ export async function callZeroMaps(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  return (await response.json()) as ZeroMapsResponse;
+  return (await response.json()) as MapsResponse;
 }

@@ -51,7 +51,7 @@ function validateOsmArea<T extends z.infer<typeof osmAreaRequestBaseSchema>>(
     }, "bbox east/north must be greater than west/south");
 }
 
-export const zeroMapsOperationSchema = z.enum([
+export const mapsOperationSchema = z.enum([
   "geocode",
   "reverse-geocode",
   "directions",
@@ -61,8 +61,8 @@ export const zeroMapsOperationSchema = z.enum([
   "osm.render",
 ]);
 
-export const zeroMapsResponseSchema = z.object({
-  operation: zeroMapsOperationSchema,
+export const mapsResponseSchema = z.object({
+  operation: mapsOperationSchema,
   provider: z.enum(["google-maps", "openstreetmap"]),
   creditsCharged: z.number(),
   billingCategory: z.string(),
@@ -70,24 +70,24 @@ export const zeroMapsResponseSchema = z.object({
   result: z.unknown(),
 });
 
-export const zeroMapsGeocodeRequestSchema = z.object({
+export const mapsGeocodeRequestSchema = z.object({
   address: z.string().trim().min(1),
   region: z.string().trim().min(1).optional(),
 });
 
-export const zeroMapsReverseGeocodeRequestSchema = z.object({
+export const mapsReverseGeocodeRequestSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
 });
 
-export const zeroMapsDirectionsRequestSchema = z.object({
+export const mapsDirectionsRequestSchema = z.object({
   origin: z.string().trim().min(1),
   destination: z.string().trim().min(1),
   mode: travelModeSchema.default("driving"),
   departureTime: z.string().trim().min(1).optional(),
 });
 
-export const zeroMapsPlacesSearchRequestSchema = z.object({
+export const mapsPlacesSearchRequestSchema = z.object({
   query: z.string().trim().min(1),
   location: z.string().trim().min(1).optional(),
   radius: z.number().int().positive().optional(),
@@ -96,12 +96,12 @@ export const zeroMapsPlacesSearchRequestSchema = z.object({
   fields: placeSearchFieldsetSchema.default("pro"),
 });
 
-export const zeroMapsPlacesDetailsRequestSchema = z.object({
+export const mapsPlacesDetailsRequestSchema = z.object({
   placeId: z.string().trim().min(1),
   fields: placeDetailFieldsetSchema.default("essentials"),
 });
 
-export const zeroMapsOsmDownloadRequestSchema = validateOsmArea(
+export const mapsOsmDownloadRequestSchema = validateOsmArea(
   osmAreaRequestBaseSchema.extend({
     layers: z
       .array(osmLayerSchema)
@@ -113,7 +113,7 @@ export const zeroMapsOsmDownloadRequestSchema = validateOsmArea(
   }),
 );
 
-export const zeroMapsOsmRenderRequestSchema = validateOsmArea(
+export const mapsOsmRenderRequestSchema = validateOsmArea(
   osmAreaRequestBaseSchema.extend({
     layers: z
       .array(osmLayerSchema)
@@ -130,31 +130,25 @@ export const zeroMapsOsmRenderRequestSchema = validateOsmArea(
   }),
 );
 
-export type ZeroMapsResponse = z.infer<typeof zeroMapsResponseSchema>;
-export type ZeroMapsGeocodeRequest = z.infer<
-  typeof zeroMapsGeocodeRequestSchema
+export type MapsResponse = z.infer<typeof mapsResponseSchema>;
+export type MapsGeocodeRequest = z.infer<typeof mapsGeocodeRequestSchema>;
+export type MapsReverseGeocodeRequest = z.infer<
+  typeof mapsReverseGeocodeRequestSchema
 >;
-export type ZeroMapsReverseGeocodeRequest = z.infer<
-  typeof zeroMapsReverseGeocodeRequestSchema
+export type MapsDirectionsRequest = z.infer<typeof mapsDirectionsRequestSchema>;
+export type MapsPlacesSearchRequest = z.infer<
+  typeof mapsPlacesSearchRequestSchema
 >;
-export type ZeroMapsDirectionsRequest = z.infer<
-  typeof zeroMapsDirectionsRequestSchema
+export type MapsPlacesDetailsRequest = z.infer<
+  typeof mapsPlacesDetailsRequestSchema
 >;
-export type ZeroMapsPlacesSearchRequest = z.infer<
-  typeof zeroMapsPlacesSearchRequestSchema
+export type MapsOsmDownloadRequest = z.infer<
+  typeof mapsOsmDownloadRequestSchema
 >;
-export type ZeroMapsPlacesDetailsRequest = z.infer<
-  typeof zeroMapsPlacesDetailsRequestSchema
->;
-export type ZeroMapsOsmDownloadRequest = z.infer<
-  typeof zeroMapsOsmDownloadRequestSchema
->;
-export type ZeroMapsOsmRenderRequest = z.infer<
-  typeof zeroMapsOsmRenderRequestSchema
->;
+export type MapsOsmRenderRequest = z.infer<typeof mapsOsmRenderRequestSchema>;
 
 const mapsResponses = {
-  200: zeroMapsResponseSchema,
+  200: mapsResponseSchema,
   400: apiErrorSchema,
   401: apiErrorSchema,
   402: apiErrorSchema,
@@ -163,63 +157,63 @@ const mapsResponses = {
   503: apiErrorSchema,
 } as const;
 
-export const zeroMapsContract = c.router({
+export const mapsContract = c.router({
   geocode: {
     method: "POST",
     path: "/api/okou/maps/geocode",
     headers: authHeadersSchema,
-    body: zeroMapsGeocodeRequestSchema,
+    body: mapsGeocodeRequestSchema,
     responses: mapsResponses,
-    summary: "Geocode an address through managed Zero Maps",
+    summary: "Geocode an address through managed Okou Maps",
   },
   reverseGeocode: {
     method: "POST",
     path: "/api/okou/maps/reverse-geocode",
     headers: authHeadersSchema,
-    body: zeroMapsReverseGeocodeRequestSchema,
+    body: mapsReverseGeocodeRequestSchema,
     responses: mapsResponses,
-    summary: "Reverse geocode coordinates through managed Zero Maps",
+    summary: "Reverse geocode coordinates through managed Okou Maps",
   },
   directions: {
     method: "POST",
     path: "/api/okou/maps/directions",
     headers: authHeadersSchema,
-    body: zeroMapsDirectionsRequestSchema,
+    body: mapsDirectionsRequestSchema,
     responses: mapsResponses,
-    summary: "Compute directions through managed Zero Maps",
+    summary: "Compute directions through managed Okou Maps",
   },
   placesSearch: {
     method: "POST",
     path: "/api/okou/maps/places/search",
     headers: authHeadersSchema,
-    body: zeroMapsPlacesSearchRequestSchema,
+    body: mapsPlacesSearchRequestSchema,
     responses: mapsResponses,
-    summary: "Search places through managed Zero Maps",
+    summary: "Search places through managed Okou Maps",
   },
   placesDetails: {
     method: "POST",
     path: "/api/okou/maps/places/details",
     headers: authHeadersSchema,
-    body: zeroMapsPlacesDetailsRequestSchema,
+    body: mapsPlacesDetailsRequestSchema,
     responses: mapsResponses,
-    summary: "Fetch place details through managed Zero Maps",
+    summary: "Fetch place details through managed Okou Maps",
   },
   osmDownload: {
     method: "POST",
     path: "/api/okou/maps/osm/download",
     headers: authHeadersSchema,
-    body: zeroMapsOsmDownloadRequestSchema,
+    body: mapsOsmDownloadRequestSchema,
     responses: mapsResponses,
-    summary: "Download OpenStreetMap features through managed Zero Maps",
+    summary: "Download OpenStreetMap features through managed Okou Maps",
   },
   osmRender: {
     method: "POST",
     path: "/api/okou/maps/osm/render",
     headers: authHeadersSchema,
-    body: zeroMapsOsmRenderRequestSchema,
+    body: mapsOsmRenderRequestSchema,
     responses: mapsResponses,
-    summary: "Render OpenStreetMap features to PNG through managed Zero Maps",
+    summary: "Render OpenStreetMap features to PNG through managed Okou Maps",
   },
 });
 
-export type ZeroMapsContract = typeof zeroMapsContract;
+export type MapsContract = typeof mapsContract;
