@@ -45,7 +45,7 @@ async fn wait_heartbeat_matching_after(
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn external_workspace_cache_publication_and_removal_trigger_immediate_heartbeats() {
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
@@ -165,7 +165,7 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tick() {
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
