@@ -429,6 +429,9 @@ CPU_PRESSURE_ELAPSED=$SECONDS
 printf '%s\n' "$CPU_PRESSURE_RESULT"
 [ "$CPU_PRESSURE_ELAPSED" -ge "$CPU_PRESSURE_SECONDS" ] \
   || fail "CPU pressure ended early after ${CPU_PRESSURE_ELAPSED}s"
+grep -E -q '^cpu-pressure-complete throttled_periods=[1-9][0-9]*$' \
+  <<<"$CPU_PRESSURE_RESULT" \
+  || fail "CPU pressure did not report throttling"
 
 if wait "$PRESSURE_SUBMIT_PID"; then
   PRESSURE_SUBMIT_STATUS=0
@@ -635,9 +638,6 @@ LEAK_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$LEAK_LINE"
 if grep -F 'process control latency exceeded calibrated bound' <<<"$LOGS" >/dev/null; then
   fail "process control exceeded the calibrated 750ms bound under pressure"
 fi
-grep -F 'exec workload resource pressure observed' <<<"$LOGS" \
-  | grep -E 'cpu_nr_throttled=[1-9][0-9]*' >/dev/null \
-  || fail "CPU-pressure enforcement was not reported"
 PID_CLEANUP_LINE=$(printf '%s\n' "$LOGS" \
   | grep -F 'exec process containment cleaned' \
   | grep -F 'descendants_observed=true' \
