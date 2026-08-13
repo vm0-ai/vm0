@@ -1,13 +1,13 @@
-import { zeroPeopleSearchContract } from "@okouai/api-contracts/contracts/zero-people-search";
+import { peopleSearchContract } from "@okouai/api-contracts/contracts/people-search";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { zeroPeopleSearch$ } from "../services/zero-people-search.service";
+import { peopleSearch$ } from "../services/people-search.service";
 
-const peopleSearchBody$ = bodyResultOf(zeroPeopleSearchContract.search);
+const peopleSearchBody$ = bodyResultOf(peopleSearchContract.search);
 
 const peopleSearchInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -17,17 +17,13 @@ const peopleSearchInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    return await set(
-      zeroPeopleSearch$,
-      { auth, body: bodyResult.data },
-      signal,
-    );
+    return await set(peopleSearch$, { auth, body: bodyResult.data }, signal);
   },
 );
 
-export const zeroPeopleSearchRoutes: readonly RouteEntry[] = [
+export const peopleSearchRoutes: readonly RouteEntry[] = [
   {
-    route: zeroPeopleSearchContract.search,
+    route: peopleSearchContract.search,
     handler: authRoute(
       {
         requireOrganization: true,

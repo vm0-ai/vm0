@@ -1,18 +1,18 @@
 import {
-  ZERO_PEOPLE_SEARCH_MAX_COMPANY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_LIMIT,
-  ZERO_PEOPLE_SEARCH_MAX_LOCATION_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCES,
-  ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS,
-  type ZeroPeopleSearchProfile,
-  type ZeroPeopleSearchRequest,
-  type ZeroPeopleSearchResponse,
-  type ZeroPeopleSearchSource,
-} from "@okouai/api-contracts/contracts/zero-people-search";
+  PEOPLE_SEARCH_MAX_COMPANY_CHARS,
+  PEOPLE_SEARCH_MAX_LIMIT,
+  PEOPLE_SEARCH_MAX_LOCATION_CHARS,
+  PEOPLE_SEARCH_MAX_NAME_CHARS,
+  PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
+  PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS,
+  PEOPLE_SEARCH_MAX_SOURCES,
+  PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
+  PEOPLE_SEARCH_MAX_TITLE_CHARS,
+  type PeopleSearchProfile,
+  type PeopleSearchRequest,
+  type PeopleSearchResponse,
+  type PeopleSearchSource,
+} from "@okouai/api-contracts/contracts/people-search";
 import { command } from "ccstate";
 import { z } from "zod";
 
@@ -43,15 +43,15 @@ const MAX_TOTAL_PROFILE_TEXT_CHARS = 64_000;
 
 const structuredProfileSchema = z
   .object({
-    name: z.string().min(1).max(ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS),
-    title: z.string().max(ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS).nullable(),
-    company: z.string().max(ZERO_PEOPLE_SEARCH_MAX_COMPANY_CHARS).nullable(),
-    location: z.string().max(ZERO_PEOPLE_SEARCH_MAX_LOCATION_CHARS).nullable(),
-    summary: z.string().max(ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS).nullable(),
+    name: z.string().min(1).max(PEOPLE_SEARCH_MAX_NAME_CHARS),
+    title: z.string().max(PEOPLE_SEARCH_MAX_TITLE_CHARS).nullable(),
+    company: z.string().max(PEOPLE_SEARCH_MAX_COMPANY_CHARS).nullable(),
+    location: z.string().max(PEOPLE_SEARCH_MAX_LOCATION_CHARS).nullable(),
+    summary: z.string().max(PEOPLE_SEARCH_MAX_SUMMARY_CHARS).nullable(),
     sourceIds: z
       .array(z.number().int().positive())
       .min(1)
-      .max(ZERO_PEOPLE_SEARCH_MAX_SOURCES)
+      .max(PEOPLE_SEARCH_MAX_SOURCES)
       .refine((ids) => {
         return new Set(ids).size === ids.length;
       }),
@@ -60,9 +60,7 @@ const structuredProfileSchema = z
 
 const structuredResponseSchema = z
   .object({
-    profiles: z
-      .array(structuredProfileSchema)
-      .max(ZERO_PEOPLE_SEARCH_MAX_LIMIT),
+    profiles: z.array(structuredProfileSchema).max(PEOPLE_SEARCH_MAX_LIMIT),
   })
   .strict();
 
@@ -115,20 +113,20 @@ const PEOPLE_SEARCH_JSON_SCHEMA = {
   properties: {
     profiles: {
       type: "array",
-      maxItems: ZERO_PEOPLE_SEARCH_MAX_LIMIT,
+      maxItems: PEOPLE_SEARCH_MAX_LIMIT,
       items: {
         type: "object",
         properties: {
           name: {
             type: "string",
             minLength: 1,
-            maxLength: ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS,
+            maxLength: PEOPLE_SEARCH_MAX_NAME_CHARS,
           },
           title: {
             anyOf: [
               {
                 type: "string",
-                maxLength: ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS,
+                maxLength: PEOPLE_SEARCH_MAX_TITLE_CHARS,
               },
               { type: "null" },
             ],
@@ -137,7 +135,7 @@ const PEOPLE_SEARCH_JSON_SCHEMA = {
             anyOf: [
               {
                 type: "string",
-                maxLength: ZERO_PEOPLE_SEARCH_MAX_COMPANY_CHARS,
+                maxLength: PEOPLE_SEARCH_MAX_COMPANY_CHARS,
               },
               { type: "null" },
             ],
@@ -146,7 +144,7 @@ const PEOPLE_SEARCH_JSON_SCHEMA = {
             anyOf: [
               {
                 type: "string",
-                maxLength: ZERO_PEOPLE_SEARCH_MAX_LOCATION_CHARS,
+                maxLength: PEOPLE_SEARCH_MAX_LOCATION_CHARS,
               },
               { type: "null" },
             ],
@@ -155,17 +153,17 @@ const PEOPLE_SEARCH_JSON_SCHEMA = {
             anyOf: [
               {
                 type: "string",
-                maxLength: ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
+                maxLength: PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
               },
               { type: "null" },
             ],
           },
           sourceIds: {
-            // Perplexity rejects JSON Schema uniqueItems; vm0 enforces
+            // Perplexity rejects JSON Schema uniqueItems; the service enforces
             // uniqueness after generation with structuredProfileSchema.
             type: "array",
             minItems: 1,
-            maxItems: ZERO_PEOPLE_SEARCH_MAX_SOURCES,
+            maxItems: PEOPLE_SEARCH_MAX_SOURCES,
             items: { type: "integer", minimum: 1 },
           },
         },
@@ -216,21 +214,21 @@ type PerplexityResponseResult =
 
 interface AuthedPeopleSearchArgs {
   readonly auth: AuthContext & { readonly orgId: string };
-  readonly body: ZeroPeopleSearchRequest;
+  readonly body: PeopleSearchRequest;
 }
 
 interface CompletePeopleSearchArgs {
   readonly apiKey: string;
-  readonly request: ZeroPeopleSearchRequest;
+  readonly request: PeopleSearchRequest;
   readonly recordUsage: () => Promise<number>;
 }
 
 type NormalizedProfilesResult =
-  | { readonly kind: "profiles"; readonly profiles: ZeroPeopleSearchProfile[] }
+  | { readonly kind: "profiles"; readonly profiles: PeopleSearchProfile[] }
   | PeopleSearchErrorResult;
 
-type ZeroPeopleSearchCommandResponse =
-  | { readonly status: 200; readonly body: ZeroPeopleSearchResponse }
+type PeopleSearchCommandResponse =
+  | { readonly status: 200; readonly body: PeopleSearchResponse }
   | PeopleSearchErrorResponse
   | ManagedUsageErrorResponse;
 
@@ -324,7 +322,7 @@ function parseResponseText(text: string): unknown {
   return parsed === undefined ? text : parsed;
 }
 
-function providerRequestBody(request: ZeroPeopleSearchRequest) {
+function providerRequestBody(request: PeopleSearchRequest) {
   return {
     model: PERPLEXITY_MODEL,
     reasoning: { effort: "low" },
@@ -357,7 +355,7 @@ function providerRequestBody(request: ZeroPeopleSearchRequest) {
 
 async function fetchPerplexityPeopleSearch(
   apiKey: string,
-  request: ZeroPeopleSearchRequest,
+  request: PeopleSearchRequest,
   signal: AbortSignal,
 ): Promise<PerplexityBodyResult> {
   const settled = await settle(
@@ -461,7 +459,7 @@ function structuredOutputText(output: readonly unknown[]): string | undefined {
 }
 
 function normalizedHttpUrl(value: string): string | undefined {
-  if (value.length > ZERO_PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS) {
+  if (value.length > PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS) {
     return undefined;
   }
   for (const character of value) {
@@ -479,7 +477,7 @@ function normalizedHttpUrl(value: string): string | undefined {
     return undefined;
   }
   const normalized = url.toString();
-  return normalized.length <= ZERO_PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS
+  return normalized.length <= PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS
     ? normalized
     : undefined;
 }
@@ -500,7 +498,7 @@ function normalizedOptionalText(
 
 function normalizedSource(
   result: z.infer<typeof perplexityResultSchema>,
-): ZeroPeopleSearchSource | undefined {
+): PeopleSearchSource | undefined {
   const url = normalizedHttpUrl(result.url);
   if (!url) {
     return undefined;
@@ -508,7 +506,7 @@ function normalizedSource(
   return {
     title: truncateAtCharacterBoundary(
       sanitizeProviderText(result.title),
-      ZERO_PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
+      PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
     ).trim(),
     url,
   };
@@ -517,15 +515,15 @@ function normalizedSource(
 function normalizedProfile(
   profile: z.infer<typeof structuredProfileSchema>,
   resultsById: ReadonlyMap<number, z.infer<typeof perplexityResultSchema>>,
-): ZeroPeopleSearchProfile | undefined {
+): PeopleSearchProfile | undefined {
   const name = truncateAtCharacterBoundary(
     sanitizeProviderText(profile.name),
-    ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS,
+    PEOPLE_SEARCH_MAX_NAME_CHARS,
   ).trim();
   if (!name) {
     return undefined;
   }
-  const sources: ZeroPeopleSearchSource[] = [];
+  const sources: PeopleSearchSource[] = [];
   const sourceUrls = new Set<string>();
   for (const sourceId of profile.sourceIds) {
     const result = resultsById.get(sourceId);
@@ -540,19 +538,19 @@ function normalizedProfile(
   }
   const title = normalizedOptionalText(
     profile.title,
-    ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS,
+    PEOPLE_SEARCH_MAX_TITLE_CHARS,
   );
   const company = normalizedOptionalText(
     profile.company,
-    ZERO_PEOPLE_SEARCH_MAX_COMPANY_CHARS,
+    PEOPLE_SEARCH_MAX_COMPANY_CHARS,
   );
   const location = normalizedOptionalText(
     profile.location,
-    ZERO_PEOPLE_SEARCH_MAX_LOCATION_CHARS,
+    PEOPLE_SEARCH_MAX_LOCATION_CHARS,
   );
   const summary = normalizedOptionalText(
     profile.summary,
-    ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
+    PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
   );
   return {
     name,
@@ -564,7 +562,7 @@ function normalizedProfile(
   };
 }
 
-function profileIdentityKey(profile: ZeroPeopleSearchProfile): string {
+function profileIdentityKey(profile: PeopleSearchProfile): string {
   return JSON.stringify([
     profile.name,
     profile.sources
@@ -575,7 +573,7 @@ function profileIdentityKey(profile: ZeroPeopleSearchProfile): string {
   ]);
 }
 
-function profileTextCharacters(profile: ZeroPeopleSearchProfile): number {
+function profileTextCharacters(profile: PeopleSearchProfile): number {
   return (
     profile.name.length +
     (profile.title?.length ?? 0) +
@@ -589,7 +587,7 @@ function profileTextCharacters(profile: ZeroPeopleSearchProfile): number {
 }
 
 function normalizeProfiles(
-  request: ZeroPeopleSearchRequest,
+  request: PeopleSearchRequest,
   body: unknown,
 ): NormalizedProfilesResult {
   const envelope = perplexityEnvelopeSchema.safeParse(body);
@@ -623,7 +621,7 @@ function normalizeProfiles(
     resultsById.set(result.id, result);
   }
 
-  const profiles: ZeroPeopleSearchProfile[] = [];
+  const profiles: PeopleSearchProfile[] = [];
   const profileKeys = new Set<string>();
   let totalCharacters = 0;
   for (const profile of structured.data.profiles) {
@@ -657,10 +655,10 @@ function runIdForUsage(auth: AuthContext): string | undefined {
 }
 
 function successBody(
-  request: ZeroPeopleSearchRequest,
-  profiles: readonly ZeroPeopleSearchProfile[],
+  request: PeopleSearchRequest,
+  profiles: readonly PeopleSearchProfile[],
   creditsCharged: number,
-): ZeroPeopleSearchResponse {
+): PeopleSearchResponse {
   return {
     query: request.query,
     limit: request.limit,
@@ -675,7 +673,7 @@ function successBody(
 async function completePeopleSearch(
   args: CompletePeopleSearchArgs,
   providerSignal: AbortSignal,
-): Promise<ZeroPeopleSearchCommandResponse> {
+): Promise<PeopleSearchCommandResponse> {
   const providerResult = await fetchPerplexityPeopleSearch(
     args.apiKey,
     args.request,
@@ -695,16 +693,16 @@ async function completePeopleSearch(
   };
 }
 
-export const zeroPeopleSearch$ = command(
+export const peopleSearch$ = command(
   async (
     { get, set },
     args: AuthedPeopleSearchArgs,
     signal: AbortSignal,
-  ): Promise<ZeroPeopleSearchCommandResponse> => {
+  ): Promise<PeopleSearchCommandResponse> => {
     const apiKey = env("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero People Search Perplexity provider is not configured",
+        "Okou People Search Perplexity provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -721,7 +719,7 @@ export const zeroPeopleSearch$ = command(
           provider: PROVIDER,
           category: BILLING_CATEGORY,
         },
-        label: "Zero People Search",
+        label: "Okou People Search",
       },
       requestSignal,
     );
