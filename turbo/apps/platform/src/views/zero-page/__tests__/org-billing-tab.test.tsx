@@ -2745,6 +2745,38 @@ describe("organization billing settings", () => {
     });
   });
 
+  it("keeps the concurrency trigger stable while opening the change dialog", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Team Concurrency Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencySubscriptions: [
+          {
+            id: "sub_concurrency_12345678",
+            quantity: 2,
+            currentPeriodEnd: "2026-06-01T00:00:00Z",
+            cancelAtPeriodEnd: false,
+            canReduce: true,
+            canChangeInApp: true,
+          },
+        ],
+      });
+    });
+
+    await openBillingTab();
+
+    const changeButton = buttonByText("Change");
+    click(changeButton);
+    await screen.findByRole("dialog", { name: "Change concurrency" });
+
+    expect(changeButton).toHaveTextContent("Change");
+    expect(changeButton).toBeEnabled();
+  });
+
   it("manages an active concurrency subscription through Change", async () => {
     let previewedQuantity: number | null = null;
     let confirmedQuantity: number | null = null;
