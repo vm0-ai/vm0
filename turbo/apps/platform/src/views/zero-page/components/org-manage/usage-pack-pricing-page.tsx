@@ -1237,34 +1237,72 @@ function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
 
 /* A review dialog is too narrow for the page ledger's control column, so its
    rows keep only the two rails that matter on a confirmation screen: what the
-   line is, and the money. Every amount ends on the same right edge. */
-const REVIEW_ROW =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5";
+   line is, and the money. Every amount ends on the same right edge.
+
+   Exactly three type levels, so a reader can tell a heading from a row without
+   reading it: block name at 12px medium muted, row label at 14px medium ink,
+   qualifier at 11px muted on its own line. A qualifier never shares the label's
+   line -- one middot cannot mean "expires", "includes" and "consists of" at
+   once. Rule weight carries the structure: gray-200 opens a block, gray-100
+   separates rows inside it. */
+const REVIEW_ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3";
 const REVIEW_HAIRLINE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
 const REVIEW_RULE = "border-t-[0.7px] border-border";
+
+function ReviewSectionLabel({ label }: { readonly label: string }) {
+  return (
+    <p className="pb-0.5 pt-1 text-xs font-medium text-muted-foreground">
+      {label}
+    </p>
+  );
+}
+
+function ReviewRowLabel({
+  label,
+  meta,
+}: {
+  readonly label: string;
+  readonly meta?: string;
+}) {
+  return (
+    <span className="min-w-0">
+      <span className="block text-sm font-medium text-foreground">{label}</span>
+      {meta !== undefined && (
+        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+          {meta}
+        </span>
+      )}
+    </span>
+  );
+}
 
 function ReviewRow({
   amount,
   label,
   meta,
   rule = "hairline",
+  strong = false,
 }: {
   readonly amount: string;
   readonly label: string;
   readonly meta?: string;
-  readonly rule?: "hairline" | "none" | "strong";
+  readonly rule?: "hairline" | "strong";
+  readonly strong?: boolean;
 }) {
-  const border =
-    rule === "none" ? "" : rule === "strong" ? REVIEW_RULE : REVIEW_HAIRLINE;
   return (
-    <div className={`${REVIEW_ROW} ${border}`}>
-      {/* Long locales wrap rather than truncate: the expiry date and the pack
-          size are the point of the line, not decoration. */}
-      <span className="min-w-0 text-sm text-muted-foreground">
-        {label}
-        {meta !== undefined && <span className="text-xs"> · {meta}</span>}
-      </span>
-      <span className="text-right text-sm font-medium tabular-nums text-foreground">
+    <div
+      className={`${REVIEW_ROW} ${strong ? "py-3.5" : "py-2.5"} ${
+        rule === "strong" ? REVIEW_RULE : REVIEW_HAIRLINE
+      }`}
+    >
+      <ReviewRowLabel label={label} {...(meta === undefined ? {} : { meta })} />
+      <span
+        className={
+          strong
+            ? "text-right text-3xl font-light tracking-tight tabular-nums text-foreground"
+            : "text-right text-sm font-medium tabular-nums text-foreground"
+        }
+      >
         {amount}
       </span>
     </div>
@@ -1281,14 +1319,12 @@ function ReviewTotalRow({
   readonly value: number;
 }) {
   return (
-    <div
-      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-4 ${REVIEW_RULE}`}
-    >
-      <span className="text-sm font-medium text-foreground">
-        {i18n.t(($) => {
+    <div className={`${REVIEW_ROW} py-4 ${REVIEW_RULE}`}>
+      <ReviewRowLabel
+        label={i18n.t(($) => {
           return $.billing.plans.usagePacks.monthlyTotal;
         })}
-      </span>
+      />
       <LedgerPrice strong fractionDigits={fractionDigits} value={value} />
     </div>
   );
@@ -1309,9 +1345,14 @@ function ManagedSubscriptionSummaryDetails({
       : monthlyTotalCents / 100;
   const concurrentSlots = planConcurrentSlots(plan.tier);
   return (
-    <div className="mt-1">
+    <div>
+      <ReviewSectionLabel
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.management.everyMonth;
+        })}
+      />
       <ReviewRow
-        rule="none"
+        rule="strong"
         label={i18n.t(
           ($) => {
             return $.billing.plans.namedPlan;
@@ -1337,7 +1378,7 @@ function ManagedSubscriptionSummaryDetails({
       />
       <ReviewRow
         label={i18n.t(($) => {
-          return $.billing.plans.usagePacks.creditsEachMonth;
+          return $.billing.plans.usagePacks.credits;
         })}
         {...(totals.bonusCredits > 0
           ? {
@@ -1647,39 +1688,9 @@ export function UsagePackPaymentSummary({
   );
 }
 
-/* The only number on this screen that leaves the account today. Nothing else
-   in the dialog is allowed to compete with it, and the brand colour stays on
-   the confirm button where it means "this is the action". */
-function ReviewChargeRow({
-  amount,
-  label,
-  note,
-}: {
-  readonly amount: string;
-  readonly label: string;
-  readonly note: string;
-}) {
-  return (
-    <div
-      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3.5 ${REVIEW_RULE}`}
-    >
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-foreground">
-          {label}
-        </span>
-        <span className="mt-0.5 block text-[11px] text-muted-foreground">
-          {note}
-        </span>
-      </span>
-      <span className="text-right text-3xl font-light tracking-tight tabular-nums text-foreground">
-        {amount}
-      </span>
-    </div>
-  );
-}
-
 /* What confirming does right now: the charge, and the credits it buys. The
-   recurring subscription is a separate block below. */
+   recurring subscription is a separate, separately named block below, so the
+   two large numerals answer two questions instead of competing. */
 function UsagePackChangeCharges({
   preview,
 }: {
@@ -1696,12 +1707,19 @@ function UsagePackChangeCharges({
   }
   return (
     <div>
+      <ReviewSectionLabel
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.management.today;
+        })}
+      />
       {hasImmediateAmount && (
-        <ReviewChargeRow
+        <ReviewRow
+          strong
+          rule="strong"
           label={i18n.t(($) => {
             return $.billing.plans.usagePacks.management.immediateAmount;
           })}
-          note={i18n.t(($) => {
+          meta={i18n.t(($) => {
             return $.billing.plans.usagePacks.management.immediateAmountNote;
           })}
           amount={formatUsd(preview.immediateAmountCents / 100)}
@@ -1770,7 +1788,7 @@ function UsagePackSubscriptionChangeDialog({
           </DialogDescription>
         </DialogHeader>
         {preview && <UsagePackChangeCharges preview={preview} />}
-        <SubscriptionOrderSummary plan={plan} totals={totals} />
+        <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
         {error && <p className="text-xs text-destructive">{error}</p>}
         <DialogFooter>
           <Button
@@ -1795,31 +1813,6 @@ function UsagePackSubscriptionChangeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function SubscriptionOrderSummary({
-  monthlyTotalCents,
-  plan,
-  totals,
-}: {
-  readonly monthlyTotalCents?: number;
-  readonly plan: UsagePackPlan;
-  readonly totals: MemberUsageTotals;
-}) {
-  return (
-    <div>
-      <p className="text-[13px] text-muted-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.management.newSubscription;
-        })}
-      </p>
-      <ManagedSubscriptionSummaryDetails
-        monthlyTotalCents={monthlyTotalCents}
-        plan={plan}
-        totals={totals}
-      />
-    </div>
   );
 }
 
@@ -2590,7 +2583,7 @@ function MigrationPreviewDetails({
   };
   return (
     <>
-      <SubscriptionOrderSummary
+      <ManagedSubscriptionSummaryDetails
         monthlyTotalCents={preview.nextRecurringAmountCents}
         plan={usagePackPlan(preview.targetTier)}
         totals={previewTotals}

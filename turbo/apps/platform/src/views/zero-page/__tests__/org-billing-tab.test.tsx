@@ -1323,22 +1323,22 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
-    expect(
-      within(reviewDialog).getByText("New monthly subscription"),
-    ).toBeInTheDocument();
-    const conversionPlanRow =
-      within(reviewDialog).getByText("Team plan").parentElement;
+    expect(within(reviewDialog).getByText("Every month")).toBeInTheDocument();
+    const conversionPlanRow = within(reviewDialog)
+      .getByText("Team plan")
+      .closest("div");
     expect(conversionPlanRow).toHaveTextContent("10 concurrent runs");
     expect(conversionPlanRow).toHaveTextContent("$160");
     expect(
-      within(reviewDialog).getByText("Member packages").parentElement,
+      within(reviewDialog).getByText("Member packages").closest("div"),
     ).toHaveTextContent("$70");
-    const conversionCreditsRow =
-      within(reviewDialog).getByText("Credits each month").parentElement;
-    expect(conversionCreditsRow).toHaveTextContent("5,555 bonus");
+    const conversionCreditsRow = within(reviewDialog)
+      .getByText("Credits")
+      .closest("div");
+    expect(conversionCreditsRow).toHaveTextContent("5,555 bonus included");
     expect(conversionCreditsRow).toHaveTextContent("75,555");
     expect(
-      within(reviewDialog).getByText("Monthly total").parentElement,
+      within(reviewDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$229.50/month");
     expect(
       within(reviewDialog).getByText("Scheduled for Sep 1, 2026"),
@@ -1589,16 +1589,18 @@ describe("organization billing settings", () => {
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
-    expect(within(confirmationDialog).getByText("Due now")).toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("$15.00")).toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("Today")).toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText(
-        "For the rest of this billing period",
-      ),
+      within(confirmationDialog).getByText("Every month"),
     ).toBeInTheDocument();
-    const grantRow = within(confirmationDialog).getByText(
-      "Credits added after payment",
-    ).parentElement;
+    const dueRow = within(confirmationDialog)
+      .getByText("Due now")
+      .closest("div");
+    expect(dueRow).toHaveTextContent("For the rest of this billing period");
+    expect(dueRow).toHaveTextContent("$15.00");
+    const grantRow = within(confirmationDialog)
+      .getByText("Credits added after payment")
+      .closest("div");
     expect(grantRow).toHaveTextContent("Expires Apr 1, 2026");
     expect(grantRow).toHaveTextContent("+16,100");
     expect(
@@ -1607,12 +1609,13 @@ describe("organization billing settings", () => {
     expect(
       within(confirmationDialog).queryByText("Total credits"),
     ).not.toBeInTheDocument();
-    const monthlyCreditsRow =
-      within(confirmationDialog).getByText("Credits each month").parentElement;
-    expect(monthlyCreditsRow).toHaveTextContent("4,321 bonus");
+    const monthlyCreditsRow = within(confirmationDialog)
+      .getByText("Credits")
+      .closest("div");
+    expect(monthlyCreditsRow).toHaveTextContent("4,321 bonus included");
     expect(monthlyCreditsRow).toHaveTextContent("54,321");
     expect(
-      within(confirmationDialog).getByText("Monthly total").parentElement,
+      within(confirmationDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$50/month");
     expect(
       within(confirmationDialog).queryByText(/Renews /u),
@@ -2246,7 +2249,7 @@ describe("organization billing settings", () => {
     });
     expect(within(confirmationDialog).getByText("$80.00")).toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText("Monthly total").parentElement,
+      within(confirmationDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$180/month");
     expect(window.location.href).toBe(locationBeforeConfirmation);
     click(buttonByText("Confirm", confirmationDialog));
@@ -2367,7 +2370,7 @@ describe("organization billing settings", () => {
       within(confirmationDialog).queryByText("$0.00"),
     ).not.toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText("Monthly total").parentElement,
+      within(confirmationDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$20/month");
     click(buttonByText("Confirm", confirmationDialog));
     await waitFor(() => {
