@@ -3386,10 +3386,10 @@ function groupRendersContent(
   return group.events.some(isRenderableAssistantEvent);
 }
 
-function lastUserBubbleEvent(
-  group: ChatEventGroup,
-): EnrichedChatEvent | undefined {
-  return group.events.filter(rendersUserBubble).at(-1);
+// A user group can be on screen for its fold alone, with every message in it
+// rendering as a card or as nothing, and there is no bubble to stack against.
+function groupHasUserBubble(group: ChatEventGroup): boolean {
+  return group.events.some(rendersUserBubble);
 }
 
 function ChatThreadEventGroups({
@@ -3444,7 +3444,7 @@ function ChatThreadEventGroups({
           runGroupFolds.length === 0 &&
           previousVisibleGroup !== undefined &&
           previousVisibleGroup.role === "user" &&
-          lastUserBubbleEvent(previousVisibleGroup) !== undefined;
+          groupHasUserBubble(previousVisibleGroup);
         if (groupRendersContent(group, embeddedFolds, completedWorkFold)) {
           previousVisibleGroup = group;
         }
