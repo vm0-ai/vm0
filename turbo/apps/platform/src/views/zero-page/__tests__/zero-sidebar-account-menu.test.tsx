@@ -4,6 +4,7 @@ import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroBillingStatusContract,
   zeroBillingUsagePackCreditsContract,
@@ -197,8 +198,27 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
-function mockAdminBillingStatus(credits: number): void {
+interface MockAdminBillingStatusOptions {
+  readonly failFirstRequest?: boolean;
+  readonly onRequest?: () => void;
+}
+
+function mockAdminBillingStatus(
+  credits: number,
+  options: MockAdminBillingStatusOptions = {},
+): void {
+  let requestCount = 0;
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    requestCount += 1;
+    options.onRequest?.();
+    if (options.failFirstRequest && requestCount === 1) {
+      return respond(500, {
+        error: {
+          message: "Failed to load billing status",
+          code: "INTERNAL_SERVER_ERROR",
+        },
+      });
+    }
     return respond(200, {
       tier: "pro",
       credits,
@@ -492,6 +512,116 @@ describe("zero sidebar account menu", () => {
       expect(within(menu).getByText("500 credits")).toBeInTheDocument();
     });
     expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
+  });
+
+  it("shares foreground indicator and billing refreshes with the account menu", async () => {
+    let billingRequests = 0;
+    let indicatorRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(12_500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, { agents: {}, threads: {} });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
+    });
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription("billing:changed")).toBe(true);
+      expect(context.mocks.ably.hasSubscription("threadListChanged")).toBe(
+        true,
+      );
+      expect(
+        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
+      ).toBe(true);
+      expect(billingRequests).toBeGreaterThan(0);
+      expect(indicatorRequests).toBeGreaterThan(0);
+    });
+
+    let previousIndicatorRequests = indicatorRequests;
+    context.mocks.ably.trigger("threadListChanged");
+    await waitFor(() => {
+      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
+    });
+    previousIndicatorRequests = indicatorRequests;
+    context.mocks.ably.trigger("chatThreadReadCursorUpdated");
+    await waitFor(() => {
+      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
+    });
+
+    mockedClerk.sessionTouch.mockClear();
+    mockAdminBillingStatus(500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+    indicatorRequests = 0;
+
+    const accountName = screen.getByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Expected account menu trigger");
+    }
+    window.dispatchEvent(new Event("focus"));
+    fireEvent.click(accountButton);
+    let menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+      expect(indicatorRequests).toBe(1);
+    });
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+    mockAdminBillingStatus(250, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+
+    menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("250 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+    });
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+    billingRequests = 0;
+    mockAdminBillingStatus(125, {
+      failFirstRequest: true,
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    window.dispatchEvent(new Event("focus"));
+    fireEvent.click(accountButton);
+    menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(within(menu).getByText("125 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(2);
+    });
   });
 
   it("hides account menu subscriptions when the feature switch is disabled", async () => {

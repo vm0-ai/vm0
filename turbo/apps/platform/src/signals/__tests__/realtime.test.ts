@@ -364,6 +364,51 @@ describe("realtime signals", () => {
     });
   });
 
+  it("keeps a foreground opt-out loop live and initially primed", async () => {
+    mockSignedInUser();
+    const topic = "test:foreground-opt-out";
+    const subscriber = testSubscriber();
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+        options: {
+          runOnForegroundCatchUp: false,
+          runOnSubscribe: true,
+        },
+      },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(runs).toBe(1);
+    });
+
+    mockedClerk.sessionTouch.mockClear();
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+    const foregroundReady = await context.store.get(foregroundReady$);
+    await foregroundReady.promise;
+    expect(runs).toBe(1);
+
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(2);
+    });
+  });
+
   it("rebuilds a failed realtime client after foreground auth and pokes once", async () => {
     mockSignedInUser();
     const loopTopic = "test:failed-foreground-loop";

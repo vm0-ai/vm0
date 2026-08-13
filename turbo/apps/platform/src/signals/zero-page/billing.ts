@@ -28,7 +28,11 @@ import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { tapError } from "../utils.ts";
+import {
+  foregroundReady$,
+  subscribeForegroundCatchUp$,
+} from "../auth-retry.ts";
+import { settle, tapError } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution$,
@@ -228,6 +232,7 @@ const maybeShowPendingRestoreToast$ = command(
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
+const completedForegroundBillingReload$ = state<number | null>(null);
 const usagePackManagementReload$ = state(0);
 const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
@@ -423,6 +428,27 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
+export const reloadAccountMenuBillingStatus$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const foregroundReady = get(foregroundReady$);
+    if (!foregroundReady.pending) {
+      set(reloadBillingStatus$);
+      return;
+    }
+
+    const foregroundResult = await settle(foregroundReady.promise, signal);
+    signal.throwIfAborted();
+    const currentReloadVersion = get(billingReload$);
+    if (
+      !foregroundResult.ok ||
+      get(completedForegroundBillingReload$) !== currentReloadVersion
+    ) {
+      set(reloadBillingStatus$);
+    }
+  },
+);
+
 export const reloadUsagePackManagement$ = command(({ set }) => {
   set(usagePackManagementReload$, (value) => {
     return value + 1;
@@ -520,25 +546,52 @@ export const handleBillingRedirect$ = command(
   },
 );
 
-const reloadBillingStatusFromRealtime$ = command(
+const reloadBillingStatusFromRemoteChange$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
     set(reloadQueueData$);
     set(reloadUsagePackManagement$);
     set(reloadUsageRecords$);
     await set(reconcilePendingBillingPayment$, signal);
+  },
+);
+
+const reloadBillingStatusFromRealtime$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(reloadBillingStatusFromRemoteChange$, signal);
+    signal.throwIfAborted();
     return false;
+  },
+);
+
+const reloadBillingStatusOnForeground$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const reloadResult = await settle(
+      (async () => {
+        await set(reloadBillingStatusFromRemoteChange$, signal);
+        signal.throwIfAborted();
+        const reloadVersion = get(billingReload$);
+        await get(billingStatusAsync$);
+        signal.throwIfAborted();
+        return reloadVersion;
+      })(),
+      signal,
+    );
+    if (reloadResult.ok) {
+      set(completedForegroundBillingReload$, reloadResult.value);
+    }
   },
 );
 
 export const setupBillingRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
+    set(subscribeForegroundCatchUp$, reloadBillingStatusOnForeground$, signal);
     await set(
       setAblyLoop$,
       {
         topic: "billing:changed",
         loopCommand$: reloadBillingStatusFromRealtime$,
-        options: { runOnSubscribe: true },
+        options: { runOnForegroundCatchUp: false, runOnSubscribe: true },
       },
       signal,
     );

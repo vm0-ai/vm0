@@ -51,7 +51,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
-  reloadBillingStatus$,
+  reloadAccountMenuBillingStatus$,
   usagePackCreditsAsync$,
 } from "../../signals/zero-page/billing.ts";
 import {
@@ -806,7 +806,7 @@ export function AccountDropdown({
     consumePendingAccountMenuSettingsSection$,
   );
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
-  const reloadBilling = useSet(reloadBillingStatus$);
+  const reloadBilling = useSet(reloadAccountMenuBillingStatus$);
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
   );
@@ -922,7 +922,11 @@ export function AccountDropdown({
     }
     // Refresh credit balances every time the menu opens so the displayed
     // remaining credits reflect the latest usage.
-    reloadBilling();
+    detach(
+      reloadBilling(pageSignal),
+      Reason.DomCallback,
+      "reload account menu billing",
+    );
     if (!subscriptionsEnabled) {
       return;
     }
