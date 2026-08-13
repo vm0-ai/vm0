@@ -329,6 +329,21 @@ def test_retry_success_logs_body_free_payload_summary_with_colliding_fields(
         )
 
 
+def test_http_408_is_retryable(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
+    flow = model_usage_flow(real_flow, tmp_path)
+
+    with (
+        usage_webhook_api() as webhook,
+        patch.object(time, "sleep") as mock_sleep,
+    ):
+        webhook.queue_response(408)
+        webhook.queue_response(204)
+        _report_and_flush_model_usage(flow)
+
+    assert webhook.request_count == 2
+    mock_sleep.assert_called_once_with(0.5)
+
+
 def test_http_429_is_retryable(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
