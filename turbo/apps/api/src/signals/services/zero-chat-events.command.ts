@@ -84,6 +84,7 @@ import {
 } from "./zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
+  agentRunSourceTitleSnapshot,
   hasAgentRunSourceAnnotation,
   projectUserMessage,
   userMessageFileParts,
@@ -303,14 +304,6 @@ async function resolveChatAgentRunSource(
     return null;
   }
   return await resolveChatAgentRunSourceById(db, auth, auth.runId);
-}
-
-function agentRunSourceTitleSnapshot(title: string | null): string {
-  const normalizedTitle = title?.trim();
-  if (!normalizedTitle || normalizedTitle.toLowerCase() === "now") {
-    return "New thread";
-  }
-  return normalizedTitle;
 }
 
 async function resolveNormalSendAgentRunSource(params: {

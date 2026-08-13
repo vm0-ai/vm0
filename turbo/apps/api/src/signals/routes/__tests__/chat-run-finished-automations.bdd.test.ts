@@ -32,6 +32,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const wf = createWorkflowsBddApi(context);
+const WATCHED_THREAD_TITLE = "Watched chat run";
 
 function automationsClient() {
   return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
@@ -148,6 +149,11 @@ async function startWatchedChatRun(
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected the chat send to create a run");
   }
+  await chat.renameThread(
+    fixture.actor,
+    sent.body.threadId,
+    WATCHED_THREAD_TITLE,
+  );
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
@@ -384,6 +390,58 @@ describe("chat-run-finished workflow automations", () => {
       await expect(
         readLatestWorkflowAutomationRunFixture(context, patternMatch),
       ).resolves.toMatchObject({ autonomyBudget: 1 });
+
+      const fireAlwaysAutomation = await accept(
+        automationsClient().get({
+          headers: authHeaders(),
+          params: { id: fireAlways },
+        }),
+        [200],
+      );
+      const automationThreadId = fireAlwaysAutomation.body.chatThreadId;
+      if (!automationThreadId) {
+        throw new Error("Expected the automation chat thread");
+      }
+      const automationRun = await readLatestWorkflowAutomationRunFixture(
+        context,
+        fireAlways,
+      );
+      if (!automationRun) {
+        throw new Error("Expected the triggered automation run");
+      }
+      const automationEvents = await chat.listThreadEvents(
+        fixture.actor,
+        automationThreadId,
+      );
+      const automationInput = automationEvents.events.find((event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.runId === automationRun.runId
+        );
+      });
+      if (!automationInput || automationInput.eventType !== "input.prompt") {
+        throw new Error("Expected the triggered automation input");
+      }
+      expect(
+        automationInput.userMessage.parts.filter((part) => {
+          return (
+            part.type === "source" ||
+            part.type === "automation" ||
+            part.type === "goal" ||
+            part.type === "morning_brief"
+          );
+        }),
+      ).toStrictEqual([
+        {
+          type: "source",
+          kind: "agent",
+          runId: run.runId,
+          threadId: run.threadId,
+          agentId: fixture.agentId,
+          titleSnapshot: WATCHED_THREAD_TITLE,
+          href: `/chats/${run.threadId}#run-${run.runId}`,
+        },
+      ]);
 
       const automationRuns = await api.listAgentRuns(fixture.actor, {
         status: "pending",

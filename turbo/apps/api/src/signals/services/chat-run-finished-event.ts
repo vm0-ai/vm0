@@ -5,4 +5,6 @@ export interface ChatRunFinishedEvent {
   readonly runId: string;
   readonly runStatus: ChatRunFinishedRunStatus;
   readonly lastResultText: string | null;
+  readonly sourceAgentId: string;
+  readonly sourceThreadTitle: string | null;
 }
