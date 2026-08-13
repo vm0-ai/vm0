@@ -57,7 +57,7 @@ EOF
     first_prompt=${first_prompt//__EMPTY_ID__/$empty_id}
     first_prompt=${first_prompt//__CONTENT_MARKER__/$content_marker}
     first_prompt=${first_prompt//__FIRST_MARKER__/$first_marker}
-    shell_prompt=$(printf '@shell@\n%s' "$first_prompt")
+    shell_prompt=$(runner_e2e_shell_prompt "$first_prompt")
     parts=$(jq -nc \
         --arg prompt "$shell_prompt" \
         --arg contentId "$content_id" \
@@ -107,6 +107,7 @@ EOF
     echo "$output"
     assert_success
     assert_output --partial "$content_marker"
+    refute_output --partial "mock shell exited with"
 
     local continuation_marker="ATTACHMENT_CONTINUED_${TEST_ID}"
     local continuation_prompt
