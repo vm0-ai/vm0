@@ -3680,9 +3680,10 @@ jobs:
           echo "cloudflare-matrix=$cloudflare_matrix" >> "$GITHUB_OUTPUT"
 
   # Prepare isolated identities and API credentials for each runtime after the
-  # browser-level Playwright load has drained. Both API runtimes still run in
-  # parallel, while each direct-Postgres runtime gets one heavy E2E phase at a
-  # time before the runner tests start.
+  # browser-level Playwright load has drained. Pull requests exercise both API
+  # runtimes here. Merge groups already revalidate both deployments and
+  # Playwright suites, but omit this long serial matrix so the required Turbo
+  # gate can report within the merge queue's 15-minute response window.
   cli-e2e-03-runner-prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -3702,6 +3703,7 @@ jobs:
       - cli-e2e-02-playwright
     if: |
       always() &&
+      github.event_name != 'merge_group' &&
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
@@ -4348,7 +4350,9 @@ jobs:
             RUNNER_DEPLOY_SKIP_ALLOWED=""
           fi
           RUNNER_E2E_SKIP_ALLOWED="true"
-          if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            RUNNER_E2E_SKIP_ALLOWED="skipped"
+          elif [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
             RUNNER_E2E_SKIP_ALLOWED=""
           fi
           CF_APP_SKIP_ALLOWED=""

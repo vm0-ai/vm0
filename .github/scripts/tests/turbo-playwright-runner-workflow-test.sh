@@ -190,6 +190,9 @@ end
 unless account_prepare.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
   raise "runner E2E account preparation must use the runner E2E consumer"
 end
+unless account_prepare.fetch("if").include?("github.event_name != 'merge_group'")
+  raise "runner E2E must run on pull requests but omit the long merge-group matrix"
+end
 unless [runner, runner_vercel].all? do |runtime_runner|
     runtime_runner.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
   end
@@ -607,6 +610,10 @@ gate_script = gate_step.fetch("run")
 unless gate_script.include?("RUNNER_E2E_SKIP_ALLOWED=\"true\"") &&
     gate_script.include?("needs.prepare.outputs.turbo-runner-consumer-needed")
   raise "CI gate must restore the runner-specific E2E skip policy"
+end
+unless gate_script.include?('if [ "$EVENT_NAME" = "merge_group" ]; then') &&
+    gate_script.include?('RUNNER_E2E_SKIP_ALLOWED="skipped"')
+  raise "CI gate must require merge-group runner E2E jobs to skip cleanly"
 end
 %w[
   cli-e2e-03-runner-shards
