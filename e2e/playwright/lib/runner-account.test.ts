@@ -115,7 +115,10 @@ test("prepares and cleans one generation of runner accounts", async () => {
       },
     });
 
-    await runRunnerAccount("cleanup", runnerEnvironment(fixture.apiUrl));
+    await runRunnerAccount(
+      "cleanup-generation",
+      runnerEnvironment(fixture.apiUrl),
+    );
 
     assert.deepEqual(fixture.state.deletionEvents, [
       "organization:org_1",
@@ -136,6 +139,105 @@ test("prepares and cleans one generation of runner accounts", async () => {
     assert.deepEqual(
       fixture.state.organizations.map((organization) => organization.id),
       ["org_foreign"],
+    );
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+    await closeServer(fixture.server);
+  }
+});
+
+test("run cleanup removes every runner generation for the exact workflow run", async () => {
+  const fixture = await startClerkFixture();
+  const tempDirectory = await mkdtemp(
+    join(tmpdir(), "runner-account-run-cleanup-test-"),
+  );
+  try {
+    await runRunnerAccount(
+      "prepare",
+      runnerEnvironment(fixture.apiUrl, {
+        GITHUB_OUTPUT: join(tempDirectory, "github-output-1"),
+        GITHUB_RUN_ATTEMPT: "1",
+      }),
+    );
+    await runRunnerAccount(
+      "prepare",
+      runnerEnvironment(fixture.apiUrl, {
+        GITHUB_OUTPUT: join(tempDirectory, "github-output-2"),
+        GITHUB_RUN_ATTEMPT: "2",
+      }),
+    );
+
+    const retainedResources = [
+      {
+        id: "other_run",
+        email: "pr-123+clerk_test+90010-1+runner@vm0-e2e.ai",
+        owner: {
+          jobRef: "pr-123",
+          generation: "90010-1",
+          role: "runner",
+        },
+      },
+      {
+        id: "other_job_ref",
+        email: "pr-124+clerk_test+9001-1+runner@vm0-e2e.ai",
+        owner: {
+          jobRef: "pr-124",
+          generation: "9001-1",
+          role: "runner",
+        },
+      },
+      {
+        id: "other_role",
+        email: "pr-123+clerk_test+9001-1+browser@vm0-e2e.ai",
+        owner: {
+          jobRef: "pr-123",
+          generation: "9001-1",
+          role: "browser",
+        },
+      },
+    ] as const;
+    for (const resource of retainedResources) {
+      fixture.state.users.push({
+        id: `user_${resource.id}`,
+        email: resource.email,
+      });
+      fixture.state.organizations.push({
+        id: `org_${resource.id}`,
+        request: {
+          created_by: `user_${resource.id}`,
+          name: resource.id,
+          private_metadata: { vm0CiTest: resource.owner },
+        },
+      });
+    }
+
+    await runRunnerAccount("cleanup-run", runnerEnvironment(fixture.apiUrl));
+
+    assert.deepEqual(fixture.state.deletionEvents, [
+      "organization:org_1",
+      "organization:org_2",
+      "organization:org_3",
+      "organization:org_4",
+      "organization:org_5",
+      "organization:org_6",
+      "organization:org_7",
+      "organization:org_8",
+      "user:user_1",
+      "user:user_2",
+      "user:user_3",
+      "user:user_4",
+      "user:user_5",
+      "user:user_6",
+      "user:user_7",
+      "user:user_8",
+    ]);
+    assert.deepEqual(
+      fixture.state.users.map((user) => user.id),
+      retainedResources.map((resource) => `user_${resource.id}`),
+    );
+    assert.deepEqual(
+      fixture.state.organizations.map((organization) => organization.id),
+      retainedResources.map((resource) => `org_${resource.id}`),
     );
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
@@ -390,7 +492,7 @@ function runnerEnvironment(
 }
 
 async function runRunnerAccount(
-  command: "prepare" | "cleanup",
+  command: "prepare" | "cleanup-generation" | "cleanup-run",
   environment: Readonly<Record<string, string>>,
 ): Promise<void> {
   await execFileAsync(

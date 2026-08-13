@@ -2996,16 +2996,47 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.cli-e2e-03-runner-prepare.result != 'skipped'
     steps:
+      - name: Determine runner E2E cleanup scope
+        id: cleanup-scope
+        shell: bash
+        env:
+          PREPARE_RESULT: ${{ needs.cli-e2e-03-runner-prepare.result }}
+          RUNNER_RESULT: ${{ needs.cli-e2e-03-runner.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$PREPARE_RESULT" != "success" ]]; then
+            scope="generation"
+          elif [[ "$RUNNER_RESULT" == "success" ]]; then
+            scope="run"
+          else
+            scope="retain"
+          fi
+          echo "Runner E2E cleanup scope: $scope"
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+      - name: Retain runner E2E accounts for failed-job rerun
+        if: steps.cleanup-scope.outputs.scope == 'retain'
+        run: echo "Retaining runner E2E accounts until a successful rerun or fallback cleanup"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.cleanup-scope.outputs.scope != 'retain'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: steps.cleanup-scope.outputs.scope != 'retain'
         with:
           node-version: 22
       - name: Install pnpm
+        if: steps.cleanup-scope.outputs.scope != 'retain'
         run: corepack enable pnpm
       - name: Install E2E dependencies
+        if: steps.cleanup-scope.outputs.scope != 'retain'
         run: cd e2e && pnpm install --frozen-lockfile
-      - name: Cleanup runner E2E accounts
-        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup
+      - name: Cleanup current runner E2E generation
+        if: steps.cleanup-scope.outputs.scope == 'generation'
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup-generation
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Cleanup runner E2E workflow run
+        if: steps.cleanup-scope.outputs.scope == 'run'
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup-run
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}

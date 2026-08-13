@@ -2,6 +2,7 @@ import { appendFile } from "node:fs/promises";
 
 import {
   cleanupCurrentClerkTestGeneration,
+  cleanupCurrentClerkTestRun,
   createOrganization,
   createUser,
   runnerTestAccounts,
@@ -18,17 +19,23 @@ const RUNNER_TEST_ROLES = [
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "prepare" && command !== "cleanup") {
-    throw new Error("Usage: runner-account.ts <prepare|cleanup>");
-  }
-
-  const jobRef = requiredEnvironmentVariable("JOB_REF");
-  const accounts = runnerTestAccounts();
-
-  if (command === "prepare") {
-    await prepareRunnerAccounts(accounts, jobRef);
-  } else {
-    await cleanupRunnerAccounts();
+  switch (command) {
+    case "prepare":
+      await prepareRunnerAccounts(
+        runnerTestAccounts(),
+        requiredEnvironmentVariable("JOB_REF"),
+      );
+      break;
+    case "cleanup-generation":
+      await cleanupRunnerAccountGeneration();
+      break;
+    case "cleanup-run":
+      await cleanupRunnerAccountRun();
+      break;
+    default:
+      throw new Error(
+        "Usage: runner-account.ts <prepare|cleanup-generation|cleanup-run>",
+      );
   }
 }
 
@@ -86,14 +93,19 @@ async function prepareRunnerAccounts(
       ...runnerAccounts,
     });
   } catch (cause) {
-    await cleanupRunnerAccounts();
+    await cleanupRunnerAccountGeneration();
     throw cause;
   }
 }
 
-async function cleanupRunnerAccounts(): Promise<void> {
+async function cleanupRunnerAccountGeneration(): Promise<void> {
   const result = await cleanupCurrentClerkTestGeneration(RUNNER_TEST_ROLES);
-  console.log("Cleaned up runner E2E accounts", result);
+  console.log("Cleaned up runner E2E account generation", result);
+}
+
+async function cleanupRunnerAccountRun(): Promise<void> {
+  const result = await cleanupCurrentClerkTestRun(RUNNER_TEST_ROLES);
+  console.log("Cleaned up runner E2E workflow run", result);
 }
 
 function requiredEnvironmentVariable(name: string): string {

@@ -21,6 +21,7 @@ async function main(): Promise<void> {
         parseRoles(requiredArgument(3, "role list")),
         { dryRun },
       );
+      assertNoExtraArguments(4);
       break;
     case "cleanup-job-ref":
       assertNoExtraArguments(3);
@@ -29,20 +30,21 @@ async function main(): Promise<void> {
       });
       break;
     case "cleanup-stale":
-      if (process.argv[3] !== STALE_CLEANUP_ARGUMENT) {
+      if (process.argv[4] !== STALE_CLEANUP_ARGUMENT) {
         throw new Error(
-          `cleanup-stale requires ${STALE_CLEANUP_ARGUMENT} <hours>`,
+          `cleanup-stale requires <roles> ${STALE_CLEANUP_ARGUMENT} <hours>`,
         );
       }
       result = await cleanupStaleClerkTestResources(
-        staleCutoff(requiredArgument(4, "stale age")),
+        parseRoles(requiredArgument(3, "role list")),
+        staleCutoff(requiredArgument(5, "stale age")),
         { dryRun },
       );
-      assertNoExtraArguments(5);
+      assertNoExtraArguments(6);
       break;
     default:
       throw new Error(
-        "Usage: clerk-test-resources.ts cleanup-generation <roles> | cleanup-job-ref | cleanup-stale --older-than-hours <hours>",
+        "Usage: clerk-test-resources.ts cleanup-generation <roles> | cleanup-job-ref | cleanup-stale <roles> --older-than-hours <hours>",
       );
   }
 
@@ -66,7 +68,6 @@ function parseRoles(value: string): readonly ClerkTestRole[] {
   if (roles.length === 0) {
     throw new Error("At least one Clerk test role is required");
   }
-  assertNoExtraArguments(4);
   return roles;
 }
 

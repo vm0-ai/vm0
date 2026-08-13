@@ -33,7 +33,12 @@ test("runs generation and stale cleanup through the command entry point", async 
     assert.match(jobRef.stdout, /selectedUsers: 0/);
 
     const stale = await runClerkCommand(
-      ["cleanup-stale", "--older-than-hours", "6"],
+      [
+        "cleanup-stale",
+        "browser,playwright,paid-onboarding",
+        "--older-than-hours",
+        "6",
+      ],
       { ...environment, DRY_RUN: "true" },
     );
     assert.match(stale.stdout, /dryRun: true/);
@@ -41,6 +46,13 @@ test("runs generation and stale cleanup through the command entry point", async 
     await assert.rejects(
       runClerkCommand(
         ["cleanup-generation", "playwright,unknown"],
+        environment,
+      ),
+      /Unknown Clerk test role: unknown/,
+    );
+    await assert.rejects(
+      runClerkCommand(
+        ["cleanup-stale", "runner,unknown", "--older-than-hours", "30"],
         environment,
       ),
       /Unknown Clerk test role: unknown/,
