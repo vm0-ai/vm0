@@ -98,6 +98,7 @@ class TestRegistryBuiltinCoreCache:
             return {
                 "runId": run_id,
                 "billableFirewalls": [],
+                "cliAgentType": "claude-code",
                 "firewalls": firewalls,
             }
 

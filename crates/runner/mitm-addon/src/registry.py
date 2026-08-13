@@ -268,6 +268,27 @@ def _classify_registry_vms(
             )
             continue
 
+        if "cliAgentType" not in vm:
+            invalid_vms[client_ip] = InvalidVmEntry(
+                "missing_cli_agent_type",
+                "proxy registry VM entry is missing cliAgentType",
+            )
+            continue
+
+        cli_agent_type = vm["cliAgentType"]
+        if not isinstance(cli_agent_type, str):
+            invalid_vms[client_ip] = InvalidVmEntry(
+                "invalid_cli_agent_type",
+                "proxy registry VM entry cliAgentType must be a string",
+            )
+            continue
+        if not cli_agent_type:
+            invalid_vms[client_ip] = InvalidVmEntry(
+                "empty_cli_agent_type",
+                "proxy registry VM entry cliAgentType must be non-empty",
+            )
+            continue
+
         if (
             "firewalls" in vm
             and vm["firewalls"] is not None

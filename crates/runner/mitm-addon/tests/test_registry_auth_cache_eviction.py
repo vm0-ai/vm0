@@ -58,7 +58,13 @@ class TestRegistryAuthCacheEviction:
 
         # Update registry: remove run-abc-123, add run-other
         new_data = {
-            "vms": {"10.200.0.99": {"runId": "run-other", "billableFirewalls": []}},
+            "vms": {
+                "10.200.0.99": {
+                    "runId": "run-other",
+                    "billableFirewalls": [],
+                    "cliAgentType": "claude-code",
+                }
+            },
             "updatedAt": 0,
         }
         registry_file.write_text(json.dumps(new_data))
@@ -226,6 +232,7 @@ class TestRegistryAuthCacheEviction:
                         "10.200.0.3": {
                             "runId": "run-active",
                             "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                         },
                         "10.200.0.4": {"runId": "  \t", "billableFirewalls": []},
                         "10.200.0.5": {
@@ -302,6 +309,7 @@ class TestRegistryAuthCacheEviction:
                         "10.200.0.1": {
                             "runId": "run-active",
                             "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                         },
                         "10.200.0.2": None,
                         "10.200.0.3": "broken",
