@@ -1619,37 +1619,45 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     debug_assert!(workspace_cache_snapshot.workspace_cache_loaded());
     let mut initial_relevant_cache_keys = initial_workspace_cache.loaded_cache_keys;
     initial_relevant_cache_keys.extend(initial_workspace_cache.locked_commit_keys.iter().cloned());
-    let initial_workspace_cache_requires_refresh = match workspace_cache_watcher.as_mut() {
+    let mut initial_workspace_cache_change = match workspace_cache_watcher.as_mut() {
         Some(watcher) => match watcher
             .reconcile_initial_relevant_entries(&initial_relevant_cache_keys)
             .await
         {
-            Ok(requires_refresh) => requires_refresh,
+            Ok(change) => change,
             Err(error) => {
                 warn!(error = %error, "workspace cache watcher failed during startup reconciliation; using routine reconciliation");
                 workspace_cache_watcher = None;
-                true
+                Some(crate::workspace_image_cache::WorkspaceCacheChange {
+                    observed_at: tokio::time::Instant::now(),
+                    committed_cache_keys: std::collections::BTreeSet::new(),
+                })
             }
         },
-        None => false,
+        None => None,
     };
+    if !initial_workspace_cache.locked_commit_keys.is_empty() {
+        let locked_change = crate::workspace_image_cache::WorkspaceCacheChange {
+            observed_at: tokio::time::Instant::now(),
+            committed_cache_keys: initial_workspace_cache.locked_commit_keys,
+        };
+        match initial_workspace_cache_change.as_mut() {
+            Some(change) => change.merge(locked_change),
+            None => initial_workspace_cache_change = Some(locked_change),
+        }
+    }
     let mut workspace_cache_change_fut = workspace_cache_watcher.map(workspace_cache_change_future);
     let mut heartbeat = HeartbeatController::new(hb_ctx);
-    if startup_mode == RunnerMode::Running {
-        if initial_workspace_cache.locked_commit_keys.is_empty()
-            && !initial_workspace_cache_requires_refresh
-        {
-            if !initial_workspace_cache.states.is_empty() {
-                heartbeat.request_initial_workspace_cache_snapshot(startup_mode)?;
+    let initial_heartbeat_mode = lifecycle.current_mode();
+    if initial_heartbeat_mode == RunnerMode::Running {
+        match initial_workspace_cache_change {
+            Some(change) => {
+                heartbeat.request_initial_workspace_cache(initial_heartbeat_mode, change)?;
             }
-        } else {
-            heartbeat.request_initial_workspace_cache(
-                startup_mode,
-                crate::workspace_image_cache::WorkspaceCacheChange {
-                    observed_at: tokio::time::Instant::now(),
-                    committed_cache_keys: initial_workspace_cache.locked_commit_keys,
-                },
-            )?;
+            None if !initial_workspace_cache.states.is_empty() => {
+                heartbeat.request_initial_workspace_cache_snapshot(initial_heartbeat_mode)?;
+            }
+            None => {}
         }
     }
 

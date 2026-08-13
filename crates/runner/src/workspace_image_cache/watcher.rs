@@ -125,12 +125,14 @@ impl WorkspaceCacheWatcher {
 
     /// Connects entries accepted by the subscribe-before-scan startup pass to
     /// watcher state before the loaded snapshot can be published. Entries that
-    /// were not already relevant when the watcher subscribed require one more
-    /// authoritative scan after their entry watches are installed.
+    /// were not already relevant when the watcher subscribed return an
+    /// advisory change so matching commits retain the existing lock-aware
+    /// validation path after their entry watches are installed.
     pub(crate) async fn reconcile_initial_relevant_entries(
         &mut self,
         cache_keys: &BTreeSet<String>,
-    ) -> RunnerResult<bool> {
+    ) -> RunnerResult<Option<WorkspaceCacheChange>> {
+        let observed_at = tokio::time::Instant::now();
         let mut committed_cache_keys = BTreeSet::new();
         let mut requires_refresh = false;
         for cache_key in cache_keys {
@@ -148,10 +150,13 @@ impl WorkspaceCacheWatcher {
                 }
             }
         }
-        Ok(requires_refresh
-            || cache_keys.iter().any(|cache_key| {
-                self.entry_watch_state(cache_key) != Some(EntryWatchState::Relevant)
-            }))
+        requires_refresh |= cache_keys
+            .iter()
+            .any(|cache_key| self.entry_watch_state(cache_key) != Some(EntryWatchState::Relevant));
+        Ok(requires_refresh.then_some(WorkspaceCacheChange {
+            observed_at,
+            committed_cache_keys,
+        }))
     }
 
     /// Waits for and coalesces all currently readable relevant mutations.
@@ -595,6 +600,23 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+        assert_eq!(change.committed_cache_keys, BTreeSet::from([cache_key]));
+    }
+
+    #[tokio::test]
+    async fn startup_reconciliation_preserves_matching_commit_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(temp.path().join("runner"));
+        let cache = WorkspaceImageCache::new(paths);
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).await.unwrap();
+        let cache_key = commit_entry(&cache, "startup-reconciliation").await;
+
+        let change = watcher
+            .reconcile_initial_relevant_entries(&BTreeSet::from([cache_key.clone()]))
+            .await
+            .unwrap()
+            .expect("newly classified startup entry should require reconciliation");
+
         assert_eq!(change.committed_cache_keys, BTreeSet::from([cache_key]));
     }
 

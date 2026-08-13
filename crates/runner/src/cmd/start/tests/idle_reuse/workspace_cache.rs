@@ -1,6 +1,6 @@
 use super::super::super::*;
 use super::super::support::{
-    WorkspacePromotionSeedSpec, context_with_session, mock_run_config,
+    WorkspacePromotionSeedSpec, assert_run_exits_within, context_with_session, mock_run_config,
     mock_run_config_with_overrides, push_job, seed_idle_pool_with_overrides,
     seed_idle_pool_with_workspace_promotion, seed_workspace_cache_state, shutdown, test_profiles,
     wait_budget_count, wait_discover_entered, wait_idle_pool_reuse_keys,
@@ -251,7 +251,61 @@ async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tic
 }
 
 #[tokio::test]
-async fn startup_cache_invalidated_after_initial_scan_is_not_advertised() {
+async fn drain_during_initial_cache_reconciliation_does_not_send_running_heartbeat() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = WorkspaceImageCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        "thread:startup-drain-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+    let after_scan = StartLoopTestGate::default();
+    config.test_hooks.after_initial_workspace_cache_scan = Some(after_scan.clone());
+
+    let run_handle = tokio::spawn(run(config));
+    after_scan
+        .wait_entered(
+            Duration::from_secs(5),
+            "initial workspace-cache scan before lifecycle refresh",
+        )
+        .await;
+    env.drain();
+    after_scan.release();
+
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup cache reconciliation should honor the live draining mode",
+    )
+    .await;
+    let heartbeats = env
+        .handle
+        .heartbeats
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    assert!(
+        heartbeats
+            .iter()
+            .all(|heartbeat| heartbeat.mode != "running"),
+        "draining during startup cache reconciliation must not publish a stale running snapshot: {heartbeats:#?}",
+    );
+}
+
+#[tokio::test]
+async fn startup_unclassified_cache_invalidated_after_scan_is_reconciled() {
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
     let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
