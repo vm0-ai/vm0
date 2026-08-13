@@ -219,6 +219,14 @@ const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
 ] as const;
+const API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES = [
+  "api_dispatch_prepare_pi_launch_resources",
+  "api_dispatch_prepare_pi_launch_storage_resources",
+  "api_dispatch_prepare_pi_launch_agent_name",
+  "api_dispatch_prepare_pi_launch_resume_session",
+  "api_dispatch_prepare_pi_launch_skills",
+  "api_dispatch_prepare_pi_launch_prompts",
+] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
   "user_id",
@@ -627,6 +635,35 @@ function expectApiDispatchTimingEventsNotToLeak(
       expect(serialized).not.toContain(forbiddenValue);
     }
   }
+}
+
+function expectPiLaunchResourceTiming(
+  events: readonly Record<string, unknown>[],
+  requirement: "required" | "not_required",
+): void {
+  expectApiDispatchSpanKind(
+    events,
+    ["api_dispatch_build_runner_job_payload"],
+    "top_level",
+  );
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      op_type: "api_dispatch_build_runner_job_payload",
+      pi_launch_resources: requirement,
+    }),
+  );
+  if (requirement === "required") {
+    expectApiDispatchSpanKind(
+      events,
+      API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
+      "nested",
+    );
+    return;
+  }
+  expectNoApiDispatchActions(
+    events,
+    API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
+  );
 }
 
 /** Sandbox-scoped Okou token issued to the run, exposed via the claim env. */
@@ -3364,6 +3401,8 @@ describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const prompt =
+      "generate an image in web chat using the aurora-21210 color palette";
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -3386,8 +3425,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt:
-        "generate an image in web chat using the aurora-21210 color palette",
+      prompt,
       model: "gpt-5.6-luna",
     });
     const { claim } = await claimChatRun(runnerGroup, run.runId);
@@ -3438,6 +3476,13 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(sectionIndex).toBeGreaterThan(previousSectionIndex);
       previousSectionIndex = sectionIndex;
     }
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectPiLaunchResourceTiming(timingEvents, "not_required");
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      run.threadId,
+      agentId,
+    ]);
     await cancelChatRun(actor, run.runId);
   });
 
@@ -3622,6 +3667,13 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(claimEnvironment(firstContext).OPENAI_API_KEY).toBe(
         modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );
+      const firstTimingEvents = apiDispatchTimingEventsForRun(first.runId);
+      expectPiLaunchResourceTiming(firstTimingEvents, "required");
+      expectApiDispatchTimingEventsNotToLeak(firstTimingEvents, [
+        firstPrompt,
+        first.threadId,
+        agentId,
+      ]);
 
       const historyHash = createHash("sha256")
         .update(`pi sqlite checkpoint ${first.runId}`)
@@ -3642,10 +3694,11 @@ describe("CHAT-02: model-first provider policies", () => {
         [200],
       );
 
+      const secondPrompt = "continue the same Pi session";
       const second = await sendChatRun(actor, {
         agentId,
         threadId: first.threadId,
-        prompt: "continue the same Pi session",
+        prompt: secondPrompt,
       });
       const secondClaim = await claimChatRun(runnerGroup, second.runId);
 
@@ -3655,6 +3708,14 @@ describe("CHAT-02: model-first provider policies", () => {
         sessionId: first.threadId,
         historyRef: { kind: "blob", hash: historyHash },
       });
+      const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
+      expectPiLaunchResourceTiming(secondTimingEvents, "required");
+      expectApiDispatchTimingEventsNotToLeak(secondTimingEvents, [
+        secondPrompt,
+        first.threadId,
+        agentId,
+        historyHash,
+      ]);
       await cancelChatRun(actor, second.runId);
     },
     90_000,
