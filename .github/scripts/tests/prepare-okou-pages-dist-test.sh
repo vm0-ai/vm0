@@ -15,6 +15,8 @@ printf '%s\n' \
   '<head>' \
   '  <meta name="vm0-api-origin" content="" />' \
   '</head>' > "${canonical_dist}/index.html"
+cp "${repo_root}/turbo/apps/platform/public/robots.txt" \
+  "${canonical_dist}/robots.txt"
 printf 'console.log("app");\n' > "${canonical_dist}/assets/app-123.js"
 printf '{"version":3}\n' > "${canonical_dist}/assets/app-123.js.map"
 printf '{"version":1}\n' > "${canonical_dist}/manifest.json"
@@ -28,6 +30,7 @@ test -f "${pages_dist}/assets/app-123.js"
 test -f "${pages_dist}/assets/404.html"
 test -f "${pages_dist}/_headers"
 test -f "${pages_dist}/_worker.js"
+test -f "${pages_dist}/robots.txt"
 test ! -e "${pages_dist}/404.html"
 test ! -e "${pages_dist}/assets/app-123.js.map"
 test ! -e "${pages_dist}/manifest.json"
@@ -39,6 +42,8 @@ grep -Fq 'Cache-Control: public, max-age=31536000, immutable' \
 grep -Fq '<title>Not Found</title>' "${pages_dist}/assets/404.html"
 grep -Fq '<meta name="vm0-api-origin" content="" />' \
   "${pages_dist}/index.html"
+grep -Fxq 'Allow: /' "${pages_dist}/robots.txt"
+! grep -Fq 'Disallow:' "${pages_dist}/robots.txt"
 
 preview_pages_dist="${tmp_dir}/preview-pages"
 mkdir -p "$preview_pages_dist"
