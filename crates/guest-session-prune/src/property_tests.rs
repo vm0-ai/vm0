@@ -968,16 +968,16 @@ fn invalid_history(mutation: InvalidMutation, line_ending: LineEnding) -> Vec<Ve
                 true,
                 line_ending,
             ));
-            records.push(tool_result_record(
+            records.push(tool_use_record(
+                &use_uuid,
                 &body_uuid,
-                &result_uuid,
                 "tool-1",
                 true,
                 line_ending,
             ));
-            records.push(tool_use_record(
-                &use_uuid,
+            records.push(tool_result_record(
                 &body_uuid,
+                &result_uuid,
                 "tool-1",
                 true,
                 line_ending,
