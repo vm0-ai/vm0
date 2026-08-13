@@ -885,7 +885,7 @@ async fn resume_with_ops(
 
 /// `service drain` — send SIGUSR1 and disable the unit without waiting for active jobs.
 ///
-/// The command may wait for bounded systemd operations and drain-signal
+/// The command may wait for systemd operations and bounded drain-signal
 /// convergence before returning.
 pub(super) async fn run_drain(args: DrainArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;

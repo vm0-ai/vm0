@@ -382,7 +382,7 @@ mod tests {
             .join(" ");
 
         assert!(normalized_help.contains(
-            "drain Drain without waiting for active jobs (may wait for bounded systemd/signal coordination)"
+            "drain Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)"
         ));
         assert!(!normalized_help.contains("returns immediately"));
     }
