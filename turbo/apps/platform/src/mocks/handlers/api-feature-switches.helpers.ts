@@ -5,7 +5,7 @@
  * remains stateless and test-specific overrides stay in test code.
  */
 
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 
 import { mockApi } from "../msw-contract.ts";
 import { server } from "../server.ts";

@@ -1,4 +1,4 @@
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 
 export function isWebChatTriggerSource(
   triggerSource: TriggerSource,

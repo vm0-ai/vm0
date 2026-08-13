@@ -3,7 +3,7 @@ import {
   integrationsGithubContract,
   type GithubInstallationNotFoundResponse,
   type GithubInstallationResponse,
-} from "@vm0/api-contracts/contracts/integrations-github";
+} from "@okouai/api-contracts/contracts/integrations-github";
 
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";

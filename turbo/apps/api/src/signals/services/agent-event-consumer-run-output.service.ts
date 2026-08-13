@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
-import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import type {
   AgentEvent,

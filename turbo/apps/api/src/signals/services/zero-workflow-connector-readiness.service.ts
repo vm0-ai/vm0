@@ -2,16 +2,16 @@ import type {
   ZeroWorkflowConnectorReadinessEntry,
   ZeroWorkflowConnectorReadinessResponse,
   ZeroWorkflowConnectorReadinessStatus,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { getAllFeatureStates } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { getAllFeatureStates } from "@okouai/core/feature-switch";
 import {
   zeroWorkflowAutomations,
   type ZeroAutomationEventType,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";

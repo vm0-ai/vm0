@@ -68,9 +68,9 @@ import {
   extractInstructionFromSkillMd,
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/core";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
+import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
 import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";

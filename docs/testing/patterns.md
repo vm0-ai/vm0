@@ -325,7 +325,7 @@ Key points:
 Every API route test file should follow this structure:
 
 ```typescript
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";

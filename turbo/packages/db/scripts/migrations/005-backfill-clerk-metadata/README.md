@@ -33,7 +33,7 @@ their metadata to the corresponding DB tables:
 
 - Node.js 18+
 - `pnpm install` completed in the `turbo` directory
-- Database migrations applied (`pnpm -F @vm0/db db:migrate`)
+- Database migrations applied (`pnpm -F @okouai/db db:migrate`)
 
 ## Environment Variables
 

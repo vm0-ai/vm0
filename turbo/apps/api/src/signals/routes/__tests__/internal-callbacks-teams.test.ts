@@ -1,9 +1,9 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

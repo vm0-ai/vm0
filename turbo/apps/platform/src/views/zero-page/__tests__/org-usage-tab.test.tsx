@@ -1,10 +1,11 @@
-import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -173,8 +174,14 @@ function mockUsageStory(): void {
   });
 }
 
+const NEW_PRICING = { [FeatureSwitchKey.UsagePackPlans]: true } as const;
+
 async function openCreditBalance(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=usage" });
+  detachedSetupPage({
+    context,
+    path: "/?settings=usage",
+    featureSwitches: NEW_PRICING,
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getAllByText("Credit balance")[0]).toBeInTheDocument();
@@ -182,7 +189,11 @@ async function openCreditBalance(): Promise<void> {
 }
 
 async function openCreditUsage(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=usage-records" });
+  detachedSetupPage({
+    context,
+    path: "/?settings=usage-records",
+    featureSwitches: NEW_PRICING,
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getAllByText("Credit usage")[0]).toBeInTheDocument();
@@ -227,7 +238,7 @@ describe("organization usage settings", () => {
     expect(screen.queryByText("Team usage")).toBeNull();
   });
 
-  it("moves between the balance and the usage records through the section links", async () => {
+  it("moves from the balance to the usage records through the section link", async () => {
     mockUsageStory();
     await openCreditBalance();
 
@@ -243,13 +254,7 @@ describe("organization usage settings", () => {
         screen.getByRole("heading", { name: "Credit usage" }),
       ).toBeInTheDocument();
     });
-    click(screen.getByTestId("usage-records-see-balance"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Credit balance" }),
-      ).toBeInTheDocument();
-    });
+    expect(screen.queryByTestId("usage-records-see-balance")).toBeNull();
   });
 
   it("sends the buy credits action to the billing section", async () => {
@@ -281,6 +286,85 @@ describe("organization usage settings", () => {
     expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
   });
 
+  it("draws the composition bar even when one category holds the balance", async () => {
+    mockUsageStory();
+    mockBillingStatus({
+      creditBreakdown: [
+        {
+          category: "payAsYouGo",
+          label: "Purchased credits",
+          credits: 12_000,
+        },
+      ],
+    });
+    await openCreditBalance();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("credit-balance-segment-payAsYouGo"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("labels far-future credit grant expiries as never expiring", async () => {
+    mockUsageStory();
+    mockBillingStatus({
+      creditGrants: [
+        {
+          id: "grant-custom",
+          source: "atom_custom_credits",
+          label: "Custom credits",
+          amount: 12_000,
+          remaining: 12_000,
+          createdAt: "2026-03-01T00:00:00Z",
+          expiresAt: "2999-12-31T23:59:59Z",
+        },
+      ],
+    });
+    await openCreditBalance();
+
+    const neverExpires = await screen.findByText("Never expires");
+    expect(neverExpires).toBeInTheDocument();
+    expect(screen.queryByText("Dec 31, 2999")).toBeNull();
+  });
+
+  it("keeps the usage records inside credit balance without the new pricing", async () => {
+    mockUsageStory();
+    detachedSetupPage({ context, path: "/?settings=usage" });
+
+    await waitFor(() => {
+      expect(screen.getByText("3,750 / 5,000 credits")).toBeInTheDocument();
+    });
+    // The previous single-section layout: collapsed additions, the Mine/Team
+    // tabs, and no separate records section to navigate to.
+    expect(screen.getByTestId("credit-grants-toggle")).toBeInTheDocument();
+    expect(screen.queryByTestId("credit-balance-see-usage")).toBeNull();
+    expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
+    expect(
+      queryAllByRoleFast("tab").some((element) => {
+        return element.textContent === "Team usage";
+      }),
+    ).toBeTruthy();
+    expect(
+      queryAllByRoleFast("button").some((element) => {
+        return element.textContent === "Credit usage";
+      }),
+    ).toBeFalsy();
+  });
+
+  it("falls back from the usage records deep link without the new pricing", async () => {
+    mockUsageStory();
+    detachedSetupPage({ context, path: "/?settings=usage-records" });
+
+    const heading = await screen.findByRole("heading", { name: "Preference" });
+    expect(heading).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((element) => {
+        return element.textContent === "Credit usage";
+      }),
+    ).toBeFalsy();
+  });
+
   it("shows workspace member usage in the credit usage section", async () => {
     mockUsageStory();
     await openCreditUsage();
@@ -307,6 +391,7 @@ describe("organization usage settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=usage",
+      featureSwitches: NEW_PRICING,
     });
 
     await waitFor(() => {
@@ -327,6 +412,7 @@ describe("organization usage settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=usage-records",
+      featureSwitches: NEW_PRICING,
     });
 
     await waitFor(() => {

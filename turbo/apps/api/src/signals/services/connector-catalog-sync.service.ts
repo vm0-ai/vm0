@@ -1,14 +1,14 @@
 import type {
   ConnectorCatalogSyncFailureCode,
   ConnectorCatalogDiagnostics,
-} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
-import type { ConnectorCatalogSyncResponse } from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
+import type { ConnectorCatalogSyncResponse } from "@okouai/api-contracts/contracts/cron";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
-} from "@vm0/db/schema/connector-catalog";
-import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+} from "@okouai/db/schema/connector-catalog";
+import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

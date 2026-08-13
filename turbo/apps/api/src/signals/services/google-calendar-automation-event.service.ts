@@ -6,17 +6,17 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   googleCalendarEventSnapshots,
   googleCalendarProcessedEvents,
   googleCalendarWatchStates,
-} from "@vm0/db/schema/google-calendar-event";
+} from "@okouai/db/schema/google-calendar-event";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";

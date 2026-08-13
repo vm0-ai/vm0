@@ -5,7 +5,7 @@ import type {
   ComputerUseCommandResponse,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import {
   COMPUTER_USE_FILESYSTEM_PLUGIN,
   COMPUTER_USE_MCP_LIST_TOOLS,
@@ -13,7 +13,7 @@ import {
   type ComputerUseMcpPluginCallBody,
   type ComputerUseFilesystemTool,
   type ComputerUsePluginCallBody,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
 import { ApiRequestError } from "../../../lib/api/core/client-factory";
 import {
   createComputerUsePluginCommand,

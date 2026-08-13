@@ -4,7 +4,7 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 import { afterEach } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

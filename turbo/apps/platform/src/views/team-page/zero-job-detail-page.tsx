@@ -20,7 +20,7 @@ import {
   MessageCircle,
   Wand,
 } from "lucide-react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   Button,
   Tabs,
@@ -38,7 +38,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
@@ -98,7 +98,7 @@ import {
   currentAgentVisibleWorkflows$,
   copyWorkflow$,
 } from "../../signals/workflows-page/workflows-signals.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   permConnectorSlug$,
   agentPermissionMetadata$,
@@ -110,7 +110,7 @@ import {
   permSavingConnectorSlug$,
   setPermSavingConnectorSlug$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
 import type {
   PlatformConnectorCatalogStatusItem,
   PlatformConnectorPermissionMetadata,

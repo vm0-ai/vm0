@@ -3,7 +3,7 @@ import {
   SOURCE_TYPES,
   type AdAttributionMetadata,
   type SourceType,
-} from "@vm0/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/zero-attribution";
 import { command } from "ccstate";
 import { registerPostHogAttribution } from "../../lib/posthog.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";

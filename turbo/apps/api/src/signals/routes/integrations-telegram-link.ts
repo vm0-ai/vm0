@@ -3,13 +3,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
 import type { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

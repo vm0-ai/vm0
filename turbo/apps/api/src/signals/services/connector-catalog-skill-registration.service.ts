@@ -1,6 +1,6 @@
-import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

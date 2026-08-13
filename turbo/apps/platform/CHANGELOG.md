@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.740.1](https://github.com/vm0-ai/vm0/compare/app-v0.740.0...app-v0.740.1) (2026-08-13)
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.327.3
+    * @okouai/connectors bumped to 1.205.2
+    * @okouai/core bumped to 8.553.3
+
+## [0.740.0](https://github.com/vm0-ai/vm0/compare/app-v0.739.1...app-v0.740.0) (2026-08-13)
+
+
+### Features
+
+* **composer:** split video template model and settings into two zones ([#26474](https://github.com/vm0-ai/vm0/issues/26474)) ([4bba7d8](https://github.com/vm0-ai/vm0/commit/4bba7d800d760142b0091f57ed6806e1ba04d15d))
+* **platform:** gate the credit balance split behind usage pack plans ([#26753](https://github.com/vm0-ai/vm0/issues/26753)) ([c02a689](https://github.com/vm0-ai/vm0/commit/c02a689f128600eab8c8525849d21941e02d7203))
+
+
+### Bug Fixes
+
+* **billing:** merge concurrency into plan subscription ([#26393](https://github.com/vm0-ai/vm0/issues/26393)) ([837a57d](https://github.com/vm0-ai/vm0/commit/837a57d8c302bdc0f96bb010866d01da52736f73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.2
+    * @vm0/core bumped to 8.553.2
+
 ## [0.739.1](https://github.com/vm0-ai/vm0/compare/app-v0.739.0...app-v0.739.1) (2026-08-13)
 
 

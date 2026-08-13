@@ -13,18 +13,18 @@ import {
   type NotionPageContentUpdatedEventCreateConfig,
   type NotionPageContentUpdatedScope,
   type NotionPageReference,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   notionWebhookEvents,
   notionWebhookSecrets,
   notionWorkflowPendingEvents,
   type NotionWorkflowPendingEventContext,
-} from "@vm0/db/schema/notion-event";
+} from "@okouai/db/schema/notion-event";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";

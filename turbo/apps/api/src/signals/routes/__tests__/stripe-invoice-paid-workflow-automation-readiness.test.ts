@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   testStripeInvoicePaidFixtureContract,
   type TestStripeInvoicePaidFixtureState,
-} from "@vm0/api-contracts/contracts/test-stripe-invoice-paid-readiness";
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/test-stripe-invoice-paid-readiness";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

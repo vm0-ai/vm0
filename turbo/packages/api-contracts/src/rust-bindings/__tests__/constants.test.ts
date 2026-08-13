@@ -456,10 +456,10 @@ describe("Rust constant bindings", () => {
     expect(firstRender).toContain("pub mod placeholders {");
     expect(firstRender).toContain("pub mod headers {");
     expect(firstRender).toContain(
-      "//! Generated Rust constants for `@vm0/api-contracts`.",
+      "//! Generated Rust constants for `@okouai/api-contracts`.",
     );
     expect(firstRender).toContain(
-      "//! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
+      "//! Do not edit by hand; regenerate with `cd turbo && pnpm -F @okouai/api-contracts generate:rust`.",
     );
     expect(firstRender).toContain(
       "/// Fake model-provider environment placeholder marker values.",

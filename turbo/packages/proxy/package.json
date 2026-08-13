@@ -1,5 +1,5 @@
 {
-  "name": "@vm0/proxy",
+  "name": "@okouai/proxy",
   "version": "0.1.0",
   "private": true,
   "description": "Caddy reverse proxy for local HTTPS development with automatic Let's Encrypt certificates",

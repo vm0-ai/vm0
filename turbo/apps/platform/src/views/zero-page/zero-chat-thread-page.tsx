@@ -87,21 +87,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
   BrandSlack,
-} from "@vm0/ui";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/ui";
+import { RUN_ERROR_GUIDANCE } from "@okouai/api-contracts/contracts/errors";
 import type {
   ChatEventUsagePayload,
   ChatRecommendedFollowup,
   GenerationTemplateRequest,
   UserMessageDocument,
   UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
   terminatedChatRunIds,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
@@ -111,10 +111,10 @@ import { steerAcknowledgementRef$ } from "../../signals/zero-page/steer-acknowle
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import { emptyChatImg } from "./platform-assets.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
 import { hasChatEventBodyContent } from "../../signals/chat-page/chat-event-body-blocks.ts";
@@ -188,7 +188,7 @@ import {
   writeToClipboard,
   type ChatClipboardAttachment,
 } from "../../signals/zero-page/clipboard.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import type {
   HeaderAutomationSignals,
   HeaderWorkflowAutomationEntry,

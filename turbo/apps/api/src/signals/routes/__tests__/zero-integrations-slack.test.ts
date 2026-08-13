@@ -4,8 +4,8 @@ import type {
   TestSlackStatePostBody,
   TestSlackStatePostResponse,
   TestSlackStateResponse,
-} from "@vm0/api-contracts/contracts/test-slack-state";
-import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+} from "@okouai/api-contracts/contracts/test-slack-state";
+import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";

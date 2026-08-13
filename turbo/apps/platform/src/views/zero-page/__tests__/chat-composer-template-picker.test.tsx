@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -8,17 +8,17 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
-} from "@vm0/core";
+} from "@okouai/core";
 import type {
   GenerationTemplateRequest,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroAvatarVideoContract,
   type ZeroAvatarVideoAvatarsQuery,
   type ZeroAvatarVideoVoicesQuery,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
-import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
+import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   click,
@@ -369,7 +369,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("edits video parameters from the second half of an inline chip", async () => {
+  it("picks the video model above the templates and the rest from the chip", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedUserMessage: UserMessageDocument | undefined;
@@ -397,57 +397,63 @@ describe("chat composer templates", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     await user.click(tabByText("Video"));
+
+    // Video generation is the expensive decision, so the model is chosen above
+    // the templates rather than inside the chip afterwards.
+    await user.click(
+      await screen.findByLabelText("Video model Seedance 2.0 fast"),
+    );
+    const modelOption = await waitFor(() => {
+      const found = queryAllByRoleFast("menuitem").find((item) => {
+        return item.getAttribute("aria-label") === "Seedance 2.0";
+      });
+      expect(found).toBeDefined();
+      return found!;
+    });
+    await user.click(modelOption);
+
     await user.click(
       await screen.findByLabelText(`Select video template ${template.title}`),
     );
 
-    // Every parameter is shown, with catalog defaults filled in even though
-    // nothing is stored yet.
+    // The chip carries the parameters only; catalog defaults are filled in even
+    // though nothing but the model is stored yet. Audio is left to the popover
+    // so the chip stays readable inside a prompt sentence.
     const spec = await screen.findByLabelText(
-      "Video options Seedance 2.0 fast \u00b7 16:9 \u00b7 8s \u00b7 720p \u00b7 Audio",
+      "Video options 16:9 \u00b7 8s \u00b7 720p",
     );
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
     spec.focus();
     await user.keyboard("{Enter}");
-    expect(
-      queryAllByRoleFast("button").some((button) => {
-        return button.textContent === "Reset to default";
-      }),
-    ).toBeFalsy();
-    await user.click(await screen.findByRole("combobox", { name: "Model" }));
+
+    // Every value is expanded in place, so changing one is a single click.
     await user.click(
-      await screen.findByRole("option", { name: "Seedance 2.0" }),
+      within(
+        await screen.findByRole("radiogroup", { name: "Ratio" }),
+      ).getByRole("radio", { name: "9:16" }),
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(
-        /^Seedance 2\.0$/,
-      );
-    });
-
-    await user.click(await screen.findByRole("combobox", { name: "Ratio" }));
-    await user.click(await screen.findByRole("option", { name: "9:16" }));
-
-    await waitFor(() => {
       expect(
-        screen.getByLabelText(
-          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
-        ),
+        screen.getByLabelText("Video options 9:16 \u00b7 8s \u00b7 720p"),
       ).toBeInTheDocument();
     });
 
+    // Duration is a scale rather than a set, so it is a slider over the values
+    // the model accepts — index 2 of Seedance 2.0's 4s-15s range.
+    const duration = await screen.findByRole("slider", { name: "Duration" });
+    expect(duration).toHaveAttribute("aria-valuetext", "8s");
+
     // A second edit has to land in place too: setNodeMarkup drops the node
     // selection, so a selection-based update would insert another chip here.
-    await user.click(await screen.findByRole("combobox", { name: "Duration" }));
-    await user.click(await screen.findByRole("option", { name: "6s" }));
+    // The popover also stays open, so no reopening between two edits.
+    fireEvent.change(duration, { target: { value: "2" } });
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText(
-          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 6s \u00b7 720p \u00b7 Audio",
-        ),
+        screen.getByLabelText("Video options 9:16 \u00b7 6s \u00b7 720p"),
       ).toBeInTheDocument();
     });
     expect(
@@ -3079,7 +3085,15 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    await expectInlineTemplateInComposer(videoStyle.title);
+    // The chip appends its parameters when the video options switch is on, so
+    // this asserts the title is there rather than that it is all there is.
+    await waitFor(() => {
+      expect(
+        composerInlineTemplates().map((node) => {
+          return node.textContent;
+        }),
+      ).toStrictEqual([expect.stringContaining(videoStyle.title)]);
+    });
   });
 
   it("selects and sends a workflow template from the picker", async () => {

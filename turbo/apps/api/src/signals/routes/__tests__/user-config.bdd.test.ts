@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";

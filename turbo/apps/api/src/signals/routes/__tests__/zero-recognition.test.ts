@@ -4,9 +4,9 @@ import { createStore } from "ccstate";
 import {
   ZERO_RECOGNITION_MAX_FILE_BYTES,
   zeroRecognitionContract,
-} from "@vm0/api-contracts/contracts/zero-recognition";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/zero-recognition";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 

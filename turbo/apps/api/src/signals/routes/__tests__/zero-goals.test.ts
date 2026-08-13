@@ -1,6 +1,6 @@
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, testContext } from "../../../__tests__/test-context";

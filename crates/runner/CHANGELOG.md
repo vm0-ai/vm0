@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.168.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.167.0...runner-rs-v0.168.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate pi child environment to okou ([#26810](https://github.com/vm0-ai/vm0/issues/26810)) ([9c54e70](https://github.com/vm0-ai/vm0/commit/9c54e70777750b608dad06fde2a44a5a08f9796b))
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+## [0.167.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.166.0...runner-rs-v0.167.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
+
+### Refactoring
+
+* **python:** centralize stream capture metadata validation ([#26784](https://github.com/vm0-ai/vm0/issues/26784)) ([cda9f38](https://github.com/vm0-ai/vm0/commit/cda9f38e3369601248c2a2f8201f82368eb0bfc8))
+
 ## [0.166.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.3...runner-rs-v0.166.0) (2026-08-13)
 
 

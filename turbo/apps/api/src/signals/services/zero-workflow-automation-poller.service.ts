@@ -1,10 +1,10 @@
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq, lte } from "drizzle-orm";
 import { logger } from "../../lib/log";

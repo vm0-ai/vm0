@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";

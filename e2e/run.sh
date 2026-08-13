@@ -25,7 +25,7 @@ fi
 
 # Build the supported Okou CLI before testing
 echo -e "${YELLOW}Building Okou CLI...${NC}"
-(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter @vm0/okou-cli)
+(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter @okouai/cli)
 
 # Ensure CLI is available globally
 echo -e "${YELLOW}Linking CLI globally...${NC}"

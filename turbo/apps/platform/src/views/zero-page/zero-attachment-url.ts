@@ -1,4 +1,4 @@
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   resolvePlatformOriginForTarget,
   rewritePlatformHostname,

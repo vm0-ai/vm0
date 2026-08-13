@@ -12,18 +12,17 @@ import {
   type StorageMountEntry,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
-} from "@vm0/api-contracts/contracts/runners";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { customConnectorSlugSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/runners";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
   getModelProviderCodexRuntimeConfig,
@@ -45,11 +44,11 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import type {
   ConnectorServerFirewallExecutionMetadata,
   ConnectorServerFirewallPermissionIndex,
@@ -69,71 +68,71 @@ import {
   type NetworkPolicy,
   canonicalizeFirewallBaseUrl,
   validateBaseUrlHostPolicy,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import {
   type CreateRunResponse,
   type RunStatus,
   unifiedRunRequestSchema,
-} from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/api-contracts/contracts/runs";
 import {
   isSupportedFramework,
   type SupportedFramework,
-} from "@vm0/core/frameworks";
+} from "@okouai/core/frameworks";
 import {
   getAllFeatureStates,
   isFeatureEnabled,
   type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
+} from "@okouai/core/feature-switch";
+import { resolveSkillRef, parseGitHubTreeUrl } from "@okouai/core/github-url";
 import {
   getCustomConnectorSkillName,
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
-} from "@vm0/core/storage-names";
-import { SEED_SKILLS, GOAL_SKILL_NAME } from "@vm0/core/zero-seed-skills";
+} from "@okouai/core/storage-names";
+import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/zero-seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
   extractAndGroupVariables,
-} from "@vm0/core/variable-expander";
-import { expandMountPath } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/core/variable-expander";
+import { expandMountPath } from "@okouai/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { connectors } from "@vm0/db/schema/connector";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { conversations } from "@vm0/db/schema/conversation";
-import { blobs } from "@vm0/db/schema/blob";
-import { modelProviders } from "@vm0/db/schema/model-provider";
+} from "@okouai/db/schema/agent-compose";
+import { connectors } from "@okouai/db/schema/connector";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { conversations } from "@okouai/db/schema/conversation";
+import { blobs } from "@okouai/db/schema/blob";
+import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderAccounts,
   modelProviderAccountSecrets,
-} from "@vm0/db/schema/model-provider-account";
+} from "@okouai/db/schema/model-provider-account";
 import {
   modelProviderConnections,
   modelProviderSurfaces,
-} from "@vm0/db/schema/model-provider-gateway";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { secrets as secretsTable } from "@vm0/db/schema/secret";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { variables } from "@vm0/db/schema/variable";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import type { PersistedStorageMount } from "@vm0/db/types";
+} from "@okouai/db/schema/model-provider-gateway";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { secrets as secretsTable } from "@okouai/db/schema/secret";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { variables } from "@okouai/db/schema/variable";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import type { PersistedStorageMount } from "@okouai/db/types";
 import {
   formatPiUserPrompt,
   loadPiRunSkills,
   renderPiSystemPrompt,
-} from "@vm0/pi-agent-runtime";
+} from "@okouai/pi-agent-runtime";
 import {
   and,
   count,
@@ -171,6 +170,7 @@ import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
+  executionFirewallsToAxiomEntries,
   featureFlagsRecordToEntries,
   networkPoliciesRecordToEntries,
   type RunContextAxiomSnapshot,
@@ -213,11 +213,11 @@ import {
   queuedRunnerJobPayload,
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
   type WebsiteTemplateArchiveVersion,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
@@ -3888,8 +3888,6 @@ class CustomConnectorRuntimeBuildStats {
   private missingRequiredCount = 0;
   private noAuthInjectionCount = 0;
   private invalidPrefixCount = 0;
-  private pinnedRoutingCount = 0;
-  private unpinnedRoutingCount = 0;
 
   constructor(rows: CustomConnectorRuntimeDataRows) {
     this.connectorCount = rows.length;
@@ -3928,19 +3926,6 @@ class CustomConnectorRuntimeBuildStats {
 
   recordInvalidPrefix(): void {
     this.invalidPrefixCount += 1;
-  }
-
-  recordTarget(
-    target: Extract<
-      ConnectorRuntimeTargetRegistration,
-      { readonly kind: "custom" }
-    >,
-  ): void {
-    if (target.baseUrlVars === undefined) {
-      this.unpinnedRoutingCount += 1;
-    } else {
-      this.pinnedRoutingCount += 1;
-    }
   }
 
   flush(timing: ApiDispatchTimingCollector | undefined): void {
@@ -3987,12 +3972,6 @@ class CustomConnectorRuntimeBuildStats {
       custom_connector_runtime_invalid_prefix_count_bucket: countBucket(
         this.invalidPrefixCount,
       ),
-      custom_connector_runtime_pinned_routing_count_bucket: countBucket(
-        this.pinnedRoutingCount,
-      ),
-      custom_connector_runtime_unpinned_routing_count_bucket: countBucket(
-        this.unpinnedRoutingCount,
-      ),
     };
   }
 }
@@ -4031,13 +4010,10 @@ function buildCustomConnectorRuntimeApis(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly headers: Record<string, string>;
   readonly query: Record<string, string>;
-  readonly baseUrlVars: Readonly<Record<string, string>> | undefined;
+  readonly baseUrlVars: Readonly<Record<string, string>>;
   readonly permissionBundle: CustomConnectorPermissionBundle | null;
   readonly stats: CustomConnectorRuntimeBuildStats;
 }): ExpandedFirewallConfig["apis"] {
-  if (args.baseUrlVars === undefined) {
-    return [];
-  }
   const prefixStartedAt = now();
   const connector = args.row.connector;
   if (connector.kind === "mcp") {
@@ -4179,15 +4155,26 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-interface BuiltCustomConnectorRuntimeRow {
-  readonly target: Extract<
-    ConnectorRuntimeTargetRegistration,
-    { readonly kind: "custom" }
-  >;
-  readonly skill: CustomConnectorRuntimeContext["skills"][number] | undefined;
-  readonly firewall: ExpandedFirewallConfig | undefined;
-  readonly permissionPolicy: FirewallPolicy | undefined;
-}
+type BuiltCustomConnectorRuntimeRow =
+  | {
+      readonly registration: Extract<
+        ConnectorRuntimeTargetRegistration,
+        { readonly kind: "custom" }
+      >;
+      readonly skill:
+        | CustomConnectorRuntimeContext["skills"][number]
+        | undefined;
+      readonly firewall: ExpandedFirewallConfig;
+      readonly permissionPolicy: FirewallPolicy | undefined;
+    }
+  | {
+      readonly registration: undefined;
+      readonly skill:
+        | CustomConnectorRuntimeContext["skills"][number]
+        | undefined;
+      readonly firewall: undefined;
+      readonly permissionPolicy: undefined;
+    };
 
 function customConnectorRuntimeSkill(
   row: CustomConnectorRuntimeDataRows[number],
@@ -4215,11 +4202,10 @@ function customConnectorRequiredMemberCredentialsAreComplete(
 }
 
 function unavailableCustomConnectorRuntimeRow(
-  target: BuiltCustomConnectorRuntimeRow["target"],
   skill: BuiltCustomConnectorRuntimeRow["skill"],
 ): BuiltCustomConnectorRuntimeRow {
   return {
-    target,
+    registration: undefined,
     skill,
     firewall: undefined,
     permissionPolicy: undefined,
@@ -4282,14 +4268,6 @@ async function buildCustomConnectorRuntimeRow(args: {
     provided: args.context.baseUrlVarsByConnectorId?.get(args.row.connector.id),
     hasProvided: hasProvidedBaseUrlVars,
   });
-  const targetIdentity = {
-    kind: "custom" as const,
-    customConnectorId: args.row.connector.id,
-  };
-  const target: BuiltCustomConnectorRuntimeRow["target"] = {
-    ...targetIdentity,
-    ...(baseUrlVars === undefined ? {} : { baseUrlVars: { ...baseUrlVars } }),
-  };
   const skill = customConnectorRuntimeSkill(args.row);
   const missingRequiredStartedAt = now();
   const missingRequired = !customConnectorRequiredMemberCredentialsAreComplete(
@@ -4307,15 +4285,18 @@ async function buildCustomConnectorRuntimeRow(args: {
   if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
     args.stats.recordNoAuthInjectionConnector();
     if (args.row.connector.kind === "mcp") {
-      return unavailableCustomConnectorRuntimeRow(target, skill);
+      return unavailableCustomConnectorRuntimeRow(skill);
     }
+  }
+  if (baseUrlVars === undefined) {
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
     row: args.row,
     snapshot: args.context.connectorCatalogSnapshot,
   });
   if (permissionBundle === undefined) {
-    return unavailableCustomConnectorRuntimeRow(target, skill);
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   const apisResult = safeSync(() => {
     return buildCustomConnectorRuntimeApis({
@@ -4332,14 +4313,18 @@ async function buildCustomConnectorRuntimeRow(args: {
       throw apisResult.error;
     }
     args.stats.recordInvalidPrefix();
-    return unavailableCustomConnectorRuntimeRow(targetIdentity, skill);
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   const apis = apisResult.ok;
   if (apis.length === 0) {
-    return unavailableCustomConnectorRuntimeRow(target, skill);
+    return unavailableCustomConnectorRuntimeRow(skill);
   }
   return {
-    target,
+    registration: {
+      kind: "custom",
+      customConnectorId: args.row.connector.id,
+      baseUrlVars: { ...baseUrlVars },
+    },
     skill,
     firewall: {
       name: customConnectorInternalName(args.row.connector.id),
@@ -4383,15 +4368,14 @@ export async function buildCustomConnectorRuntimeContext(
       stats,
     });
     const assemblyStartedAt = now();
-    stats.recordTarget(built.target);
-    targets.push(built.target);
     if (built.skill) {
       skills.push(built.skill);
     }
-    if (!built.firewall) {
+    if (!built.registration) {
       stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
       continue;
     }
+    targets.push(built.registration);
     firewalls.push(built.firewall);
     customConnectorIdByFirewallName[built.firewall.name] = row.connector.id;
     if (row.connector.kind === "mcp") {
@@ -4441,18 +4425,8 @@ async function buildNewRunCustomConnectorRuntimeContext(
       );
     }),
   });
-  const admittedConnectorIds = new Set(
-    Object.values(context.customConnectorIdByFirewallName),
-  );
   return {
     ...context,
-    targets: context.targets.filter((target) => {
-      return (
-        target.kind === "custom" &&
-        target.baseUrlVars !== undefined &&
-        admittedConnectorIds.has(target.customConnectorId)
-      );
-    }),
     skills: args.rows.flatMap((row) => {
       const skill = customConnectorRuntimeSkill(row);
       return skill ? [skill] : [];
@@ -5983,48 +5957,6 @@ function sanitizeEnvironment(
   return sanitized;
 }
 
-function sanitizedFirewallSnapshot(
-  firewall: Firewall,
-): Extract<RunContextResponse["firewalls"][number], { apis: unknown }> {
-  return {
-    name: firewall.name,
-    apis: firewall.apis.map((api) => {
-      return {
-        base: api.base,
-        permissions: api.permissions?.map((permission) => {
-          return {
-            name: permission.name,
-            description: permission.description,
-            rules: permission.rules,
-          };
-        }),
-      };
-    }),
-  };
-}
-
-function firewallSnapshotEntry(
-  entry: ExecutionFirewallEntry,
-): RunContextResponse["firewalls"][number] {
-  if (entry.kind === "inline") {
-    return sanitizedFirewallSnapshot(entry.firewall);
-  }
-  return entry.baseUrlVars
-    ? { kind: "builtin", name: entry.name, baseUrlVars: entry.baseUrlVars }
-    : { kind: "builtin", name: entry.name };
-}
-
-function firewallSnapshots(
-  firewalls: ExecutionFirewalls | null | undefined,
-): RunContextResponse["firewalls"] {
-  if (!firewalls) {
-    return [];
-  }
-  return firewalls.map((entry) => {
-    return firewallSnapshotEntry(entry);
-  });
-}
-
 function buildRunContextSnapshot(args: {
   readonly runId: string;
   readonly userId: string;
@@ -6048,7 +5980,7 @@ function buildRunContextSnapshot(args: {
     cliAgentType: storedContext.cliAgentType,
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
-    firewalls: firewallSnapshots(storedContext.firewalls),
+    firewalls: executionFirewallsToAxiomEntries(storedContext.firewalls),
     networkPolicyEntries: networkPoliciesRecordToEntries(
       storedContext.networkPolicies,
     ),

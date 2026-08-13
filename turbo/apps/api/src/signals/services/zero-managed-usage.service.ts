@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { command } from "ccstate";
 import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
 

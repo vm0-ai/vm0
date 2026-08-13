@@ -2,10 +2,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorAuthMode,
-} from "@vm0/db/schema/org-custom-connector";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/db/schema/org-custom-connector";
+import { connectors } from "@okouai/db/schema/connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import { z } from "zod";
 

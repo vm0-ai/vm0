@@ -7,7 +7,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::runtime_paths;
+use crate::runtime_paths::{self, PrivateFileReplacementTarget};
 
 /// Maximum accepted delivery identities retained for one run.
 pub const MAX_ACTIVE_INPUT_RECEIPT_IDS: usize = 1_024;
@@ -128,7 +128,11 @@ pub fn write_active_input_receipt_journal(
             "receipt journal exceeds {MAX_ACTIVE_INPUT_RECEIPT_JOURNAL_BYTES} bytes"
         )));
     }
-    runtime_paths::replace_private_atomic(path, bytes)
+    runtime_paths::replace_private_atomic(
+        path,
+        bytes,
+        PrivateFileReplacementTarget::PrivateFileOrMissing,
+    )
 }
 
 #[cfg(test)]
@@ -227,6 +231,7 @@ mod tests {
         runtime_paths::replace_private_atomic(
             &path,
             br#"{"runId":"run-123","deliveryIds":[],"extra":true}"#,
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
         )
         .unwrap();
         assert_eq!(
@@ -239,6 +244,7 @@ mod tests {
         runtime_paths::replace_private_atomic(
             &path,
             vec![b'x'; MAX_ACTIVE_INPUT_RECEIPT_JOURNAL_BYTES + 1],
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
         )
         .unwrap();
         assert_eq!(
@@ -292,7 +298,12 @@ mod tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"unchanged");
 
         std::fs::remove_file(&path).unwrap();
-        runtime_paths::replace_private_atomic(&path, b"{}").unwrap();
+        runtime_paths::replace_private_atomic(
+            &path,
+            b"{}",
+            PrivateFileReplacementTarget::PrivateFileOrMissing,
+        )
+        .unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
         assert_eq!(
             read_active_input_receipt_journal(&path, RUN_ID)

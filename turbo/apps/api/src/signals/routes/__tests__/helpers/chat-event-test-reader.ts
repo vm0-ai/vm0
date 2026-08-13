@@ -1,10 +1,10 @@
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatEventSchema,
   chatThreadEventsContract,
   type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";

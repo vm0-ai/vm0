@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
+import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";

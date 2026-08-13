@@ -829,7 +829,7 @@
       "changeDescription": "Escolha uma nova quantidade total de vagas ou interrompa a renovação.",
       "changeOptionsAria": "Opções de alteração da assinatura de simultaneidade",
       "changeQuantityOption": "Alterar vagas",
-      "changeQuantityOptionDescription": "Insira o número total de vagas desejado. Você poderá revisar a alteração proporcional antes de confirmar.",
+      "changeQuantityOptionDescription": "Os aumentos entram em vigor imediatamente. As reduções começam na próxima data de cobrança.",
       "changeTitle": "Alterar simultaneidade",
       "concurrentRun_one": "{{value}} execução simultânea",
       "concurrentRun_many": "{{value}} execuções simultâneas",
@@ -850,6 +850,8 @@
       "reviewChange": "Revisar alteração",
       "reviewDescription": "Revise o valor a pagar agora e sua assinatura mensal atualizada.",
       "reviewTitle": "Revisar alteração de simultaneidade",
+      "scheduledChange": "Muda para {{quantity}} em {{date}}",
+      "scheduledReviewDescription": "As vagas atuais permanecem ativas durante este período de cobrança. A quantidade menor começa na renovação, sem reembolso nem crédito na conta.",
       "slot_one": "{{value}} vaga",
       "slot_many": "{{value}} vagas",
       "slot_other": "{{value}} vagas",
@@ -1044,7 +1046,7 @@
       "concurrencyCanceled": "Assinatura de simultaneidade cancelada.",
       "concurrencyCanceledDate": "Assinatura de simultaneidade cancelada. As vagas permanecem ativas até {{date}}.",
       "concurrencyChanged": "Alteração de simultaneidade confirmada. A quantidade de vagas será atualizada depois que a Stripe processar a alteração.",
-      "concurrencyReduced": "Redução de simultaneidade enviada. A nova quantidade de vagas aparecerá após o Stripe confirmar a alteração.",
+      "concurrencyReduced": "A redução de simultaneidade está programada para a próxima data de cobrança.",
       "concurrencyRestored": "Assinatura de simultaneidade restaurada.",
       "creditsAdded": "Créditos adicionados. Você pode continuar conversando com o Zero.",
       "downgradeScheduledDate": "Downgrade agendado. Seu plano atual permanece ativo até {{date}}.",
@@ -1062,6 +1064,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} restantes",
         "minute": "{{value}}min",
+        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Saldo restante da franquia de uso de {{label}}",
         "resets": "Reinicia em {{date}}",
         "resetsRaw": "Reinicia em {{value}}",
@@ -1676,6 +1679,7 @@
       "removeVideo": "Remover template de vídeo {{title}}",
       "removeWebsite": "Remover template de site {{title}}",
       "removeWorkflow": "Remover template de fluxo de trabalho {{title}}",
+      "videoModelLabel": "Modelo de vídeo {{model}}",
       "videoOptions": "Opções de vídeo",
       "videoOptionsAudio": "Gerar áudio",
       "videoOptionsDuration": "Duração",
@@ -4072,6 +4076,7 @@
         "usage": {
           "balanceDescription": "O que resta para a sua equipe gastar.",
           "balanceTitle": "Saldo de créditos",
+          "balanceUsageDescription": "O saldo de créditos e o uso da sua equipe.",
           "usageDescription": "Seu uso de créditos em conversas, automações e canais.",
           "usageTitle": "Uso de créditos"
         }
@@ -4653,12 +4658,17 @@
       "yesterday": "Ontem"
     },
     "records": {
-      "emptyBillingPeriod": "Nenhum uso neste período de cobrança.",
-      "emptyRange": "Nenhum uso neste período.",
+      "empty": {
+        "billingPeriodTitle": "Nenhum uso neste período de cobrança",
+        "description": "Os créditos que você gasta em chats, automações e canais aparecem aqui.",
+        "noBillingPeriodDescription": "O uso da equipe aparece assim que um período de cobrança começa.",
+        "noBillingPeriodTitle": "Nenhum período de cobrança ativo",
+        "rangeTitle": "Nenhum uso neste período",
+        "teamDescription": "Os créditos que sua equipe gasta em chats, automações e canais aparecem aqui."
+      },
       "loadError": "Não foi possível carregar seu uso.",
       "loadMore": "Carregar mais",
       "myUsage": "Meu uso",
-      "noActiveBillingPeriod": "Nenhum período de cobrança ativo.",
       "teamLoadError": "Não foi possível carregar o uso da equipe.",
       "teamUsage": "Uso da equipe",
       "untitled": "(sem título)"

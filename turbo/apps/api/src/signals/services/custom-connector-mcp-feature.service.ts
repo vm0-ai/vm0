@@ -1,8 +1,8 @@
 import {
   isFeatureEnabled,
   type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 export function isCustomConnectorMcpEnabled(
   context: FeatureSwitchContext,

@@ -9,22 +9,22 @@ import {
   type ModelProviderCredentialScope,
   type ModelProviderType,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   getModelProviderTypeForSurfaceProtocol,
   modelProviderSurfaceProtocolSchema,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import type { SupportedFramework } from "@vm0/core/frameworks";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { modelProviders } from "@vm0/db/schema/model-provider";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { SupportedFramework } from "@okouai/core/frameworks";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderConnections,
   modelProviderSurfaces,
-} from "@vm0/db/schema/model-provider-gateway";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+} from "@okouai/db/schema/model-provider-gateway";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
 import { and, eq, or } from "drizzle-orm";
 
 import { badRequestMessage, insufficientCredits } from "../../lib/error";

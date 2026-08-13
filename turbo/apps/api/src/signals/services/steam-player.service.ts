@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import type { ZeroSteamPlayerResponse } from "@vm0/api-contracts/contracts/zero-steam-player";
+import type { ZeroSteamPlayerResponse } from "@okouai/api-contracts/contracts/zero-steam-player";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

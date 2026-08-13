@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import { optionalEnv } from "../../lib/env";
 import type { RouteEntry } from "../route-entry";

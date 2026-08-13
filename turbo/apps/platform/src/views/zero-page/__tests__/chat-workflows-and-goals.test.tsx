@@ -1,18 +1,18 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+} from "@okouai/core";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowAutomationUpdateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,
@@ -1622,7 +1622,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       const presentationChip = screen.getByTitle(
         `Presentation · ${presentationTemplate.title}`,
       );
-      const videoChip = screen.getByTitle(`Video · ${videoTemplate.title}`);
+      // A sent video chip appends its parameters to the title when the video
+      // options switch is on, so match the prefix rather than the whole title.
+      const videoChip = screen.getByTitle((title) => {
+        return title.startsWith(`Video · ${videoTemplate.title}`);
+      });
       const illustrationChip = screen.getByTitle(
         `Illustration · ${illustrationTemplate.title}`,
       );

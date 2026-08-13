@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.442.0](https://github.com/vm0-ai/vm0/compare/api-v1.441.2...api-v1.442.0) (2026-08-13)
+
+
+### Features
+
+* **api:** show source run on chat-run-finished automations ([#26805](https://github.com/vm0-ai/vm0/issues/26805)) ([e52c30d](https://github.com/vm0-ai/vm0/commit/e52c30d572c8d477e2bbb5f63753825e32f7cdfc))
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+
+### Performance Improvements
+
+* **api:** bound unified unread indicators ([#26816](https://github.com/vm0-ai/vm0/issues/26816)) ([b036c02](https://github.com/vm0-ai/vm0/commit/b036c02de532c72c678d636dfc47885bf025e0c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.327.3
+    * @okouai/connectors bumped to 1.205.2
+    * @okouai/core bumped to 8.553.3
+    * @okouai/db bumped to 1.197.9
+    * @okouai/pi-agent-runtime bumped to 1.4.6
+
+## [1.441.2](https://github.com/vm0-ai/vm0/compare/api-v1.441.1...api-v1.441.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **billing:** merge concurrency into plan subscription ([#26393](https://github.com/vm0-ai/vm0/issues/26393)) ([837a57d](https://github.com/vm0-ai/vm0/commit/837a57d8c302bdc0f96bb010866d01da52736f73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.2
+    * @vm0/core bumped to 8.553.2
+    * @vm0/db bumped to 1.197.8
+    * @vm0/pi-agent-runtime bumped to 1.4.5
+
 ## [1.441.1](https://github.com/vm0-ai/vm0/compare/api-v1.441.0...api-v1.441.1) (2026-08-13)
 
 

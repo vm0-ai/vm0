@@ -2,10 +2,10 @@ import {
   githubDeploymentStateSchema,
   githubPullRequestReviewStateSchema,
   githubWorkflowRunConclusionSchema,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { githubUserLinks } from "@vm0/db/schema/github-user-link";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
+import { githubUserLinks } from "@okouai/db/schema/github-user-link";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";

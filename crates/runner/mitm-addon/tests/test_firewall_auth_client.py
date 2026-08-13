@@ -12,7 +12,7 @@ import urllib.error
 import uuid
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,6 +31,16 @@ from tests.auth_state_helpers import auth_cache_key, cached_headers, require_cac
 from tests.firewall_auth_helpers import firewall_auth_request
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
+_EMPTY_PROXY_ENVIRONMENT = {
+    "http_proxy": "",
+    "HTTP_PROXY": "",
+    "https_proxy": "",
+    "HTTPS_PROXY": "",
+    "all_proxy": "",
+    "ALL_PROXY": "",
+    "no_proxy": "",
+    "NO_PROXY": "",
+}
 
 
 @dataclass(frozen=True)
@@ -44,6 +54,44 @@ class _RawHttpRequest:
 type _TestServerHandler = Callable[
     [asyncio.StreamReader, asyncio.StreamWriter], Coroutine[object, object, None]
 ]
+type _SocketAddress = tuple[str, int] | tuple[str, int, int, int]
+type _SockConnect = Callable[[socket.socket, _SocketAddress], Coroutine[object, object, None]]
+
+
+@dataclass(frozen=True)
+class _OrderedResolver:
+    expected_host: str
+    addresses: tuple[str, ...]
+
+    async def lookup_ip(self, host: str) -> list[str]:
+        assert host == self.expected_host
+        return list(self.addresses)
+
+
+@dataclass
+class _PendingSockConnect:
+    real_connect: _SockConnect
+    attempted_addresses: list[_SocketAddress] = field(default_factory=list)
+    cancelled_addresses: list[_SocketAddress] = field(default_factory=list)
+    sockets: list[socket.socket] = field(default_factory=list)
+    active_count: int = 0
+    max_active_count: int = 0
+
+    async def __call__(self, sock: socket.socket, address: _SocketAddress) -> None:
+        self.attempted_addresses.append(address)
+        self.sockets.append(sock)
+        self.active_count += 1
+        self.max_active_count = max(self.max_active_count, self.active_count)
+        try:
+            if address[0] == "127.0.0.1":
+                await self.real_connect(sock, address)
+            else:
+                await asyncio.Future()
+        except asyncio.CancelledError:
+            self.cancelled_addresses.append(address)
+            raise
+        finally:
+            self.active_count -= 1
 
 
 @asynccontextmanager
@@ -1180,19 +1228,9 @@ class TestFirewallAuthAsyncTransport:
             requests.append(await _read_raw_http_request(reader))
             await _write_success_response(writer)
 
-        proxy_environment = {
-            "http_proxy": "",
-            "HTTP_PROXY": "",
-            "https_proxy": "",
-            "HTTPS_PROXY": "",
-            "all_proxy": "",
-            "ALL_PROXY": "",
-            "no_proxy": "",
-            "NO_PROXY": "",
-        }
         async with _run_test_server(handle_client) as port:
             with (
-                patch.dict(os.environ, proxy_environment),
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
                 patch.object(auth_client, "_dns_resolver", OrderedResolver()),
                 patch.object(auth_client.socket, "socket", side_effect=create_socket),
                 patch.object(platform_api, "VERCEL_BYPASS", ""),
@@ -1204,6 +1242,123 @@ class TestFirewallAuthAsyncTransport:
         assert len(requests) == 1
         assert len(client_sockets) == 2
         assert client_sockets[0].fileno() == -1
+
+    async def test_connects_to_second_address_while_first_connect_is_pending(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        loop = asyncio.get_running_loop()
+        connect_probe = _PendingSockConnect(loop.sock_connect)
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=("192.0.2.1", "127.0.0.1"),
+        )
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(
+                    auth_client,
+                    "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
+                    0.01,
+                ),
+                patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.2),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert [address[0] for address in connect_probe.attempted_addresses] == [
+            "192.0.2.1",
+            "127.0.0.1",
+        ]
+        assert connect_probe.cancelled_addresses == [("192.0.2.1", port)]
+        assert connect_probe.max_active_count == 2
+        assert connect_probe.active_count == 0
+        assert all(sock.fileno() == -1 for sock in connect_probe.sockets)
+
+    async def test_bounds_pending_connects_and_reaches_address_beyond_window(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        pending_hosts = tuple(f"192.0.2.{index}" for index in range(1, 6))
+        loop = asyncio.get_running_loop()
+        connect_probe = _PendingSockConnect(loop.sock_connect)
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=(*pending_hosts, "127.0.0.1"),
+        )
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(
+                    auth_client,
+                    "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
+                    0.01,
+                ),
+                patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.5),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert [address[0] for address in connect_probe.attempted_addresses] == [
+            *pending_hosts,
+            "127.0.0.1",
+        ]
+        assert {address[0] for address in connect_probe.cancelled_addresses} == set(pending_hosts)
+        assert connect_probe.max_active_count == 4
+        assert connect_probe.active_count == 0
+        assert all(sock.fileno() == -1 for sock in connect_probe.sockets)
+
+    async def test_total_deadline_cancels_pending_connection_attempts(self, mitm_ctx):
+        pending_hosts = tuple(f"192.0.2.{index}" for index in range(1, 4))
+        loop = asyncio.get_running_loop()
+        connect_probe = _PendingSockConnect(loop.sock_connect)
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=pending_hosts,
+        )
+        with (
+            patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+            patch.object(auth_client, "_dns_resolver", resolver),
+            patch.object(loop, "sock_connect", new=connect_probe),
+            patch.object(
+                auth_client,
+                "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
+                0.01,
+            ),
+            patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            mitm_ctx(api_url="http://firewall-auth.invalid"),
+            pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+        ):
+            await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert [address[0] for address in connect_probe.attempted_addresses] == list(pending_hosts)
+        assert {address[0] for address in connect_probe.cancelled_addresses} == set(pending_hosts)
+        assert connect_probe.max_active_count == 3
+        assert connect_probe.active_count == 0
+        assert all(sock.fileno() == -1 for sock in connect_probe.sockets)
 
     async def test_protocol_error_does_not_expose_response_bytes(self, mitm_ctx):
         sensitive_response_bytes = b"sensitive-resolved-auth-value"

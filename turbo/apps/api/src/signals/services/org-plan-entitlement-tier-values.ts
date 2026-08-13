@@ -1,4 +1,4 @@
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 
 interface OrgTierLimits {
   readonly planRank: number;

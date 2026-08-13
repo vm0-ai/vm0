@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationCreateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

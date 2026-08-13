@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+import { zeroClaudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";

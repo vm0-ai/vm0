@@ -1,18 +1,18 @@
-import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
+} from "@okouai/api-contracts/contracts/zero-org-members";
 import {
   zeroBillingStatusContract,
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackManagementContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core";
 import { screen, waitFor, within } from "@testing-library/react";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it } from "vitest";
 
 import {

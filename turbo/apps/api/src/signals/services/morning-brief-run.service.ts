@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
-} from "@vm0/db/schema/morning-brief";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+} from "@okouai/db/schema/morning-brief";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { env } from "../../lib/env";

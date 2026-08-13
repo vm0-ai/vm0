@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { testBillingReconciliationStateContract } from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
+import { testBillingReconciliationStateContract } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
 import type StripeSDK from "stripe";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 

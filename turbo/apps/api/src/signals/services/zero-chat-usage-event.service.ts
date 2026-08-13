@@ -1,15 +1,15 @@
 import { command } from "ccstate";
 import { and, count, eq, exists, max, sql, sum } from "drizzle-orm";
-import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
   type ChatEventUsageKindBreakdown,
   type ChatEventUsagePayload,
   type ChatEventUsageProviderBreakdown,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import {
   pgBooleanDecoder,

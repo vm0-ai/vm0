@@ -829,7 +829,7 @@
       "changeDescription": "Elige una nueva cantidad total de cupos o detén la renovación.",
       "changeOptionsAria": "Opciones para cambiar la suscripción de concurrencia",
       "changeQuantityOption": "Cambiar cupos",
-      "changeQuantityOptionDescription": "Introduce el número total de cupos que quieres. Podrás revisar el cambio prorrateado antes de confirmarlo.",
+      "changeQuantityOptionDescription": "Los aumentos se aplican de inmediato. Las reducciones comienzan en la próxima fecha de facturación.",
       "changeTitle": "Cambiar concurrencia",
       "concurrentRun_one": "{{value}} ejecución simultánea",
       "concurrentRun_many": "{{value}} ejecuciones simultáneas",
@@ -850,6 +850,8 @@
       "reviewChange": "Revisar cambio",
       "reviewDescription": "Revisa el importe a pagar ahora y tu suscripción mensual actualizada.",
       "reviewTitle": "Revisar cambio de concurrencia",
+      "scheduledChange": "Cambia a {{quantity}} el {{date}}",
+      "scheduledReviewDescription": "Tus cupos actuales permanecen activos durante este periodo de facturación. La cantidad menor comienza al renovar, sin reembolso ni crédito en la cuenta.",
       "slot_one": "{{value}} cupo",
       "slot_many": "{{value}} cupos",
       "slot_other": "{{value}} cupos",
@@ -1044,7 +1046,7 @@
       "concurrencyCanceled": "Suscripción de concurrencia cancelada.",
       "concurrencyCanceledDate": "Se canceló la suscripción de concurrencia. Los cupos seguirán activos hasta {{date}}.",
       "concurrencyChanged": "Cambio de concurrencia confirmado. La cantidad de cupos se actualizará cuando Stripe procese el cambio.",
-      "concurrencyReduced": "Reducción de concurrencia enviada. La nueva cantidad de cupos aparecerá cuando Stripe confirme el cambio.",
+      "concurrencyReduced": "La reducción de concurrencia está programada para la próxima fecha de facturación.",
       "concurrencyRestored": "Se ha restaurado la suscripción de concurrencia.",
       "creditsAdded": "Créditos añadidos. Puedes seguir chateando con Zero.",
       "downgradeScheduledDate": "Cambio de plan programado. Tu plan actual permanecerá activo hasta {{date}}.",
@@ -1062,6 +1064,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} restantes",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Límite de uso {{label}} restante",
         "resets": "Se restablece el {{date}}",
         "resetsRaw": "Se restablece {{value}}",
@@ -1676,6 +1679,7 @@
       "removeVideo": "Eliminar la plantilla de vídeo {{title}}",
       "removeWebsite": "Eliminar la plantilla de sitio web {{title}}",
       "removeWorkflow": "Eliminar la plantilla de flujo de trabajo {{title}}",
+      "videoModelLabel": "Modelo de vídeo {{model}}",
       "videoOptions": "Opciones de vídeo",
       "videoOptionsAudio": "Generar audio",
       "videoOptionsDuration": "Duración",
@@ -4072,6 +4076,7 @@
         "usage": {
           "balanceDescription": "Lo que le queda a tu equipo para gastar.",
           "balanceTitle": "Saldo de créditos",
+          "balanceUsageDescription": "El saldo de créditos y el uso de tu equipo.",
           "usageDescription": "Tu consumo de créditos en conversaciones, automatizaciones y canales.",
           "usageTitle": "Consumo de créditos"
         }
@@ -4653,12 +4658,17 @@
       "yesterday": "Ayer"
     },
     "records": {
-      "emptyBillingPeriod": "No hubo consumo en este periodo de facturación.",
-      "emptyRange": "No hubo consumo en este intervalo.",
+      "empty": {
+        "billingPeriodTitle": "No hubo consumo en este periodo de facturación",
+        "description": "Los créditos que gastas en chats, automatizaciones y canales aparecen aquí.",
+        "noBillingPeriodDescription": "El consumo del equipo aparece cuando empieza un periodo de facturación.",
+        "noBillingPeriodTitle": "No hay periodo de facturación activo",
+        "rangeTitle": "No hubo consumo en este intervalo",
+        "teamDescription": "Los créditos que gasta tu equipo en chats, automatizaciones y canales aparecen aquí."
+      },
       "loadError": "No se pudo cargar tu consumo.",
       "loadMore": "Cargar más",
       "myUsage": "Mi uso",
-      "noActiveBillingPeriod": "No hay periodo de facturación activo.",
       "teamLoadError": "No se pudo cargar el uso del equipo.",
       "teamUsage": "Uso del equipo",
       "untitled": "(sin título)"

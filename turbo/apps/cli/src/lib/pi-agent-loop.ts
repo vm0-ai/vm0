@@ -5,20 +5,20 @@ import type { Readable, Writable } from "node:stream";
 import {
   CANONICAL_PI_SESSION_DATABASE_PATH,
   piModelConfigSchema,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import {
   createPiNodeExecutionEnv as createNodeExecutionEnv,
   runPiAgentSession,
   type ExecutionEnv,
   type PiAgentModelConfig,
   type PiAssistantMessage,
-} from "@vm0/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/node";
 import { z } from "zod";
 
-const RUN_ID_ENV = "VM0_RUN_ID";
-const PI_SESSION_ID_ENV = "VM0_PI_SESSION_ID";
-const PI_SYSTEM_PROMPT_ENV = "VM0_PI_SYSTEM_PROMPT";
-const PI_MODEL_CONFIG_ENV = "VM0_PI_MODEL_CONFIG";
+const RUN_ID_ENV = "OKOU_RUN_ID";
+const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
+const PI_SYSTEM_PROMPT_ENV = "OKOU_PI_SYSTEM_PROMPT";
+const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
 
 const userFrameSchema = z
   .object({
@@ -66,13 +66,14 @@ function parseJsonEnv(env: NodeJS.ProcessEnv, name: string): unknown {
 export function piSandboxAgentConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): PiSandboxAgentConfig {
+  const runId = requiredEnv(env, RUN_ID_ENV);
   const parsedModel = piModelConfigSchema.parse(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
   );
   const { apiKeyEnv, ...model } = parsedModel;
   const apiKey = requiredEnv(env, apiKeyEnv);
   return {
-    runId: requiredEnv(env, RUN_ID_ENV),
+    runId,
     sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
     systemPrompt: requiredEnv(env, PI_SYSTEM_PROMPT_ENV),
     model: { ...model, apiKey },

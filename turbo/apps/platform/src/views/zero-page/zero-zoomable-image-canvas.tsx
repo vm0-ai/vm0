@@ -10,7 +10,7 @@ import {
   TransformComponent,
   TransformWrapper,
 } from "react-zoom-pan-pinch";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,

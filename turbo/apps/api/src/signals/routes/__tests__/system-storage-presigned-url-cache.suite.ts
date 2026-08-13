@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { cronRefreshStoragePresignedUrlsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronRefreshStoragePresignedUrlsContract } from "@okouai/api-contracts/contracts/cron";
 import type {
   TestSystemStoragePresignedUrlCacheStateActionBody,
   TestSystemStoragePresignedUrlCacheStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+} from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

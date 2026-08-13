@@ -20,7 +20,7 @@ import { asc } from "drizzle-orm";
 import postgres from "postgres";
 import { createClerkClient } from "@clerk/backend";
 
-import { scopes } from "@vm0/db/schema/scope";
+import { scopes } from "@okouai/db/schema/scope";
 
 // ---------------------------------------------------------------------------
 // Types

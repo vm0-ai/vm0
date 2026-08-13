@@ -3,7 +3,7 @@
  *
  * These live here so request and chat contracts can validate generation
  * parameters directly. Which subset each model accepts, along with the rest of
- * the per-model capabilities, lives in `@vm0/core/video-model-catalog`, which
+ * the per-model capabilities, lives in `@okouai/core/video-model-catalog`, which
  * depends on this package.
  */
 export const VIDEO_MODEL_IDS = [

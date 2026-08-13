@@ -1,17 +1,17 @@
 import {
   connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
-} from "@vm0/api-contracts/contracts/connectors-slug-callback";
-import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/connectors-slug-callback";
+import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/connectors/app-oauth-callback";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import { command } from "ccstate";
 import { createElement } from "react";
 import { accept } from "../../lib/accept.ts";

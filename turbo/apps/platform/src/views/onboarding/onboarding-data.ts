@@ -1,5 +1,8 @@
-import { WORKFLOW_TEMPLATE_ITEMS, type WorkflowTemplateItem } from "@vm0/core";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import {
+  WORKFLOW_TEMPLATE_ITEMS,
+  type WorkflowTemplateItem,
+} from "@okouai/core";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { TFunction } from "i18next";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
 

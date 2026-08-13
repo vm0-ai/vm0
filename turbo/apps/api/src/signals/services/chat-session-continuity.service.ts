@@ -3,16 +3,16 @@ import {
   areProvidersCompatible,
   normalizeRunModelId,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { conversations } from "@vm0/db/schema/conversation";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { conversations } from "@okouai/db/schema/conversation";
 import {
   modelProviderConnections,
   modelProviderSurfaces,
-} from "@vm0/db/schema/model-provider-gateway";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/model-provider-gateway";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";

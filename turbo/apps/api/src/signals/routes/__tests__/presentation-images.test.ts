@@ -1,5 +1,5 @@
-import { presentationImagesContract } from "@vm0/api-contracts/contracts/presentation-images";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { presentationImagesContract } from "@okouai/api-contracts/contracts/presentation-images";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 

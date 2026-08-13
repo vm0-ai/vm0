@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroOrgMembershipRequestsContract } from "@vm0/api-contracts/contracts/zero-org-members";
+import { zeroOrgMembershipRequestsContract } from "@okouai/api-contracts/contracts/zero-org-members";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

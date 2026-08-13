@@ -1927,12 +1927,15 @@ mod tests {
     }
 
     #[test]
-    fn pi_child_env_uses_controlled_node_warning_filter() {
+    fn pi_child_env_uses_canonical_run_id_and_controls_node_warnings() {
         let user_env = HashMap::from([(
             "NODE_OPTIONS".to_string(),
             "--require /tmp/user-script.js".to_string(),
         )]);
-        let runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_session_id = Cow::Borrowed("22222222-2222-4222-8222-222222222222");
+        runtime.pi_system_prompt = Cow::Borrowed("immutable Pi prompt");
+        runtime.pi_model_config = Cow::Borrowed(r#"{"provider":"deepseek"}"#);
         let mut values = child_env::values_for_runtime(&runtime);
         values.extend(pi_child_env_values(&runtime));
         let values = child_env::normalize_values(values);
@@ -1951,6 +1954,33 @@ mod tests {
                 .count(),
             1
         );
+        let canonical_run_id = values
+            .iter()
+            .find(|(key, _)| key == guest_contracts::env::RUN_ID_ENV)
+            .map(|(_, value)| value.as_str());
+        assert_eq!(canonical_run_id, Some(runtime.run_id.as_ref()));
+        for (key, expected) in [
+            (
+                guest_contracts::env::PI_SESSION_ID_ENV,
+                runtime.pi_session_id.as_ref(),
+            ),
+            (
+                guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
+                runtime.pi_system_prompt.as_ref(),
+            ),
+            (
+                guest_contracts::env::PI_MODEL_CONFIG_ENV,
+                runtime.pi_model_config.as_ref(),
+            ),
+        ] {
+            assert_eq!(
+                values
+                    .iter()
+                    .find(|(candidate, _)| candidate == key)
+                    .map(|(_, value)| value.as_str()),
+                Some(expected)
+            );
+        }
     }
 
     #[test]

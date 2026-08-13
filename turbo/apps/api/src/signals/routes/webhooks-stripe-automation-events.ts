@@ -1,4 +1,4 @@
-import { webhookStripeAutomationEventsContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookStripeAutomationEventsContract } from "@okouai/api-contracts/contracts/webhooks";
 import { command } from "ccstate";
 
 import { optionalEnv } from "../../lib/env";

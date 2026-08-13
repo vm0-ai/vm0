@@ -6,8 +6,8 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import type { ConcurrencyInfo } from "@vm0/api-contracts/contracts/runs";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ConcurrencyInfo } from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Sheet,
   SheetContent,
@@ -15,7 +15,8 @@ import {
   SheetHeader,
   SheetTitle,
   Button,
-} from "@vm0/ui";
+  Input,
+} from "@okouai/ui";
 import { Crown, Minus, Plus } from "lucide-react";
 import {
   CONCURRENCY_QUANTITY_MAX,
@@ -30,6 +31,7 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
   openConcurrencyChangeReview$,
+  openConcurrencyPurchaseReview$,
   startCheckout$,
   startConcurrencyCheckout$,
 } from "../../signals/zero-page/billing.ts";
@@ -371,8 +373,8 @@ function ConcurrencyQuantityControl({
   quantity,
 }: {
   readonly loading: boolean;
-  readonly onQuantityChange: (quantity: number) => void;
-  readonly quantity: number;
+  readonly onQuantityChange: (quantity: number | null) => void;
+  readonly quantity: number | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -389,30 +391,67 @@ function ConcurrencyQuantityControl({
             aria-label={t(($) => {
               return $.queue.purchase.decreaseQuantity;
             })}
-            disabled={quantity <= CONCURRENCY_QUANTITY_MIN || loading}
+            disabled={
+              quantity === null ||
+              quantity <= CONCURRENCY_QUANTITY_MIN ||
+              loading
+            }
             variant="quiet"
             size="icon"
             className="rounded-l-lg disabled:opacity-40"
             onClick={() => {
-              onQuantityChange(quantity - 1);
+              if (quantity !== null) {
+                onQuantityChange(quantity - 1);
+              }
             }}
           >
             <Minus size={14} />
           </Button>
-          <span className="flex h-9 w-12 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
-            {quantity}
-          </span>
+          <Input
+            type="text"
+            inputMode="numeric"
+            pattern="[1-9][0-9]*"
+            value={quantity ?? ""}
+            disabled={loading}
+            aria-label={t(($) => {
+              return $.queue.purchase.quantity;
+            })}
+            className="h-9 w-14 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus:border-border focus:ring-0"
+            onChange={(event) => {
+              const nextValue = event.currentTarget.value;
+              if (nextValue === "") {
+                onQuantityChange(null);
+                return;
+              }
+              if (!/^[1-9]\d*$/.test(nextValue)) {
+                return;
+              }
+              const nextQuantity = Number(nextValue);
+              if (
+                Number.isInteger(nextQuantity) &&
+                nextQuantity >= CONCURRENCY_QUANTITY_MIN &&
+                nextQuantity <= CONCURRENCY_QUANTITY_MAX
+              ) {
+                onQuantityChange(nextQuantity);
+              }
+            }}
+          />
           <Button
             type="button"
             aria-label={t(($) => {
               return $.queue.purchase.increaseQuantity;
             })}
-            disabled={quantity >= CONCURRENCY_QUANTITY_MAX || loading}
+            disabled={
+              (quantity !== null && quantity >= CONCURRENCY_QUANTITY_MAX) ||
+              loading
+            }
             variant="quiet"
             size="icon"
             className="rounded-r-lg disabled:opacity-40"
             onClick={() => {
-              onQuantityChange(quantity + 1);
+              onQuantityChange(
+                quantity === null ? CONCURRENCY_QUANTITY_MIN : quantity + 1,
+              );
             }}
           >
             <Plus size={14} />
@@ -433,8 +472,8 @@ function ConcurrencyPurchaseCard({
 }: {
   readonly loading: boolean;
   readonly onCheckout: (newTab: boolean) => void;
-  readonly onQuantityChange: (quantity: number) => void;
-  readonly quantity: number;
+  readonly onQuantityChange: (quantity: number | null) => void;
+  readonly quantity: number | null;
   readonly reviewingInApp: boolean;
   readonly tierColor: string;
 }) {
@@ -444,7 +483,10 @@ function ConcurrencyPurchaseCard({
     currency: "USD",
     maximumFractionDigits: 0,
   });
-  const monthlyTotal = currencyFormat.format(concurrencyMonthlyTotal(quantity));
+  const effectiveQuantity = quantity ?? 0;
+  const monthlyTotal = currencyFormat.format(
+    concurrencyMonthlyTotal(effectiveQuantity),
+  );
   return (
     <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
       <div className="flex items-start justify-between mb-2">
@@ -466,7 +508,7 @@ function ConcurrencyPurchaseCard({
           ($) => {
             return $.queue.purchase.subscription;
           },
-          { count: quantity },
+          { count: effectiveQuantity },
         )}
       </p>
       <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-4">
@@ -516,7 +558,7 @@ function ConcurrencyPurchaseCard({
       <div className="mt-auto pt-5">
         <Button
           className="w-full h-11 text-sm font-medium"
-          disabled={loading}
+          disabled={loading || quantity === null}
           onClick={(e) => {
             onCheckout(e.metaKey || e.ctrlKey);
           }}
@@ -555,6 +597,9 @@ function ConcurrencyPurchaseCardMount({
   const [reviewLoadable, openReview] = useLoadableSet(
     openConcurrencyChangeReview$,
   );
+  const [purchaseReviewLoadable, openPurchaseReview] = useLoadableSet(
+    openConcurrencyPurchaseReview$,
+  );
   const quantity = useGet(concurrencyQuantity$);
   const setQuantity = useSet(setConcurrencyQuantity$);
   const billingStatus = useLastResolved(billingStatusAsync$);
@@ -569,9 +614,16 @@ function ConcurrencyPurchaseCardMount({
   // Old API responses omit this during the ~2-day web/app client version-skew
   // window. Remove the legacy Checkout branch with #26152 after #26116 has
   // been deployed beyond that window.
-  const reviewingInApp = activeSubscription?.canChangeInApp === true;
+  const activeChangeReviewAvailable =
+    activeSubscription?.canChangeInApp === true;
+  const purchaseReviewAvailable =
+    !activeSubscription &&
+    billingStatus?.concurrencyPurchaseReviewAvailable === true;
+  const reviewingInApp = activeChangeReviewAvailable || purchaseReviewAvailable;
   const loading =
-    checkoutLoadable.state === "loading" || reviewLoadable.state === "loading";
+    checkoutLoadable.state === "loading" ||
+    reviewLoadable.state === "loading" ||
+    purchaseReviewLoadable.state === "loading";
 
   if (!canManageBilling || capabilities?.canBuyConcurrency !== true) {
     return null;
@@ -581,7 +633,10 @@ function ConcurrencyPurchaseCardMount({
     <ConcurrencyPurchaseCard
       loading={loading}
       onCheckout={(newTab) => {
-        if (reviewingInApp && activeSubscription) {
+        if (quantity === null) {
+          return;
+        }
+        if (activeChangeReviewAvailable && activeSubscription) {
           detach(
             openReview(
               {
@@ -592,6 +647,13 @@ function ConcurrencyPurchaseCardMount({
               },
               pageSignal,
             ),
+            Reason.DomCallback,
+          );
+          return;
+        }
+        if (purchaseReviewAvailable) {
+          detach(
+            openPurchaseReview(quantity, newTab, pageSignal),
             Reason.DomCallback,
           );
           return;

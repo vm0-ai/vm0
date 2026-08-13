@@ -1,3 +1,74 @@
+//! Transaction invariants for `service drain` and `service resume`.
+//!
+//! Both command entry points acquire the service lock before entering the
+//! orchestration below. The systemd mutations inside that lock are ordered:
+//! boot enablement controls the next boot, while the runtime restart override
+//! takes effect only after a daemon reload. Do not reorder these operations
+//! around signal delivery.
+//!
+//! ## Drain
+//!
+//! [`drain_with_ops`] reads the unit lifecycle state and best-effort snapshots
+//! its boot enablement. For an active-like unit, it then writes the runtime
+//! `Restart=no` drop-in, asks systemd to disable the unit without reloading,
+//! reloads systemd with the drop-in required, and verifies the effective
+//! restart policy before sending SIGUSR1. Disabling is best effort because it
+//! protects the next boot; the loaded `Restart=no` policy is the safety gate
+//! that prevents a draining process from being automatically replaced.
+//!
+//! The lifecycle read, policy verification, and signal can race with process
+//! exit or a restart that systemd already committed. After the policy is
+//! verified, [`wait_for_drain_signal_convergence`] keeps the transition
+//! fail-closed while it either signals the active replacement or observes a
+//! state that no longer needs a signal.
+//!
+//! ## Drain rollback boundary
+//!
+//! Reload failures and effective-policy mismatches occur before the first
+//! signal attempt and use [`rollback_drain_transition`] to restore captured boot
+//! enablement and reload the restored state. A policy query error follows the
+//! same path unless a lifecycle recheck proves the runner already exited; in
+//! that case no signal or rollback is needed and drain leaves the protected
+//! state in place. Rollback removes a drop-in created by the current attempt,
+//! but a repeated drain reports that the drop-in already existed and preserves
+//! that protection instead of removing it.
+//!
+//! Once signal delivery has been attempted, convergence failures deliberately
+//! do not roll back. At that point the original process may have exited while
+//! a replacement is racing into view; retaining the verified `Restart=no`
+//! policy is safer than restoring automatic restart under stale assumptions.
+//! The operator can retry `service drain` from that protected state.
+//!
+//! ## Resume
+//!
+//! [`resume_with_ops`] first requires an active unit whose status is exactly
+//! `draining`. This preflight prevents an early SIGUSR2 from racing with a
+//! pending SIGUSR1, and captures `started_at` as the identity of the process
+//! being resumed. [`resume_after_preflight_with_ops`] then removes the drain
+//! override, asks systemd to enable the unit without reloading, reloads with
+//! the override required to be absent, sends SIGUSR2, and waits for an
+//! acknowledgement through [`wait_for_resume_acknowledgement`]. The
+//! acknowledgement is valid only when the unit remains active, the same
+//! `started_at` process reports status, and its mode becomes `running`.
+//!
+//! Enabling is best effort for the same boot-versus-runtime reason as drain.
+//! Reload, signal, or acknowledgement failure uses
+//! [`rollback_resume_transition`] to restore captured boot enablement and
+//! reload systemd. If this attempt removed a `Restart=no` override, rollback
+//! recreates it first. This applies even after SIGUSR2 was sent; any rollback
+//! failure is added to the transition error.
+//!
+//! ## Enforcement
+//!
+//! The orchestration and rollback helpers above define the phase boundaries.
+//! The tests in this module lock down their contract: see
+//! `drain_active_service_disables_restart_before_signal`,
+//! `repeated_drain_reload_failure_preserves_restart_override`,
+//! `drain_signal_failure_converges_without_rollback`, the
+//! `drain_convergence_*_retains_restart_override` cases, the `resume_refuses_*`
+//! preflight cases, `resume_enables_and_reloads_before_signal`, and the
+//! `resume_*_rolls_back_transition` acknowledgement and rollback cases.
+
 use std::path::Path;
 use std::time::Duration;
 
@@ -883,7 +954,10 @@ async fn resume_with_ops(
     resume_after_preflight_with_ops(unit, &base_dir, status.started_at, ops).await
 }
 
-/// `service drain` — send SIGUSR1 and disable the unit without waiting for jobs.
+/// `service drain` — send SIGUSR1 and disable the unit without waiting for active jobs.
+///
+/// The command may wait for systemd operations and bounded drain-signal
+/// convergence before returning.
 pub(super) async fn run_drain(args: DrainArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;

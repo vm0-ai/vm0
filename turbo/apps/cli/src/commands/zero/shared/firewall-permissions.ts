@@ -1,11 +1,11 @@
 import {
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,
-} from "@vm0/connectors/firewall-metadata/policy";
+} from "@okouai/connectors/firewall-metadata/policy";
 import type {
   FirewallPolicies,
   FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import {
   getZeroConnectorCatalogPermissions,
   type ZeroConnectorCatalogPermissionDetail,

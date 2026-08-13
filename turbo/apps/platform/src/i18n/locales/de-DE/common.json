@@ -810,7 +810,7 @@
       "changeDescription": "Wählen Sie eine neue Gesamtzahl an Slots oder beenden Sie die Verlängerung.",
       "changeOptionsAria": "Optionen zum Ändern des Parallelitätsabonnements",
       "changeQuantityOption": "Slots ändern",
-      "changeQuantityOptionDescription": "Geben Sie die gewünschte Gesamtzahl an Slots ein. Vor der Bestätigung können Sie die anteilige Änderung prüfen.",
+      "changeQuantityOptionDescription": "Erhöhungen gelten sofort. Reduzierungen beginnen am nächsten Abrechnungstag.",
       "changeTitle": "Parallelität ändern",
       "concurrentRun_one": "{{value}} gleichzeitige Ausführung",
       "concurrentRun_other": "{{value}} gleichzeitige Ausführungen",
@@ -830,6 +830,8 @@
       "reviewChange": "Änderung prüfen",
       "reviewDescription": "Prüfen Sie den jetzt fälligen Betrag und Ihr aktualisiertes Monatsabonnement.",
       "reviewTitle": "Änderung der Parallelität prüfen",
+      "scheduledChange": "Änderung auf {{quantity}} am {{date}}",
+      "scheduledReviewDescription": "Ihre aktuellen Slots bleiben bis zum Ende dieses Abrechnungszeitraums aktiv. Die niedrigere Anzahl gilt ab der Verlängerung, ohne Rückerstattung oder Kontogutschrift.",
       "slot_one": "{{value}} Slot",
       "slot_other": "{{value}} Slots",
       "slots": "Slots",
@@ -1023,7 +1025,7 @@
       "concurrencyCanceled": "Parallelitätsabonnement gekündigt.",
       "concurrencyCanceledDate": "Parallelitätsabonnement gekündigt. Slots bleiben bis {{date}} aktiv.",
       "concurrencyChanged": "Änderung der Parallelität bestätigt. Ihre Slot-Anzahl wird aktualisiert, sobald Stripe die Änderung verarbeitet hat.",
-      "concurrencyReduced": "Reduzierung der Parallelität übermittelt. Die neue Slot-Anzahl wird angezeigt, sobald Stripe die Änderung bestätigt.",
+      "concurrencyReduced": "Die Reduzierung der Parallelität ist für den nächsten Abrechnungstag geplant.",
       "concurrencyRestored": "Parallelitätsabonnement wiederhergestellt.",
       "creditsAdded": "Credits hinzugefügt. Sie können weiterhin mit Zero chatten.",
       "downgradeScheduledDate": "Downgrade geplant. Ihr aktueller Plan bleibt bis {{date}} aktiv.",
@@ -1041,6 +1043,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} übrig",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} Credits",
         "remainingAria": "Verbleibendes Nutzungskontingent für {{label}}",
         "resets": "Wird am {{date}} zurückgesetzt",
         "resetsRaw": "Wird in {{value}} zurückgesetzt",
@@ -1636,6 +1639,7 @@
       "removeVideo": "Videovorlage {{title}} entfernen",
       "removeWebsite": "Website-Vorlage {{title}} entfernen",
       "removeWorkflow": "Workflow-Vorlage {{title}} entfernen",
+      "videoModelLabel": "Videomodell {{model}}",
       "videoOptions": "Videooptionen",
       "videoOptionsAudio": "Audio erzeugen",
       "videoOptionsDuration": "Dauer",
@@ -4022,6 +4026,7 @@
         "usage": {
           "balanceDescription": "Was deinem Team noch zum Ausgeben bleibt.",
           "balanceTitle": "Credit-Guthaben",
+          "balanceUsageDescription": "Guthaben und Verbrauch deines Teams.",
           "usageDescription": "Ihre Credit-Nutzung über Chats, Automatisierungen und Kanäle hinweg.",
           "usageTitle": "Credit-Nutzung"
         }
@@ -4601,12 +4606,17 @@
       "yesterday": "Gestern"
     },
     "records": {
-      "emptyBillingPeriod": "Keine Nutzung in diesem Abrechnungszeitraum.",
-      "emptyRange": "Keine Nutzung in diesem Zeitraum.",
+      "empty": {
+        "billingPeriodTitle": "Keine Nutzung in diesem Abrechnungszeitraum",
+        "description": "Credits, die du für Chats, Automationen und Kanäle ausgibst, erscheinen hier.",
+        "noBillingPeriodDescription": "Die Team-Nutzung erscheint, sobald ein Abrechnungszeitraum beginnt.",
+        "noBillingPeriodTitle": "Kein aktiver Abrechnungszeitraum",
+        "rangeTitle": "Keine Nutzung in diesem Zeitraum",
+        "teamDescription": "Credits, die dein Team für Chats, Automationen und Kanäle ausgibt, erscheinen hier."
+      },
       "loadError": "Ihre Nutzung konnte nicht geladen werden.",
       "loadMore": "Mehr laden",
       "myUsage": "Meine Nutzung",
-      "noActiveBillingPeriod": "Kein aktiver Abrechnungszeitraum.",
       "teamLoadError": "Die Teamnutzung konnte nicht geladen werden.",
       "teamUsage": "Teamnutzung",
       "untitled": "(ohne Titel)"
