@@ -15,6 +15,7 @@ type CheckoutLayout =
   | "hidden-duplicates"
   | "iframe"
   | "late-frame"
+  | "loading-shell"
   | "replaced-field-frame"
   | "wallet";
 
@@ -31,6 +32,7 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
       "expanded",
       "iframe",
       "hidden-duplicates",
+      "loading-shell",
       "late-frame",
       "replaced-field-frame",
       "wallet",
@@ -45,6 +47,16 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
           assert.equal(state.pageOrigin, "https://checkout.stripe.com");
           assert.equal(state.title, "Checkout fixture");
           assert.doesNotMatch(JSON.stringify(state), /\/c\/pay\//u);
+          if (layout === "loading-shell") {
+            assert.equal(state.frames[0]?.cardNumber.count, 0);
+            assert.equal(state.frames[0]?.payWithCard.count, 0);
+            assert.equal(
+              await page
+                .getByRole("button", { name: /^(subscribe|start trial)$/i })
+                .count(),
+              0,
+            );
+          }
 
           await fillStripeCheckout(page);
 
@@ -93,6 +105,10 @@ async function openCheckoutFixture(
 }
 
 function checkoutDocument(layout: CheckoutLayout): string {
+  if (layout === "loading-shell") {
+    return loadingShellDocument();
+  }
+
   const cardControl =
     layout === "expanded" ||
     layout === "framed-accordion" ||
@@ -232,6 +248,39 @@ function checkoutDocument(layout: CheckoutLayout): string {
       document.querySelector("#submit").addEventListener("click", () => {
         document.body.dataset.submitted = "true";
       });
+    </script>
+  </body>
+</html>`;
+}
+
+function loadingShellDocument(): string {
+  const checkoutForm = `
+    <label><input aria-label="Save my information" type="checkbox" checked> Save my information</label>
+    ${CARD_FIELDS}
+    <label>Cardholder name <input name="billingName"></label>
+    <label>Postal code <input name="billingPostalCode"></label>
+    <button id="submit" type="button">Subscribe</button>
+  `;
+  return `<!doctype html>
+<html>
+  <head><title>Checkout fixture</title></head>
+  <body data-layout="loading-shell">
+    <label>Email <input name="email"></label>
+    <div id="checkout-host"></div>
+    <script>
+      const host = document.querySelector("#checkout-host");
+      document.querySelector('input[name="email"]').addEventListener("input", () => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              host.innerHTML = ${JSON.stringify(checkoutForm)};
+              document.querySelector("#submit").addEventListener("click", () => {
+                document.body.dataset.submitted = "true";
+              });
+            });
+          });
+        });
+      }, { once: true });
     </script>
   </body>
 </html>`;

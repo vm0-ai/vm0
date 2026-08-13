@@ -105,6 +105,10 @@ function payWithCardLocator(frame: Frame): Locator {
   return frame.getByRole("button", { name: /pay with card/i });
 }
 
+function checkoutSubmitLocator(page: Page): Locator {
+  return page.getByRole("button", { name: /^(subscribe|start trial)$/i });
+}
+
 function frameDetachedDuringDiscovery(page: Page, frame: Frame): boolean {
   return !page.isClosed() && frame.isDetached();
 }
@@ -452,6 +456,20 @@ async function fillLocatedStripeField(
   return await fillFirst(field.locator, value, remainingTimeout(deadline));
 }
 
+async function waitForCheckoutFormReady(page: Page): Promise<void> {
+  try {
+    await checkoutSubmitLocator(page).waitFor({
+      state: "visible",
+      timeout: FIELD_TIMEOUT_MS,
+    });
+  } catch (error: unknown) {
+    if (error instanceof errors.TimeoutError) {
+      throw await stripeFieldError(page, CARD_NUMBER_FIELD);
+    }
+    throw error;
+  }
+}
+
 function remainingTimeout(deadline: number): number {
   return Math.max(1, deadline - Date.now());
 }
@@ -529,6 +547,10 @@ export async function fillStripeCheckout(page: Page): Promise<void> {
     page.getByLabel(/email/i).or(page.locator('input[name="email"]')),
     `billing-e2e-${Date.now()}@vm0-e2e.ai`,
   );
+  // Stripe can commit the hosted Checkout navigation while its form is still
+  // a skeleton. Use the final purchase control as the single layout-neutral
+  // readiness boundary before inspecting Card controls or field frames.
+  await waitForCheckoutFormReady(page);
   await disableLinkSaveInfo(page);
 
   const cardNumber = await fillCardNumber(page, "4242424242424242");
@@ -552,7 +574,5 @@ export async function fillStripeCheckout(page: Page): Promise<void> {
     "94107",
   );
 
-  await page
-    .getByRole("button", { name: /^(subscribe|start trial)$/i })
-    .click({ timeout: 30_000 });
+  await checkoutSubmitLocator(page).click({ timeout: 30_000 });
 }
