@@ -158,13 +158,13 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
 /// Logical run-payload field name for the immutable Pi system prompt.
-pub const PI_SYSTEM_PROMPT_ENV: &str = "VM0_PI_SYSTEM_PROMPT";
+pub const PI_SYSTEM_PROMPT_ENV: &str = "OKOU_PI_SYSTEM_PROMPT";
 
 /// Logical run-payload field name for non-secret Pi model metadata.
-pub const PI_MODEL_CONFIG_ENV: &str = "VM0_PI_MODEL_CONFIG";
+pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
 
 /// Logical run-payload field name for the Chat Thread-owned Pi session id.
-pub const PI_SESSION_ID_ENV: &str = "VM0_PI_SESSION_ID";
+pub const PI_SESSION_ID_ENV: &str = "OKOU_PI_SESSION_ID";
 
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
@@ -373,6 +373,9 @@ pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
 
 const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     RUN_ID_ENV,
+    PI_SESSION_ID_ENV,
+    PI_SYSTEM_PROMPT_ENV,
+    PI_MODEL_CONFIG_ENV,
     CLI_AGENT_TYPE_ENV,
     USE_MOCK_CLAUDE_ENV,
     USE_MOCK_CODEX_ENV,
@@ -444,6 +447,9 @@ mod tests {
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
+        assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
+        assert_eq!(PI_SYSTEM_PROMPT_ENV, "OKOU_PI_SYSTEM_PROMPT");
+        assert_eq!(PI_MODEL_CONFIG_ENV, "OKOU_PI_MODEL_CONFIG");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(
             AGENT_EXECUTION_TIMEOUT_SECS_ENV,
@@ -632,6 +638,9 @@ mod tests {
         for key in [
             API_URL_ENV,
             RUN_ID_ENV,
+            PI_SESSION_ID_ENV,
+            PI_SYSTEM_PROMPT_ENV,
+            PI_MODEL_CONFIG_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
@@ -643,6 +652,7 @@ mod tests {
             assert!(is_runner_owned_env_key(key), "{key} should be runner-owned");
         }
         assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
+        assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
         assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
     }
 

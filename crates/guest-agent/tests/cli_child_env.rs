@@ -135,6 +135,16 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key("VM0_USER_ENV_FILE"));
     assert!(!cli_env.contains_key(guest_contracts::env::RUN_ID_ENV));
     assert!(!cli_env.contains_key("VM0_RUN_ID"));
+    for key in [
+        guest_contracts::env::PI_SESSION_ID_ENV,
+        guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::PI_MODEL_CONFIG_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
     assert!(!cli_env.contains_key("VM0_PROMPT"));
     assert!(!cli_env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     assert!(!cli_env.contains_key("VM0_SANDBOX_ID"));

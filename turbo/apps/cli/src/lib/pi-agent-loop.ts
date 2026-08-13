@@ -19,9 +19,9 @@ const RUN_ID_ENV = "OKOU_RUN_ID";
 // Remove after the Phase 1 release is promoted, previous Runner artifacts have
 // drained, and no queued or active context can retain the legacy guest shape.
 const LEGACY_RUN_ID_ENV = "VM0_RUN_ID";
-const PI_SESSION_ID_ENV = "VM0_PI_SESSION_ID";
-const PI_SYSTEM_PROMPT_ENV = "VM0_PI_SYSTEM_PROMPT";
-const PI_MODEL_CONFIG_ENV = "VM0_PI_MODEL_CONFIG";
+const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
+const PI_SYSTEM_PROMPT_ENV = "OKOU_PI_SYSTEM_PROMPT";
+const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
 
 const userFrameSchema = z
   .object({
