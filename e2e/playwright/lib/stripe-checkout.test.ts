@@ -11,6 +11,7 @@ import {
 type CheckoutLayout =
   | "accordion"
   | "expanded"
+  | "framed-accordion"
   | "iframe"
   | "late-frame"
   | "wallet";
@@ -30,6 +31,7 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
       "late-frame",
       "wallet",
       "accordion",
+      "framed-accordion",
     ] as const) {
       await context.test(layout, async () => {
         const page = await browser.newPage();
@@ -43,6 +45,16 @@ test("fills and submits every supported Stripe Checkout card layout", async (con
           await fillStripeCheckout(page);
 
           await assertCheckoutWasSubmitted(page);
+          if (layout === "framed-accordion") {
+            const cardFrame = page.frame({ name: "stripe-card" });
+            assert.ok(cardFrame, "expected the Stripe card frame to remain");
+            assert.equal(
+              await cardFrame
+                .locator("body")
+                .getAttribute("data-activation-count"),
+              "1",
+            );
+          }
         } finally {
           await page.close();
         }
@@ -69,7 +81,10 @@ async function openCheckoutFixture(
 
 function checkoutDocument(layout: CheckoutLayout): string {
   const cardControl =
-    layout === "expanded" || layout === "iframe" || layout === "late-frame"
+    layout === "expanded" ||
+    layout === "framed-accordion" ||
+    layout === "iframe" ||
+    layout === "late-frame"
       ? ""
       : `<button id="pay-with-card" type="button"${
           layout === "accordion"
@@ -134,6 +149,18 @@ function checkoutDocument(layout: CheckoutLayout): string {
           }, { once: true });
         });
         host.append(cardFrame);
+      } else if (document.body.dataset.layout === "framed-accordion") {
+        for (let index = 0; index < 32; index += 1) {
+          const unrelatedFrame = document.createElement("iframe");
+          unrelatedFrame.title = "unrelated-frame-" + index;
+          unrelatedFrame.srcdoc = "<p>Unrelated frame " + index + "</p>";
+          host.append(unrelatedFrame);
+        }
+        const cardFrame = document.createElement("iframe");
+        cardFrame.name = "stripe-card";
+        cardFrame.title = "Stripe card entry";
+        cardFrame.srcdoc = ${JSON.stringify(framedAccordionDocument())};
+        host.append(cardFrame);
       } else {
         document.querySelector("#pay-with-card").addEventListener("click", (event) => {
           if (document.body.dataset.layout === "wallet" && !event.isTrusted) {
@@ -152,6 +179,25 @@ function checkoutDocument(layout: CheckoutLayout): string {
         document.body.dataset.submitted = "true";
       });
     </script>
+  </body>
+</html>`;
+}
+
+function framedAccordionDocument(): string {
+  return `<!doctype html>
+<html>
+  <body data-activation-count="0">
+    <button
+      type="button"
+      style="height: 0; overflow: hidden; padding: 0; border: 0"
+      onclick="
+        document.body.dataset.activationCount = String(
+          Number(document.body.dataset.activationCount) + 1
+        );
+        document.querySelector('#card-fields').hidden = false;
+      "
+    >Pay with card</button>
+    <div id="card-fields" hidden>${CARD_FIELDS}</div>
   </body>
 </html>`;
 }

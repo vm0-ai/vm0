@@ -6,8 +6,7 @@ import {
   type Page,
 } from "@playwright/test";
 
-const FIELD_TIMEOUT_MS = 15_000;
-const FIELD_DISCOVERY_WINDOW_MS = 500;
+const FIELD_TIMEOUT_MS = 10_000;
 
 interface StripeFieldDefinition {
   readonly label: RegExp;
@@ -29,9 +28,18 @@ interface StripeFrameState {
   readonly payWithCard: StripeLocatorState;
 }
 
-interface StripeCardMethodControl {
-  readonly activation: "click" | "dispatch";
+interface LocatedStripeControl {
+  readonly frame: Frame;
   readonly locator: Locator;
+}
+
+interface StripeCardMethodControl extends LocatedStripeControl {
+  readonly activation: "click" | "dispatch";
+}
+
+interface StripeFrameBaseline {
+  readonly addedFrames: Locator;
+  readonly attributeName: string;
 }
 
 export interface StripeCheckoutState {
@@ -57,6 +65,8 @@ const CARD_CVC_FIELD: StripeFieldDefinition = {
   name: "cardCvc",
   placeholder: /CVC/i,
 };
+
+let stripeFrameBaselineSequence = 0;
 
 async function fillFirst(
   locator: Locator,
@@ -95,122 +105,128 @@ function payWithCardLocator(frame: Frame): Locator {
   return frame.getByRole("button", { name: /pay with card/i });
 }
 
-async function waitForVisibleStripeField(
-  page: Page,
-  field: StripeFieldDefinition,
-  deadline: number,
-): Promise<Locator | null> {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) {
-    return null;
-  }
-
-  const timeout = Math.min(FIELD_DISCOVERY_WINDOW_MS, remaining);
-  const frames = page.frames();
-  const candidates = frames.map(async (frame): Promise<Locator> => {
-    const locator = visibleStripeFieldLocator(frame, field);
-    await locator.waitFor({ state: "attached", timeout });
-    return locator;
-  });
-
-  try {
-    return await Promise.any(candidates);
-  } catch (error: unknown) {
-    if (!(error instanceof AggregateError)) {
-      throw error;
-    }
-
-    const failures: readonly unknown[] = error.errors;
-    const unexpectedFailureIndex = failures.findIndex(
-      (failure, index) =>
-        !(failure instanceof errors.TimeoutError) &&
-        !frameDetachedDuringDiscovery(page, frames[index]),
-    );
-    if (unexpectedFailureIndex >= 0) {
-      throw failures[unexpectedFailureIndex];
-    }
-    return null;
-  }
-}
-
 function frameDetachedDuringDiscovery(page: Page, frame: Frame): boolean {
   return !page.isClosed() && frame.isDetached();
 }
 
-async function findMatchingFrameLocator(
+async function locatorCount(
   page: Page,
-  createLocator: (frame: Frame) => Locator,
-  isMatch: (locator: Locator) => Promise<boolean>,
-): Promise<Locator | null> {
-  const candidates = page.frames().map((frame) => ({
-    frame,
-    locator: createLocator(frame),
-  }));
-  const matches = await Promise.all(
-    candidates.map(async ({ frame, locator }): Promise<boolean> => {
-      try {
-        return await isMatch(locator);
-      } catch (error: unknown) {
-        if (frameDetachedDuringDiscovery(page, frame)) {
-          return false;
-        }
-        throw error;
-      }
-    }),
-  );
-  return candidates.find((_, index) => matches[index])?.locator ?? null;
+  frame: Frame,
+  locator: Locator,
+): Promise<number> {
+  try {
+    return await locator.count();
+  } catch (error: unknown) {
+    if (frameDetachedDuringDiscovery(page, frame)) {
+      return 0;
+    }
+    throw error;
+  }
+}
+
+async function locatorIsVisible(
+  page: Page,
+  frame: Frame,
+  locator: Locator,
+): Promise<boolean> {
+  try {
+    return await locator.isVisible();
+  } catch (error: unknown) {
+    if (frameDetachedDuringDiscovery(page, frame)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function findStripeFieldInFrames(
+  page: Page,
+  frames: readonly Frame[],
+  field: StripeFieldDefinition,
+  visibility: "attached" | "visible",
+): Promise<LocatedStripeControl | null> {
+  for (const frame of frames) {
+    const locator = stripeFieldLocator(frame, field).first();
+    if ((await locatorCount(page, frame, locator)) === 0) {
+      continue;
+    }
+    if (
+      visibility === "visible" &&
+      !(await locatorIsVisible(page, frame, locator))
+    ) {
+      continue;
+    }
+    return { frame, locator };
+  }
+  return null;
+}
+
+async function findStripeField(
+  page: Page,
+  field: StripeFieldDefinition,
+  visibility: "attached" | "visible",
+): Promise<LocatedStripeControl | null> {
+  return await findStripeFieldInFrames(page, page.frames(), field, visibility);
 }
 
 async function findPayWithCard(
   page: Page,
 ): Promise<StripeCardMethodControl | null> {
-  const visiblePayWithCard = await findMatchingFrameLocator(
-    page,
-    (frame) => payWithCardLocator(frame).filter({ visible: true }).first(),
-    async (locator) => await locator.isVisible(),
-  );
-  if (visiblePayWithCard) {
-    return { activation: "click", locator: visiblePayWithCard };
+  for (const frame of page.frames()) {
+    const locator = payWithCardLocator(frame).first();
+    if (
+      (await locatorCount(page, frame, locator)) > 0 &&
+      (await locatorIsVisible(page, frame, locator))
+    ) {
+      return { activation: "click", frame, locator };
+    }
   }
 
-  const attachedPayWithCard = await findMatchingFrameLocator(
-    page,
-    (frame) => payWithCardLocator(frame).first(),
-    async (locator) => (await locator.count()) > 0,
-  );
-  return attachedPayWithCard
-    ? { activation: "dispatch", locator: attachedPayWithCard }
-    : null;
+  for (const frame of page.frames()) {
+    const locator = payWithCardLocator(frame).first();
+    if ((await locatorCount(page, frame, locator)) > 0) {
+      return { activation: "dispatch", frame, locator };
+    }
+  }
+  return null;
 }
 
-async function findVisibleStripeField(
-  page: Page,
-  field: StripeFieldDefinition,
-): Promise<Locator | null> {
-  return await findMatchingFrameLocator(
-    page,
-    (frame) => visibleStripeFieldLocator(frame, field),
-    async (locator) => (await locator.count()) > 0,
-  );
+async function createStripeFrameBaseline(
+  frame: Frame,
+): Promise<StripeFrameBaseline> {
+  stripeFrameBaselineSequence += 1;
+  const attributeName =
+    `data-vm0-stripe-frame-baseline-${Date.now()}-` +
+    stripeFrameBaselineSequence;
+  await frame.locator("iframe").evaluateAll((elements, attribute) => {
+    for (const element of elements) {
+      element.setAttribute(attribute, "");
+    }
+  }, attributeName);
+  return {
+    addedFrames: frame.locator(`iframe:not([${attributeName}])`),
+    attributeName,
+  };
 }
 
-async function fillVisibleStripeField(
-  page: Page,
-  field: StripeFieldDefinition,
-  locator: Locator,
-  value: string,
-  deadline: number,
+async function removeStripeFrameBaseline(
+  frame: Frame,
+  baseline: StripeFrameBaseline,
 ): Promise<void> {
-  const timeout = deadline - Date.now();
-  if (timeout <= 0) {
-    throw await stripeFieldError(page, field);
+  if (frame.isDetached()) {
+    return;
   }
-
   try {
-    await locator.fill(value, { timeout });
+    await frame
+      .locator(`iframe[${baseline.attributeName}]`)
+      .evaluateAll((elements, attribute) => {
+        for (const element of elements) {
+          element.removeAttribute(attribute);
+        }
+      }, baseline.attributeName);
   } catch (error: unknown) {
-    if (error instanceof errors.TimeoutError) {
-      throw await stripeFieldError(page, field);
+    if (frame.isDetached()) {
+      return;
     }
     throw error;
   }
@@ -220,11 +236,7 @@ async function activateCardMethod(
   control: StripeCardMethodControl,
   deadline: number,
 ): Promise<void> {
-  const timeout = deadline - Date.now();
-  if (timeout <= 0) {
-    return;
-  }
-
+  const timeout = remainingTimeout(deadline);
   if (control.activation === "click") {
     await control.locator.click({ timeout });
     return;
@@ -236,73 +248,201 @@ async function activateCardMethod(
   await control.locator.dispatchEvent("click", undefined, { timeout });
 }
 
-async function fillCardNumber(page: Page, value: string): Promise<void> {
+async function addedStripeFrames(
+  baseline: StripeFrameBaseline,
+): Promise<readonly Frame[]> {
+  const handles = await baseline.addedFrames.elementHandles();
+  const frames = await Promise.all(
+    handles.map(async (handle) => await handle.contentFrame()),
+  );
+  return frames.filter((frame): frame is Frame => frame !== null);
+}
+
+async function fillAddedStripeFrame(
+  page: Page,
+  baseline: StripeFrameBaseline,
+  value: string,
+  deadline: number,
+): Promise<LocatedStripeControl | null> {
+  const frames = await addedStripeFrames(baseline);
+  const locatedField =
+    (await findStripeFieldInFrames(
+      page,
+      frames,
+      CARD_NUMBER_FIELD,
+      "visible",
+    )) ??
+    (await findStripeFieldInFrames(
+      page,
+      frames,
+      CARD_NUMBER_FIELD,
+      "attached",
+    ));
+  if (locatedField) {
+    return (await fillLocatedStripeField(locatedField, value, deadline))
+      ? locatedField
+      : null;
+  }
+
+  if (frames.length !== 1) {
+    return null;
+  }
+  const frame = frames[0];
+  const candidate = {
+    frame,
+    locator: stripeFieldLocator(frame, CARD_NUMBER_FIELD).first(),
+  };
+  return (await fillLocatedStripeField(candidate, value, deadline))
+    ? candidate
+    : null;
+}
+
+async function fillRevealedCardNumber(
+  page: Page,
+  control: StripeCardMethodControl,
+  baseline: StripeFrameBaseline,
+  value: string,
+  deadline: number,
+): Promise<LocatedStripeControl> {
+  const immediateCardNumber = await findStripeField(
+    page,
+    CARD_NUMBER_FIELD,
+    "visible",
+  );
+  if (
+    immediateCardNumber &&
+    (await fillLocatedStripeField(immediateCardNumber, value, deadline))
+  ) {
+    return immediateCardNumber;
+  }
+
+  // Card activation has exactly two valid lifecycle outcomes: the semantic
+  // field becomes visible in the control's frame, or Stripe replaces/adds a
+  // child field frame. Wait once on that observable boundary.
+  try {
+    await visibleStripeFieldLocator(control.frame, CARD_NUMBER_FIELD)
+      .or(baseline.addedFrames)
+      .first()
+      .waitFor({ state: "attached", timeout: remainingTimeout(deadline) });
+  } catch (error: unknown) {
+    if (error instanceof errors.TimeoutError) {
+      throw await stripeFieldError(page, CARD_NUMBER_FIELD);
+    }
+    throw error;
+  }
+
+  const revealedCardNumber = await findStripeField(
+    page,
+    CARD_NUMBER_FIELD,
+    "visible",
+  );
+  if (
+    revealedCardNumber &&
+    (await fillLocatedStripeField(revealedCardNumber, value, deadline))
+  ) {
+    return revealedCardNumber;
+  }
+
+  const addedFrameCardNumber = await fillAddedStripeFrame(
+    page,
+    baseline,
+    value,
+    deadline,
+  );
+  if (addedFrameCardNumber) {
+    return addedFrameCardNumber;
+  }
+  throw await stripeFieldError(page, CARD_NUMBER_FIELD);
+}
+
+async function fillCardNumber(
+  page: Page,
+  value: string,
+): Promise<LocatedStripeControl> {
   const deadline = Date.now() + FIELD_TIMEOUT_MS;
-  let cardMethodActivated = false;
-
-  while (Date.now() < deadline) {
-    const visibleCardNumber = await findVisibleStripeField(
-      page,
-      CARD_NUMBER_FIELD,
-    );
-    if (visibleCardNumber) {
-      await fillVisibleStripeField(
-        page,
-        CARD_NUMBER_FIELD,
-        visibleCardNumber,
-        value,
-        deadline,
-      );
-      return;
+  const visibleCardNumber = await findStripeField(
+    page,
+    CARD_NUMBER_FIELD,
+    "visible",
+  );
+  if (visibleCardNumber) {
+    if (await fillLocatedStripeField(visibleCardNumber, value, deadline)) {
+      return visibleCardNumber;
     }
+    throw await stripeFieldError(page, CARD_NUMBER_FIELD);
+  }
 
-    if (!visibleCardNumber && !cardMethodActivated) {
-      const payWithCard = await findPayWithCard(page);
-      if (payWithCard) {
-        await activateCardMethod(payWithCard, deadline);
-        cardMethodActivated = true;
-        continue;
+  const attachedCardNumber = await findStripeField(
+    page,
+    CARD_NUMBER_FIELD,
+    "attached",
+  );
+  const payWithCard = await findPayWithCard(page);
+  if (payWithCard) {
+    if (attachedCardNumber) {
+      await activateCardMethod(payWithCard, deadline);
+      if (await fillLocatedStripeField(attachedCardNumber, value, deadline)) {
+        return attachedCardNumber;
       }
+      throw await stripeFieldError(page, CARD_NUMBER_FIELD);
     }
 
-    const discoveredCardNumber = await waitForVisibleStripeField(
-      page,
-      CARD_NUMBER_FIELD,
-      deadline,
-    );
-    if (discoveredCardNumber) {
-      await fillVisibleStripeField(
+    const baseline = await createStripeFrameBaseline(payWithCard.frame);
+    try {
+      await activateCardMethod(payWithCard, deadline);
+      return await fillRevealedCardNumber(
         page,
-        CARD_NUMBER_FIELD,
-        discoveredCardNumber,
+        payWithCard,
+        baseline,
         value,
         deadline,
       );
-      return;
+    } finally {
+      await removeStripeFrameBaseline(payWithCard.frame, baseline);
     }
   }
 
+  if (
+    attachedCardNumber &&
+    (await fillLocatedStripeField(attachedCardNumber, value, deadline))
+  ) {
+    return attachedCardNumber;
+  }
   throw await stripeFieldError(page, CARD_NUMBER_FIELD);
 }
 
 async function fillStripeField(
   page: Page,
+  preferredFrame: Frame,
   field: StripeFieldDefinition,
   value: string,
-): Promise<void> {
+): Promise<LocatedStripeControl> {
   const deadline = Date.now() + FIELD_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    const visibleField =
-      (await findVisibleStripeField(page, field)) ??
-      (await waitForVisibleStripeField(page, field, deadline));
-    if (visibleField) {
-      await fillVisibleStripeField(page, field, visibleField, value, deadline);
-      return;
-    }
+  const preferredFrames = preferredFrame.isDetached() ? [] : [preferredFrame];
+  const locatedField =
+    (await findStripeFieldInFrames(page, preferredFrames, field, "visible")) ??
+    (await findStripeFieldInFrames(page, preferredFrames, field, "attached")) ??
+    (await findStripeField(page, field, "visible")) ??
+    (await findStripeField(page, field, "attached"));
+  if (
+    locatedField &&
+    (await fillLocatedStripeField(locatedField, value, deadline))
+  ) {
+    return locatedField;
   }
-
   throw await stripeFieldError(page, field);
+}
+
+async function fillLocatedStripeField(
+  field: LocatedStripeControl,
+  value: string,
+  deadline: number,
+): Promise<boolean> {
+  return await fillFirst(field.locator, value, remainingTimeout(deadline));
+}
+
+function remainingTimeout(deadline: number): number {
+  return Math.max(1, deadline - Date.now());
 }
 
 async function stripeFieldError(
@@ -380,9 +520,14 @@ export async function fillStripeCheckout(page: Page): Promise<void> {
   );
   await disableLinkSaveInfo(page);
 
-  await fillCardNumber(page, "4242424242424242");
-  await fillStripeField(page, CARD_EXPIRY_FIELD, "1234");
-  await fillStripeField(page, CARD_CVC_FIELD, "123");
+  const cardNumber = await fillCardNumber(page, "4242424242424242");
+  const cardExpiry = await fillStripeField(
+    page,
+    cardNumber.frame,
+    CARD_EXPIRY_FIELD,
+    "1234",
+  );
+  await fillStripeField(page, cardExpiry.frame, CARD_CVC_FIELD, "123");
   await fillFirst(
     page
       .getByLabel(/cardholder name|name on card/i)
