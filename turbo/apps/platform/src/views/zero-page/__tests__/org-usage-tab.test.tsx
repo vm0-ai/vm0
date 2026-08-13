@@ -238,7 +238,7 @@ describe("organization usage settings", () => {
     expect(screen.queryByText("Team usage")).toBeNull();
   });
 
-  it("moves between the balance and the usage records through the section links", async () => {
+  it("moves from the balance to the usage records through the section link", async () => {
     mockUsageStory();
     await openCreditBalance();
 
@@ -254,13 +254,7 @@ describe("organization usage settings", () => {
         screen.getByRole("heading", { name: "Credit usage" }),
       ).toBeInTheDocument();
     });
-    click(screen.getByTestId("usage-records-see-balance"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Credit balance" }),
-      ).toBeInTheDocument();
-    });
+    expect(screen.queryByTestId("usage-records-see-balance")).toBeNull();
   });
 
   it("sends the buy credits action to the billing section", async () => {

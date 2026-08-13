@@ -4605,12 +4605,17 @@
       "yesterday": "어제"
     },
     "records": {
-      "emptyBillingPeriod": "이 청구 기간에 사용 내역이 없습니다.",
-      "emptyRange": "이 기간에 사용 내역이 없습니다.",
+      "empty": {
+        "billingPeriodTitle": "이 청구 기간에 사용 내역이 없습니다",
+        "description": "채팅, 자동화, 채널에서 사용한 크레딧이 여기에 표시됩니다.",
+        "noBillingPeriodDescription": "청구 기간이 시작되면 팀 사용량이 표시됩니다.",
+        "noBillingPeriodTitle": "활성 청구 기간이 없습니다",
+        "rangeTitle": "이 기간에 사용 내역이 없습니다",
+        "teamDescription": "팀이 채팅, 자동화, 채널에서 사용한 크레딧이 여기에 표시됩니다."
+      },
       "loadError": "사용량을 불러올 수 없습니다.",
       "loadMore": "더 불러오기",
       "myUsage": "내 사용량",
-      "noActiveBillingPeriod": "활성 청구 기간이 없습니다.",
       "teamLoadError": "팀 사용량을 불러올 수 없습니다.",
       "teamUsage": "팀 사용량",
       "untitled": "(제목 없음)"

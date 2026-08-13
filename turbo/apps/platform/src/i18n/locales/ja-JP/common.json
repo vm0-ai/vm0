@@ -4605,12 +4605,17 @@
       "yesterday": "昨日"
     },
     "records": {
-      "emptyBillingPeriod": "この請求期間の利用はありません。",
-      "emptyRange": "この期間の利用はありません。",
+      "empty": {
+        "billingPeriodTitle": "この請求期間の利用はありません",
+        "description": "チャット、オートメーション、チャネルで使ったクレジットがここに表示されます。",
+        "noBillingPeriodDescription": "請求期間が始まるとチームの利用状況が表示されます。",
+        "noBillingPeriodTitle": "有効な請求期間はありません",
+        "rangeTitle": "この期間の利用はありません",
+        "teamDescription": "チームがチャット、オートメーション、チャネルで使ったクレジットがここに表示されます。"
+      },
       "loadError": "使用量を読み込めませんでした。",
       "loadMore": "さらに読み込む",
       "myUsage": "自分の使用量",
-      "noActiveBillingPeriod": "有効な請求期間はありません。",
       "teamLoadError": "チームの使用量を読み込めませんでした。",
       "teamUsage": "チームの使用量",
       "untitled": "(無題)"

@@ -16,9 +16,6 @@ import {
 import { z } from "zod";
 
 const RUN_ID_ENV = "OKOU_RUN_ID";
-// Remove after the Phase 1 release is promoted, previous Runner artifacts have
-// drained, and no queued or active context can retain the legacy guest shape.
-const LEGACY_RUN_ID_ENV = "VM0_RUN_ID";
 const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
 const PI_SYSTEM_PROMPT_ENV = "OKOU_PI_SYSTEM_PROMPT";
 const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
@@ -56,21 +53,6 @@ function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
-function runIdFromEnv(env: NodeJS.ProcessEnv): string {
-  const runId = env[RUN_ID_ENV];
-  const legacyRunId = env[LEGACY_RUN_ID_ENV];
-  if (runId && legacyRunId && runId !== legacyRunId) {
-    throw new Error("Pi run identity environment mismatch");
-  }
-  if (runId) {
-    return runId;
-  }
-  if (legacyRunId) {
-    return legacyRunId;
-  }
-  throw new Error(`${RUN_ID_ENV} is required for Pi execution`);
-}
-
 function parseJsonEnv(env: NodeJS.ProcessEnv, name: string): unknown {
   const value = requiredEnv(env, name);
   try {
@@ -84,7 +66,7 @@ function parseJsonEnv(env: NodeJS.ProcessEnv, name: string): unknown {
 export function piSandboxAgentConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): PiSandboxAgentConfig {
-  const runId = runIdFromEnv(env);
+  const runId = requiredEnv(env, RUN_ID_ENV);
   const parsedModel = piModelConfigSchema.parse(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
   );
