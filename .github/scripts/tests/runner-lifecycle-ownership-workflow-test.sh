@@ -12,7 +12,16 @@ def named_step(job, name)
   job.fetch("steps").find { |step| step["name"] == name }
 end
 
-cleanup = YAML.load_file(ARGV.fetch(0)).fetch("jobs").fetch("cleanup-runner")
+cleanup_workflow = YAML.load_file(ARGV.fetch(0))
+cleanup_concurrency = cleanup_workflow.fetch("concurrency")
+unless cleanup_concurrency == {
+  "group" => "cleanup-pr-${{ github.event.pull_request.number }}",
+  "cancel-in-progress" => true,
+}
+  raise "cleanup must deduplicate in a namespace distinct from active PR CI owners"
+end
+
+cleanup = cleanup_workflow.fetch("jobs").fetch("cleanup-runner")
 permissions = cleanup.fetch("permissions")
 unless permissions == {
   "actions" => "read",
