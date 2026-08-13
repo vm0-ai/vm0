@@ -8,21 +8,17 @@ import {
   gt,
   gte,
   inArray,
-  or,
   sql,
 } from "drizzle-orm";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import {
-  chatEventSearchDocs,
   chatEventSearchMessages,
   chatEventSearchMessageWatermarks,
-  chatEventSearchWatermarks,
 } from "@okouai/db/schema/chat-event-search";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatSearchIndexText } from "../../lib/chat-search-bigram";
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Tx } from "../../lib/db-types";
 import { optionalEnv } from "../../lib/env";
 import { writeDb$, type Db } from "../external/db";
@@ -37,19 +33,14 @@ import {
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 
 interface ChatEventSearchProjectionStats {
-  readonly durableProjectionAvailable: boolean;
   readonly threads: number;
   readonly indexedEvents: number;
   readonly deletedDocs: number;
-  readonly durableThreads: number;
-  readonly durableIndexedMessages: number;
-  readonly durableDeletedMessages: number;
   readonly convergence: ChatEventSearchProjectionConvergence;
 }
 
 interface ChatEventSearchProjectionConvergence {
   readonly eligibleThreads: number;
-  readonly legacyCaughtUpThreads: number;
   readonly durableCaughtUpThreads: number;
 }
 
@@ -61,12 +52,9 @@ interface CandidateThread {
 }
 
 interface ThreadProjectionStats {
-  readonly legacyThread: number;
-  readonly legacyIndexedEvents: number;
-  readonly legacyDeletedDocs: number;
-  readonly durableThread: number;
-  readonly durableIndexedMessages: number;
-  readonly durableDeletedMessages: number;
+  readonly thread: number;
+  readonly indexedEvents: number;
+  readonly deletedDocs: number;
 }
 
 interface SearchMessageProjection {
@@ -76,38 +64,30 @@ interface SearchMessageProjection {
 }
 
 interface ThreadProjectionProgress {
-  readonly legacyLagging: boolean;
-  readonly durableLagging: boolean;
-  readonly legacyRows: readonly ProjectionRow[];
-  readonly durableRows: readonly ProjectionRow[];
+  readonly lagging: boolean;
+  readonly rows: readonly ProjectionRow[];
 }
 
 interface SearchProjectionBatch {
-  readonly legacyDocs: LegacySearchDocInsert[];
-  readonly durableMessages: DurableSearchMessageInsert[];
+  readonly messages: SearchMessageInsert[];
   readonly revokedEventIds: string[];
 }
 
 interface SearchProjectionWriteStats {
-  readonly legacyIndexedEvents: number;
-  readonly legacyDeletedDocs: number;
-  readonly durableIndexedMessages: number;
-  readonly durableDeletedMessages: number;
+  readonly indexedEvents: number;
+  readonly deletedDocs: number;
 }
 
 interface ChatEventSearchProjectionOptions {
   readonly chatThreadIds?: readonly string[];
-  readonly durableProjectionAvailable: boolean;
 }
 
 interface ChatEventSearchTestProjectionOptions {
   readonly chatThreadIds: readonly string[];
-  readonly simulateDurableSchemaUnavailable: boolean;
 }
 
 type SearchableRole = "user" | "assistant";
-type LegacySearchDocInsert = typeof chatEventSearchDocs.$inferInsert;
-type DurableSearchMessageInsert = typeof chatEventSearchMessages.$inferInsert;
+type SearchMessageInsert = typeof chatEventSearchMessages.$inferInsert;
 
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const THREAD_EVENT_LIMIT = 1000;
@@ -126,26 +106,7 @@ function chatEventSearchThreadBatchSize(): number {
   return parsed;
 }
 
-async function durableChatEventSearchSchemaAvailable(
-  db: Pick<Db, "select">,
-): Promise<boolean> {
-  // DB/API compatibility fallback (#26762): new API code can precede migration
-  // 0916 for an observed maximum of ~102 minutes. Keep legacy projection ticks
-  // working until 0916 is visible; remove after the phase-2 cutover is deployed
-  // and its API rollback window closes.
-  const [state] = await db
-    .select({
-      available: sql`
-        to_regclass('public.chat_event_search_messages') IS NOT NULL
-        AND to_regclass('public.chat_event_search_message_watermarks') IS NOT NULL
-      `.mapWith(pgBooleanDecoder),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  return state?.available ?? false;
-}
-
-function searchDocRole(eventType: string): SearchableRole | null {
+function searchMessageRole(eventType: string): SearchableRole | null {
   if (eventType === "input.prompt" || eventType === "input.rejected") {
     return "user";
   }
@@ -155,7 +116,7 @@ function searchDocRole(eventType: string): SearchableRole | null {
   return null;
 }
 
-function searchDocText(row: {
+function searchMessageText(row: {
   readonly eventType: (typeof chatEvents.$inferSelect)["eventType"];
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
@@ -176,11 +137,11 @@ function searchMessageProjection(row: {
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
 }): SearchMessageProjection | null {
-  const role = searchDocRole(row.eventType);
+  const role = searchMessageRole(row.eventType);
   if (role === null) {
     return null;
   }
-  const text = searchDocText(row);
+  const text = searchMessageText(row);
   if (text === null) {
     return null;
   }
@@ -265,101 +226,44 @@ async function loadThreadProjectionProgress(
   tx: Tx,
   chatThreadId: string,
   lastChatEventSeqId: number,
-  durableProjectionAvailable: boolean,
 ): Promise<ThreadProjectionProgress> {
-  const [legacyProgress] = await tx
-    .select({
-      legacyIndexedSeqId: chatEventSearchWatermarks.indexedSeqId,
-    })
-    .from(chatThreads)
-    .leftJoin(
-      chatEventSearchWatermarks,
-      eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-    )
-    .where(eq(chatThreads.id, chatThreadId))
+  const [progress] = await tx
+    .select({ indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId })
+    .from(chatEventSearchMessageWatermarks)
+    .where(eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreadId))
     .limit(1);
-  if (!legacyProgress) {
-    throw new Error("Locked chat search projection thread disappeared");
-  }
-  const legacyIndexedSeqId = legacyProgress.legacyIndexedSeqId ?? 0;
-  const [durableProgress] = durableProjectionAvailable
-    ? await tx
-        .select({
-          durableIndexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
-        })
-        .from(chatEventSearchMessageWatermarks)
-        .where(eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreadId))
-        .limit(1)
+  const indexedSeqId = progress?.indexedSeqId ?? 0;
+  const lagging = lastChatEventSeqId > indexedSeqId;
+  const rows = lagging
+    ? await loadProjectionRows(tx, chatThreadId, indexedSeqId)
     : [];
-  const durableIndexedSeqId = durableProgress?.durableIndexedSeqId ?? 0;
-  const legacyLagging = lastChatEventSeqId > legacyIndexedSeqId;
-  const durableLagging =
-    durableProjectionAvailable && lastChatEventSeqId > durableIndexedSeqId;
-  const legacyRows = legacyLagging
-    ? await loadProjectionRows(tx, chatThreadId, legacyIndexedSeqId)
-    : [];
-  const durableRows = durableLagging
-    ? legacyLagging && durableIndexedSeqId === legacyIndexedSeqId
-      ? legacyRows
-      : await loadProjectionRows(tx, chatThreadId, durableIndexedSeqId)
-    : [];
-  return { legacyLagging, durableLagging, legacyRows, durableRows };
+  return { lagging, rows };
 }
 
-function collectSearchMessageProjections(
-  legacyRows: readonly ProjectionRow[],
-  durableRows: readonly ProjectionRow[],
-): {
+function collectSearchMessageProjections(rows: readonly ProjectionRow[]): {
   readonly projectionByEventId: ReadonlyMap<string, SearchMessageProjection>;
   readonly revokedEventIds: Set<string>;
 } {
   const revokedEventIds = new Set<string>();
   const projectionByEventId = new Map<string, SearchMessageProjection>();
-  for (const rows of [legacyRows, durableRows]) {
-    for (const row of rows) {
-      if (row.revokesEventId !== null) {
-        revokedEventIds.add(row.revokesEventId);
-      }
-      if (!projectionByEventId.has(row.id)) {
-        const projection = searchMessageProjection(row);
-        if (projection !== null) {
-          projectionByEventId.set(row.id, projection);
-        }
-      }
+  for (const row of rows) {
+    if (row.revokesEventId !== null) {
+      revokedEventIds.add(row.revokesEventId);
+    }
+    const projection = searchMessageProjection(row);
+    if (projection !== null) {
+      projectionByEventId.set(row.id, projection);
     }
   }
   return { projectionByEventId, revokedEventIds };
 }
 
-function legacySearchDoc(
+function searchMessage(
   row: ProjectionRow,
   thread: CandidateThread,
   projections: ReadonlyMap<string, SearchMessageProjection>,
   visibleEventIds: ReadonlySet<string>,
-): LegacySearchDocInsert | null {
-  const projection = projections.get(row.id);
-  if (!projection || !visibleEventIds.has(row.id)) {
-    return null;
-  }
-  return {
-    eventId: row.id,
-    chatThreadId: thread.chatThreadId,
-    orgId: thread.orgId,
-    userId: thread.userId,
-    agentComposeId: thread.agentComposeId,
-    role: projection.role,
-    createdAt: row.createdAt,
-    text: projection.text,
-    textBigram: projection.textBigram,
-  };
-}
-
-function durableSearchMessage(
-  row: ProjectionRow,
-  thread: CandidateThread,
-  projections: ReadonlyMap<string, SearchMessageProjection>,
-  visibleEventIds: ReadonlySet<string>,
-): DurableSearchMessageInsert | null {
+): SearchMessageInsert | null {
   const projection = projections.get(row.id);
   if (!projection || !visibleEventIds.has(row.id)) {
     return null;
@@ -386,22 +290,13 @@ async function buildSearchProjectionBatch(
   // Any event type can revoke an earlier one. Resolve every target before
   // chat_events retention can remove its stable thread/sequence coordinate.
   const { projectionByEventId, revokedEventIds } =
-    collectSearchMessageProjections(progress.legacyRows, progress.durableRows);
+    collectSearchMessageProjections(progress.rows);
   const visibleEventIds = await visibleSearchEventIds(tx, [
     ...projectionByEventId.keys(),
   ]);
   return {
-    legacyDocs: progress.legacyRows.flatMap((row) => {
-      const doc = legacySearchDoc(
-        row,
-        thread,
-        projectionByEventId,
-        visibleEventIds,
-      );
-      return doc ? [doc] : [];
-    }),
-    durableMessages: progress.durableRows.flatMap((row) => {
-      const message = durableSearchMessage(
+    messages: progress.rows.flatMap((row) => {
+      const message = searchMessage(
         row,
         thread,
         projectionByEventId,
@@ -413,24 +308,9 @@ async function buildSearchProjectionBatch(
   };
 }
 
-async function insertLegacySearchDocs(
+async function insertSearchMessages(
   tx: Tx,
-  docs: readonly LegacySearchDocInsert[],
-): Promise<number> {
-  if (docs.length === 0) {
-    return 0;
-  }
-  const indexed = await tx
-    .insert(chatEventSearchDocs)
-    .values([...docs])
-    .onConflictDoNothing({ target: chatEventSearchDocs.eventId })
-    .returning({ eventId: chatEventSearchDocs.eventId });
-  return indexed.length;
-}
-
-async function insertDurableSearchMessages(
-  tx: Tx,
-  messages: readonly DurableSearchMessageInsert[],
+  messages: readonly SearchMessageInsert[],
 ): Promise<number> {
   if (messages.length === 0) {
     return 0;
@@ -448,21 +328,7 @@ async function insertDurableSearchMessages(
   return indexed.length;
 }
 
-async function deleteLegacyRevokedDocs(
-  tx: Tx,
-  revokedEventIds: readonly string[],
-): Promise<number> {
-  if (revokedEventIds.length === 0) {
-    return 0;
-  }
-  const deleted = await tx
-    .delete(chatEventSearchDocs)
-    .where(inArray(chatEventSearchDocs.eventId, [...revokedEventIds]))
-    .returning({ eventId: chatEventSearchDocs.eventId });
-  return deleted.length;
-}
-
-async function deleteDurableRevokedMessages(
+async function deleteRevokedMessages(
   tx: Tx,
   revokedEventIds: readonly string[],
 ): Promise<number> {
@@ -495,87 +361,46 @@ async function deleteDurableRevokedMessages(
 async function writeSearchProjectionBatch(
   tx: Tx,
   batch: SearchProjectionBatch,
-  durableProjectionAvailable: boolean,
 ): Promise<SearchProjectionWriteStats> {
-  const legacyIndexedEvents = await insertLegacySearchDocs(
-    tx,
-    batch.legacyDocs,
-  );
-  const durableIndexedMessages = durableProjectionAvailable
-    ? await insertDurableSearchMessages(tx, batch.durableMessages)
-    : 0;
-  const legacyDeletedDocs = await deleteLegacyRevokedDocs(
-    tx,
-    batch.revokedEventIds,
-  );
-  const durableDeletedMessages = durableProjectionAvailable
-    ? await deleteDurableRevokedMessages(tx, batch.revokedEventIds)
-    : 0;
-  return {
-    legacyIndexedEvents,
-    legacyDeletedDocs,
-    durableIndexedMessages,
-    durableDeletedMessages,
-  };
+  const indexedEvents = await insertSearchMessages(tx, batch.messages);
+  const deletedDocs = await deleteRevokedMessages(tx, batch.revokedEventIds);
+  return { indexedEvents, deletedDocs };
 }
 
-async function advanceProjectionWatermarks(
+async function advanceProjectionWatermark(
   tx: Tx,
   chatThreadId: string,
   lastChatEventSeqId: number,
   progress: ThreadProjectionProgress,
 ): Promise<void> {
-  if (progress.legacyLagging) {
-    await tx
-      .insert(chatEventSearchWatermarks)
-      .values({
-        chatThreadId,
-        indexedSeqId: nextProjectionWatermark(
-          progress.legacyRows,
-          lastChatEventSeqId,
-        ),
-      })
-      .onConflictDoUpdate({
-        target: chatEventSearchWatermarks.chatThreadId,
-        set: {
-          indexedSeqId: sql`GREATEST(${chatEventSearchWatermarks.indexedSeqId}, EXCLUDED.indexed_seq_id)`,
-        },
-      });
+  if (!progress.lagging) {
+    return;
   }
-  if (progress.durableLagging) {
-    await tx
-      .insert(chatEventSearchMessageWatermarks)
-      .values({
-        chatThreadId,
-        indexedSeqId: nextProjectionWatermark(
-          progress.durableRows,
-          lastChatEventSeqId,
-        ),
-      })
-      .onConflictDoUpdate({
-        target: chatEventSearchMessageWatermarks.chatThreadId,
-        set: {
-          indexedSeqId: sql`GREATEST(${chatEventSearchMessageWatermarks.indexedSeqId}, EXCLUDED.indexed_seq_id)`,
-        },
-      });
-  }
+  await tx
+    .insert(chatEventSearchMessageWatermarks)
+    .values({
+      chatThreadId,
+      indexedSeqId: nextProjectionWatermark(progress.rows, lastChatEventSeqId),
+    })
+    .onConflictDoUpdate({
+      target: chatEventSearchMessageWatermarks.chatThreadId,
+      set: {
+        indexedSeqId: sql`GREATEST(${chatEventSearchMessageWatermarks.indexedSeqId}, EXCLUDED.indexed_seq_id)`,
+      },
+    });
 }
 
 function emptyThreadProjectionStats(): ThreadProjectionStats {
   return {
-    legacyThread: 0,
-    legacyIndexedEvents: 0,
-    legacyDeletedDocs: 0,
-    durableThread: 0,
-    durableIndexedMessages: 0,
-    durableDeletedMessages: 0,
+    thread: 0,
+    indexedEvents: 0,
+    deletedDocs: 0,
   };
 }
 
 async function projectThread(
   db: Db,
   thread: CandidateThread,
-  durableProjectionAvailable: boolean,
 ): Promise<ThreadProjectionStats> {
   return await db.transaction(async (tx) => {
     const lockedThread = await lockProjectionThread(tx, thread.chatThreadId);
@@ -586,16 +411,11 @@ async function projectThread(
       tx,
       thread.chatThreadId,
       lockedThread.lastChatEventSeqId,
-      durableProjectionAvailable,
     );
 
     const batch = await buildSearchProjectionBatch(tx, thread, progress);
-    const writes = await writeSearchProjectionBatch(
-      tx,
-      batch,
-      durableProjectionAvailable,
-    );
-    await advanceProjectionWatermarks(
+    const writes = await writeSearchProjectionBatch(tx, batch);
+    await advanceProjectionWatermark(
       tx,
       thread.chatThreadId,
       lockedThread.lastChatEventSeqId,
@@ -603,12 +423,9 @@ async function projectThread(
     );
 
     return {
-      legacyThread: progress.legacyLagging ? 1 : 0,
-      legacyIndexedEvents: writes.legacyIndexedEvents,
-      legacyDeletedDocs: writes.legacyDeletedDocs,
-      durableThread: progress.durableLagging ? 1 : 0,
-      durableIndexedMessages: writes.durableIndexedMessages,
-      durableDeletedMessages: writes.durableDeletedMessages,
+      thread: progress.lagging ? 1 : 0,
+      indexedEvents: writes.indexedEvents,
+      deletedDocs: writes.deletedDocs,
     };
   });
 }
@@ -624,36 +441,6 @@ async function loadCandidateThreads(
   options: ChatEventSearchProjectionOptions,
 ): Promise<readonly CandidateThread[]> {
   const threadScope = projectionThreadScope(options.chatThreadIds);
-  if (!options.durableProjectionAvailable) {
-    return await db
-      .select({
-        chatThreadId: chatThreads.id,
-        userId: chatThreads.userId,
-        orgId: agentComposes.orgId,
-        agentComposeId: chatThreads.agentComposeId,
-      })
-      .from(chatThreads)
-      .innerJoin(
-        agentComposes,
-        eq(chatThreads.agentComposeId, agentComposes.id),
-      )
-      .leftJoin(
-        chatEventSearchWatermarks,
-        eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-      )
-      .where(
-        and(
-          threadScope,
-          gt(
-            chatThreads.lastChatEventSeqId,
-            sql`COALESCE(${chatEventSearchWatermarks.indexedSeqId}, 0)`,
-          ),
-        ),
-      )
-      .orderBy(asc(chatThreads.id))
-      .limit(chatEventSearchThreadBatchSize());
-  }
-
   return await db
     .select({
       chatThreadId: chatThreads.id,
@@ -664,36 +451,19 @@ async function loadCandidateThreads(
     .from(chatThreads)
     .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
     .leftJoin(
-      chatEventSearchWatermarks,
-      eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-    )
-    .leftJoin(
       chatEventSearchMessageWatermarks,
       eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),
     )
     .where(
       and(
         threadScope,
-        or(
-          gt(
-            chatThreads.lastChatEventSeqId,
-            sql`COALESCE(${chatEventSearchWatermarks.indexedSeqId}, 0)`,
-          ),
-          gt(
-            chatThreads.lastChatEventSeqId,
-            sql`COALESCE(${chatEventSearchMessageWatermarks.indexedSeqId}, 0)`,
-          ),
+        gt(
+          chatThreads.lastChatEventSeqId,
+          sql`COALESCE(${chatEventSearchMessageWatermarks.indexedSeqId}, 0)`,
         ),
       ),
     )
-    // Keep the serving legacy projection fresh while the durable projection
-    // works through its zero-based backfill in the remaining bounded slots.
-    .orderBy(
-      asc(
-        sql`CASE WHEN ${chatThreads.lastChatEventSeqId} > COALESCE(${chatEventSearchWatermarks.indexedSeqId}, 0) THEN 0 ELSE 1 END`,
-      ),
-      asc(chatThreads.id),
-    )
+    .orderBy(asc(chatThreads.id))
     .limit(chatEventSearchThreadBatchSize());
 }
 
@@ -705,51 +475,14 @@ async function projectionConvergence(
     projectionThreadScope(options.chatThreadIds),
     gt(chatThreads.lastChatEventSeqId, 0),
   );
-  if (!options.durableProjectionAvailable) {
-    const [legacyStats] = await db
-      .select({
-        eligibleThreads: count(),
-        legacyCaughtUpThreads: count(chatEventSearchWatermarks.chatThreadId),
-      })
-      .from(chatThreads)
-      .leftJoin(
-        chatEventSearchWatermarks,
-        and(
-          eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-          gte(
-            chatEventSearchWatermarks.indexedSeqId,
-            chatThreads.lastChatEventSeqId,
-          ),
-        ),
-      )
-      .where(eligibleScope);
-    if (!legacyStats) {
-      throw new Error(
-        "Legacy chat search projection convergence query returned no row",
-      );
-    }
-    return { ...legacyStats, durableCaughtUpThreads: 0 };
-  }
-
   const [stats] = await db
     .select({
       eligibleThreads: count(),
-      legacyCaughtUpThreads: count(chatEventSearchWatermarks.chatThreadId),
       durableCaughtUpThreads: count(
         chatEventSearchMessageWatermarks.chatThreadId,
       ),
     })
     .from(chatThreads)
-    .leftJoin(
-      chatEventSearchWatermarks,
-      and(
-        eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-        gte(
-          chatEventSearchWatermarks.indexedSeqId,
-          chatThreads.lastChatEventSeqId,
-        ),
-      ),
-    )
     .leftJoin(
       chatEventSearchMessageWatermarks,
       and(
@@ -778,57 +511,30 @@ async function projectChatEventSearch(
   let threads = 0;
   let indexedEvents = 0;
   let deletedDocs = 0;
-  let durableThreads = 0;
-  let durableIndexedMessages = 0;
-  let durableDeletedMessages = 0;
   for (const thread of candidateThreads) {
-    const stats = await projectThread(
-      db,
-      thread,
-      options.durableProjectionAvailable,
-    );
+    const stats = await projectThread(db, thread);
     signal.throwIfAborted();
-    threads += stats.legacyThread;
-    indexedEvents += stats.legacyIndexedEvents;
-    deletedDocs += stats.legacyDeletedDocs;
-    durableThreads += stats.durableThread;
-    durableIndexedMessages += stats.durableIndexedMessages;
-    durableDeletedMessages += stats.durableDeletedMessages;
+    threads += stats.thread;
+    indexedEvents += stats.indexedEvents;
+    deletedDocs += stats.deletedDocs;
   }
   const convergence = await projectionConvergence(db, options);
   signal.throwIfAborted();
   return {
-    durableProjectionAvailable: options.durableProjectionAvailable,
     threads,
     indexedEvents,
     deletedDocs,
-    durableThreads,
-    durableIndexedMessages,
-    durableDeletedMessages,
     convergence,
   };
 }
 
-/**
- * Compatibility fallback (#26762): dual-writes the serving event-ID projection
- * and the durable thread/sequence projection while phase 2 is unavailable.
- * This bridges the DB/backend rollout and rollback window (observed maximum
- * ~102 minutes). Remove the legacy write only after the phase-2 reader and
- * snapshot watermark cut over, durable convergence is proven, and rollback
- * closes. Each projection keeps an independent watermark and bounded backfill.
- */
 export const projectChatEventSearch$ = command(
   async (
     { set },
     signal: AbortSignal,
   ): Promise<ChatEventSearchProjectionStats> => {
     const db = set(writeDb$);
-    const durableProjectionAvailable =
-      await durableChatEventSearchSchemaAvailable(db);
-    signal.throwIfAborted();
-    return await projectChatEventSearch(db, signal, {
-      durableProjectionAvailable,
-    });
+    return await projectChatEventSearch(db, signal, {});
   },
 );
 
@@ -839,13 +545,8 @@ export const projectChatEventSearchTestScope$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventSearchProjectionStats> => {
     const db = set(writeDb$);
-    const durableProjectionAvailable =
-      !options.simulateDurableSchemaUnavailable &&
-      (await durableChatEventSearchSchemaAvailable(db));
-    signal.throwIfAborted();
     return await projectChatEventSearch(db, signal, {
       chatThreadIds: options.chatThreadIds,
-      durableProjectionAvailable,
     });
   },
 );

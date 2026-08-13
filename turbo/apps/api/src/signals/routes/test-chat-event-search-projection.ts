@@ -26,11 +26,7 @@ const projectChatEventSearchTestRoute$ = command(
     }
     const result = await set(
       projectChatEventSearchTestScope$,
-      {
-        chatThreadIds: bodyResult.data.chat_thread_ids,
-        simulateDurableSchemaUnavailable:
-          bodyResult.data.simulate_durable_schema_unavailable ?? false,
-      },
+      { chatThreadIds: bodyResult.data.chat_thread_ids },
       signal,
     );
     signal.throwIfAborted();
