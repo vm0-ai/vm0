@@ -729,9 +729,12 @@ export const confirmExistingBillingCreditPurchase$ = command(
       signal,
     );
     const confirmedAmountCents = creditPurchasePayableAmount(confirmedInvoice);
+    // Customer balance can settle the invoice during finalization. A paid
+    // invoice is irreversible and its webhook already owns the credit grant.
     if (
-      confirmedInvoice.currency !== preview.currency ||
-      confirmedAmountCents !== preview.amountCents
+      confirmedInvoice.status !== "paid" &&
+      (confirmedInvoice.currency !== preview.currency ||
+        confirmedAmountCents !== preview.amountCents)
     ) {
       await discardChangedCreditPurchaseInvoice(
         stripe,
