@@ -280,9 +280,7 @@ function VideoDurationField({
         step={1}
         value={index}
         aria-label={label}
-        getAriaValueText={(_formatted, current) => {
-          return durations[current] ?? value;
-        }}
+        aria-valuetext={value}
         onValueChange={(next) => {
           const duration = durations[next];
           if (duration !== undefined) {

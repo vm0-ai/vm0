@@ -20,8 +20,12 @@ interface SliderProps extends Omit<
    * renders the real `input[type=range]` that carries the slider role.
    */
   "aria-label"?: string;
-  /** Reads the value as the user's unit rather than as the raw step index. */
-  getAriaValueText?: SliderPrimitive.Thumb.Props["getAriaValueText"];
+  /**
+   * Reads the value as the user's unit rather than as the raw step index. Pass
+   * the already-resolved text; a caller that maps the index back to its own
+   * unit would have to answer for an index the slider's own min/max prevent.
+   */
+  "aria-valuetext"?: string;
 }
 
 function tickCount(min: number, max: number, step: number): number {
@@ -45,7 +49,7 @@ const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
       max = 100,
       step = 1,
       "aria-label": ariaLabel,
-      getAriaValueText,
+      "aria-valuetext": ariaValueText,
       ...props
     },
     ref,
@@ -86,7 +90,7 @@ const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
             <SliderPrimitive.Indicator className="rounded-full bg-primary select-none" />
             <SliderPrimitive.Thumb
               aria-label={ariaLabel}
-              getAriaValueText={getAriaValueText}
+              aria-valuetext={ariaValueText}
               className={cn(
                 "size-3.5 rounded-full border border-primary bg-card shadow-sm outline-none",
                 "transition-transform duration-150 ease-out select-none",
