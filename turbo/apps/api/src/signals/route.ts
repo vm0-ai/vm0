@@ -59,7 +59,7 @@ import { webhooksStripeAutomationEventsRoutes } from "./routes/webhooks-stripe-a
 import { agentDraftRoutes } from "./routes/agent-draft";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
-import { zeroArtifactCatalogRoutes } from "./routes/zero-artifact-catalog";
+import { artifactCatalogRoutes } from "./routes/artifact-catalog";
 import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
@@ -250,7 +250,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
-  ...zeroArtifactCatalogRoutes,
+  ...artifactCatalogRoutes,
   ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,

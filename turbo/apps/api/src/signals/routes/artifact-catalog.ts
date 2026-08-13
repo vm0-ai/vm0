@@ -61,7 +61,7 @@ const getArtifactCatalogEntryInner$ = command(
   },
 );
 
-export const zeroArtifactCatalogRoutes: readonly RouteEntry[] = [
+export const artifactCatalogRoutes: readonly RouteEntry[] = [
   {
     route: artifactCatalogContract.list,
     handler: authRoute(

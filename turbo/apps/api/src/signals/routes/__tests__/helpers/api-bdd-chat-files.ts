@@ -63,7 +63,7 @@ import {
 } from "../../../../lib/file-url";
 import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import { zeroChatEventsRoutes } from "../../zero-chat-events";
-import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
+import { artifactCatalogRoutes } from "../../artifact-catalog";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "../../zero-chat-threads-delete";
@@ -175,7 +175,7 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 }
 
 const chatFilesRoutes = [
-  ...zeroArtifactCatalogRoutes,
+  ...artifactCatalogRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
