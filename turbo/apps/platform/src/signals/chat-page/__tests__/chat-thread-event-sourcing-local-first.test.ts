@@ -683,6 +683,7 @@ describe("chat thread event sourcing local-first list", () => {
       serviceTier: null,
       computerUseHostId: null,
       cloudBrowserEnabled: false,
+      selectedVideoModel: null,
     });
 
     let threadDraftRequests = 0;

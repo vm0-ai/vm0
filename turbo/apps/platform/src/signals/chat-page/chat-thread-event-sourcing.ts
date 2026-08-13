@@ -78,6 +78,7 @@ export interface ThreadMeta {
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
+  readonly selectedVideoModel: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<
@@ -507,6 +508,7 @@ export const chatThreadMetaMap$ = computed((get) => {
           serviceTier: thread.serviceTier,
           computerUseHostId: thread.computerUseHostId,
           cloudBrowserEnabled: thread.cloudBrowserEnabled,
+          selectedVideoModel: thread.selectedVideoModel,
         },
       ];
     }),

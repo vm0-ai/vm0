@@ -71,6 +71,30 @@ function createAppFetcher(
   };
 }
 
+/**
+ * Sends a request the ts-rest client cannot express, so a route test can cover
+ * what a non-TypeScript caller sends: a body that the contract schema rejects.
+ * Everything the typed client can express belongs on `setupAppWithRoutes`.
+ */
+export function setupRawAppRequestWithRoutes({
+  context,
+  routes,
+  signal,
+}: SetupAppWithRoutesOptions) {
+  const app = createAppWithRoutes({
+    signal: signal ?? context.signal,
+    routes,
+  });
+
+  return async (
+    path: string,
+    init: RequestInit,
+  ): Promise<{ readonly status: number; readonly body: unknown }> => {
+    const response = await app.request(path, init);
+    return { status: response.status, body: await parseResponseBody(response) };
+  };
+}
+
 export function setupAppWithRoutes({
   context,
   routes,
