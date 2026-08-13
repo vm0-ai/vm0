@@ -2537,17 +2537,26 @@ describe("zero sidebar", () => {
       return current;
     });
     const defaultSidebarRow = agentRowByName(nav, "Zero");
-    await waitFor(() => {
-      expect(
-        within(defaultSidebarRow).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-      expect(
-        within(defaultSidebarRow).getByLabelText("Open agent menu"),
-      ).toBeInTheDocument();
+    const defaultUnread = await waitFor(() => {
+      return within(defaultSidebarRow).getByLabelText("Unread");
     });
+    const defaultMenuTrigger =
+      within(defaultSidebarRow).getByLabelText("Open agent menu");
+    const defaultUnreadContainer = defaultUnread.parentElement;
+    if (!(defaultUnreadContainer instanceof HTMLElement)) {
+      throw new Error("Default agent unread container not found");
+    }
 
-    click(within(defaultSidebarRow).getByLabelText("Open agent menu"));
+    expect(defaultMenuTrigger).toHaveClass("group-hover:!opacity-100");
+    expect(defaultUnreadContainer).toHaveClass("group-hover:!opacity-0");
+
+    click(defaultMenuTrigger);
+    expect(defaultMenuTrigger).toHaveAttribute("data-popup-open");
+    expect(defaultMenuTrigger).toHaveClass(
+      "data-popup-open:bg-state-selected-hover",
+    );
     expect(menuItemByText("Mark all read")).toBeInTheDocument();
+    expect(queryAllByRoleFast("menuitem")).toHaveLength(1);
     expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
     click(menuItemByText("Mark all read"));
 
