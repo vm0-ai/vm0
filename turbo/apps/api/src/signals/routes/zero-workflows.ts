@@ -9,9 +9,9 @@ import {
   getAllFeatureStates,
   isFeatureEnabled,
 } from "@okouai/core/feature-switch";
-import { SEED_SKILLS } from "@okouai/core/zero-seed-skills";
+import { SEED_SKILLS } from "@okouai/core/seed-skills";
 import { getCustomSkillStorageName } from "@okouai/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@okouai/core/zero-workflow-skill";
+import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {

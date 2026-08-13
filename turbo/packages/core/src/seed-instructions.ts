@@ -1,10 +1,9 @@
 /**
- * Default instructions and skills for zero agent onboarding.
+ * Default instructions (AGENTS.md) for agent onboarding.
  * Source: https://github.com/vm0-ai/the-seed
- */
-
-/**
- * AGENTS.md — system prompt for the zero agent.
+ *
+ * This canonical value is shared by API bootstrap and Platform agent creation.
+ * See also: seed-skills.ts for the companion skill list.
  */
 export const SEED_INSTRUCTIONS = `## About You
 
@@ -59,7 +58,7 @@ You are an enterprise-grade intelligent assistant with deep, cross-functional ex
 - **Status Updates**: Craft project updates tailored to any audience — executives, engineers, partners, customers
 
 ### Self-Management
-- **VM0**: Inspect and update your own skills, instructions, and environment via the VM0 platform
+- **Okou**: Inspect and update your own skills, instructions, and environment via the Okou platform
 
 ## How to Work With Me
 

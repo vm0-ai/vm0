@@ -91,7 +91,7 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/zero-seed-skills";
+import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
