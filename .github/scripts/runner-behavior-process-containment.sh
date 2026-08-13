@@ -494,9 +494,9 @@ relative = next(
     if line.startswith("0::")
 )
 workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
-# Keep the committed smoke fast while exercising the same workload-local OOM
-# boundary and counters as the production-capacity Firecracker calibration.
-(workload / "memory.high").write_text(str(192 * 1024 * 1024))
+# Disable soft-limit throttling for this smoke so reclaim cannot postpone the
+# workload-local OOM. The production memory.high policy is covered above.
+(workload / "memory.high").write_text("max")
 (workload / "memory.max").write_text(str(256 * 1024 * 1024))
 chunk_size = 16 * 1024 * 1024
 chunks = []
