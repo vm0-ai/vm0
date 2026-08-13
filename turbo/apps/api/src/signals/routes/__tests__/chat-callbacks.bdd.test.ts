@@ -1230,12 +1230,11 @@ describe("CHAT-02: completed chat callback", () => {
         template: generationTemplate,
       }),
     );
-    const original = await chat.getThreadEvent(
-      actor,
-      first.threadId,
-      queued.id,
-    );
-    expect(original.runId).toBeUndefined();
+    const original = userMessages(afterAutoSend.events).find((message) => {
+      return message.id === queued.id;
+    });
+    expect(original).toBeDefined();
+    expect(original?.runId).toBeUndefined();
     // The raw message page contains both immutable rows; the client folds the
     // original into its run-associated replacement.
     const matchingMessageIds = userMessages(afterAutoSend.events)

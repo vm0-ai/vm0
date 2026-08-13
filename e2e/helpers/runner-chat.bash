@@ -46,6 +46,48 @@ runner_api_curl() {
         "$base$path"
 }
 
+runner_chat_event_rows() {
+    local thread_id="$1"
+    local accumulated='[]'
+    local since_seq_id=0
+    local response rows row_count next_seq_id
+    local page_number
+
+    for ((page_number = 1; page_number <= 100; page_number += 1)); do
+        response="$(runner_api_curl \
+            "/api/okou/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50")" || return
+        rows="$(jq -ce \
+            '.rows | if type == "array" then . else error("invalid rows") end' \
+            <<<"$response")" || {
+            echo "Chat event rows returned an invalid page: $response" >&2
+            return 1
+        }
+        accumulated="$(jq -cn \
+            --argjson accumulated "$accumulated" \
+            --argjson rows "$rows" \
+            '$accumulated + $rows')" || return
+        row_count="$(jq -r 'length' <<<"$rows")" || return
+        if ((row_count < 50)); then
+            jq -cn --argjson rows "$accumulated" '{rows: $rows}'
+            return
+        fi
+        next_seq_id="$(jq -er \
+            '.[-1].seqId | select(type == "number" and . >= 0)' \
+            <<<"$rows")" || {
+            echo "Chat event rows page is missing its final sequence ID: $response" >&2
+            return 1
+        }
+        if ((next_seq_id <= since_seq_id)); then
+            echo "Chat event rows cursor did not advance: $response" >&2
+            return 1
+        fi
+        since_seq_id="$next_seq_id"
+    done
+
+    echo "Chat event rows exceeded 100 pages for thread ${thread_id}" >&2
+    return 1
+}
+
 create_runner_agent() {
     local display_name="$1"
     local payload response
@@ -218,14 +260,14 @@ _wait_for_runner_chat_output() {
     local response=""
 
     while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl "/api/okou/chat-threads/$thread_id/events?limit=50" 2>&1)"; then
+        if response="$(runner_chat_event_rows "$thread_id" 2>&1)"; then
             if jq -e --arg runId "$run_id" --arg prompt "$prompt" '
-                any(.events[]?;
+                any(.rows[]?;
                     .eventType == "output.message" and
                     .runId == $runId and
-                    (.content | contains($prompt))
+                    (.payload.content | contains($prompt))
                 ) and
-                any(.events[]?;
+                any(.rows[]?;
                     .eventType == "run.completed" and .runId == $runId
                 )
             ' <<< "$response" >/dev/null; then
@@ -250,21 +292,21 @@ _wait_for_runner_chat_completion() {
     local output_message=""
 
     while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl "/api/okou/chat-threads/$thread_id/events?limit=50" 2>&1)" &&
+        if response="$(runner_chat_event_rows "$thread_id" 2>&1)" &&
             output_message="$(jq -er --arg runId "$run_id" '
                 [
-                    .events[]?
+                    .rows[]?
                     | select(
                         .eventType == "output.message" and
                         .runId == $runId
                     )
-                    | .content
+                    | .payload.content
                     | select(type == "string" and test("\\S"))
                 ]
                 | last // empty
             ' <<< "$response")" &&
             jq -e --arg runId "$run_id" '
-                any(.events[]?;
+                any(.rows[]?;
                     .eventType == "run.completed" and .runId == $runId
                 )
             ' <<< "$response" >/dev/null; then
@@ -291,29 +333,29 @@ _wait_for_runner_chat_steer_consumed() {
     local response=""
 
     while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl "/api/okou/chat-threads/$thread_id/events?limit=50" 2>&1)"; then
+        if response="$(runner_chat_event_rows "$thread_id" 2>&1)"; then
             if jq -e \
                 --arg runId "$run_id" \
                 --arg steerEventId "$steer_event_id" \
                 --arg steerPrompt "$steer_prompt" \
                 --arg expectedOutput "$expected_output" '
-                any(.events[]?;
+                any(.rows[]?;
                     .eventType == "input.prompt" and
                     .runId == $runId and
                     .revokesEventId == $steerEventId and
-                    any(.userMessage.parts[]?;
+                    any(.payload.userMessage.parts[]?;
                         .type == "text" and .text == $steerPrompt
                     )
                 ) and
-                any(.events[]?;
+                any(.rows[]?;
                     .eventType == "output.message" and
                     .runId == $runId and
-                    (.content | contains($expectedOutput))
+                    (.payload.content | contains($expectedOutput))
                 ) and
-                any(.events[]?;
+                any(.rows[]?;
                     .eventType == "run.completed" and .runId == $runId
                 ) and
-                all(.events[]?;
+                all(.rows[]?;
                     (.runId == null or .runId == $runId)
                 )
             ' <<< "$response" >/dev/null; then

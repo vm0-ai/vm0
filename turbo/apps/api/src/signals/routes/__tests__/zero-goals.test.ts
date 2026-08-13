@@ -521,9 +521,6 @@ describe("zero goals", () => {
       contextType: "goal",
       contextId: goal.goalId,
     });
-    await expect(
-      chat.getThreadEvent(fixture.actor, fixture.threadId, admission.eventId),
-    ).resolves.toStrictEqual(event);
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {

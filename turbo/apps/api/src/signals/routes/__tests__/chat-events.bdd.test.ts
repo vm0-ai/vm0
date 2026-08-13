@@ -14,7 +14,6 @@ import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatEventsContract,
-  chatThreadEventsContract,
   chatThreadsContract,
   resolveChatEventRecommendedFollowups,
   type ChatRunOptionsRequest,
@@ -915,12 +914,6 @@ function chatThreadsClient() {
   );
 }
 
-function chatThreadEventsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadEventsContract,
-  );
-}
-
 describe("CHAT-02: thread run admission invariant", () => {
   it("rejects thread-bound run creation without a queue association at both service boundaries", async () => {
     await expect(createUnassociatedThreadBoundZeroRunFixture()).rejects.toThrow(
@@ -1236,52 +1229,6 @@ describe("CHAT-02: web chat send and client ids", () => {
     });
     expect(original?.runId).toBeUndefined();
     expect(original).not.toHaveProperty("revokesEventId");
-
-    const originalById = await chat.getThreadEvent(
-      actor,
-      clientThreadId,
-      clientEventId,
-    );
-    expect(originalById).toMatchObject({
-      id: clientEventId,
-      threadId: clientThreadId,
-      eventType: "input.prompt",
-      content: null,
-    });
-    expect(originalById).not.toHaveProperty("revokesEventId");
-
-    const eventPage = await accept(
-      chatThreadEventsClient().list({
-        headers: sessionHeaders(actor),
-        params: { threadId: clientThreadId },
-        query: { limit: 50 },
-      }),
-      [200],
-    );
-    const originalEvent = eventPage.body.events.find((event) => {
-      return event.id === clientEventId;
-    });
-    expect(originalEvent).toMatchObject({
-      id: clientEventId,
-      threadId: clientThreadId,
-      eventType: "input.prompt",
-      content: null,
-    });
-    await expect(
-      accept(
-        chatThreadEventsClient().get({
-          headers: sessionHeaders(actor),
-          params: { threadId: clientThreadId, eventId: clientEventId },
-        }),
-        [200],
-      ),
-    ).resolves.toMatchObject({
-      body: {
-        id: clientEventId,
-        threadId: clientThreadId,
-        eventType: "input.prompt",
-      },
-    });
 
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {

@@ -1,8 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  chatThreadEventsContract,
-  chatThreadMetadataContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadMetadataContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
@@ -14,7 +11,6 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 
 const context = testContext();
@@ -84,12 +80,6 @@ function client() {
   );
 }
 
-function eventsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadEventsContract,
-  );
-}
-
 describe("GET /api/zero/chat-threads/:id/metadata", () => {
   it("returns thread metadata with ZERO_TOKEN chat-thread:read capability", async () => {
     const fixture = await seedChatThread("Launch plan");
@@ -136,55 +126,6 @@ describe("GET /api/zero/chat-threads/:id/metadata", () => {
       error: {
         code: "FORBIDDEN",
         message: "Missing required capability: chat-thread:read",
-      },
-    });
-  });
-});
-
-describe("GET /api/zero/chat-threads/:threadId/events", () => {
-  it("lists events with ZERO_TOKEN chat-event:read capability", async () => {
-    const fixture = await seedChatThread("Launch plan");
-    const token = zeroToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-event:read"],
-    });
-
-    const response = await accept(
-      eventsClient().list({
-        headers: { authorization: `Bearer ${token}` },
-        params: { threadId: fixture.threadId },
-        query: {},
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      events: [],
-    });
-  });
-
-  it("rejects ZERO_TOKEN without chat-event:read capability", async () => {
-    const fixture = await seedChatThread("Launch plan");
-    const token = zeroToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read"],
-    });
-
-    const response = await accept(
-      eventsClient().list({
-        headers: { authorization: `Bearer ${token}` },
-        params: { threadId: fixture.threadId },
-        query: {},
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "FORBIDDEN",
-        message: "Missing required capability: chat-event:read",
       },
     });
   });

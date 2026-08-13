@@ -1,5 +1,4 @@
 import {
-  chatThreadEventsContract,
   chatThreadMetadataContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -18,7 +17,7 @@ import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createConnectorBddApi } from "./api-bdd-connectors";
 import { createRunsApi } from "./api-bdd-runs";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { zeroChatThreadRoutes } from "../../zero-chat-threads";
+import { readProjectedChatEvents } from "./chat-event-test-reader";
 import { zeroChatThreadGetRoutes } from "../../zero-chat-threads-get";
 import { zeroWorkflowAutomationsRoutes } from "../../zero-workflow-automations";
 import { zeroWorkflowsRoutes } from "../../zero-workflows";
@@ -222,18 +221,10 @@ export function createWorkflowsBddApi(context: TestContext) {
     },
 
     async readThreadEvents(threadId: string): Promise<readonly ChatEvent[]> {
-      const client = setupApp({ context, routes: zeroChatThreadRoutes })(
-        chatThreadEventsContract,
-      );
-      const response = await accept(
-        client.list({
-          headers: authHeaders(),
-          params: { threadId },
-          query: {},
-        }),
-        [200],
-      );
-      return response.body.events;
+      return await readProjectedChatEvents(context, {
+        threadId,
+        headers: authHeaders(),
+      });
     },
 
     /**

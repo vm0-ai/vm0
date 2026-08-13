@@ -27,6 +27,7 @@ import {
   type UserMessageInputDocument,
   type ZeroIndicators,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import {
   artifactCatalogContract,
   type ArtifactCatalogKind,
@@ -929,20 +930,22 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       query: {
         readonly sinceSeqId?: number;
-        readonly beforeSeqId?: number;
         readonly limit?: number;
       } = {},
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
       const response = await accept(
-        threadEventsClient().list({
+        threadEventsClient().rows({
           headers: authenticate(context, actor),
           params: { threadId },
-          query,
+          query: {
+            sinceSeqId: query.sinceSeqId ?? 0,
+            ...(query.limit === undefined ? {} : { limit: query.limit }),
+          },
         }),
         [200],
       );
       return {
-        events: response.body.events,
+        events: response.body.rows.map(chatEventFromRow),
       };
     },
 
@@ -951,19 +954,28 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       query: {
         readonly sinceSeqId?: number;
-        readonly beforeSeqId?: number;
         readonly limit?: number;
       },
-      statuses: readonly (200 | 400 | 401 | 404)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 410)[],
     ) {
-      return await accept(
-        threadEventsClient().list({
+      const response = await accept(
+        threadEventsClient().rows({
           headers: authenticate(context, actor),
           params: { threadId },
-          query,
+          query: {
+            sinceSeqId: query.sinceSeqId ?? 0,
+            ...(query.limit === undefined ? {} : { limit: query.limit }),
+          },
         }),
         statuses,
       );
+      if (response.status !== 200) {
+        return response;
+      }
+      return {
+        ...response,
+        body: { events: response.body.rows.map(chatEventFromRow) },
+      };
     },
 
     async listThreadEventRows(
@@ -980,21 +992,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body.rows;
-    },
-
-    async getThreadEvent(
-      actor: ApiTestUser,
-      threadId: string,
-      eventId: string,
-    ): Promise<ChatEvent> {
-      const response = await accept(
-        threadEventsClient().get({
-          headers: authenticate(context, actor),
-          params: { threadId, eventId },
-        }),
-        [200],
-      );
-      return response.body;
     },
 
     async listThreadArtifacts(
