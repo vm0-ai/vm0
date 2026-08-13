@@ -79,6 +79,13 @@ function stripeFieldLocator(
     .or(frame.locator(`input[name="${field.name}"]`));
 }
 
+function visibleStripeFieldLocator(
+  frame: Frame,
+  field: StripeFieldDefinition,
+): Locator {
+  return stripeFieldLocator(frame, field).filter({ visible: true }).first();
+}
+
 function payWithCardLocator(frame: Frame): Locator {
   return frame.getByRole("button", { name: /pay with card/i });
 }
@@ -96,8 +103,8 @@ async function waitForVisibleStripeField(
   const timeout = Math.min(FIELD_DISCOVERY_WINDOW_MS, remaining);
   const frames = page.frames();
   const candidates = frames.map(async (frame): Promise<Locator> => {
-    const locator = stripeFieldLocator(frame, field).first();
-    await locator.waitFor({ state: "visible", timeout });
+    const locator = visibleStripeFieldLocator(frame, field);
+    await locator.waitFor({ state: "attached", timeout });
     return locator;
   });
 
@@ -150,10 +157,18 @@ async function findMatchingFrameLocator(
 }
 
 async function findPayWithCard(page: Page): Promise<Locator | null> {
-  return await findMatchingFrameLocator(
+  const visiblePayWithCard = await findMatchingFrameLocator(
     page,
-    (frame) => payWithCardLocator(frame).first(),
-    async (locator) => (await locator.count()) > 0,
+    (frame) => payWithCardLocator(frame).filter({ visible: true }).first(),
+    async (locator) => await locator.isVisible(),
+  );
+  return (
+    visiblePayWithCard ??
+    (await findMatchingFrameLocator(
+      page,
+      (frame) => payWithCardLocator(frame).first(),
+      async (locator) => (await locator.count()) > 0,
+    ))
   );
 }
 
@@ -163,8 +178,8 @@ async function findVisibleStripeField(
 ): Promise<Locator | null> {
   return await findMatchingFrameLocator(
     page,
-    (frame) => stripeFieldLocator(frame, field).first(),
-    async (locator) => await locator.isVisible(),
+    (frame) => visibleStripeFieldLocator(frame, field),
+    async (locator) => (await locator.count()) > 0,
   );
 }
 
@@ -293,7 +308,7 @@ async function locatorState(locator: Locator): Promise<StripeLocatorState> {
   const count = await locator.count();
   return {
     count,
-    visible: count > 0 && (await locator.first().isVisible()),
+    visible: count > 0 && (await locator.filter({ visible: true }).count()) > 0,
   };
 }
 
