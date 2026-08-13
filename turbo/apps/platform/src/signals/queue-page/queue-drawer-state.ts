@@ -6,7 +6,9 @@ const internalQueueDrawerOpen$ = state(false);
 export const CONCURRENCY_QUANTITY_MIN = 1;
 export const CONCURRENCY_QUANTITY_MAX = 1000;
 
-const internalConcurrencyQuantity$ = state(CONCURRENCY_QUANTITY_MIN);
+const internalConcurrencyQuantity$ = state<number | null>(
+  CONCURRENCY_QUANTITY_MIN,
+);
 
 export const queueDrawerOpen$ = computed((get) => {
   return get(internalQueueDrawerOpen$);
@@ -23,12 +25,18 @@ function clampConcurrencyQuantity(quantity: number): number {
   );
 }
 
-export const setConcurrencyQuantity$ = command(({ set }, quantity: number) => {
-  if (!Number.isInteger(quantity)) {
-    return;
-  }
-  set(internalConcurrencyQuantity$, clampConcurrencyQuantity(quantity));
-});
+export const setConcurrencyQuantity$ = command(
+  ({ set }, quantity: number | null) => {
+    if (quantity === null) {
+      set(internalConcurrencyQuantity$, null);
+      return;
+    }
+    if (!Number.isInteger(quantity)) {
+      return;
+    }
+    set(internalConcurrencyQuantity$, clampConcurrencyQuantity(quantity));
+  },
+);
 
 export const setQueueDrawerOpen$ = command(({ get, set }, open: boolean) => {
   if (open) {

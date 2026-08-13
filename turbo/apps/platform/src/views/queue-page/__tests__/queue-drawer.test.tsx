@@ -467,19 +467,18 @@ describe("queue drawer", () => {
       name: "Quantity",
     });
     expect(
-      screen.queryByRole("button", {
+      screen.getByRole("button", {
         name: "Decrease concurrency quantity",
       }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", {
+      screen.getByRole("button", {
         name: "Increase concurrency quantity",
       }),
-    ).not.toBeInTheDocument();
-    fireEvent.change(quantityInput, { target: { value: "0" } });
-    expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
-    fireEvent.change(quantityInput, { target: { value: "1.5" } });
-    expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+    ).toBeInTheDocument();
+    fireEvent.change(quantityInput, { target: { value: "" } });
+    expect(quantityInput).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Buy $0/month" })).toBeDisabled();
     fireEvent.change(quantityInput, { target: { value: "5" } });
     await waitFor(() => {
       expect(screen.getByText("Buy $500/month")).toBeInTheDocument();
@@ -592,12 +591,13 @@ describe("queue drawer", () => {
         ),
       ).toBeInTheDocument();
     });
-    fireEvent.change(
-      screen.getByRole("textbox", {
-        name: "Quantity",
-      }),
-      { target: { value: "2" } },
-    );
+    const increaseQuantityButton = queryAllByRoleFast("button").find((el) => {
+      return el.getAttribute("aria-label") === "Increase concurrency quantity";
+    });
+    if (!increaseQuantityButton) {
+      throw new Error("Increase concurrency quantity button not found");
+    }
+    click(increaseQuantityButton);
     await waitFor(() => {
       expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
     });

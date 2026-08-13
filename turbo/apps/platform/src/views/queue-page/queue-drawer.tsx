@@ -17,7 +17,7 @@ import {
   Button,
   Input,
 } from "@vm0/ui";
-import { Crown } from "lucide-react";
+import { Crown, Minus, Plus } from "lucide-react";
 import {
   CONCURRENCY_QUANTITY_MAX,
   CONCURRENCY_QUANTITY_MIN,
@@ -373,8 +373,8 @@ function ConcurrencyQuantityControl({
   quantity,
 }: {
   readonly loading: boolean;
-  readonly onQuantityChange: (quantity: number) => void;
-  readonly quantity: number;
+  readonly onQuantityChange: (quantity: number | null) => void;
+  readonly quantity: number | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -385,31 +385,78 @@ function ConcurrencyQuantityControl({
             return $.queue.purchase.quantity;
           })}
         </span>
-        <Input
-          type="text"
-          inputMode="numeric"
-          pattern="[1-9][0-9]*"
-          value={quantity}
-          disabled={loading}
-          aria-label={t(($) => {
-            return $.queue.purchase.quantity;
-          })}
-          className="h-9 w-16 bg-background px-2 text-center text-sm font-medium tabular-nums shadow-none focus:border-[hsl(var(--gray-400))] focus:ring-0"
-          onChange={(event) => {
-            const nextValue = event.currentTarget.value;
-            if (!/^[1-9]\d*$/.test(nextValue)) {
-              return;
+        <div className="flex h-9 items-center rounded-lg border border-border/70 bg-background">
+          <Button
+            type="button"
+            aria-label={t(($) => {
+              return $.queue.purchase.decreaseQuantity;
+            })}
+            disabled={
+              quantity === null ||
+              quantity <= CONCURRENCY_QUANTITY_MIN ||
+              loading
             }
-            const nextQuantity = Number(nextValue);
-            if (
-              Number.isInteger(nextQuantity) &&
-              nextQuantity >= CONCURRENCY_QUANTITY_MIN &&
-              nextQuantity <= CONCURRENCY_QUANTITY_MAX
-            ) {
-              onQuantityChange(nextQuantity);
+            variant="quiet"
+            size="icon"
+            className="rounded-l-lg disabled:opacity-40"
+            onClick={() => {
+              if (quantity !== null) {
+                onQuantityChange(quantity - 1);
+              }
+            }}
+          >
+            <Minus size={14} />
+          </Button>
+          <Input
+            type="text"
+            inputMode="numeric"
+            pattern="[1-9][0-9]*"
+            value={quantity ?? ""}
+            disabled={loading}
+            aria-label={t(($) => {
+              return $.queue.purchase.quantity;
+            })}
+            className="h-9 w-14 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus:border-border focus:ring-0"
+            onChange={(event) => {
+              const nextValue = event.currentTarget.value;
+              if (nextValue === "") {
+                onQuantityChange(null);
+                return;
+              }
+              if (!/^[1-9]\d*$/.test(nextValue)) {
+                return;
+              }
+              const nextQuantity = Number(nextValue);
+              if (
+                Number.isInteger(nextQuantity) &&
+                nextQuantity >= CONCURRENCY_QUANTITY_MIN &&
+                nextQuantity <= CONCURRENCY_QUANTITY_MAX
+              ) {
+                onQuantityChange(nextQuantity);
+              }
+            }}
+          />
+          <Button
+            type="button"
+            aria-label={t(($) => {
+              return $.queue.purchase.increaseQuantity;
+            })}
+            disabled={
+              (quantity !== null && quantity >= CONCURRENCY_QUANTITY_MAX) ||
+              loading
             }
-          }}
-        />
+            variant="quiet"
+            size="icon"
+            className="rounded-r-lg disabled:opacity-40"
+            onClick={() => {
+              onQuantityChange(
+                quantity === null ? CONCURRENCY_QUANTITY_MIN : quantity + 1,
+              );
+            }}
+          >
+            <Plus size={14} />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -425,8 +472,8 @@ function ConcurrencyPurchaseCard({
 }: {
   readonly loading: boolean;
   readonly onCheckout: (newTab: boolean) => void;
-  readonly onQuantityChange: (quantity: number) => void;
-  readonly quantity: number;
+  readonly onQuantityChange: (quantity: number | null) => void;
+  readonly quantity: number | null;
   readonly reviewingInApp: boolean;
   readonly tierColor: string;
 }) {
@@ -436,7 +483,10 @@ function ConcurrencyPurchaseCard({
     currency: "USD",
     maximumFractionDigits: 0,
   });
-  const monthlyTotal = currencyFormat.format(concurrencyMonthlyTotal(quantity));
+  const effectiveQuantity = quantity ?? 0;
+  const monthlyTotal = currencyFormat.format(
+    concurrencyMonthlyTotal(effectiveQuantity),
+  );
   return (
     <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
       <div className="flex items-start justify-between mb-2">
@@ -458,7 +508,7 @@ function ConcurrencyPurchaseCard({
           ($) => {
             return $.queue.purchase.subscription;
           },
-          { count: quantity },
+          { count: effectiveQuantity },
         )}
       </p>
       <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-4">
@@ -508,7 +558,7 @@ function ConcurrencyPurchaseCard({
       <div className="mt-auto pt-5">
         <Button
           className="w-full h-11 text-sm font-medium"
-          disabled={loading}
+          disabled={loading || quantity === null}
           onClick={(e) => {
             onCheckout(e.metaKey || e.ctrlKey);
           }}
@@ -583,6 +633,9 @@ function ConcurrencyPurchaseCardMount({
     <ConcurrencyPurchaseCard
       loading={loading}
       onCheckout={(newTab) => {
+        if (quantity === null) {
+          return;
+        }
         if (activeChangeReviewAvailable && activeSubscription) {
           detach(
             openReview(
