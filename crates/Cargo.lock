@@ -1302,6 +1302,7 @@ name = "guest-contracts"
 version = "0.11.1"
 dependencies = [
  "libc",
+ "process-control-ipc",
  "serde",
  "serde_json",
  "tempfile",

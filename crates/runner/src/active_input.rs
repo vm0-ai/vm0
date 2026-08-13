@@ -1,6 +1,6 @@
-use std::io::{self, Write};
 use std::time::Duration;
 
+use guest_contracts::active_input::encoded_active_input_len;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -24,66 +24,9 @@ const _: () = assert!(
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES == process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES
 );
 
-#[derive(serde::Serialize)]
-pub(crate) struct ActiveInputPayload<'a> {
-    #[serde(rename = "type")]
-    payload_type: &'static str,
-    #[serde(rename = "deliveryId")]
-    delivery_id: &'a str,
-    text: &'a str,
-}
-
-impl<'a> ActiveInputPayload<'a> {
-    pub(crate) fn new(delivery_id: &'a str, text: &'a str) -> Self {
-        Self {
-            payload_type: "active-input",
-            delivery_id,
-            text,
-        }
-    }
-
-    pub(crate) fn to_vec(&self) -> Result<Vec<u8>, serde_json::Error> {
-        serde_json::to_vec(self)
-    }
-}
-
-#[derive(Default)]
-struct CountingWriter {
-    len: usize,
-}
-
-impl CountingWriter {
-    fn len(&self) -> usize {
-        self.len
-    }
-}
-
-impl Write for CountingWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.len = self
-            .len
-            .checked_add(buf.len())
-            .ok_or_else(|| io::Error::other("serialized active-input payload length overflow"))?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-pub(crate) fn active_input_payload_len(
-    delivery_id: &str,
-    text: &str,
-) -> Result<usize, serde_json::Error> {
-    let mut counter = CountingWriter::default();
-    serde_json::to_writer(&mut counter, &ActiveInputPayload::new(delivery_id, text))?;
-    Ok(counter.len())
-}
-
 pub(crate) fn identified_active_input_payload_len(text: &str) -> Result<usize, serde_json::Error> {
     let delivery_id = Uuid::nil().hyphenated().to_string();
-    active_input_payload_len(&delivery_id, text)
+    encoded_active_input_len(&delivery_id, text)
 }
 
 pub(crate) fn local_active_input_delivery_id(run_id: RunId, sequence: u64) -> String {
@@ -252,28 +195,4 @@ async fn read_api_active_input(source: &ApiActiveInputSource) -> RunnerResult<Ac
         .reserve_active_inputs(source.run_id, &source.sandbox_token)
         .await?;
     Ok(ActiveInputBatch::Api(response))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn active_input_payload_len_matches_serialized_payload_len() {
-        let texts = [
-            "plain ascii".to_string(),
-            "quotes \" backslash \\ newline \n tab \t carriage \r".to_string(),
-            "unicode café 你好 🚀".to_string(),
-            "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - 128),
-        ];
-        let delivery_id = Uuid::new_v4().hyphenated().to_string();
-
-        for text in texts {
-            let counted = active_input_payload_len(&delivery_id, &text).unwrap();
-            let serialized = ActiveInputPayload::new(&delivery_id, &text)
-                .to_vec()
-                .unwrap();
-            assert_eq!(counted, serialized.len(), "text len={}", text.len());
-        }
-    }
 }

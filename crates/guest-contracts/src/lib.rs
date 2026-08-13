@@ -5,6 +5,7 @@
 //! Keep guest-only runtime helpers in `guest-common`. This crate is for names,
 //! values, and filesystem layout helpers both sides must keep in lockstep.
 
+pub mod active_input;
 pub mod active_input_receipts;
 pub mod cli_agent_session_id;
 pub mod codex_thread_id;

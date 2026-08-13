@@ -21,7 +21,7 @@ pub(crate) mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::future::Future;
@@ -978,11 +978,7 @@ pub unsafe fn setup_codex_app_server_env(
 }
 
 pub fn active_input_payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
-    serde_json::to_vec(&json!({
-        "type": "active-input",
-        "deliveryId": "223f8797-a456-4eea-98f7-f7ab88c43c00",
-        "text": text,
-    }))
+    guest_contracts::active_input::encode_active_input("223f8797-a456-4eea-98f7-f7ab88c43c00", text)
 }
 
 pub fn active_input_runtime(

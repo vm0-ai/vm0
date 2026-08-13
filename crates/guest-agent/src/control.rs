@@ -288,12 +288,8 @@ mod tests {
             &uuid::Uuid::NAMESPACE_OID,
             format!("vm0:control-test:active-input:{sequence}").as_bytes(),
         );
-        serde_json::to_vec(&serde_json::json!({
-            "type": "active-input",
-            "deliveryId": delivery_id.to_string(),
-            "text": "hello",
-        }))
-        .expect("active-input control payload should serialize")
+        guest_contracts::active_input::encode_active_input(&delivery_id.to_string(), "hello")
+            .expect("active-input control payload should serialize")
     }
 
     fn accept_control_stream_and_read_hello(
