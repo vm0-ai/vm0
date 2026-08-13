@@ -36,12 +36,6 @@ pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 /// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
-/// Smallest Runner profile vCPU count supported by the workload policy.
-pub const MIN_PROFILE_VCPU: u32 = 2;
-
-/// Smallest Runner profile memory size supported by the workload policy.
-pub const MIN_PROFILE_MEMORY_MB: u32 = 4096;
-
 /// CPU bandwidth period used for workload cgroups.
 pub const WORKLOAD_CPU_PERIOD_US: u64 = 100_000;
 
@@ -118,10 +112,6 @@ impl WorkloadResourcePolicy {
     /// memory visible to the Guest. The calculation fails when the Guest cannot
     /// leave both the calibrated control reserve and a useful workload budget.
     pub fn for_guest_capacity(vcpu: u32, memory_bytes: u64) -> Result<Self, &'static str> {
-        if vcpu < MIN_PROFILE_VCPU {
-            return Err("guest vCPU capacity is below the workload-containment minimum");
-        }
-
         let total_cpu_us = u64::from(vcpu)
             .checked_mul(WORKLOAD_CPU_PERIOD_US)
             .ok_or("guest vCPU capacity overflows workload policy")?;
@@ -171,7 +161,7 @@ mod tests {
     #[test]
     fn rejects_capacity_without_memory_headroom() {
         let error = WorkloadResourcePolicy::for_guest_capacity(
-            MIN_PROFILE_VCPU,
+            1,
             CONTROL_MEMORY_RESERVE_BYTES + MIN_WORKLOAD_MEMORY_BYTES - 1,
         )
         .unwrap_err();
@@ -183,16 +173,15 @@ mod tests {
     }
 
     #[test]
-    fn rejects_capacity_below_vcpu_minimum() {
-        let error = WorkloadResourcePolicy::for_guest_capacity(
-            MIN_PROFILE_VCPU - 1,
-            u64::from(MIN_PROFILE_MEMORY_MB) * 1024 * 1024,
+    fn derives_smallest_profile_policy_from_fixed_reserves() {
+        let policy = WorkloadResourcePolicy::for_guest_capacity(
+            1,
+            CONTROL_MEMORY_RESERVE_BYTES + MIN_WORKLOAD_MEMORY_BYTES,
         )
-        .unwrap_err();
+        .unwrap();
 
-        assert_eq!(
-            error,
-            "guest vCPU capacity is below the workload-containment minimum"
-        );
+        assert_eq!(policy.cpu_quota_us, 90_000);
+        assert_eq!(policy.memory_max_bytes, 384 * 1024 * 1024);
+        assert_eq!(policy.memory_high_bytes, 128 * 1024 * 1024);
     }
 }

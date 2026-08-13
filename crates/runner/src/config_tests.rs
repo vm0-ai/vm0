@@ -522,23 +522,21 @@ async fn load_rejects_zero_memory_mb_in_profile() {
 }
 
 #[tokio::test]
-async fn load_rejects_vcpu_below_workload_containment_minimum() {
-    let fixture = ConfigFixture::without_image_artifacts().await;
+async fn load_accepts_profile_at_workload_containment_boundary() {
+    let fixture = ConfigFixture::new().await;
     let yaml = fixture.yaml_with_profile(
         "vm0/default",
         ProfileConfig {
-            vcpu: MIN_PROFILE_VCPU - 1,
+            vcpu: 1,
+            memory_mb: 768,
             ..default_profile_config()
         },
         "",
     );
 
-    let err = fixture.load_config(&yaml, true).await.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("below workload-containment minimum"),
-        "got: {err}"
-    );
+    let config = fixture.load_config(&yaml, true).await.unwrap();
+    assert_eq!(config.profiles["vm0/default"].vcpu, 1);
+    assert_eq!(config.profiles["vm0/default"].memory_mb, 768);
 }
 
 #[tokio::test]
@@ -547,7 +545,7 @@ async fn load_rejects_memory_below_workload_containment_minimum() {
     let yaml = fixture.yaml_with_profile(
         "vm0/default",
         ProfileConfig {
-            memory_mb: MIN_PROFILE_MEMORY_MB - 1,
+            memory_mb: 767,
             ..default_profile_config()
         },
         "",
@@ -555,8 +553,7 @@ async fn load_rejects_memory_below_workload_containment_minimum() {
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(
-        err.to_string()
-            .contains("below workload-containment minimum"),
+        err.to_string().contains("cannot preserve control headroom"),
         "got: {err}"
     );
 }
