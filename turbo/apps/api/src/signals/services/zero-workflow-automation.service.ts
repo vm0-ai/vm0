@@ -40,7 +40,7 @@ import {
   type StripeWorkflowAutomationHealth,
   type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
-  type ZeroAutomationEventType,
+  type WorkflowAutomationEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowAutomationsListEntry,
@@ -55,15 +55,15 @@ import { stripeWorkflowAutomationHealth } from "@okouai/db/schema/stripe-automat
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   strapiIntegrations,
-  zeroWorkflowStrapiAutomations,
+  strapiWorkflowAutomations,
 } from "@okouai/db/schema/strapi-integration";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowWebhookAutomations,
-  zeroWorkflows,
-  type ZeroWorkflowScheduleType,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflowWebhookAutomations,
+  workflows,
+  type WorkflowScheduleType,
+} from "@okouai/db/schema/workflow";
 import { and, asc, eq } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -133,18 +133,18 @@ import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
-type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
-type WorkflowRow = typeof zeroWorkflows.$inferSelect;
+type AutomationRow = typeof workflowAutomations.$inferSelect;
+type WorkflowRow = typeof workflows.$inferSelect;
 type ChatRunFinishedAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   "chat-run-finished"
 >;
 type GmailAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   "gmail-new-message" | "gmail-label-applied"
 >;
 type GithubAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
   | "github-pull-request"
@@ -161,31 +161,31 @@ type GithubWebhookAutomationEventType = Extract<
   | "github-workflow-job-completed"
 >;
 type GoogleCalendarAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   | "google-calendar-event-created"
   | "google-calendar-event-updated"
   | "google-calendar-event-cancelled"
 >;
 type GoogleMeetAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   "google-meet-transcript-generated"
 >;
 type GoogleFormsAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   "google-forms-response-submitted"
 >;
 type NotionAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   | "notion-child-page-created"
   | "notion-database-item-created"
   | "notion-page-content-updated"
 >;
 type StrapiAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   "strapi-entry-published"
 >;
 type StripeInvoicePaidAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   "stripe-invoice-paid"
 >;
 
@@ -269,7 +269,7 @@ interface CreateEventAutomationWorkflowContext {
 }
 
 interface ScheduleColumns {
-  readonly scheduleType: ZeroWorkflowScheduleType;
+  readonly scheduleType: WorkflowScheduleType;
   readonly cronExpression: string | null;
   readonly intervalSeconds: number | null;
   readonly atTime: Date | null;
@@ -447,7 +447,7 @@ function rowToSchedule(row: AutomationRow): ZeroWorkflowSchedule {
 
 function supportedAutomationEventType(
   eventType: string | null,
-): eventType is ZeroAutomationEventType {
+): eventType is WorkflowAutomationEventType {
   return (
     eventType === "chat-run-finished" ||
     eventType === "gmail-new-message" ||
@@ -969,13 +969,10 @@ async function loadAutomationWorkflowAgentId(
   args: { readonly orgId: string; readonly workflowId: string },
 ): Promise<string | null> {
   const [workflow] = await db
-    .select({ agentId: zeroWorkflows.agentId })
-    .from(zeroWorkflows)
+    .select({ agentId: workflows.agentId })
+    .from(workflows)
     .where(
-      and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.id, args.workflowId),
-      ),
+      and(eq(workflows.orgId, args.orgId), eq(workflows.id, args.workflowId)),
     )
     .limit(1);
   return workflow?.agentId ?? null;
@@ -991,16 +988,13 @@ async function loadAutomationWorkflowRunTarget(
 } | null> {
   const [workflow] = await db
     .select({
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
     })
-    .from(zeroWorkflows)
+    .from(workflows)
     .where(
-      and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.id, args.workflowId),
-      ),
+      and(eq(workflows.orgId, args.orgId), eq(workflows.id, args.workflowId)),
     )
     .limit(1);
   if (!workflow) {
@@ -1019,11 +1013,11 @@ async function loadAutomationRow(
 ): Promise<AutomationRow | null> {
   const [row] = await db
     .select(workflowAutomationColumns())
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.id, args.automationId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.id, args.automationId),
       ),
     )
     .limit(1);
@@ -1063,15 +1057,15 @@ export async function loadWorkflowAutomations(
 ): Promise<readonly ZeroWorkflowAutomationSummary[]> {
   const rows = await db
     .select(workflowAutomationColumns())
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.workflowId, args.workflowId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.workflowId, args.workflowId),
+        eq(workflowAutomations.ownerUserId, args.userId),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.createdAt));
+    .orderBy(asc(workflowAutomations.createdAt));
   const chatThreadId = await loadWorkflowUserAutomationThreadId(db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -1102,7 +1096,7 @@ export async function listWorkspaceWorkflowAutomations(
   const rows = await db
     .select({
       automation: workflowAutomationColumns(),
-      workflow: zeroWorkflows,
+      workflow: workflows,
       agent: {
         id: zeroAgents.id,
         owner: zeroAgents.owner,
@@ -1112,37 +1106,31 @@ export async function listWorkspaceWorkflowAutomations(
       },
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .innerJoin(zeroAgents, eq(zeroAgents.id, zeroWorkflows.agentId))
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
+    .innerJoin(zeroAgents, eq(zeroAgents.id, workflows.agentId))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.member.userId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.member.userId),
         visibleWorkflowCondition(args.member),
       ),
     )
-    .orderBy(
-      asc(zeroWorkflowAutomations.createdAt),
-      asc(zeroWorkflowAutomations.id),
-    );
+    .orderBy(asc(workflowAutomations.createdAt), asc(workflowAutomations.id));
 
   const entries = await Promise.all(
     rows.map(async (row): Promise<ZeroWorkflowAutomationsListEntry | null> => {
@@ -1206,36 +1194,33 @@ export async function listThreadBoundWorkflowAutomations(
   const rows = await db
     .select({
       automation: workflowAutomationColumns(),
-      workflow: zeroWorkflows,
+      workflow: workflows,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .innerJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
         eq(workflowUserAutomationThreads.chatThreadId, args.threadId),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.createdAt));
+    .orderBy(asc(workflowAutomations.createdAt));
 
   const summaries = await Promise.all(
     rows.map(async ({ automation, workflow, chatThreadId }) => {
@@ -1668,7 +1653,7 @@ async function insertWebhookEventAutomation(
 
     const token = mintWorkflowWebhookToken();
     const secret = mintWorkflowWebhookSecret();
-    await tx.insert(zeroWorkflowWebhookAutomations).values({
+    await tx.insert(workflowWebhookAutomations).values({
       automationId: row.id,
       tokenHash: hashWorkflowWebhookToken(token),
       encryptedToken: await encryptWorkflowWebhookToken(token, {
@@ -1697,7 +1682,7 @@ async function prepareGmailEventConfigForPersist(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly eventType: ZeroAutomationEventType;
+    readonly eventType: WorkflowAutomationEventType;
     readonly eventConfig: GmailAutomationEventConfig;
   },
   signal: AbortSignal,
@@ -1803,8 +1788,8 @@ async function createGmailEventAutomationForWorkflow(
     ),
     async () => {
       await args.context.db
-        .delete(zeroWorkflowAutomations)
-        .where(eq(zeroWorkflowAutomations.id, summary.id));
+        .delete(workflowAutomations)
+        .where(eq(workflowAutomations.id, summary.id));
     },
   );
   signal.throwIfAborted();
@@ -1813,8 +1798,8 @@ async function createGmailEventAutomationForWorkflow(
   }
 
   await args.context.db
-    .delete(zeroWorkflowAutomations)
-    .where(eq(zeroWorkflowAutomations.id, summary.id));
+    .delete(workflowAutomations)
+    .where(eq(workflowAutomations.id, summary.id));
   await reconcileAutomationEventWatches(
     {
       db: args.context.db,
@@ -2037,15 +2022,15 @@ async function createGoogleCalendarEventAutomationForWorkflow(
     ),
     async () => {
       await args.context.db
-        .delete(zeroWorkflowAutomations)
-        .where(eq(zeroWorkflowAutomations.id, summary.id));
+        .delete(workflowAutomations)
+        .where(eq(workflowAutomations.id, summary.id));
     },
   );
   signal.throwIfAborted();
   if (watchResult.kind !== "ok") {
     await args.context.db
-      .delete(zeroWorkflowAutomations)
-      .where(eq(zeroWorkflowAutomations.id, summary.id));
+      .delete(workflowAutomations)
+      .where(eq(workflowAutomations.id, summary.id));
     await reconcileAutomationEventWatches(
       {
         db: args.context.db,
@@ -2143,8 +2128,8 @@ async function createGoogleFormsEventAutomationForWorkflow(
     ),
     async () => {
       await args.context.db
-        .delete(zeroWorkflowAutomations)
-        .where(eq(zeroWorkflowAutomations.id, summary.id));
+        .delete(workflowAutomations)
+        .where(eq(workflowAutomations.id, summary.id));
     },
   );
   signal.throwIfAborted();
@@ -2152,8 +2137,8 @@ async function createGoogleFormsEventAutomationForWorkflow(
     return { kind: "ok", summary: resultSummary };
   }
   await args.context.db
-    .delete(zeroWorkflowAutomations)
-    .where(eq(zeroWorkflowAutomations.id, summary.id));
+    .delete(workflowAutomations)
+    .where(eq(workflowAutomations.id, summary.id));
   if (!hadConsumer) {
     await reconcileAutomationEventWatches(
       {
@@ -2393,7 +2378,7 @@ async function createStrapiEventAutomationForWorkflow(
     if (!row) {
       throw new Error("Failed to create Strapi workflow automation");
     }
-    await tx.insert(zeroWorkflowStrapiAutomations).values({
+    await tx.insert(strapiWorkflowAutomations).values({
       automationId: row.id,
       integrationId: integration.id,
       createdAt: currentTime,
@@ -2819,12 +2804,12 @@ async function updateAutomationEventConfig(
   signal: AbortSignal,
 ): Promise<ZeroWorkflowAutomationSummary> {
   const [row] = await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       eventConfig: args.eventConfig,
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflowAutomations.id, args.automationId))
+    .where(eq(workflowAutomations.id, args.automationId))
     .returning(workflowAutomationColumns());
   signal.throwIfAborted();
   if (!row) {
@@ -3067,7 +3052,7 @@ export const updateWorkflowAutomation$ = command(
 
     const row = await writeDb.transaction(async (tx) => {
       const [updated] = await tx
-        .update(zeroWorkflowAutomations)
+        .update(workflowAutomations)
         .set({
           scheduleType: cols.scheduleType,
           cronExpression: cols.cronExpression,
@@ -3077,7 +3062,7 @@ export const updateWorkflowAutomation$ = command(
           nextRunAt,
           updatedAt: now,
         })
-        .where(eq(zeroWorkflowAutomations.id, automation.id))
+        .where(eq(workflowAutomations.id, automation.id))
         .returning(workflowAutomationColumns());
       if (!updated) {
         throw new Error("Failed to update workflow automation");
@@ -3261,8 +3246,8 @@ export const deleteWorkflowAutomation$ = command(
     signal.throwIfAborted();
     // Delete the automation row only; the bound chat thread is kept.
     await writeDb
-      .delete(zeroWorkflowAutomations)
-      .where(eq(zeroWorkflowAutomations.id, owned.automation.id));
+      .delete(workflowAutomations)
+      .where(eq(workflowAutomations.id, owned.automation.id));
     signal.throwIfAborted();
     await reconcileAutomationEventWatches(
       {
@@ -3438,13 +3423,13 @@ async function restoreDisabledWorkflowAutomation(
   automation: AutomationRow,
 ): Promise<void> {
   await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       enabled: false,
       nextRunAt: automation.nextRunAt,
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflowAutomations.id, automation.id));
+    .where(eq(workflowAutomations.id, automation.id));
 }
 
 async function ensureEnabledAutomationEventWatchWithRollback(
@@ -3520,7 +3505,7 @@ async function persistEnabledWorkflowAutomation(
     }
 
     const [enabledRow] = await tx
-      .update(zeroWorkflowAutomations)
+      .update(workflowAutomations)
       .set({
         enabled: true,
         nextRunAt: args.nextRunAt,
@@ -3530,7 +3515,7 @@ async function persistEnabledWorkflowAutomation(
           ? {}
           : { autonomyBudget: args.inheritedAutonomyBudget }),
       })
-      .where(eq(zeroWorkflowAutomations.id, args.automation.id))
+      .where(eq(workflowAutomations.id, args.automation.id))
       .returning(workflowAutomationColumns());
     if (
       enabledRow &&
@@ -3538,11 +3523,9 @@ async function persistEnabledWorkflowAutomation(
       args.automation.eventType === "webhook-received"
     ) {
       await tx
-        .update(zeroWorkflowWebhookAutomations)
+        .update(workflowWebhookAutomations)
         .set({ disabledReason: null, updatedAt: args.now })
-        .where(
-          eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id),
-        );
+        .where(eq(workflowWebhookAutomations.automationId, args.automation.id));
     }
     return { status: "ok", row: enabledRow };
   });
@@ -3754,9 +3737,9 @@ export const disableWorkflowAutomation$ = command(
     const nextRunAt =
       owned.automation.kind === "schedule" ? null : owned.automation.nextRunAt;
     const [row] = await writeDb
-      .update(zeroWorkflowAutomations)
+      .update(workflowAutomations)
       .set({ enabled: false, nextRunAt, updatedAt: now })
-      .where(eq(zeroWorkflowAutomations.id, owned.automation.id))
+      .where(eq(workflowAutomations.id, owned.automation.id))
       .returning(workflowAutomationColumns());
     signal.throwIfAborted();
     if (!row) {

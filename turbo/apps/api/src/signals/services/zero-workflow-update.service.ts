@@ -1,7 +1,7 @@
 import { getCustomSkillStorageName } from "@okouai/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@okouai/core/zero-workflow-skill";
 import type { ZeroWorkflowUpdateRequest } from "@okouai/api-contracts/contracts/zero-workflows";
-import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
+import { workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -37,7 +37,7 @@ export const updateZeroWorkflow$ = command(
 
     // DB is the source of truth; persist column changes first.
     await writeDb
-      .update(zeroWorkflows)
+      .update(workflows)
       .set({
         ...(body.name !== undefined && {
           name: body.name,
@@ -54,7 +54,7 @@ export const updateZeroWorkflow$ = command(
         updatedBy: args.updatedByUserId,
         updatedAt: nowDate(),
       })
-      .where(eq(zeroWorkflows.id, workflow.id));
+      .where(eq(workflows.id, workflow.id));
     signal.throwIfAborted();
 
     // Rebuild the volume whenever the synthesized SKILL.md or the attached

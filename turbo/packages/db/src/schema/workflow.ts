@@ -14,24 +14,24 @@ import {
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
-import type { ZeroAutomationEventConfig } from "@okouai/db/jsonb-contracts/zero-workflow";
-export type { ZeroAutomationEventConfig } from "@okouai/db/jsonb-contracts/zero-workflow";
+import type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
+export type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
 
 /**
- * Zero workflow visibility.
+ * Workflow visibility.
  *
  * Public workflows are visible within the org. Private workflows are visible
  * only to their owner. The backing package is still a skill directory and is
  * stored through the existing custom-skill volume storage name.
  */
-export type ZeroWorkflowVisibility = "public" | "private";
+export type WorkflowVisibility = "public" | "private";
 
 /**
- * Zero Workflows table
+ * Workflows table
  * Org-scoped registry of workflows. Each row represents workflow metadata.
  * Workflow content is stored in the storages system.
  */
-export const zeroWorkflows = pgTable(
+export const workflows = pgTable(
   "zero_workflows",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -48,7 +48,7 @@ export const zeroWorkflows = pgTable(
       ),
     name: varchar("name", { length: 64 }).notNull(),
     visibility: varchar("visibility", { length: 16 })
-      .$type<ZeroWorkflowVisibility>()
+      .$type<WorkflowVisibility>()
       .notNull()
       .default("private"),
     // Instruction body (the SKILL.md content below the frontmatter). DB is the
@@ -106,7 +106,7 @@ export const workflowUserAutomationThreads = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflows.id;
+          return workflows.id;
         },
         { onDelete: "cascade" },
       ),
@@ -146,9 +146,9 @@ export const workflowUserAutomationThreads = pgTable(
  *
  * Uses the same schedule semantics as the retired automation trigger rows.
  */
-export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
-export type ZeroWorkflowAutomationKind = "schedule" | "event";
-export type ZeroAutomationEventType =
+export type WorkflowScheduleType = "cron" | "loop" | "once";
+export type WorkflowAutomationKind = "schedule" | "event";
+export type WorkflowAutomationEventType =
   | "chat-run-finished"
   | "gmail-new-message"
   | "gmail-label-applied"
@@ -170,7 +170,7 @@ export type ZeroAutomationEventType =
   | "stripe-invoice-paid"
   | "webhook-received";
 
-export type ZeroWorkflowWebhookDisabledReason = "paid_plan_required";
+export type WorkflowWebhookDisabledReason = "paid_plan_required";
 
 /**
  * Workflow automations.
@@ -182,7 +182,7 @@ export type ZeroWorkflowWebhookDisabledReason = "paid_plan_required";
  * Schedule automations are polled by `next_run_at`. Event automations keep
  * `next_run_at = NULL` and fire from their event-specific junction.
  */
-export const zeroWorkflowAutomations = pgTable(
+export const workflowAutomations = pgTable(
   "zero_workflow_automations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -191,7 +191,7 @@ export const zeroWorkflowAutomations = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflows.id;
+          return workflows.id;
         },
         { onDelete: "cascade" },
       ),
@@ -199,16 +199,16 @@ export const zeroWorkflowAutomations = pgTable(
     // owner's secrets / connectors / credits.
     ownerUserId: text("owner_user_id").notNull(),
     kind: varchar("kind", { length: 16 })
-      .$type<ZeroWorkflowAutomationKind>()
+      .$type<WorkflowAutomationKind>()
       .notNull()
       .default("schedule"),
     eventType: varchar("event_type", {
       length: 64,
-    }).$type<ZeroAutomationEventType>(),
-    eventConfig: jsonb("event_config").$type<ZeroAutomationEventConfig>(),
+    }).$type<WorkflowAutomationEventType>(),
+    eventConfig: jsonb("event_config").$type<WorkflowAutomationEventConfig>(),
     scheduleType: varchar("schedule_type", {
       length: 16,
-    }).$type<ZeroWorkflowScheduleType>(),
+    }).$type<WorkflowScheduleType>(),
     cronExpression: varchar("cron_expression", { length: 100 }),
     intervalSeconds: integer("interval_seconds"),
     atTime: timestamp("at_time"),
@@ -261,14 +261,14 @@ export const zeroWorkflowAutomations = pgTable(
   },
 );
 
-export const zeroWorkflowWebhookAutomations = pgTable(
+export const workflowWebhookAutomations = pgTable(
   "zero_workflow_webhook_automations",
   {
     automationId: uuid("automation_id")
       .primaryKey()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -278,7 +278,7 @@ export const zeroWorkflowWebhookAutomations = pgTable(
     secretLastFour: varchar("secret_last_four", { length: 4 }).notNull(),
     disabledReason: varchar("disabled_reason", {
       length: 64,
-    }).$type<ZeroWorkflowWebhookDisabledReason>(),
+    }).$type<WorkflowWebhookDisabledReason>(),
     lastReceivedAt: timestamp("last_received_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -292,7 +292,7 @@ export const zeroWorkflowWebhookAutomations = pgTable(
   },
 );
 
-export const zeroWorkflowWebhookDeliveries = pgTable(
+export const workflowWebhookDeliveries = pgTable(
   "zero_workflow_webhook_deliveries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -300,7 +300,7 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -326,7 +326,7 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
   },
 );
 
-export const zeroWorkflowGithubProcessedEvents = pgTable(
+export const workflowGithubProcessedEvents = pgTable(
   "zero_workflow_github_processed_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -334,7 +334,7 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
