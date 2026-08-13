@@ -29,6 +29,11 @@ interface StripeFrameState {
   readonly payWithCard: StripeLocatorState;
 }
 
+interface StripeCardMethodControl {
+  readonly activation: "click" | "dispatch";
+  readonly locator: Locator;
+}
+
 export interface StripeCheckoutState {
   readonly frames: readonly StripeFrameState[];
   readonly pageOrigin: string;
@@ -156,20 +161,26 @@ async function findMatchingFrameLocator(
   return candidates.find((_, index) => matches[index])?.locator ?? null;
 }
 
-async function findPayWithCard(page: Page): Promise<Locator | null> {
+async function findPayWithCard(
+  page: Page,
+): Promise<StripeCardMethodControl | null> {
   const visiblePayWithCard = await findMatchingFrameLocator(
     page,
     (frame) => payWithCardLocator(frame).filter({ visible: true }).first(),
     async (locator) => await locator.isVisible(),
   );
-  return (
-    visiblePayWithCard ??
-    (await findMatchingFrameLocator(
-      page,
-      (frame) => payWithCardLocator(frame).first(),
-      async (locator) => (await locator.count()) > 0,
-    ))
+  if (visiblePayWithCard) {
+    return { activation: "click", locator: visiblePayWithCard };
+  }
+
+  const attachedPayWithCard = await findMatchingFrameLocator(
+    page,
+    (frame) => payWithCardLocator(frame).first(),
+    async (locator) => (await locator.count()) > 0,
   );
+  return attachedPayWithCard
+    ? { activation: "dispatch", locator: attachedPayWithCard }
+    : null;
 }
 
 async function findVisibleStripeField(
@@ -206,7 +217,7 @@ async function fillVisibleStripeField(
 }
 
 async function activateCardMethod(
-  payWithCard: Locator,
+  control: StripeCardMethodControl,
   deadline: number,
 ): Promise<void> {
   const timeout = deadline - Date.now();
@@ -214,15 +225,15 @@ async function activateCardMethod(
     return;
   }
 
-  if (await payWithCard.isVisible()) {
-    await payWithCard.click({ timeout });
+  if (control.activation === "click") {
+    await control.locator.click({ timeout });
     return;
   }
 
   // Stripe's accordion layout keeps the Card control attached with a
   // zero-height box. It cannot pass normal actionability checks, so this is
   // the only layout that uses synthetic activation.
-  await payWithCard.dispatchEvent("click", undefined, { timeout });
+  await control.locator.dispatchEvent("click", undefined, { timeout });
 }
 
 async function fillCardNumber(page: Page, value: string): Promise<void> {
