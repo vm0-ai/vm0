@@ -606,7 +606,7 @@ declare const __CLI_VERSION__: string;
 
 program
   .name("okou")
-  .description("Okou CLI — interact with vm0 from inside the sandbox")
+  .description("Okou CLI — interact with Okou from inside the sandbox")
   .version(__CLI_VERSION__)
   .addHelpText("after", () => {
     return buildZeroHelpText();

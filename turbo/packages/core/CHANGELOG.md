@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.553.0](https://github.com/vm0-ai/vm0/compare/core-v8.552.2...core-v8.553.0) (2026-08-13)
+
+
+### Features
+
+* **core:** enable meta ads connector globally ([#26764](https://github.com/vm0-ai/vm0/issues/26764)) ([80d5479](https://github.com/vm0-ai/vm0/commit/80d54798c6810dc0dcbd318c03c96e10c76c7c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.0
+
 ## [8.552.2](https://github.com/vm0-ai/vm0/compare/core-v8.552.1...core-v8.552.2) (2026-08-13)
 
 

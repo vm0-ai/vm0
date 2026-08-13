@@ -175,7 +175,7 @@ function printComputerUseAuthorizationLink(args: {
   readonly expiresAt: string;
 }): void {
   console.log(
-    "Computer Use needs a Zero Desktop host selected before a run starts.",
+    "Computer Use needs an Okou Desktop host selected before a run starts.",
   );
   console.log(
     "Ask the user to authorize a host for future runs in this chat or Slack thread:",

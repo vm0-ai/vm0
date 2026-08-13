@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.166.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.3...runner-rs-v0.166.0) (2026-08-13)
+
+
+### Features
+
+* **api:** retire chat event reads and force app upgrade ([#26755](https://github.com/vm0-ai/vm0/issues/26755)) ([7be323f](https://github.com/vm0-ai/vm0/commit/7be323f3f555183be738a3ee0fe158d3d4327e0a))
+
 ## [0.165.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.2...runner-rs-v0.165.3) (2026-08-12)
 
 

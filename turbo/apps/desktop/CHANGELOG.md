@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.37.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.37.3...desktop-v0.37.4) (2026-08-13)
+
+
+### Bug Fixes
+
+* **desktop:** isolate smoke test authentication ([#26758](https://github.com/vm0-ai/vm0/issues/26758)) ([0dd2d35](https://github.com/vm0-ai/vm0/commit/0dd2d35fe9fdb4345dc0b15cbac6c4eba699f80a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.0
+
 ## [0.37.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.37.2...desktop-v0.37.3) (2026-08-13)
 
 
