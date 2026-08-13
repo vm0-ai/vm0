@@ -789,6 +789,7 @@
       "confirm": "確認する",
       "credits": "クレジット",
       "manage": "管理",
+      "preparing": "準備中...",
       "redirecting": "リダイレクト中...",
       "restore": "復元",
       "retry": "再試行",
@@ -845,6 +846,9 @@
       "exchangeRate": "クレジットに有効期限はありません。 1 USD = {{credits}} クレジット。",
       "quickBuy": "すぐに購入",
       "quickBuyAmount": "クイック購入 {{amount}}",
+      "reviewDescription": "保存済みのお支払い方法で今回の請求を確定します。",
+      "reviewError": "クレジットの購入を完了できませんでした。請求情報を確認して、もう一度お試しください。",
+      "reviewTitle": "クレジット購入を確認",
       "title": "クレジットを購入する"
     },
     "downgrade": {
@@ -1026,6 +1030,7 @@
       "concurrencyChanged": "同時実行数の変更を確定しました。Stripe の処理後にスロット数が更新されます。",
       "concurrencyReduced": "同時実行数の削減は次回の請求日に予定されています。",
       "concurrencyRestored": "同時実行サブスクリプションが復元されました。",
+      "creditPurchaseConfirmed": "支払いが確認されました。Stripe による請求書の処理後にクレジットが反映されます。",
       "creditsAdded": "クレジットが追加されました。 Zero とのチャットを続けることができます。",
       "downgradeScheduledDate": "ダウングレードが予定されています。現在のプランは {{date}} まで有効です。",
       "downgradeScheduledPeriod": "ダウングレードが予定されています。現在のプランは、請求期間が終了するまで有効のままです。",

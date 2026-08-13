@@ -808,6 +808,7 @@
       "confirm": "Conferma",
       "credits": "crediti",
       "manage": "Gestisci",
+      "preparing": "Preparazione...",
       "redirecting": "Reindirizzamento...",
       "restore": "Ripristina",
       "retry": "Riprova",
@@ -866,6 +867,9 @@
       "exchangeRate": "I crediti non scadono mai. 1 USD = {{credits}} crediti.",
       "quickBuy": "Acquisto veloce",
       "quickBuyAmount": "Acquisto veloce {{amount}}",
+      "reviewDescription": "Conferma questo addebito una tantum con il metodo di pagamento salvato.",
+      "reviewError": "Impossibile completare questo acquisto di crediti. Controlla i dati di fatturazione e riprova.",
+      "reviewTitle": "Rivedi l'acquisto di crediti",
       "title": "Acquista crediti"
     },
     "downgrade": {
@@ -1047,6 +1051,7 @@
       "concurrencyChanged": "Modifica della concorrenza confermata. Il numero di slot verrà aggiornato dopo l'elaborazione della modifica da parte di Stripe.",
       "concurrencyReduced": "La riduzione della concorrenza è programmata per la prossima data di fatturazione.",
       "concurrencyRestored": "Sottoscrizione simultanea ripristinata.",
+      "creditPurchaseConfirmed": "Pagamento confermato. I crediti appariranno dopo che Stripe avrà elaborato la fattura.",
       "creditsAdded": "Crediti aggiunti. Puoi continuare a chattare con Zero.",
       "downgradeScheduledDate": "Downgrade programmato. Il tuo piano attuale rimane attivo fino al {{date}}.",
       "downgradeScheduledPeriod": "Downgrade programmato. Il tuo piano attuale rimane attivo fino al termine del periodo di fatturazione.",
