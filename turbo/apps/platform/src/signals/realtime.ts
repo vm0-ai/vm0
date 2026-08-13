@@ -52,6 +52,7 @@ interface StableRealtimeChannel {
     topic: string | null,
     callback: ChannelCallback,
   ) => void;
+  readonly suspend: () => void;
   readonly replace: (channel: RealtimeChannel) => Promise<void>;
 }
 
@@ -483,7 +484,7 @@ function createStableRealtimeChannel(
   initialChannel: RealtimeChannel,
 ): StableRealtimeChannel {
   const subscriptions = new Map<ChannelCallback, ActiveChannelSubscription>();
-  let currentChannel = initialChannel;
+  let currentChannel: RealtimeChannel | null = initialChannel;
   let replacement: Promise<void> | null = null;
 
   const attach = async (
@@ -515,6 +516,9 @@ function createStableRealtimeChannel(
       const activeReplacement = replacement;
       if (!activeReplacement) {
         const channel = currentChannel;
+        if (!channel) {
+          return Promise.resolve();
+        }
         subscription.channels.add(channel);
         return subscribeToRealtimeChannel(channel, subscription);
       }
@@ -524,7 +528,10 @@ function createStableRealtimeChannel(
         if (subscriptions.get(callback) !== subscription) {
           return;
         }
-        await attach(currentChannel, subscription);
+        const channel = currentChannel;
+        if (channel) {
+          await attach(channel, subscription);
+        }
       })();
     },
     unsubscribe: (_topic, callback) => {
@@ -537,6 +544,15 @@ function createStableRealtimeChannel(
         unsubscribeFromRealtimeChannel(channel, subscription);
       }
       subscription.channels.clear();
+    },
+    suspend: () => {
+      currentChannel = null;
+      for (const subscription of subscriptions.values()) {
+        for (const channel of subscription.channels) {
+          unsubscribeFromRealtimeChannel(channel, subscription);
+        }
+        subscription.channels.clear();
+      }
     },
     replace: async (channel) => {
       const activeReplacement = replacement;
@@ -659,6 +675,7 @@ const closeRealtimeWhileHidden$ = command(({ get }) => {
     return;
   }
   L.debug("page hidden, closing realtime connection");
+  session.channel.suspend();
   session.close();
 });
 
@@ -748,6 +765,7 @@ export const setupRealtime$ = command(
       },
       { signal },
     );
+    set(closeRealtimeWhileHidden$);
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {

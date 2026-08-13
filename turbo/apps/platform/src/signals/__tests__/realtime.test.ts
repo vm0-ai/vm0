@@ -272,6 +272,42 @@ describe("realtime signals", () => {
     });
   });
 
+  it("closes realtime when setup completes while already hidden", async () => {
+    mockSignedInUser();
+    const topic = "test:initially-hidden";
+    const subscriber = testSubscriber();
+    let visibilityState: DocumentVisibilityState = "hidden";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => {
+      return visibilityState;
+    });
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: loop$ },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+
+    await setupAuthAndRealtime();
+    expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(runs).toBe(1);
+    });
+  });
+
   it("closes realtime while hidden and reconnects after foreground auth", async () => {
     mockSignedInUser();
     const topic = "test:visibility";
