@@ -1041,6 +1041,7 @@
         "hour": "{{value}}시간",
         "left": "{{value}} 남음",
         "minute": "{{value}}분",
+        "remaining": "{{remaining}} / {{total}} 크레딧",
         "remainingAria": "사용 한도 {{label}} 남음",
         "resets": "{{date}}에 초기화됨",
         "resetsRaw": "{{value}}에 초기화됨",
@@ -4021,6 +4022,7 @@
         "usage": {
           "balanceDescription": "팀이 사용할 수 있는 잔액입니다.",
           "balanceTitle": "크레딧 잔액",
+          "balanceUsageDescription": "팀의 크레딧 잔액 및 사용량입니다.",
           "usageDescription": "채팅, 자동화, 채널에서의 크레딧 사용량입니다.",
           "usageTitle": "크레딧 사용량"
         }

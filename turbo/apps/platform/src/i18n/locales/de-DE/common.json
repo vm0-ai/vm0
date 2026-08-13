@@ -1041,6 +1041,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} übrig",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} Credits",
         "remainingAria": "Verbleibendes Nutzungskontingent für {{label}}",
         "resets": "Wird am {{date}} zurückgesetzt",
         "resetsRaw": "Wird in {{value}} zurückgesetzt",
@@ -4022,6 +4023,7 @@
         "usage": {
           "balanceDescription": "Was deinem Team noch zum Ausgeben bleibt.",
           "balanceTitle": "Credit-Guthaben",
+          "balanceUsageDescription": "Guthaben und Verbrauch deines Teams.",
           "usageDescription": "Ihre Credit-Nutzung über Chats, Automatisierungen und Kanäle hinweg.",
           "usageTitle": "Credit-Nutzung"
         }

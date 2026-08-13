@@ -1062,6 +1062,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} restantes",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Límite de uso {{label}} restante",
         "resets": "Se restablece el {{date}}",
         "resetsRaw": "Se restablece {{value}}",
@@ -4072,6 +4073,7 @@
         "usage": {
           "balanceDescription": "Lo que le queda a tu equipo para gastar.",
           "balanceTitle": "Saldo de créditos",
+          "balanceUsageDescription": "El saldo de créditos y el uso de tu equipo.",
           "usageDescription": "Tu consumo de créditos en conversaciones, automatizaciones y canales.",
           "usageTitle": "Consumo de créditos"
         }

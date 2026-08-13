@@ -1062,6 +1062,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} rimanenti",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} crediti",
         "remainingAria": "Limite di utilizzo {{label}} rimanente",
         "resets": "Ripristina {{date}}",
         "resetsRaw": "Ripristina {{value}}",
@@ -4072,6 +4073,7 @@
         "usage": {
           "balanceDescription": "Quanto resta da spendere al tuo team.",
           "balanceTitle": "Saldo del credito",
+          "balanceUsageDescription": "Il saldo dei crediti e l'utilizzo del tuo team.",
           "usageDescription": "Il tuo utilizzo del credito attraverso chat, automazioni e canali.",
           "usageTitle": "Utilizzo del credito"
         }

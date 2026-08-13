@@ -1062,6 +1062,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} restants",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} crédits",
         "remainingAria": "Allocation d'utilisation {{label}} restante",
         "resets": "Réinitialise {{date}}",
         "resetsRaw": "Réinitialise {{value}}",
@@ -4072,6 +4073,7 @@
         "usage": {
           "balanceDescription": "Ce qu'il reste à dépenser à votre équipe.",
           "balanceTitle": "Solde de crédits",
+          "balanceUsageDescription": "Le solde de crédits et la consommation de votre équipe.",
           "usageDescription": "Votre utilisation des crédits dans les conversations, automatisations et canaux.",
           "usageTitle": "Utilisation des crédits"
         }

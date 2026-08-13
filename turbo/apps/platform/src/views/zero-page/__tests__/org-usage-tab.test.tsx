@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -173,8 +174,14 @@ function mockUsageStory(): void {
   });
 }
 
+const NEW_PRICING = { [FeatureSwitchKey.UsagePackPlans]: true } as const;
+
 async function openCreditBalance(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=usage" });
+  detachedSetupPage({
+    context,
+    path: "/?settings=usage",
+    featureSwitches: NEW_PRICING,
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getAllByText("Credit balance")[0]).toBeInTheDocument();
@@ -182,7 +189,11 @@ async function openCreditBalance(): Promise<void> {
 }
 
 async function openCreditUsage(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=usage-records" });
+  detachedSetupPage({
+    context,
+    path: "/?settings=usage-records",
+    featureSwitches: NEW_PRICING,
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getAllByText("Credit usage")[0]).toBeInTheDocument();
@@ -301,6 +312,30 @@ describe("organization usage settings", () => {
     });
   });
 
+  it("keeps the usage records inside credit balance without the new pricing", async () => {
+    mockUsageStory();
+    detachedSetupPage({ context, path: "/?settings=usage" });
+
+    await waitFor(() => {
+      expect(screen.getByText("3,750 / 5,000 credits")).toBeInTheDocument();
+    });
+    // The previous single-section layout: collapsed additions, the Mine/Team
+    // tabs, and no separate records section to navigate to.
+    expect(screen.getByTestId("credit-grants-toggle")).toBeInTheDocument();
+    expect(screen.queryByTestId("credit-balance-see-usage")).toBeNull();
+    expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
+    expect(
+      queryAllByRoleFast("tab").some((element) => {
+        return element.textContent === "Team usage";
+      }),
+    ).toBeTruthy();
+    expect(
+      queryAllByRoleFast("button").some((element) => {
+        return element.textContent === "Credit usage";
+      }),
+    ).toBeFalsy();
+  });
+
   it("shows workspace member usage in the credit usage section", async () => {
     mockUsageStory();
     await openCreditUsage();
@@ -327,6 +362,7 @@ describe("organization usage settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=usage",
+      featureSwitches: NEW_PRICING,
     });
 
     await waitFor(() => {
@@ -347,6 +383,7 @@ describe("organization usage settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=usage-records",
+      featureSwitches: NEW_PRICING,
     });
 
     await waitFor(() => {
