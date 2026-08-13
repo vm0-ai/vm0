@@ -115,87 +115,91 @@ impl WorkspaceCacheWatcher {
                 .readable()
                 .await
                 .map_err(|error| watcher_io_error("wait for events", error.kind()))?;
-            ready.clear_ready();
-            drop(ready);
 
             let observed_at = tokio::time::Instant::now();
-            let mut changed = false;
-            let mut reconcile_entry_watches = false;
-            let mut committed_cache_keys = BTreeSet::new();
+            let mut pending_events = Vec::new();
             let mut drained_all_events = false;
             for _ in 0..MAX_EVENT_READ_BATCHES_PER_CHANGE {
-                let events = match self.inotify.get_ref().0.read_events() {
-                    Ok(events) => events,
+                match self.inotify.get_ref().0.read_events() {
+                    Ok(events) => pending_events.extend(events),
                     Err(Errno::EAGAIN) => {
                         drained_all_events = true;
                         break;
                     }
                     Err(error) => return Err(watcher_error("read events", error)),
-                };
-                for event in events {
-                    if event.mask.contains(AddWatchFlags::IN_Q_OVERFLOW) {
-                        changed = true;
-                        reconcile_entry_watches = true;
-                        continue;
-                    }
-                    if event.wd == self.root_watch {
-                        if event.mask.intersects(WATCH_INVALIDATION_FLAGS) {
-                            return Err(RunnerError::Internal(
-                                "workspace cache root watch invalidated".to_string(),
-                            ));
-                        }
-                        let Some(cache_key) = event
-                            .name
-                            .as_deref()
-                            .and_then(OsStr::to_str)
-                            .filter(|name| is_cache_key_name(name))
-                        else {
-                            continue;
-                        };
-                        if event
-                            .mask
-                            .intersects(AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
-                        {
-                            reconcile_entry_watches = true;
-                        }
-                        if event
-                            .mask
-                            .intersects(AddWatchFlags::IN_DELETE | AddWatchFlags::IN_MOVED_FROM)
-                        {
-                            changed = true;
-                            reconcile_entry_watches = true;
-                            self.forget_entry_watch(cache_key);
-                        }
-                        continue;
-                    }
+                }
+            }
+            if drained_all_events {
+                ready.clear_ready();
+            }
+            drop(ready);
 
-                    let Some(cache_key) = self.cache_key_by_watch.get(&event.wd).cloned() else {
+            let mut changed = false;
+            let mut reconcile_entry_watches = false;
+            let mut committed_cache_keys = BTreeSet::new();
+            for event in pending_events {
+                if event.mask.contains(AddWatchFlags::IN_Q_OVERFLOW) {
+                    changed = true;
+                    reconcile_entry_watches = true;
+                    continue;
+                }
+                if event.wd == self.root_watch {
+                    if event.mask.intersects(WATCH_INVALIDATION_FLAGS) {
+                        return Err(RunnerError::Internal(
+                            "workspace cache root watch invalidated".to_string(),
+                        ));
+                    }
+                    let Some(cache_key) = event
+                        .name
+                        .as_deref()
+                        .and_then(OsStr::to_str)
+                        .filter(|name| is_cache_key_name(name))
+                    else {
                         continue;
                     };
-                    if event.mask.intersects(WATCH_INVALIDATION_FLAGS) {
-                        self.forget_watch_descriptor(event.wd);
+                    if event
+                        .mask
+                        .intersects(AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
+                    {
+                        reconcile_entry_watches = true;
+                    }
+                    if event
+                        .mask
+                        .intersects(AddWatchFlags::IN_DELETE | AddWatchFlags::IN_MOVED_FROM)
+                    {
                         changed = true;
                         reconcile_entry_watches = true;
-                        continue;
+                        self.forget_entry_watch(cache_key);
                     }
-                    let Some(name) = event.name.as_deref() else {
-                        continue;
-                    };
-                    if name == OsStr::new(METADATA_FILE_NAME)
-                        && event.mask.contains(AddWatchFlags::IN_MOVED_TO)
-                    {
-                        changed = true;
-                        if committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {
-                            committed_cache_keys.insert(cache_key);
-                        }
-                    } else if (name == OsStr::new(METADATA_FILE_NAME)
-                        || name == OsStr::new(CURRENT_IMAGE_FILE_NAME))
-                        && event
-                            .mask
-                            .intersects(AddWatchFlags::IN_DELETE | AddWatchFlags::IN_MOVED_FROM)
-                    {
-                        changed = true;
+                    continue;
+                }
+
+                let Some(cache_key) = self.cache_key_by_watch.get(&event.wd).cloned() else {
+                    continue;
+                };
+                if event.mask.intersects(WATCH_INVALIDATION_FLAGS) {
+                    self.forget_watch_descriptor(event.wd);
+                    changed = true;
+                    reconcile_entry_watches = true;
+                    continue;
+                }
+                let Some(name) = event.name.as_deref() else {
+                    continue;
+                };
+                if name == OsStr::new(METADATA_FILE_NAME)
+                    && event.mask.contains(AddWatchFlags::IN_MOVED_TO)
+                {
+                    changed = true;
+                    if committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {
+                        committed_cache_keys.insert(cache_key);
                     }
+                } else if (name == OsStr::new(METADATA_FILE_NAME)
+                    || name == OsStr::new(CURRENT_IMAGE_FILE_NAME))
+                    && event
+                        .mask
+                        .intersects(AddWatchFlags::IN_DELETE | AddWatchFlags::IN_MOVED_FROM)
+                {
+                    changed = true;
                 }
             }
             if !drained_all_events {
@@ -365,6 +369,57 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(change.committed_cache_keys, BTreeSet::from([cache_key]));
+    }
+
+    #[tokio::test]
+    async fn bounded_drain_preserves_readiness_for_remaining_events() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(temp.path().join("runner"));
+        let cache = WorkspaceImageCache::new(paths);
+        let cache_key = "c".repeat(64);
+        cache
+            .ensure_workspace_cache_entry_dir(&cache_key)
+            .await
+            .unwrap();
+        let entry_dir = cache.workspace_image_cache_entry_dir(&cache_key);
+
+        for index in 0..5_000 {
+            tokio::fs::write(entry_dir.join(format!("noise-{index:04}")), b"")
+                .await
+                .unwrap();
+        }
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).unwrap();
+        for index in 0..5_000 {
+            tokio::fs::remove_file(entry_dir.join(format!("noise-{index:04}")))
+                .await
+                .unwrap();
+        }
+        let metadata = cache.workspace_image_cache_metadata(&cache_key);
+        let temporary_metadata = metadata.with_extension("tmp");
+        tokio::fs::write(&temporary_metadata, b"{}").await.unwrap();
+        tokio::fs::rename(&temporary_metadata, &metadata)
+            .await
+            .unwrap();
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(first.committed_cache_keys.is_empty());
+
+        let mut committed_cache_keys = BTreeSet::new();
+        for _ in 0..8 {
+            let change =
+                tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
+                    .await
+                    .unwrap()
+                    .unwrap();
+            committed_cache_keys.extend(change.committed_cache_keys);
+            if committed_cache_keys.contains(&cache_key) {
+                break;
+            }
+        }
+        assert_eq!(committed_cache_keys, BTreeSet::from([cache_key]));
     }
 
     #[test]
