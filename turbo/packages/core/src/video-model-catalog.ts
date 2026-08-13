@@ -341,6 +341,11 @@ export type VideoModel = VideoModelId;
 
 export const VIDEO_MODELS = Object.keys(VIDEO_MODEL_CONFIGS) as VideoModel[];
 
+/** The subset a user-facing picker offers; the rest stay CLI-only. */
+export const PUBLIC_VIDEO_MODELS = VIDEO_MODELS.filter((model) => {
+  return VIDEO_MODEL_CONFIGS[model].public;
+});
+
 export const VIDEO_MODEL_ALIASES = {
   "dreamina-seedance-2.5": "dreamina-seedance-2-5-260628",
   "dreamina-seedance-2-5": "dreamina-seedance-2-5-260628",

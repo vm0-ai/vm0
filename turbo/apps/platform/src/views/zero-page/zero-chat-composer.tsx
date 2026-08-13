@@ -147,6 +147,7 @@ import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
+  type VideoModelPickerState,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
@@ -183,6 +184,7 @@ import {
   customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
+  videoModelSelectionEnabled$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -207,6 +209,7 @@ import type {
   ComposerPendingEvent,
   ComposerPrimaryAction,
   ComposerSignals,
+  ComposerVideoModelSignals,
 } from "../../signals/zero-page/composer-signals.ts";
 import {
   audioInputAvailable$,
@@ -7417,7 +7420,13 @@ function ModelConfigurationWarning({
   );
 }
 
-function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+function ComposerModelPickerSlotBase({
+  signals,
+  videoModel,
+}: {
+  signals: ComposerSignals;
+  videoModel: VideoModelPickerState | undefined;
+}) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
@@ -7495,9 +7504,57 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         disabled={modelPicker.disabled}
         resolveDefaultSelection={false}
         codexFastModeEnabled={codexFastModeEnabled}
+        {...(videoModel ? { videoModel } : {})}
       />
       <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
+  );
+}
+
+/**
+ * Choosing a video model writes the thread pin and closes the popover, which
+ * also returns the picker to its run model panel.
+ */
+function ComposerVideoModelPickerSlot({
+  signals,
+  videoModelSignals,
+}: {
+  signals: ComposerSignals;
+  videoModelSignals: ComposerVideoModelSignals;
+}) {
+  const panelOpen = useGet(signals.model.videoModelPanelOpen$);
+  const setPanelOpen = useSet(signals.model.setVideoModelPanelOpen$);
+  const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
+  const selectedVideoModel = useGet(videoModelSignals.selectedVideoModel$);
+  const setVideoModel = useSet(videoModelSignals.setVideoModel$);
+  const pageSignal = useGet(pageSignal$);
+  const videoModel: VideoModelPickerState = {
+    value: selectedVideoModel,
+    onChange: (next) => {
+      detach(setVideoModel(next, pageSignal), Reason.DomCallback);
+      setModelPickerOpen(false);
+    },
+    panelOpen,
+    onPanelOpenChange: setPanelOpen,
+  };
+  return (
+    <ComposerModelPickerSlotBase signals={signals} videoModel={videoModel} />
+  );
+}
+
+function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
+  const videoModelSignals = signals.videoModel;
+  if (videoModelEnabled && videoModelSignals) {
+    return (
+      <ComposerVideoModelPickerSlot
+        signals={signals}
+        videoModelSignals={videoModelSignals}
+      />
+    );
+  }
+  return (
+    <ComposerModelPickerSlotBase signals={signals} videoModel={undefined} />
   );
 }
 

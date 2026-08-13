@@ -58,6 +58,10 @@ export const videoTemplateOptionsEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VideoTemplateOptions] ?? false;
 });
 
+export const videoModelSelectionEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.VideoModelSelection] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

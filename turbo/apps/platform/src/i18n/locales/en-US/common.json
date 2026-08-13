@@ -4215,6 +4215,7 @@
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
+        "manageMoreModels": "Manage more models",
         "models": "Models",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
@@ -4229,7 +4230,9 @@
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Deepseek"
         },
-        "standard": "Standard"
+        "standard": "Standard",
+        "videoModels": "Video models",
+        "videoModelUseDefault": "Use my default"
       },
       "policies": {
         "actionsFor": "Actions for {{model}}",

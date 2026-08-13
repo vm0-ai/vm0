@@ -4265,6 +4265,7 @@
         "inheritDefault": "Herdar o padrão da organização",
         "loadError": "Não foi possível carregar os modelos.",
         "loading": "Carregando modelos...",
+        "manageMoreModels": "Gerenciar mais modelos",
         "models": "Modelos",
         "noConfiguredModels": "Nenhum modelo configurado",
         "priceTiers": {
@@ -4279,7 +4280,9 @@
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "standard": "Padrão"
+        "standard": "Padrão",
+        "videoModels": "Modelos de vídeo",
+        "videoModelUseDefault": "Usar meu padrão"
       },
       "policies": {
         "actionsFor": "Ações para {{model}}",

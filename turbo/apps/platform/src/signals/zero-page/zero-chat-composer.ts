@@ -254,17 +254,32 @@ async function loadPresentationTemplateHtmlPreview(
 
 function createBasicComposerUiSignals() {
   const internalModelPickerOpen$ = state(false);
+  // The video model list is a second panel inside the same popover, so its
+  // state is scoped to the picker being open: closing the picker always
+  // returns it to the run model list.
+  const internalVideoModelPanelOpen$ = state(false);
   const modelPickerOpen$ = computed((get) => {
     return get(internalModelPickerOpen$);
   });
   const setModelPickerOpen$ = command(({ set }, open: boolean) => {
     set(internalModelPickerOpen$, open);
+    if (!open) {
+      set(internalVideoModelPanelOpen$, false);
+    }
+  });
+  const videoModelPanelOpen$ = computed((get) => {
+    return get(internalVideoModelPanelOpen$);
+  });
+  const setVideoModelPanelOpen$ = command(({ set }, open: boolean) => {
+    set(internalVideoModelPanelOpen$, open);
   });
 
   return {
     model: {
       modelPickerOpen$,
       setModelPickerOpen$,
+      videoModelPanelOpen$,
+      setVideoModelPanelOpen$,
     },
   };
 }

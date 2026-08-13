@@ -9,6 +9,8 @@ import {
 import { delay, timeout } from "signal-timers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
 import { onRef, onRejection, resetSignal, setLoop, settle } from "../utils.ts";
@@ -113,6 +115,7 @@ import {
   patchChatThreadComputerUseHost$,
   patchChatThreadDraft$,
   patchChatThreadModelSelection$,
+  patchChatThreadVideoModel$,
   subscribeChatThreadRealtime$,
 } from "./chat-thread-remote-signals.ts";
 import { markChatThreadRead$ } from "./chat-thread-mark-read.ts";
@@ -549,6 +552,39 @@ function createModelSelectionForSend({
         : { selectedModel };
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: composer video model pin
+// ---------------------------------------------------------------------------
+
+/**
+ * Thread-level video model pin. `null` means the thread follows the member's
+ * personal default, so it is a selectable state rather than the absence of one.
+ */
+function createVideoModelSelection(
+  threadId: string,
+  threadMeta$: Computed<ThreadMeta | null>,
+) {
+  // Thread meta keeps the pin loose so a model that later leaves the catalog
+  // still replays; the picker only offers catalog models, so narrow here.
+  const selectedVideoModel$ = computed((get): VideoModel | null => {
+    const selected = get(threadMeta$)?.selectedVideoModel ?? null;
+    return selected !== null && isVideoModelId(selected) ? selected : null;
+  });
+
+  const setVideoModelSelection$ = command(
+    async ({ set }, value: VideoModel | null, signal: AbortSignal) => {
+      await set(
+        patchChatThreadVideoModel$,
+        { threadId, videoModel: value },
+        signal,
+      );
+      signal.throwIfAborted();
+    },
+  );
+
+  return { selectedVideoModel$, setVideoModelSelection$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -3635,6 +3671,7 @@ interface CreateChatThreadComposerSignalsOptions {
   readonly draft: DraftSignals;
   readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   readonly modelSelection: ReturnType<typeof createModelSelection>;
+  readonly videoModelSelection: ReturnType<typeof createVideoModelSelection>;
   readonly computerUseHostSelection: ReturnType<
     typeof createComputerUseHostSelection
   >;
@@ -3770,6 +3807,10 @@ function createChatThreadComposerSignals(
     selectedModelOauthAvailable$: modelSelection.selectedModelOauthAvailable$,
     setModelSelection$: modelSelection.setModelSelection$,
     configureSelectedModel$: modelSelection.configureSelectedModel$,
+    videoModel: {
+      selectedVideoModel$: options.videoModelSelection.selectedVideoModel$,
+      setVideoModel$: options.videoModelSelection.setVideoModelSelection$,
+    },
     computerUseHostId$: computerUseHostSelection.computerUseHostId$,
     cloudBrowserEnabled$: computerUseHostSelection.cloudBrowserEnabled$,
     setComputerUseHostId$: computerUseHostSelection.setComputerUseHostId$,
@@ -3789,6 +3830,10 @@ function createThreadComposerSignalsWithContext(
 ): ComposerSignals {
   const modelSelection = createModelSelection(threadId, context.threadMeta$);
   const modelSelectionForSend$ = createModelSelectionForSend(modelSelection);
+  const videoModelSelection = createVideoModelSelection(
+    threadId,
+    context.threadMeta$,
+  );
   const computerUseHostSelection = createComputerUseHostSelection(
     threadId,
     context.threadMeta$,
@@ -3812,6 +3857,7 @@ function createThreadComposerSignalsWithContext(
     draft,
     queueDraftSync$,
     modelSelection,
+    videoModelSelection,
     computerUseHostSelection,
     messageActions,
     cancellationRecoveryPending$: context.cancellationRecoveryPending$,

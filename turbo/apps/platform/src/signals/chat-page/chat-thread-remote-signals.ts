@@ -5,9 +5,11 @@ import {
   chatThreadDraftSchema,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
+  chatThreadVideoModelContract,
   type PersistedAttachment,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -58,6 +60,11 @@ interface PatchComputerUseHostArgs {
   readonly threadId: string;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
+}
+
+interface PatchVideoModelArgs {
+  readonly threadId: string;
+  readonly videoModel: VideoModel | null;
 }
 
 interface SubscribeRealtimeArgs {
@@ -182,6 +189,41 @@ export const patchChatThreadComputerUseHost$ = command(
       client.update({
         params: { id: threadId },
         body: { computerUseHostId, cloudBrowserEnabled, eventId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+  },
+);
+
+export const patchChatThreadVideoModel$ = command(
+  async (
+    { get, set },
+    { threadId, videoModel }: PatchVideoModelArgs,
+    signal: AbortSignal,
+  ) => {
+    const eventId = crypto.randomUUID();
+    const threadMeta = get(chatThreadMetaMap$).get(threadId);
+    if (threadMeta) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "video_model_updated",
+        chatThreadId: threadId,
+        agentId: threadMeta.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        cloudBrowserEnabled: false,
+        selectedVideoModel: videoModel,
+        createdAt: nowDate().toISOString(),
+      } satisfies OptimisticChatThreadEvent);
+    }
+    const client = get(zeroClient$)(chatThreadVideoModelContract);
+    await accept(
+      client.update({
+        params: { id: threadId },
+        body: { model: videoModel, eventId },
         fetchOptions: { signal },
       }),
       [204],

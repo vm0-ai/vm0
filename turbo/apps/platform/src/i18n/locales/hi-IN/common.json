@@ -4215,6 +4215,7 @@
         "inheritDefault": "ऑर्ग डिफॉल्ट से इनहेरिट करें",
         "loadError": "मॉडल लोड करने में असमर्थ.",
         "loading": "मॉडल लोड हो रहे हैं...",
+        "manageMoreModels": "और मॉडल प्रबंधित करें",
         "models": "मॉडल",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",
         "priceTiers": {
@@ -4229,7 +4230,9 @@
           "claudeCodeOauth": "Claude Code (OAuth टोकन)",
           "deepseek": "गहन खोज"
         },
-        "standard": "मानक"
+        "standard": "मानक",
+        "videoModels": "वीडियो मॉडल",
+        "videoModelUseDefault": "मेरा डिफ़ॉल्ट उपयोग करें"
       },
       "policies": {
         "actionsFor": "{{model}} के लिए क्रियाएँ",

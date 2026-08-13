@@ -4265,6 +4265,7 @@
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
+        "manageMoreModels": "Gestisci altri modelli",
         "models": "Modelli",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
@@ -4279,7 +4280,9 @@
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Ricerca profonda"
         },
-        "standard": "Norma"
+        "standard": "Norma",
+        "videoModels": "Modelli video",
+        "videoModelUseDefault": "Usa la mia impostazione predefinita"
       },
       "policies": {
         "actionsFor": "Azioni per {{model}}",

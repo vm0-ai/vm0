@@ -6,7 +6,7 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
-import { Check, Cpu, Zap } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Cpu, Zap } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -33,6 +33,11 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  PUBLIC_VIDEO_MODELS,
+  VIDEO_MODEL_CONFIGS,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 import { useTranslation } from "react-i18next";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
@@ -61,6 +66,22 @@ import { ProviderIcon } from "./settings/provider-icons";
 export interface ModelProviderSelection {
   selectedModel: SupportedRunModel;
   codexServiceTier?: CodexServiceTier;
+}
+
+/**
+ * Video model side of the picker. The run model list and this one share a
+ * popover but nothing else: video models carry no provider routing, no price
+ * tier, and no plan gate, so every catalog model is offered to everyone.
+ *
+ * `value` is `null` when the caller has pinned nothing and follows its own
+ * default. That is a state the user can return to, so the panel lists it
+ * alongside the models rather than treating it as "no selection".
+ */
+export interface VideoModelPickerState {
+  readonly value: VideoModel | null;
+  readonly onChange: (next: VideoModel | null) => void;
+  readonly panelOpen: boolean;
+  readonly onPanelOpenChange: (open: boolean) => void;
 }
 
 interface ModelProviderPickerProps {
@@ -97,6 +118,11 @@ interface ModelProviderPickerProps {
   resolveDefaultSelection?: boolean;
   /** Enables the inline Codex Fast choices in the model list. */
   codexFastModeEnabled?: boolean;
+  /**
+   * When provided, the dropdown gains a row that opens the video model panel.
+   * Omitted by callers that have nothing to pin the video model to.
+   */
+  videoModel?: VideoModelPickerState;
 }
 
 // Keep the inherit option distinct from an empty model identifier at the UI
@@ -663,6 +689,116 @@ function ModelFirstPolicyItems({
   );
 }
 
+// Rows in the video panel are plain buttons rather than SelectItems: the
+// Select's value space belongs to the run model, and a SelectItem here would
+// both join it and close the popover on click.
+const VIDEO_PANEL_ROW_CLASS =
+  "relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-left text-sm outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground";
+
+function VideoModelPanelRow({
+  label,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={selected}
+      className={VIDEO_PANEL_ROW_CLASS}
+      onClick={onSelect}
+    >
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {selected && (
+        <Check size={15} className="absolute right-2 text-foreground" />
+      )}
+    </button>
+  );
+}
+
+function VideoModelPanel({
+  videoModel,
+}: {
+  videoModel: VideoModelPickerState;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <button
+        type="button"
+        className="flex w-full items-center gap-1 rounded-lg py-1.5 pl-1 pr-2 text-left text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground"
+        onClick={() => {
+          videoModel.onPanelOpenChange(false);
+        }}
+      >
+        <ChevronLeft size={14} className="shrink-0" aria-hidden="true" />
+        <span className="min-w-0 truncate">
+          {t(($) => {
+            return $.settings.models.picker.videoModels;
+          })}
+        </span>
+      </button>
+      <VideoModelPanelRow
+        label={t(($) => {
+          return $.settings.models.picker.videoModelUseDefault;
+        })}
+        selected={videoModel.value === null}
+        onSelect={() => {
+          videoModel.onChange(null);
+        }}
+      />
+      <SelectSeparator className="my-0" />
+      {PUBLIC_VIDEO_MODELS.map((candidate) => {
+        return (
+          <VideoModelPanelRow
+            key={candidate}
+            label={VIDEO_MODEL_CONFIGS[candidate].label}
+            selected={videoModel.value === candidate}
+            onSelect={() => {
+              videoModel.onChange(candidate);
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function ManageMoreModelsRow({
+  videoModel,
+}: {
+  videoModel: VideoModelPickerState;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <SelectSeparator className="my-0" />
+      <button
+        type="button"
+        className={VIDEO_PANEL_ROW_CLASS}
+        onClick={() => {
+          videoModel.onPanelOpenChange(true);
+        }}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {t(($) => {
+            return $.settings.models.picker.manageMoreModels;
+          })}
+        </span>
+        <ChevronRight
+          size={15}
+          className="absolute right-2 text-muted-foreground"
+          aria-hidden="true"
+        />
+      </button>
+    </>
+  );
+}
+
 interface ModelFirstModelPickerContentBaseProps {
   selectValue: string;
   placeholder: string;
@@ -671,6 +807,7 @@ interface ModelFirstModelPickerContentBaseProps {
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
+  videoModel: VideoModelPickerState | undefined;
 }
 
 function ModelFirstModelPickerContentLayout({
@@ -681,10 +818,14 @@ function ModelFirstModelPickerContentLayout({
   modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
+  videoModel,
 }: ModelFirstModelPickerContentBaseProps) {
+  const videoPanelOpen = videoModel?.panelOpen ?? false;
   return (
     <SelectContent className="max-h-[280px] min-w-[260px]">
-      {isHiddenModelFirstSelectValue(selectValue) && (
+      {/* The video panel replaces the model rows, so keep the selected run
+          model measurable the same way a hidden select value is. */}
+      {(videoPanelOpen || isHiddenModelFirstSelectValue(selectValue)) && (
         <SelectItem
           value={selectValue}
           className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
@@ -699,13 +840,20 @@ function ModelFirstModelPickerContentLayout({
           })}
         </SelectItem>
       )}
-      <ModelFirstPolicyItems
-        policies={policies}
-        selection={selection}
-        modelCapabilities={modelCapabilities}
-        codexFastModeEnabled={codexFastModeEnabled}
-        showSeparator={false}
-      />
+      {videoModel && videoPanelOpen ? (
+        <VideoModelPanel videoModel={videoModel} />
+      ) : (
+        <>
+          <ModelFirstPolicyItems
+            policies={policies}
+            selection={selection}
+            modelCapabilities={modelCapabilities}
+            codexFastModeEnabled={codexFastModeEnabled}
+            showSeparator={false}
+          />
+          {videoModel && <ManageMoreModelsRow videoModel={videoModel} />}
+        </>
+      )}
     </SelectContent>
   );
 }
@@ -779,6 +927,7 @@ function ModelFirstSelectPicker({
   modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
+  videoModel,
   open,
   onOpenChange,
   onValueChange,
@@ -791,6 +940,7 @@ function ModelFirstSelectPicker({
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
+  videoModel: VideoModelPickerState | undefined;
   open: boolean | undefined;
   onOpenChange: ((open: boolean) => void) | undefined;
   onValueChange: (raw: string) => void;
@@ -826,6 +976,7 @@ function ModelFirstSelectPicker({
             modelCapabilities={modelCapabilities}
             codexFastModeEnabled={codexFastModeEnabled}
             fastLabel={fastLabel}
+            videoModel={videoModel}
           />
         ))}
     </Select>
@@ -846,6 +997,7 @@ function SubscribedModelFirstModelPicker({
   resolveDefaultSelection,
   codexFastModeEnabled = false,
   fastLabel,
+  videoModel,
 }: ModelProviderPickerProps & {
   placeholder: string;
   compactTrigger: boolean;
@@ -932,6 +1084,7 @@ function SubscribedModelFirstModelPicker({
       modelCapabilities={modelCapabilities}
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
+      videoModel={videoModel}
       open={open}
       onOpenChange={onOpenChange}
       onValueChange={handleRawValueChange}
@@ -1044,11 +1197,13 @@ function SubscribedExplicitModelFirstModelPickerContent({
   placeholder,
   codexFastModeEnabled,
   fastLabel,
+  videoModel,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
   codexFastModeEnabled: boolean;
   fastLabel: string;
+  videoModel: VideoModelPickerState | undefined;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
   const modelCapabilities =
@@ -1092,6 +1247,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
       modelCapabilities={modelCapabilities}
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
+      videoModel={videoModel}
     />
   );
 }
@@ -1151,6 +1307,7 @@ function EnabledExplicitModelFirstModelPicker(
             placeholder={props.placeholder}
             codexFastModeEnabled={props.codexFastModeEnabled ?? false}
             fastLabel={props.fastLabel}
+            videoModel={props.videoModel}
           />
         ) : undefined
       }
@@ -1160,6 +1317,7 @@ function EnabledExplicitModelFirstModelPicker(
       modelCapabilities={DEFAULT_MODEL_PLAN_CAPABILITIES}
       codexFastModeEnabled={props.codexFastModeEnabled ?? false}
       fastLabel={props.fastLabel}
+      videoModel={props.videoModel}
       open={props.open}
       onOpenChange={props.onOpenChange}
       onValueChange={handleRawValueChange}
@@ -1223,6 +1381,7 @@ export function ModelProviderPicker({
   disabled = false,
   resolveDefaultSelection = true,
   codexFastModeEnabled = false,
+  videoModel,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder =
@@ -1245,6 +1404,7 @@ export function ModelProviderPicker({
     disabled,
     codexFastModeEnabled,
     fastLabel,
+    ...(videoModel ? { videoModel } : {}),
   };
   if (resolveDefaultSelection) {
     return <ModelFirstModelPickerWithDefaultSelection {...props} />;

@@ -4214,6 +4214,7 @@
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
+        "manageMoreModels": "他のモデルを管理",
         "models": "モデル",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
@@ -4228,7 +4229,9 @@
           "claudeCodeOauth": "Claude Code（OAuthトークン）",
           "deepseek": "ディープシーク"
         },
-        "standard": "標準"
+        "standard": "標準",
+        "videoModels": "動画モデル",
+        "videoModelUseDefault": "自分のデフォルトを使用"
       },
       "policies": {
         "actionsFor": "{{model}} のアクション",
