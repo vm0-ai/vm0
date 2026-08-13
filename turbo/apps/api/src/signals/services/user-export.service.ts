@@ -26,7 +26,7 @@ import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";
-import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
+import { workflows } from "@okouai/db/schema/workflow";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { extractFilesFromTarGz } from "../../lib/tar";
@@ -548,23 +548,23 @@ async function collectWorkflowFiles(
 ): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
   const entries: ZipEntry[] = [];
 
-  const workflows = await runtime.db
+  const workflowRows = await runtime.db
     .select({
-      id: zeroWorkflows.id,
-      orgId: zeroWorkflows.orgId,
-      name: zeroWorkflows.name,
-      createdAt: zeroWorkflows.createdAt,
+      id: workflows.id,
+      orgId: workflows.orgId,
+      name: workflows.name,
+      createdAt: workflows.createdAt,
     })
-    .from(zeroWorkflows)
-    .where(eq(zeroWorkflows.ownerUserId, userId))
+    .from(workflows)
+    .where(eq(workflows.ownerUserId, userId))
     .orderBy(
-      asc(zeroWorkflows.orgId),
-      asc(zeroWorkflows.name),
-      asc(zeroWorkflows.createdAt),
+      asc(workflows.orgId),
+      asc(workflows.name),
+      asc(workflows.createdAt),
     );
   signal.throwIfAborted();
 
-  for (const workflow of workflows) {
+  for (const workflow of workflowRows) {
     const files =
       (await loadWorkflowVolumeFiles(runtime.get, {
         orgId: workflow.orgId,

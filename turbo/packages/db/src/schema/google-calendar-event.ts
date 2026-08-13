@@ -10,7 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
-import { zeroWorkflowAutomations } from "./zero-workflow";
+import { workflowAutomations } from "./workflow";
 import type { GoogleCalendarEventSnapshot } from "@okouai/db/jsonb-contracts/google-calendar-event";
 
 export const googleCalendarWatchStates = pgTable(
@@ -113,7 +113,7 @@ export const googleCalendarProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

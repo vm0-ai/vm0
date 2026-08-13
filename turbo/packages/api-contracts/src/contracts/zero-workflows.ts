@@ -7,9 +7,7 @@ import { publicConnectorCatalogIconSchema } from "./zero-connector-catalog";
 const c = initContract();
 
 export const zeroWorkflowVisibilitySchema = z.enum(["public", "private"]);
-export type ZeroWorkflowVisibility = z.infer<
-  typeof zeroWorkflowVisibilitySchema
->;
+export type WorkflowVisibility = z.infer<typeof zeroWorkflowVisibilitySchema>;
 
 /**
  * Workflow name (slug) validation regex.
@@ -91,12 +89,12 @@ export const workflowInstructionSchema = z
   .max(WORKFLOW_FILES_MAX_BYTES);
 
 export const zeroWorkflowScheduleTypeSchema = z.enum(["cron", "loop", "once"]);
-export type ZeroWorkflowScheduleType = z.infer<
+export type WorkflowScheduleType = z.infer<
   typeof zeroWorkflowScheduleTypeSchema
 >;
 
 export const zeroWorkflowAutomationKindSchema = z.enum(["schedule", "event"]);
-export type ZeroWorkflowAutomationKind = z.infer<
+export type WorkflowAutomationKind = z.infer<
   typeof zeroWorkflowAutomationKindSchema
 >;
 
@@ -122,7 +120,7 @@ export const zeroAutomationEventTypeSchema = z.enum([
   "stripe-invoice-paid",
   "webhook-received",
 ]);
-export type ZeroAutomationEventType = z.infer<
+export type WorkflowAutomationEventType = z.infer<
   typeof zeroAutomationEventTypeSchema
 >;
 

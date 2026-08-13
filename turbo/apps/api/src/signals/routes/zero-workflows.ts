@@ -16,10 +16,10 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowWebhookAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflowWebhookAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { and, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -180,16 +180,16 @@ async function publicWorkflowSlugExists(
   },
 ): Promise<boolean> {
   const [existing] = await db
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
+    .select({ id: workflows.id })
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
-        eq(zeroWorkflows.name, args.name),
-        eq(zeroWorkflows.visibility, "public"),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.agentId),
+        eq(workflows.name, args.name),
+        eq(workflows.visibility, "public"),
         args.excludeWorkflowId
-          ? ne(zeroWorkflows.id, args.excludeWorkflowId)
+          ? ne(workflows.id, args.excludeWorkflowId)
           : undefined,
       ),
     )
@@ -226,17 +226,17 @@ async function privateWorkflowSlugExists(
   },
 ): Promise<boolean> {
   const [existing] = await db
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
+    .select({ id: workflows.id })
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
-        eq(zeroWorkflows.ownerUserId, args.ownerUserId),
-        eq(zeroWorkflows.name, args.name),
-        eq(zeroWorkflows.visibility, "private"),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.agentId),
+        eq(workflows.ownerUserId, args.ownerUserId),
+        eq(workflows.name, args.name),
+        eq(workflows.visibility, "private"),
         args.excludeWorkflowId
-          ? ne(zeroWorkflows.id, args.excludeWorkflowId)
+          ? ne(workflows.id, args.excludeWorkflowId)
           : undefined,
       ),
     )
@@ -391,7 +391,7 @@ const createWorkflowInner$ = command(
     const currentTime = nowDate();
     const inserted = await writeDb.transaction(async (tx) => {
       const [workflow] = await tx
-        .insert(zeroWorkflows)
+        .insert(workflows)
         .values({
           orgId: auth.orgId,
           agentId: agent.id,
@@ -406,7 +406,7 @@ const createWorkflowInner$ = command(
           createdAt: currentTime,
           updatedAt: currentTime,
         })
-        .returning({ id: zeroWorkflows.id });
+        .returning({ id: workflows.id });
 
       if (!workflow) {
         return null;
@@ -737,7 +737,7 @@ async function insertCopiedWorkflowRow(
   args: CopyWorkflowRuntimeArgs,
 ): Promise<{ readonly id: string } | undefined> {
   const [workflow] = await tx
-    .insert(zeroWorkflows)
+    .insert(workflows)
     .values({
       orgId: args.orgId,
       agentId: args.targetAgentId,
@@ -752,7 +752,7 @@ async function insertCopiedWorkflowRow(
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
     })
-    .returning({ id: zeroWorkflows.id });
+    .returning({ id: workflows.id });
   return workflow;
 }
 
@@ -768,13 +768,11 @@ async function copyWorkflowWebhookAutomationConfig(
 ): Promise<void> {
   const [sourceWebhook] = await tx
     .select({
-      encryptedSecret: zeroWorkflowWebhookAutomations.encryptedSecret,
-      secretLastFour: zeroWorkflowWebhookAutomations.secretLastFour,
+      encryptedSecret: workflowWebhookAutomations.encryptedSecret,
+      secretLastFour: workflowWebhookAutomations.secretLastFour,
     })
-    .from(zeroWorkflowWebhookAutomations)
-    .where(
-      eq(zeroWorkflowWebhookAutomations.automationId, args.sourceAutomationId),
-    )
+    .from(workflowWebhookAutomations)
+    .where(eq(workflowWebhookAutomations.automationId, args.sourceAutomationId))
     .limit(1);
   const token = mintWorkflowWebhookToken();
   let encryptedSecret: string;
@@ -791,7 +789,7 @@ async function copyWorkflowWebhookAutomationConfig(
     secretLastFour = secret.slice(-4);
   }
 
-  await tx.insert(zeroWorkflowWebhookAutomations).values({
+  await tx.insert(workflowWebhookAutomations).values({
     automationId: args.targetAutomationId,
     tokenHash: hashWorkflowWebhookToken(token),
     encryptedToken: await encryptWorkflowWebhookToken(token, {
@@ -808,7 +806,7 @@ async function copyWorkflowWebhookAutomationConfig(
 async function copyWorkflowAutomationRow(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowScopedRowsArgs & {
-    readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+    readonly automation: typeof workflowAutomations.$inferSelect;
   },
 ): Promise<void> {
   const copiedAutomation = await insertWorkflowAutomation(tx, {
@@ -857,12 +855,12 @@ async function copyWorkflowUserAutomations(
 ): Promise<void> {
   const rows = await tx
     .select(workflowAutomationColumns())
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-        eq(zeroWorkflowAutomations.workflowId, args.sourceWorkflowId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.workflowId, args.sourceWorkflowId),
       ),
     );
   if (rows.length === 0) {
@@ -1218,13 +1216,13 @@ async function applyVisibilityUpdate(
   },
 ): Promise<void> {
   await db
-    .update(zeroWorkflows)
+    .update(workflows)
     .set({
       ...args.patch,
       updatedBy: args.updatedByUserId,
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflows.id, args.workflowId));
+    .where(eq(workflows.id, args.workflowId));
 }
 
 function summaryFrom(
