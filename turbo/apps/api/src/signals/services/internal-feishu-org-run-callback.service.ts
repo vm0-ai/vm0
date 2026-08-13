@@ -1,11 +1,11 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { buildFeishuAgentResponseMessage } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";

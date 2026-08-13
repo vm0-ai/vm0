@@ -11,8 +11,8 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { PresentationTemplateError } from "@vm0/db/jsonb-contracts/presentation-template";
-export type { PresentationTemplateError } from "@vm0/db/jsonb-contracts/presentation-template";
+import type { PresentationTemplateError } from "@okouai/db/jsonb-contracts/presentation-template";
+export type { PresentationTemplateError } from "@okouai/db/jsonb-contracts/presentation-template";
 
 /**
  * Who can see a template. Private templates are visible only to their owner;

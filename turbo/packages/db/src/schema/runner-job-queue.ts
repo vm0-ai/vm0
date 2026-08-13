@@ -7,7 +7,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
-import type { RunnerJobQueueExecutionContext } from "@vm0/db/jsonb-contracts/runner-job-queue";
+import type { RunnerJobQueueExecutionContext } from "@okouai/db/jsonb-contracts/runner-job-queue";
 
 /**
  * Runner Job Queue table

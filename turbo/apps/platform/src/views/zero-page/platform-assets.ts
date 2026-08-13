@@ -16,6 +16,9 @@ export const emptyAutomationsImg = zeroPageAssetUrl(
 export const emptyWorkflowImg = zeroPageAssetUrl(
   "assets/empty-workflow-96e709d12911.webp",
 );
+export const emptyUsageImg = zeroPageAssetUrl(
+  "assets/empty-usage-a1f6d48793ba.webp",
+);
 export const computerUseIllustrationImg = zeroPageAssetUrl(
   "assets/computer-use-illustration-eecea534a3ac.png?v=568fa471",
 );

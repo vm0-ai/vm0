@@ -1,7 +1,7 @@
 import {
   desktopProductFromClientHeader,
   type DesktopProduct,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 
 export function desktopProductDisplayName(
   product: DesktopProduct | undefined,

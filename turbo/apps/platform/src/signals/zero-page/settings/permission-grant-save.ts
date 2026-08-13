@@ -2,16 +2,16 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import {
   expandFirewallMetadataDefaultPolicy,
   resolveFirewallMetadataPolicies,
-} from "@vm0/connectors/firewall-metadata/policy";
+} from "@okouai/connectors/firewall-metadata/policy";
 import type {
   ApplyUserPermissionGrant,
   UserPermissionGrantAction,
   UserPermissionGrantExpiresIn,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   createPermissionDraftContext,
   materializePermissionDraftForLegacySave,

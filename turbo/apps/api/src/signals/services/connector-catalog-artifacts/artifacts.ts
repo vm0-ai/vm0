@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
+import { SYSTEM_ORG_ID } from "@okouai/core/storage-names";
 
 import {
   artifactKeySchema,

@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 
 import { z } from "zod";
 
-import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector-config";
+import type { ConnectorExternalCodeGrantConfig } from "@okouai/connectors/connector-config";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { OAuthProviderHttpError, throwOAuthError } from "../../oauth/error";
 

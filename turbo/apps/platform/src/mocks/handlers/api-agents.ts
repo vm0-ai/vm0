@@ -1,18 +1,18 @@
 import {
   zeroTeamContract,
   type TeamComposeItem,
-} from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/zero-team";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
   zeroAgentDraftContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 import {
   chatSearchContract,
   chatThreadsContract,
@@ -24,8 +24,8 @@ import {
   chatThreadModelSelectionContract,
   chatThreadEventsContract,
   chatThreadArtifactsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ComposeListItem } from "@okouai/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_TEAM: TeamComposeItem[] = [

@@ -6,7 +6,7 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -2426,9 +2426,12 @@ describe("RUN-04: agent run telemetry families", () => {
             connector_diagnostic_env_names: ["FAL_TOKEN"],
             connector_diagnostic_base: "https://fal.run",
             request_headers: { accept: "application/json", junk: 9 },
+            request_headers_truncated: true,
             request_body: "req",
             request_body_encoding: UTF8_ENCODING,
             request_body_truncated: false,
+            response_headers: { server: "***", junk: 9 },
+            response_headers_truncated: false,
             response_body: "cmVz",
             response_body_encoding: "base64",
             response_body_truncated: true,
@@ -2442,6 +2445,7 @@ describe("RUN-04: agent run telemetry families", () => {
             host: "redis.example.com",
             port: 6379,
             request_body_encoding: "weird",
+            response_headers_truncated: "false",
             auth_cache_hit: null,
           },
           {
@@ -2470,13 +2474,68 @@ describe("RUN-04: agent run telemetry families", () => {
             ],
             firewalls: [
               {
+                kind: "inline",
                 name: "test-fw",
+                customConnectorId: "11111111-1111-4111-8111-111111111111",
                 apis: [
                   {
+                    id: "test-fw:0",
                     base: "https://api.example.com",
+                    hostPolicy: { kind: "publicDestination" },
+                    auth: {
+                      headerEntries: [
+                        {
+                          name: "Authorization",
+                          value: `Bearer \${{ secrets.TEST_TOKEN }}`,
+                        },
+                      ],
+                      base: "https://auth.example.com",
+                      queryEntries: [
+                        {
+                          name: "api_key",
+                          value: `\${{ secrets.TEST_QUERY_TOKEN }}`,
+                        },
+                      ],
+                    },
                     permissions: [{ name: "read", rules: ["GET /users/*"] }],
                   },
+                  {
+                    id: "test-fw:1",
+                    base: "https://aws.example.com",
+                    auth: {
+                      awsSigv4: {
+                        accessKeyId: `\${{ secrets.AWS_ACCESS_KEY_ID }}`,
+                        secretAccessKey: `\${{ secrets.AWS_SECRET_ACCESS_KEY }}`,
+                        sessionToken: `\${{ secrets.AWS_SESSION_TOKEN }}`,
+                      },
+                    },
+                  },
                 ],
+              },
+              {
+                kind: "inline",
+                name: "fallback-fw",
+                apis: [
+                  {
+                    base: "https://fallback.example.com",
+                    auth: {
+                      headerEntries: [
+                        { name: "Authorization", value: "conflicting-auth" },
+                      ],
+                      awsSigv4: {
+                        accessKeyId: "access-key",
+                        secretAccessKey: "secret-key",
+                      },
+                    },
+                    permissions: [
+                      { name: "fallback", rules: ["GET /fallback"] },
+                    ],
+                  },
+                ],
+              },
+              {
+                name: "historical-fw",
+                apis: [{ base: "https://historical.example.com" }],
               },
             ],
             volumes: [
@@ -2559,7 +2618,54 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(Object.keys(contextRead.body.networkPolicies ?? {})).toStrictEqual([
       "github",
     ]);
-    expect(contextRead.body.firewalls).toHaveLength(1);
+    // New inline responses retain the previous top-level name/apis shape so
+    // already-loaded web clients can parse them as sanitized firewalls.
+    expect(contextRead.body.firewalls).toStrictEqual([
+      {
+        kind: "inline",
+        customConnectorId: "11111111-1111-4111-8111-111111111111",
+        name: "test-fw",
+        apis: [
+          {
+            id: "test-fw:0",
+            base: "https://api.example.com",
+            hostPolicy: { kind: "publicDestination" },
+            auth: {
+              headers: {
+                Authorization: `Bearer \${{ secrets.TEST_TOKEN }}`,
+              },
+              base: "https://auth.example.com",
+              query: { api_key: `\${{ secrets.TEST_QUERY_TOKEN }}` },
+            },
+            permissions: [{ name: "read", rules: ["GET /users/*"] }],
+          },
+          {
+            id: "test-fw:1",
+            base: "https://aws.example.com",
+            auth: {
+              awsSigv4: {
+                accessKeyId: `\${{ secrets.AWS_ACCESS_KEY_ID }}`,
+                secretAccessKey: `\${{ secrets.AWS_SECRET_ACCESS_KEY }}`,
+                sessionToken: `\${{ secrets.AWS_SESSION_TOKEN }}`,
+              },
+            },
+          },
+        ],
+      },
+      {
+        name: "fallback-fw",
+        apis: [
+          {
+            base: "https://fallback.example.com",
+            permissions: [{ name: "fallback", rules: ["GET /fallback"] }],
+          },
+        ],
+      },
+      {
+        name: "historical-fw",
+        apis: [{ base: "https://historical.example.com" }],
+      },
+    ]);
     expect(contextRead.body.volumes).toHaveLength(1);
 
     // Legacy dynamic map fields are ignored now that run context snapshots
@@ -2629,9 +2735,12 @@ describe("RUN-04: agent run telemetry families", () => {
             connector_diagnostic_env_names: ["FAL_TOKEN"],
             connector_diagnostic_base: "https://fal.run",
             request_headers: { accept: "application/json", junk: 9 },
+            request_headers_truncated: true,
             request_body: "req",
             request_body_encoding: UTF8_ENCODING,
             request_body_truncated: false,
+            response_headers: { server: "***", junk: 9 },
+            response_headers_truncated: false,
             response_body: "cmVz",
             response_body_encoding: "base64",
             response_body_truncated: true,
@@ -2645,6 +2754,7 @@ describe("RUN-04: agent run telemetry families", () => {
             host: "redis.example.com",
             port: 6379,
             request_body_encoding: "weird",
+            response_headers_truncated: "false",
             auth_cache_hit: null,
           },
           {
@@ -2706,9 +2816,12 @@ describe("RUN-04: agent run telemetry families", () => {
       connector_diagnostic_env_names: ["FAL_TOKEN"],
       connector_diagnostic_base: "https://fal.run",
       request_headers: { accept: "application/json" },
+      request_headers_truncated: true,
       request_body: "req",
       request_body_encoding: UTF8_ENCODING,
       request_body_truncated: false,
+      response_headers: { server: "***" },
+      response_headers_truncated: false,
       response_body: "cmVz",
       response_body_encoding: "base64",
       response_body_truncated: true,

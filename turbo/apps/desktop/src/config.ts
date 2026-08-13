@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
-import type { DesktopUpdateLine } from "@vm0/api-contracts/contracts/desktop-updates";
+import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
+import type { DesktopUpdateLine } from "@okouai/api-contracts/contracts/desktop-updates";
 import desktopIdentities from "./desktop-identities.json";
 import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
 

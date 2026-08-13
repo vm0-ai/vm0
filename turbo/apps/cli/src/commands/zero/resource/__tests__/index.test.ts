@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { WEBSITE_TEMPLATE_ITEMS } from "@vm0/core";
+import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

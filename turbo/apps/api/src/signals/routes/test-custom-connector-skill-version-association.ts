@@ -1,5 +1,5 @@
-import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 

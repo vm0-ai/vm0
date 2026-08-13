@@ -6,8 +6,8 @@ import {
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -222,6 +222,7 @@ describe("chat thread event sourcing local-first list", () => {
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
     expect(eventsRequests).toBe(1);
@@ -670,6 +671,7 @@ describe("chat thread event sourcing local-first list", () => {
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
     expect(context.store.get(threadMeta(OPTIMISTIC_THREAD_ID))).toStrictEqual({
@@ -681,6 +683,7 @@ describe("chat thread event sourcing local-first list", () => {
       serviceTier: null,
       computerUseHostId: null,
       cloudBrowserEnabled: false,
+      selectedVideoModel: null,
     });
 
     let threadDraftRequests = 0;

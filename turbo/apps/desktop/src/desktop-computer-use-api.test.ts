@@ -5,7 +5,7 @@ import {
   CLIENT_TYPE_DESKTOP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import type { DesktopSessionCookieSource } from "./desktop-session-cookies";

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { integrationsGithubUploadInitContract } from "@vm0/api-contracts/contracts/integrations";
+import { integrationsGithubUploadInitContract } from "@okouai/api-contracts/contracts/integrations";
 
 import { env } from "../../lib/env";
 import { sanitizeArtifactFilename } from "../../lib/file-url";

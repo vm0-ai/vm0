@@ -1,4 +1,4 @@
-import { cronReconcileBillingEntitlementsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronReconcileBillingEntitlementsContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";

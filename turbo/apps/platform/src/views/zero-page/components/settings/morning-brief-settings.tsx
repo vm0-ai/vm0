@@ -1,11 +1,11 @@
 import { useGet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { Button } from "@vm0/ui/components/ui/button";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { Switch } from "@vm0/ui/components/ui/switch";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { Button } from "@okouai/ui/components/ui/button";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { Switch } from "@okouai/ui/components/ui/switch";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { Sunrise } from "lucide-react";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {

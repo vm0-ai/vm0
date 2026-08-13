@@ -5,9 +5,9 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/core";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { searchParams$ } from "../../../signals/route.ts";

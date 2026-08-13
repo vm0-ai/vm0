@@ -1,4 +1,4 @@
-import { zeroSlackEventsContract } from "@vm0/api-contracts/contracts/zero-slack-events";
+import { zeroSlackEventsContract } from "@okouai/api-contracts/contracts/zero-slack-events";
 
 import type { RouteEntry } from "../route-entry";
 import { handleZeroSlackEvents$ } from "../services/zero-slack-webhooks.service";

@@ -4,7 +4,7 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
   type Vm0ModelPriceTier,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { i18n } from "../../../../i18n/index.ts";
 
 /**

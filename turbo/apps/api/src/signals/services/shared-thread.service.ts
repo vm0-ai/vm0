@@ -1,9 +1,9 @@
-import type { SharedMessage } from "@vm0/api-contracts/contracts/shared-threads";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { artifacts } from "@vm0/db/schema/artifact";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { sharedThreads } from "@vm0/db/schema/shared-thread";
+import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { artifacts } from "@okouai/db/schema/artifact";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { sharedThreads } from "@okouai/db/schema/shared-thread";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { command } from "ccstate";
 

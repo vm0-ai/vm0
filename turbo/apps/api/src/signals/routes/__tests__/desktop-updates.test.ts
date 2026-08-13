@@ -1,5 +1,5 @@
-import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
-import { testDesktopUpdateManifestStateContract } from "@vm0/api-contracts/contracts/test-desktop-update-manifest-state";
+import { desktopUpdatesContract } from "@okouai/api-contracts/contracts/desktop-updates";
+import { testDesktopUpdateManifestStateContract } from "@okouai/api-contracts/contracts/test-desktop-update-manifest-state";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 

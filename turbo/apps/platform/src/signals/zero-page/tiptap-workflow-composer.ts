@@ -18,13 +18,13 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
-import { createCompositionGate, type CompositionGate } from "@vm0/ui";
+import { createCompositionGate, type CompositionGate } from "@okouai/ui";
 import {
   generationTemplateRequestSchema,
   type GenerationTemplateRequest,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal } from "../utils.ts";

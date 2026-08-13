@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
+import { systemStoragePresignedUrlCache } from "@okouai/db/schema/system-storage-presigned-url-cache";
 import type { Computed } from "ccstate";
 import { and, asc, eq, gte, inArray, like, lte, sql } from "drizzle-orm";
 import { z } from "zod";

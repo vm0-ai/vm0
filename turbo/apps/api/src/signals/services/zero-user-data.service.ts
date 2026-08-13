@@ -5,22 +5,23 @@ import {
   type UserLocale,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
 import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,
-} from "@vm0/api-contracts/contracts/zero-user-model-preference";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   SecretResponse,
   SecretType,
-} from "@vm0/api-contracts/contracts/secrets";
-import type { VariableListResponse } from "@vm0/api-contracts/contracts/variables";
-import { morningBriefSchedules } from "@vm0/db/schema/morning-brief";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/api-contracts/contracts/secrets";
+import type { VariableListResponse } from "@okouai/api-contracts/contracts/variables";
+import { morningBriefSchedules } from "@okouai/db/schema/morning-brief";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
@@ -157,6 +158,7 @@ export function userModelPreference({
       .select({
         selectedModel: orgMembersMetadata.selectedModel,
         serviceTier: orgMembersMetadata.serviceTier,
+        selectedVideoModel: orgMembersMetadata.selectedVideoModel,
         updatedAt: orgMembersMetadata.updatedAt,
       })
       .from(orgMembersMetadata)
@@ -173,10 +175,19 @@ export function userModelPreference({
       : null;
     const serviceTier: ChatThreadServiceTier | null =
       selectedModel && row?.serviceTier === "priority" ? "priority" : null;
+    // A model retired from the catalog reads as unset rather than throwing:
+    // the column is not re-validated when the catalog changes.
+    const selectedVideoModel = isVideoModelId(row?.selectedVideoModel)
+      ? row.selectedVideoModel
+      : null;
     return {
       selectedModel,
       serviceTier,
-      updatedAt: selectedModel ? (row?.updatedAt.toISOString() ?? null) : null,
+      selectedVideoModel,
+      updatedAt:
+        selectedModel || selectedVideoModel
+          ? (row?.updatedAt.toISOString() ?? null)
+          : null,
     };
   });
 }
@@ -312,6 +323,29 @@ export const updateUserPreferences$ = command(
   },
 );
 
+/**
+ * Columns the request writes. Each preference maps to its own columns, so one
+ * being cleared can never blank another that the same request also set.
+ */
+function userModelPreferenceColumns(
+  preference: UpdateUserModelPreferenceRequest,
+): Partial<typeof orgMembersMetadata.$inferInsert> {
+  return {
+    // A null run model clears its tier too: the tier only qualifies a model.
+    ...(preference.selectedModel === null
+      ? { selectedModel: null, serviceTier: null }
+      : {
+          selectedModel: preference.selectedModel,
+          serviceTier: preference.serviceTier,
+        }),
+    // Absent means "leave it alone", so an older bundle that knows only the run
+    // model keeps its stored video default. Null clears it explicitly.
+    ...("selectedVideoModel" in preference
+      ? { selectedVideoModel: preference.selectedVideoModel ?? null }
+      : {}),
+  };
+}
+
 export const updateUserModelPreference$ = command(
   async (
     { get, set },
@@ -321,39 +355,20 @@ export const updateUserModelPreference$ = command(
     signal: AbortSignal,
   ): Promise<UserModelPreferenceResponse> => {
     const writeDb = set(writeDb$);
-    if (args.preference.selectedModel === null) {
-      await writeDb
-        .update(orgMembersMetadata)
-        .set({ selectedModel: null, serviceTier: null, updatedAt: nowDate() })
-        .where(
-          and(
-            eq(orgMembersMetadata.orgId, args.orgId),
-            eq(orgMembersMetadata.userId, args.userId),
-          ),
-        );
-      signal.throwIfAborted();
-      return { selectedModel: null, serviceTier: null, updatedAt: null };
-    }
-
     const updatedAt = nowDate();
-    const serviceTier = args.preference.serviceTier;
+    const columns = userModelPreferenceColumns(args.preference);
     await writeDb
       .insert(orgMembersMetadata)
       .values({
         orgId: args.orgId,
         userId: args.userId,
-        selectedModel: args.preference.selectedModel,
-        serviceTier,
+        ...columns,
         createdAt: updatedAt,
         updatedAt,
       })
       .onConflictDoUpdate({
         target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-        set: {
-          selectedModel: args.preference.selectedModel,
-          serviceTier,
-          updatedAt,
-        },
+        set: { ...columns, updatedAt },
       });
     signal.throwIfAborted();
 

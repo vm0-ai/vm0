@@ -3,11 +3,11 @@ import { createHash, randomBytes } from "node:crypto";
 import type {
   StrapiIntegration,
   StrapiIntegrationSecret,
-} from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+} from "@okouai/api-contracts/contracts/zero-strapi-integrations";
 import {
   strapiIntegrations,
-  zeroWorkflowStrapiAutomations,
-} from "@vm0/db/schema/strapi-integration";
+  strapiWorkflowAutomations,
+} from "@okouai/db/schema/strapi-integration";
 import { and, asc, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -193,11 +193,11 @@ export async function removeStrapiIntegration(args: {
   readonly integrationId: string;
 }): Promise<RemoveStrapiIntegrationResult> {
   const [linked] = await args.db
-    .select({ automationId: zeroWorkflowStrapiAutomations.automationId })
-    .from(zeroWorkflowStrapiAutomations)
+    .select({ automationId: strapiWorkflowAutomations.automationId })
+    .from(strapiWorkflowAutomations)
     .innerJoin(
       strapiIntegrations,
-      eq(strapiIntegrations.id, zeroWorkflowStrapiAutomations.integrationId),
+      eq(strapiIntegrations.id, strapiWorkflowAutomations.integrationId),
     )
     .where(
       and(

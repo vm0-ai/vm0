@@ -1,15 +1,15 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, randomInt } from "node:crypto";
 
-import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
+import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import {
   integrationsGithubContract,
   type GithubConnectUserBody,
   type GithubInstallationResponse,
-} from "@vm0/api-contracts/contracts/integrations-github";
-import { zeroConnectorsBySlugContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/integrations-github";
+import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { z } from "zod";
 

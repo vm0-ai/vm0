@@ -1,8 +1,8 @@
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

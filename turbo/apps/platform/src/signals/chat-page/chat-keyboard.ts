@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { isEditableTarget, matchShortcut } from "@vm0/ui";
+import { isEditableTarget, matchShortcut } from "@okouai/ui";
 import {
   currentLeftThread$,
   currentRightThread$,

@@ -1,4 +1,4 @@
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";

@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { randomUUID } from "node:crypto";
-import type { ApiErrorKey } from "@vm0/api-contracts/contracts/errors";
-import { usageEvent } from "@vm0/db/schema/usage-event";
+import type { ApiErrorKey } from "@okouai/api-contracts/contracts/errors";
+import { usageEvent } from "@okouai/db/schema/usage-event";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

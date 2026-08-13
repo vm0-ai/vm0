@@ -137,15 +137,15 @@ beforeEach(() => {
 });
 
 describe("portable platform runtime environment", () => {
-  it("selects production services and public config on an okou.ai subdomain", async () => {
-    setBrowserUrl("https://console.okou.ai/agents");
+  it("selects Okou API services and public config on app.okou.ai", async () => {
+    setBrowserUrl("https://app.okou.ai/agents");
     const runtime = await loadRuntimeSurfaces();
 
-    expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
+    expect(runtime.apiBase.resolveApiBase()).toBe("https://api.okou.ai");
     expect(
       runtime.userMessageFiles.canonicalUserMessageFileUrl("attachment-photo"),
     ).toBe(
-      "https://api.vm0.ai/api/okou/web/download-file?file_id=attachment-photo",
+      "https://api.okou.ai/api/okou/web/download-file?file_id=attachment-photo",
     );
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");

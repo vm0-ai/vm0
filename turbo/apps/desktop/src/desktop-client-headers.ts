@@ -8,7 +8,7 @@ import {
   CLIENT_VERSION_HEADER,
   DESKTOP_PRODUCT_ZERO,
   type DesktopProduct,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 
 export type DesktopClientHeaderInjector = (headers: Headers) => void;
 

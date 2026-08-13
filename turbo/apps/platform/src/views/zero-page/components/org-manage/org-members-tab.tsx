@@ -34,16 +34,16 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   orgRoleSchema,
   type OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/org-members";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type {
   UsagePackManagementResponse,
   UsagePackUsd,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   orgMembers$,
   orgPendingInvitations$,

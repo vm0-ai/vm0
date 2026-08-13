@@ -12,7 +12,7 @@ import { zeroAgents } from "./zero-agent";
 import type {
   ZeroAgentDraftAttachments,
   ZeroAgentDraftUserMessage,
-} from "@vm0/db/jsonb-contracts/zero-agent-draft";
+} from "@okouai/db/jsonb-contracts/zero-agent-draft";
 
 export const zeroAgentDrafts = pgTable(
   "zero_agent_drafts",

@@ -3,8 +3,8 @@ import {
   defaultDesktopAuthCallbackScheme,
   type DesktopAuthCallbackScheme,
   type DesktopAuthHandoffStatus,
-} from "@vm0/api-contracts/contracts/desktop-auth";
-import { desktopAuthHandoffCodes } from "@vm0/db/schema/desktop-auth-handoff-code";
+} from "@okouai/api-contracts/contracts/desktop-auth";
+import { desktopAuthHandoffCodes } from "@okouai/db/schema/desktop-auth-handoff-code";
 import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

@@ -5,13 +5,13 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   type ZeroAgentRequest,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
+} from "@okouai/api-contracts/contracts/cli-auth";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";

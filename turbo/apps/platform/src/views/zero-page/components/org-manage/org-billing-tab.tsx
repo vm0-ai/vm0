@@ -3,7 +3,7 @@
 import { useGet, useSet, useLastLoadable, type Loadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@okouai/core";
 import {
   ExternalLink,
   Crown,
@@ -59,12 +59,12 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import type {
   BillingStatusResponse,
   ConcurrencySubscriptionChangePreviewResponse,
   UsagePackMigrationStateResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   Dialog,
   DialogContent,
@@ -72,7 +72,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 import { planFreeImg, planProImg, planTeamImg } from "../../platform-assets.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AutoRechargeSection } from "../../billing-dialog.tsx";

@@ -1,12 +1,12 @@
 import { command } from "ccstate";
-import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
+import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/zero-host";
 import { eq, sql } from "drizzle-orm";
 import {
   RUN_UPLOADED_FILE_SOURCES,
   runUploadedFiles,
   type RunUploadedFileSource,
-} from "@vm0/db/schema/run-uploaded-file";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/run-uploaded-file";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { logger } from "../../lib/log";
 import { isForeignKeyViolation } from "../../lib/pg-errors";

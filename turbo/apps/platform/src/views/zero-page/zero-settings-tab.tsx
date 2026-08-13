@@ -18,13 +18,13 @@ import {
   Switch,
   Textarea,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { AlertTriangle } from "lucide-react";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@vm0/ui/components/ui/alert";
+} from "@okouai/ui/components/ui/alert";
 import { type Tone, TONE_OPTIONS } from "./zero-tone-constants.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -35,7 +35,7 @@ import {
   type AgentDeleteWorkflow,
   type AgentDeleteCopyTarget,
 } from "./components/zero-delete-agent-dialog.tsx";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { serializeAvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";

@@ -3,28 +3,28 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   type TestCronCleanupSandboxesStateActionBody,
   testCronCleanupSandboxesStateContract,
-} from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
-import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
-import { MIN_EPOCH_MS_TIMESTAMP } from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
+import { MIN_EPOCH_MS_TIMESTAMP } from "@okouai/api-contracts/contracts/runners";
 import {
   agentComposeVersions,
   agentComposes,
-} from "@vm0/db/schema/agent-compose";
-import { artifacts } from "@vm0/db/schema/artifact";
-import { browserSessions } from "@vm0/db/schema/browser-session";
-import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { exportJobs } from "@vm0/db/schema/export-job";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/agent-compose";
+import { artifacts } from "@okouai/db/schema/artifact";
+import { browserSessions } from "@okouai/db/schema/browser-session";
+import { builtInGenerationJobs } from "@okouai/db/schema/built-in-generation-job";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { exportJobs } from "@okouai/db/schema/export-job";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import { and, eq, inArray, notExists } from "drizzle-orm";
 

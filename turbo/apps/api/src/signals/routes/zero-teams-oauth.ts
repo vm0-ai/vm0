@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroTeamsOauthContract } from "@vm0/api-contracts/contracts/zero-teams-oauth";
+import { zeroTeamsOauthContract } from "@okouai/api-contracts/contracts/zero-teams-oauth";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

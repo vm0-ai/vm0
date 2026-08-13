@@ -2,7 +2,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type { Element, Root } from "hast";
 
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";

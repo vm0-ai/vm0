@@ -1,19 +1,80 @@
-import type { ReactNode, Ref, SyntheticEvent } from "react";
+import type {
+  ReactNode,
+  Ref,
+  SyntheticEvent,
+  WheelEvent as ReactWheelEvent,
+} from "react";
 import { useGet, useSet } from "ccstate-react";
-import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
-import { cn } from "@vm0/ui";
+import {
+  type ReactZoomPanPinchContext,
+  TransformComponent,
+  TransformWrapper,
+} from "react-zoom-pan-pinch";
+import { cn } from "@okouai/ui";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
   resetZoomableImageCanvasZoom$,
-  setZoomableImageCanvasFitWidth$,
+  setZoomableImageCanvasGeometry$,
   setZoomableImageCanvasZoom$,
-  zoomableImageCanvasFitWidthByKey$,
+  zoomableImageCanvasGeometryByKey$,
   zoomableImageCanvasZoomByKey$,
 } from "../../signals/view-component-state.ts";
 
 const IMAGE_ZOOM_STEP = 0.15;
 const IMAGE_DOUBLE_CLICK_ZOOM_STEP = 1;
+const IMAGE_TRACKPAD_ZOOM_SENSITIVITY = 0.03;
+const IMAGE_TRACKPAD_ZOOM_MAX_DELTA = 10;
+const IMAGE_WHEEL_LINE_HEIGHT = 16;
+const IMAGE_MAX_WIDTH_VIEWPORT_RATIO = 3;
+
+function isImageWheelZoomActivated(keys: string[]): boolean {
+  return keys.includes("Control") || keys.includes("Meta");
+}
+
+function normalizedImageWheelDelta(
+  event: ReactWheelEvent<HTMLDivElement>,
+): number {
+  let delta = event.deltaY;
+  if (event.deltaMode === 1) {
+    delta *= IMAGE_WHEEL_LINE_HEIGHT;
+  } else if (event.deltaMode === 2) {
+    delta *= event.currentTarget.clientHeight;
+  }
+
+  return Math.max(
+    -IMAGE_TRACKPAD_ZOOM_MAX_DELTA,
+    Math.min(IMAGE_TRACKPAD_ZOOM_MAX_DELTA, delta),
+  );
+}
+
+function proportionalImageWheelStep(
+  event: ReactWheelEvent<HTMLDivElement>,
+  scale: number,
+): number {
+  if (event.deltaY === 0) {
+    return 0;
+  }
+
+  const normalizedDelta = normalizedImageWheelDelta(event);
+  const targetScale =
+    scale * Math.exp(-normalizedDelta * IMAGE_TRACKPAD_ZOOM_SENSITIVITY);
+  return Math.abs(targetScale - scale);
+}
+
+function proportionalImageWheelHandler(instance: ReactZoomPanPinchContext) {
+  return (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+
+    // Convert the exponential target into the linear step expected by the library.
+    instance.setup.wheel.step = proportionalImageWheelStep(
+      event,
+      instance.state.scale,
+    );
+  };
+}
 
 type ZoomableArtifactImageSurface =
   | "attachment-lightbox"
@@ -67,6 +128,7 @@ type ZoomableArtifactImageElementProps = {
 
 function controlsFromTransformState({
   displayZoom,
+  maxZoom,
   setDisplayZoom,
   resetTransform,
   zoomIn,
@@ -74,6 +136,7 @@ function controlsFromTransformState({
   zoomKey,
 }: {
   displayZoom: number;
+  maxZoom: number;
   setDisplayZoom: SetZoomHandler;
   resetTransform: (animationTime?: number) => void;
   zoomIn: (step?: number, animationTime?: number) => void;
@@ -83,7 +146,7 @@ function controlsFromTransformState({
   const zoom = displayZoom;
 
   return {
-    canZoomIn: zoom < IMAGE_LIGHTBOX_MAX_ZOOM,
+    canZoomIn: zoom < maxZoom,
     canZoomOut: zoom > IMAGE_LIGHTBOX_MIN_ZOOM,
     resetZoom: () => {
       resetTransform(0);
@@ -104,13 +167,38 @@ function cssPixelValue(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function calculateImageFitWidth(image: HTMLImageElement): number | null {
+type ImageCanvasGeometry = {
+  fitWidth: number;
+  maxZoom: number;
+};
+
+function imageCanvasGeometry(
+  fitWidth: number,
+  naturalWidth: number,
+  availableWidth: number,
+): ImageCanvasGeometry {
+  const maxRenderedWidth = Math.max(
+    fitWidth * IMAGE_LIGHTBOX_MAX_ZOOM,
+    naturalWidth,
+    availableWidth * IMAGE_MAX_WIDTH_VIEWPORT_RATIO,
+  );
+  return {
+    fitWidth,
+    maxZoom: maxRenderedWidth / fitWidth,
+  };
+}
+
+function calculateImageCanvasGeometry(
+  image: HTMLImageElement,
+): ImageCanvasGeometry | null {
   const content = image.parentElement;
   const scrollContainer = image.closest<HTMLElement>(
     "[data-zoomable-image-canvas='true']",
   );
   if (!content || !scrollContainer) {
-    return image.naturalWidth || null;
+    return image.naturalWidth > 0
+      ? imageCanvasGeometry(image.naturalWidth, image.naturalWidth, 0)
+      : null;
   }
 
   const contentStyle = getComputedStyle(content);
@@ -129,18 +217,28 @@ function calculateImageFitWidth(image: HTMLImageElement): number | null {
     const widthScale = availableWidth > 0 ? availableWidth / naturalWidth : 1;
     const heightScale =
       availableHeight > 0 ? availableHeight / naturalHeight : 1;
-    return naturalWidth * Math.min(1, widthScale, heightScale);
+    return imageCanvasGeometry(
+      naturalWidth * Math.min(1, widthScale, heightScale),
+      naturalWidth,
+      availableWidth,
+    );
   }
 
   if (naturalWidth > 0 && availableWidth > 0) {
-    return Math.min(naturalWidth, availableWidth);
+    return imageCanvasGeometry(
+      Math.min(naturalWidth, availableWidth),
+      naturalWidth,
+      availableWidth,
+    );
   }
 
   if (availableWidth > 0) {
-    return availableWidth;
+    return imageCanvasGeometry(availableWidth, naturalWidth, availableWidth);
   }
 
-  return naturalWidth > 0 ? naturalWidth : null;
+  return naturalWidth > 0
+    ? imageCanvasGeometry(naturalWidth, naturalWidth, 0)
+    : null;
 }
 
 function ZoomableArtifactImageElement({
@@ -194,18 +292,20 @@ export function ZoomableArtifactImageCanvas({
   zoomKey = src,
 }: ZoomableArtifactImageCanvasProps) {
   const zoomByKey = useGet(zoomableImageCanvasZoomByKey$);
-  const fitWidthByKey = useGet(zoomableImageCanvasFitWidthByKey$);
+  const geometryByKey = useGet(zoomableImageCanvasGeometryByKey$);
   const setDisplayZoom = useSet(setZoomableImageCanvasZoom$);
-  const setFitWidth = useSet(setZoomableImageCanvasFitWidth$);
+  const setGeometry = useSet(setZoomableImageCanvasGeometry$);
   const resetDisplayZoom = useSet(resetZoomableImageCanvasZoom$);
   const displayZoom = zoomByKey[zoomKey] ?? 1;
-  const fitWidth = fitWidthByKey[zoomKey];
+  const imageGeometry = geometryByKey[zoomKey];
+  const fitWidth = imageGeometry?.fitWidth;
+  const maxZoom = imageGeometry?.maxZoom ?? IMAGE_LIGHTBOX_MAX_ZOOM;
   const imageWidth =
     fitWidth !== undefined ? `${Math.round(fitWidth)}px` : "100%";
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
-    const fitWidthValue = calculateImageFitWidth(event.currentTarget);
-    if (fitWidthValue !== null) {
-      setFitWidth(zoomKey, fitWidthValue);
+    const geometry = calculateImageCanvasGeometry(event.currentTarget);
+    if (geometry !== null) {
+      setGeometry(zoomKey, geometry.fitWidth, geometry.maxZoom);
     }
     resetDisplayZoom(zoomKey);
     onLoad?.();
@@ -221,7 +321,7 @@ export function ZoomableArtifactImageCanvas({
         step: IMAGE_DOUBLE_CLICK_ZOOM_STEP,
       }}
       initialScale={1}
-      maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
+      maxScale={maxZoom}
       minScale={IMAGE_LIGHTBOX_MIN_ZOOM}
       autoAlignment={{ disabled: true }}
       onInit={(transformRef) => {
@@ -239,13 +339,14 @@ export function ZoomableArtifactImageCanvas({
       smooth={false}
       trackPadPanning={{ disabled: false }}
       wheel={{
-        activationKeys: ["Control"],
-        wheelDisabled: true,
+        activationKeys: isImageWheelZoomActivated,
+        step: 0,
       }}
     >
-      {({ resetTransform, zoomIn, zoomOut }) => {
+      {({ instance, resetTransform, zoomIn, zoomOut }) => {
         const controls = controlsFromTransformState({
           displayZoom,
+          maxZoom,
           resetTransform,
           setDisplayZoom,
           zoomIn,
@@ -270,6 +371,9 @@ export function ZoomableArtifactImageCanvas({
               <TransformComponent
                 contentStyle={{ height: "100%", width: "100%" }}
                 wrapperClass="h-full min-h-0 w-full"
+                wrapperProps={{
+                  onWheelCapture: proportionalImageWheelHandler(instance),
+                }}
                 wrapperStyle={{
                   height: "100%",
                   touchAction: "none",

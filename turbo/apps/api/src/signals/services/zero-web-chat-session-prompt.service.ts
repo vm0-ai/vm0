@@ -3,11 +3,11 @@ import {
   CHAT_EVENT_USER_MESSAGE_TEXT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/chat-events";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   asc,

@@ -1,17 +1,17 @@
-import { userPermissionGrantActionSchema } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import { userPermissionGrantActionSchema } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import type {
   FirewallPermissionGrant,
   FirewallPermissionGrantAction,
-} from "@vm0/connectors/firewall-metadata/policy";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/connectors/firewall-metadata/policy";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
+import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
+import { workflows } from "@okouai/db/schema/workflow";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -283,20 +283,20 @@ async function queryZeroRunWorkflowCandidates(
 ): Promise<RunWorkflowSourceRow[]> {
   return await db
     .select({
-      id: zeroWorkflows.id,
-      name: zeroWorkflows.name,
-      visibility: zeroWorkflows.visibility,
-      ownerUserId: zeroWorkflows.ownerUserId,
-      createdAt: zeroWorkflows.createdAt,
+      id: workflows.id,
+      name: workflows.name,
+      visibility: workflows.visibility,
+      ownerUserId: workflows.ownerUserId,
+      createdAt: workflows.createdAt,
     })
-    .from(zeroWorkflows)
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.agentId),
         or(
-          eq(zeroWorkflows.visibility, "public"),
-          eq(zeroWorkflows.ownerUserId, args.userId),
+          eq(workflows.visibility, "public"),
+          eq(workflows.ownerUserId, args.userId),
         ),
       ),
     );

@@ -1,6 +1,6 @@
 import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { Button } from "@vm0/ui/components/ui/button";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { Button } from "@okouai/ui/components/ui/button";
 import { useGet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {

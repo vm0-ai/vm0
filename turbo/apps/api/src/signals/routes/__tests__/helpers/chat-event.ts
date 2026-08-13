@@ -1,7 +1,7 @@
 import type {
   ChatEvent,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 type UserMessagePart = UserMessageDocument["parts"][number];
 type AutomationPart = Extract<UserMessagePart, { readonly type: "automation" }>;

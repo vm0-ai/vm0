@@ -2,7 +2,7 @@
 // composer. Kept in its own module so the textarea composer and the TipTap
 // workflow composer can both reuse them without an import cycle.
 import { ChevronRight, FileText } from "lucide-react";
-import { cn, PopoverContent } from "@vm0/ui";
+import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";

@@ -1,9 +1,9 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   activeInputDeliveries,
   activeInputDeliveryItems,
-} from "@vm0/db/schema/active-input-delivery";
+} from "@okouai/db/schema/active-input-delivery";
 import {
   and,
   asc,

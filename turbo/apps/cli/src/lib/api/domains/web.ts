@@ -7,7 +7,7 @@ import { Realtime, type AuthOptions, type InboundMessage } from "ably";
 import type {
   ZeroBuiltInGenerationAcceptedResponse,
   ZeroBuiltInGenerationResponse,
-} from "@vm0/api-contracts/contracts/zero-built-in-generation";
+} from "@okouai/api-contracts/contracts/zero-built-in-generation";
 import type {
   ZeroAvatarVideoAvatar,
   ZeroAvatarVideoAvatarsQuery,
@@ -15,11 +15,11 @@ import type {
   ZeroAvatarVideoGenerateResponse,
   ZeroAvatarVideoVoice,
   ZeroAvatarVideoVoicesQuery,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 import {
   zeroAvatarVideoAvatarsResponseSchema,
   zeroAvatarVideoVoicesResponseSchema,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -254,6 +254,7 @@ interface GenerateWebImageResult {
   contentType: string;
   size: number;
   url: string;
+  embedUrl?: string;
   creditsCharged: number;
   model: string;
   provider: string;

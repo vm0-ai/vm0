@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { webhookGoogleFormsContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookGoogleFormsContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import { now } from "../../lib/time";
 import { request$ } from "../context/hono";

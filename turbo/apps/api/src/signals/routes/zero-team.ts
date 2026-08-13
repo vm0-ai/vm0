@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

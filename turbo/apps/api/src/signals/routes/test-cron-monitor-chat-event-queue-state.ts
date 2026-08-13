@@ -3,15 +3,15 @@ import { randomUUID } from "node:crypto";
 import {
   testCronMonitorChatEventQueueStateContract,
   type TestCronMonitorChatEventQueueStateActionBody,
-} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 

@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
-} from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/webhooks";
 
 import { notFound } from "../../lib/error";
 import { isForeignKeyViolation } from "../../lib/pg-errors";

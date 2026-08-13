@@ -1,5 +1,5 @@
-import type { ConnectorCatalogDiagnostics } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorCatalogDiagnostics } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import { computed } from "ccstate";
 
 import { accept } from "../../../lib/accept.ts";

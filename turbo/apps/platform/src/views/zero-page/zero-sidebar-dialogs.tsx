@@ -4,7 +4,7 @@ import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2, Search, X, Pin, PinOff } from "lucide-react";
-import type { ChatSearchResult } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   Button,
   CommandDialog,
@@ -17,7 +17,7 @@ import {
   DialogTitle,
   Input,
   RunningIndicator,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
   chatListQuery$,

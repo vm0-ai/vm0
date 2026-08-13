@@ -1,4 +1,4 @@
-import type { StripeInvoicePaidEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { StripeInvoicePaidEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
 
 import type { ReadonlyDb } from "../external/db";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";

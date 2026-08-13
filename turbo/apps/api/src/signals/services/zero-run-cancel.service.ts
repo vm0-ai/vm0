@@ -1,9 +1,9 @@
 import { command } from "ccstate";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";

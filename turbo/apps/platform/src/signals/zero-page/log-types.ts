@@ -2,7 +2,7 @@
 import type {
   LogStatus,
   TriggerSource,
-} from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/logs";
 import { i18n } from "../../i18n/index.ts";
 
 // Re-export from core contract to stay in sync with the API schema
@@ -79,11 +79,6 @@ export function getTriggerSourceLabel(source: TriggerSource): string {
     case "goal": {
       return i18n.t(($) => {
         return $.activity.sources.goal;
-      });
-    }
-    case "template-import": {
-      return i18n.t(($) => {
-        return $.activity.sources.templateImport;
       });
     }
   }

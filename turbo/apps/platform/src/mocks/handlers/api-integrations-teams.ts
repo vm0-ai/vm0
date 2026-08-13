@@ -1,7 +1,7 @@
 import {
   type TeamsConnectStatus,
   zeroTeamsConnectContract,
-} from "@vm0/api-contracts/contracts/zero-teams-connect";
+} from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { mockApi } from "../msw-contract.ts";
 
 let mockTeamsData: TeamsConnectStatus = {

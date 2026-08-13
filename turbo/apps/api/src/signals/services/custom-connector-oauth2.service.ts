@@ -6,16 +6,16 @@ import { request as httpsRequest } from "node:https";
 import { command } from "ccstate";
 import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   isOAuthProviderHttpError,
   OAuthProviderHttpError,
-} from "@vm0/connectors/auth-providers/oauth/error";
-import { connectors } from "@vm0/db/schema/connector";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { secrets } from "@vm0/db/schema/secret";
+} from "@okouai/connectors/auth-providers/oauth/error";
+import { connectors } from "@okouai/db/schema/connector";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { secrets } from "@okouai/db/schema/secret";
 
 import {
   fetchHostHasBlockedAddress,
@@ -25,7 +25,7 @@ import {
 import { badRequestMessage, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import {
-  CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+  connectorOAuthStateExpiresAt,
   generateConnectorOAuthState,
 } from "../../lib/connector-oauth-state";
 import { createDeferredPromise, safeJsonParse, settle } from "../utils";
@@ -558,9 +558,7 @@ export const startCustomConnectorOAuth2$ = command(
         authorizationUrl,
         codeVerifier,
         oauthContext: JSON.stringify(context),
-        expiresAt: new Date(
-          nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-        ),
+        expiresAt: connectorOAuthStateExpiresAt(),
       });
     signal.throwIfAborted();
     return { authorizationUrl };

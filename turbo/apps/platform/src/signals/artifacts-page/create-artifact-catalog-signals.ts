@@ -11,7 +11,7 @@ import {
   type ArtifactCatalogKind,
   type ArtifactDetail,
   type ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
+} from "@okouai/api-contracts/contracts/artifact-catalog";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { webhookGoogleCalendarContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookGoogleCalendarContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";

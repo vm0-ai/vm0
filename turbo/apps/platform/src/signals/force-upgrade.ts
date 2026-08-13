@@ -1,5 +1,5 @@
 import { command, state } from "ccstate";
-import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 
 const FORCE_UPGRADE_REQUIRED_EVENT = "force-upgrade-required";
 

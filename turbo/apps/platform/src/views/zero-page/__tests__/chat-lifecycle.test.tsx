@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -541,7 +541,7 @@ describe("chat lifecycle", () => {
       id: "upload-visual-brief",
       filename: "brief.png",
       contentType: "image/png",
-      size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      size: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
       url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
     });
 
@@ -562,7 +562,7 @@ describe("chat lifecycle", () => {
     const brief = new File(["image"], "brief.png", { type: "image/png" });
     Object.defineProperty(brief, "size", {
       configurable: true,
-      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      value: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
     });
     await user.upload(fileInput, brief);
 
@@ -958,6 +958,10 @@ describe("chat lifecycle", () => {
         screen.queryByText("Existing context before follow-up"),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Send a message to start the conversation"),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
     });
 
     otherThreadMessagesGate.resolve(undefined);

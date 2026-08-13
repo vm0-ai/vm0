@@ -95,8 +95,8 @@ const runnerPathsModule = ["runners", "paths"] as const;
 const storagesModule = ["storages"] as const;
 
 export const rustConstantRootDoc = [
-  "Generated Rust constants for `@vm0/api-contracts`.",
-  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
+  "Generated Rust constants for `@okouai/api-contracts`.",
+  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @okouai/api-contracts generate:rust`.",
   "These constants are shared TypeScript/Rust contract values.",
   "Token-shaped placeholder values in this module are fake marker bytes, not secrets.",
 ] as const;

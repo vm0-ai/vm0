@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -8,7 +8,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 import { AccountDropdown } from "../zero-page/zero-sidebar-account";
 import {
   ZeroOrgSwitcher,

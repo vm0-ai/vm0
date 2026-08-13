@@ -1,18 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { cronExecuteMorningBriefsContract } from "@vm0/api-contracts/contracts/cron";
-import type { TestEmailOutboxStateItem } from "@vm0/api-contracts/contracts/test-email-outbox-state";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { cronExecuteMorningBriefsContract } from "@okouai/api-contracts/contracts/cron";
+import type { TestEmailOutboxStateItem } from "@okouai/api-contracts/contracts/test-email-outbox-state";
 import {
   chatThreadsContract,
   type GenerationTemplateRequest,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
-import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroMorningBriefContract } from "@okouai/api-contracts/contracts/zero-morning-brief";
+import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { createStore } from "ccstate";
 import { Cron } from "croner";
 import { describe, expect, it, onTestFinished } from "vitest";

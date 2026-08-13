@@ -1,5 +1,5 @@
 import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
-import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   check,
   pgTable,
@@ -14,7 +14,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
-import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
+import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
 export type {
   ChatEventAttachFileMetadata,
   ChatEventAttachFileMetadataList,
@@ -23,7 +23,7 @@ export type {
   ChatEventUsageKindBreakdown,
   ChatEventUsagePayload,
   ChatEventUsageProviderBreakdown,
-} from "@vm0/db/jsonb-contracts/chat-event";
+} from "@okouai/db/jsonb-contracts/chat-event";
 
 /**
  * Shared literal predicate for partial-index selection and ON CONFLICT

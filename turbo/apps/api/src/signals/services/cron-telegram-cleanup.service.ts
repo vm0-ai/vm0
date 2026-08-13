@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramMessages } from "@okouai/db/schema/telegram-message";
 import { inArray, lt, sql } from "drizzle-orm";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";

@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 
 import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";

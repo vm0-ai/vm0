@@ -5,20 +5,20 @@ import {
   getFrameworkForType,
   getVm0ConcreteProviderType,
   isSupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import type {
   CreateModelProviderConnectionRequest,
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
   UpdateModelProviderConnectionRequest,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { canonicalizeFirewallBaseUrl } from "@vm0/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { canonicalizeFirewallBaseUrl } from "@okouai/connectors/firewall-types";
 import {
   modelProviderConnections,
   modelProviderSurfaces,
-} from "@vm0/db/schema/model-provider-gateway";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets } from "@vm0/db/schema/secret";
+} from "@okouai/db/schema/model-provider-gateway";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { secrets } from "@okouai/db/schema/secret";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";

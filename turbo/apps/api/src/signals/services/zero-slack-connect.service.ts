@@ -1,11 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { slackUserAgentPreferences } from "@okouai/db/schema/slack-user-agent-preference";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, isNull } from "drizzle-orm";
 
 import {

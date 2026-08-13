@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import type { ArtifactDetail } from "@vm0/api-contracts/contracts/artifact-catalog";
+import type { ArtifactDetail } from "@okouai/api-contracts/contracts/artifact-catalog";
 
 import { publicAttachmentUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { downloadAttachment$ } from "../attachment-download.ts";

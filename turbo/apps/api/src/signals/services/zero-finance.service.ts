@@ -5,7 +5,7 @@ import type {
   ZeroFinanceQuoteRequest,
   ZeroFinanceResponse,
   ZeroFinanceSearchRequest,
-} from "@vm0/api-contracts/contracts/zero-finance";
+} from "@okouai/api-contracts/contracts/zero-finance";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";

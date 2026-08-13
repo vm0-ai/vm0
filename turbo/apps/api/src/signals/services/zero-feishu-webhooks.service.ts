@@ -3,8 +3,8 @@ import { createDecipheriv, createHash, timingSafeEqual } from "node:crypto";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { zeroFeishuEventsContract } from "@vm0/api-contracts/contracts/zero-feishu-events";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+import { zeroFeishuEventsContract } from "@okouai/api-contracts/contracts/zero-feishu-events";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";

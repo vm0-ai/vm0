@@ -5,7 +5,7 @@ import type {
   TestSlackStatePostBody,
   TestSlackStatePostResponse,
   TestSlackStateResponse,
-} from "@vm0/api-contracts/contracts/test-slack-state";
+} from "@okouai/api-contracts/contracts/test-slack-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { testSlackStateRoutes } from "../../test-slack-state";

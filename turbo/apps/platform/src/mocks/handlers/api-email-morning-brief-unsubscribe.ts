@@ -1,4 +1,4 @@
-import { emailMorningBriefUnsubscribeContract } from "@vm0/api-contracts/contracts/email-morning-brief-unsubscribe";
+import { emailMorningBriefUnsubscribeContract } from "@okouai/api-contracts/contracts/email-morning-brief-unsubscribe";
 import { mockApi } from "../msw-contract.ts";
 
 /** Token accepted by the mock one-click unsubscribe endpoint. */

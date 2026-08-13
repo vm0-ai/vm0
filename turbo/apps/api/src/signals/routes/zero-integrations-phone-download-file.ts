@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { integrationsPhoneDownloadFileContract } from "@vm0/api-contracts/contracts/integrations";
-import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
-import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
+import { integrationsPhoneDownloadFileContract } from "@okouai/api-contracts/contracts/integrations";
+import { agentphoneMessages } from "@okouai/db/schema/agentphone-message";
+import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { inferMimetype } from "../../lib/mimetype";

@@ -1,21 +1,21 @@
 import { randomUUID } from "node:crypto";
 
-import type { CronCleanupSandboxesResponse } from "@vm0/api-contracts/contracts/cron";
+import type { CronCleanupSandboxesResponse } from "@okouai/api-contracts/contracts/cron";
 import {
   triggerSourceSchema,
   type TriggerSource,
-} from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/logs";
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   runnersConnectorRuntimeSyncContract,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import {
   testCronCleanupSandboxesStateContract,
   type TestCronCleanupSandboxesStateActionBody,
   type TestCronCleanupSandboxesStateActionResponse,
   type TestCronCleanupSandboxesScope,
-} from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+} from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   afterEach,
   beforeEach,

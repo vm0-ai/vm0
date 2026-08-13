@@ -1,4 +1,4 @@
-import { matchShortcut, isEditableTarget } from "@vm0/ui";
+import { matchShortcut, isEditableTarget } from "@okouai/ui";
 import { onDomEventFn } from "../signals/utils.ts";
 
 type GlobalShortcutCallback = (e: KeyboardEvent) => void | Promise<void>;

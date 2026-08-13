@@ -1,8 +1,8 @@
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import { command } from "ccstate";
 import {
   and,

@@ -43,6 +43,9 @@ export const zeroImageIoGenerateResponseSchema = z.object({
   contentType: z.string(),
   size: z.number(),
   url: z.string(),
+  // Optional so a newly deployed client stays compatible with an API from
+  // before this field existed; the current API always sets it.
+  embedUrl: z.string().optional(),
   creditsCharged: z.number(),
   model: z.string(),
   provider: z.string(),

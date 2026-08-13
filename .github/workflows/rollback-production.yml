@@ -188,7 +188,7 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
         working-directory: turbo
-        run: pnpm --filter @vm0/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
+        run: pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
 
       - name: Deploy App to Cloudflare Pages production
         env:

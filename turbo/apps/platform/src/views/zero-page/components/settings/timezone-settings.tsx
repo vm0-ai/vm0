@@ -8,8 +8,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui/components/ui/select";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { Clock, Loader2 } from "lucide-react";
 import {
   userPreferences$,

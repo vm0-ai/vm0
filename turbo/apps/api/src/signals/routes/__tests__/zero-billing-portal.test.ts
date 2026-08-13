@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingPortalContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingPortalContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";

@@ -19,7 +19,7 @@ import type {
   OrgCustomConnectorHeaderInjections,
   OrgCustomConnectorPrefixTemplates,
   OrgCustomConnectorQueryInjections,
-} from "@vm0/db/jsonb-contracts/org-custom-connector";
+} from "@okouai/db/jsonb-contracts/org-custom-connector";
 
 import { storageVersions } from "./storage";
 
@@ -27,7 +27,7 @@ export type {
   OrgCustomConnectorField,
   OrgCustomConnectorHeaderInjection,
   OrgCustomConnectorQueryInjection,
-} from "@vm0/db/jsonb-contracts/org-custom-connector";
+} from "@okouai/db/jsonb-contracts/org-custom-connector";
 
 export type OrgCustomConnectorAuthMode = "manual" | "oauth";
 export type OrgCustomConnectorMcpTransport = "streamable-http";

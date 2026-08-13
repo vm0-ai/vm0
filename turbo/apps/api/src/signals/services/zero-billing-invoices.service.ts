@@ -1,7 +1,7 @@
 import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
-import type { BillingInvoicesResponse } from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import type { BillingInvoicesResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 import { delay } from "signal-timers";
 

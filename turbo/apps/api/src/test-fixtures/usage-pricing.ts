@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../signals/external/db";

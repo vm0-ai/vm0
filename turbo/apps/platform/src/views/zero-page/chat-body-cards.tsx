@@ -38,10 +38,10 @@ import { CustomConnectorIcon } from "./components/settings/custom-connector-icon
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { publicAttachmentUrl } from "./zero-attachment-url";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
-import { r2ImageTransformUrl } from "@vm0/core";
-import { Skeleton, cn } from "@vm0/ui";
+import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { FirewallPolicyValue } from "@okouai/connectors/firewall-types";
+import { r2ImageTransformUrl } from "@okouai/core";
+import { Skeleton, cn } from "@okouai/ui";
 import {
   useGet,
   useLastLoadable,

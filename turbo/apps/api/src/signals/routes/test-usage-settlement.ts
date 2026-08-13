@@ -1,7 +1,7 @@
-import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
+import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
 import { command } from "ccstate";
 import { asc, eq } from "drizzle-orm";
 

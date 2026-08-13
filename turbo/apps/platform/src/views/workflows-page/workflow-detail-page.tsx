@@ -4,7 +4,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import type { StrapiIntegration } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
 import type {
   ChatRunFinishedEventConfig,
   ChatRunFinishedRunStatus,
@@ -27,10 +27,10 @@ import type {
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
-  ZeroWorkflowScheduleType,
+  WorkflowScheduleType,
   ZeroWorkflowAutomationSummary,
   ZeroWorkflowUpdateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
   AlertTriangle,
@@ -64,7 +64,7 @@ import {
   Webhook,
   X,
 } from "lucide-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Button,
   Checkbox,
@@ -98,7 +98,7 @@ import {
   BrandGithub,
   BrandNotion,
   BrandStripe,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 
@@ -232,12 +232,12 @@ import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import { InlineSettingsRow } from "../zero-page/components/zero-inline-settings-row.tsx";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@vm0/ui/components/ui/alert";
+} from "@okouai/ui/components/ui/alert";
 import {
   agentLabel,
   chatRunFinishedAutomationSummary,
@@ -3403,7 +3403,7 @@ function workflowScheduleTitle(
 }
 
 function buildAutomationSchedule(
-  type: ZeroWorkflowScheduleType,
+  type: WorkflowScheduleType,
   fields: {
     readonly cronFields: WorkflowCronFields;
     readonly intervalSeconds: string;
@@ -6931,7 +6931,7 @@ function ScheduleAutomationFields({
   defaultIntervalSeconds,
   defaultAtTime,
 }: {
-  readonly scheduleType: ZeroWorkflowScheduleType;
+  readonly scheduleType: WorkflowScheduleType;
   readonly cronFields: WorkflowCronFields;
   readonly setCronFields: (fields: WorkflowCronFields) => void;
   readonly displayTimezone: string;

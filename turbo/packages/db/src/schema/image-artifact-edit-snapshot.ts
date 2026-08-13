@@ -6,9 +6,9 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ImageArtifactEditSnapshotState } from "@vm0/db/jsonb-contracts/image-artifact-edit-snapshot";
+import type { ImageArtifactEditSnapshotState } from "@okouai/db/jsonb-contracts/image-artifact-edit-snapshot";
 
-export type { ImageArtifactEditSnapshotState } from "@vm0/db/jsonb-contracts/image-artifact-edit-snapshot";
+export type { ImageArtifactEditSnapshotState } from "@okouai/db/jsonb-contracts/image-artifact-edit-snapshot";
 
 export const imageArtifactEditSnapshots = pgTable(
   "image_artifact_edit_snapshots",

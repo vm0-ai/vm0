@@ -3,7 +3,7 @@ import type {
   TestCronSyncSkillsStateActionResponse,
   TestCronSyncSkillsStateSkillVersionSeed,
   TestCronSyncSkillsStateSyncResponse,
-} from "@vm0/api-contracts/contracts/test-cron-sync-skills-state";
+} from "@okouai/api-contracts/contracts/test-cron-sync-skills-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";

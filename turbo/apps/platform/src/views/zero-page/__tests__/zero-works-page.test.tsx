@@ -1,19 +1,19 @@
 import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
-} from "@vm0/api-contracts/contracts/zero-integrations-slack";
+} from "@okouai/api-contracts/contracts/zero-integrations-slack";
 import {
   zeroTeamsConnectContract,
   type TeamsConnectStatus,
-} from "@vm0/api-contracts/contracts/zero-teams-connect";
+} from "@okouai/api-contracts/contracts/zero-teams-connect";
 import {
   FEISHU_OAUTH_SCOPES,
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
-} from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
-import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { zeroStrapiIntegrationsContract } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 

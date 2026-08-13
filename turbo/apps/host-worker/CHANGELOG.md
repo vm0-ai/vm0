@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/vm0-ai/vm0/compare/host-worker-v1.1.1...host-worker-v1.1.2) (2026-08-13)
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
 ## [1.1.1](https://github.com/vm0-ai/vm0/compare/host-worker-v1.1.0...host-worker-v1.1.1) (2026-08-13)
 
 

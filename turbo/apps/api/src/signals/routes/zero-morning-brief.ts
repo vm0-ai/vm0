@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
+import { zeroMorningBriefContract } from "@okouai/api-contracts/contracts/zero-morning-brief";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";

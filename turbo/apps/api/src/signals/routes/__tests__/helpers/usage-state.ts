@@ -3,7 +3,7 @@ import type {
   TestUsageStateActionBody,
   TestUsageStateActionResponse,
   TestUsageStateFixture,
-} from "@vm0/api-contracts/contracts/test-usage-state";
+} from "@okouai/api-contracts/contracts/test-usage-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { testUsageStateRoutes } from "../../test-usage-state";

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use guest_common::telemetry::record_sandbox_op;
+use guest_contracts::runtime_paths::{self, PrivateFileReplacementTarget};
 
 use crate::error::AgentError;
 
@@ -105,9 +106,12 @@ pub(super) fn write_model_catalog(
         return Ok(());
     };
     record_catalog_operation(MODEL_CATALOG_PREPARE_ACTION, || {
-        std::fs::create_dir_all(codex_home)?;
         let path = model_catalog_path(codex_home);
-        write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
+        runtime_paths::replace_private_atomic(
+            path,
+            serde_json::to_vec(model_catalog)?,
+            PrivateFileReplacementTarget::ReplaceFinalEntry,
+        )?;
         Ok(())
     })
 }
@@ -120,29 +124,6 @@ fn record_catalog_operation<T>(
     let result = operation();
     record_sandbox_op(action_type, started_at.elapsed(), result.is_ok(), None);
     result
-}
-
-fn write_model_catalog_json_atomic(
-    codex_home: &Path,
-    path: &Path,
-    serialized: &[u8],
-) -> Result<(), AgentError> {
-    use std::io::Write as _;
-
-    let mut temp = tempfile::NamedTempFile::new_in(codex_home)?;
-    temp.as_file_mut().write_all(serialized)?;
-    temp.as_file_mut().flush()?;
-    temp.persist(path).map_err(|error| {
-        AgentError::Io(std::io::Error::new(
-            error.error.kind(),
-            format!(
-                "failed to replace {} atomically: {}",
-                path.display(),
-                error.error
-            ),
-        ))
-    })?;
-    Ok(())
 }
 
 pub(super) fn startup_config_overrides(
@@ -392,6 +373,16 @@ mod tests {
 
         let written = std::fs::read_to_string(model_catalog_path(tmp.path())).unwrap();
         assert_eq!(written, r#"{"models":[{"slug":"deepseek-v4-flash"}]}"#);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mode = std::fs::metadata(model_catalog_path(tmp.path()))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o7777, 0o600);
+        }
     }
 
     #[cfg(unix)]

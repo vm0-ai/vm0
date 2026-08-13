@@ -3,8 +3,8 @@ import {
   zeroUsageRecordContract,
   type UsageRecordRange,
   type UsageRecordScope,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/zero-usage-record";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 

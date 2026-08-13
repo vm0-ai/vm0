@@ -3,8 +3,8 @@ import {
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
   type FeishuInstallationStatus,
-} from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { toast } from "@okouai/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

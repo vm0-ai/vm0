@@ -1,4 +1,4 @@
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { command, computed } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
-import { resolveChatEventRecommendedFollowups } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import { resolveChatEventRecommendedFollowups } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { buildProfileRows, DEV_BENCH_THREAD_PROFILES } from "../dev-bench-seed";
 

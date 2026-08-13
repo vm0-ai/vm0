@@ -65,7 +65,7 @@ ruby -e '
   raise "Desktop promotion must require the Okou app archive" unless download.include?("--require-okou")
 
   promote_text = File.read(ARGV[1]).split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
-  raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @vm0/desktop build")
+  raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @okouai/desktop build")
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
   raise "Desktop promotion must select a product signing identity" unless promote_text.include?("--product")
   raise "Desktop promotion must publish an independent Okou release" unless promote_text.include?("OKOU_RELEASE_TAG: okou-desktop-v")

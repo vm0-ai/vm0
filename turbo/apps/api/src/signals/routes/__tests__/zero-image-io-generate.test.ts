@@ -832,7 +832,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: {
         message:
-          "This run has too many built-in generations in progress. Wait for one to finish and try again.",
+          "This run already has 3 built-in generations in progress, which is the limit. Keep at most 3 in flight and start the next one only after an earlier one finishes.",
         code: "BUILT_IN_RUN_CONCURRENCY_LIMIT",
       },
     });
@@ -1008,6 +1008,11 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.webp$/u);
     expect(url).toBe(`https://cdn.vm7.io/${String(putInput.Key)}`);
+    // The embed URL serves the same stored object through the CDN image
+    // transform so a PNG-only model still reaches browsers as AVIF/WebP.
+    expect(body).toMatchObject({
+      embedUrl: `https://cdn.vm7.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/${String(putInput.Key)}`,
+    });
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
       filename: encodeURIComponent(filename),

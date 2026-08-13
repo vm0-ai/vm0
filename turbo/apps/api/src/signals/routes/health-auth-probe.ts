@@ -1,4 +1,4 @@
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { command } from "ccstate";
 import { z } from "zod";
 
@@ -7,7 +7,7 @@ import {
   setAuthContext$,
   type AuthErrorResponse,
 } from "../auth/auth-context";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import type { AuthContext, AuthTokenType } from "../../types/auth";
 import type { RouteEntry } from "../route-entry";
 import { rawQuery$ } from "../context/hono";

@@ -7,10 +7,10 @@
  * product behavior through the remaining production routes.
  */
 import { createStore } from "ccstate";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { storages } from "@vm0/db/schema/storage";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { storages } from "@okouai/db/schema/storage";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../lib/db";

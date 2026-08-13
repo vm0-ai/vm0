@@ -5,10 +5,10 @@ import {
   integrationsPhoneUploadInitContract,
   type PhoneUploadCompleteBody,
   type PhoneUploadInitBody,
-} from "@vm0/api-contracts/contracts/integrations";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/integrations";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 

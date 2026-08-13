@@ -11,11 +11,11 @@ import {
   Loader2,
   Bug,
 } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
-import { Switch } from "@vm0/ui/components/ui/switch";
-import { SegmentControl, SegmentControlItem } from "@vm0/ui";
-import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
+import { Switch } from "@okouai/ui/components/ui/switch";
+import { SegmentControl, SegmentControlItem } from "@okouai/ui";
+import type { SendMode } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import { PersonalProvidersTab } from "./components/preferences/personal-providers-tab.tsx";

@@ -5,7 +5,7 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use serde::Deserialize;
+use guest_contracts::active_input::{ActiveInputDecodeError, decode_active_input};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
@@ -15,7 +15,6 @@ use crate::active_input_receipts::ActiveInputReceiptRuntime;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 
-const ACTIVE_INPUT_TYPE: &str = "active-input";
 const ACTIVE_INPUT_QUEUE_CAPACITY: usize = 8;
 const ACTIVE_INPUT_DELIVERY_ID_CAPACITY: usize =
     guest_contracts::active_input_receipts::MAX_ACTIVE_INPUT_RECEIPT_IDS;
@@ -289,15 +288,6 @@ pub struct ActiveInputRuntime {
     writer: ActiveInputWriter,
 }
 
-#[derive(Deserialize)]
-struct ActiveInputPayload {
-    #[serde(rename = "type")]
-    payload_type: String,
-    #[serde(rename = "deliveryId")]
-    delivery_id: String,
-    text: String,
-}
-
 /// Derives the deterministic Claude user-frame UUID for the run's initial prompt.
 ///
 /// Claude stream-JSON stdin writers use this UUID when sending the initial
@@ -311,6 +301,19 @@ pub fn claude_initial_prompt_uuid(run_id: &str) -> String {
         format!("vm0:{run_id}:claude-initial-prompt").as_bytes(),
     )
     .to_string()
+}
+
+fn active_input_decode_rejection(error: ActiveInputDecodeError) -> ActiveInputControlOutcome {
+    let diagnostic = match error {
+        ActiveInputDecodeError::InvalidPayload => "active input payload is invalid",
+        ActiveInputDecodeError::UnsupportedType => "active input payload type is unsupported",
+        ActiveInputDecodeError::EmptyText => "active input text is empty",
+        ActiveInputDecodeError::InvalidDeliveryId => "active input delivery id is invalid",
+        ActiveInputDecodeError::NonCanonicalDeliveryId => {
+            "active input delivery id is not canonical"
+        }
+    };
+    ActiveInputControlOutcome::Rejected { diagnostic }
 }
 
 fn active_input_text_digest(text: &str) -> [u8; 32] {
@@ -513,38 +516,11 @@ impl ActiveInputController {
                 diagnostic: "active input is not supported for this agent",
             };
         };
-        let payload = match serde_json::from_slice::<ActiveInputPayload>(payload) {
+        let payload = match decode_active_input(payload) {
             Ok(payload) => payload,
-            Err(_) => {
-                return ActiveInputControlOutcome::Rejected {
-                    diagnostic: "active input payload is invalid",
-                };
-            }
+            Err(error) => return active_input_decode_rejection(error),
         };
-        if payload.payload_type != ACTIVE_INPUT_TYPE {
-            return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input payload type is unsupported",
-            };
-        }
-        if payload.text.is_empty() {
-            return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input text is empty",
-            };
-        }
-
-        let text = payload.text;
-        let delivery_id = payload.delivery_id;
-        let Ok(parsed) = Uuid::parse_str(&delivery_id) else {
-            return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input delivery id is invalid",
-            };
-        };
-        let canonical_delivery_id = parsed.hyphenated().to_string();
-        if canonical_delivery_id != delivery_id {
-            return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input delivery id is not canonical",
-            };
-        }
+        let (delivery_id, text) = payload.into_parts();
         let text_digest = active_input_text_digest(&text);
 
         let mut state = self

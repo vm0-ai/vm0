@@ -2,11 +2,11 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import {
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,
-} from "@vm0/connectors/firewall-metadata/policy";
+} from "@okouai/connectors/firewall-metadata/policy";
 import { now } from "../lib/time.ts";
 import type {
   PlatformConnectorPermissionMetadata,

@@ -26,7 +26,7 @@ import {
   cronSteerRunTimeBudgetContract,
   cronSyncSkillsContract,
   cronTelegramCleanupContract,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/cron";
 import { describe, expect, it } from "vitest";
 
 import { ROUTES } from "../signals/route";

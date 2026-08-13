@@ -11,13 +11,13 @@ import {
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import {
   zeroTeamContract,
   type TeamComposeItem,
-} from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/zero-team";
 
 import {
   createMockWorkflowAutomation,
@@ -1406,6 +1406,32 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("renders 100 chat threads before the sidebar viewport is measured", async () => {
+    prepareDefaultAgent();
+    const firstThread = createThread(EXISTING_THREAD_ID, "Fallback chat 1");
+    const threads = [
+      firstThread,
+      ...Array.from({ length: 119 }, (_, index) => {
+        return createThread(
+          `b3200000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+          `Fallback chat ${index + 2}`,
+        );
+      }),
+    ];
+    mockSidebarThreadStory(threads);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${firstThread.id}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("sidebar-chat-thread-virtual-row"),
+      ).toHaveLength(100);
+    });
+  });
+
   it("aligns the current virtualized chat row with the sidebar scroll area top on page setup", async () => {
     prepareDefaultAgent();
     const leadingThreads = Array.from({ length: 24 }, (_, index) => {
@@ -2537,17 +2563,16 @@ describe("zero sidebar", () => {
       return current;
     });
     const defaultSidebarRow = agentRowByName(nav, "Zero");
-    await waitFor(() => {
-      expect(
-        within(defaultSidebarRow).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-      expect(
-        within(defaultSidebarRow).getByLabelText("Open agent menu"),
-      ).toBeInTheDocument();
+    const defaultUnread = await waitFor(() => {
+      return within(defaultSidebarRow).getByLabelText("Unread");
     });
+    const defaultMenuTrigger =
+      within(defaultSidebarRow).getByLabelText("Open agent menu");
+    expect(defaultUnread).toBeVisible();
 
-    click(within(defaultSidebarRow).getByLabelText("Open agent menu"));
+    click(defaultMenuTrigger);
     expect(menuItemByText("Mark all read")).toBeInTheDocument();
+    expect(queryAllByRoleFast("menuitem")).toHaveLength(1);
     expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
     click(menuItemByText("Mark all read"));
 

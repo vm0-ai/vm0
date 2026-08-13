@@ -5,31 +5,31 @@ import { HttpResponse, delay, http, passthrough } from "msw";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
-} from "@vm0/db/schema/connector-catalog";
-import { connectors } from "@vm0/db/schema/connector";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/connector-catalog";
+import { connectors } from "@okouai/db/schema/connector";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
-import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
 import { z } from "zod";
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";

@@ -2,8 +2,8 @@ import {
   compatibleStoredExecutionContextSchema,
   type CompatibleStoredExecutionContext,
   type StoredExecutionContext,
-} from "@vm0/api-contracts/contracts/runners";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/runners";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { z } from "zod";
 
 import {

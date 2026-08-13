@@ -1,4 +1,4 @@
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 
 export function customConnectorDefinitionSelection() {
   return {

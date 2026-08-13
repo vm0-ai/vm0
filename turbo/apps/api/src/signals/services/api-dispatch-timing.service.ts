@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 
 import { now } from "../../lib/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";

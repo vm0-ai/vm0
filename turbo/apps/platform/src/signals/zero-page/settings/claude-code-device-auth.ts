@@ -1,10 +1,10 @@
 import { command, computed, state, type Command, type State } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroClaudeCodeDeviceAuthContract,
   type ClaudeCodeDeviceAuthMode,
   type ClaudeCodeDeviceAuthScope,
-} from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+} from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
 
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";

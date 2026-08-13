@@ -9,8 +9,8 @@ import {
   connectorCheckRequestSchema,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckPolicy,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/zero-connector-check";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

@@ -1,9 +1,9 @@
 import { command, createStore } from "ccstate";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
+import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
-} from "@vm0/db/schema/morning-brief";
+} from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 

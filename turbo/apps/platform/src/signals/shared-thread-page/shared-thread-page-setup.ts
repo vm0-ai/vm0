@@ -1,4 +1,4 @@
-import { sharedThreadsContract } from "@vm0/api-contracts/contracts/shared-threads";
+import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 import { command } from "ccstate";
 import { createElement } from "react";
 

@@ -1,5 +1,5 @@
 import "@uiw/react-markdown-preview/markdown.css";
-import { CopyButton, cn } from "@vm0/ui";
+import { CopyButton, cn } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
@@ -193,8 +193,15 @@ function MediaImageRenderer(props: MarkdownImageProps) {
 function MarkdownDivRenderer(props: MarkdownDivProps) {
   const { children, ...rest } = props;
   const data = props.node?.data;
+  // A card slot enters the tree as a paragraph and leaves it as this div, so it
+  // carries the block spacing the paragraph would have had — without it two
+  // consecutive cards sit border-to-border.
   if (data?.card) {
-    return <MarkdownCardView card={data.card} />;
+    return (
+      <div className="zero-markdown-card">
+        <MarkdownCardView card={data.card} />
+      </div>
+    );
   }
   if (typeof data?.copyCode === "string") {
     return (

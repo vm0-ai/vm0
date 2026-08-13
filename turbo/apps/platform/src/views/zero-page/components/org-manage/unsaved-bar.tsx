@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Pencil, Loader2 } from "lucide-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 
 export function UnsavedBar({
   onDiscard,

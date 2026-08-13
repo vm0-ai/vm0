@@ -1,11 +1,11 @@
 import { command } from "ccstate";
-import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
+import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, sql } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";

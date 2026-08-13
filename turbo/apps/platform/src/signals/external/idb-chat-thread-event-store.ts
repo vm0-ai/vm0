@@ -4,7 +4,7 @@ import {
   chatThreadSnapshotProjectionSchema,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   CHAT_THREAD_EVENT_SYNC_STORE,
   CHAT_THREAD_EVENTS_ORDER_INDEX,

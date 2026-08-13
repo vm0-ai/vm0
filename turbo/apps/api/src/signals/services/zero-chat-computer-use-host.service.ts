@@ -1,5 +1,5 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { computerUseHosts } from "@okouai/db/schema/computer-use-host";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { Db } from "../external/db";

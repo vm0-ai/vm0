@@ -246,14 +246,18 @@ async fn run_codex_app_server(
         mut active_input,
         user_cancellation,
         codex_startup,
+        workload_containment,
     } = controls;
     let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
     let mut ingestor = CliEventIngestor::new(runtime, codex_startup);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
-    let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
-        .map_err(|error| app_server_error(masker, error))?;
+    let mut client = CodexAppServerClient::spawn(codex_app_server_config(
+        runtime,
+        workload_containment.cloned(),
+    ))
+    .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
     let active_input_controller = active_input.controller();
 
@@ -534,7 +538,10 @@ async fn run_codex_app_server(
     }
 }
 
-fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConfig {
+fn codex_app_server_config(
+    runtime: &CliRuntimeConfig<'_>,
+    workload_containment: Option<crate::workload_containment::WorkloadContainment>,
+) -> CodexAppServerConfig {
     let binary = if runtime.use_mock_codex {
         log_info!(LOG_TAG, "Using mock-codex app-server for testing");
         PathBuf::from(runtime.mock_codex_path.as_ref())
@@ -552,6 +559,7 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
         )
         .with_config_overrides(config_overrides)
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
+        .with_workload_containment(workload_containment)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
     if runtime.use_mock_codex {
         let scenario = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")

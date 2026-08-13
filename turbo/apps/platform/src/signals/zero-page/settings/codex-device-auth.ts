@@ -1,11 +1,11 @@
 import { command, computed, state, type Command, type State } from "ccstate";
 import { delay } from "signal-timers";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroCodexDeviceAuthContract,
   type CodexDeviceAuthMode,
   type CodexDeviceAuthScope,
-} from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+} from "@okouai/api-contracts/contracts/zero-codex-device-auth";
 
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";

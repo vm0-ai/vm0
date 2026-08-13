@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { UsagePackManagementResponse } from "@vm0/api-contracts/contracts/zero-billing";
+import type { UsagePackManagementResponse } from "@okouai/api-contracts/contracts/zero-billing";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$, usagePackManagementAsync$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";

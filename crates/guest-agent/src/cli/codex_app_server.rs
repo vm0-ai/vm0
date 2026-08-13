@@ -54,6 +54,7 @@ pub struct CodexAppServerConfig {
     config_overrides: Vec<String>,
     current_dir: Option<PathBuf>,
     opt_out_notification_methods: Vec<String>,
+    workload_containment: Option<crate::workload_containment::WorkloadContainment>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +79,7 @@ impl CodexAppServerConfig {
             config_overrides: Vec::new(),
             current_dir: None,
             opt_out_notification_methods: Vec::new(),
+            workload_containment: None,
         }
     }
 
@@ -116,6 +118,16 @@ impl CodexAppServerConfig {
     /// directory from Tokio's command builder.
     pub fn with_current_dir(mut self, current_dir: impl Into<PathBuf>) -> Self {
         self.current_dir = Some(current_dir.into());
+        self
+    }
+
+    /// Supply the production cgroup placement capability for this child.
+    #[must_use]
+    pub fn with_workload_containment(
+        mut self,
+        containment: Option<crate::workload_containment::WorkloadContainment>,
+    ) -> Self {
+        self.workload_containment = containment;
         self
     }
 
@@ -368,6 +380,11 @@ impl CodexAppServerClient {
             .kill_on_drop(true);
         if let Some(current_dir) = config.current_dir {
             cmd.current_dir(current_dir);
+        }
+        if let Some(containment) = config.workload_containment.as_ref() {
+            containment
+                .configure_command(&mut cmd)
+                .map_err(CodexAppServerError::Spawn)?;
         }
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
         let stdin = child.stdin.take().ok_or_else(|| {

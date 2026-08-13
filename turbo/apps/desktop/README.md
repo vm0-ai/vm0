@@ -50,7 +50,7 @@ Recording permissions are not reset by ad-hoc signatures.
 The desktop build compiles both Electron entrypoints and the Swift native helper:
 
 ```bash
-pnpm -F @vm0/desktop build
+pnpm -F @okouai/desktop build
 ```
 
 Create a macOS artifact with:
@@ -67,7 +67,7 @@ Build the independent Okou identity with:
 ```bash
 VM0_DESKTOP_PRODUCT=okou \
 VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
-pnpm -F @vm0/desktop make
+pnpm -F @okouai/desktop make
 ```
 
 That build creates `Okou.app` with bundle ID and callback scheme
@@ -87,9 +87,9 @@ is also the path included in packaged macOS artifacts.
 Point it at a local or staging platform URL with:
 
 ```bash
-VM0_DESKTOP_PLATFORM_URL=https://staging-app.omby.ai pnpm -F @vm0/desktop dev:packaged
-VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged
-VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=https://staging-app.omby.ai pnpm -F @okouai/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @okouai/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @okouai/desktop dev:packaged
 ```
 
 The desktop app does not start platform/web/api/proxy services itself. Start the
@@ -169,9 +169,9 @@ packaged identity; they do not discover or switch products at runtime.
 
 `VM0_DESKTOP_PRODUCT` defaults to `zero`, preserving existing local and CI
 builds. Okou production builds package a runtime configuration containing
-`product: okou` and `https://app.okou.ai`; that app origin intentionally maps to
-the current `api.vm0.ai` and `www.vm0.ai` services until the separate
-`api.okou.ai` readiness gate passes.
+`product: okou` and `https://app.okou.ai`. That app origin routes API calls to
+`api.okou.ai`, while Clerk and OAuth web flows remain canonical on
+`www.vm0.ai`.
 
 Okou is a separate macOS application identity. It can be installed beside
 Zero, stores Electron data under its explicit `Okou` data directory, and gets a

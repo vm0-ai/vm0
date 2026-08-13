@@ -116,6 +116,48 @@ describe("okou generate image command", () => {
     expect(stdout).toContain("Provider: fal");
   });
 
+  it("should surface the CDN embed URL when it differs from the file URL", async () => {
+    const embedUrl =
+      "https://cdn.vm7.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/artifacts/abc.png";
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json({ ...IMAGE_RESULT, embedUrl });
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--raw-prompt",
+      "A watercolor fox",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
+    expect(stdout).toContain(`Embed this URL in HTML: ${embedUrl}`);
+  });
+
+  it("should omit the embed line when the API does not return one", async () => {
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json(IMAGE_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--raw-prompt",
+      "A watercolor fox",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
+    expect(stdout).not.toContain("Embed this URL in HTML");
+  });
+
   it("should print the complete image result as one JSON object", async () => {
     server.use(
       http.post(IMAGE_URL, () => {

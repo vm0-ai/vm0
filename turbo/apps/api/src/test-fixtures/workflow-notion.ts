@@ -1,4 +1,4 @@
-import { notionWebhookSecrets } from "@vm0/db/schema/notion-event";
+import { notionWebhookSecrets } from "@okouai/db/schema/notion-event";
 
 import { db } from "../lib/db";
 

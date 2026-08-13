@@ -1,25 +1,25 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   zeroConnectorCheckContract,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckRequest,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/zero-connector-check";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
@@ -28,16 +28,16 @@ import {
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroMcpConnectorListResponseSchema,
   zeroMcpConnectorsContract,
   type ZeroMcpConnector,
-} from "@vm0/api-contracts/contracts/zero-mcp-connectors";
+} from "@okouai/api-contracts/contracts/zero-mcp-connectors";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/connector-schemas";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type ZeroConnector = ConnectorResponse;

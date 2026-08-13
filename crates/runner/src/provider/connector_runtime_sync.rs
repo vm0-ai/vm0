@@ -104,10 +104,9 @@ struct ActiveRunConnectorRuntimeState {
 }
 
 struct ActiveConnectorSyncState {
+    registration: ConnectorRuntimeTargetRegistration,
     generation: u64,
     consecutive_failures: u32,
-    // Custom-only routing inputs pinned for this run. They are not target identity.
-    pinned_base_url_vars: Option<HashMap<String, String>>,
 }
 
 struct ScheduledSyncTask {
@@ -156,7 +155,6 @@ struct ConnectorSyncTarget {
 struct PreparedConnectorRuntimePublication {
     target: ConnectorSyncTarget,
     deadline: Option<tokio::time::Instant>,
-    candidate_base_url_vars: Option<HashMap<String, String>>,
     update: ConnectorRuntimeRegistryUpdate,
 }
 
@@ -280,9 +278,9 @@ impl ConnectorRuntimeSyncCore {
                     (
                         registration.target(),
                         ActiveConnectorSyncState {
+                            registration: registration.clone(),
                             generation: 0,
                             consecutive_failures: 0,
-                            pinned_base_url_vars: registration.custom_base_url_vars().cloned(),
                         },
                     )
                 })
@@ -772,11 +770,10 @@ impl ConnectorRuntimeSyncCore {
                 ) => {
                     let routing_variables =
                         if matches!(state, ConnectorRuntimeSyncState::Available { .. }) {
-                            let Some(Some(routing_variables)) = self
+                            let Some(routing_variables) = self
                                 .custom_base_url_vars_for_publication(
                                     run_id,
                                     target,
-                                    candidate_base_url_vars.as_ref(),
                                     registration_cancel,
                                 )
                                 .await
@@ -838,7 +835,6 @@ impl ConnectorRuntimeSyncCore {
             prepared_publications.push(PreparedConnectorRuntimePublication {
                 target: target.clone(),
                 deadline,
-                candidate_base_url_vars,
                 update,
             });
         }
@@ -878,7 +874,6 @@ impl ConnectorRuntimeSyncCore {
                                 run_id,
                                 &prepared.target,
                                 prepared.deadline,
-                                prepared.candidate_base_url_vars.as_ref(),
                                 registration_cancel,
                             )
                             .await
@@ -1093,19 +1088,16 @@ impl ConnectorRuntimeSyncCore {
                 if connector.generation != target.generation {
                     return None;
                 }
-                let registration = match &target.target {
-                    ConnectorRuntimeTarget::Builtin { connector_slug } => {
+                let registration = match &connector.registration {
+                    ConnectorRuntimeTargetRegistration::Builtin { connector_slug, .. } => {
                         ConnectorRuntimeTargetRegistration::Builtin {
                             connector_slug: connector_slug.clone(),
                             base_url_vars: None,
                         }
                     }
-                    ConnectorRuntimeTarget::Custom {
-                        custom_connector_id,
-                    } => ConnectorRuntimeTargetRegistration::Custom {
-                        custom_connector_id: custom_connector_id.clone(),
-                        base_url_vars: connector.pinned_base_url_vars.clone(),
-                    },
+                    ConnectorRuntimeTargetRegistration::Custom { .. } => {
+                        connector.registration.clone()
+                    }
                 };
                 Some((target.clone(), registration))
             })
@@ -1175,9 +1167,9 @@ impl ConnectorRuntimeSyncCore {
         let connector = active.connectors.get(&target.target)?;
         Some(
             connector
-                .pinned_base_url_vars
-                .as_ref()
-                .is_none_or(|pinned| pinned == candidate),
+                .registration
+                .custom_base_url_vars()
+                .is_some_and(|pinned| pinned == candidate),
         )
     }
 
@@ -1185,9 +1177,8 @@ impl ConnectorRuntimeSyncCore {
         &self,
         run_id: RunId,
         target: &ConnectorSyncTarget,
-        candidate: Option<&HashMap<String, String>>,
         registration_cancel: &CancellationToken,
-    ) -> Option<Option<HashMap<String, String>>> {
+    ) -> Option<HashMap<String, String>> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
         if &active.cancel != registration_cancel {
@@ -1197,12 +1188,7 @@ impl ConnectorRuntimeSyncCore {
         if connector.generation != target.generation {
             return None;
         }
-        Some(
-            connector
-                .pinned_base_url_vars
-                .clone()
-                .or_else(|| candidate.cloned()),
-        )
+        connector.registration.custom_base_url_vars().cloned()
     }
 
     async fn complete_successful_sync(
@@ -1210,7 +1196,6 @@ impl ConnectorRuntimeSyncCore {
         run_id: RunId,
         target: &ConnectorSyncTarget,
         deadline: Option<tokio::time::Instant>,
-        candidate_base_url_vars: Option<&HashMap<String, String>>,
         registration_cancel: &CancellationToken,
     ) -> bool {
         let mut active_runs = self.inner.active_runs.lock().await;
@@ -1225,13 +1210,6 @@ impl ConnectorRuntimeSyncCore {
         };
         if connector.generation != target.generation {
             return false;
-        }
-        if let Some(candidate) = candidate_base_url_vars {
-            match &connector.pinned_base_url_vars {
-                Some(pinned) if pinned != candidate => return false,
-                Some(_) => {}
-                None => connector.pinned_base_url_vars = Some(candidate.clone()),
-            }
         }
         connector.consecutive_failures = 0;
         self.replace_schedule_locked(active, run_id, target, deadline)
@@ -1736,10 +1714,23 @@ mod tests {
         }
     }
 
-    fn runtime_target_registration(
-        target: &ConnectorRuntimeTarget,
+    fn builtin_runtime_target_registration(
+        connector_slug: &str,
     ) -> ConnectorRuntimeTargetRegistration {
-        target.clone().into()
+        ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: connector_slug.to_string(),
+            base_url_vars: None,
+        }
+    }
+
+    fn custom_runtime_target_registration(
+        custom_connector_id: &str,
+        base_url_vars: HashMap<String, String>,
+    ) -> ConnectorRuntimeTargetRegistration {
+        ConnectorRuntimeTargetRegistration::Custom {
+            custom_connector_id: custom_connector_id.to_string(),
+            base_url_vars,
+        }
     }
 
     fn custom_runtime_firewall(custom_connector_id: &str) -> FirewallEntry {
@@ -2122,14 +2113,16 @@ mod tests {
             connectors: connector_slugs
                 .into_iter()
                 .map(|connector_slug| {
+                    let registration = ConnectorRuntimeTargetRegistration::Builtin {
+                        connector_slug: connector_slug.into(),
+                        base_url_vars: None,
+                    };
                     (
-                        ConnectorRuntimeTarget::Builtin {
-                            connector_slug: connector_slug.into(),
-                        },
+                        registration.target(),
                         ActiveConnectorSyncState {
+                            registration,
                             generation: 0,
                             consecutive_failures: 0,
-                            pinned_base_url_vars: None,
                         },
                     )
                 })
@@ -2254,7 +2247,7 @@ mod tests {
                     ..
                 } => Some(ConnectorRuntimeTargetRegistration::Custom {
                     custom_connector_id: custom_connector_id.clone(),
-                    base_url_vars: None,
+                    base_url_vars: HashMap::new(),
                 }),
                 FirewallEntry::Inline { .. } => None,
             })
@@ -2340,9 +2333,9 @@ mod tests {
             .iter()
             .map(|connector_slug| builtin_target(connector_slug))
             .collect::<Vec<_>>();
-        let registrations = targets
+        let registrations = connector_slugs
             .iter()
-            .map(runtime_target_registration)
+            .map(|connector_slug| builtin_runtime_target_registration(connector_slug))
             .collect::<Vec<_>>();
         let firewalls = connector_slugs
             .iter()
@@ -2406,7 +2399,7 @@ mod tests {
         run_id: RunId,
     ) -> (tempfile::TempDir, std::path::PathBuf) {
         let (dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
-        let targets = [runtime_target_registration(&builtin_target("slack"))];
+        let targets = [builtin_runtime_target_registration("slack")];
         handle
             .register_run(ConnectorRuntimeSyncRegistration {
                 run_id,
@@ -2812,7 +2805,7 @@ mod tests {
         let handle = ConnectorRuntimeSyncHandle::new(api_client_for_url(api_url));
         let run_id = RunId::nil();
         let (_dir, registry, registry_path, lock_path) = registered_slack_registry(run_id).await;
-        let targets = [runtime_target_registration(&builtin_target("slack"))];
+        let targets = [builtin_runtime_target_registration("slack")];
         handle
             .register_run(ConnectorRuntimeSyncRegistration {
                 run_id,
@@ -3061,7 +3054,7 @@ mod tests {
                 next_refresh_at: "2999-01-01T00:00:00Z".to_string(),
             },
         )]);
-        let targets = [runtime_target_registration(&builtin_target("slack"))];
+        let targets = [builtin_runtime_target_registration("slack")];
         handle
             .core
             .register_run(ConnectorRuntimeSyncRegistration {
@@ -3094,7 +3087,7 @@ mod tests {
             dir.path().join("proxy-registry.json"),
             dir.path().join("proxy-registry.lock"),
         );
-        let targets = [runtime_target_registration(&builtin_target("slack"))];
+        let targets = [builtin_runtime_target_registration("slack")];
 
         handle
             .core
@@ -3160,7 +3153,7 @@ mod tests {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            targets: std::slice::from_ref(&builtin_runtime_target_registration("slack")),
             refreshes: Some(&refreshes),
         })
         .await;
@@ -3421,10 +3414,11 @@ mod tests {
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
+        let registration = custom_runtime_target_registration(custom_connector_id, HashMap::new());
         let absent_sync = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
-                .json_body(json!({ "targets": [target.clone()] }));
+                .json_body(json!({ "targets": [registration.clone()] }));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -3438,7 +3432,6 @@ mod tests {
         let firewall = custom_runtime_firewall(custom_connector_id);
         let empty_firewalls = Vec::new();
         let empty_policies = HashMap::new();
-        let registration = runtime_target_registration(&target);
         let (_dir, registry, registry_path) = registered_runtime_registry_with_targets(
             run_id,
             &empty_firewalls,
@@ -3483,7 +3476,7 @@ mod tests {
         let available_sync = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
-                .json_body(json!({ "targets": [target.clone()] }));
+                .json_body(json!({ "targets": [registration.clone()] }));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -3575,7 +3568,10 @@ mod tests {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            targets: std::slice::from_ref(&custom_runtime_target_registration(
+                custom_connector_id,
+                HashMap::new(),
+            )),
             refreshes: None,
         })
         .await;
@@ -3600,19 +3596,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn custom_target_pins_first_routing_values_and_forwards_them_after_wakeup() {
+    async fn custom_target_forwards_pinned_routing_values_after_wakeup() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
-        let registration = runtime_target_registration(&target);
-        let firewall = custom_runtime_firewall(custom_connector_id);
         let base_url_vars = HashMap::from([("subdomain".to_string(), "acme".to_string())]);
-        let first_sync = server.mock(|when, then| {
+        let registration =
+            custom_runtime_target_registration(custom_connector_id, base_url_vars.clone());
+        let firewall = custom_runtime_firewall(custom_connector_id);
+        let available_sync = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
-                .json_body(json!({ "targets": [target.clone()] }));
+                .json_body(json!({
+                    "targets": [{
+                        "kind": "custom",
+                        "customConnectorId": custom_connector_id,
+                        "baseUrlVars": base_url_vars,
+                    }],
+                }));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -3654,10 +3657,10 @@ mod tests {
                 .await
         );
 
-        first_sync.assert_calls(1);
+        available_sync.assert_calls(1);
         assert_eq!(
-            core.inner.active_runs.lock().await[&run_id].connectors[&target].pinned_base_url_vars,
-            Some(base_url_vars.clone())
+            core.inner.active_runs.lock().await[&run_id].connectors[&target].registration,
+            registration
         );
         let registry_after_available = tokio::fs::read(&registry_path).await.unwrap();
         let registry_json: serde_json::Value =
@@ -3668,7 +3671,7 @@ mod tests {
             json!(base_url_vars)
         );
 
-        first_sync.delete_async().await;
+        available_sync.delete_async().await;
         let unresolved_sync = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
@@ -3704,10 +3707,7 @@ mod tests {
         );
         let active_runs = core.inner.active_runs.lock().await;
         let active = &active_runs[&run_id];
-        assert_eq!(
-            active.connectors[&target].pinned_base_url_vars,
-            Some(base_url_vars)
-        );
+        assert_eq!(active.connectors[&target].registration, registration);
         assert_eq!(active.connectors[&target].consecutive_failures, 1);
         assert!(active.sync_tasks.contains_key(&target));
         drop(active_runs);
@@ -3726,7 +3726,7 @@ mod tests {
             HashMap::from([("subdomain".to_string(), "other".to_string())]);
         let registration = ConnectorRuntimeTargetRegistration::Custom {
             custom_connector_id: custom_connector_id.to_string(),
-            base_url_vars: Some(pinned_base_url_vars.clone()),
+            base_url_vars: pinned_base_url_vars.clone(),
         };
         let firewall = custom_runtime_firewall(custom_connector_id);
         server.mock(|when, then| {
@@ -3792,10 +3792,7 @@ mod tests {
         );
         let active_runs = core.inner.active_runs.lock().await;
         let active = &active_runs[&run_id];
-        assert_eq!(
-            active.connectors[&target].pinned_base_url_vars,
-            Some(pinned_base_url_vars)
-        );
+        assert_eq!(active.connectors[&target].registration, registration);
         assert_eq!(active.connectors[&target].consecutive_failures, 1);
         assert!(active.sync_tasks.contains_key(&target));
         drop(active_runs);
@@ -3849,7 +3846,10 @@ mod tests {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            targets: std::slice::from_ref(&custom_runtime_target_registration(
+                custom_connector_id,
+                HashMap::new(),
+            )),
             refreshes: None,
         })
         .await;
@@ -3904,7 +3904,7 @@ mod tests {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            targets: std::slice::from_ref(&builtin_runtime_target_registration("slack")),
             refreshes: None,
         })
         .await;
@@ -3962,7 +3962,10 @@ mod tests {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            targets: std::slice::from_ref(&custom_runtime_target_registration(
+                custom_connector_id,
+                HashMap::new(),
+            )),
             refreshes: None,
         })
         .await;
@@ -4013,7 +4016,7 @@ mod tests {
                 unknown_policy: "allow".to_string(),
             },
         )]);
-        let registration = runtime_target_registration(&target);
+        let registration = builtin_runtime_target_registration("slack");
         let (_dir, registry, registry_path) = registered_runtime_registry_with_targets(
             run_id,
             &[],
@@ -4572,7 +4575,7 @@ mod tests {
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
-                base_url_vars: None,
+                base_url_vars: HashMap::new(),
             },
         ];
         let (_dir, registry, registry_path) =
@@ -5368,7 +5371,7 @@ mod tests {
                 next_refresh_at: "not-a-date".to_string(),
             },
         )]);
-        let targets = [runtime_target_registration(&builtin_target("slack"))];
+        let targets = [builtin_runtime_target_registration("slack")];
 
         core.register_run(ConnectorRuntimeSyncRegistration {
             run_id,

@@ -74,7 +74,7 @@ Choose the pattern that matches where your feature is consumed.
 #### Server-side (API routes)
 
 ```typescript
-import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
+import { isFeatureEnabled, FeatureSwitchKey } from "@okouai/core";
 
 // In route handler:
 if (!isFeatureEnabled(FeatureSwitchKey.MyFeature, { userId, orgId })) {
@@ -85,7 +85,7 @@ if (!isFeatureEnabled(FeatureSwitchKey.MyFeature, { userId, orgId })) {
 #### Client-side (Platform UI)
 
 ```typescript
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@okouai/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // In component:

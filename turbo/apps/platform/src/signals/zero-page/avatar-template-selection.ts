@@ -1,13 +1,13 @@
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   ZeroAvatarVideoAvatar,
   ZeroAvatarVideoVoice,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 import {
   avatarTemplateStylePresetId,
   parseAvatarTemplateStylePresetId,
   readAvatarTemplateOptions,
-} from "@vm0/core/avatar-template";
+} from "@okouai/core/avatar-template";
 
 import { i18n } from "../../i18n/index.ts";
 

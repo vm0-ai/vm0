@@ -1,4 +1,4 @@
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 
 export type ChatEventUserMessage = UserMessageDocument;
 

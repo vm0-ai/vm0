@@ -6,7 +6,7 @@ import {
   type ApiFetcherArgs,
   type InitClientArgs,
   type InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { IN_VITEST } from "../env.ts";
 import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";

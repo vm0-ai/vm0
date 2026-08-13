@@ -10,13 +10,13 @@
 
 import { randomInt, randomUUID } from "node:crypto";
 
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { getCustomConnectorSkillStorageName } from "@vm0/core/storage-names";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { getCustomConnectorSkillStorageName } from "@okouai/core/storage-names";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -5602,6 +5602,8 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     expect(stable.id).toBe(connected.id);
     expect(stable.externalUsername).toBe("bdd-github-user");
 
+    const expiringStartedAt = now();
+    mockNow(expiringStartedAt);
     const expiringStart = await connectorsApi.startOauth(
       actor,
       "github",
@@ -5610,7 +5612,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     const expiringState = stateFromAuthorizationUrl(
       expiringStart.authorizationUrl,
     );
-    mockNow(now() + 16 * 60 * 1000);
+    mockNow(expiringStartedAt + 15 * 60 * 1000);
     const expired = await connectorsApi.completeOauthCallback("github", {
       code: "github-late-code",
       state: expiringState,

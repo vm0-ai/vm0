@@ -4,8 +4,8 @@ import {
   PI_SKILLS_ROOT,
   type RunSkillSnapshot,
   type RunSkillSnapshotEntry,
-} from "@vm0/api-contracts/contracts/runners";
-import type { PersistedStorageMount } from "@vm0/db/types";
+} from "@okouai/api-contracts/contracts/runners";
+import type { PersistedStorageMount } from "@okouai/db/types";
 
 import type { StorageManifestSource } from "./agent-run-storage.service";
 

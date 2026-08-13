@@ -1,8 +1,8 @@
 import {
   testWorkflowSkillStoragePresignedUrlCacheStateContract,
   type TestWorkflowSkillStoragePresignedUrlCacheStateActionBody,
-} from "@vm0/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
-import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
+} from "@okouai/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
+import { systemStoragePresignedUrlCache } from "@okouai/db/schema/system-storage-presigned-url-cache";
 import { command } from "ccstate";
 import { and, eq, like, sql } from "drizzle-orm";
 

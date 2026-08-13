@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { zeroBillingUsagePackCreditsContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroBillingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

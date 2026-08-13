@@ -5,13 +5,13 @@ import {
   getModelProviderEnvBindings,
   modelProviderTypeSchema,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { ConnectorReconnectReason } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { SecretConnectorMetadata } from "@okouai/api-contracts/contracts/runners";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodAccessMetadata,
   connectorAuthMethodRuntimeMetadata,
@@ -24,40 +24,40 @@ import {
   type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import {
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,
   type BasicAuthTemplateArg,
   type BasicAuthTemplateMatch,
-} from "@vm0/connectors/firewall-types";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+} from "@okouai/connectors/firewall-types";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   refreshConnectorAuthProviderAccessTokenWithMethod,
   type ProviderEnv,
-} from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/auth-providers";
 import {
   isProviderHttpError,
   isProviderResponseError,
-} from "@vm0/connectors/auth-providers/provider-error";
-import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
+} from "@okouai/connectors/auth-providers/provider-error";
+import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
 import {
   getModelProviderRefreshMetadata,
   isModelProviderRefreshConfigured,
   refreshPreparedModelProviderAccess,
   isModelProviderRefreshProviderKey,
   type ModelProviderRefreshProviderKey,
-} from "@vm0/connectors/auth-providers/model-provider-auth";
-import { isChatgptRefreshError } from "@vm0/connectors/auth-providers/model-providers/codex-oauth/oauth";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { connectors } from "@vm0/db/schema/connector";
+} from "@okouai/connectors/auth-providers/model-provider-auth";
+import { isChatgptRefreshError } from "@okouai/connectors/auth-providers/model-providers/codex-oauth/oauth";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { connectors } from "@okouai/db/schema/connector";
 import {
   modelProviderAccounts,
   modelProviderAccountSecrets,
-} from "@vm0/db/schema/model-provider-account";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets as secretsTable } from "@vm0/db/schema/secret";
-import { variables as variablesTable } from "@vm0/db/schema/variable";
+} from "@okouai/db/schema/model-provider-account";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { secrets as secretsTable } from "@okouai/db/schema/secret";
+import { variables as variablesTable } from "@okouai/db/schema/variable";
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 

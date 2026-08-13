@@ -3,7 +3,7 @@ import {
   PLAN_UPGRADE_CLI_HINT,
   PLAN_UPGRADE_RUN_GUIDANCE,
   RUN_ERROR_GUIDANCE,
-} from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/errors";
 import { ApiRequestError } from "../api/core/client-factory";
 import { getOkouToken } from "../okou-env";
 

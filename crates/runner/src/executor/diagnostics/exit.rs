@@ -55,6 +55,18 @@ pub(in crate::executor) fn should_collect_unattributed_sigkill_resource_diagnost
             .is_some_and(|diagnostic| unattributed_sigkill_cli_failure(diagnostic, exit_code))
 }
 
+pub(in crate::executor) fn failure_diagnostic_reports_workload_memory_oom(
+    diagnostic: Option<&FailureDiagnostic>,
+) -> bool {
+    diagnostic
+        .and_then(|diagnostic| diagnostic.workload_resource_limit.as_ref())
+        .is_some_and(|limit| {
+            limit.memory_oom_events > 0
+                || limit.memory_oom_kill_events > 0
+                || limit.memory_oom_group_kill_events > 0
+        })
+}
+
 fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic, exit_code: i32) -> bool {
     diagnostic.failure_class == FailureClass::CliNonzero
         && diagnostic.cli_exit_code == Some(exit_code)
@@ -66,6 +78,7 @@ fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic, exit_code: i
             .is_some_and(|observed_exit| {
                 observed_sigkill_matches_exit_code(observed_exit, exit_code)
             })
+        && !failure_diagnostic_reports_workload_memory_oom(Some(diagnostic))
 }
 
 fn observed_sigkill_matches_exit_code(

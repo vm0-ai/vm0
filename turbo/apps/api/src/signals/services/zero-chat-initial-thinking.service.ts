@@ -1,6 +1,6 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   and,
   desc,

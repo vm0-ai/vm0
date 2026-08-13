@@ -7,15 +7,15 @@ import {
   isSupportedRunModel,
   normalizeRunModelId,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { agentphoneChatThreadRoutes } from "@vm0/db/schema/agentphone-chat-thread-route";
-import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
-import { agentphoneUserAgentPreferences } from "@vm0/db/schema/agentphone-user-agent-preference";
-import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agentphoneChatThreadRoutes } from "@okouai/db/schema/agentphone-chat-thread-route";
+import { agentphoneMessages } from "@okouai/db/schema/agentphone-message";
+import { agentphoneUserAgentPreferences } from "@okouai/db/schema/agentphone-user-agent-preference";
+import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { env } from "../../lib/env";

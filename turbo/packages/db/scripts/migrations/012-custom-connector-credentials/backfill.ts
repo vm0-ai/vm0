@@ -17,13 +17,13 @@ import { DecryptCommand, KMSClient } from "@aws-sdk/client-kms";
 import {
   customConnectorFieldSchema,
   type CustomConnectorField,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { connectors } from "@vm0/db/schema/connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { connectors } from "@okouai/db/schema/connector";
+import { orgCustomConnectorSecrets } from "@okouai/db/schema/org-custom-connector-secret";
+import { orgCustomConnectorValues } from "@okouai/db/schema/org-custom-connector-value";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";

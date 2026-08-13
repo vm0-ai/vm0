@@ -4,16 +4,16 @@ import {
   type UsagePackManagementResponse,
   type UsagePackUsd,
   USAGE_PACKS_USD,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
 import {
   usagePackAllocationChanges,
   usagePackAllocations,
   usagePackInvoiceFulfillments,
   usagePackSubscriptionChanges,
   usagePackSubscriptions,
-} from "@vm0/db/schema/usage-pack-subscription";
+} from "@okouai/db/schema/usage-pack-subscription";
 import {
   and,
   desc,

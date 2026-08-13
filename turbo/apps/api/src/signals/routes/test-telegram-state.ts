@@ -4,34 +4,34 @@ import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getVm0Vendor,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   testTelegramStateContract,
   type TestTelegramStateActionBody,
-} from "@vm0/api-contracts/contracts/test-telegram-state";
+} from "@okouai/api-contracts/contracts/test-telegram-state";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/agent-compose";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread-route";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramMessages } from "@okouai/db/schema/telegram-message";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";

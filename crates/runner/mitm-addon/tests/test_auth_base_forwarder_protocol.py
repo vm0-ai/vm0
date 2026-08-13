@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 import auth_base_forwarder as forwarder
+import auth_base_transport as transport
 from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream
 
 
@@ -254,7 +255,7 @@ class TestAuthBaseForwarderRequestBehavior:
 class TestAuthBaseForwarderResponseBodyLimit:
     async def test_accepts_body_at_limit(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
             fake_forwarder_upstream(body=b"1234") as upstream,
         ):
             status, body, _headers = await forwarder.forward_request(
@@ -271,7 +272,7 @@ class TestAuthBaseForwarderResponseBodyLimit:
 
     async def test_accepts_complete_fixed_length_body_at_limit(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
             fake_forwarder_upstream(
                 body=b"1234",
                 headers=[("Content-Length", "4")],
@@ -289,9 +290,9 @@ class TestAuthBaseForwarderResponseBodyLimit:
 
     async def test_rejects_body_over_limit_and_closes_resources(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
             fake_forwarder_upstream(body=b"12345") as upstream,
-            pytest.raises(forwarder.ForwardedResponseTooLargeError),
+            pytest.raises(transport.ForwardedResponseTooLargeError),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
 
@@ -302,7 +303,7 @@ class TestAuthBaseForwarderResponseBodyLimit:
 
     async def test_rejects_truncated_fixed_length_body_and_closes_resources(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
             fake_forwarder_upstream(
                 body=b"123",
                 headers=[("Content-Length", "4")],
@@ -345,7 +346,7 @@ class TestAuthBaseForwarderResponseBodyLimit:
 class TestAuthBaseForwarderRequestBodyLimit:
     async def test_accepts_body_at_limit(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
             fake_forwarder_upstream() as upstream,
         ):
             status, body, _headers = await forwarder.forward_request(
@@ -361,9 +362,9 @@ class TestAuthBaseForwarderRequestBodyLimit:
 
     async def test_rejects_body_over_limit_before_connection_setup(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
             fake_forwarder_upstream() as upstream,
-            pytest.raises(forwarder.ForwardedRequestTooLargeError),
+            pytest.raises(transport.ForwardedRequestTooLargeError),
         ):
             await forwarder.forward_request(
                 "https://example.com",
@@ -397,14 +398,14 @@ class TestAuthBaseForwarderResourceCleanup:
 
     async def test_oversized_body_releases_supplied_admission_before_upstream_setup(self):
         with (
-            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(transport, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
             patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 1),
             patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES", 4),
             fake_forwarder_upstream() as upstream,
         ):
             admission = forwarder.reserve_forward_request_admission(4)
 
-            with pytest.raises(forwarder.ForwardedRequestTooLargeError):
+            with pytest.raises(transport.ForwardedRequestTooLargeError):
                 await forwarder.forward_request(
                     "https://example.com",
                     "POST",

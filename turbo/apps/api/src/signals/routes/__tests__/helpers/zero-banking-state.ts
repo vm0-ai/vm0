@@ -2,7 +2,7 @@ import type {
   TestBankingStateActionBody,
   TestBankingStateActionResponse,
   TestBankingStateAuditEvent,
-} from "@vm0/api-contracts/contracts/test-banking-state";
+} from "@okouai/api-contracts/contracts/test-banking-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";

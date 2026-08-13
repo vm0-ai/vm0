@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

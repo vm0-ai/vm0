@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingInvoicesContract } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets } from "@vm0/db/schema/secret";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { secrets } from "@okouai/db/schema/secret";
 
 import { writeDb$ } from "../../../external/db";
 import { encryptSecretForTests } from "../../__tests__/helpers/encrypt-secret";

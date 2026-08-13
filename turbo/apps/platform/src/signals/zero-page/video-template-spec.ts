@@ -1,9 +1,9 @@
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
+import { parseAvatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import {
   VIDEO_MODEL_CONFIGS,
   resolveVideoGenerationOptions,
-} from "@vm0/core/video-model-catalog";
+} from "@okouai/core/video-model-catalog";
 
 /**
  * Every parameter a text-to-video run takes, resolved against the model catalog

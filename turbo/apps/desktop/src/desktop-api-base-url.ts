@@ -1,5 +1,5 @@
 // This module must stay loadable by the bootstrap entry: keep it free of
-// workspace (`@vm0/*`) and non-Electron package imports.
+// workspace (`@okouai/*`) and non-Electron package imports.
 
 function replaceHostPrefix(hostname: string, target: "api" | "www"): string {
   return hostname.replace(/(^|-)(api|app|platform|www)\./, `$1${target}.`);

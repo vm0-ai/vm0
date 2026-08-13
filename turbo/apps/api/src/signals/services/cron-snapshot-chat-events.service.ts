@@ -5,7 +5,7 @@ import { gunzip, gzip } from "node:zlib";
 import {
   chatEventRowV4Schema,
   type ChatEventRowV4,
-} from "@vm0/api-contracts/contracts/chat-event-rows";
+} from "@okouai/api-contracts/contracts/chat-event-rows";
 import { command, type Computed } from "ccstate";
 import {
   and,
@@ -20,10 +20,10 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
-import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSearchWatermarks } from "@okouai/db/schema/chat-event-search";
+import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env, optionalEnv } from "../../lib/env";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";

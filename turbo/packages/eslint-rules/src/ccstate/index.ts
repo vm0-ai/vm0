@@ -31,7 +31,7 @@
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
  * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
  * - no-react-class-component: Disallow React class components — use function components with hooks
- * - prefer-ui-components: Disallow raw button/input/textarea styled like a @vm0/ui component
+ * - prefer-ui-components: Disallow raw button/input/textarea styled like a @okouai/ui component
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";

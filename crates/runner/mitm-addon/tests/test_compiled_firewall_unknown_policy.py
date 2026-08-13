@@ -3,6 +3,7 @@
 import pytest
 
 import matching
+import path_security
 from tests.firewall_helpers import compile_firewalls_or_fail, wrap_firewalls
 
 
@@ -200,6 +201,33 @@ def test_compiled_blocks_unsafe_path(url):
     assert isinstance(compiled, matching.FirewallBlock)
     assert compiled.reason == "unsafe_path"
     assert compiled.permissions == ()
+
+
+def test_compiled_blocks_path_beyond_validation_budget():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [],
+            }
+        ],
+        name="example",
+    )
+    nested_encoding = "%2525252561"
+    path = "/" + nested_encoding
+    path += "a" * (path_security.MAX_PATH_VALIDATION_CHARACTERS + 1 - len(path))
+    policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com" + path,
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "unsafe_path"
 
 
 def test_compiled_allows_encoded_backslash_in_query():

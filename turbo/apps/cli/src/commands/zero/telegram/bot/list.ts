@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listTelegramBots } from "../../../../lib/api/domains/integrations-telegram";
 import { withErrorHandler } from "../../../../lib/command/with-error-handler";
-import type { TelegramBotListItem } from "@vm0/api-contracts/contracts/integrations";
+import type { TelegramBotListItem } from "@okouai/api-contracts/contracts/integrations";
 
 function usernameLabel(bot: TelegramBotListItem): string {
   if (!bot.username) return "-";

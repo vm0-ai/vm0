@@ -3,28 +3,28 @@ import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getVm0Vendor,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   testSlackStateContract,
   type TestSlackStatePostBody,
-} from "@vm0/api-contracts/contracts/test-slack-state";
+} from "@okouai/api-contracts/contracts/test-slack-state";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { secrets } from "@vm0/db/schema/secret";
-import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { variables } from "@vm0/db/schema/variable";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgCache } from "@okouai/db/schema/org-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { secrets } from "@okouai/db/schema/secret";
+import { slackChatIngress } from "@okouai/db/schema/slack-chat-ingress";
+import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { variables } from "@okouai/db/schema/variable";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 

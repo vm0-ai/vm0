@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { firewallsSchema } from "@vm0/connectors/firewall-types";
+import { firewallsSchema } from "@okouai/connectors/firewall-types";
 import { CANONICAL_WORKING_DIR } from "./runners";
 
 export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";

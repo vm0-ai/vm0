@@ -492,7 +492,7 @@ test("job-ref cleanup rejects fuzzy lookalikes and deletes organizations first",
   );
 });
 
-test("stale cleanup requires strict markers and supports dry-run", async () => {
+test("stale cleanup isolates roles, requires strict markers, and supports dry-run", async () => {
   const cutoff = new Date(10_000);
   await withClerkServer(
     (request, response) => {
@@ -518,6 +518,11 @@ test("stale cleanup requires strict markers and supports dry-run", async () => {
             "user_at_cutoff",
             "staging+clerk_test+3000-1+runner@vm0-e2e.ai",
             10_000,
+          ),
+          clerkUser(
+            "user_old_runner",
+            "staging+clerk_test+3000-1+runner-real-codex@vm0-e2e.ai",
+            1_000,
           ),
           clerkUser(
             "user_before_owned_org_cutoff",
@@ -557,21 +562,28 @@ test("stale cleanup requires strict markers and supports dry-run", async () => {
               10_000,
             ),
             clerkOrganization(
+              "org_old_runner",
+              clerkOwner("staging", "3000-1", "runner-real-codex"),
+              1_000,
+            ),
+            clerkOrganization(
               "org_after_user_cutoff",
               clerkOwner("staging", "3000-1", "paid-onboarding"),
               11_000,
             ),
           ],
-          total_count: 5,
+          total_count: 6,
         });
         return;
       }
       sendJson(response, 500, { unexpected: request.url });
     },
     async (requests) => {
-      const result = await cleanupStaleClerkTestResources(cutoff, {
-        dryRun: true,
-      });
+      const result = await cleanupStaleClerkTestResources(
+        ["browser", "paid-onboarding"],
+        cutoff,
+        { dryRun: true },
+      );
       assert.equal(result.selectedOrganizations, 1);
       assert.equal(result.selectedUsers, 1);
       assert.equal(result.deletedOrganizations, 0);

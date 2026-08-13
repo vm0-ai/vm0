@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
-import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
+import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";

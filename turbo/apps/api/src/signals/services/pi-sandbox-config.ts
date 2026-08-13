@@ -1,13 +1,13 @@
-import type { PiModelConfig } from "@vm0/api-contracts/contracts/runners";
+import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
 import {
   getModelProviderPiChatCompletionsUrl,
   getProviderBaseUrl,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   isPiAgentModelSupported,
   type PiOpenAICompatibleProvider,
-} from "@vm0/pi-agent-runtime";
+} from "@okouai/pi-agent-runtime";
 
 /**
  * Resolve the non-secret model metadata consumed by the sandbox-only Pi

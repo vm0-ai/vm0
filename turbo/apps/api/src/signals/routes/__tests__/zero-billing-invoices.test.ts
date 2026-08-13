@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingInvoicesContract } from "@okouai/api-contracts/contracts/zero-billing";
 import AdmZip from "adm-zip";
 import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";

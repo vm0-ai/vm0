@@ -1,9 +1,9 @@
-import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
+import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
 import {
   usagePackCreditRefunds,
   type UsagePackCreditRefundSourceType,
-} from "@vm0/db/schema/usage-pack-credit-refund";
-import { usagePackInvitationPurchases } from "@vm0/db/schema/usage-pack-subscription";
+} from "@okouai/db/schema/usage-pack-credit-refund";
+import { usagePackInvitationPurchases } from "@okouai/db/schema/usage-pack-subscription";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";

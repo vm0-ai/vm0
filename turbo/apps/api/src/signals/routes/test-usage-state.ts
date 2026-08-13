@@ -4,30 +4,30 @@ import { command } from "ccstate";
 import {
   testUsageStateContract,
   type TestUsageStateActionBody,
-} from "@vm0/api-contracts/contracts/test-usage-state";
+} from "@okouai/api-contracts/contracts/test-usage-state";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { connectors } from "@okouai/db/schema/connector";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
   usageAllowanceAllocations,
-} from "@vm0/db/schema/org-usage-allowance";
-import { secrets } from "@vm0/db/schema/secret";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { variables } from "@vm0/db/schema/variable";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/org-usage-allowance";
+import { secrets } from "@okouai/db/schema/secret";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usageEventHourlyRollup } from "@okouai/db/schema/usage-event-hourly-rollup";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
+import { variables } from "@okouai/db/schema/variable";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   count,

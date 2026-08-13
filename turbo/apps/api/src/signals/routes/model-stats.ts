@@ -1,5 +1,5 @@
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import { cronAggregateModelStatsContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 import { z } from "zod";
 

@@ -141,3 +141,33 @@ class TestRegistryInlineFirewalls:
         assert valid_context is not None
         _, compiled_firewalls, _ = valid_context
         assert compiled_firewalls is not None
+
+    def test_non_string_inline_custom_connector_id_rejects_only_affected_vm(
+        self, tmp_path, mitm_ctx
+    ):
+        path = tmp_path / "registry.json"
+        malformed_vm = inline_vm("run-malformed")
+        malformed_vm["firewalls"][0]["customConnectorId"] = 1
+        write_multi_vm_registry(
+            path,
+            {
+                "10.200.0.1": malformed_vm,
+                "10.200.0.2": inline_vm("run-valid"),
+            },
+        )
+
+        with mitm_ctx():
+            state = registry.load_registry_state(str(path))
+            malformed_context = registry.get_vm_context("10.200.0.1", str(path))
+            valid_context = registry.get_vm_context("10.200.0.2", str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.vms) == {"10.200.0.2"}
+        assert set(state.invalid_vms) == {"10.200.0.1"}
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert invalid_vm.message == "inline firewall customConnectorId must be a UUID"
+        assert malformed_context is None
+        assert valid_context is not None
+        _, compiled_firewalls, _ = valid_context
+        assert compiled_firewalls is not None

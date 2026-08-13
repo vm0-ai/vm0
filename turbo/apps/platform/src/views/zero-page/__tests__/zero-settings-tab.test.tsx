@@ -5,7 +5,7 @@ import {
   zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
   type ZeroAgentResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 
 import {
   click,

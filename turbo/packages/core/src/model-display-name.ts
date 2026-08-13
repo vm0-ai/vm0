@@ -1,4 +1,4 @@
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 
 /**
  * Human-readable display names for model IDs across all providers.

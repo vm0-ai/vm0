@@ -1,10 +1,10 @@
 import { computed, type Computed } from "ccstate";
-import { getRunModelDisplayName } from "@vm0/core/model-display-name";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { getRunModelDisplayName } from "@okouai/core/model-display-name";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";

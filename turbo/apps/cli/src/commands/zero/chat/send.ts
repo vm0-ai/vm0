@@ -6,7 +6,7 @@ import { Command } from "commander";
 import {
   type UserMessageInputDocument,
   userMessageInputDocumentSchema,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 import {
   getZeroChatThreadAgentId,

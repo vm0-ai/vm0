@@ -64,7 +64,7 @@ const mainBundle = fs.readFileSync(mainBundlePath, "utf8");
 assertNoUnbundledRequires(
   mainBundlePath,
   mainBundle,
-  ["@vm0/", "@modelcontextprotocol/sdk/"],
+  ["@okouai/", "@modelcontextprotocol/sdk/"],
   "These packages must be bundled via tsup noExternal; see tsup.electron.config.js.",
 );
 console.log(`Main bundle has no unbundled requires: ${mainBundlePath}`);

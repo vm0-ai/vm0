@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
 
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroUserModelPreferenceContract,
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
-} from "@vm0/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
 import { z } from "zod";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";

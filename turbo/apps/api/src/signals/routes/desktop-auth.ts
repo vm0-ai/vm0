@@ -1,7 +1,7 @@
 import {
   desktopAuthConsumeContract,
   desktopAuthHandoffContract,
-} from "@vm0/api-contracts/contracts/desktop-auth";
+} from "@okouai/api-contracts/contracts/desktop-auth";
 import { command } from "ccstate";
 
 import { badRequestMessage, notFound } from "../../lib/error";

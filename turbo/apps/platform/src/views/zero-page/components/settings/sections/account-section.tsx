@@ -1,7 +1,7 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink } from "lucide-react";
-import { Button } from "@vm0/ui/components/ui/button";
+import { Button } from "@okouai/ui/components/ui/button";
 import {
   clerkInstance$,
   currentUserInfo$,

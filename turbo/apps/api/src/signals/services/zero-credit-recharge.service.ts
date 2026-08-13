@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import {
   and,
   eq,

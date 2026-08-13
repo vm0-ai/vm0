@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 
 import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import { logger } from "../../lib/log";

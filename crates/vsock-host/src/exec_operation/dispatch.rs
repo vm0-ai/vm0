@@ -173,7 +173,7 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
     let prepared_output = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { operations, .. } = &mut *guard
-            && let Some(operation) = operations.get_mut(msg.seq)
+            && let Some(operation) = operations.get_mut_by_seq(msg.seq)
         {
             let decoded = vsock_proto::decode_exec_output(msg.payload)
                 .map_err(exec_operation_protocol_error)?;
@@ -218,7 +218,7 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
             // Channel identity rejects a replacement operation after sequence
             // wrap; holding state makes the check and delivery atomic with teardown.
             let sender_matches = if let ConnectionState::Connected { operations, .. } = &mut *guard
-                && let Some(operation) = operations.get_mut(msg.seq)
+                && let Some(operation) = operations.get_mut_by_seq(msg.seq)
                 && let Some(tx) = operation.stream_tx.as_ref()
             {
                 permit.same_channel_as_sender(tx)
@@ -253,7 +253,7 @@ fn dispatch_started(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Re
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } => {
-                let Some(operation) = operations.get_mut(msg.seq) else {
+                let Some(operation) = operations.get_mut_by_seq(msg.seq) else {
                     return Ok(());
                 };
                 let decoded = vsock_proto::decode_exec_started(msg.payload)
@@ -303,10 +303,10 @@ pub(in crate::exec_operation) fn dispatch_result(
     let Some((terminal, decoded)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
-            ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
+            ConnectionState::Connected { operations, .. } if operations.contains_seq(msg.seq) => {
                 let decoded = vsock_proto::decode_exec_result(msg.payload)
                     .map_err(exec_operation_protocol_error)?;
-                let Some(operation) = operations.get_mut(msg.seq) else {
+                let Some(operation) = operations.get_mut_by_seq(msg.seq) else {
                     return Ok(());
                 };
                 operation.validates_result_before_start(&decoded)?;
@@ -361,10 +361,11 @@ fn dispatch_control_result(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) ->
             "exec_control_result nonce mismatch",
         ));
     }
-    if decoded.target_seq != pending.target_seq {
+    if decoded.target_seq != pending.target_route_id.wire_seq() {
         return Err(exec_operation_protocol_error(format!(
             "exec_control_result target seq mismatch: expected {}, got {}",
-            pending.target_seq, decoded.target_seq
+            pending.target_route_id.wire_seq(),
+            decoded.target_seq
         )));
     }
     if decoded.message_id != pending.message_id {
@@ -395,7 +396,7 @@ fn dispatch_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Resu
     let Some((terminal, err)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
-            ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
+            ConnectionState::Connected { operations, .. } if operations.contains_seq(msg.seq) => {
                 let err = vsock_proto::decode_error(msg.payload)
                     .map(|message| exec_operation_guest_error(message.to_string()))
                     .map_err(exec_operation_protocol_error)?;

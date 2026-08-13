@@ -4,7 +4,7 @@ import {
   CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 
 import { getBuildVersion } from "../lib/build-info.ts";
 

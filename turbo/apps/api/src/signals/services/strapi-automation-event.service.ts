@@ -1,19 +1,19 @@
 import { Buffer } from "node:buffer";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { strapiEntryPublishedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { strapiEntryPublishedEventConfigSchema } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import {
   strapiIntegrations,
   strapiWebhookDeliveries,
   strapiWorkflowPendingEvents,
-  zeroWorkflowStrapiAutomations,
-} from "@vm0/db/schema/strapi-integration";
+  strapiWorkflowAutomations,
+} from "@okouai/db/schema/strapi-integration";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -209,23 +209,20 @@ async function enqueueMatchingStrapiAutomations(
     .select({
       automation: workflowAutomationColumns(),
     })
-    .from(zeroWorkflowStrapiAutomations)
+    .from(strapiWorkflowAutomations)
     .innerJoin(
-      zeroWorkflowAutomations,
-      eq(
-        zeroWorkflowAutomations.id,
-        zeroWorkflowStrapiAutomations.automationId,
-      ),
+      workflowAutomations,
+      eq(workflowAutomations.id, strapiWorkflowAutomations.automationId),
     )
     .where(
       and(
-        eq(zeroWorkflowStrapiAutomations.integrationId, args.integration.id),
-        eq(zeroWorkflowAutomations.orgId, args.integration.orgId),
-        eq(zeroWorkflowAutomations.eventType, "strapi-entry-published"),
-        eq(zeroWorkflowAutomations.enabled, true),
+        eq(strapiWorkflowAutomations.integrationId, args.integration.id),
+        eq(workflowAutomations.orgId, args.integration.orgId),
+        eq(workflowAutomations.eventType, "strapi-entry-published"),
+        eq(workflowAutomations.enabled, true),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.id));
+    .orderBy(asc(workflowAutomations.id));
   signal.throwIfAborted();
 
   let queued = 0;
@@ -504,44 +501,38 @@ async function loadPendingEventTarget(
   const [row] = await args.db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
-      integrationId: zeroWorkflowStrapiAutomations.integrationId,
+      integrationId: strapiWorkflowAutomations.integrationId,
       integrationName: strapiIntegrations.name,
       integrationBaseUrl: strapiIntegrations.baseUrl,
     })
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
     .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .innerJoin(
-      zeroWorkflowStrapiAutomations,
-      eq(
-        zeroWorkflowStrapiAutomations.automationId,
-        zeroWorkflowAutomations.id,
-      ),
+      strapiWorkflowAutomations,
+      eq(strapiWorkflowAutomations.automationId, workflowAutomations.id),
     )
     .innerJoin(
       strapiIntegrations,
-      eq(strapiIntegrations.id, zeroWorkflowStrapiAutomations.integrationId),
+      eq(strapiIntegrations.id, strapiWorkflowAutomations.integrationId),
     )
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
-    .where(eq(zeroWorkflowAutomations.id, args.automationId))
+    .where(eq(workflowAutomations.id, args.automationId))
     .limit(1);
   signal.throwIfAborted();
   return row ?? null;

@@ -477,6 +477,7 @@ fn initial_connector_routing_variables(
 ) -> RunnerResult<HashMap<String, HashMap<String, String>>> {
     let mut routing_variables = HashMap::new();
     let run_vars = registration.vars;
+    let firewalls = registration.firewalls.unwrap_or_default();
     let builtin_connector_slugs = registration
         .connector_runtime_targets
         .unwrap_or_default()
@@ -488,7 +489,17 @@ fn initial_connector_routing_variables(
             ConnectorRuntimeTargetRegistration::Custom { .. } => None,
         })
         .collect::<HashSet<_>>();
-    for firewall in registration.firewalls.unwrap_or_default() {
+    let active_custom_connector_ids = firewalls
+        .iter()
+        .filter_map(|firewall| match firewall {
+            FirewallEntry::Inline {
+                custom_connector_id: Some(custom_connector_id),
+                ..
+            } => Some(custom_connector_id.as_str()),
+            FirewallEntry::Builtin { .. } | FirewallEntry::Inline { .. } => None,
+        })
+        .collect::<HashSet<_>>();
+    for firewall in firewalls {
         if let FirewallEntry::Builtin {
             name,
             base_url_vars,
@@ -521,8 +532,9 @@ fn initial_connector_routing_variables(
     for target in registration.connector_runtime_targets.unwrap_or_default() {
         if let ConnectorRuntimeTargetRegistration::Custom {
             custom_connector_id,
-            base_url_vars: Some(base_url_vars),
+            base_url_vars,
         } = target
+            && active_custom_connector_ids.contains(custom_connector_id.as_str())
         {
             routing_variables.insert(
                 custom_connector_routing_key(custom_connector_id),
@@ -1255,11 +1267,11 @@ mod tests {
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: available_custom_id.to_string(),
-                base_url_vars: Some(HashMap::new()),
+                base_url_vars: HashMap::new(),
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: omitted_custom_id.to_string(),
-                base_url_vars: None,
+                base_url_vars: HashMap::new(),
             },
         ];
 
@@ -1384,7 +1396,7 @@ mod tests {
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
-                base_url_vars: None,
+                base_url_vars: HashMap::new(),
             },
         ];
         harness
@@ -1469,7 +1481,7 @@ mod tests {
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
-                base_url_vars: Some(pinned_routing_variables.clone()),
+                base_url_vars: pinned_routing_variables.clone(),
             },
         ];
         harness
@@ -1986,7 +1998,7 @@ mod tests {
         let runtime_targets = vec![
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
-                base_url_vars: None,
+                base_url_vars: HashMap::new(),
             },
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),

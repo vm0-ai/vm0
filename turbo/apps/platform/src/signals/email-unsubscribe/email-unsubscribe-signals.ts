@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
+import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
 import { zeroClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";

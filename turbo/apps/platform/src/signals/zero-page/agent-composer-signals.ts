@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentAgentId$ } from "../agent.ts";
 import {

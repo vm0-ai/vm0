@@ -313,8 +313,8 @@ const dbSourceFile = ts.createSourceFile(
 const dbViolations = [];
 for (const imported of importBindings(dbSourceFile)) {
   if (
-    imported.specifier === "@vm0/db" ||
-    imported.specifier.startsWith("@vm0/db/")
+    imported.specifier === "@okouai/db" ||
+    imported.specifier.startsWith("@okouai/db/")
   ) {
     dbViolations.push(`db.ts imports ${imported.specifier}`);
   }

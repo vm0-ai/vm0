@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookFirewallAuthContract } from "@okouai/api-contracts/contracts/webhooks";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

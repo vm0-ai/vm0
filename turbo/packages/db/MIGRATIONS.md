@@ -1,7 +1,7 @@
 # Database Migrations
 
-Generate migrations with `pnpm -F @vm0/db db:generate` and verify them with
-`pnpm -F @vm0/db test:migration-consistency`. Do not edit an existing migration
+Generate migrations with `pnpm -F @okouai/db db:generate` and verify them with
+`pnpm -F @okouai/db test:migration-consistency`. Do not edit an existing migration
 or snapshot after it has shipped.
 
 Transactional migrations start with a `1s` `lock_timeout` and a `10s`

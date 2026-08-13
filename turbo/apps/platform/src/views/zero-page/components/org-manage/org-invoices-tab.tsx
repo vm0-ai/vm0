@@ -22,8 +22,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import type { FormEvent } from "react";
 import {
   downloadMonthlyReceipts$,

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

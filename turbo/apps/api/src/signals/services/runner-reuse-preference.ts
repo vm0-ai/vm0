@@ -1,7 +1,7 @@
-import type { RunnerPreference } from "@vm0/api-contracts/contracts/runners";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runnerState } from "@vm0/db/schema/runner-state";
+import type { RunnerPreference } from "@okouai/api-contracts/contracts/runners";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { runnerState } from "@okouai/db/schema/runner-state";
 import {
   and,
   arrayContains,

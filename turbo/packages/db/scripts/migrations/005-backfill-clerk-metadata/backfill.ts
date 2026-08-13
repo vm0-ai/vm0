@@ -27,9 +27,9 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { users } from "@vm0/db/schema/user";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { users } from "@okouai/db/schema/user";
 
 // ---------------------------------------------------------------------------
 // Types

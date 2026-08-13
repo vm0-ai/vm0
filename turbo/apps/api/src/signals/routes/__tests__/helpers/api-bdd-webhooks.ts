@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
+import { zeroEmailInboundContract } from "@okouai/api-contracts/contracts/zero-email";
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
@@ -16,7 +16,7 @@ import {
   webhookStripeContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
-} from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
 import type StripeSDK from "stripe";
 import { Webhook } from "svix";

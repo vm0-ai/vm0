@@ -9,13 +9,13 @@ import {
   type ZeroMailDraft,
   type ZeroMailDraftStatus,
   type ZeroMailInlineImage,
-} from "@vm0/api-contracts/contracts/zero-mail";
-import { connectorAuthMethodHasRequiredScopes } from "@vm0/connectors/connector-auth-method";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
-import { mailDrafts } from "@vm0/db/schema/mail-draft";
-import { userConnectors } from "@vm0/db/schema/user-connector";
+} from "@okouai/api-contracts/contracts/zero-mail";
+import { connectorAuthMethodHasRequiredScopes } from "@okouai/connectors/connector-auth-method";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { connectors } from "@okouai/db/schema/connector";
+import { mailDrafts } from "@okouai/db/schema/mail-draft";
+import { userConnectors } from "@okouai/db/schema/user-connector";
 import { convert } from "html-to-text";
 import { z } from "zod";
 

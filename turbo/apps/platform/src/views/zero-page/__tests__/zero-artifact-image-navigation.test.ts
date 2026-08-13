@@ -1,7 +1,7 @@
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { computed, createStore } from "ccstate";
 import {
   markdownCardKey,

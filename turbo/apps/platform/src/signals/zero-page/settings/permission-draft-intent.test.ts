@@ -1,7 +1,7 @@
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
 import type {
   PlatformConnectorPermissionMetadata,

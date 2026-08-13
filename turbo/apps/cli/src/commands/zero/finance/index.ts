@@ -12,7 +12,7 @@ import {
   type ZeroFinanceResponse,
   type ZeroFinanceInterval,
   type ZeroFinanceRange,
-} from "@vm0/api-contracts/contracts/zero-finance";
+} from "@okouai/api-contracts/contracts/zero-finance";
 
 import {
   callZeroFinanceChart,

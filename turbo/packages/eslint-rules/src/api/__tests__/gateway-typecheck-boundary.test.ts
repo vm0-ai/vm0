@@ -35,7 +35,7 @@ ruleTester.run("gateway-typecheck-boundary", gatewayTypecheckBoundary, {
     {
       name: "gateway module imports a workspace package",
       filename: GATEWAY_MODULE,
-      code: `import { formatMessage } from "@vm0/core/log-utils";`,
+      code: `import { formatMessage } from "@okouai/core/log-utils";`,
       options,
     },
     {

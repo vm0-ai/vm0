@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";
 
-import { integrationsTelegramUploadCompleteContract } from "@vm0/api-contracts/contracts/integrations";
+import { integrationsTelegramUploadCompleteContract } from "@okouai/api-contracts/contracts/integrations";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

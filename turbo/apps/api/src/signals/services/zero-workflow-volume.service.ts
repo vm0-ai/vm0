@@ -2,8 +2,8 @@ import type { Computed } from "ccstate";
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/core/storage-names";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";

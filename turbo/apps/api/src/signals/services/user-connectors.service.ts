@@ -1,15 +1,15 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorAuthMode,
-} from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/org-custom-connector";
+import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import type { Db } from "../external/db";
 import {

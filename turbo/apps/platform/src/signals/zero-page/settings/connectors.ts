@@ -1,19 +1,19 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
+import type { ConnectorDeviceAuthStartOptions } from "@okouai/connectors/connector-config";
 import {
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
   isConnectorAppOauthCallbackEnabled,
-} from "@vm0/connectors/app-oauth-callback";
+} from "@okouai/connectors/app-oauth-callback";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorExternalCodeSessionContract,
@@ -23,18 +23,18 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorsMainContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type {
   InitClientArgs,
   InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
-import type { ConnectorOauthDeviceAuthSessionPollResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/trpc-contract";
+import type { ConnectorOauthDeviceAuthSessionPollResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogIcon,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   connectors$,
   deleteConnector$,

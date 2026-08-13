@@ -1,4 +1,4 @@
-import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron";
+import { cronDrainEmailOutboxContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import { now } from "../../lib/time";

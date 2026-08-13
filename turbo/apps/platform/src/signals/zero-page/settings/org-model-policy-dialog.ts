@@ -5,7 +5,7 @@ import type {
   OrgModelPolicy,
   SupportedRunModel,
   UpdateOrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { createOrgModelProvider$ } from "../../external/org-model-providers.ts";
 import {
   refreshOrgModelPolicies$,

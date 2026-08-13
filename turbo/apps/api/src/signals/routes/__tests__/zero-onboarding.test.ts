@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   onboardingCompleteContract,
   onboardingStatusContract,
-} from "@vm0/api-contracts/contracts/onboarding";
+} from "@okouai/api-contracts/contracts/onboarding";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

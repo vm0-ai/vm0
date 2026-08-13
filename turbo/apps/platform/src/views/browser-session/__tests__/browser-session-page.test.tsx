@@ -1,9 +1,9 @@
 import { screen, waitFor } from "@testing-library/react";
-import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadByIdContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroBrowserContract,
   type ZeroBrowserSession,
-} from "@vm0/api-contracts/contracts/zero-browser";
+} from "@okouai/api-contracts/contracts/zero-browser";
 import { describe, expect, it } from "vitest";
 
 import {

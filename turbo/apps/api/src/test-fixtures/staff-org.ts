@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { STAFF_ORG_ID_HASHES, fnv1a } from "@vm0/core/identity-hash";
+import { STAFF_ORG_ID_HASHES, fnv1a } from "@okouai/core/identity-hash";
 
 const FNV_PRIME = 16_777_619;
 // Multiplicative inverse of FNV_PRIME modulo 2^32.

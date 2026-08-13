@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { PresentationTemplateItem } from "@vm0/core/presentation-template-items";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { jsonParseOr, tapError } from "../utils.ts";
 import type { TemplatePreviewRuntime } from "./template-preview-runtime.ts";
@@ -14,7 +14,7 @@ import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
 import {
   DEFAULT_VIDEO_MODEL,
   type VideoModel,
-} from "@vm0/core/video-model-catalog";
+} from "@okouai/core/video-model-catalog";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators

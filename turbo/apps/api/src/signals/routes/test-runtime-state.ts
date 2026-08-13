@@ -1,29 +1,29 @@
 import {
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { command } from "ccstate";
 import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
-} from "@vm0/api-contracts/contracts/test-runtime-state";
-import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
+} from "@okouai/api-contracts/contracts/test-runtime-state";
+import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
   browserSessionTabSnapshots,
   browserSessions,
-} from "@vm0/db/schema/browser-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { hostedSites } from "@vm0/db/schema/hosted-site";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/db/schema/browser-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { hostedSites } from "@okouai/db/schema/hosted-site";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
@@ -411,10 +411,10 @@ async function autonomyBudgetFixtureActionResponse(
     }
     case "set-workflow-automation-autonomy-budget": {
       const [automation] = await db
-        .update(zeroWorkflowAutomations)
+        .update(workflowAutomations)
         .set({ autonomyBudget: body.autonomy_budget })
-        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
-        .returning({ id: zeroWorkflowAutomations.id });
+        .where(eq(workflowAutomations.id, body.automation_id))
+        .returning({ id: workflowAutomations.id });
       signal.throwIfAborted();
       if (!automation) {
         throw new Error("Expected the autonomy-budget automation fixture");
@@ -424,12 +424,12 @@ async function autonomyBudgetFixtureActionResponse(
     case "read-workflow-automation-autonomy-state": {
       const [automation] = await db
         .select({
-          autonomyBudget: zeroWorkflowAutomations.autonomyBudget,
-          enabled: zeroWorkflowAutomations.enabled,
-          lastRunId: zeroWorkflowAutomations.lastRunId,
+          autonomyBudget: workflowAutomations.autonomyBudget,
+          enabled: workflowAutomations.enabled,
+          lastRunId: workflowAutomations.lastRunId,
         })
-        .from(zeroWorkflowAutomations)
-        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
+        .from(workflowAutomations)
+        .where(eq(workflowAutomations.id, body.automation_id))
         .limit(1);
       signal.throwIfAborted();
       return {

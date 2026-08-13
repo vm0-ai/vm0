@@ -9,17 +9,17 @@ import {
   googleFormsResponseSubmittedEventConfigSchema,
   type GoogleFormsResponseSubmittedEventConfig,
   type GoogleFormsResponseSubmittedEventCreateConfig,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   googleFormsAutomationCursors,
   googleFormsProcessedEvents,
   googleFormsWatchStates,
-} from "@vm0/db/schema/google-forms-event";
+} from "@okouai/db/schema/google-forms-event";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -572,23 +572,20 @@ export async function hasEnabledGoogleFormsConsumer(
   signal: AbortSignal,
 ): Promise<boolean> {
   const [consumer] = await args.db
-    .select({ id: zeroWorkflowAutomations.id })
-    .from(zeroWorkflowAutomations)
+    .select({ id: workflowAutomations.id })
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(
-          zeroWorkflowAutomations.eventType,
-          "google-forms-response-submitted",
-        ),
-        sql`${zeroWorkflowAutomations.eventConfig} -> 'form' ->> 'id' = ${args.formId}`,
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, "google-forms-response-submitted"),
+        sql`${workflowAutomations.eventConfig} -> 'form' ->> 'id' = ${args.formId}`,
         ...(args.excludedConnectorId === undefined
           ? []
           : [
               ne(
-                sql`${zeroWorkflowAutomations.eventConfig} ->> 'connectorId'`,
+                sql`${workflowAutomations.eventConfig} ->> 'connectorId'`,
                 args.excludedConnectorId,
               ),
             ]),
@@ -1197,43 +1194,37 @@ async function loadGoogleFormsEventAutomations(
   const rows = await args.db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
       cursor: googleFormsAutomationCursors.lastSeenSubmittedTime,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .innerJoin(
       googleFormsAutomationCursors,
-      eq(googleFormsAutomationCursors.automationId, zeroWorkflowAutomations.id),
+      eq(googleFormsAutomationCursors.automationId, workflowAutomations.id),
     )
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
         eq(googleFormsAutomationCursors.watchStateId, args.state.id),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(
-          zeroWorkflowAutomations.eventType,
-          "google-forms-response-submitted",
-        ),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.eventType, "google-forms-response-submitted"),
       ),
     );
   signal.throwIfAborted();

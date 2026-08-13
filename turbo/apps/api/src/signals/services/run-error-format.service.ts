@@ -2,15 +2,15 @@ import { command, computed, type Computed } from "ccstate";
 import {
   formatRunErrorForExternalSurface,
   isClaudeCodeAuthenticationCredentialsError,
-} from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/errors";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";

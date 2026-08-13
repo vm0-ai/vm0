@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -128,6 +128,10 @@ function inspectFile(
       firewall_permission: "read-repos",
       browser_user_agent: true,
       connector_diagnostic_slug: "github-connector",
+      request_headers: { "Content-Type": "application/json" },
+      request_headers_truncated: true,
+      response_headers: {},
+      response_headers_truncated: true,
     },
     {
       timestamp: "2026-03-10T14:56:04.000Z",
@@ -506,6 +510,9 @@ describe("activity inspect page", () => {
       expect(screen.getByText("github-connector")).toBeInTheDocument();
     });
     expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
+    expect(screen.getByText("Request Headers (1)")).toBeInTheDocument();
+    expect(screen.getByText("Response Headers (0)")).toBeInTheDocument();
+    expect(screen.getAllByText("truncated")).toHaveLength(2);
 
     await user.click(networkRow);
     await waitFor(() => {

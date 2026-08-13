@@ -30,8 +30,8 @@ Request context
   request/response bodies.
 - ``SUPPRESS_REQUEST_BODY_CAPTURE``: ``bool`` written by auth.base request-size
   handling. Read by body capture to mark oversized request bodies truncated.
-- ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
-  ``"claude-code"``. Read by model-provider usage protocol selection.
+- ``CLI_AGENT_TYPE``: ``str`` copied from validated registry VM info. Read by
+  model-provider usage protocol selection.
 - ``BROWSER_USER_AGENT``: ``bool`` written during request classification when
   the request matches the short-term browser passthrough User-Agent heuristic.
   Read by request dispatch to skip connector firewall handling and managed

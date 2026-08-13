@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
+import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

@@ -1,6 +1,6 @@
-import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { HttpResponse, http } from "msw";
 
 import { mockEnv } from "../../../lib/env";

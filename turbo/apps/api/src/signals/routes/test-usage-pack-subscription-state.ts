@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
-import { usagePackCreditRefunds } from "@vm0/db/schema/usage-pack-credit-refund";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
+import { usagePackCreditRefunds } from "@okouai/db/schema/usage-pack-credit-refund";
 import {
   USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES,
   usagePackAllocationChanges,
@@ -13,7 +13,7 @@ import {
   usagePackInvoiceFulfillments,
   usagePackSubscriptionMigrations,
   usagePackSubscriptions,
-} from "@vm0/db/schema/usage-pack-subscription";
+} from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import { z } from "zod";

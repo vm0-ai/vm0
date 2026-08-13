@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { Button } from "@vm0/ui";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { Button } from "@okouai/ui";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 
 const AGENT_NAME_LIMIT = 2;
 const AGENT_NAME_MAX_CHARS = 12;

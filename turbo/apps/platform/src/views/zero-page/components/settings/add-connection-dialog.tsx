@@ -1,32 +1,32 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Input } from "@vm0/ui/components/ui/input";
-import { Button } from "@vm0/ui/components/ui/button";
-import { CopyButton } from "@vm0/ui/components/ui/copy-button";
+import { Input } from "@okouai/ui/components/ui/input";
+import { Button } from "@okouai/ui/components/ui/button";
+import { CopyButton } from "@okouai/ui/components/ui/copy-button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
+} from "@okouai/ui/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
+} from "@okouai/ui/components/ui/dialog";
+import type { ConnectorDeviceAuthStartOptions } from "@okouai/connectors/connector-config";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import type { FormEvent, ReactElement } from "react";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogStartOption,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
   connectFlowConnectorSlug$,

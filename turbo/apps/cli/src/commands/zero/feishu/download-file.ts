@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import { Command } from "commander";
-import type { FeishuResourceType } from "@vm0/api-contracts/contracts/integrations";
+import type { FeishuResourceType } from "@okouai/api-contracts/contracts/integrations";
 
 import { downloadFeishuFile } from "../../../lib/api/domains/integrations-feishu";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";

@@ -5,8 +5,8 @@ import {
   type ZeroSeoRankedKeywordsRequest,
   type ZeroSeoResponse,
   type ZeroSeoSerpRequest,
-} from "@vm0/api-contracts/contracts/zero-seo";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/zero-seo";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 

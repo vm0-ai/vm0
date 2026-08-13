@@ -3,21 +3,21 @@ import {
   testBillingReconciliationStateContract,
   type BillingReconciliationFixtureKind,
   type TestBillingReconciliationStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
-import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
-import { usagePackCreditRefunds } from "@vm0/db/schema/usage-pack-credit-refund";
+} from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
+import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
+import { usagePackCreditRefunds } from "@okouai/db/schema/usage-pack-credit-refund";
 import {
   usagePackAllocationChanges,
   usagePackInvitationPurchases,
   usagePackSubscriptionChanges,
   usagePackSubscriptionMigrations,
   usagePackSubscriptions,
-} from "@vm0/db/schema/usage-pack-subscription";
+} from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
 import { inArray } from "drizzle-orm";
 

@@ -16,7 +16,7 @@
         "paths": [
           {
             "name": "@tabler/icons-react",
-            "message": "Use lucide-react or a shared @vm0/ui brand icon instead."
+            "message": "Use lucide-react or a shared @okouai/ui brand icon instead."
           }
         ]
       }

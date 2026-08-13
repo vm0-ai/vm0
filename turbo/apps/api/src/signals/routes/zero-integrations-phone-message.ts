@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { integrationsPhoneMessageContract } from "@vm0/api-contracts/contracts/integrations";
+import { integrationsPhoneMessageContract } from "@okouai/api-contracts/contracts/integrations";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

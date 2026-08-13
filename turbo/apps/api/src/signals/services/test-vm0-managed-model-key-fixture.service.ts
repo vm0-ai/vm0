@@ -1,4 +1,4 @@
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
 import { eq, like } from "drizzle-orm";
 import { z } from "zod";
 

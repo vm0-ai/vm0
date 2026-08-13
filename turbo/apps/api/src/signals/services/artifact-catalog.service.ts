@@ -17,7 +17,7 @@ import type {
   ArtifactCatalogKind,
   ArtifactDetail,
   ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
+} from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
   artifactCatalogPendingFiles,
   artifacts,
@@ -26,13 +26,13 @@ import {
   videoArtifacts,
   type ArtifactKind,
   type ArtifactThumbnail,
-} from "@vm0/db/schema/artifact";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { sharedThreads } from "@vm0/db/schema/shared-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/artifact";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { sharedThreads } from "@okouai/db/schema/shared-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";

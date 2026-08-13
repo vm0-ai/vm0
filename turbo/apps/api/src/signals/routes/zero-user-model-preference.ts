@@ -1,8 +1,8 @@
 import { command, computed } from "ccstate";
-import type { UserPreferenceChangedPayload } from "@vm0/api-contracts/contracts/realtime";
-import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { UserPreferenceChangedPayload } from "@okouai/api-contracts/contracts/realtime";
+import { zeroUserModelPreferenceContract } from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { badRequestMessage } from "../../lib/error";
 import { publishUserPreferenceChangedForUserSafely } from "../external/realtime";
@@ -89,9 +89,13 @@ const updateUserModelPreferenceInner$ = command(
       signal,
     );
     signal.throwIfAborted();
-    await publishUserPreferenceChangedForUserSafely(auth.userId, [
+    const kinds: UserPreferenceChangedPayload["kinds"] = [
       "defaultModel",
-    ] satisfies UserPreferenceChangedPayload["kinds"]);
+      ...("selectedVideoModel" in body.data
+        ? (["defaultVideoModel"] as const)
+        : []),
+    ];
+    await publishUserPreferenceChangedForUserSafely(auth.userId, kinds);
     signal.throwIfAborted();
     return { status: 200 as const, body: result };
   },

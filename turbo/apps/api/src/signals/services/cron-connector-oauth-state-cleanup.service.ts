@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { and, asc, eq, inArray, lte } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

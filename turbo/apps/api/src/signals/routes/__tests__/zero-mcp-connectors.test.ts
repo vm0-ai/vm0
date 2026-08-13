@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroMcpConnectorsContract } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { zeroMcpConnectorsContract } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

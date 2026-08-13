@@ -1,16 +1,16 @@
 import { computed, type Computed } from "ccstate";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import type { ZeroAgentResponse } from "@okouai/api-contracts/contracts/zero-agents";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 
 import { db$ } from "../external/db";

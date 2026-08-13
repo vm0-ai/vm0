@@ -6,7 +6,7 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
-import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   ArrowUpDown,
   ChevronDown,
@@ -30,7 +30,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 import { i18n } from "../../i18n/index.ts";

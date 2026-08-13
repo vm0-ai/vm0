@@ -4,7 +4,7 @@ import type {
   UserMessageDocument,
   UserMessageInputDocument,
   ChatEvent as PersistedChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type { ChatEvent } from "./chat-event-types.ts";
 import {
   createChatEventStorageSignals,

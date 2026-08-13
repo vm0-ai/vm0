@@ -8,7 +8,7 @@ import type {
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
   ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { i18n } from "../../i18n/index.ts";
 

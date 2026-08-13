@@ -1,12 +1,12 @@
 import {
   connectorAuthCodeGrantCallbackOrigin,
   connectorOpenIdAuthGrantCallbackOrigin,
-} from "@vm0/connectors/connector-auth-method";
-import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
+} from "@okouai/connectors/connector-auth-method";
+import { isConnectorAppOauthCallbackEnabled } from "@okouai/connectors/app-oauth-callback";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorBrowserAuthCallbackOrigin,
-} from "@vm0/connectors/connector-config";
+} from "@okouai/connectors/connector-config";
 
 import { env } from "../../lib/env";
 import {

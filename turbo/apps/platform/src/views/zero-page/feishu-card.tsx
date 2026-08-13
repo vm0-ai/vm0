@@ -12,9 +12,9 @@ import {
   Plus,
   Settings,
 } from "lucide-react";
-import { FEISHU_OAUTH_SCOPES } from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { Button } from "@vm0/ui";
+import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import { Button } from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
@@ -22,22 +22,22 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { Input } from "@vm0/ui/components/ui/input";
+} from "@okouai/ui/components/ui/dialog";
+import { Input } from "@okouai/ui/components/ui/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/ui/components/ui/select";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { useTranslation } from "react-i18next";
 
 import { i18n } from "../../i18n/index.ts";

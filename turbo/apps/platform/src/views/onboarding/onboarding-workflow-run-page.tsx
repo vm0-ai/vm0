@@ -18,7 +18,7 @@ import {
 } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import { OnboardingRunAction } from "./onboarding-run-action.tsx";
-import { Textarea, cn } from "@vm0/ui";
+import { Textarea, cn } from "@okouai/ui";
 import {
   ONBOARDING_TEXTAREA_CLASS,
   OnboardingShell,

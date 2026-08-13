@@ -4,8 +4,8 @@ import { AlertTriangle, Check, Monitor, Download, Loader2 } from "lucide-react";
 import type {
   ComputerUseAuthorizationSource,
   ComputerUseHost,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import { Button } from "@vm0/ui/components/ui/button";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
+import { Button } from "@okouai/ui/components/ui/button";
 import { useTranslation } from "react-i18next";
 import {
   applyComputerUseAuthorizationRequest$,

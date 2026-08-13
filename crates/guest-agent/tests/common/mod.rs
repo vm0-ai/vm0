@@ -21,7 +21,7 @@ pub(crate) mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::future::Future;
@@ -869,6 +869,8 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
+        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {
@@ -976,11 +978,7 @@ pub unsafe fn setup_codex_app_server_env(
 }
 
 pub fn active_input_payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
-    serde_json::to_vec(&json!({
-        "type": "active-input",
-        "deliveryId": "223f8797-a456-4eea-98f7-f7ab88c43c00",
-        "text": text,
-    }))
+    guest_contracts::active_input::encode_active_input("223f8797-a456-4eea-98f7-f7ab88c43c00", text)
 }
 
 pub fn active_input_runtime(

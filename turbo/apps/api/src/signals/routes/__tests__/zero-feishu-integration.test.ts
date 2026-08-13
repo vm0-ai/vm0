@@ -9,18 +9,18 @@ import { Buffer } from "node:buffer";
 
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorsContract,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { getCustomConnectorSkillStorageName } from "@vm0/core/storage-names";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { zeroFeishuConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { getCustomConnectorSkillStorageName } from "@okouai/core/storage-names";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

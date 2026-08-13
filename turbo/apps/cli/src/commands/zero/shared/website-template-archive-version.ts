@@ -1,7 +1,7 @@
 import {
   WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
   type WebsiteTemplateArchiveVersion,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 
 export function websiteTemplateArchiveVersionFromEnvironment(): WebsiteTemplateArchiveVersion {
   const value = process.env[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV];

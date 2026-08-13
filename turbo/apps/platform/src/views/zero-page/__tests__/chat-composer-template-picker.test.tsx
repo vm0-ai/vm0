@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -8,17 +8,17 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
-} from "@vm0/core";
+} from "@okouai/core";
 import type {
   GenerationTemplateRequest,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroAvatarVideoContract,
   type ZeroAvatarVideoAvatarsQuery,
   type ZeroAvatarVideoVoicesQuery,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
-import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
+import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   click,

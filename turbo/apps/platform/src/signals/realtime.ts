@@ -1,7 +1,7 @@
 import { command, state, type Command } from "ccstate";
-import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";

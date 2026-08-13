@@ -4,8 +4,8 @@ import {
   artifactCatalogContract,
   type ArtifactDetail,
   type ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/artifact-catalog";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
@@ -13,14 +13,14 @@ import {
   chatThreadMarkReadContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroBrowserContract,
   type ZeroBrowserSession,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 import { describe, expect, it, vi } from "vitest";
 
 import {

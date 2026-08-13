@@ -1,6 +1,6 @@
 import { Clock, Repeat, Wrench, Bot, Terminal } from "lucide-react";
 import { Markdown } from "../../../components/markdown.tsx";
-import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@okouai/ui";
 import {
   formatActivityDurationMs,
   formatActivityEventTime,

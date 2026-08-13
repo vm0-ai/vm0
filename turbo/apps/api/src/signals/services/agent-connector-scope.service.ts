@@ -1,15 +1,15 @@
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userConnectors } from "@vm0/db/schema/user-connector";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { userConnectors } from "@okouai/db/schema/user-connector";
 import {
   zeroAgents,
   type ZeroAgentVisibility,
-} from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";

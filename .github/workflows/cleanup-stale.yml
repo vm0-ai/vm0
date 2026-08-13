@@ -354,10 +354,18 @@ jobs:
         run: corepack enable pnpm
       - name: Install E2E dependencies
         run: cd e2e && pnpm install --frozen-lockfile
-      - name: Delete stale marked Clerk test resources
+      - name: Delete stale non-runner Clerk test resources
         run: >-
           cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
-          cleanup-stale --older-than-hours 6
+          cleanup-stale browser,playwright,paid-onboarding --older-than-hours 6
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+      - name: Delete stale runner Clerk test resources
+        run: >-
+          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
+          cleanup-stale runner,runner-real-codex,runner-real-claude,runner-mock-claude
+          --older-than-hours 30
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           DRY_RUN: ${{ env.DRY_RUN }}

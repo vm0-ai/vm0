@@ -6,7 +6,7 @@ import {
   type ZeroScrapeResponse,
   type ZeroScrapeFormat,
   type ZeroScrapeMode,
-} from "@vm0/api-contracts/contracts/zero-scrape";
+} from "@okouai/api-contracts/contracts/zero-scrape";
 
 import { callZeroScrape } from "../../../lib/api/domains/zero-scrape";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";

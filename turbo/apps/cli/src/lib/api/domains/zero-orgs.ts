@@ -1,6 +1,6 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
-import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
+import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import type { OrgResponse } from "@okouai/api-contracts/contracts/orgs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

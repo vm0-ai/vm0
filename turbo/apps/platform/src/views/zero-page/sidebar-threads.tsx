@@ -31,7 +31,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
@@ -39,8 +39,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@vm0/ui/components/ui/dialog";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui/components/ui/dialog";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";

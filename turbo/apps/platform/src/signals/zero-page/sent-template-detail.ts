@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 
 /**
  * The sent-message template chip the user tapped, held at page level so a

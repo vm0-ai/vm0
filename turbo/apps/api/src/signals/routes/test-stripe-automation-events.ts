@@ -1,5 +1,5 @@
-import { testStripeAutomationEventFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-automation-events";
-import { stripeWorkflowDeliveries } from "@vm0/db/schema/stripe-automation-event";
+import { testStripeAutomationEventFixtureContract } from "@okouai/api-contracts/contracts/test-stripe-automation-events";
+import { stripeWorkflowDeliveries } from "@okouai/db/schema/stripe-automation-event";
 import { command } from "ccstate";
 import { desc, eq, sql } from "drizzle-orm";
 

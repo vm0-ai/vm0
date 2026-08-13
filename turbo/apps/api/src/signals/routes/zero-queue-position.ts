@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
 
 import { notFound } from "../../lib/error";
 import { authContext$ } from "../auth/auth-context";

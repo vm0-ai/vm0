@@ -1,21 +1,21 @@
 import { command, computed, type Computed } from "ccstate";
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
 import {
   slackOrgStatusSchema,
   zeroIntegrationsSlackContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
-import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
-import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
-import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
+import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
+import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
+import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+} from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

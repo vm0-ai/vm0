@@ -3,7 +3,7 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { initializeI18n } from "../../i18n/index.ts";

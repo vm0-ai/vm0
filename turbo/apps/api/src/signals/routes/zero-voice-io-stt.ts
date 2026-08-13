@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
+import { zeroVoiceIoSttContract } from "@okouai/api-contracts/contracts/zero-voice-io-stt";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

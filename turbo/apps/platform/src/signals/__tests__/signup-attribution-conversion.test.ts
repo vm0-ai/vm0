@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   zeroAttributionContract,
   type AdAttributionMetadata,
-} from "@vm0/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/zero-attribution";
 
 import {
   clearMockedAuthOnAbort,

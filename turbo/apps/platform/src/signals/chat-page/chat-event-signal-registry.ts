@@ -1,5 +1,5 @@
 import { command, state, type Command } from "ccstate";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 
 type ReceiveChatEventsCommand = Command<
   Promise<void>,

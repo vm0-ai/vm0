@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroBillingDowngradeContract,
   zeroBillingStatusContract,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";

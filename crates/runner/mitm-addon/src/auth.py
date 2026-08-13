@@ -20,17 +20,19 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import matching
 from auth_base_forwarder import (
-    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     AuthBaseForwardingSaturatedError,
+    forward_request,
+    release_forward_request_admission_from_flow,
+    take_forward_request_admission_from_flow,
+)
+from auth_base_transport import (
+    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     ForwardedRequestTooLargeError,
     InvalidAuthBaseRequestHeadersError,
     InvalidResolvedAuthHeaderError,
-    forward_request,
     forwarded_auth_base_client_header_pairs,
     header_pairs,
-    release_forward_request_admission_from_flow,
     resolved_auth_header_pairs,
-    take_forward_request_admission_from_flow,
 )
 from aws_sigv4 import (
     AwsSigV4BodyHash,
@@ -213,7 +215,7 @@ class _ResolvedFirewallAuth:
 
 def is_billable_firewall(firewall_name: str, vm_info: dict) -> bool:
     """Return whether this firewall should emit connector/model usage."""
-    return firewall_name in (vm_info.get("billableFirewalls") or [])
+    return firewall_name in vm_info["billableFirewalls"]
 
 
 def _prepare_firewall_metadata(
@@ -225,8 +227,6 @@ def _prepare_firewall_metadata(
     api_entry = allow.api_entry
     firewall_base = api_entry["base"]
     api_id = api_entry.get("id", firewall_base)
-    # billableFirewalls is optional in the TS schema; runner may omit the
-    # field entirely for non-vm0 / no-billable-connector runs.
     firewall_billable = is_billable_firewall(allow.name, vm_info)
 
     flow.metadata[metadata_keys.FIREWALL_BASE] = firewall_base

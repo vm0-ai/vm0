@@ -14,7 +14,7 @@ type Elements = Record<string, ElementStyle>;
 /**
  * Clerk appearance for hosted UI surfaces (UserProfile modal, sign-in drawer,
  * org switcher, etc.). All colors resolve via CSS custom properties from the
- * VM0 design system in `@vm0/ui/styles/globals.css`, so the same config
+ * VM0 design system in `@okouai/ui/styles/globals.css`, so the same config
  * automatically tracks light/dark themes via the `data-theme` attribute on
  * `<html>` — no JS-side theme listening needed.
  */

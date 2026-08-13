@@ -1,4 +1,4 @@
-import { zeroWeatherContract } from "@vm0/api-contracts/contracts/zero-weather";
+import { zeroWeatherContract } from "@okouai/api-contracts/contracts/zero-weather";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

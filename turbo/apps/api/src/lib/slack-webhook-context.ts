@@ -1,7 +1,7 @@
 import type {
   ChatSlackMessageAssets,
   ChatSlackMessageFile,
-} from "@vm0/db/jsonb-contracts/chat-slack-context";
+} from "@okouai/db/jsonb-contracts/chat-slack-context";
 
 import {
   formatSenderBlock,

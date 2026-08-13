@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import {
   integrationsTeamsUploadCompleteContract,
   type TeamsUploadCompleteBody,
-} from "@vm0/api-contracts/contracts/integrations";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
+} from "@okouai/api-contracts/contracts/integrations";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

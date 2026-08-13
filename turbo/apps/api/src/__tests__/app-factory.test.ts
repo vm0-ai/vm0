@@ -1,4 +1,4 @@
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_PRODUCT_HEADER,
@@ -9,7 +9,7 @@ import {
   CLIENT_VERSION_HEADER,
   DESKTOP_PRODUCT_OKOU,
   DESKTOP_PRODUCT_ZERO,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";

@@ -2,9 +2,9 @@ import { command } from "ccstate";
 import {
   testModelProviderStateContract,
   type TestModelProviderStateActionBody,
-} from "@vm0/api-contracts/contracts/test-model-provider-state";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets } from "@vm0/db/schema/secret";
+} from "@okouai/api-contracts/contracts/test-model-provider-state";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { secrets } from "@okouai/db/schema/secret";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

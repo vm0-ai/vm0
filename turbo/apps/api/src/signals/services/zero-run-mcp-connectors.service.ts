@@ -1,11 +1,11 @@
 import { computed, type Computed } from "ccstate";
-import type { ZeroMcpConnector } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
+import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
 import {
   agentRuns,
   agentSessions,
-} from "@vm0/db/schema/agent-run-session-conversation";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+} from "@okouai/db/schema/agent-run-session-conversation";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";

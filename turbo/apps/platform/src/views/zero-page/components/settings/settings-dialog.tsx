@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   SlidersHorizontal,
   Bug,
@@ -25,7 +25,7 @@ import {
   ReceiptText,
   Users,
 } from "lucide-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";

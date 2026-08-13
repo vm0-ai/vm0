@@ -1,7 +1,7 @@
 import type {
   FirewallPolicy,
   NetworkPolicy,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 import type { ConnectorServerFirewallPermissionIndex } from "./connector-server-firewall-catalog.service";
 

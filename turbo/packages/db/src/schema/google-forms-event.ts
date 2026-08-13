@@ -10,7 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { connectors } from "./connector";
-import { zeroWorkflowAutomations } from "./zero-workflow";
+import { workflowAutomations } from "./workflow";
 
 export const googleFormsWatchStates = pgTable(
   "google_forms_watch_states",
@@ -54,7 +54,7 @@ export const googleFormsAutomationCursors = pgTable(
       .primaryKey()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -95,7 +95,7 @@ export const googleFormsProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

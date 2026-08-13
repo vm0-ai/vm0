@@ -4,23 +4,23 @@ import {
   cliAuthTestConnectorContract,
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth-test";
+} from "@okouai/api-contracts/contracts/cli-auth-test";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
 import {
   connectorAuthMethodAccessMetadata,
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-auth-method";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/connectors/connector-auth-method";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { command, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

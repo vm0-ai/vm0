@@ -18,7 +18,7 @@ import {
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
   type WebsiteTemplateArchiveVersion,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 
 import { getRegistryResourceDownload } from "../../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";

@@ -15,22 +15,22 @@ split tsconfig files referenced below were removed after validation because
 - Do not replace precise application types with broad stubs.
 - Keep `tsc --noEmit` as the correctness gate for every affected package.
 - Clean `.tsbuildinfo` before comparable cold runs because `api` and
-  `@vm0/app` enable incremental checking.
+  `@okouai/app` enable incremental checking.
 - Measure full process-tree peak RSS with `node scripts/measure-memory.mjs`.
 
 ## Baselines
 
-- `@vm0/api-contracts` on latest `origin/main`
+- `@okouai/api-contracts` on latest `origin/main`
   (`ba104205214ef487ef0488ad0c92c38352bf2eaa`): passed, peak RSS
   `1688.5 MiB`, duration `48.2s`.
-- `@vm0/app` on latest `origin/main`
+- `@okouai/app` on latest `origin/main`
   (`ba104205214ef487ef0488ad0c92c38352bf2eaa`): passed, peak RSS
   `2217.1 MiB`, duration `56.6s`.
 - `api` on latest `origin/main`
   (`ba104205214ef487ef0488ad0c92c38352bf2eaa`): failed with V8 heap OOM,
   peak RSS `2267.9 MiB`, duration `61.2s`.
 - Current experiment branch after the retained app/type-splitting changes:
-  `@vm0/api-contracts` passed at `1678.9 MiB`, `@vm0/app` passed at
+  `@okouai/api-contracts` passed at `1678.9 MiB`, `@okouai/app` passed at
   `2223.5 MiB`, and full `api` still OOMed at `2274.4 MiB`.
 
 ## Static diagnostics
@@ -76,9 +76,9 @@ Change: production and test entrypoints are checked by separate strict programs.
 - Test-entry check: failed OOM, peak `2271.9 MiB`.
 - Conclusion: splitting tests from production is not enough by itself.
 
-### 4. Consume `@vm0/api-contracts` declarations in API
+### 4. Consume `@okouai/api-contracts` declarations in API
 
-Change: generate `.d.ts` for `@vm0/api-contracts` and map `api` to those
+Change: generate `.d.ts` for `@okouai/api-contracts` and map `api` to those
 declarations during checking.
 
 - Result: failed OOM, peak `2286.5 MiB`.
@@ -86,8 +86,8 @@ declarations during checking.
 
 ### 5. Consume all workspace dependency declarations in API
 
-Change: generate `.d.ts` for `@vm0/api-contracts`, `@vm0/connectors`,
-`@vm0/core`, and `@vm0/db`; map `api` to declarations for all four.
+Change: generate `.d.ts` for `@okouai/api-contracts`, `@okouai/connectors`,
+`@okouai/core`, and `@okouai/db`; map `api` to declarations for all four.
 
 - Result: failed OOM, peak `2274.3 MiB`.
 - Conclusion: workspace declaration boundaries alone do not materially reduce
@@ -95,7 +95,7 @@ Change: generate `.d.ts` for `@vm0/api-contracts`, `@vm0/connectors`,
 
 ### 6. Move automation page structural types to a pure type file
 
-Command: `pnpm -F @vm0/app check-types`
+Command: `pnpm -F @okouai/app check-types`
 
 - Change: move `CombinedEntry` to `automation-utils.ts`; signals import
   `AutomationEntry` and `CombinedEntry` from the pure utility module.
@@ -105,7 +105,7 @@ Command: `pnpm -F @vm0/app check-types`
 
 ### 7. Move chat thread signal interfaces to a pure type file
 
-Command: `pnpm -F @vm0/app check-types`
+Command: `pnpm -F @okouai/app check-types`
 
 - Change: move `ChatThreadSignals`, `LoadHistoryResult`, `ActiveGoalState`, and
   `SendMessageOptions` to `chat-thread-signals.ts`; keep re-exports from
@@ -670,24 +670,24 @@ measurement.
 
 Latest-main commands:
 
-- `node /tmp/vm0-measure-memory.mjs --label latest-main-api-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts check-types`
-- `node /tmp/vm0-measure-memory.mjs --label latest-main-app-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/app check-types`
+- `node /tmp/vm0-measure-memory.mjs --label latest-main-api-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @okouai/api-contracts check-types`
+- `node /tmp/vm0-measure-memory.mjs --label latest-main-app-check-types --json .memory-results/latest.jsonl -- pnpm -F @okouai/app check-types`
 - `node /tmp/vm0-measure-memory.mjs --label latest-main-api-check-types --json .memory-results/latest.jsonl -- pnpm -F api check-types`
 
 Rebased-branch commands:
 
-- `node scripts/measure-memory.mjs --label rebased-api-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts check-types`
-- `node scripts/measure-memory.mjs --label rebased-app-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/app check-types`
+- `node scripts/measure-memory.mjs --label rebased-api-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @okouai/api-contracts check-types`
+- `node scripts/measure-memory.mjs --label rebased-app-check-types --json .memory-results/latest.jsonl -- pnpm -F @okouai/app check-types`
 - `node scripts/measure-memory.mjs --label rebased-api-check-types --json .memory-results/latest.jsonl -- pnpm -F api check-types`
 - `node scripts/measure-memory.mjs --label rebased-api-tests-host-maps-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-host-maps-slice.json --noEmit`
 - `node scripts/measure-memory.mjs --label rebased-api-tests-agent-run-callback-service-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-agent-run-callback-service-slice.json --noEmit`
 
 Results:
 
-- Latest main `@vm0/api-contracts`: passed, peak `1688.5 MiB`.
-- Rebased branch `@vm0/api-contracts`: passed, peak `1678.9 MiB`.
-- Latest main `@vm0/app`: passed, peak `2217.1 MiB`.
-- Rebased branch `@vm0/app`: passed, peak `2223.5 MiB`.
+- Latest main `@okouai/api-contracts`: passed, peak `1688.5 MiB`.
+- Rebased branch `@okouai/api-contracts`: passed, peak `1678.9 MiB`.
+- Latest main `@okouai/app`: passed, peak `2217.1 MiB`.
+- Rebased branch `@okouai/app`: passed, peak `2223.5 MiB`.
 - Latest main `api`: OOM, peak `2267.9 MiB`.
 - Rebased branch `api`: OOM, peak `2274.4 MiB`.
 - Rebased branch `host-maps` strict slice: passed, peak `1860.1 MiB`.
@@ -777,7 +777,7 @@ Results:
 
 - `@typescript/native-preview` resolved to `7.0.0-dev.20260624.1` under the
   repo's package manager settings.
-- `@vm0/api-contracts` passed, but peak RSS was `1950.7 MiB`, worse than the
+- `@okouai/api-contracts` passed, but peak RSS was `1950.7 MiB`, worse than the
   latest-main `tsc` baseline of `1688.5 MiB` and the rebased-branch `tsc`
   result of `1678.9 MiB`.
 - `api` did not finish after more than `210s`; the run was manually stopped.
@@ -788,10 +788,10 @@ the measured small-package peak is already worse than `tsc`. It may be worth
 revisiting once TypeScript native is stable and version-aligned with the repo,
 but it is not a safe current memory optimization.
 
-### 35. Split `@vm0/app` production and test type checks
+### 35. Split `@okouai/app` production and test type checks
 
 Change: add `apps/platform/tsconfig.production.json` and
-`apps/platform/tsconfig.tests.json`, then change `@vm0/app` `check-types` to
+`apps/platform/tsconfig.tests.json`, then change `@okouai/app` `check-types` to
 run the two strict `tsc --noEmit` programs sequentially. The production config
 inherits the existing app tsconfig and excludes test files. The tests config
 includes test roots plus the app ambient declarations and Vitest setup file so
@@ -799,9 +799,9 @@ Jest-DOM matchers and global `Window` augmentations remain available.
 
 Commands:
 
-- `node scripts/measure-memory.mjs --label app-production-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/app exec tsc -p tsconfig.production.json --noEmit`
-- `node scripts/measure-memory.mjs --label app-tests-check-types-with-ambient --json .memory-results/latest.jsonl -- pnpm -F @vm0/app exec tsc -p tsconfig.tests.json --noEmit`
-- `node scripts/measure-memory.mjs --label app-split-check-types-script --json .memory-results/latest.jsonl -- pnpm -F @vm0/app check-types`
+- `node scripts/measure-memory.mjs --label app-production-check-types --json .memory-results/latest.jsonl -- pnpm -F @okouai/app exec tsc -p tsconfig.production.json --noEmit`
+- `node scripts/measure-memory.mjs --label app-tests-check-types-with-ambient --json .memory-results/latest.jsonl -- pnpm -F @okouai/app exec tsc -p tsconfig.tests.json --noEmit`
+- `node scripts/measure-memory.mjs --label app-split-check-types-script --json .memory-results/latest.jsonl -- pnpm -F @okouai/app check-types`
 
 Results:
 
@@ -809,8 +809,8 @@ Results:
 - Tests chunk passed after adding the app ambient declarations and test setup,
   peak `2132.6 MiB`, duration `53.0s`.
 - Real package script passed, peak `2144.9 MiB`, duration `82.6s`.
-- Delta versus rebased branch `@vm0/app` full check (`2223.5 MiB`): `-78.6 MiB`.
-- Delta versus latest-main `@vm0/app` full check (`2217.1 MiB`): `-72.2 MiB`.
+- Delta versus rebased branch `@okouai/app` full check (`2223.5 MiB`): `-78.6 MiB`.
+- Delta versus latest-main `@okouai/app` full check (`2217.1 MiB`): `-72.2 MiB`.
 
 Conclusion: keep this change. It preserves strict `tsc --noEmit` coverage for
 both production and test code while reducing the package check peak by about
@@ -839,27 +839,27 @@ route leaf. A viable production-side API split needs route registry groups that
 are each checked independently, plus a way for the app-entry check to consume a
 bounded `readonly RouteEntry[]` boundary without re-expanding every route leaf.
 
-### 37. Split `@vm0/api-contracts` contracts and rust bindings
+### 37. Split `@okouai/api-contracts` contracts and rust bindings
 
 Change: add `packages/api-contracts/tsconfig.contracts.json` and
 `packages/api-contracts/tsconfig.rust-bindings.json`, then change
-`@vm0/api-contracts` `check-types` to run both strict `tsc --noEmit` programs
+`@okouai/api-contracts` `check-types` to run both strict `tsc --noEmit` programs
 sequentially.
 
 Commands:
 
-- `node scripts/measure-memory.mjs --label api-contracts-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts exec tsc -p tsconfig.contracts.json --noEmit`
-- `node scripts/measure-memory.mjs --label api-contracts-rust-bindings-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts exec tsc -p tsconfig.rust-bindings.json --noEmit`
-- `node scripts/measure-memory.mjs --label api-contracts-split-check-types-script --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts check-types`
+- `node scripts/measure-memory.mjs --label api-contracts-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @okouai/api-contracts exec tsc -p tsconfig.contracts.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-contracts-rust-bindings-check-types --json .memory-results/latest.jsonl -- pnpm -F @okouai/api-contracts exec tsc -p tsconfig.rust-bindings.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-contracts-split-check-types-script --json .memory-results/latest.jsonl -- pnpm -F @okouai/api-contracts check-types`
 
 Results:
 
 - Contracts chunk passed, peak `1607.9 MiB`, duration `39.4s`.
 - Rust bindings chunk passed, peak `830.4 MiB`, duration `5.7s`.
 - Real package script passed, peak `1594.7 MiB`, duration `43.7s`.
-- Delta versus rebased branch `@vm0/api-contracts` full check
+- Delta versus rebased branch `@okouai/api-contracts` full check
   (`1678.9 MiB`): `-84.2 MiB`.
-- Delta versus latest-main `@vm0/api-contracts` full check (`1688.5 MiB`):
+- Delta versus latest-main `@okouai/api-contracts` full check (`1688.5 MiB`):
   `-93.8 MiB`.
 
 Conclusion: keep this change. It preserves strict checking for all package
@@ -868,12 +868,12 @@ time increase is small because the rust-bindings chunk is short.
 
 ## Current conclusions
 
-- `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
+- `@okouai/app`: keep the pure type module splits from experiments 6 and 7. They
   preserve public exports and type strictness. Also keep the production/test
   split from experiment 35: on latest `origin/main`, app measured
   `2217.1 MiB`; on the rebased branch before the split it measured
   `2223.5 MiB`; with the split package script it now passes at `2144.9 MiB`.
-- `@vm0/api-contracts`: latest-main cold peak is `1688.5 MiB`; the rebased
+- `@okouai/api-contracts`: latest-main cold peak is `1688.5 MiB`; the rebased
   branch measured `1678.9 MiB`; the split package script now passes at
   `1594.7 MiB`. This package is not the main problem, but its package-level
   peak is now materially lower.

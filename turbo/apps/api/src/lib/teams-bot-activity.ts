@@ -2,7 +2,7 @@ import type {
   TeamsActor,
   TeamsInboundAttachment,
   TeamsInboundActivity,
-} from "@vm0/api-contracts/contracts/zero-teams-bot";
+} from "@okouai/api-contracts/contracts/zero-teams-bot";
 
 interface NormalizedTeamsActivityResult {
   readonly ok: true;

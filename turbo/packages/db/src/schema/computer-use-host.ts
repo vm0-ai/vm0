@@ -17,9 +17,9 @@ import type {
   ComputerUseCommandResult,
   ComputerUsePermissions,
   ComputerUseSupportedCapabilities,
-} from "@vm0/db/jsonb-contracts/computer-use-host";
-import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
-export type { ComputerUsePermissions } from "@vm0/db/jsonb-contracts/computer-use-host";
+} from "@okouai/db/jsonb-contracts/computer-use-host";
+import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
+export type { ComputerUsePermissions } from "@okouai/db/jsonb-contracts/computer-use-host";
 
 export const computerUseHosts = pgTable(
   "computer_use_hosts",

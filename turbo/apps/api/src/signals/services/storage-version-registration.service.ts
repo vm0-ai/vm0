@@ -1,4 +1,4 @@
-import { storageVersions } from "@vm0/db/schema/storage";
+import { storageVersions } from "@okouai/db/schema/storage";
 import { inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";

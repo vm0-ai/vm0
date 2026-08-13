@@ -5,9 +5,9 @@ import {
   zeroAvatarVideoGenerateRequestSchema,
   type ZeroAvatarVideoAvatarsQuery,
   type ZeroAvatarVideoVoicesQuery,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

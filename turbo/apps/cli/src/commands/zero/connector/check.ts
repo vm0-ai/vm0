@@ -1,9 +1,9 @@
 import { Command, Option } from "commander";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/zero-connector-check";
 
 import { getApiUrl } from "../../../lib/api/config";
 import {

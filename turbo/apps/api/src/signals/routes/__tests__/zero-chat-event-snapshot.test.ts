@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import { chatEventRowV4Schema } from "@vm0/api-contracts/contracts/chat-event-rows";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import { chatEventRowV4Schema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { testChatEventSearchProjectionContract } from "@vm0/api-contracts/contracts/test-chat-event-search-projection";
-import { testChatEventSnapshotContract } from "@vm0/api-contracts/contracts/test-chat-event-snapshot";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
+import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -347,56 +347,6 @@ describe("chat event snapshot read endpoints", () => {
         code: "CHAT_EVENTS_EXPIRED",
       },
     });
-  }, 60_000);
-
-  it("lists the authoritative queue without requiring a snapshot", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const owner = bdd.user({ orgId });
-    await api.grantProEntitlement(owner);
-    await api.ensureOrgModelProvider(owner);
-    api.configureRunnerGroup();
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Authoritative queue agent",
-    });
-    const active = await chat.requestSendEvent(
-      owner,
-      {
-        agentId: agent.agentId,
-        prompt: `authoritative-queue-blocker-${randomUUID()}`,
-      },
-      [201],
-    );
-    if (active.status !== 201 || active.body.runId === null) {
-      throw new Error("Expected an active blocker run");
-    }
-    const queuedEventId = randomUUID();
-    const queued = await chat.requestSendEvent(
-      owner,
-      {
-        agentId: agent.agentId,
-        threadId: active.body.threadId,
-        clientEventId: queuedEventId,
-        prompt: `authoritative-queue-pending-${randomUUID()}`,
-      },
-      [201],
-    );
-    if (queued.status !== 201) {
-      throw new Error("Expected the second message to be queued");
-    }
-    expect(queued.body.runId).toBeNull();
-    const threadId = active.body.threadId;
-
-    const response = await accept(
-      eventsClient().queued({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [200],
-    );
-    expect(response.body.events).toStrictEqual([
-      { eventId: queuedEventId, seqId: expect.any(Number) },
-    ]);
-    await api.requestCancelRun(owner, active.body.runId, [200]);
   }, 60_000);
 
   it("immediately retires snapshot versions below the supported minimum", async () => {

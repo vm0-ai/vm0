@@ -21,7 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
@@ -31,8 +31,8 @@ import {
   type ModelProviderType,
   type OrgModelPolicy,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { useTranslation } from "react-i18next";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";

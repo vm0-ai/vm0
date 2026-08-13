@@ -5,7 +5,7 @@ import type {
   ZeroSeoRankedKeywordsRequest,
   ZeroSeoResponse,
   ZeroSeoSerpRequest,
-} from "@vm0/api-contracts/contracts/zero-seo";
+} from "@okouai/api-contracts/contracts/zero-seo";
 import { command } from "ccstate";
 import { z } from "zod";
 

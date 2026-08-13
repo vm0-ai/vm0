@@ -1,7 +1,7 @@
-import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { MAX_FILE_SIZE_BYTES } from "@okouai/api-contracts/contracts/storages";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

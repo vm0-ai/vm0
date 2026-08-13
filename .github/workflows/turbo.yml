@@ -426,14 +426,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      # The two heavy app type-checks (api, @vm0/app ≈ 57% of the former
+      # The two heavy app type-checks (api, @okouai/app ≈ 57% of the former
       # serial total) run in the separate lint-types-apps job below. Here we
       # check everything else. Dependency packages resolve via source
       # (exports point at src/*.ts, no build step), so the apps job can run
       # its tsc standalone without re-running these — no duplicated work.
       - name: Type Check (shared packages)
         working-directory: turbo
-        run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@vm0/app'
+        run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@okouai/app'
 
   lint-types-apps:
     needs: [detect-turbo-ts-checks]
@@ -494,9 +494,9 @@ jobs:
           ' "$result_file"
 
           exit "$status"
-      - name: Type Check (@vm0/app)
+      - name: Type Check (@okouai/app)
         working-directory: turbo
-        run: pnpm --filter @vm0/app run check-types
+        run: pnpm --filter @okouai/app run check-types
 
   lint-format:
     needs: [detect-turbo-ts-checks]
@@ -558,7 +558,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
+        run: pnpm --filter @okouai/db db:migrate
       - name: Bench API
         working-directory: turbo
         env:
@@ -596,7 +596,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Bench App
         working-directory: turbo
-        run: pnpm -F @vm0/app exec vitest bench --run --outputJson bench-results.json
+        run: pnpm -F @okouai/app exec vitest bench --run --outputJson bench-results.json
       - name: Print bench summary
         if: success() || failure()
         working-directory: turbo/apps/platform
@@ -730,7 +730,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/okou-cli --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -762,7 +762,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -807,7 +807,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
+        run: pnpm --filter @okouai/db db:migrate
       - name: Test API
         working-directory: turbo
         env:
@@ -845,13 +845,13 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/core --project=@okouai/ui --project=@okouai/api-contracts --project=@okouai/db --coverage.enabled --coverage.reporter=json
       - name: Test Connectors
         working-directory: turbo
-        run: pnpm -F @vm0/connectors exec vitest run --reporter=default
+        run: pnpm -F @okouai/connectors exec vitest run --reporter=default
       - name: Test ESLint Config
         working-directory: turbo
-        run: pnpm -F @vm0/eslint-config test
+        run: pnpm -F @okouai/eslint-config test
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -992,7 +992,7 @@ jobs:
             if [ -z "$PARENT_DATABASE_URL" ]; then
               PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
             fi
-            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @vm0/db db:migrate)
+            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @okouai/db db:migrate)
           fi
 
           BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
@@ -1016,7 +1016,7 @@ jobs:
           fi
 
           cd turbo
-          DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
+          DATABASE_URL="$DATABASE_URL" pnpm -F @okouai/db db:migrate
           ENV=preview DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
 
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
@@ -1321,8 +1321,8 @@ jobs:
           VITE_VAPID_PUBLIC_KEY_PROD: ${{ vars.VAPID_PUBLIC_KEY_PROD }}
         run: |
           cd turbo
-          pnpm --filter @vm0/app exec vite build --sourcemap
-          pnpm --filter @vm0/app exec sentry-cli sourcemaps inject dist
+          pnpm --filter @okouai/app exec vite build --sourcemap
+          pnpm --filter @okouai/app exec sentry-cli sourcemaps inject dist
 
       - name: Create artifact manifest
         if: steps.existing.outputs.exists != 'true'
@@ -1853,10 +1853,10 @@ jobs:
         run: cd e2e && pnpm install --frozen-lockfile
       - name: Check Playwright E2E types
         run: cd e2e && pnpm check-types
-      - name: Run Playwright fixture integration tests
-        run: cd e2e && pnpm test
       - name: Install Playwright browsers
         run: cd e2e && pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright fixture integration tests
+        run: cd e2e && pnpm test
       - name: Start Stripe webhook forwarding
         # Staging receives webhooks from the Dashboard endpoint; PR previews use
         # the long-running listener from deploy-stripe-listener.
@@ -2053,10 +2053,10 @@ jobs:
 
       - name: Install CLI dependencies
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/okou-cli...
+        run: cd turbo && pnpm install --frozen-lockfile --filter @okouai/cli...
       - name: Build CLI
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm --filter @vm0/okou-cli build
+        run: cd turbo && pnpm --filter @okouai/cli build
         env:
           DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
 
@@ -2209,9 +2209,9 @@ jobs:
           package_root="$(mktemp -d)"
           tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
           node_prefix=$(dirname "$(dirname "$(command -v node)")")
-          cli_dir="$node_prefix/lib/node_modules/@vm0/okou-cli"
+          cli_dir="$node_prefix/lib/node_modules/@okouai/cli"
           sudo rm -rf "$cli_dir"
-          sudo mkdir -p "$node_prefix/lib/node_modules/@vm0"
+          sudo mkdir -p "$node_prefix/lib/node_modules/@okouai"
           sudo cp -a "$package_root/package" "$cli_dir"
           sudo chmod +x "$cli_dir/okou.js"
           sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/okou"
@@ -2632,6 +2632,14 @@ jobs:
           E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
           E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Upload runner E2E Checkout diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: runner-e2e-checkout-diagnostics
+          path: /tmp/e2e-runner-checkout-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Upload runner E2E API tokens
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -2852,6 +2860,7 @@ jobs:
     needs:
       - prepare
       - deploy-api
+      - deploy-cli
       - deploy-runner-prepare
       - deploy-runner-start
       - cli-e2e-03-runner-prepare
@@ -2861,6 +2870,7 @@ jobs:
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
       needs.deploy-api.result == 'success' &&
+      needs.deploy-cli.result == 'success' &&
       needs.deploy-runner-prepare.result == 'success' &&
       needs.deploy-runner-start.result == 'success' &&
       needs.cli-e2e-03-runner-prepare.result == 'success' &&
@@ -2996,16 +3006,47 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.cli-e2e-03-runner-prepare.result != 'skipped'
     steps:
+      - name: Determine runner E2E cleanup scope
+        id: cleanup-scope
+        shell: bash
+        env:
+          PREPARE_RESULT: ${{ needs.cli-e2e-03-runner-prepare.result }}
+          RUNNER_RESULT: ${{ needs.cli-e2e-03-runner.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$PREPARE_RESULT" != "success" ]]; then
+            scope="generation"
+          elif [[ "$RUNNER_RESULT" == "success" ]]; then
+            scope="run"
+          else
+            scope="retain"
+          fi
+          echo "Runner E2E cleanup scope: $scope"
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+      - name: Retain runner E2E accounts for failed-job rerun
+        if: steps.cleanup-scope.outputs.scope == 'retain'
+        run: echo "Retaining runner E2E accounts until a successful rerun or fallback cleanup"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.cleanup-scope.outputs.scope != 'retain'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: steps.cleanup-scope.outputs.scope != 'retain'
         with:
           node-version: 22
       - name: Install pnpm
+        if: steps.cleanup-scope.outputs.scope != 'retain'
         run: corepack enable pnpm
       - name: Install E2E dependencies
+        if: steps.cleanup-scope.outputs.scope != 'retain'
         run: cd e2e && pnpm install --frozen-lockfile
-      - name: Cleanup runner E2E accounts
-        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup
+      - name: Cleanup current runner E2E generation
+        if: steps.cleanup-scope.outputs.scope == 'generation'
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup-generation
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Cleanup runner E2E workflow run
+        if: steps.cleanup-scope.outputs.scope == 'run'
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup-run
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
@@ -3055,10 +3096,10 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/runtime-api-schema
 
-          pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out /tmp/runtime-api-schema/candidate.json
+          pnpm --filter @okouai/api-contracts run build:runtime-api-schema -- --out /tmp/runtime-api-schema/candidate.json
 
           if [ -f /tmp/runtime-api-schema/current.json ]; then
-            pnpm --filter @vm0/api-contracts run lint-runtime-api-compat -- \
+            pnpm --filter @okouai/api-contracts run lint-runtime-api-compat -- \
               --against /tmp/runtime-api-schema/current.json \
               --current /tmp/runtime-api-schema/candidate.json \
               --report-out /tmp/runtime-api-schema/report.json \

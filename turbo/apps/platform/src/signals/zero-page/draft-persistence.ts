@@ -2,7 +2,7 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   textToMessageDocument,
   type EditorDocumentSnapshot,

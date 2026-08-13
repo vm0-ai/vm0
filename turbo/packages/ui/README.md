@@ -1,4 +1,4 @@
-# @vm0/ui - Design System
+# @okouai/ui - Design System
 
 VM0's shared UI component library with a complete design system including components, colors, and utilities.
 
@@ -78,7 +78,7 @@ VM0 uses **Lucide** for all UI iconography, providing a consistent and comprehen
 
 ### Installation
 
-Lucide is already included in the `@vm0/ui` package. For apps using it:
+Lucide is already included in the `@okouai/ui` package. For apps using it:
 
 ```bash
 pnpm add lucide-react
@@ -251,7 +251,7 @@ Tailwind CSS, following the shadcn Base UI component patterns.
 ### Button
 
 ```tsx
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 
 <Button variant="default">Default</Button>
 <Button variant="destructive">Delete</Button>
@@ -285,7 +285,7 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-} from "@vm0/ui";
+} from "@okouai/ui";
 
 <Card>
   <CardHeader>
@@ -300,7 +300,7 @@ import {
 ### Input
 
 ```tsx
-import { Input } from "@vm0/ui";
+import { Input } from "@okouai/ui";
 
 <Input type="text" placeholder="Enter text..." />
 <Input type="email" placeholder="Email" />
@@ -317,7 +317,7 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from "@vm0/ui";
+} from "@okouai/ui";
 
 <Table>
   <TableHeader>
@@ -338,7 +338,7 @@ import {
 ### Dialog
 
 ```tsx
-import { Dialog } from "@vm0/ui";
+import { Dialog } from "@okouai/ui";
 
 // Based on Base UI Dialog primitive
 // See Base UI docs for the underlying API
@@ -353,7 +353,7 @@ import { Dialog } from "@vm0/ui";
 Intelligently merges and deduplicates Tailwind class names.
 
 ```tsx
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 
 cn("px-2 py-1", "px-4"); // => "px-4 py-1"
 cn("text-red-500", undefined); // => "text-red-500"
@@ -418,7 +418,7 @@ This package is part of the VM0 monorepo and uses workspace protocol:
 ```json
 {
   "dependencies": {
-    "@vm0/ui": "workspace:*"
+    "@okouai/ui": "workspace:*"
   }
 }
 ```
@@ -427,13 +427,13 @@ This package is part of the VM0 monorepo and uses workspace protocol:
 
 ```tsx
 // Import components
-import { Button, Card, Input } from "@vm0/ui";
+import { Button, Card, Input } from "@okouai/ui";
 
 // Import styles (in your app's layout/entry)
-import "@vm0/ui/styles/globals.css";
+import "@okouai/ui/styles/globals.css";
 
 // Import utilities
-import { cn } from "@vm0/ui/lib/utils";
+import { cn } from "@okouai/ui/lib/utils";
 ```
 
 ### Theme Setup

@@ -4,8 +4,8 @@ import { createStore } from "ccstate";
 import {
   integrationsTeamsMessageContract,
   integrationsTeamsUploadCompleteContract,
-} from "@vm0/api-contracts/contracts/integrations";
-import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
+} from "@okouai/api-contracts/contracts/integrations";
+import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

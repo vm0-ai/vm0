@@ -4,11 +4,11 @@ import { command } from "ccstate";
 import {
   AGENT_NAME_REGEX,
   agentComposeApiContentSchema,
-} from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+} from "@okouai/db/schema/agent-compose";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 

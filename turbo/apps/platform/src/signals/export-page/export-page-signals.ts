@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   userExportContract,
   type UserExportStatusResponse,
-} from "@vm0/api-contracts/contracts/user-export";
+} from "@okouai/api-contracts/contracts/user-export";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
 import { zeroClient$ } from "../api-client.ts";

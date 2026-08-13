@@ -1,6 +1,6 @@
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { telegramMessages } from "@okouai/db/schema/telegram-message";
 import { command } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";

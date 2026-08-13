@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorScopeDiffContract } from "@okouai/api-contracts/contracts/zero-connectors";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

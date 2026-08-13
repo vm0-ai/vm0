@@ -1,4 +1,4 @@
-import { testBrowserReconcileContract } from "@vm0/api-contracts/contracts/test-browser-reconcile";
+import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";

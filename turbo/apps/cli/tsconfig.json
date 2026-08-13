@@ -1,5 +1,5 @@
 {
-  "extends": "@vm0/typescript-config/base",
+  "extends": "@okouai/typescript-config/base",
   "compilerOptions": {
     "ignoreDeprecations": "6.0",
     "lib": ["ES2022"],

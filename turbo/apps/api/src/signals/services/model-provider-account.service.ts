@@ -5,14 +5,14 @@ import {
   type ModelProviderListResponse,
   type ModelProviderResponse,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   modelProviderAccounts,
   modelProviderAccountSecrets,
-} from "@vm0/db/schema/model-provider-account";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets } from "@vm0/db/schema/secret";
+} from "@okouai/db/schema/model-provider-account";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { secrets } from "@okouai/db/schema/secret";
 import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";

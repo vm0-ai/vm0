@@ -6,7 +6,7 @@ import {
   type ZeroWebSearchRequest,
   type ZeroWebSearchResponse,
   type ZeroWebSearchResult,
-} from "@vm0/api-contracts/contracts/zero-web-search";
+} from "@okouai/api-contracts/contracts/zero-web-search";
 import { command } from "ccstate";
 import { z } from "zod";
 

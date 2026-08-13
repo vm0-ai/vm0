@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
+import { registryResourceDownloadContract } from "@okouai/api-contracts/contracts/registry-resources";
 import {
   findColorSystem,
   findDesignSystem,
@@ -12,8 +12,8 @@ import {
   findWebsiteTemplateResource,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
-} from "@vm0/core/resource-registry";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/core/resource-registry";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";

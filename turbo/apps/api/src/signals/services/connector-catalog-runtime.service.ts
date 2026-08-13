@@ -1,15 +1,15 @@
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   getConnectorAuthProviderRegistrationCapabilities,
   type ConnectorAuthProviderRegistrationCapability,
-} from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/auth-providers";
 import {
   CONNECTOR_PLATFORM_SECRET_NAMES,
   type ConnectorAccessConfig,
@@ -25,7 +25,7 @@ import {
   type ConnectorRevokeInputBindings,
   type ConnectorSecretValueRef,
   type ConnectorVariableValueRef,
-} from "@vm0/connectors/connector-config";
+} from "@okouai/connectors/connector-config";
 
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";

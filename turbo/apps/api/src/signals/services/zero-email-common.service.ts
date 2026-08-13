@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
-import { emailSuppressions } from "@vm0/db/schema/email-suppression";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { users } from "@vm0/db/schema/user";
+import { emailOutbox } from "@okouai/db/schema/email-outbox";
+import { emailSuppressions } from "@okouai/db/schema/email-suppression";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { users } from "@okouai/db/schema/user";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { Resend } from "resend";

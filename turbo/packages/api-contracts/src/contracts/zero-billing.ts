@@ -461,6 +461,7 @@ const creditCheckoutRequestSchema = z
   .object({
     credits: z.number().int().min(1000).max(10_000_000),
     customAmount: z.boolean().optional(),
+    previewExistingBilling: z.boolean().optional(),
     successUrl: stripeRedirectUrlSchema,
     cancelUrl: stripeRedirectUrlSchema,
     autoRecharge: z
@@ -492,6 +493,31 @@ const creditCheckoutRequestSchema = z
 const portalRequestSchema = z.object({
   returnUrl: stripeRedirectUrlSchema,
 });
+
+const creditPurchasePreviewResponseSchema = z.object({
+  status: z.literal("preview"),
+  credits: z.number().int().positive(),
+  amountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  expiresAt: z.iso.datetime(),
+  previewToken: z.string().min(1),
+});
+
+const creditPurchaseStartResponseSchema = z.union([
+  checkoutResponseSchema,
+  creditPurchasePreviewResponseSchema,
+]);
+
+const creditPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    hostedInvoiceUrl: z.null(),
+  }),
+  z.object({
+    status: z.literal("pending_payment"),
+    hostedInvoiceUrl: z.string().url(),
+  }),
+]);
 
 const autoRechargeUpdateRequestSchema = z
   .object({
@@ -984,14 +1010,30 @@ export const zeroBillingCreditCheckoutContract = c.router({
     headers: authHeadersSchema,
     body: creditCheckoutRequestSchema,
     responses: {
-      200: checkoutResponseSchema,
+      200: creditPurchaseStartResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Create Stripe checkout session for credits",
+    summary: "Start a credit purchase",
+  },
+  confirm: {
+    method: "POST",
+    path: "/api/okou/billing/credit-checkout/confirm",
+    headers: authHeadersSchema,
+    body: z.object({ previewToken: z.string().min(1) }),
+    responses: {
+      200: creditPurchaseConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a previewed credit purchase",
   },
 });
 
@@ -1281,6 +1323,12 @@ export type ConcurrencySubscriptionChangeResponse = z.infer<
   typeof concurrencySubscriptionChangeResponseSchema
 >;
 export type CreditCheckoutRequest = z.infer<typeof creditCheckoutRequestSchema>;
+export type CreditPurchasePreviewResponse = z.infer<
+  typeof creditPurchasePreviewResponseSchema
+>;
+export type CreditPurchaseConfirmResponse = z.infer<
+  typeof creditPurchaseConfirmResponseSchema
+>;
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
 export type BillingInvoice = z.infer<typeof invoiceSchema>;
 export type BillingInvoicesResponse = z.infer<

@@ -1,4 +1,4 @@
-import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 
 import { now } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";

@@ -5,7 +5,7 @@ import { searchZeroChat } from "../../../lib/api/domains/zero-chat";
 import type {
   ChatSearchMessage,
   ChatSearchResponse,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";

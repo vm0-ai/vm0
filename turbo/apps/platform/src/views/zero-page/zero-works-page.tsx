@@ -1,6 +1,6 @@
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamsConnectStatus } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import type { TeamsConnectStatus } from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   AlertTriangle,
@@ -10,13 +10,13 @@ import {
   Settings,
   Webhook,
 } from "lucide-react";
-import { Button } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { Button } from "@okouai/ui";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import {

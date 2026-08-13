@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadMarkAgentReadContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";

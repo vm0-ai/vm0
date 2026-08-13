@@ -8,10 +8,10 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
-import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/core";
+import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
+import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   chatEventsContract,
   chatThreadsContract,
@@ -22,24 +22,24 @@ import {
   type ChatEvent,
   type UserMessageDocument,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
-import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
+import { cronSteerRunTimeBudgetContract } from "@okouai/api-contracts/contracts/cron";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
-} from "@vm0/api-contracts/contracts/runners";
-import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+} from "@okouai/api-contracts/contracts/runners";
+import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";

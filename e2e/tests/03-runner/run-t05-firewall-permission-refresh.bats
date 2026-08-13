@@ -28,6 +28,8 @@ teardown() {
     echo "$output"
     assert_success
 
+    # Raw DNS has dedicated runner coverage. Pin the synthetic placeholder's
+    # public sink so this test owns only firewall permission transitions.
     local request_url="https://firewall-placeholder.vm3.ai/algolia/write/1/indexes/vm0-e2e-${TEST_ID}"
     local checkpoint_script
     checkpoint_script=$(cat <<'EOF'
@@ -35,6 +37,7 @@ set -euo pipefail
 response_file=$(mktemp)
 trap 'rm -f "$response_file"' EXIT
 status=$(curl --silent --show-error --max-time 5 \
+    --resolve 'firewall-placeholder.vm3.ai:443:8.8.8.8' \
     --output "$response_file" \
     --write-out '%{http_code}' \
     --request POST \
@@ -57,6 +60,7 @@ deadline=$((SECONDS + 90))
 while ((SECONDS < deadline)); do
     : > "$response_file"
     curl --silent --show-error --max-time 5 \
+        --resolve 'firewall-placeholder.vm3.ai:443:8.8.8.8' \
         --output "$response_file" \
         --request POST \
         --header 'content-type: application/json' \

@@ -1,4 +1,4 @@
-import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingInvoicesContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";

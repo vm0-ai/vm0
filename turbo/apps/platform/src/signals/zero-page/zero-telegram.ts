@@ -1,12 +1,12 @@
 import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroIntegrationsTelegramContract,
   type TelegramBot,
   type TelegramBotStatus,
   type TelegramSetupStatus,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";

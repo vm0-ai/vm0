@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 
-import { integrationsSlackMessageContract } from "@vm0/api-contracts/contracts/integrations";
+import { integrationsSlackMessageContract } from "@okouai/api-contracts/contracts/integrations";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

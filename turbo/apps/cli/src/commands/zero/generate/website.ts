@@ -7,7 +7,7 @@ import {
   findTemplate,
   listDesignSystems,
   listTemplates,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import {
   canonicalizeRegistryId,
   formatRegistryListing,
@@ -185,6 +185,8 @@ ${formatRegistryListing(templates, "website templates")}`;
           ...(latestWebsiteTemplatesEnabled
             ? [
                 "When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
+                "Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
+                "Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
               ]
             : []),
           "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",

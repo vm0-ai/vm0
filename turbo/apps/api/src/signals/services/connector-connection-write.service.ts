@@ -1,4 +1,4 @@
-import { connectors } from "@vm0/db/schema/connector";
+import { connectors } from "@okouai/db/schema/connector";
 import { isNotNull, sql } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";

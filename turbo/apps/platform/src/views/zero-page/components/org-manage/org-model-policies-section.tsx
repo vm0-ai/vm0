@@ -40,7 +40,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
@@ -52,12 +52,12 @@ import {
   type OrgModelPoliciesResponse,
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   getModelProviderTypeForSurfaceProtocol,
   type ModelProviderConnectionResponse,
   type ModelProviderSurfaceProtocol,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,

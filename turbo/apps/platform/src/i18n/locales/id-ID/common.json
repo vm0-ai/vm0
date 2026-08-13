@@ -333,7 +333,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Impor templat",
       "test": "Tes",
       "web": "Web",
       "webhook": "Webhook"
@@ -790,6 +789,7 @@
       "confirm": "Konfirmasi",
       "credits": "kredit",
       "manage": "Kelola",
+      "preparing": "Menyiapkan...",
       "redirecting": "Mengarahkan...",
       "restore": "Pulihkan",
       "retry": "Coba lagi",
@@ -846,6 +846,9 @@
       "exchangeRate": "Kredit tidak pernah kedaluwarsa. 1 USD = {{credits}} kredit.",
       "quickBuy": "Beli cepat",
       "quickBuyAmount": "Beli cepat {{amount}}",
+      "reviewDescription": "Konfirmasikan tagihan satu kali ini dengan metode pembayaran tersimpan.",
+      "reviewError": "Pembelian kredit ini tidak dapat diselesaikan. Periksa detail penagihan Anda dan coba lagi.",
+      "reviewTitle": "Tinjau pembelian kredit",
       "title": "Beli kredit"
     },
     "downgrade": {
@@ -1027,6 +1030,7 @@
       "concurrencyChanged": "Perubahan kapasitas bersamaan dikonfirmasi. Jumlah slot akan diperbarui setelah Stripe memproses perubahan.",
       "concurrencyReduced": "Pengurangan concurrency dijadwalkan untuk tanggal penagihan berikutnya.",
       "concurrencyRestored": "Langganan kapasitas bersamaan dipulihkan.",
+      "creditPurchaseConfirmed": "Pembayaran dikonfirmasi. Kredit akan muncul setelah Stripe memproses faktur.",
       "creditsAdded": "Kredit ditambahkan. Anda dapat melanjutkan mengobrol dengan Zero.",
       "downgradeScheduledDate": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga {{date}}.",
       "downgradeScheduledPeriod": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga periode tagihan berakhir.",
@@ -1410,8 +1414,7 @@
       "search": "Cari agen dan chat...",
       "sent": "Berhasil diteruskan",
       "threads": "Chat",
-      "title": "Teruskan ke",
-      "to": "Teruskan ke"
+      "title": "Teruskan ke"
     },
     "mail": {
       "bcc": "bcc",
@@ -4584,6 +4587,7 @@
       "imageRecognize": "Pengenalan Gambar",
       "maps": "Peta",
       "peopleSearch": "Pencarian Orang",
+      "seo": "SEO",
       "translation": "Terjemahan",
       "usage": "Penggunaan",
       "weather": "Cuaca",
@@ -4605,12 +4609,17 @@
       "yesterday": "Kemarin"
     },
     "records": {
-      "emptyBillingPeriod": "Tidak ada penggunaan pada periode penagihan ini.",
-      "emptyRange": "Tidak ada penggunaan pada rentang waktu ini.",
+      "empty": {
+        "billingPeriodTitle": "Tidak ada penggunaan pada periode penagihan ini",
+        "description": "Kredit yang Anda pakai di chat, automasi, dan kanal muncul di sini.",
+        "noBillingPeriodDescription": "Penggunaan tim muncul setelah periode penagihan dimulai.",
+        "noBillingPeriodTitle": "Tidak ada periode penagihan aktif",
+        "rangeTitle": "Tidak ada penggunaan pada rentang waktu ini",
+        "teamDescription": "Kredit yang dipakai tim Anda di chat, automasi, dan kanal muncul di sini."
+      },
       "loadError": "Tidak dapat memuat penggunaan Anda.",
       "loadMore": "Muat lebih banyak",
       "myUsage": "Penggunaan saya",
-      "noActiveBillingPeriod": "Tidak ada periode penagihan aktif.",
       "teamLoadError": "Tidak dapat memuat penggunaan tim.",
       "teamUsage": "Penggunaan tim",
       "untitled": "(tanpa judul)"

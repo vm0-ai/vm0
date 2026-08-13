@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CustomConnectorMcpResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorMcpResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 
 import { server } from "../../../../../mocks/server";
 import {

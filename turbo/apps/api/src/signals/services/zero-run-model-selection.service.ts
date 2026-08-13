@@ -1,5 +1,5 @@
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";

@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { cronRefreshStoragePresignedUrlsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronRefreshStoragePresignedUrlsContract } from "@okouai/api-contracts/contracts/cron";
 import type {
   TestWorkflowSkillStoragePresignedUrlCacheStateActionBody,
   TestWorkflowSkillStoragePresignedUrlCacheStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
+} from "@okouai/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
+} from "@okouai/core/storage-names";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

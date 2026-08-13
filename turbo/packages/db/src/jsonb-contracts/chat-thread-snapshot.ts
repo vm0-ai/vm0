@@ -11,6 +11,7 @@ export interface ChatThreadSnapshotProjection {
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
+  readonly selectedVideoModel: string | null;
 }
 
 export type ChatThreadSnapshotProjections = ChatThreadSnapshotProjection[];

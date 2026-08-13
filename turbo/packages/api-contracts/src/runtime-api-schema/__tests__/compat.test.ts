@@ -11,7 +11,7 @@ import {
 function documentWithBody(bodySchema: JsonObject): RuntimeApiSchemaDocument {
   return {
     schemaFormatVersion: runtimeApiSchemaFormatVersion,
-    packageName: "@vm0/api-contracts",
+    packageName: "@okouai/api-contracts",
     packageVersion: "0.0.0",
     generatedAt: "2026-07-02T00:00:00.000Z",
     routes: [

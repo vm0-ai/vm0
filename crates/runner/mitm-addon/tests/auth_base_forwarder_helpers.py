@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from mitmproxy import http
 
-import auth_base_forwarder as forwarder
+import auth_base_transport as transport
 
 __all__ = [
     "FakeForwarderUpstream",
@@ -254,7 +254,7 @@ class FakeForwarderUpstream:
     The class is public so the context manager's return value and stable fields
     are explicit. Tests should still obtain instances from
     ``fake_forwarder_upstream`` because direct construction does not patch
-    ``auth_base_forwarder``.
+    ``auth_base_transport``.
 
     Stable assertion state includes DNS calls, connection calls, created
     sockets, TLS contexts, and the most recent socket via ``socket``.
@@ -461,8 +461,8 @@ def fake_forwarder_upstream(
     """Patch auth.base DNS/connect/TLS boundaries and yield an upstream handle.
 
     The context manager patches only the forwarder's external resolver,
-    ``auth_base_forwarder.socket.socket``, and
-    ``auth_base_forwarder.ssl.create_default_context``. ``addresses`` controls
+    ``auth_base_transport.socket.socket``, and
+    ``auth_base_transport.ssl.create_default_context``. ``addresses`` controls
     the DNS answers returned to the real forwarder before any socket is opened.
     Socket and TLS side effects raise at their matching fake boundary.
 
@@ -486,14 +486,14 @@ def fake_forwarder_upstream(
         socket_factory=socket_factory,
     )
     with (
-        patch.object(forwarder, "_dns_resolver", upstream),
+        patch.object(transport, "_dns_resolver", upstream),
         patch.object(
-            forwarder.socket,
+            transport.socket,
             "socket",
             side_effect=upstream.create_socket,
         ),
         patch.object(
-            forwarder.ssl,
+            transport.ssl,
             "create_default_context",
             side_effect=upstream.create_default_context,
         ),

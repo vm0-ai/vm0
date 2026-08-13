@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-members";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroOrgInviteContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { env, optionalEnv } from "../../lib/env";
 import {

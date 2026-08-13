@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector-config";
+import type { ConnectorExternalCodeGrantConfig } from "@okouai/connectors/connector-config";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "./app";

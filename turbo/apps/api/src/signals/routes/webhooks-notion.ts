@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { webhookNotionContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookNotionContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";

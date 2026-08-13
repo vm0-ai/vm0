@@ -2,8 +2,8 @@ import { computed } from "ccstate";
 import {
   chatSearchContract,
   type ChatSearchResult,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

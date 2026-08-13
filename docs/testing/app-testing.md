@@ -208,7 +208,7 @@ specific test scenarios. Do not import the MSW `server` or call `server.use()`
 from page tests directly.
 
 ```typescript
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
+import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
 import { HttpResponse } from "msw";
 
 it("should show error when API returns 404", async () => {

@@ -2,7 +2,7 @@ import { computed, type Computed } from "ccstate";
 import {
   zeroWorkflowsCollectionContract,
   type ZeroWorkflowSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { workflowReloadVersion$ } from "../workflows-page/workflow-reload.ts";

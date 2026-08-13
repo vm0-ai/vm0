@@ -1,7 +1,7 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 

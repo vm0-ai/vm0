@@ -1,13 +1,13 @@
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   ConnectorExternalCodeSessionStartResponse,
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorOauthDeviceAuthSessionStartResponse,
   ConnectorResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
@@ -15,7 +15,7 @@ import {
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorManualGrantContract,
@@ -24,9 +24,9 @@ import {
   zeroConnectorsBySlugContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../../signals/external/feature-switch-state.ts";
 import { mockApi } from "../msw-contract.ts";
 import {

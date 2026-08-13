@@ -1,8 +1,8 @@
 import { command } from "ccstate";
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
-import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
+import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 

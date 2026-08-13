@@ -212,7 +212,8 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
             )
-            .env(process_control_ipc::BOOTSTRAP_ENV, &endpoint),
+            .env(process_control_ipc::BOOTSTRAP_ENV, &endpoint)
+            .env("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
         Duration::from_secs(20),
         "guest-agent did not finish within its finalization budget",
     )

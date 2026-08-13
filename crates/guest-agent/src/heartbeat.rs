@@ -10,6 +10,7 @@ use crate::http::HttpClient;
 use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
 use std::time::Duration;
+use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -52,6 +53,8 @@ pub async fn heartbeat_loop_for_run_with_interval(
     let heartbeat_url = http.heartbeat_url()?;
 
     let mut interval = tokio::time::interval(interval);
+    // Drop timer debt after slow HTTP cycles and restore a full-period cadence.
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut is_first = true;
     let mut consecutive_failures: u32 = 0;
 

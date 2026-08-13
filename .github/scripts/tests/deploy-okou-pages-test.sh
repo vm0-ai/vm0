@@ -15,7 +15,7 @@ set -euo pipefail
 
 expected_args=(
   --dir "${MOCK_REPO_ROOT}/turbo"
-  --filter @vm0/host-worker
+  --filter @okouai/host-worker
   exec wrangler pages deploy "$EXPECTED_PAGES_DIST"
   --project-name "$EXPECTED_PROJECT_NAME"
   --branch "$EXPECTED_BRANCH"

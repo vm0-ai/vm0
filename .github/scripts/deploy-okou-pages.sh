@@ -32,7 +32,7 @@ for ((attempt = 1; attempt <= max_attempts; attempt++)); do
   fi
 
   if pnpm --dir "${repo_root}/turbo" \
-    --filter @vm0/host-worker \
+    --filter @okouai/host-worker \
     exec wrangler pages deploy "$pages_dist" \
     --project-name "$project_name" \
     --branch "$branch" \

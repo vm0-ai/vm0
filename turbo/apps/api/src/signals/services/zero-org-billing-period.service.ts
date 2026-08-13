@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import { and, eq, gt, inArray, isNotNull, lte } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";

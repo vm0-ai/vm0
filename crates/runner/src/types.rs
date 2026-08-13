@@ -1324,8 +1324,7 @@ pub enum ConnectorRuntimeTargetRegistration {
     #[serde(rename_all = "camelCase")]
     Custom {
         custom_connector_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        base_url_vars: Option<HashMap<String, String>>,
+        base_url_vars: HashMap<String, String>,
     },
 }
 
@@ -1346,25 +1345,8 @@ impl ConnectorRuntimeTargetRegistration {
 
     pub(crate) fn custom_base_url_vars(&self) -> Option<&HashMap<String, String>> {
         match self {
-            Self::Custom { base_url_vars, .. } => base_url_vars.as_ref(),
+            Self::Custom { base_url_vars, .. } => Some(base_url_vars),
             Self::Builtin { .. } => None,
-        }
-    }
-}
-
-impl From<ConnectorRuntimeTarget> for ConnectorRuntimeTargetRegistration {
-    fn from(target: ConnectorRuntimeTarget) -> Self {
-        match target {
-            ConnectorRuntimeTarget::Builtin { connector_slug } => Self::Builtin {
-                connector_slug,
-                base_url_vars: None,
-            },
-            ConnectorRuntimeTarget::Custom {
-                custom_connector_id,
-            } => Self::Custom {
-                custom_connector_id,
-                base_url_vars: None,
-            },
         }
     }
 }
@@ -1385,8 +1367,8 @@ impl ConnectorRuntimeTarget {
 pub struct ConnectorRuntimeSyncResult {
     pub target: ConnectorRuntimeTarget,
     pub next_sync_at: Option<String>,
-    /// First-admission Custom routing inputs. The scheduler pins these only
-    /// after the accompanying executable state publishes successfully.
+    /// Custom routing inputs echoed by an available synchronization result. The
+    /// scheduler accepts them only when they match the run-pinned registration.
     #[serde(default)]
     pub base_url_vars: Option<HashMap<String, String>>,
     #[serde(flatten)]
@@ -2268,6 +2250,43 @@ mod tests {
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert!(ctx.cli_agent_session_id().is_none());
+    }
+
+    #[test]
+    fn execution_context_requires_custom_connector_routing_values() {
+        let execution_context = |target: serde_json::Value| {
+            json!({
+                "runId": "550e8400-e29b-41d4-a716-446655440000",
+                "prompt": "hello",
+                "sandboxToken": "tok",
+                "cliAgentType": "claude_code",
+                "billableFirewalls": [],
+                "connectorRuntimeTargets": [target]
+            })
+        };
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440001";
+
+        assert!(
+            serde_json::from_value::<ExecutionContext>(execution_context(json!({
+                "kind": "custom",
+                "customConnectorId": custom_connector_id
+            })))
+            .is_err()
+        );
+
+        let context = serde_json::from_value::<ExecutionContext>(execution_context(json!({
+            "kind": "custom",
+            "customConnectorId": custom_connector_id,
+            "baseUrlVars": {}
+        })))
+        .expect("empty custom connector routing values should be accepted");
+        assert_eq!(
+            context.connector_runtime_targets,
+            vec![ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                base_url_vars: HashMap::new(),
+            }]
+        );
     }
 
     #[test]

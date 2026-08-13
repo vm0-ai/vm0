@@ -1,6 +1,6 @@
 import { WebClient } from "@slack/web-api";
 
-import type { ChatSlackMessageFile } from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type { ChatSlackMessageFile } from "@okouai/db/jsonb-contracts/chat-slack-context";
 import type { SlackAnyBlock, SlackView } from "./slack-block-kit";
 import { optionalEnv } from "../../lib/env";
 import { settle } from "../utils";

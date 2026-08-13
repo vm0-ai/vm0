@@ -2,11 +2,11 @@ import { command } from "ccstate";
 import type {
   GithubConnectUserBody,
   GithubInstallationResponse,
-} from "@vm0/api-contracts/contracts/integrations-github";
-import { connectors } from "@vm0/db/schema/connector";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { githubUserLinks } from "@vm0/db/schema/github-user-link";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/api-contracts/contracts/integrations-github";
+import { connectors } from "@okouai/db/schema/connector";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
+import { githubUserLinks } from "@okouai/db/schema/github-user-link";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

@@ -21,12 +21,8 @@ fn active_input_uuid(sequence: u64) -> String {
 }
 
 fn active_input_payload(sequence: u64, text: &str) -> Vec<u8> {
-    serde_json::to_vec(&json!({
-        "type": ACTIVE_INPUT_TYPE,
-        "deliveryId": active_input_uuid(sequence),
-        "text": text,
-    }))
-    .expect("active input payload should serialize")
+    guest_contracts::active_input::encode_active_input(&active_input_uuid(sequence), text)
+        .expect("active input payload should serialize")
 }
 
 fn accept_active_input(controller: &ActiveInputController, sequence: u64, text: &str) -> String {
@@ -112,19 +108,48 @@ fn active_input_rejects_invalid_payloads() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
 
-    for (case, payload) in [
-        ("bad-json", br#"{"type":"active-input""#.as_slice()),
-        ("bad-type", br#"{"type":"other","text":"hello"}"#.as_slice()),
-        ("empty", br#"{"type":"active-input","text":""}"#.as_slice()),
-        ("missing-delivery-id", br#"{"type":"active-input","text":"hello"}"#.as_slice()),
-        ("null-delivery-id", br#"{"type":"active-input","deliveryId":null,"text":"hello"}"#.as_slice()),
-        ("malformed-delivery-id", br#"{"type":"active-input","deliveryId":"invalid","text":"hello"}"#.as_slice()),
-        ("noncanonical-delivery-id", br#"{"type":"active-input","deliveryId":"223F8797-A456-4EEA-98F7-F7AB88C43C00","text":"hello"}"#.as_slice()),
+    for (case, payload, expected_diagnostic) in [
+        (
+            "bad-json",
+            br#"{"type":"active-input""#.as_slice(),
+            "active input payload is invalid",
+        ),
+        (
+            "bad-type",
+            br#"{"type":"other","deliveryId":"223f8797-a456-4eea-98f7-f7ab88c43c00","text":"hello"}"#.as_slice(),
+            "active input payload type is unsupported",
+        ),
+        (
+            "empty",
+            br#"{"type":"active-input","deliveryId":"223f8797-a456-4eea-98f7-f7ab88c43c00","text":""}"#.as_slice(),
+            "active input text is empty",
+        ),
+        (
+            "missing-delivery-id",
+            br#"{"type":"active-input","text":"hello"}"#.as_slice(),
+            "active input payload is invalid",
+        ),
+        (
+            "null-delivery-id",
+            br#"{"type":"active-input","deliveryId":null,"text":"hello"}"#.as_slice(),
+            "active input payload is invalid",
+        ),
+        (
+            "malformed-delivery-id",
+            br#"{"type":"active-input","deliveryId":"invalid","text":"hello"}"#.as_slice(),
+            "active input delivery id is invalid",
+        ),
+        (
+            "noncanonical-delivery-id",
+            br#"{"type":"active-input","deliveryId":"223F8797-A456-4EEA-98F7-F7AB88C43C00","text":"hello"}"#.as_slice(),
+            "active input delivery id is not canonical",
+        ),
     ] {
         assert!(
             matches!(
                 controller.handle_control_payload(payload),
-                ActiveInputControlOutcome::Rejected { .. }
+                ActiveInputControlOutcome::Rejected { diagnostic }
+                    if diagnostic == expected_diagnostic
             ),
             "payload should reject: {case}"
         );

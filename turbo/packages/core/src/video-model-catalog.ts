@@ -14,7 +14,7 @@ import {
   type VideoDuration,
   type VideoModelId,
   type VideoResolution,
-} from "@vm0/api-contracts/contracts/video-models";
+} from "@okouai/api-contracts/contracts/video-models";
 
 /**
  * Re-exported so consumers reach every video model value through one module

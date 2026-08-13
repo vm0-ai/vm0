@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/zero-model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
+import { webhookFirewallAuthContract } from "@okouai/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

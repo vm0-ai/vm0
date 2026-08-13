@@ -3,14 +3,14 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   findWebsiteTemplateItem,
   r2ImageTransformUrl,
   type WebsiteTemplateItem,
-} from "@vm0/core";
+} from "@okouai/core";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 
 function WebsiteTemplatePreviewDialog({

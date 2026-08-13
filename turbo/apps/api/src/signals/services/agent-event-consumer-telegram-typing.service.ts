@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 
 import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import { logger } from "../../lib/log";

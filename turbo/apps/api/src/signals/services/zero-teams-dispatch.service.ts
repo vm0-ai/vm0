@@ -6,22 +6,22 @@ import {
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import type {
   ChatTeamsMessageFile,
   ChatTeamsMessageFiles,
-} from "@vm0/db/jsonb-contracts/chat-teams-context";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/jsonb-contracts/chat-teams-context";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
+import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import type {
   TeamsInboundActivity,
   TeamsInboundAttachment,
-} from "@vm0/api-contracts/contracts/zero-teams-bot";
+} from "@okouai/api-contracts/contracts/zero-teams-bot";
 import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { convert } from "html-to-text";

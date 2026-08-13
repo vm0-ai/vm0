@@ -1,5 +1,5 @@
-import { elapsedSinceApiStartMs } from "@vm0/api-contracts/contracts/runners";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { elapsedSinceApiStartMs } from "@okouai/api-contracts/contracts/runners";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

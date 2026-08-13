@@ -18,18 +18,18 @@ import {
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   getModelProviderTypeForSurfaceProtocol,
   modelProviderSurfaceProtocolSchema,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { modelProviders } from "@vm0/db/schema/model-provider";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderConnections,
   modelProviderSurfaces,
-} from "@vm0/db/schema/model-provider-gateway";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+} from "@okouai/db/schema/model-provider-gateway";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
 import { insufficientCredits } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";

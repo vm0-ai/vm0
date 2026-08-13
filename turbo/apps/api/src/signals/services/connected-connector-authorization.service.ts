@@ -1,9 +1,9 @@
 import { command } from "ccstate";
 import { and, eq, or } from "drizzle-orm";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { writeDb$, type Db } from "../external/db";
 import { recomposeAgentIfStale$ } from "./agent-compose.service";

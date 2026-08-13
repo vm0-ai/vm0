@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroOrgDeleteContract } from "@vm0/api-contracts/contracts/zero-org";
+import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroOrgDeleteContract } from "@okouai/api-contracts/contracts/zero-org";
 import { createStore } from "ccstate";
 import type StripeSDK from "stripe";
 import { afterEach, expect, test } from "vitest";

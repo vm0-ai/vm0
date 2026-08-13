@@ -3,7 +3,7 @@ import chalk from "chalk";
 import {
   hostedArtifactKindSchema,
   type HostedArtifactKind,
-} from "@vm0/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/zero-host";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { publishStaticSite } from "../../../lib/host/publish-static-site";
 import { cloneHostedSiteCommand } from "./clone";

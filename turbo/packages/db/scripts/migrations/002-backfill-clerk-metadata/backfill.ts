@@ -20,7 +20,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { asc } from "drizzle-orm";
 import postgres from "postgres";
 
-import { scopes } from "@vm0/db/schema/scope";
+import { scopes } from "@okouai/db/schema/scope";
 
 // ---------------------------------------------------------------------------
 // Types

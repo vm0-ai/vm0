@@ -1,9 +1,9 @@
 import { command } from "ccstate";
-import type { StoredConnectorPermissionBaseline } from "@vm0/api-contracts/contracts/runners";
+import type { StoredConnectorPermissionBaseline } from "@okouai/api-contracts/contracts/runners";
 import {
   createFirewallMetadataPolicyResolver,
   permissionGrantsToFirewallPolicies,
-} from "@vm0/connectors/firewall-metadata/policy";
+} from "@okouai/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
@@ -11,19 +11,19 @@ import {
   type FirewallPolicyValue,
   type NetworkPolicies,
   type NetworkPolicy,
-} from "@vm0/connectors/firewall-types";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
+} from "@okouai/connectors/firewall-types";
+import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
-} from "@vm0/db/schema/connector-catalog";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/connector-catalog";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, asc, eq, gt, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishConnectorPermissionUpdatedSafely } from "../external/realtime";

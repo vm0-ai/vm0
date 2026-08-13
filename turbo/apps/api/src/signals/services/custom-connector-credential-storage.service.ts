@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { connectors } from "@vm0/db/schema/connector";
+import { connectors } from "@okouai/db/schema/connector";
 
 import type { Db } from "../external/db";
 import {

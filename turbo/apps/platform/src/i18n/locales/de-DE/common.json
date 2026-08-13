@@ -333,7 +333,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Vorlagenimport",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -790,6 +789,7 @@
       "confirm": "Bestätigen",
       "credits": "Credits",
       "manage": "Verwalten",
+      "preparing": "Wird vorbereitet...",
       "redirecting": "Weiterleitung...",
       "restore": "Wiederherstellen",
       "retry": "Wiederholen",
@@ -846,6 +846,9 @@
       "exchangeRate": "Credits verfallen nie. 1 USD = {{credits}} Credits.",
       "quickBuy": "Schnellkauf",
       "quickBuyAmount": "Schnellkauf {{amount}}",
+      "reviewDescription": "Bestätigen Sie diese einmalige Zahlung mit Ihrer gespeicherten Zahlungsmethode.",
+      "reviewError": "Der Credit-Kauf konnte nicht abgeschlossen werden. Prüfen Sie Ihre Zahlungsdaten und versuchen Sie es erneut.",
+      "reviewTitle": "Credit-Kauf prüfen",
       "title": "Credits kaufen"
     },
     "downgrade": {
@@ -1027,6 +1030,7 @@
       "concurrencyChanged": "Änderung der Parallelität bestätigt. Ihre Slot-Anzahl wird aktualisiert, sobald Stripe die Änderung verarbeitet hat.",
       "concurrencyReduced": "Die Reduzierung der Parallelität ist für den nächsten Abrechnungstag geplant.",
       "concurrencyRestored": "Parallelitätsabonnement wiederhergestellt.",
+      "creditPurchaseConfirmed": "Zahlung bestätigt. Die Credits werden angezeigt, sobald Stripe die Rechnung verarbeitet hat.",
       "creditsAdded": "Credits hinzugefügt. Sie können weiterhin mit Zero chatten.",
       "downgradeScheduledDate": "Downgrade geplant. Ihr aktueller Plan bleibt bis {{date}} aktiv.",
       "downgradeScheduledPeriod": "Downgrade geplant. Ihr aktueller Plan bleibt bis zum Ende des Abrechnungszeitraums aktiv.",
@@ -1410,8 +1414,7 @@
       "search": "Agenten und Chats suchen...",
       "sent": "Erfolgreich weitergeleitet",
       "threads": "Chats",
-      "title": "Weiterleiten an",
-      "to": "Weiterleiten an"
+      "title": "Weiterleiten an"
     },
     "mail": {
       "bcc": "BCC",
@@ -4585,6 +4588,7 @@
       "imageRecognize": "Bilderkennung",
       "maps": "Karten",
       "peopleSearch": "Personensuche",
+      "seo": "SEO",
       "translation": "Übersetzung",
       "usage": "Nutzung",
       "weather": "Wetter",
@@ -4606,12 +4610,17 @@
       "yesterday": "Gestern"
     },
     "records": {
-      "emptyBillingPeriod": "Keine Nutzung in diesem Abrechnungszeitraum.",
-      "emptyRange": "Keine Nutzung in diesem Zeitraum.",
+      "empty": {
+        "billingPeriodTitle": "Keine Nutzung in diesem Abrechnungszeitraum",
+        "description": "Credits, die du für Chats, Automationen und Kanäle ausgibst, erscheinen hier.",
+        "noBillingPeriodDescription": "Die Team-Nutzung erscheint, sobald ein Abrechnungszeitraum beginnt.",
+        "noBillingPeriodTitle": "Kein aktiver Abrechnungszeitraum",
+        "rangeTitle": "Keine Nutzung in diesem Zeitraum",
+        "teamDescription": "Credits, die dein Team für Chats, Automationen und Kanäle ausgibt, erscheinen hier."
+      },
       "loadError": "Ihre Nutzung konnte nicht geladen werden.",
       "loadMore": "Mehr laden",
       "myUsage": "Meine Nutzung",
-      "noActiveBillingPeriod": "Kein aktiver Abrechnungszeitraum.",
       "teamLoadError": "Die Teamnutzung konnte nicht geladen werden.",
       "teamUsage": "Teamnutzung",
       "untitled": "(ohne Titel)"

@@ -1,4 +1,4 @@
-import type { ChatThreadWorkflowAutomation } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { ChatThreadWorkflowAutomation } from "@okouai/api-contracts/contracts/zero-workflows";
 
 // Shared in-memory store backing workflow automation mock handlers.
 let mockWorkflowAutomations: ChatThreadWorkflowAutomation[] = [];

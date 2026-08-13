@@ -27,10 +27,15 @@ teardown() {
     echo "$output"
     assert_success
 
+    # Raw DNS has dedicated runner coverage. Pin the synthetic placeholder's
+    # public sink so this test owns only firewall classification and rewriting.
     local prompt
     prompt=$(cat <<'EOF'
 printf 'DISCORD_WEBHOOK_URL=%s\n' "$DISCORD_WEBHOOK_URL"
-curl --silent --show-error --max-time 5 --output /dev/null "$DISCORD_WEBHOOK_URL" || true
+curl --silent --show-error --max-time 5 \
+    --resolve 'firewall-placeholder.vm3.ai:443:8.8.8.8' \
+    --output /dev/null \
+    "$DISCORD_WEBHOOK_URL" || true
 printf 'DISCORD_REQUEST_SENT\n'
 EOF
 )

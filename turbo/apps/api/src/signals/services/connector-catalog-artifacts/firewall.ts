@@ -5,7 +5,7 @@ import {
   validateAuthBaseUrl,
   validateBaseUrl,
   validateBaseUrlHostPolicy,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import { z } from "zod";
 
 import { safeUrlParse } from "../../utils";

@@ -1,4 +1,4 @@
-import { zeroConnectorExternalCodeSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorExternalCodeSessionContract } from "@okouai/api-contracts/contracts/zero-connectors";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

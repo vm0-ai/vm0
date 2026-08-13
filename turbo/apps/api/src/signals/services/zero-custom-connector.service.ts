@@ -20,22 +20,22 @@ import type {
   CustomConnectorResponse,
   CustomConnectorValueInput,
   UpdateCustomConnectorBody,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
   validateBaseUrlHostPolicy,
-} from "@vm0/connectors/firewall-types";
-import { connectors } from "@vm0/db/schema/connector";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+} from "@okouai/connectors/firewall-types";
+import { connectors } from "@okouai/db/schema/connector";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import {
   orgCustomConnectorOauthConfigs,
   type OrgCustomConnectorOAuthPkceMethod,
   type OrgCustomConnectorOAuthProviderAdapter,
   type OrgCustomConnectorOAuthTokenEndpointAuthMethod,
-} from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+} from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";

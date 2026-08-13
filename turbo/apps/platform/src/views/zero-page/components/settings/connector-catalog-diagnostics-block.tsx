@@ -2,7 +2,7 @@ import type {
   ConnectorCatalogCompatibilityReason,
   ConnectorCatalogDiagnostics,
   ConnectorCatalogSyncFailureCode,
-} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+} from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import { Database } from "lucide-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";

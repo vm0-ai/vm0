@@ -2,10 +2,10 @@ import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Search, ChartLine, Upload } from "lucide-react";
-import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { Button, Input, Tabs, TabsList, TabsTrigger } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import type {
   LogStatus,
   TriggerSource,

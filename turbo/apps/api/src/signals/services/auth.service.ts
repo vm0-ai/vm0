@@ -1,6 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { cliTokens } from "@okouai/db/schema/cli-tokens";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { and, eq, gt } from "drizzle-orm";
 
 import { membershipsByUserId } from "../external/clerk";

@@ -17,12 +17,12 @@ import {
   type SQL,
   type SQLWrapper,
 } from "drizzle-orm";
-import { modelStat } from "@vm0/db/schema/model-stat";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
+import { modelStat } from "@okouai/db/schema/model-stat";
+import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import {
   VM0_MODEL_ALIAS_TO_MODEL,
   VM0_MODEL_TO_PROVIDER,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { z } from "zod";
 import {
   executeRawRows,

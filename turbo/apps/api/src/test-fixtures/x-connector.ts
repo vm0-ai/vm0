@@ -7,8 +7,8 @@
  * that consume an already-connected X account.
  */
 import { createStore } from "ccstate";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
+import { connectors } from "@okouai/db/schema/connector";
+import { secrets } from "@okouai/db/schema/secret";
 
 import { now } from "../lib/time";
 import { writeDb$ } from "../signals/external/db";

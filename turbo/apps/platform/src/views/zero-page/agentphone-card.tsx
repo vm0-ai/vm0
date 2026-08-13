@@ -7,13 +7,13 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { CircleCheck, Copy, EllipsisVertical, Loader2 } from "lucide-react";
-import { Button } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { Button } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -21,14 +21,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
-import { Input } from "@vm0/ui/components/ui/input";
+} from "@okouai/ui/components/ui/tooltip";
+import { Input } from "@okouai/ui/components/ui/input";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";

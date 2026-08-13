@@ -2,9 +2,9 @@ import { http, HttpResponse } from "msw";
 import type {
   CustomConnectorHttpResponse,
   CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { ZeroMcpConnector } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 
 export function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},

@@ -9,7 +9,7 @@
  * default handlers stay free of test override side effects.
  */
 
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_SWITCH_OVERRIDES = {};

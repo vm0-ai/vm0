@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/zero-built-in-generation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

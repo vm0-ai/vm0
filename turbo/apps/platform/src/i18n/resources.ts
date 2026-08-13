@@ -1,7 +1,7 @@
 import {
   SUPPORTED_USER_LOCALES,
   type UserLocale,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
 import enUSCommon from "./locales/en-US/common.json";
 import enUSAgents from "./locales/en-US/agents.json";
 import frFRCommon from "./locales/fr-FR/common.json";

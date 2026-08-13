@@ -2,11 +2,11 @@ import { command } from "ccstate";
 import type {
   CodexDeviceAuthMode,
   CodexDeviceAuthScope,
-} from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
+} from "@okouai/api-contracts/contracts/zero-codex-device-auth";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { modelProviderAuthSessions } from "@okouai/db/schema/model-provider-auth-session";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 

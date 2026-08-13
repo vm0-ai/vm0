@@ -314,7 +314,7 @@ describe("connector runtime synchronization contract", () => {
     ).toBe(false);
   });
 
-  it("preserves optional custom routing values in target registrations", () => {
+  it("requires custom routing values in target registrations", () => {
     const fixture = executionContextSchema.parse(
       loadRunnerClaimResponseFixture(),
     );
@@ -337,6 +337,11 @@ describe("connector runtime synchronization contract", () => {
     expect(
       runnersConnectorRuntimeSyncContract.sync.body.safeParse({
         targets: [{ kind: "custom", customConnectorId }],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets: [{ kind: "custom", customConnectorId, baseUrlVars: {} }],
       }).success,
     ).toBe(true);
   });

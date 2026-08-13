@@ -7,7 +7,7 @@
 import {
   zeroUsageRecordContract,
   type UsageRecordResponse,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/zero-usage-record";
 import { mockApi } from "../msw-contract.ts";
 
 const defaultResponse: UsageRecordResponse = {

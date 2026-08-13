@@ -1,8 +1,8 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
+import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { and, eq, isNull, or } from "drizzle-orm";
 
 import {

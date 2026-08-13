@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { webhookEventsContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookEventsContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import { eventDeliveryUnavailable } from "../../lib/error";
 import { authorization$ } from "../context/hono";

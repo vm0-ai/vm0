@@ -1,16 +1,16 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";

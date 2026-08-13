@@ -1,5 +1,5 @@
 import type { Computed } from "ccstate";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
+import type { ZeroAgentResponse } from "@okouai/api-contracts/contracts/zero-agents";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,

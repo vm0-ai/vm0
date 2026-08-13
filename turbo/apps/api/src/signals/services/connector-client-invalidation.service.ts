@@ -1,5 +1,5 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorChangedPayload } from "@vm0/api-contracts/contracts/realtime";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorChangedPayload } from "@okouai/api-contracts/contracts/realtime";
 
 import { logger } from "../../lib/log";
 import type { ClerkOrganizationsApi } from "../external/clerk";

@@ -1,9 +1,9 @@
 import { command } from "ccstate";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
-import { emailSuppressions } from "@vm0/db/schema/email-suppression";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { users } from "@vm0/db/schema/user";
+import { emailOutbox } from "@okouai/db/schema/email-outbox";
+import { emailSuppressions } from "@okouai/db/schema/email-suppression";
+import { orgCache } from "@okouai/db/schema/org-cache";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { users } from "@okouai/db/schema/user";
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";

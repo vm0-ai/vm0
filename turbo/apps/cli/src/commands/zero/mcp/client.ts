@@ -6,7 +6,7 @@ import {
   type JSONObject,
   type Tool,
 } from "@modelcontextprotocol/client";
-import type { ZeroMcpConnector } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
+import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
 
 declare const __CLI_VERSION__: string;
 

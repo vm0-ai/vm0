@@ -3,12 +3,12 @@ import { createHash } from "node:crypto";
 import {
   getInstructionsFilename,
   SUPPORTED_FRAMEWORKS,
-} from "@vm0/core/frameworks";
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
+} from "@okouai/core/frameworks";
+import { getInstructionsStorageName } from "@okouai/core/storage-names";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+} from "@okouai/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";

@@ -3,7 +3,7 @@ import {
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
   googleFormsResponseSubmittedEventConfigSchema,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import type { Db } from "../external/db";
 import { reconcileGmailWatchesForUser } from "./gmail-automation-event.service";

@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 
-import { chatEventRowV4Schema } from "@vm0/api-contracts/contracts/chat-event-rows";
+import { chatEventRowV4Schema } from "@okouai/api-contracts/contracts/chat-event-rows";
 
 import {
   getZeroChatEventSnapshot,

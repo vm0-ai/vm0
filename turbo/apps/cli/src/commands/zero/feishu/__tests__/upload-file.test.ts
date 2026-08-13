@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/integrations";
+import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/integrations";
 
 import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";

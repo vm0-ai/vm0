@@ -3,7 +3,7 @@ import type {
   ConnectorExternalCodeGrantConfig,
   ConnectorOpenIdAuthGrantConfig,
   ConnectorDeviceAuthStartOptions,
-} from "@vm0/connectors/connector-config";
+} from "@okouai/connectors/connector-config";
 import type {
   ConnectorAuthProviderGrantResult,
   ConnectorAuthProviderGrantResultForMethod,

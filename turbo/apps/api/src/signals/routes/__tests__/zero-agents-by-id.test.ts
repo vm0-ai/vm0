@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import type { BrandedApiNamespace } from "@vm0/api-contracts/contracts/api-namespaces";
-import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { BrandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 
 import { createApp } from "../../../app-factory";
 import { accept, testContext } from "../../../__tests__/test-context";

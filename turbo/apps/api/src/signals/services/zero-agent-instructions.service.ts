@@ -1,17 +1,17 @@
 import { computed, type Computed } from "ccstate";
-import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
+import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import {
   getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { getInstructionsFilename } from "@vm0/core/frameworks";
-import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
+} from "@okouai/core/storage-names";
+import { getInstructionsFilename } from "@okouai/core/frameworks";
+import { stripMetadataFrontmatter } from "@okouai/core/instructions-frontmatter";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/agent-compose";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";

@@ -3,10 +3,10 @@ import { randomUUID } from "node:crypto";
 import {
   zeroPeopleSearchContract,
   type ZeroPeopleSearchRequest,
-} from "@vm0/api-contracts/contracts/zero-people-search";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
-import { zeroWebSearchContract } from "@vm0/api-contracts/contracts/zero-web-search";
+} from "@okouai/api-contracts/contracts/zero-people-search";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { zeroWebSearchContract } from "@okouai/api-contracts/contracts/zero-web-search";
 import { HttpResponse, http, type JsonBodyType } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 

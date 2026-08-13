@@ -1,4 +1,4 @@
-import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
 
 export function findWorkflowQueryMatches(
   workflows: readonly ComposerSlashWorkflow[],

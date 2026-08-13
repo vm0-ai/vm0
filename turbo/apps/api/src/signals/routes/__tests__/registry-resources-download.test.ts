@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
-import { findWebsiteTemplateResource } from "@vm0/core/resource-registry";
+import { registryResourceDownloadContract } from "@okouai/api-contracts/contracts/registry-resources";
+import { findWebsiteTemplateResource } from "@okouai/core/resource-registry";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

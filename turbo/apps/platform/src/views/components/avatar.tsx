@@ -1,4 +1,4 @@
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 
 /**
  * Shared thumbnail scale for the two identity marks in the app chrome: the

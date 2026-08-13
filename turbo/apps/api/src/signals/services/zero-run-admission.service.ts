@@ -1,6 +1,6 @@
-import { isLimitedFree1RestrictedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { isLimitedFree1RestrictedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
 
 import {

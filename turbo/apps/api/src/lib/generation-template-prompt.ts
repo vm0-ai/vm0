@@ -7,23 +7,23 @@ import {
   resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import {
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,
-} from "@vm0/core/website-template-items";
-import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
+} from "@okouai/core/website-template-items";
+import { findWorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import {
   parseAvatarTemplateStylePresetId,
   readAvatarTemplateOptions,
   type AvatarTemplateOptions,
-} from "@vm0/core/avatar-template";
+} from "@okouai/core/avatar-template";
 import {
   DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
   type VideoModelConfig,
-} from "@vm0/core/video-model-catalog";
-import type { VideoGenerationOptions } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/core/video-model-catalog";
+import type { VideoGenerationOptions } from "@okouai/api-contracts/contracts/chat-threads";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -299,6 +299,8 @@ function buildWebsiteTemplatePackagePrompt(
       ...(latestWebsiteTemplatesEnabled
         ? [
             "- When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
+            "- Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
+            "- Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
           ]
         : [
             `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,

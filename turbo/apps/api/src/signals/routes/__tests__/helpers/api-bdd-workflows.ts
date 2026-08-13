@@ -1,12 +1,12 @@
 import {
   chatThreadMetadataContract,
   type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";

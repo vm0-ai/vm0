@@ -6,7 +6,7 @@ import {
   type UsagePackManagementResponse,
   type UsagePackSubscriptionChangePreviewResponse,
   type UsagePackUsd,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 
 import { onRef } from "../../utils.ts";
 

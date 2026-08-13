@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { zeroPersonalModelProviderAccountsByIdContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroPersonalModelProviderAccountsByIdContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { isNotFoundResponse, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";

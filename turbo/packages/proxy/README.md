@@ -1,4 +1,4 @@
-# @vm0/proxy
+# @okouai/proxy
 
 Caddy reverse proxy for local HTTPS development with automatic Let's Encrypt certificates.
 

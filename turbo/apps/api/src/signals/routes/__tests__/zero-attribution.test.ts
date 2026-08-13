@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
+import { zeroAttributionContract } from "@okouai/api-contracts/contracts/zero-attribution";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

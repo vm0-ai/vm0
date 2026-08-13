@@ -6,8 +6,8 @@ import {
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
   type VideoTemplateItem,
-} from "@vm0/core";
-import { Button, cn } from "@vm0/ui";
+} from "@okouai/core";
+import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
   onboardingDraft$,

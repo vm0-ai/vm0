@@ -1,17 +1,17 @@
 import { command, computed, type Computed } from "ccstate";
-import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
-import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
+import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
+} from "@okouai/db/schema/agent-compose";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
+import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/zero-teams-bot";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";

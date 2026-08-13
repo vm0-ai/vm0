@@ -10,7 +10,7 @@ import {
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";

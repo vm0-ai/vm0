@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { integrationsTeamsMessageContract } from "@vm0/api-contracts/contracts/integrations";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
+import { integrationsTeamsMessageContract } from "@okouai/api-contracts/contracts/integrations";
+import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

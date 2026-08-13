@@ -7,10 +7,10 @@ import {
   integrationsFeishuMessageContract,
   integrationsFeishuUploadCompleteContract,
   integrationsFeishuUploadInitContract,
-} from "@vm0/api-contracts/contracts/integrations";
-import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/integrations";
+import { zeroFeishuConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

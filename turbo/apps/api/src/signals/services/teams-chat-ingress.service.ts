@@ -1,6 +1,6 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";

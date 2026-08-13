@@ -84,8 +84,18 @@ type ClerkCleanupSelection =
       readonly generation: string;
       readonly roles: readonly ClerkTestRole[];
     }
+  | {
+      readonly kind: "run";
+      readonly jobRef: string;
+      readonly runId: string;
+      readonly roles: readonly ClerkTestRole[];
+    }
   | { readonly kind: "job-ref"; readonly jobRef: string }
-  | { readonly kind: "stale"; readonly createdBeforeMs: number };
+  | {
+      readonly kind: "stale";
+      readonly createdBeforeMs: number;
+      readonly roles: readonly ClerkTestRole[];
+    };
 
 function getClerkApiBase(): string {
   const testApiBase = process.env.CLERK_API_TEST_BASE_URL;
@@ -303,14 +313,28 @@ export async function cleanupCurrentClerkTestGeneration(
   roles: readonly ClerkTestRole[],
   options: ClerkCleanupOptions = {},
 ): Promise<ClerkCleanupResult> {
-  if (roles.length === 0) {
-    throw new Error("At least one Clerk test role is required for cleanup");
-  }
+  assertCleanupRoles(roles);
   return await cleanupClerkTestResources(
     {
       kind: "generation",
       jobRef: currentClerkTestJobRef(),
       generation: currentClerkTestGeneration(),
+      roles,
+    },
+    options,
+  );
+}
+
+export async function cleanupCurrentClerkTestRun(
+  roles: readonly ClerkTestRole[],
+  options: ClerkCleanupOptions = {},
+): Promise<ClerkCleanupResult> {
+  assertCleanupRoles(roles);
+  return await cleanupClerkTestResources(
+    {
+      kind: "run",
+      jobRef: currentClerkTestJobRef(),
+      runId: clerkTestRunId(currentClerkTestGeneration()),
       roles,
     },
     options,
@@ -328,15 +352,17 @@ export async function cleanupClerkTestJobRef(
 }
 
 export async function cleanupStaleClerkTestResources(
+  roles: readonly ClerkTestRole[],
   createdBefore: Date,
   options: ClerkCleanupOptions = {},
 ): Promise<ClerkCleanupResult> {
+  assertCleanupRoles(roles);
   const createdBeforeMs = createdBefore.getTime();
   if (!Number.isFinite(createdBeforeMs)) {
     throw new Error("Stale Clerk cleanup cutoff must be a valid date");
   }
   return await cleanupClerkTestResources(
-    { kind: "stale", createdBeforeMs },
+    { kind: "stale", createdBeforeMs, roles },
     options,
   );
 }
@@ -439,11 +465,31 @@ function cleanupSelectionMatches(
         owner.generation === selection.generation &&
         selection.roles.includes(owner.role)
       );
+    case "run":
+      return (
+        owner.jobRef === selection.jobRef &&
+        clerkTestRunId(owner.generation) === selection.runId &&
+        selection.roles.includes(owner.role)
+      );
     case "job-ref":
       return owner.jobRef === selection.jobRef;
     case "stale":
-      return createdAt !== undefined && createdAt < selection.createdBeforeMs;
+      return (
+        selection.roles.includes(owner.role) &&
+        createdAt !== undefined &&
+        createdAt < selection.createdBeforeMs
+      );
   }
+}
+
+function assertCleanupRoles(roles: readonly ClerkTestRole[]): void {
+  if (roles.length === 0) {
+    throw new Error("At least one Clerk test role is required for cleanup");
+  }
+}
+
+function clerkTestRunId(generation: string): string {
+  return generation.slice(0, generation.lastIndexOf("-"));
 }
 
 function clerkTestOwnerKey(owner: ClerkTestOwner): string {

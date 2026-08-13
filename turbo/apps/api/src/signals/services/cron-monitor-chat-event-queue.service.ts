@@ -1,13 +1,13 @@
-import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
-import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
-import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
-import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
+import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
+import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { command } from "ccstate";
 import {
   and,

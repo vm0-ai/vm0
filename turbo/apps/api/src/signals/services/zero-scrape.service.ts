@@ -2,7 +2,7 @@ import type {
   ZeroScrapeBillingCategory,
   ZeroScrapeRequest,
   ZeroScrapeResponse,
-} from "@vm0/api-contracts/contracts/zero-scrape";
+} from "@okouai/api-contracts/contracts/zero-scrape";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";

@@ -1,4 +1,4 @@
-import type { RegistryEntry } from "@vm0/core/resource-registry";
+import type { RegistryEntry } from "@okouai/core/resource-registry";
 
 /**
  * Format a list of registry entries for help text or error messages.

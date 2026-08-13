@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { sql, eq } from "drizzle-orm";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";

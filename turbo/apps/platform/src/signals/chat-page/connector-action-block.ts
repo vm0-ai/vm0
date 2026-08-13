@@ -2,12 +2,12 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   customConnectorSlugSchema,
   type CustomConnectorResponse,
   type CustomConnectorSlug,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
 import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 import {

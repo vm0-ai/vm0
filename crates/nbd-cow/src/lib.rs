@@ -14,6 +14,7 @@
 //! - [`cow`] for COW storage and dirty bitmap persistence.
 //! - [`cow_io`] for the async boundary around blocking COW storage operations.
 //! - [`pool`] for host-locked `/dev/nbdN` device claim allocation.
+//! - [`orphan`] for lock-aware orphan observation and cleanup.
 //! - [`netlink`] for Linux NBD generic netlink setup and disconnect.
 //! - [`server`] for the in-process NBD dispatch loop.
 //! - an internal NBD transmission protocol parser and serializer.
@@ -29,6 +30,7 @@ mod device;
 pub mod device_lock;
 pub mod error;
 pub mod netlink;
+pub mod orphan;
 pub mod pool;
 #[path = "protocol.rs"]
 mod protocol_impl;

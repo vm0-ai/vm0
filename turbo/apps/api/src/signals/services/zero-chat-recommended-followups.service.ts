@@ -1,4 +1,4 @@
-import type { ChatRecommendedFollowup } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatRecommendedFollowup } from "@okouai/api-contracts/contracts/chat-threads";
 
 type RecommendedFollowupGenerationType = NonNullable<
   ChatRecommendedFollowup["generationType"]

@@ -5,23 +5,23 @@ import type {
   ConnectorExternalCodeSessionCompleteResponse,
   ConnectorExternalCodeSessionStartResponse,
   ConnectorResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import {
   completeConnectorExternalCodeAuthorizationWithMethod,
   startConnectorExternalCodeAuthorizationWithMethod,
   type ConnectorAuthProviderGrantResult,
-} from "@vm0/connectors/auth-providers";
-import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
-import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
+} from "@okouai/connectors/auth-providers";
+import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
+import { connectorExternalCodeSessions } from "@okouai/db/schema/connector-external-code-session";
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 

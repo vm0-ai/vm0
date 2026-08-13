@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { orgPromoRedemption } from "@vm0/db/schema/org-promo-redemption";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgPromoRedemption } from "@okouai/db/schema/org-promo-redemption";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";

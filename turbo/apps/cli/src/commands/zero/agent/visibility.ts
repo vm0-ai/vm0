@@ -1,7 +1,7 @@
 import {
   zeroAgentVisibilitySchema,
   type ZeroAgentVisibility,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 import { InvalidArgumentError } from "commander";
 
 export function parseAgentVisibility(value: string): ZeroAgentVisibility {

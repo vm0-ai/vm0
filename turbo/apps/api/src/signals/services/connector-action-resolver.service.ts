@@ -2,12 +2,12 @@ import { computed, type Computed } from "ccstate";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
 
 import { db$ } from "../external/db";
 import {

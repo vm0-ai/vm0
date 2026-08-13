@@ -4,8 +4,8 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import {
   zeroScrapeContract,
   type ZeroScrapeRequest,
-} from "@vm0/api-contracts/contracts/zero-scrape";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-scrape";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { mockEnv } from "../../../lib/env";
 import { createAppWithRoutes } from "../../../app-factory-core";

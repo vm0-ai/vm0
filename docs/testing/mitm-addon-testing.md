@@ -133,7 +133,11 @@ suites before committing the upgrade.
 | `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
 | `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                            |
 | `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
-| `test_mitmproxy_request_framing.py`                     | HTTP/1 and HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                     |
+| `mitmproxy_http_framing_helpers.py`                     | Shared HTTP layer and HTTP/2 request drivers for real mitmproxy framing suites                                       |
+| `test_mitmproxy_authority_framing.py`                   | HTTP/1 request-target and HTTP/2 authority validation through the real mitmproxy state machine                       |
+| `test_mitmproxy_bodyless_response_framing.py`           | Bodyless local firewall and connector-diagnostic responses through the real mitmproxy state machine                  |
+| `test_mitmproxy_codex_catalog_framing.py`               | Codex model-catalog cache and response framing through the real mitmproxy state machine                              |
+| `test_mitmproxy_request_body_admission_framing.py`      | auth.base and AWS SigV4 request-body admission through the real mitmproxy state machine                              |
 | `test_mitmproxy_websocket_framing.py`                   | Decoded WebSocket message bounds through mitmproxy's state machine and real addon hook dispatch                      |
 | `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
 | `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |
@@ -246,6 +250,7 @@ def registry_file(tmp_path):
         "vms": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
+                "billableFirewalls": [],
                 "sandboxToken": "tok-xyz",
                 "networkLogPath": str(tmp_path / "network.jsonl"),
             },

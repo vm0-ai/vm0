@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 
 import {
   forceUpgradeDialogOpen$,

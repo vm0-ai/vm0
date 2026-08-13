@@ -1,5 +1,5 @@
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
@@ -8,7 +8,7 @@ import {
   type WorkflowAgentInfo,
 } from "./zero-workflow-data.service";
 
-type WorkflowAutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
+type WorkflowAutomationRow = typeof workflowAutomations.$inferSelect;
 
 function canReadAgent(agent: WorkflowAgentInfo, userId: string): boolean {
   return agent.visibility === "public" || agent.owner === userId;

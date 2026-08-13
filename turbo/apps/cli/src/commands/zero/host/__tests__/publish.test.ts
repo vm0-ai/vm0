@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { hostedSitePrepareRequestSchema } from "@vm0/api-contracts/contracts/zero-host";
+import { hostedSitePrepareRequestSchema } from "@okouai/api-contracts/contracts/zero-host";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

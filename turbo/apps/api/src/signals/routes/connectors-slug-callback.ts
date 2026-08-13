@@ -2,20 +2,20 @@ import { command } from "ccstate";
 import {
   connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
-} from "@vm0/api-contracts/contracts/connectors-slug-callback";
+} from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorGrantScopes,
   resolveConnectorAuthClient,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import {
   exchangeConnectorAuthCodeWithMethod,
   verifyConnectorOpenIdAuthCallbackWithMethod,
   type ConnectorAuthProviderGrantResult,
-} from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/auth-providers";
 
 import { request$, setResHeader$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";

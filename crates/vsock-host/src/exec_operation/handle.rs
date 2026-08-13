@@ -7,13 +7,13 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{self, Instant};
 use vsock_proto::{ExecControlNonce, ExecControlStatus, ExecTermination, MSG_EXEC_CANCEL};
 
-use crate::{ConnectionState, FrameWriteObserver, Shared};
+use crate::{ConnectionState, FrameWriteObserver, RouteId, Shared};
 
 use super::EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT;
 use super::diagnostics::ExecOperationDiagnostic;
 use super::frame::{
-    ExecCancelFrameWriteOutcome, clear_exec_operation_stream_sender, exec_cancel_write_observer,
-    mark_pending_exec_control_possible_guest_write,
+    ExecCancelFrameWriteOutcome, admit_exec_cancel_frame, clear_exec_operation_stream_sender,
+    exec_cancel_write_observer, mark_pending_exec_control_possible_guest_write,
     send_exec_cancel_frame_for_wait_with_write_start, write_encoded_frame_with_pre_write,
     write_frame,
 };
@@ -37,10 +37,54 @@ pub struct ExecOperationHandle {
 
 pub(in crate::exec_operation) struct ExecWaitCore {
     pub(in crate::exec_operation) shared: Arc<Shared>,
-    pub(in crate::exec_operation) seq: Option<u32>,
+    pub(in crate::exec_operation) route_id: Option<RouteId>,
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
     pub(in crate::exec_operation) result_rx:
         Option<oneshot::Receiver<io::Result<ExecOperationResult>>>,
+}
+
+#[must_use = "exec operation wait outcomes contain terminal-proof state that must be handled"]
+pub(crate) enum ExecOperationWaitOutcome<T> {
+    Terminal(io::Result<T>),
+    Unproven(io::Error),
+}
+
+impl<T> ExecOperationWaitOutcome<T> {
+    pub(crate) fn terminal(result: io::Result<T>) -> Self {
+        Self::Terminal(result)
+    }
+
+    pub(crate) fn unproven(error: io::Error) -> Self {
+        Self::Unproven(error)
+    }
+
+    pub(crate) fn terminal_observed(&self) -> bool {
+        matches!(self, Self::Terminal(_))
+    }
+
+    pub(crate) fn map<U>(self, map: impl FnOnce(T) -> U) -> ExecOperationWaitOutcome<U> {
+        match self {
+            Self::Terminal(result) => ExecOperationWaitOutcome::Terminal(result.map(map)),
+            Self::Unproven(error) => ExecOperationWaitOutcome::Unproven(error),
+        }
+    }
+
+    pub(crate) fn and_then<U>(
+        self,
+        map: impl FnOnce(T) -> io::Result<U>,
+    ) -> ExecOperationWaitOutcome<U> {
+        match self {
+            Self::Terminal(result) => ExecOperationWaitOutcome::Terminal(result.and_then(map)),
+            Self::Unproven(error) => ExecOperationWaitOutcome::Unproven(error),
+        }
+    }
+
+    pub(crate) fn into_result(self) -> io::Result<T> {
+        match self {
+            Self::Terminal(result) => result,
+            Self::Unproven(error) => Err(error),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -55,8 +99,11 @@ pub(in crate::exec_operation) struct ExecCancelWaitResult {
 }
 
 enum ExecCancelWriteOutcome {
-    Terminal(ExecOperationResult),
-    CancelSent { seq: u32, remaining: Duration },
+    Terminal(io::Result<ExecOperationResult>),
+    CancelSent {
+        route_id: RouteId,
+        remaining: Duration,
+    },
 }
 
 impl ExecWaitLifecycle {
@@ -151,11 +198,15 @@ impl ExecCancelWaitResult {
 
 pub(in crate::exec_operation) async fn send_exec_cancel_frame(
     shared: &Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
     diagnostic: &ExecOperationDiagnostic,
     lifecycle: ExecWaitLifecycle,
 ) -> io::Result<()> {
+    let Some(_reservation) = admit_exec_cancel_frame(shared, route_id)? else {
+        return Ok(());
+    };
     let payload = vsock_proto::encode_exec_cancel();
+    let seq = route_id.wire_seq();
     write_frame(
         shared,
         MSG_EXEC_CANCEL,
@@ -163,7 +214,7 @@ pub(in crate::exec_operation) async fn send_exec_cancel_frame(
         &payload,
         Some(diagnostic.frame("cancel")),
         None,
-        exec_cancel_write_observer(shared, seq),
+        exec_cancel_write_observer(shared, route_id),
     )
     .await?;
     lifecycle.log_cancel_sent(seq, diagnostic);
@@ -213,22 +264,28 @@ impl ExecWaitCore {
     fn complete_taken_result(
         &mut self,
         result: Result<io::Result<ExecOperationResult>, oneshot::error::RecvError>,
-    ) -> io::Result<ExecOperationResult> {
-        self.seq = None;
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
+        self.route_id = None;
         self.result_rx = None;
-        result.map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?
+        match result {
+            Ok(result) => ExecOperationWaitOutcome::terminal(result),
+            Err(_) => ExecOperationWaitOutcome::unproven(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            )),
+        }
     }
 
     fn abandon_timed_out_operation(
         &mut self,
-        seq: u32,
+        route_id: RouteId,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
     ) -> io::Error {
-        self.shared.remove_operation(seq);
-        self.seq = None;
+        self.shared.remove_operation(route_id);
+        self.route_id = None;
         self.result_rx = None;
-        self.log_timeout(seq, poison_on_timeout, lifecycle);
+        self.log_timeout(route_id.wire_seq(), poison_on_timeout, lifecycle);
         if poison_on_timeout {
             self.shared.poison_connection();
         }
@@ -237,13 +294,13 @@ impl ExecWaitCore {
 
     pub(in crate::exec_operation) fn new(
         shared: Arc<Shared>,
-        seq: u32,
+        route_id: RouteId,
         diagnostic: ExecOperationDiagnostic,
         result_rx: oneshot::Receiver<io::Result<ExecOperationResult>>,
     ) -> Self {
         Self {
             shared,
-            seq: Some(seq),
+            route_id: Some(route_id),
             diagnostic,
             result_rx: Some(result_rx),
         }
@@ -257,40 +314,40 @@ impl ExecWaitCore {
         &self.diagnostic
     }
 
-    pub(in crate::exec_operation) fn active_seq(&self) -> Option<u32> {
-        self.seq
+    pub(in crate::exec_operation) fn active_route_id(&self) -> Option<RouteId> {
+        self.route_id
     }
 
-    pub(in crate::exec_operation) fn active_seq_or_closed(
+    pub(in crate::exec_operation) fn active_route_id_or_closed(
         &self,
         message: &'static str,
-    ) -> io::Result<u32> {
-        self.seq
+    ) -> io::Result<RouteId> {
+        self.route_id
             .ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionReset, message))
     }
 
     pub(in crate::exec_operation) fn remove_operation_if_active(&mut self) {
-        if let Some(seq) = self.seq.take() {
-            self.shared.remove_operation(seq);
+        if let Some(route_id) = self.route_id.take() {
+            self.shared.remove_operation(route_id);
         }
     }
 
     pub(in crate::exec_operation) fn try_take_ready_result(
         &mut self,
-    ) -> io::Result<Option<ExecOperationResult>> {
+    ) -> io::Result<Option<io::Result<ExecOperationResult>>> {
         let Some(rx) = self.result_rx.as_mut() else {
             return Ok(None);
         };
 
         match rx.try_recv() {
             Ok(result) => {
-                self.seq = None;
+                self.route_id = None;
                 self.result_rx = None;
-                result.map(Some)
+                Ok(Some(result))
             }
             Err(oneshot::error::TryRecvError::Empty) => Ok(None),
             Err(oneshot::error::TryRecvError::Closed) => {
-                self.seq = None;
+                self.route_id = None;
                 self.result_rx = None;
                 Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
@@ -305,28 +362,36 @@ impl ExecWaitCore {
         timeout: impl Future<Output = ()>,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         tokio::pin!(timeout);
-        let seq = self.active_seq_or_closed(lifecycle.operation_closed_message())?;
-        let rx = self.result_rx.as_mut().ok_or_else(|| {
-            io::Error::new(
+        let route_id = match self.active_route_id_or_closed(lifecycle.operation_closed_message()) {
+            Ok(route_id) => route_id,
+            Err(error) => return ExecOperationWaitOutcome::unproven(error),
+        };
+        let Some(rx) = self.result_rx.as_mut() else {
+            return ExecOperationWaitOutcome::unproven(io::Error::new(
                 io::ErrorKind::ConnectionReset,
                 lifecycle.operation_closed_message(),
-            )
-        })?;
+            ));
+        };
 
         tokio::select! {
             biased;
             result = rx => {
-                self.seq = None;
+                self.route_id = None;
                 self.result_rx = None;
-                result.map_err(|_| io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))?
+                match result {
+                    Ok(result) => ExecOperationWaitOutcome::terminal(result),
+                    Err(_) => ExecOperationWaitOutcome::unproven(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    )),
+                }
             }
             _ = &mut timeout => {
-                Err(self.abandon_timed_out_operation(seq, poison_on_timeout, lifecycle))
+                ExecOperationWaitOutcome::unproven(
+                    self.abandon_timed_out_operation(route_id, poison_on_timeout, lifecycle),
+                )
             }
         }
     }
@@ -336,7 +401,7 @@ impl ExecWaitCore {
         timeout: Duration,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_with_timeout_future(tokio::time::sleep(timeout), poison_on_timeout, lifecycle)
             .await
     }
@@ -346,7 +411,7 @@ impl ExecWaitCore {
         deadline: Instant,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_with_timeout_future(
             tokio::time::sleep_until(deadline),
             poison_on_timeout,
@@ -364,13 +429,14 @@ impl ExecWaitCore {
             return Ok(ExecCancelWriteOutcome::Terminal(result));
         }
 
-        let seq = self.active_seq_or_closed(lifecycle.operation_closed_message())?;
+        let route_id = self.active_route_id_or_closed(lifecycle.operation_closed_message())?;
+        let seq = route_id.wire_seq();
         if timeout.is_zero() {
-            return Err(self.abandon_timed_out_operation(seq, false, lifecycle));
+            return Err(self.abandon_timed_out_operation(route_id, false, lifecycle));
         }
         let Some(deadline) = Instant::now().checked_add(timeout) else {
-            self.shared.remove_operation(seq);
-            self.seq = None;
+            self.shared.remove_operation(route_id);
+            self.route_id = None;
             self.result_rx = None;
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -383,7 +449,7 @@ impl ExecWaitCore {
         let (write_started_tx, mut write_started_rx) = oneshot::channel();
         let mut cancel_write = Box::pin(send_exec_cancel_frame_for_wait_with_write_start(
             &shared,
-            seq,
+            route_id,
             &diagnostic,
             Some(write_started_tx),
         ));
@@ -406,16 +472,19 @@ impl ExecWaitCore {
                                 }
                             }
                         );
-                        Err(self.abandon_timed_out_operation(seq, true, lifecycle))
+                        Err(self.abandon_timed_out_operation(route_id, true, lifecycle))
                     })
             }
             result = &mut result_rx => {
-                return self
-                    .complete_taken_result(result)
-                    .map(ExecCancelWriteOutcome::Terminal);
+                return match self.complete_taken_result(result) {
+                    ExecOperationWaitOutcome::Terminal(result) => {
+                        Ok(ExecCancelWriteOutcome::Terminal(result))
+                    }
+                    ExecOperationWaitOutcome::Unproven(error) => Err(error),
+                };
             }
             _ = time::sleep_until(deadline) => {
-                return Err(self.abandon_timed_out_operation(seq, false, lifecycle));
+                return Err(self.abandon_timed_out_operation(route_id, false, lifecycle));
             }
             result = &mut cancel_write => {
                 result
@@ -425,14 +494,18 @@ impl ExecWaitCore {
         match write_outcome? {
             ExecCancelFrameWriteOutcome::AlreadyTerminal => {
                 let result = result_rx.await;
-                self.complete_taken_result(result)
-                    .map(ExecCancelWriteOutcome::Terminal)
+                match self.complete_taken_result(result) {
+                    ExecOperationWaitOutcome::Terminal(result) => {
+                        Ok(ExecCancelWriteOutcome::Terminal(result))
+                    }
+                    ExecOperationWaitOutcome::Unproven(error) => Err(error),
+                }
             }
             ExecCancelFrameWriteOutcome::Sent => {
                 self.result_rx = Some(result_rx);
                 lifecycle.log_cancel_sent(seq, &diagnostic);
                 Ok(ExecCancelWriteOutcome::CancelSent {
-                    seq,
+                    route_id,
                     remaining: deadline.saturating_duration_since(Instant::now()),
                 })
             }
@@ -441,15 +514,16 @@ impl ExecWaitCore {
 
     async fn wait_for_terminal_after_cancel_sent(
         &mut self,
-        seq: u32,
+        route_id: RouteId,
         remaining: Duration,
         lifecycle: ExecWaitLifecycle,
-    ) -> io::Result<ExecCancelWaitResult> {
-        let result = self.wait_with_timeout(remaining, true, lifecycle).await?;
-        Ok(ExecCancelWaitResult {
-            result,
-            cancel_seq: Some(seq),
-        })
+    ) -> ExecOperationWaitOutcome<ExecCancelWaitResult> {
+        self.wait_with_timeout(remaining, true, lifecycle)
+            .await
+            .map(|result| ExecCancelWaitResult {
+                result,
+                cancel_seq: Some(route_id.wire_seq()),
+            })
     }
 }
 
@@ -465,16 +539,23 @@ impl ExecOperationHandle {
     /// not cancel the guest-side exec operation. If the request may have
     /// reached the guest, normal operations can become unavailable on this
     /// connection even though the connection itself may still be open.
-    pub async fn wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
+    pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
+        self.wait_for_outcome(timeout).await.into_result()
+    }
+
+    pub(crate) async fn wait_for_outcome(
+        mut self,
+        timeout: Duration,
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_core
             .wait_with_timeout(timeout, false, ExecWaitLifecycle::OneShot)
             .await
     }
 
-    pub(in crate::exec_operation) async fn wait_until(
+    pub(in crate::exec_operation) async fn wait_until_outcome(
         mut self,
         deadline: Instant,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.wait_core
             .wait_with_deadline(deadline, false, ExecWaitLifecycle::OneShot)
             .await
@@ -495,18 +576,21 @@ impl ExecOperationHandle {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
         self.cancel_and_wait_for_terminal_status(timeout)
-            .await?
-            .into_expected_cancel_result(
-                ExecWaitLifecycle::OneShot,
-                &cancel_label_log,
-                registered_at,
-            )
+            .await
+            .and_then(|wait_result| {
+                wait_result.into_expected_cancel_result(
+                    ExecWaitLifecycle::OneShot,
+                    &cancel_label_log,
+                    registered_at,
+                )
+            })
+            .into_result()
     }
 
     pub(crate) async fn cancel_and_wait_for_terminal(
         self,
         timeout: Duration,
-    ) -> io::Result<ExecOperationResult> {
+    ) -> ExecOperationWaitOutcome<ExecOperationResult> {
         self.cancel_and_wait_for_terminal_status(timeout)
             .await
             .map(|wait_result| wait_result.result)
@@ -515,23 +599,29 @@ impl ExecOperationHandle {
     pub(in crate::exec_operation) async fn cancel_and_wait_for_terminal_status(
         mut self,
         timeout: Duration,
-    ) -> io::Result<ExecCancelWaitResult> {
-        let (seq, remaining) = match self
+    ) -> ExecOperationWaitOutcome<ExecCancelWaitResult> {
+        let (route_id, remaining) = match self
             .wait_core
             .send_cancel_before_terminal_with_deadline(timeout, ExecWaitLifecycle::OneShot)
-            .await?
+            .await
         {
-            ExecCancelWriteOutcome::Terminal(result) => {
-                return Ok(ExecCancelWaitResult {
-                    result,
-                    cancel_seq: None,
+            Ok(ExecCancelWriteOutcome::Terminal(result)) => {
+                return ExecOperationWaitOutcome::terminal(result).map(|result| {
+                    ExecCancelWaitResult {
+                        result,
+                        cancel_seq: None,
+                    }
                 });
             }
-            ExecCancelWriteOutcome::CancelSent { seq, remaining } => (seq, remaining),
+            Ok(ExecCancelWriteOutcome::CancelSent {
+                route_id,
+                remaining,
+            }) => (route_id, remaining),
+            Err(error) => return ExecOperationWaitOutcome::unproven(error),
         };
 
         self.wait_core
-            .wait_for_terminal_after_cancel_sent(seq, remaining, ExecWaitLifecycle::OneShot)
+            .wait_for_terminal_after_cancel_sent(route_id, remaining, ExecWaitLifecycle::OneShot)
             .await
     }
 }
@@ -567,7 +657,7 @@ pub struct SupervisedExecHandle {
 #[must_use = "dropping this cancel handle does not send MSG_EXEC_CANCEL"]
 pub struct SupervisedExecCancelHandle {
     shared: Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
     diagnostic: ExecOperationDiagnostic,
 }
 
@@ -577,13 +667,15 @@ impl SupervisedExecCancelHandle {
     /// The paired [`SupervisedExecHandle`] still owns the result receiver and must
     /// be waited or abandoned by its caller. If this times out before the
     /// cancel frame write starts, the paired handle can still observe the
-    /// terminal result.
+    /// terminal result. If the original operation is already terminal and its
+    /// wire sequence belongs to a newer operation, this returns successfully
+    /// without sending a stale cancel frame.
     pub async fn cancel(self, timeout: Duration) -> io::Result<()> {
         tokio::time::timeout(
             timeout,
             send_exec_cancel_frame(
                 &self.shared,
-                self.seq,
+                self.route_id,
                 &self.diagnostic,
                 ExecWaitLifecycle::Supervised,
             ),
@@ -591,7 +683,7 @@ impl SupervisedExecCancelHandle {
         .await
         .unwrap_or_else(|_| {
             tracing::warn!(
-                seq = self.seq,
+                seq = self.route_id.wire_seq(),
                 label = %self.diagnostic.label_log,
                 elapsed_ms = self.diagnostic.elapsed_ms(),
                 "supervised exec operation cancel write timed out"
@@ -621,11 +713,11 @@ impl SupervisedExecHandle {
         if self.cancel_handle_taken {
             return None;
         }
-        let seq = self.wait_core.active_seq()?;
+        let route_id = self.wait_core.active_route_id()?;
         self.cancel_handle_taken = true;
         Some(SupervisedExecCancelHandle {
             shared: Arc::clone(self.wait_core.shared()),
-            seq,
+            route_id,
             diagnostic: self.wait_core.diagnostic().clone(),
         })
     }
@@ -658,11 +750,11 @@ impl SupervisedExecHandle {
     }
 
     fn clear_unclaimed_stream_sender(&mut self) {
-        let Some(seq) = self.wait_core.active_seq() else {
+        let Some(route_id) = self.wait_core.active_route_id() else {
             return;
         };
         if self.stream_rx.take().is_some() {
-            clear_exec_operation_stream_sender(self.wait_core.shared(), seq);
+            clear_exec_operation_stream_sender(self.wait_core.shared(), route_id);
         }
     }
 
@@ -677,6 +769,7 @@ impl SupervisedExecHandle {
         self.wait_core
             .wait_with_timeout(timeout, false, ExecWaitLifecycle::Supervised)
             .await
+            .into_result()
     }
 
     /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
@@ -694,35 +787,44 @@ impl SupervisedExecHandle {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
         self.cancel_and_wait_for_terminal_status(timeout)
-            .await?
-            .into_expected_cancel_result(
-                ExecWaitLifecycle::Supervised,
-                &cancel_label_log,
-                registered_at,
-            )
+            .await
+            .and_then(|wait_result| {
+                wait_result.into_expected_cancel_result(
+                    ExecWaitLifecycle::Supervised,
+                    &cancel_label_log,
+                    registered_at,
+                )
+            })
+            .into_result()
     }
 
     pub(in crate::exec_operation) async fn cancel_and_wait_for_terminal_status(
         mut self,
         timeout: Duration,
-    ) -> io::Result<ExecCancelWaitResult> {
-        let (seq, remaining) = match self
+    ) -> ExecOperationWaitOutcome<ExecCancelWaitResult> {
+        let (route_id, remaining) = match self
             .wait_core
             .send_cancel_before_terminal_with_deadline(timeout, ExecWaitLifecycle::Supervised)
-            .await?
+            .await
         {
-            ExecCancelWriteOutcome::Terminal(result) => {
-                return Ok(ExecCancelWaitResult {
-                    result,
-                    cancel_seq: None,
+            Ok(ExecCancelWriteOutcome::Terminal(result)) => {
+                return ExecOperationWaitOutcome::terminal(result).map(|result| {
+                    ExecCancelWaitResult {
+                        result,
+                        cancel_seq: None,
+                    }
                 });
             }
-            ExecCancelWriteOutcome::CancelSent { seq, remaining } => (seq, remaining),
+            Ok(ExecCancelWriteOutcome::CancelSent {
+                route_id,
+                remaining,
+            }) => (route_id, remaining),
+            Err(error) => return ExecOperationWaitOutcome::unproven(error),
         };
 
         self.clear_unclaimed_stream_sender();
         self.wait_core
-            .wait_for_terminal_after_cancel_sent(seq, remaining, ExecWaitLifecycle::Supervised)
+            .wait_for_terminal_after_cancel_sent(route_id, remaining, ExecWaitLifecycle::Supervised)
             .await
     }
 }
@@ -737,7 +839,7 @@ impl Drop for SupervisedExecHandle {
 #[derive(Clone)]
 pub struct ExecControlHandle {
     pub(in crate::exec_operation) shared: Arc<Shared>,
-    pub(in crate::exec_operation) target_seq: u32,
+    pub(in crate::exec_operation) target_route_id: RouteId,
     pub(in crate::exec_operation) control_nonce: ExecControlNonce,
 }
 
@@ -824,7 +926,7 @@ impl ExecControlHandle {
     ) -> io::Result<ExecControlOutcome> {
         let request_timeout_ms = duration_to_request_timeout_ms(timeout);
         vsock_proto::validate_exec_control(
-            self.target_seq,
+            self.target_route_id.wire_seq(),
             self.control_nonce,
             message_id,
             payload,
@@ -853,7 +955,7 @@ impl ExecControlHandle {
     ) -> io::Result<ExecControlOutcome> {
         exec_control_on_shared(
             &self.shared,
-            self.target_seq,
+            self.target_route_id,
             self.control_nonce,
             message_id,
             payload,
@@ -866,19 +968,19 @@ impl ExecControlHandle {
 
 pub(crate) struct ExecOperationCancelOnDropGuard {
     pub(in crate::exec_operation) shared: Option<Arc<Shared>>,
-    pub(in crate::exec_operation) seq: u32,
+    pub(in crate::exec_operation) route_id: RouteId,
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
 }
 
 impl ExecOperationCancelOnDropGuard {
-    pub(in crate::exec_operation) fn new_for_seq(
+    pub(in crate::exec_operation) fn new_for_route(
         shared: Arc<Shared>,
-        seq: u32,
+        route_id: RouteId,
         diagnostic: ExecOperationDiagnostic,
     ) -> Self {
         Self {
             shared: Some(shared),
-            seq,
+            route_id,
             diagnostic,
         }
     }
@@ -886,7 +988,7 @@ impl ExecOperationCancelOnDropGuard {
     pub(crate) fn new(handle: &ExecOperationHandle) -> Option<Self> {
         Some(Self {
             shared: Some(Arc::clone(handle.wait_core.shared())),
-            seq: handle.wait_core.active_seq()?,
+            route_id: handle.wait_core.active_route_id()?,
             diagnostic: handle.wait_core.diagnostic().clone(),
         })
     }
@@ -895,7 +997,7 @@ impl ExecOperationCancelOnDropGuard {
     pub(crate) fn new_supervised(handle: &SupervisedExecHandle) -> Option<Self> {
         Some(Self {
             shared: Some(Arc::clone(handle.wait_core.shared())),
-            seq: handle.wait_core.active_seq()?,
+            route_id: handle.wait_core.active_route_id()?,
             diagnostic: handle.wait_core.diagnostic().clone(),
         })
     }
@@ -910,13 +1012,29 @@ impl Drop for ExecOperationCancelOnDropGuard {
         let Some(shared) = self.shared.take() else {
             return;
         };
-        let seq = self.seq;
+        let route_id = self.route_id;
+        let seq = route_id.wire_seq();
         let diagnostic = self.diagnostic.clone();
         let Ok(handle) = tokio::runtime::Handle::try_current() else {
             return;
         };
+        let reservation = match admit_exec_cancel_frame(&shared, route_id) {
+            Ok(Some(reservation)) => reservation,
+            Ok(None) => return,
+            Err(err) => {
+                tracing::warn!(
+                    seq = seq,
+                    label = %diagnostic.label_log,
+                    elapsed_ms = diagnostic.elapsed_ms(),
+                    error = %err,
+                    "exec operation cancel on drop admission failed"
+                );
+                return;
+            }
+        };
 
         handle.spawn(async move {
+            let _reservation = reservation;
             let payload = vsock_proto::encode_exec_cancel();
             let result = tokio::time::timeout(
                 EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT,
@@ -927,7 +1045,7 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     &payload,
                     Some(diagnostic.frame("drop-cancel")),
                     None,
-                    exec_cancel_write_observer(&shared, seq),
+                    exec_cancel_write_observer(&shared, route_id),
                 ),
             )
             .await;
@@ -974,7 +1092,7 @@ pub(in crate::exec_operation) fn duration_to_request_timeout_ms(timeout: Duratio
 
 pub(in crate::exec_operation) async fn exec_control_on_shared(
     shared: &Arc<Shared>,
-    target_seq: u32,
+    target_route_id: RouteId,
     control_nonce: ExecControlNonce,
     message_id: String,
     control_payload: Vec<u8>,
@@ -982,6 +1100,7 @@ pub(in crate::exec_operation) async fn exec_control_on_shared(
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecControlOutcome> {
     let request_timeout_ms = duration_to_request_timeout_ms(timeout);
+    let target_seq = target_route_id.wire_seq();
     vsock_proto::validate_exec_control(
         target_seq,
         control_nonce,
@@ -990,34 +1109,30 @@ pub(in crate::exec_operation) async fn exec_control_on_shared(
         request_timeout_ms,
     )
     .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
-    let request_seq = shared.next_seq();
     let normal_operation = shared.reserve_normal_operation()?;
     let (response_tx, response_rx) = oneshot::channel();
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { operations, .. } => {
-                operations.insert_pending_control(
-                    target_seq,
-                    request_seq,
-                    PendingExecControl {
-                        target_seq,
-                        message_id: message_id.clone(),
-                        control_nonce,
-                        response_tx,
-                        normal_operation,
-                    },
-                )?;
-            }
-        }
-    }
-    let _pending_guard = PendingExecControlGuard::new(Arc::clone(shared), request_seq);
+    let (request_route_id, ()) = shared.register_route(|request_route_id, state| {
+        let ConnectionState::Connected { operations, .. } = state else {
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ));
+        };
+        operations.insert_pending_control(
+            target_route_id,
+            request_route_id,
+            PendingExecControl {
+                route_id: request_route_id,
+                target_route_id,
+                message_id: message_id.clone(),
+                control_nonce,
+                response_tx,
+                normal_operation,
+            },
+        )
+    })?;
+    let _pending_guard = PendingExecControlGuard::new(Arc::clone(shared), request_route_id);
+    let request_seq = request_route_id.wire_seq();
     let mut frame = Vec::new();
     vsock_proto::encode_exec_control_frame_into(
         &mut frame,
@@ -1032,7 +1147,7 @@ pub(in crate::exec_operation) async fn exec_control_on_shared(
     drop(control_payload);
     drop(message_id);
     write_encoded_frame_with_pre_write(shared, &frame, None, || {
-        mark_pending_exec_control_possible_guest_write(shared, target_seq, request_seq)?;
+        mark_pending_exec_control_possible_guest_write(shared, target_route_id, request_route_id)?;
         write_observer.record_write_start()
     })
     .await?;

@@ -118,11 +118,9 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     let active_input_controller = active_input.controller();
     let mut active_input_writer = active_input.into_writer();
     assert_eq!(
-        active_input_controller.handle_control_payload(&serde_json::to_vec(&json!({
-            "type": "active-input",
-            "deliveryId": delivery_id,
-            "text": "local follow-up",
-        }))?),
+        active_input_controller.handle_control_payload(
+            &guest_contracts::active_input::encode_active_input(delivery_id, "local follow-up")?,
+        ),
         ActiveInputControlOutcome::Accepted,
     );
     let active_input_frame = active_input_writer

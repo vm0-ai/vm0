@@ -1,10 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
-import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroVoiceIoQuotaContract } from "@okouai/api-contracts/contracts/zero-voice-io-quota";
+import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,

@@ -6,11 +6,11 @@ import { dirname, join } from "node:path";
 import {
   chatThreadEventSchema,
   chatThreadSnapshotProjectionSchema,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   replayChatThreadEvents,
   type EventDrivenChatThread,
-} from "@vm0/core/chat-thread-event-replay";
+} from "@okouai/core/chat-thread-event-replay";
 
 import {
   getZeroChatThreadSnapshot,

@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { searchParams$ } from "../route.ts";
-import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
+import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

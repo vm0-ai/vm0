@@ -1,8 +1,8 @@
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { eq, type SQL } from "drizzle-orm";
 
 import type { Db } from "../external/db";

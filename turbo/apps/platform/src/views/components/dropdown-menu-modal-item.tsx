@@ -1,5 +1,5 @@
 import type { ComponentPropsWithoutRef } from "react";
-import { DropdownMenuItem } from "@vm0/ui";
+import { DropdownMenuItem } from "@okouai/ui";
 
 type DropdownMenuModalItemProps = Omit<
   ComponentPropsWithoutRef<typeof DropdownMenuItem>,

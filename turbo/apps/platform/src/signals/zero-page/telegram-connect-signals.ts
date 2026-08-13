@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroIntegrationsTelegramContract,
   type TelegramLinkStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { accept } from "../../lib/accept.ts";
 import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { zeroClient$ } from "../api-client.ts";

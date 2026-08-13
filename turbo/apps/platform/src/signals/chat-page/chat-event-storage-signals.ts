@@ -6,9 +6,9 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
-import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEvent as PersistedChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";

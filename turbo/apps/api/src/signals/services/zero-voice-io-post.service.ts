@@ -1,9 +1,9 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
+import { userBehaviorCount } from "@okouai/db/schema/user-behavior-count";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { parseBuffer } from "music-metadata";
 

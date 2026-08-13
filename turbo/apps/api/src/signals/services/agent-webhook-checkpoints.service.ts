@@ -2,13 +2,13 @@ import type { z } from "zod";
 import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
-} from "@vm0/api-contracts/contracts/webhooks";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { conversations } from "@vm0/db/schema/conversation";
-import type { PersistedStorageMount } from "@vm0/db/types";
+} from "@okouai/api-contracts/contracts/webhooks";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { blobs } from "@okouai/db/schema/blob";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { conversations } from "@okouai/db/schema/conversation";
+import type { PersistedStorageMount } from "@okouai/db/types";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 

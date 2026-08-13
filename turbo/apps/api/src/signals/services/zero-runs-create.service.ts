@@ -1,20 +1,20 @@
-import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
-import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
-import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { agentSessions } from "@vm0/db/schema/agent-session";
+import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
+import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
+import { zeroRunCreateBodySchema } from "@okouai/api-contracts/contracts/zero-runs";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
+import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
+import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
   agentComposeVersions,
   agentComposes,
-} from "@vm0/db/schema/agent-compose";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/agent-compose";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";

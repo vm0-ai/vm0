@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   activatePersonalModelProviderAccount$,
   deletePersonalModelProviderAccount$,

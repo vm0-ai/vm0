@@ -11,7 +11,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use vsock_proto::{
-    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
+    ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
     ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CANCEL,
     MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, MSG_READY, MSG_WRITE_FILE,
     MSG_WRITE_FILE_RESULT, RawMessage,
@@ -99,6 +99,62 @@ fn production_write_file_identity_matches_sudo_policy() {
     send_write_file(&mut stream, 2, &sudo_report_path, true);
 
     assert_eq!(sudo_report.read_identity(), parent);
+
+    drop(stream);
+    join_guest_connection(handle);
+}
+
+#[test]
+#[ignore = "requires root and a production sandbox account; executed explicitly by Rust CI"]
+fn production_exec_identity_matches_sandbox_user() {
+    require_production_configuration();
+    assert_eq!(current_identity().uid, 0, "test must run as root");
+
+    let (handle, mut stream) = start_guest_connection();
+    let sequence = 2;
+    let command = "printf 'uid=%s\\ngid=%s\\ngroups=%s\\ncwd=%s\\nhome=%s\\nuser=%s\\nlogname=%s\\n' \"$(id -u)\" \"$(id -g)\" \"$(id -G)\" \"$(pwd -P)\" \"${HOME-}\" \"${USER-}\" \"${LOGNAME-}\"";
+    let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::OneShot,
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5_000 },
+        command,
+        env: &[],
+        sudo: false,
+        label: "production-exec-identity",
+        stdout: ExecOutputPolicy::Capture { limit_bytes: 1_024 },
+        stderr: ExecOutputPolicy::Capture { limit_bytes: 1_024 },
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    })
+    .expect("encode exec-start payload");
+    let frame = vsock_proto::encode(MSG_EXEC_START, sequence, &payload).expect("frame exec start");
+    stream.write_all(&frame).expect("send exec-start request");
+
+    let response = read_message(&mut stream);
+    assert_eq!(response.msg_type, MSG_EXEC_RESULT);
+    assert_eq!(response.seq, sequence);
+    let result = vsock_proto::decode_exec_result(&response.payload).expect("decode exec result");
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.diagnostic, "");
+    let ExecCapturedOutput::Captured {
+        bytes: stdout,
+        truncated: false,
+    } = result.stdout
+    else {
+        panic!("production identity stdout was not fully captured");
+    };
+    assert_eq!(
+        parse_identity_report(std::str::from_utf8(stdout).expect("identity output is UTF-8")),
+        Identity {
+            uid: SANDBOX_UID,
+            gid: SANDBOX_GID,
+            groups: BTreeSet::from([SANDBOX_GID, SANDBOX_SUPPLEMENTARY_GID]),
+            cwd: PathBuf::from(SANDBOX_HOME),
+            home: SANDBOX_HOME.to_string(),
+            user: "user".to_string(),
+            logname: "user".to_string(),
+        }
+    );
 
     drop(stream);
     join_guest_connection(handle);

@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 

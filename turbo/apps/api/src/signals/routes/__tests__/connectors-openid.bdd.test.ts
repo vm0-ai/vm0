@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
+import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsBySlugContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +18,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
 import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
 import { zeroConnectorsRoutes } from "../zero-connectors";
-import { zeroSteamPlayerRoutes } from "../zero-steam-player";
+import { steamPlayerRoutes } from "../steam-player";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -474,8 +474,8 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context, routes: zeroSteamPlayerRoutes })(
-        zeroSteamPlayerContract,
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
       ).getPlayer({
         headers: authHeaders(),
       }),
@@ -540,8 +540,8 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context, routes: zeroSteamPlayerRoutes })(
-        zeroSteamPlayerContract,
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
       ).getPlayer({
         headers: authHeaders(),
       }),
@@ -572,8 +572,8 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context, routes: zeroSteamPlayerRoutes })(
-        zeroSteamPlayerContract,
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
       ).getPlayer({
         headers: authHeaders(),
       }),
@@ -599,8 +599,8 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context, routes: zeroSteamPlayerRoutes })(
-        zeroSteamPlayerContract,
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
       ).getPlayer({
         headers: authHeaders(),
       }),

@@ -3,7 +3,7 @@ import {
   zeroRunRunnerContract,
   zeroRunsByIdContract,
   zeroRunsQueueContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/zero-runs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

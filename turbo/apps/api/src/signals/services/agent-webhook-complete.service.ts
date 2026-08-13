@@ -5,12 +5,12 @@ import {
   runStatusSchema,
   type RunResult,
   type RunStatus,
-} from "@vm0/api-contracts/contracts/runs";
-import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/runs";
+import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";

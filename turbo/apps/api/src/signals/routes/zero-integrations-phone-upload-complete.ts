@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   integrationsPhoneUploadCompleteContract,
   type PhoneUploadCompleteBody,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

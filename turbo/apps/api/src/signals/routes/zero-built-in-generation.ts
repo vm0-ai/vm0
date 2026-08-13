@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+import { zeroBuiltInGenerationContract } from "@okouai/api-contracts/contracts/zero-built-in-generation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

@@ -1,21 +1,21 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroAgentsByIdContract,
   zeroAgentDraftContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import {

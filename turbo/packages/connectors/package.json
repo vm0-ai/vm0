@@ -1,6 +1,6 @@
 {
-  "name": "@vm0/connectors",
-  "version": "1.205.1",
+  "name": "@okouai/connectors",
+  "version": "1.205.2",
   "private": true,
   "type": "module",
   "exports": {
@@ -82,8 +82,8 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@types/tr46": "5.0.1",
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "msw": "^2.13.2",
     "oxlint": "^1.75.0",

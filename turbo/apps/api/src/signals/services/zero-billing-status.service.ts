@@ -1,10 +1,10 @@
 import { computed, type Computed } from "ccstate";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
-} from "@vm0/db/schema/org-usage-allowance";
+} from "@okouai/db/schema/org-usage-allowance";
 import {
   and,
   desc,

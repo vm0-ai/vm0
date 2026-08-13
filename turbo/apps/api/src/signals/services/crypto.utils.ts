@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

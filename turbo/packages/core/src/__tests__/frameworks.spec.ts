@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { agentDefinitionSchema } from "@vm0/api-contracts/contracts/composes";
+import { agentDefinitionSchema } from "@okouai/api-contracts/contracts/composes";
 import {
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,

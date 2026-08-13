@@ -18,7 +18,7 @@ pre-commit:
             glob: "turbo/**/*"
             stage_fixed: true
           - name: platform-static-assets
-            run: pnpm -F @vm0/app lint:static-assets
+            run: pnpm -F @okouai/app lint:static-assets
             root: turbo/
             glob: "turbo/apps/platform/**/*.{gif,ico,jpeg,jpg,png,svg,webp}"
             fail_text: |

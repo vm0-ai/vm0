@@ -1,4 +1,4 @@
-import type { ZeroMcpConnector } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
+import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
 
 import { listZeroRunMcpConnectors } from "../../../lib/api/domains/zero-connectors";
 

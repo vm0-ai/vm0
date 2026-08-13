@@ -7,7 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import type { TeamComposeItem } from "@vm0/core";
+import type { TeamComposeItem } from "@okouai/core";
 import { createElement } from "react";
 import { AgentDetailPage } from "../../views/team-page/zero-team-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";

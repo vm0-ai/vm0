@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { zeroWebFilesContract } from "@vm0/api-contracts/contracts/zero-web-files";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { zeroWebFilesContract } from "@okouai/api-contracts/contracts/zero-web-files";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

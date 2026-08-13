@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

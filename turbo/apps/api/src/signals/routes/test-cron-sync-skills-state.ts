@@ -3,10 +3,10 @@ import {
   testCronSyncSkillsStateContract,
   type TestCronSyncSkillsStateActionBody,
   type TestCronSyncSkillsStateSkillVersionSeed,
-} from "@vm0/api-contracts/contracts/test-cron-sync-skills-state";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { skills } from "@vm0/db/schema/skill";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/api-contracts/contracts/test-cron-sync-skills-state";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { skills } from "@okouai/db/schema/skill";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { bodyResultOf } from "../context/request";

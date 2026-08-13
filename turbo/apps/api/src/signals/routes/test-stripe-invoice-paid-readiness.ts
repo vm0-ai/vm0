@@ -1,6 +1,6 @@
-import { testStripeInvoicePaidFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-invoice-paid-readiness";
-import { connectors } from "@vm0/db/schema/connector";
-import { variables } from "@vm0/db/schema/variable";
+import { testStripeInvoicePaidFixtureContract } from "@okouai/api-contracts/contracts/test-stripe-invoice-paid-readiness";
+import { connectors } from "@okouai/db/schema/connector";
+import { variables } from "@okouai/db/schema/variable";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 

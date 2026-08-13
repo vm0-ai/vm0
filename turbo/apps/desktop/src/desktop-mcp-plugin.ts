@@ -13,7 +13,7 @@ import {
   computerUseMcpServerCapability,
   isComputerUseMcpPluginCallPayload,
   type ComputerUseMcpPluginCallPayload,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
 import type {
   ComputerUseCommand,
   ComputerUseCommandExecutionResult,

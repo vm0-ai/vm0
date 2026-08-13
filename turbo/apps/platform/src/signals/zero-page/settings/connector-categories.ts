@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 
 export interface ConnectorCategorySection<T> {
   category: string;

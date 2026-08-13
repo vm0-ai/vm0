@@ -11,7 +11,7 @@
  * the native types, so any drift fails this package's own type check.
  */
 
-import type { RunSkillSnapshotEntry } from "@vm0/api-contracts/contracts/runners";
+import type { RunSkillSnapshotEntry } from "@okouai/api-contracts/contracts/runners";
 
 /** Result of a fallible operation. Expected failures are returned as `ok: false` instead of thrown. */
 export type Result<TValue, TError> =

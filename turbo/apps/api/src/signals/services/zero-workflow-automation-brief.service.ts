@@ -1,4 +1,4 @@
-import { isValidTimeZone, parseScheduledAtTime } from "@vm0/core/timezone";
+import { isValidTimeZone, parseScheduledAtTime } from "@okouai/core/timezone";
 
 function datePart(
   parts: Intl.DateTimeFormatPart[],

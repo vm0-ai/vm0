@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import {
   CLIENT_PRODUCT_HEADER,
   type DesktopProduct,
-} from "@vm0/api-contracts/contracts/client-headers";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { cronComputerUseScreenshotCleanupContract } from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/client-headers";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
   zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseAuditEventsContract,
@@ -26,8 +26,8 @@ import {
   type ComputerUseHostListResponse,
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import type { ComputerUseAnyPluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
+import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
 
 import { now } from "../../../../lib/time";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

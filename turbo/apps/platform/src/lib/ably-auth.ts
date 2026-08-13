@@ -1,9 +1,9 @@
 import type {
   InitClientArgs,
   InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import type { AuthOptions } from "ably";
-import type { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import type { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { detach, Reason, throwIfAbort } from "../signals/utils.ts";
 import { accept } from "./accept.ts";
 

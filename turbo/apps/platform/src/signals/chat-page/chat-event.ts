@@ -1,7 +1,7 @@
 import type { Root } from "hast";
 import { command } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
 import {
@@ -13,7 +13,7 @@ import {
   type FeedbackNotePart,
   type UserMessageDocument,
   type UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { nowDate } from "../../lib/time.ts";
@@ -160,6 +160,7 @@ export const deleteChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
@@ -221,6 +222,7 @@ export const pinChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
@@ -256,6 +258,7 @@ export const unpinChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
@@ -307,6 +310,7 @@ export const renameChatThread$ = command(
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }

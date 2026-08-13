@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
+import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   integrationsSlackUploadCompleteContract,
   type SlackUploadCompleteBody,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

@@ -1,7 +1,7 @@
 import {
   userMessageDocumentSchema,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { i18n } from "../../i18n/index.ts";
 import { SUPPORTED_LOCALES } from "../../i18n/resources.ts";
 import { jsonParseOr, settle, throwIfAbort, withCleanup } from "../utils.ts";

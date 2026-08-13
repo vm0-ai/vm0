@@ -1,6 +1,6 @@
 import { waitFor } from "@testing-library/react";
-import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
 
 import {

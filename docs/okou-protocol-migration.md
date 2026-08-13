@@ -22,8 +22,8 @@ Current API and Desktop consumers prefer `OKOU_*` variables and retain their
 `ZERO_*` fallback readers. The current private CLI source reads only canonical
 Okou runtime context and accepts only Okou-scope run tokens. Historical
 commit-addressed CLI artifacts retain their compatibility readers for the
-execution contexts that selected them. New first-party Okou-agent and
-presentation-template execution contexts emit only:
+execution contexts that selected them. New first-party Okou-agent execution
+contexts emit only:
 
 - `OKOU_APP_URL`;
 - `OKOU_AGENT_ID`;

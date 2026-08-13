@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import { and, eq, isNull } from "drizzle-orm";
-import { chatThreadComputerUseHostContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
+import { chatThreadComputerUseHostContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { computerUseHosts } from "@okouai/db/schema/computer-use-host";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";

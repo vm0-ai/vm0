@@ -1,8 +1,8 @@
-import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
-import { googleCalendarWatchStates } from "@vm0/db/schema/google-calendar-event";
-import { googleFormsWatchStates } from "@vm0/db/schema/google-forms-event";
-import { googleWorkspaceEventSubscriptionStates } from "@vm0/db/schema/google-workspace-event";
-import { mailDrafts } from "@vm0/db/schema/mail-draft";
+import { gmailWatchStates } from "@okouai/db/schema/gmail-event";
+import { googleCalendarWatchStates } from "@okouai/db/schema/google-calendar-event";
+import { googleFormsWatchStates } from "@okouai/db/schema/google-forms-event";
+import { googleWorkspaceEventSubscriptionStates } from "@okouai/db/schema/google-workspace-event";
+import { mailDrafts } from "@okouai/db/schema/mail-draft";
 import { eq } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";

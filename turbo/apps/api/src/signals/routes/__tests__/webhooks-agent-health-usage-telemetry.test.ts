@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { webhookUsageEventContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookUsageEventContract } from "@okouai/api-contracts/contracts/webhooks";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";

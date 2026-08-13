@@ -1,5 +1,5 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 

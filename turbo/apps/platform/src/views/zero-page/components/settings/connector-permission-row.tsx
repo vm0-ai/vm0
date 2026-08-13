@@ -7,7 +7,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
+} from "@okouai/ui";
 
 import { LoadingSwitch } from "../../../components/loading-switch.tsx";
 

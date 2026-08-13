@@ -5,7 +5,7 @@ import {
   type BillingReconciliationFixtureKind,
   type TestBillingReconciliationStateActionBody,
   type TestBillingReconciliationStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
+} from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
 import type StripeSDK from "stripe";
 import { describe, expect, it, onTestFinished } from "vitest";
 

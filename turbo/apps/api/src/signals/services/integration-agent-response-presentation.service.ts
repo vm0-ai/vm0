@@ -2,13 +2,13 @@ import { and, eq } from "drizzle-orm";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { getRunModelDisplayName } from "@vm0/core/model-display-name";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { getRunModelDisplayName } from "@okouai/core/model-display-name";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";

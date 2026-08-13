@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { authContract } from "@vm0/api-contracts/contracts/auth";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
   onboardingCompleteContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
-} from "@vm0/api-contracts/contracts/onboarding";
-import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/onboarding";
+import type { ApiErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -14,9 +14,9 @@ import {
   type ZeroAgentMetadataRequest,
   type ZeroAgentRequest,
   type ZeroAgentResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

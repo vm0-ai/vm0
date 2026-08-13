@@ -7,13 +7,13 @@ import {
   SlidersHorizontal,
   User,
 } from "lucide-react";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   ZeroAvatarVideoAvatar,
   ZeroAvatarVideoAvatarsQuery,
   ZeroAvatarVideoVoice,
   ZeroAvatarVideoVoicesQuery,
-} from "@vm0/api-contracts/contracts/zero-avatar-video";
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 import {
   Button,
   Popover,
@@ -28,8 +28,8 @@ import {
   SelectValue,
   Skeleton,
   cn,
-} from "@vm0/ui";
-import { readAvatarTemplateOptions } from "@vm0/core/avatar-template";
+} from "@okouai/ui";
+import { readAvatarTemplateOptions } from "@okouai/core/avatar-template";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,

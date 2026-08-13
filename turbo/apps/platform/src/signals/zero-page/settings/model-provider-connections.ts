@@ -4,11 +4,11 @@ import {
   getProviderRuntimeModel,
   isModelSupportedByProvider,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import type {
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 
 import {
   createModelProviderConnection$,

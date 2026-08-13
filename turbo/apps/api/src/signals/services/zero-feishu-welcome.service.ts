@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { buildFeishuWelcomeMessage } from "../../lib/feishu-message-card";
 import { sendFeishuMessage } from "../external/feishu-client";

@@ -1,9 +1,9 @@
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProviderAccountsByIdContract,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 

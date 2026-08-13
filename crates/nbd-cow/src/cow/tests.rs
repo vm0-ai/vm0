@@ -154,6 +154,32 @@ fn flush_writes_to_cow_file() {
 }
 
 #[test]
+fn default_threshold_flush_persists_one_contiguous_batch() {
+    let data_len = crate::DEFAULT_FLUSH_THRESHOLD;
+    let base = create_base_image(&vec![0x00; data_len]);
+    let cow_file = NamedTempFile::new().unwrap();
+    let mut cow = make_cow(&base, &cow_file, data_len as u64, data_len);
+    let mut data = vec![0u8; data_len];
+    for (block_idx, block) in data.chunks_mut(crate::BLOCK_SIZE).enumerate() {
+        block.fill((block_idx % 251) as u8);
+    }
+
+    assert!(cow.write(0, &data).unwrap());
+    cow.flush().unwrap();
+
+    let mut persisted = vec![0u8; data_len];
+    cow_file.as_file().read_exact_at(&mut persisted, 0).unwrap();
+    assert!(persisted == data, "persisted contiguous batch differs");
+    assert_eq!(cow.dirty_block_count(), data_len / crate::BLOCK_SIZE);
+    assert_eq!(cow.buffered_block_count(), 0);
+    assert_eq!(cow.buffer_bytes(), 0);
+
+    let mut read_back = vec![0u8; data_len];
+    cow.read(0, &mut read_back).unwrap();
+    assert!(read_back == data, "COW read-back differs");
+}
+
+#[test]
 fn multiblock_dirty_cow_read_uses_one_file_read() {
     let base = create_base_image(&vec![0x00; 4 * 4096]);
     let cow_file = NamedTempFile::new().unwrap();
@@ -717,7 +743,7 @@ fn create_with_dirty_bitmap_beyond_cow_file_errors() {
 //
 // flush_buffered is driven directly with a controllable writer closure.
 // Real error injection (/dev/full, file seals, RLIMIT_FSIZE) cannot
-// reproduce partial-success-then-fail at arbitrary index, which is the
+// reproduce partial-success-then-fail at arbitrary byte offset, which is the
 // scenario the recovery logic protects against.
 
 // Returns the two `NamedTempFile` handles alongside the `CowLayer` so the
@@ -735,22 +761,105 @@ fn seed_cow_with_writes(blocks: &[(u64, u8)]) -> (NamedTempFile, NamedTempFile, 
     (base, cow_file, cow)
 }
 
+fn buffered_len(buffers: &[IoSlice<'_>]) -> usize {
+    buffers.iter().map(|buffer| buffer.len()).sum()
+}
+
+fn buffered_fills(buffers: &[IoSlice<'_>]) -> Vec<u8> {
+    buffers.iter().map(|buffer| buffer[0]).collect()
+}
+
 #[test]
 fn flush_buffered_success_path_drains_buffer() {
     let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xAA), (1, 0xBB), (5, 0xCC)]);
 
-    let mut calls: Vec<(u64, u8)> = Vec::new();
-    cow.flush_buffered(|offset, data| {
-        calls.push((offset, data[0]));
-        Ok(())
+    let mut calls = Vec::new();
+    cow.flush_buffered(|offset, buffers| {
+        calls.push((offset, buffered_fills(buffers)));
+        Ok(buffered_len(buffers))
     })
     .unwrap();
 
     assert_eq!(cow.buffered_block_count(), 0);
     assert_eq!(cow.buffer_bytes(), 0);
     assert_eq!(cow.dirty_block_count(), 3);
-    // BTreeMap iterates in key order: offsets ascend.
-    assert_eq!(calls, vec![(0, 0xAA), (4096, 0xBB), (5 * 4096, 0xCC)]);
+    assert_eq!(calls, vec![(0, vec![0xAA, 0xBB]), (5 * 4096, vec![0xCC])]);
+}
+
+#[test]
+fn flush_buffered_default_threshold_uses_one_writer_call() {
+    const BLOCK_SIZE: usize = 4096;
+    let block_count = crate::DEFAULT_FLUSH_THRESHOLD / BLOCK_SIZE;
+    assert_eq!(block_count, MAX_WRITE_IOVECS);
+    let base = create_base_image(&vec![0x00; crate::DEFAULT_FLUSH_THRESHOLD]);
+    let cow_file = NamedTempFile::new().unwrap();
+    let mut cow = make_cow(
+        &base,
+        &cow_file,
+        crate::DEFAULT_FLUSH_THRESHOLD as u64,
+        crate::DEFAULT_FLUSH_THRESHOLD,
+    );
+    cow.write(0, &vec![0xA5; crate::DEFAULT_FLUSH_THRESHOLD])
+        .unwrap();
+
+    let mut calls = Vec::new();
+    cow.flush_buffered(|offset, buffers| {
+        calls.push((offset, buffers.len(), buffered_len(buffers)));
+        Ok(buffered_len(buffers))
+    })
+    .unwrap();
+
+    assert_eq!(
+        calls,
+        vec![(0, block_count, crate::DEFAULT_FLUSH_THRESHOLD)]
+    );
+    assert_eq!(cow.buffered_block_count(), 0);
+    assert_eq!(cow.dirty_block_count(), block_count);
+}
+
+#[test]
+fn flush_buffered_splits_contiguous_data_at_iov_max() {
+    const BLOCK_SIZE: usize = 4096;
+    let block_count = MAX_WRITE_IOVECS + 1;
+    let data_len = block_count * BLOCK_SIZE;
+    let base = create_base_image(&vec![0x00; data_len]);
+    let cow_file = NamedTempFile::new().unwrap();
+    let mut cow = make_cow(&base, &cow_file, data_len as u64, data_len + 1);
+    cow.write(0, &vec![0xA5; data_len]).unwrap();
+
+    let mut calls = Vec::new();
+    cow.flush_buffered(|offset, buffers| {
+        calls.push((offset, buffers.len()));
+        Ok(buffered_len(buffers))
+    })
+    .unwrap();
+
+    assert_eq!(
+        calls,
+        vec![
+            (0, MAX_WRITE_IOVECS),
+            ((MAX_WRITE_IOVECS * BLOCK_SIZE) as u64, 1)
+        ]
+    );
+    assert_eq!(cow.buffered_block_count(), 0);
+    assert_eq!(cow.dirty_block_count(), block_count);
+}
+
+#[test]
+fn flush_buffered_isolated_blocks_keep_one_call_each() {
+    let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xA0), (2, 0xA2), (4, 0xA4), (6, 0xA6)]);
+
+    let mut calls = Vec::new();
+    cow.flush_buffered(|offset, buffers| {
+        calls.push((offset, buffers.len()));
+        Ok(buffered_len(buffers))
+    })
+    .unwrap();
+
+    assert_eq!(
+        calls,
+        vec![(0, 1), (2 * 4096, 1), (4 * 4096, 1), (6 * 4096, 1)]
+    );
 }
 
 #[test]
@@ -775,63 +884,53 @@ fn flush_buffered_fails_on_first_block_preserves_everything() {
 }
 
 #[test]
-fn flush_buffered_fails_mid_drain_splits_state() {
+fn flush_buffered_partial_block_failure_restores_full_block_and_retries() {
     let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xA0), (1, 0xA1), (2, 0xA2), (3, 0xA3)]);
 
-    let mut call_count = 0;
+    let mut calls = Vec::new();
     let err = cow
-        .flush_buffered(|_off, _data| {
-            call_count += 1;
-            if call_count <= 2 {
-                Ok(())
+        .flush_buffered(|offset, buffers| {
+            calls.push((
+                offset,
+                buffers
+                    .iter()
+                    .map(|buffer| buffer.len())
+                    .collect::<Vec<_>>(),
+            ));
+            if calls.len() == 1 {
+                Ok(2 * 4096 + 512)
             } else {
-                // Fail on the 3rd call.
                 Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
             }
         })
         .unwrap_err();
     assert!(matches!(err, NbdCowError::Io(_)));
 
-    // Written blocks [0,1] stay dirty, gone from buffer. Unwritten [2,3] restored.
+    assert_eq!(
+        calls,
+        vec![(0, vec![4096; 4]), (2 * 4096 + 512, vec![4096 - 512, 4096])]
+    );
     assert_eq!(cow.dirty_block_count(), 2);
     assert_eq!(cow.buffered_block_count(), 2);
     assert_eq!(cow.buffer_bytes(), 2 * 4096);
-    // Buffer still holds the unwritten survivors' data.
+
     let mut buf = vec![0u8; 4096];
     cow.read(2 * 4096, &mut buf).unwrap();
     assert!(buf.iter().all(|&b| b == 0xA2));
     cow.read(3 * 4096, &mut buf).unwrap();
     assert!(buf.iter().all(|&b| b == 0xA3));
-}
 
-#[test]
-fn flush_buffered_recovers_on_retry_after_mid_drain_failure() {
-    let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xA0), (1, 0xA1), (2, 0xA2), (3, 0xA3)]);
-
-    // Stage 1: mid-drain failure on the 3rd call.
-    let mut call_count = 0;
-    let _ = cow.flush_buffered(|_off, _data| {
-        call_count += 1;
-        if call_count <= 2 {
-            Ok(())
-        } else {
-            Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
-        }
-    });
-
-    // Stage 2: retry with successful writer.
     let mut retry_calls = Vec::new();
-    cow.flush_buffered(|offset, data| {
-        retry_calls.push((offset, data[0]));
-        Ok(())
+    cow.flush_buffered(|offset, buffers| {
+        retry_calls.push((offset, buffered_fills(buffers)));
+        Ok(buffered_len(buffers))
     })
     .unwrap();
 
     assert_eq!(cow.buffered_block_count(), 0);
     assert_eq!(cow.buffer_bytes(), 0);
     assert_eq!(cow.dirty_block_count(), 4);
-    // Retry drained exactly the two survivors.
-    assert_eq!(retry_calls, vec![(2 * 4096, 0xA2), (3 * 4096, 0xA3)]);
+    assert_eq!(retry_calls, vec![(2 * 4096, vec![0xA2, 0xA3])]);
 }
 
 #[test]
@@ -840,12 +939,11 @@ fn flush_buffered_fails_on_last_block_preserves_only_last() {
 
     let mut call_count = 0;
     let err = cow
-        .flush_buffered(|_off, _data| {
+        .flush_buffered(|_off, _buffers| {
             call_count += 1;
-            if call_count <= 3 {
-                Ok(())
+            if call_count == 1 {
+                Ok(3 * 4096)
             } else {
-                // Fail on the 4th call, which is the last block.
                 Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
             }
         })
@@ -861,6 +959,53 @@ fn flush_buffered_fails_on_last_block_preserves_only_last() {
     let mut buf = vec![0u8; 4096];
     cow.read(3 * 4096, &mut buf).unwrap();
     assert!(buf.iter().all(|&b| b == 0xA3));
+}
+
+#[test]
+fn flush_buffered_retries_interrupted_and_advances_short_writes() {
+    let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xA0), (1, 0xA1)]);
+
+    let mut calls = Vec::new();
+    cow.flush_buffered(|offset, buffers| {
+        calls.push((
+            offset,
+            buffers
+                .iter()
+                .map(|buffer| buffer.len())
+                .collect::<Vec<_>>(),
+        ));
+        match calls.len() {
+            1 => Err(std::io::Error::from(std::io::ErrorKind::Interrupted)),
+            2 => Ok(4096 + 7),
+            _ => Ok(buffered_len(buffers)),
+        }
+    })
+    .unwrap();
+
+    assert_eq!(
+        calls,
+        vec![
+            (0, vec![4096, 4096]),
+            (0, vec![4096, 4096]),
+            (4096 + 7, vec![4096 - 7])
+        ]
+    );
+    assert_eq!(cow.buffered_block_count(), 0);
+    assert_eq!(cow.dirty_block_count(), 2);
+}
+
+#[test]
+fn flush_buffered_write_zero_preserves_everything() {
+    let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xA0), (1, 0xA1)]);
+
+    let err = cow.flush_buffered(|_, _| Ok(0)).unwrap_err();
+
+    assert!(
+        matches!(&err, NbdCowError::Io(error) if error.kind() == std::io::ErrorKind::WriteZero)
+    );
+    assert_eq!(cow.buffered_block_count(), 2);
+    assert_eq!(cow.buffer_bytes(), 2 * 4096);
+    assert_eq!(cow.dirty_block_count(), 0);
 }
 
 #[test]
@@ -885,10 +1030,10 @@ fn flush_ensure_cow_fd_failure_preserves_buffer() {
     assert_eq!(cow.dirty_block_count(), 0);
 }
 
-// Sanity check that the full flush() wiring — ensure_cow_fd, try_clone,
-// closure routing to write_all_at — survives an end-to-end real I/O failure.
-// /dev/full always returns ENOSPC on write, so this covers "fail on first block"
-// through the public API. Mid-drain coverage stays on the closure tests above.
+// Sanity check that the full flush() wiring — ensure_cow_fd and the positioned
+// batch writer — survives an end-to-end real I/O failure. /dev/full always
+// returns ENOSPC on write, so this covers "fail on first batch" through the
+// public API. Mid-drain coverage stays on the closure tests above.
 #[test]
 fn flush_with_dev_full_preserves_buffer() {
     if !std::path::Path::new("/dev/full").exists() {

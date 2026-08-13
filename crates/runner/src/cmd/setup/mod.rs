@@ -895,17 +895,27 @@ fn check_system_ca_bundle() -> RunnerResult<()> {
 }
 
 fn check_kvm() {
-    use std::fs::File;
+    let result = File::options()
+        .read(true)
+        .write(true)
+        .open("/dev/kvm")
+        .map(drop);
+    report_kvm_check(result);
+}
 
-    match File::options().read(true).write(true).open("/dev/kvm") {
-        Ok(_) => {
+fn report_kvm_check(result: std::io::Result<()>) {
+    match result {
+        Ok(()) => {
             tracing::info!("[OK] KVM accessible");
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             tracing::warn!("/dev/kvm not found — ensure bare-metal with KVM enabled");
         }
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            tracing::warn!("/dev/kvm not accessible — run: sudo chmod 666 /dev/kvm");
+            tracing::warn!(
+                "/dev/kvm permission denied — expected root:kvm ownership with mode 0660; \
+                 verify device permissions and host/container KVM access: {e}"
+            );
         }
         Err(e) => {
             tracing::warn!("/dev/kvm check failed: {e}");
@@ -925,6 +935,37 @@ mod tests {
     use flate2::write::GzEncoder;
     use nix::sys::stat::Mode;
     use tokio::sync::oneshot;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::CapturedEvents;
+
+    #[test]
+    fn kvm_permission_denied_reports_least_privilege_guidance() {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            report_kvm_check(Err(std::io::Error::from(
+                std::io::ErrorKind::PermissionDenied,
+            )));
+        });
+
+        let events = captured.entries();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        let event = &events[0];
+        assert_eq!(event.level, Level::WARN);
+        let message = event
+            .fields
+            .get("message")
+            .unwrap_or_else(|| panic!("missing message field; event={event:#?}"));
+        assert!(message.contains("root:kvm"));
+        assert!(message.contains("0660"));
+        assert!(message.contains("host/container KVM access"));
+        assert!(message.contains("permission denied"));
+        assert!(!message.contains("chmod 666"));
+        assert!(!message.contains("0666"));
+    }
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBrowserAuthorizationRequestsContract } from "@vm0/api-contracts/contracts/zero-browser";
+import { zeroBrowserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-browser";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

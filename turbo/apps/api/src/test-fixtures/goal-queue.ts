@@ -1,6 +1,6 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 

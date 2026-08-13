@@ -1,8 +1,8 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import {
   DEFAULT_VIDEO_ASPECT_RATIO,
   DEFAULT_VIDEO_DURATION,
@@ -21,7 +21,7 @@ import {
   type VideoModelConfig,
   type VideoProvider,
   type VideoResolution,
-} from "@vm0/core/video-model-catalog";
+} from "@okouai/core/video-model-catalog";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

@@ -1,7 +1,7 @@
 import type {
   UsagePackCatalogItem,
   UsagePackUsd,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { i18n } from "../../../../i18n/index.ts";

@@ -5,11 +5,11 @@ import { http, HttpResponse } from "msw";
 import type {
   TestSlackStatePostResponse,
   TestSlackStateResponse,
-} from "@vm0/api-contracts/contracts/test-slack-state";
+} from "@okouai/api-contracts/contracts/test-slack-state";
 import type {
   TestTelegramStateResponse,
   TestTelegramStateSeedResponse,
-} from "@vm0/api-contracts/contracts/test-telegram-state";
+} from "@okouai/api-contracts/contracts/test-telegram-state";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";

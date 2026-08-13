@@ -4,7 +4,7 @@
 // Ads bids on (`Onboarding Start`, `Checkout Start`) fire from the same call
 // sites as their PostHog counterparts.
 
-import type { AdAttributionMetadata } from "@vm0/api-contracts/contracts/zero-attribution";
+import type { AdAttributionMetadata } from "@okouai/api-contracts/contracts/zero-attribution";
 import { command } from "ccstate";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import {

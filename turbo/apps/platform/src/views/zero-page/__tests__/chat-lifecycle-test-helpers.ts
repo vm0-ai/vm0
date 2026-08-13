@@ -9,12 +9,12 @@ import {
   chatThreadsContract,
   type ChatEvent,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationUpdateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,

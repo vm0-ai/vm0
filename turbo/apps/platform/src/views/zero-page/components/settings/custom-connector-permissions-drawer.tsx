@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { CustomConnectorPermissionBundleResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorPermissionBundleResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   Button,
   Sheet,
@@ -9,10 +9,10 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {

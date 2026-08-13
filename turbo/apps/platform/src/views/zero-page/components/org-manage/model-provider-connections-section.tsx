@@ -17,11 +17,11 @@ import {
   DropdownMenuTrigger,
   Input,
   Textarea,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import type {
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 
 import {
   deleteModelProviderConnection$,

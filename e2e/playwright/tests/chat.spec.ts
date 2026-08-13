@@ -7,6 +7,11 @@ const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
 const imageLayoutThreadId = "b0000000-0000-4000-a000-000000000736";
+const cardSpacingThreadId = "b0000000-0000-4000-a000-000000000737";
+const forwardLayoutThreadId = "b0000000-0000-4000-a000-000000000738";
+// Card slots carry the same block margins as the paragraphs around them, and
+// adjacent margins collapse into one gap.
+const cardSlotGapPx = 8;
 const responsiveFollowupPrompts = [
   "Draft launch copy",
   "Create a detailed presentation outline with speaker notes",
@@ -176,7 +181,10 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
   });
 }
 
-async function enableResponsiveFollowupCards(page: Page): Promise<void> {
+async function enableFeatureSwitch(
+  page: Page,
+  key: "chatForward" | "responsiveFollowupCards",
+): Promise<void> {
   await page.route("**/api/okou/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
@@ -189,11 +197,19 @@ async function enableResponsiveFollowupCards(page: Page): Promise<void> {
         ...body,
         effectiveSwitches: {
           ...body.effectiveSwitches,
-          responsiveFollowupCards: true,
+          [key]: true,
         },
       },
     });
   });
+}
+
+async function enableResponsiveFollowupCards(page: Page): Promise<void> {
+  await enableFeatureSwitch(page, "responsiveFollowupCards");
+}
+
+async function enableChatForward(page: Page): Promise<void> {
+  await enableFeatureSwitch(page, "chatForward");
 }
 
 async function mockSelectedFastModel(page: Page): Promise<void> {
@@ -495,6 +511,42 @@ async function mockResponsiveFollowupThread(
   });
 }
 
+async function mockForwardLayoutThread(
+  page: Page,
+  agentId: string,
+): Promise<void> {
+  const createdAt = "2026-08-13T08:00:01Z";
+  const runId = "run-forward-layout";
+  await mockChatThread(page, {
+    agentId,
+    createdAt,
+    selectedModel: null,
+    threadId: forwardLayoutThreadId,
+    title: "Forward composer layout",
+    events: [
+      {
+        id: "msg-forward-layout-assistant",
+        threadId: forwardLayoutThreadId,
+        eventType: "output.message",
+        content: "Keep the forward composer within the modal.",
+        runId,
+        seqId: 1,
+        createdAt: "2026-08-13T08:00:00Z",
+      },
+      {
+        id: "msg-forward-layout-completed",
+        threadId: forwardLayoutThreadId,
+        eventType: "run.completed",
+        content: null,
+        runId,
+        runLifecycleEvent: "completed",
+        seqId: 2,
+        createdAt,
+      },
+    ],
+  });
+}
+
 async function mockModelChangeThread(
   page: Page,
   agentId: string,
@@ -605,6 +657,49 @@ async function mockModelChangeThread(
     selectedModel: "claude-opus-4-8",
     threadId: modelChangeThreadId,
     title: "Model change layout",
+  });
+}
+
+async function mockCardSpacingThread(
+  page: Page,
+  agentId: string,
+): Promise<void> {
+  const createdAt = "2026-08-13T06:00:02Z";
+  const runId = "run-card-spacing";
+  const events = [
+    {
+      id: "msg-card-spacing-assistant",
+      threadId: cardSpacingThreadId,
+      eventType: "output.message",
+      // Each authorization link stands alone in its own paragraph, so the body
+      // parser turns both into card slots the renderer stacks back to back.
+      content: [
+        "Two sessions are waiting for authorization.",
+        new URL("/computer-use/authorize/card-spacing-first", appUrl).href,
+        new URL("/computer-use/authorize/card-spacing-second", appUrl).href,
+      ].join("\n\n"),
+      runId,
+      seqId: 1,
+      createdAt: "2026-08-13T06:00:00Z",
+    },
+    {
+      id: "msg-card-spacing-completed",
+      threadId: cardSpacingThreadId,
+      eventType: "run.completed",
+      content: null,
+      runId,
+      runLifecycleEvent: "completed",
+      seqId: 2,
+      createdAt,
+    },
+  ];
+  await mockChatThread(page, {
+    agentId,
+    createdAt,
+    events,
+    selectedModel: null,
+    threadId: cardSpacingThreadId,
+    title: "Card slot spacing",
   });
 }
 
@@ -1066,6 +1161,39 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   });
 });
 
+test("forward composer stays inside the modal on narrow screens", async ({
+  page,
+}) => {
+  await enableChatForward(page);
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  const agentId = new URL(page.url()).pathname.match(
+    /^\/agents\/([^/]+)\/chat\/?$/,
+  )?.[1];
+  if (!agentId) {
+    throw new Error("Could not resolve the active agent from the chat URL");
+  }
+  await mockForwardLayoutThread(page, agentId);
+  await navigateToMockChatThread(page, forwardLayoutThreadId);
+
+  const assistantReply = page.getByText(
+    "Keep the forward composer within the modal.",
+    { exact: true },
+  );
+  await assistantReply.selectText();
+  await page.getByRole("button", { name: /^Forward\b/ }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Forward to" });
+  await dialog.getByRole("option").first().click();
+  const composer = dialog.locator(".zero-composer");
+
+  for (const width of [360, 320]) {
+    await page.setViewportSize({ width, height: 780 });
+    await expectInside(composer, dialog);
+  }
+});
+
 test("model change labels follow the divider at the right edge", async ({
   page,
 }) => {
@@ -1087,6 +1215,40 @@ test("model change labels follow the divider at the right edge", async ({
   await expectRightAlignedDivider(
     page.getByText("Next run will use Claude Opus 4.8", { exact: true }),
   );
+});
+
+test("consecutive body cards keep a block gap between them", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  const agentId = new URL(page.url()).pathname.match(
+    /^\/agents\/([^/]+)\/chat\/?$/,
+  )?.[1];
+  if (!agentId) {
+    throw new Error("Could not resolve the active agent from the chat URL");
+  }
+  await mockCardSpacingThread(page, agentId);
+  await navigateToMockChatThread(page, cardSpacingThreadId);
+
+  const cards = page.getByTestId("computer-use-authorization-card");
+  await expect(cards).toHaveCount(2);
+
+  // A card slot enters the markdown tree as a paragraph and leaves it as the
+  // card element, so without the block margin the two borders would touch.
+  await expect
+    .poll(async () => {
+      const [first, second] = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(1).boundingBox(),
+      ]);
+      if (!first || !second) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(second.y - (first.y + first.height) - cardSlotGapPx);
+    })
+    .toBeLessThan(2);
 });
 
 test("image preview frames stay fixed while delayed images load", async ({

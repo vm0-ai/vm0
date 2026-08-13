@@ -1,8 +1,8 @@
 import {
   type SlackOrgStatus,
   zeroIntegrationsSlackContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
+} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSlackOrgData: SlackOrgStatus = {

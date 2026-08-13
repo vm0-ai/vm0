@@ -5,8 +5,8 @@ import {
   isChatRunTerminalEventType,
   revokedChatEventIds,
   terminatedChatRunIds,
-} from "@vm0/api-contracts/contracts/chat-events";
-import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-events";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 

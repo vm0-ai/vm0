@@ -5,7 +5,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
@@ -18,17 +18,16 @@ import {
   googleDriveArtifactStatusLookup,
 } from "../services/google-drive-artifact-sync.service";
 import {
-  zeroChatSearch,
   zeroChatIndicators,
   zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
-  zeroChatThreadQueuedEvents,
   zeroChatThreadDraftIds,
   zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
+import { zeroChatSearch } from "../services/zero-chat-search.service";
 import {
   zeroChatThreadEventRows,
   zeroChatThreadEventSnapshot,
@@ -47,6 +46,7 @@ import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
+import { zeroChatThreadVideoModelRoutes } from "./zero-chat-threads-video-model";
 import { zeroChatThreadPatchRoutes } from "./zero-chat-threads-patch";
 import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
 import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
@@ -217,24 +217,6 @@ const listChatEventRowsInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: { rows: [...page.rows] },
-  };
-});
-
-const listQueuedChatEventsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.queued));
-  const events = await get(
-    zeroChatThreadQueuedEvents({
-      threadId: params.threadId,
-      userId: auth.userId,
-    }),
-  );
-  if (!events) {
-    return chatThreadNotFound();
-  }
-  return {
-    status: 200 as const,
-    body: { events: [...events] },
   };
 });
 
@@ -423,17 +405,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: chatThreadEventsContract.queued,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "chat-event:read",
-      },
-      listQueuedChatEventsInner$,
-    ),
-  },
-  {
     route: chatSearchContract.search,
     handler: authRoute(
       {
@@ -457,4 +428,5 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   ...zeroChatThreadPinRoutes,
   ...zeroChatThreadRenameRoutes,
   ...zeroChatThreadUnpinRoutes,
+  ...zeroChatThreadVideoModelRoutes,
 ];

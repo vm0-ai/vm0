@@ -9,7 +9,7 @@ RuleTester.it = it;
 
 const ruleTester = new RuleTester();
 // Keep the synthetic import out of the repository's real-import boundary scan.
-const schemaModule = `@vm0${"/db/schema/user"}`;
+const schemaModule = `@okouai${"/db/schema/user"}`;
 
 const preamble = `
   import { integer, pgTable, text } from "drizzle-orm/pg-core";

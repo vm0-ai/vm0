@@ -1,4 +1,4 @@
-import { cn, PopoverContent } from "@vm0/ui";
+import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";

@@ -15,8 +15,8 @@ import {
   TrendingUp,
   type LucideIcon,
 } from "lucide-react";
-import { Button, cn } from "@vm0/ui";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { Button, cn } from "@okouai/ui";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import {
   onboardingDraft$,

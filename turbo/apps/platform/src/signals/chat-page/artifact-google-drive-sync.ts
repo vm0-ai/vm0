@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";

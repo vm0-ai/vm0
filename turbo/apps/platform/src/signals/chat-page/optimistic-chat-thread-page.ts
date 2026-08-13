@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   chatThreadModelSelectionContract,
   chatThreadsContract,
@@ -7,9 +7,9 @@ import {
   type ResolvedAttachFile,
   type UserMessageDocument,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
-import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { OrgModelPoliciesResponse } from "@okouai/api-contracts/contracts/model-providers";
+import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import { accept } from "../../lib/accept.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import { nowDate } from "../../lib/time.ts";
@@ -49,7 +49,7 @@ import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing
 import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import {
   textToMessageDocument,
@@ -339,6 +339,7 @@ const mintOptimisticThreadWithEvent$ = command(
       serviceTier: args.serviceTier,
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
+      selectedVideoModel: null,
       createdAt,
     } satisfies OptimisticChatThreadEvent);
   },

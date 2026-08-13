@@ -1,6 +1,6 @@
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import type { OrgPlanEntitlementSourceMetadata } from "@vm0/db/jsonb-contracts/org-plan-entitlement";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import type { OrgPlanEntitlementSourceMetadata } from "@okouai/db/jsonb-contracts/org-plan-entitlement";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 import {
   boolean,

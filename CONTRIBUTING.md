@@ -34,7 +34,7 @@ left empty.
 
 1. Fork and clone the repository
 2. Open VS Code and run `Dev Containers: Open Workspace in Container` from the command palette
-3. Select the `vm0.code-workspace` file in the project root
+3. Select the `okou.code-workspace` file in the project root
 4. The container will build and set up the development environment automatically
 5. Initialize git hooks: `lefthook install`
 
@@ -67,7 +67,7 @@ cd turbo && pnpm install && pnpm -F web db:migrate && pnpm build && pnpm test
 ```
 
 - `db:migrate` sets up the local database schema
-- `pnpm build` builds shared packages (e.g. `@vm0/core`)
+- `pnpm build` builds shared packages (e.g. `@okouai/core`)
 
 See [Database Migrations](turbo/packages/db/MIGRATIONS.md) for migration rollout,
 validation, and online SQL patterns.

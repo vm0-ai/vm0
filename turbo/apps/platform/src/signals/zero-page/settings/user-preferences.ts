@@ -2,8 +2,8 @@ import { command, computed, state } from "ccstate";
 import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { zeroMorningBriefContract } from "@okouai/api-contracts/contracts/zero-morning-brief";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { accept } from "../../../lib/accept.ts";

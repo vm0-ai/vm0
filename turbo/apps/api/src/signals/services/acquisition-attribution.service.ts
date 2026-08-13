@@ -1,8 +1,8 @@
 import {
   adAttributionMetadataSchema,
   type AdAttributionMetadata,
-} from "@vm0/api-contracts/contracts/zero-attribution";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/api-contracts/contracts/zero-attribution";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, isNull } from "drizzle-orm";
 import { command } from "ccstate";
 

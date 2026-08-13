@@ -2,7 +2,7 @@ import { useGet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { JSX, ReactNode } from "react";
 import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";

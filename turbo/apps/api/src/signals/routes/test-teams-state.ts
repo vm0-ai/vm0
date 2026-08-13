@@ -3,26 +3,26 @@ import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getVm0Vendor,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   testTeamsStateContract,
   type TestTeamsStatePostBody,
-} from "@vm0/api-contracts/contracts/test-teams-state";
+} from "@okouai/api-contracts/contracts/test-teams-state";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/agent-compose";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route";
+import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
+import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
+import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   desc,

@@ -1,7 +1,7 @@
 import type {
   GenerationOutputKind,
   RegistryEntry,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 
 interface StyledImageCompilationOptions {
   readonly prompt: string;

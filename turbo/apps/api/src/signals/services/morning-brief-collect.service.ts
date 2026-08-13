@@ -8,10 +8,10 @@
  * failed source is annotated in the input JSON instead of blocking the brief.
  */
 import { z } from "zod";
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, desc, eq, gt, gte, isNull, lte, ne, or } from "drizzle-orm";
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";

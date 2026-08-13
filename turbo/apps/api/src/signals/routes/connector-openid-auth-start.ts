@@ -1,6 +1,6 @@
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
-import { buildConnectorOpenIdAuthAuthorizationUrlWithMethod } from "@vm0/connectors/auth-providers";
-import type { AuthUrlResult } from "@vm0/connectors/auth-providers/provider-flow-types";
+import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
+import { buildConnectorOpenIdAuthAuthorizationUrlWithMethod } from "@okouai/connectors/auth-providers";
+import type { AuthUrlResult } from "@okouai/connectors/auth-providers/provider-flow-types";
 
 import { generateConnectorOAuthState } from "../../lib/connector-oauth-state";
 

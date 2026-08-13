@@ -5,9 +5,9 @@ import {
   type ApplyUserPermissionGrant,
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";

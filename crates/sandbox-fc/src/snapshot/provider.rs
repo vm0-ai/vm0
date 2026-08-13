@@ -139,6 +139,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_provider_rejects_symlinked_complete_marker() {
+        let fixture = SnapshotOutputFixture::new().await;
+        let output = &fixture.output;
+        fixture.write_required_snapshot_artifacts().await;
+        let target = output.dir().join("complete-marker-target");
+        tokio::fs::write(&target, SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write marker symlink target");
+        std::os::unix::fs::symlink(&target, output.complete_marker())
+            .expect("create complete marker symlink");
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "symlinked complete marker must not commit the snapshot"
+        );
+    }
+
+    #[tokio::test]
     async fn snapshot_provider_rejects_valid_marker_with_missing_artifact() {
         let fixture = SnapshotOutputFixture::new().await;
         let output = &fixture.output;

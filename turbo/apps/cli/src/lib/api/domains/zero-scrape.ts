@@ -2,8 +2,8 @@ import {
   zeroScrapeContract,
   type ZeroScrapeRequest,
   type ZeroScrapeResponse,
-} from "@vm0/api-contracts/contracts/zero-scrape";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/zero-scrape";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 

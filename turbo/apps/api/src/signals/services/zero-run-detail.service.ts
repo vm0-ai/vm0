@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { NetworkLogsResponse } from "@vm0/api-contracts/contracts/runs";
-import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { NetworkLogsResponse } from "@okouai/api-contracts/contracts/runs";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { and, eq } from "drizzle-orm";
 
 import { db$, type Db } from "../external/db";

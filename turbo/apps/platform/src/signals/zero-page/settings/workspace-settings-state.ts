@@ -5,20 +5,20 @@ import {
   zeroOrgContract,
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+} from "@okouai/api-contracts/contracts/zero-org";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
+} from "@okouai/api-contracts/contracts/zero-org-members";
 import type {
   OrgInvitationPurchasePreviewResponse,
   OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
-import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/org-members";
+import type { UsagePackUsd } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
@@ -432,7 +432,7 @@ const uploadOrgLogo$ = command(
   ): Promise<{ readonly logoUrl: string | null }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const client = get(zeroClient$)(orgLogoContract);
     const result = await accept(
       client.post({
         body: formData,
@@ -447,7 +447,7 @@ const uploadOrgLogo$ = command(
 
 export const loadOrgLogo$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const client = get(zeroClient$)(orgLogoContract);
     const result = await accept(
       client.get({
         fetchOptions: { signal },

@@ -6,11 +6,11 @@ import {
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
-import { feishuUserAgentPreferences } from "@vm0/db/schema/feishu-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import { feishuUserAgentPreferences } from "@okouai/db/schema/feishu-user-agent-preference";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   buildFeishuHelpMessage,
   buildFeishuLoginMessage,

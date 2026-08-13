@@ -1,4 +1,4 @@
-import { zeroPeopleSearchContract } from "@vm0/api-contracts/contracts/zero-people-search";
+import { zeroPeopleSearchContract } from "@okouai/api-contracts/contracts/zero-people-search";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

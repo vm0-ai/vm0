@@ -1,5 +1,5 @@
 {
-  "name": "@vm0/eslint-rules",
+  "name": "@okouai/eslint-rules",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -30,8 +30,8 @@
   "devDependencies": {
     "@typescript-eslint/rule-tester": "^8.66.0",
     "@types/node": "^24.3.0",
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",

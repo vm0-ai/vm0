@@ -1,8 +1,8 @@
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
-import { usagePackSubscriptions } from "@vm0/db/schema/usage-pack-subscription";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
+import { usagePackSubscriptions } from "@okouai/db/schema/usage-pack-subscription";
 import { eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { accept } from "../../../lib/accept.ts";

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { HostedSitePrepareRequest } from "@vm0/api-contracts/contracts/zero-host";
+import type { HostedSitePrepareRequest } from "@okouai/api-contracts/contracts/zero-host";
 
 export function hostedTextFile(
   path: string,

@@ -3,7 +3,7 @@ import { useGet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Check, Loader2, X } from "lucide-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import {
   morningBriefUnsubscribeStatus$,
   type MorningBriefUnsubscribeStatus,

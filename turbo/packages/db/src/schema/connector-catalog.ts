@@ -12,7 +12,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@vm0/db/jsonb-contracts/connector-catalog";
+import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@okouai/db/jsonb-contracts/connector-catalog";
 
 export const CONNECTOR_CATALOG_ATTEMPT_OUTCOMES = [
   "accepted",

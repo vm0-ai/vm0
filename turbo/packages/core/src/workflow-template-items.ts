@@ -1,4 +1,4 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 
 export interface WorkflowTemplateItem {
   readonly id: `workflow-template:${string}`;

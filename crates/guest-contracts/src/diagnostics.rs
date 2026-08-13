@@ -50,6 +50,9 @@ pub struct FailureDiagnostic {
     /// Bounded event-delivery failure details, when delivery was terminally incomplete.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_delivery: Option<EventDeliveryDiagnostic>,
+    /// Workload-local hard-limit counters observed for the failed CLI process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workload_resource_limit: Option<WorkloadResourceLimitDiagnostic>,
 }
 
 impl FailureDiagnostic {
@@ -75,6 +78,7 @@ impl FailureDiagnostic {
             prompt_bytes: prompt.prompt_bytes,
             first_line_bytes: prompt.first_line_bytes,
             event_delivery: None,
+            workload_resource_limit: None,
         }
     }
 
@@ -138,6 +142,44 @@ impl FailureDiagnostic {
     pub fn with_event_delivery(mut self, event_delivery: EventDeliveryDiagnostic) -> Self {
         self.event_delivery = Some(event_delivery);
         self
+    }
+
+    /// Attach workload-local hard-limit counters.
+    #[must_use]
+    pub fn with_workload_resource_limit(
+        mut self,
+        workload_resource_limit: WorkloadResourceLimitDiagnostic,
+    ) -> Self {
+        self.workload_resource_limit = Some(workload_resource_limit);
+        self
+    }
+}
+
+/// Bounded cgroup-v2 hard-limit counters observed for a failed workload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkloadResourceLimitDiagnostic {
+    /// Number of workload allocations rejected by `memory.max`.
+    pub memory_max_events: u64,
+    /// Number of workload OOM events.
+    pub memory_oom_events: u64,
+    /// Number of workload processes killed by the OOM killer.
+    pub memory_oom_kill_events: u64,
+    /// Number of workload cgroups killed as an OOM group.
+    pub memory_oom_group_kill_events: u64,
+    /// Number of workload forks or clones rejected by `pids.max`.
+    pub pids_max_events: u64,
+}
+
+impl WorkloadResourceLimitDiagnostic {
+    /// Whether at least one hard-limit event was observed.
+    #[must_use]
+    pub const fn has_events(self) -> bool {
+        self.memory_max_events > 0
+            || self.memory_oom_events > 0
+            || self.memory_oom_kill_events > 0
+            || self.memory_oom_group_kill_events > 0
+            || self.pids_max_events > 0
     }
 }
 
@@ -850,6 +892,39 @@ mod tests {
     }
 
     #[test]
+    fn failure_diagnostic_serializes_workload_resource_limit_counters() {
+        let workload_resource_limit = WorkloadResourceLimitDiagnostic {
+            memory_max_events: 5,
+            memory_oom_events: 2,
+            memory_oom_kill_events: 1,
+            memory_oom_group_kill_events: 0,
+            pids_max_events: 3,
+        };
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("exhaust the workload"),
+        )
+        .with_cli_exit_code(137)
+        .with_workload_resource_limit(workload_resource_limit);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(
+            json["workloadResourceLimit"],
+            serde_json::json!({
+                "memoryMaxEvents": 5,
+                "memoryOomEvents": 2,
+                "memoryOomKillEvents": 1,
+                "memoryOomGroupKillEvents": 0,
+                "pidsMaxEvents": 3,
+            })
+        );
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
     fn failure_diagnostic_serializes_cli_termination() {
         let cli_termination = CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
             .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))
@@ -1433,5 +1508,6 @@ mod tests {
         assert_eq!(diagnostic.failure_reason, None);
         assert_eq!(diagnostic.cli_termination, None);
         assert_eq!(diagnostic.event_delivery, None);
+        assert_eq!(diagnostic.workload_resource_limit, None);
     }
 }

@@ -4,7 +4,7 @@ import {
   type ConnectorAuthCodeGrantConfig,
   type ConnectorExternalCodeGrantConfig,
   type ConnectorOpenIdAuthGrantConfig,
-} from "@vm0/connectors/connector-config";
+} from "@okouai/connectors/connector-config";
 import {
   connectorAuthClientIdentity,
   connectorAuthMethodAccessMetadata,
@@ -16,7 +16,7 @@ import {
   type ConnectorAuthClientIdentity,
   type ConnectorEnvReader,
   type StaticConnectorAuthClient,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import type {
   AuthCodeConnectorAuthProvider,
   ConnectorAuthProviderRefreshResultBase,

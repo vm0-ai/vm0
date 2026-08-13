@@ -2,8 +2,8 @@ import {
   CHAT_EVENT_CONTENT_TEXT_TYPES,
   CHAT_EVENT_USER_MESSAGE_TEXT_TYPES,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+} from "@okouai/api-contracts/contracts/chat-events";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   and,
   eq,

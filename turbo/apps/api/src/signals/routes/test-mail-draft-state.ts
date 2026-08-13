@@ -1,5 +1,5 @@
-import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
-import { mailDrafts } from "@vm0/db/schema/mail-draft";
+import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
+import { mailDrafts } from "@okouai/db/schema/mail-draft";
 import { computed } from "ccstate";
 import { eq } from "drizzle-orm";
 

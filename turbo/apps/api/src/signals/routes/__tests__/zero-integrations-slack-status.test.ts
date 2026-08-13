@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
 import { createStore } from "ccstate";
 import { beforeEach } from "vitest";
 

@@ -1,5 +1,5 @@
 import type { UIEvent as ReactUIEvent } from "react";
-import type { ArtifactCatalogKind } from "@vm0/api-contracts/contracts/artifact-catalog";
+import type { ArtifactCatalogKind } from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
   AlertTriangle,
   ChevronRight,
@@ -11,11 +11,11 @@ import {
   Video,
   Globe,
 } from "lucide-react";
-import { r2ImageTransformUrl } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { r2ImageTransformUrl } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
-import { Alert, AlertDescription } from "@vm0/ui/components/ui/alert";
+import { cn } from "@okouai/ui";
+import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
 
 import {

@@ -2,7 +2,7 @@ import {
   type GenerationOutputKind,
   type VideoTemplateRegistryEntry,
   RESOURCE_REGISTRY_VERSION,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 
 interface VideoTemplateAuthoringOptions {
   readonly prompt: string;

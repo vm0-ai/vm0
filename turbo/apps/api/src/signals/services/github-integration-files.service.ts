@@ -1,4 +1,4 @@
-import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { and, eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";

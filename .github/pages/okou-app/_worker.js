@@ -5,8 +5,10 @@ const PREVIEW_API_ORIGIN_PATTERN =
 const API_ORIGIN_MARKER_PATTERN =
   /<meta\s+name=["']vm0-api-origin["']\s+content=["']([^"']*)["']\s*\/?>/iu;
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
-const PRODUCTION_APP_HOSTS = new Set(["app.okou.ai", "app.vm0.ai"]);
-const PRODUCTION_API_ORIGIN = "https://api.vm0.ai";
+const PRODUCTION_API_ORIGINS = new Map([
+  ["app.okou.ai", "https://api.okou.ai"],
+  ["app.vm0.ai", "https://api.vm0.ai"],
+]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
 const SHARED_DESCRIPTION = "A conversation shared from Okou";
 const APP_IMAGE = "https://static.vm0.io/web/og-image.png";
@@ -53,8 +55,9 @@ function apiOrigin(requestUrl, indexHtml) {
     }
     return marker;
   }
-  if (PRODUCTION_APP_HOSTS.has(requestUrl.hostname)) {
-    return PRODUCTION_API_ORIGIN;
+  const productionApiOrigin = PRODUCTION_API_ORIGINS.get(requestUrl.hostname);
+  if (productionApiOrigin) {
+    return productionApiOrigin;
   }
   throw new Error("Shared-thread API origin is unavailable");
 }

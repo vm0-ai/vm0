@@ -11,14 +11,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
   BrandGoogleDrive,
-} from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
+} from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { isConnectorAppOauthCallbackEnabled } from "@okouai/connectors/app-oauth-callback";
 import {
   zeroConnectorOauthStartContract,
   zeroConnectorOpenIdStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { accept } from "../../lib/accept.ts";

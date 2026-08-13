@@ -3,8 +3,8 @@ import {
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { logsListContract } from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { logsListContract } from "@okouai/api-contracts/contracts/logs";
 import { StoreProvider } from "ccstate-react";
 import { describe, expect, it } from "vitest";
 

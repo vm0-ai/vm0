@@ -1,5 +1,5 @@
-import { config as baseConfig, oxlint } from "@vm0/eslint-config/base";
-import ccstatePlugin from "@vm0/eslint-rules/ccstate";
+import { config as baseConfig, oxlint } from "@okouai/eslint-config/base";
+import ccstatePlugin from "@okouai/eslint-rules/ccstate";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
 
@@ -350,7 +350,7 @@ export default [
             {
               name: "@tabler/icons-react",
               message:
-                "Use lucide-react or a shared @vm0/ui brand icon instead.",
+                "Use lucide-react or a shared @okouai/ui brand icon instead.",
             },
           ],
         },

@@ -4,10 +4,10 @@ import {
   FEISHU_OAUTH_SCOPES,
   type FeishuConnectStatus,
   type FeishuInstallationStatus,
-} from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";

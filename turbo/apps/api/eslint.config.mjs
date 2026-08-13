@@ -2,8 +2,8 @@ import fs from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { config, oxlint } from "@vm0/eslint-config/base";
-import { apiLintPlugin } from "@vm0/eslint-rules/api";
+import { config, oxlint } from "@okouai/eslint-config/base";
+import { apiLintPlugin } from "@okouai/eslint-rules/api";
 
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -524,13 +524,13 @@ export default [
         {
           paths: [
             {
-              name: "@vm0/db/schema",
+              name: "@okouai/db/schema",
               message: apiTestExternalBehaviorMessage,
             },
           ],
           patterns: [
             {
-              group: ["@vm0/db/schema/*"],
+              group: ["@okouai/db/schema/*"],
               message: apiTestExternalBehaviorMessage,
             },
             {

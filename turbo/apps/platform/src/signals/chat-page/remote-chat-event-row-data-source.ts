@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import {
   chatEventRowV4Schema,
   type ChatEventRowV4,
-} from "@vm0/api-contracts/contracts/chat-event-rows";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-event-rows";
+import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";

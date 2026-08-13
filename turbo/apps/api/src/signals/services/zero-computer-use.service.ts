@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
-import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
+import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
   and,
   asc,
@@ -30,7 +30,7 @@ import {
   type ComputerUseWriteCommandKind,
   type StoredPluginContentPointer,
   type StoredScreenshotPointer,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
   COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES,
@@ -40,13 +40,13 @@ import {
   computerUsePluginCallRequiredCapabilities,
   isComputerUseMcpPluginCallPayload,
   isComputerUsePluginCallPayload,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
 import {
   computerUseCommandAuditEvents,
   computerUseCommands,
   computerUseHosts,
-} from "@vm0/db/schema/computer-use-host";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/computer-use-host";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";

@@ -6,9 +6,9 @@ import {
   type ConnectorReconnectReason,
   type ConnectorResponse,
   type ScopeDiffResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodOwnedSecretNames,
@@ -16,19 +16,19 @@ import {
   connectorAuthMethodRuntimeMetadata,
   connectorAuthMethodScopeDiff,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-auth-method";
-import { revokeConnectorAuthMethodAccessTokenWithMethod } from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/connector-auth-method";
+import { revokeConnectorAuthMethodAccessTokenWithMethod } from "@okouai/connectors/auth-providers";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorManualGrantFieldConfig,
-} from "@vm0/connectors/connector-config";
+} from "@okouai/connectors/connector-config";
 import {
   getAllFeatureStates,
   type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/core/feature-switch";
+import { connectors } from "@okouai/db/schema/connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 

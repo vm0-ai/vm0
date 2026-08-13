@@ -6,7 +6,7 @@ import {
   type AgentEvent,
   type AgentMessage,
 } from "@earendil-works/pi-agent-core";
-import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
+import type { RunSkillSnapshot } from "@okouai/api-contracts/contracts/runners";
 
 import {
   isPiAgentModelSupported as isPiAgentModelSupportedImpl,

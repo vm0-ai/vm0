@@ -22,7 +22,7 @@ turbo/apps/api/src/signals/routes/__tests__/
 ## Route Test Structure
 
 ```typescript
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -77,7 +77,7 @@ describe("GET /api/okou/agents", () => {
 
 Key points:
 
-1. Import the contract from `@vm0/api-contracts` and the matching route array,
+1. Import the contract from `@okouai/api-contracts` and the matching route array,
    then call it through `setupApp({ context, routes })(contract)`.
 2. Use `accept()` to narrow the response type and produce useful failure output.
 3. Put `testContext()` at module scope.

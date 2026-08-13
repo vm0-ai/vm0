@@ -6,7 +6,6 @@ import { getCommand } from "./get";
 import { listCommand } from "./list";
 import { messagesCommand } from "./messages";
 import { modelCommand } from "./model";
-import { queuedCommand } from "./queued";
 import { renameCommand } from "./rename";
 import { sendCommand } from "./send";
 
@@ -15,7 +14,6 @@ export const zeroChatCommand = new Command()
   .description("Manage web chat threads")
   .addCommand(createCommand)
   .addCommand(sendCommand)
-  .addCommand(queuedCommand)
   .addCommand(cancelCommand)
   .addCommand(getCommand)
   .addCommand(messagesCommand)
@@ -28,7 +26,6 @@ export const zeroChatCommand = new Command()
 Examples:
   Create a chat:     okou chat create "Launch plan"
   Send a message:    okou chat send --text "Continue"
-  Show queued:       okou chat queued --thread-id <thread-id>
   Cancel a run:      okou chat cancel --thread-id <thread-id> --run-id <run-id>
   List agent chats:  okou chat list
   Show this chat:    okou chat get

@@ -3,7 +3,7 @@ import { timeout } from "signal-timers";
 import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "@vm0/api-contracts/contracts/zero-voice-io-quota";
+} from "@okouai/api-contracts/contracts/zero-voice-io-quota";
 import { fetch$ } from "../fetch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { isOrgAdmin$ } from "../org.ts";
@@ -25,7 +25,7 @@ import {
   tapError,
   withCleanup,
 } from "../utils.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import { now as currentTimeMs } from "../../lib/time.ts";

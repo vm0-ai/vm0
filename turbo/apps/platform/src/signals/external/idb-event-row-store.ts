@@ -2,7 +2,7 @@ import type { IDBPDatabase } from "idb";
 import {
   chatEventRowV4Schema,
   type ChatEventRowV4,
-} from "@vm0/api-contracts/contracts/chat-event-rows";
+} from "@okouai/api-contracts/contracts/chat-event-rows";
 import { logger } from "../log.ts";
 import { onRejection } from "../utils.ts";
 import {

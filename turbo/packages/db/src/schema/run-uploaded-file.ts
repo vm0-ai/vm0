@@ -19,7 +19,7 @@ import type {
   CanonicalAssetProvenance,
   CanonicalAssetSlackDeliveryDestination,
   RunUploadedFileMetadata,
-} from "@vm0/db/jsonb-contracts/run-uploaded-file";
+} from "@okouai/db/jsonb-contracts/run-uploaded-file";
 
 export const RUN_UPLOADED_FILE_SOURCES = [
   "automation-schedule",

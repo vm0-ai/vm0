@@ -19,19 +19,19 @@ while IFS= read -r package_json; do
       (.devDependencies // {}),
       (.peerDependencies // {}),
       (.optionalDependencies // {})
-    ] | any(has("@vm0/db"))
+    ] | any(has("@okouai/db"))
   ' "$package_json" >/dev/null; then
-    echo "::error file=$package_json::Only turbo/apps/api and turbo/packages/db may depend on @vm0/db."
+    echo "::error file=$package_json::Only turbo/apps/api and turbo/packages/db may depend on @okouai/db."
     failed=1
   fi
 done < <(find turbo -name package.json -not -path "*/node_modules/*" | sort)
 
-db_import_pattern="from ['\"]@vm0/db(/|['\"])|require\\(['\"]@vm0/db(/|['\"])|import\\(['\"]@vm0/db(/|['\"])"
+db_import_pattern="from ['\"]@okouai/db(/|['\"])|require\\(['\"]@okouai/db(/|['\"])|import\\(['\"]@okouai/db(/|['\"])"
 if matches=$(git grep -n -E "$db_import_pattern" -- \
   turbo \
   ':!turbo/apps/api' \
   ':!turbo/packages/db'); then
-  echo "::error::Only turbo/apps/api and turbo/packages/db may import @vm0/db."
+  echo "::error::Only turbo/apps/api and turbo/packages/db may import @okouai/db."
   echo "$matches"
   failed=1
 fi

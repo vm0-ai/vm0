@@ -1,7 +1,7 @@
 import {
   desktopZeroMigrationPolicySchema,
   type DesktopZeroMigrationRolloutMode,
-} from "@vm0/api-contracts/contracts/desktop-updates";
+} from "@okouai/api-contracts/contracts/desktop-updates";
 import {
   readDesktopPreferenceRecord,
   writeDesktopPreferenceRecord,

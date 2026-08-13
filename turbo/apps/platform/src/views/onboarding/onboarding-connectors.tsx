@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,

@@ -48,6 +48,7 @@ export const runWorkflowAutomationNow$ = command(
           automation,
           workflowName: args.automationContext.workflowName,
           displayPrompt: workflowAutomationPrompt(args.automationContext),
+          agentRunSource: args.agentRunSource,
           workflowAutomationEventType: args.automationContext.eventType,
           workflowAutomationEventPayload:
             persistedWorkflowAutomationEventPayload(

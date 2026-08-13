@@ -2,12 +2,12 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderCodexRuntimeConfig,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   getModelProviderTypeForSurfaceProtocol,
   type ModelProviderSurfaceProtocol,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import type { ExpandedFirewallConfig } from "@okouai/connectors/firewall-types";
 
 export const GATEWAY_RUNTIME_SECRET_NAME = "VM0_MODEL_PROVIDER_API_KEY";
 

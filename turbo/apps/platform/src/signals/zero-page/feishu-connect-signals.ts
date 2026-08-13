@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroFeishuBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-browser-connect";
+import { zeroFeishuBrowserConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-browser-connect";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

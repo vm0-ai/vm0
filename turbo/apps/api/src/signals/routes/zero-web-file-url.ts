@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroWebFilesContract } from "@vm0/api-contracts/contracts/zero-web-files";
+import { zeroWebFilesContract } from "@okouai/api-contracts/contracts/zero-web-files";
 
 import { env } from "../../lib/env";
 import { notFound } from "../../lib/error";

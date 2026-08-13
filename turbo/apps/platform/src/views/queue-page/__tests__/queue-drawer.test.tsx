@@ -3,20 +3,20 @@ import {
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
 import type {
   ConcurrencyInfo,
   QueueEntry,
   QueueResponse,
-} from "@vm0/api-contracts/contracts/runs";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {

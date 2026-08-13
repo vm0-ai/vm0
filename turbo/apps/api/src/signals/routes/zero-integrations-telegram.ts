@@ -1,10 +1,10 @@
 import { command, computed } from "ccstate";
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
-import { integrationsTelegramBotListContract } from "@vm0/api-contracts/contracts/integrations";
-import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
-import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
+import { integrationsTelegramBotListContract } from "@okouai/api-contracts/contracts/integrations";
+import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
+import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 
 import {
   organizationAuthContext$,
