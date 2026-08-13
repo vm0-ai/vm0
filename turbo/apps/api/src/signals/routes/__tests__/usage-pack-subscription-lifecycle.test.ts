@@ -30,6 +30,7 @@ const TEST_PRICE_PACK_20 = "price_usage_pack_lifecycle_20";
 const TEST_PRICE_PACK_50 = "price_usage_pack_lifecycle_50";
 const TEST_PRICE_PACK_100 = "price_usage_pack_lifecycle_100";
 const TEST_PRICE_PACK_200 = "price_usage_pack_lifecycle_200";
+const TEST_PRICE_ATOM_GRANT = "price_usage_pack_lifecycle_atom_grant";
 
 type UsagePackUsd = 20 | 50 | 100 | 200;
 
@@ -99,6 +100,7 @@ function configureUsagePackEnvironment(): void {
   mockEnv("ZERO_PRICE_USAGE_PACK_50", TEST_PRICE_PACK_50);
   mockEnv("ZERO_PRICE_USAGE_PACK_100", TEST_PRICE_PACK_100);
   mockEnv("ZERO_PRICE_USAGE_PACK_200", TEST_PRICE_PACK_200);
+  mockEnv("ATOM_GRANT_PRICE", TEST_PRICE_ATOM_GRANT);
   mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_usage_pack_lifecycle");
 }
 
@@ -521,6 +523,103 @@ describe("usage pack subscription Stripe lifecycle", () => {
         expiresAt: new Date(paidPeriod.end * 1000).toISOString(),
       },
     ]);
+  });
+
+  it("grants Atom usage pack credits to one member in the exact main subscription period", async () => {
+    const subscribedUserId = `user_${randomUUID()}`;
+    const grantedUserId = `user_${randomUUID()}`;
+    const fixture = await seedUsagePackLifecycle([
+      { userId: subscribedUserId, usagePackUsd: 20 },
+    ]);
+    const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+    const paidPeriod = period(0);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture, paidPeriod, quantities),
+    );
+    await postStripeEvent(
+      stripeEvent(
+        "invoice.paid",
+        paidInvoice(fixture, {
+          invoiceId: `in_${randomUUID()}`,
+          paidPeriod,
+          quantities,
+        }),
+      ),
+      200,
+    );
+
+    const atomInvoiceId = `in_atom_usage_pack_${randomUUID()}`;
+    const atomInvoice = {
+      id: atomInvoiceId,
+      customer: fixture.customerId,
+      subtotal: 0,
+      metadata: {
+        type: "atom_grant",
+        purpose: "atom_grant",
+        source: "atom_usage_pack_credits",
+        grantType: "usage_pack_credits",
+        orgId: fixture.orgId,
+        userId: grantedUserId,
+        creditsAmount: "7500",
+        stripeSubscriptionId: fixture.subscriptionId,
+        usagePackSubscriptionId: fixture.usagePackSubscriptionId,
+        currentPeriodStart: new Date(paidPeriod.start * 1000).toISOString(),
+        currentPeriodEnd: new Date(paidPeriod.end * 1000).toISOString(),
+        creditsExpiresAt: new Date(paidPeriod.end * 1000).toISOString(),
+      },
+      parent: null,
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: `il_${randomUUID()}`,
+            quantity: 1,
+            price: { id: TEST_PRICE_ATOM_GRANT },
+            period: paidPeriod,
+            parent: { type: "invoice_item_details" },
+          },
+        ],
+      },
+    };
+    await postStripeEvent(stripeEvent("invoice.paid", atomInvoice), 200);
+    await postStripeEvent(stripeEvent("invoice.paid", atomInvoice), 200);
+
+    await expect(grantRows(fixture)).resolves.toStrictEqual(
+      expect.arrayContaining([
+        {
+          userId: grantedUserId,
+          grantType: "bonus",
+          originalAmount: 7500,
+          expiresAt: new Date(paidPeriod.end * 1000).toISOString(),
+        },
+      ]),
+    );
+    expect((await readUsagePackState(fixture)).fulfillmentInvoiceIds).toContain(
+      atomInvoiceId,
+    );
+
+    await postStripeEvent(
+      stripeEvent("invoice.paid", {
+        ...atomInvoice,
+        id: `in_atom_wrong_period_${randomUUID()}`,
+        metadata: {
+          ...atomInvoice.metadata,
+          currentPeriodEnd: new Date((paidPeriod.end + 1) * 1000).toISOString(),
+          creditsExpiresAt: new Date((paidPeriod.end + 1) * 1000).toISOString(),
+        },
+        lines: {
+          ...atomInvoice.lines,
+          data: atomInvoice.lines.data.map((line) => {
+            return {
+              ...line,
+              period: { ...paidPeriod, end: paidPeriod.end + 1 },
+            };
+          }),
+        },
+      }),
+      500,
+    );
+    await expect(grantRows(fixture)).resolves.toHaveLength(3);
   });
 
   it("rejects an invoice line that extends beyond the current Stripe period", async () => {
