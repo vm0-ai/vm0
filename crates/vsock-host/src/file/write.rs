@@ -562,7 +562,7 @@ impl VsockHost {
         // Write chunks to a per-call temp file, then atomic rename. The
         // suffix prevents concurrent large writes to the same destination
         // from appending to or cleaning up each other's staging file.
-        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
+        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_temp_seq());
         let quoted_tmp = quote_shell_arg(&tmp);
         let rm_tmp = format!("rm -f -- {quoted_tmp}");
         let cleanup_armed = Arc::new(AtomicBool::new(false));
