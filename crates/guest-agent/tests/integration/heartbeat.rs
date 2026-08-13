@@ -9,22 +9,25 @@ use tokio_util::sync::CancellationToken;
 // Heartbeat
 // =========================================================================
 
-async fn wait_for_heartbeat_requests(
-    server: &crate::common::ControlledHttpServer,
-    expected: usize,
-) {
+async fn wait_for_count(count: impl Fn() -> usize, expected: usize, context: &str) {
     for _ in 0..1_000 {
-        if server.request_count() >= expected {
+        if count() >= expected {
             return;
         }
         tokio::task::yield_now().await;
     }
 
     assert!(
-        server.request_count() >= expected,
-        "expected at least {expected} heartbeat requests, observed {}",
-        server.request_count(),
+        count() >= expected,
+        "expected at least {expected} {context}, observed {}",
+        count(),
     );
+}
+
+async fn settle_runnable_tasks() {
+    for _ in 0..1_000 {
+        tokio::task::yield_now().await;
+    }
 }
 
 #[tokio::test]
@@ -110,7 +113,7 @@ async fn heartbeat_does_not_replay_overdue_ticks_after_slow_request() {
     });
 
     let started_at = Instant::now();
-    wait_for_heartbeat_requests(&server, 1).await;
+    wait_for_count(|| server.request_count(), 1, "heartbeat requests").await;
     let first_request = server
         .next_request(MOCK_CALL_TIMEOUT)
         .await
@@ -122,7 +125,7 @@ async fn heartbeat_does_not_replay_overdue_ticks_after_slow_request() {
         .respond(200)
         .expect("release slow initial heartbeat");
 
-    wait_for_heartbeat_requests(&server, 2).await;
+    wait_for_count(|| server.request_count(), 2, "heartbeat requests").await;
     let second_request = server
         .next_request(MOCK_CALL_TIMEOUT)
         .await
@@ -134,11 +137,21 @@ async fn heartbeat_does_not_replay_overdue_ticks_after_slow_request() {
     second_request
         .respond(200)
         .expect("complete overdue heartbeat");
+    wait_for_count(
+        || server.completed_response_count(),
+        2,
+        "completed heartbeat responses",
+    )
+    .await;
+    settle_runnable_tasks().await;
+    assert_eq!(
+        server.request_count(),
+        2,
+        "completing the overdue heartbeat must not replay another overdue tick"
+    );
 
     tokio::time::advance(INTERVAL - Duration::from_millis(1)).await;
-    for _ in 0..32 {
-        tokio::task::yield_now().await;
-    }
+    settle_runnable_tasks().await;
     assert_eq!(
         server.request_count(),
         2,
@@ -146,7 +159,7 @@ async fn heartbeat_does_not_replay_overdue_ticks_after_slow_request() {
     );
 
     tokio::time::advance(Duration::from_millis(1)).await;
-    wait_for_heartbeat_requests(&server, 3).await;
+    wait_for_count(|| server.request_count(), 3, "heartbeat requests").await;
     let third_request = server
         .next_request(MOCK_CALL_TIMEOUT)
         .await
@@ -160,6 +173,12 @@ async fn heartbeat_does_not_replay_overdue_ticks_after_slow_request() {
         .expect("complete resumed heartbeat");
 
     shutdown.cancel();
+    wait_for_count(
+        || usize::from(handle.is_finished()),
+        1,
+        "finished heartbeat tasks",
+    )
+    .await;
     let result = handle.await.expect("heartbeat task should not panic");
     clock_guard.abort();
     assert!(result.is_ok(), "heartbeat should stop cleanly: {result:?}");
