@@ -140,6 +140,7 @@ const creditPurchasePreviewTokenSchema = z.object({
   orgId: z.string().min(1),
   customerId: z.string().min(1),
   paymentMethodId: z.string().min(1),
+  couponId: z.string().min(1).nullable(),
   priceId: z.string().min(1),
   quantity: z.number().int().positive(),
   credits: z.number().int().positive(),
@@ -438,6 +439,19 @@ async function existingCreditPaymentMethodId(
   return paymentMethods.data[0]?.id ?? null;
 }
 
+async function existingCreditCouponId(
+  stripe: StripeClient,
+  customerId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const customer = await stripe.customers.retrieve(customerId);
+  signal.throwIfAborted();
+  if ("deleted" in customer && customer.deleted) {
+    return null;
+  }
+  return stripeObjectId(customer.discount?.source.coupon);
+}
+
 function assertCreditPurchasePreviewLine(
   invoice: StripeInvoice,
   purchaseId: string,
@@ -482,6 +496,11 @@ export const previewExistingBillingCreditPurchase$ = command(
     if (!paymentMethodId) {
       return null;
     }
+    const couponId = await existingCreditCouponId(
+      stripe,
+      billing.customerId,
+      signal,
+    );
 
     const priceId = activeCustomCreditUnitPriceId();
     if (!priceId) {
@@ -495,6 +514,7 @@ export const previewExistingBillingCreditPurchase$ = command(
       // Passing the subscribed customer would make `next` include renewal lines,
       // while confirmation creates a standalone invoice for this credit item.
       preview_mode: "next",
+      discounts: couponId ? [{ coupon: couponId }] : "",
       invoice_items: [
         {
           price: priceId,
@@ -520,6 +540,7 @@ export const previewExistingBillingCreditPurchase$ = command(
       orgId: args.orgId,
       customerId: billing.customerId,
       paymentMethodId,
+      couponId,
       priceId,
       quantity,
       credits,
@@ -678,6 +699,7 @@ export const confirmExistingBillingCreditPurchase$ = command(
         customer: preview.customerId,
         auto_advance: false,
         default_payment_method: preview.paymentMethodId,
+        discounts: preview.couponId ? [{ coupon: preview.couponId }] : "",
         metadata,
       },
       { idempotencyKey: `credit-purchase:${preview.purchaseId}:invoice` },

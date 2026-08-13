@@ -451,6 +451,7 @@ export interface StripeInvoicesApi {
       customer: string;
       auto_advance?: boolean;
       default_payment_method?: string;
+      discounts?: "" | { readonly coupon: string }[];
       metadata?: StripeMetadataParam;
     },
     options?: StripeRequestOptions,
@@ -491,6 +492,7 @@ export interface StripeInvoiceCreatePreviewParams {
   readonly subscription?: string;
   readonly schedule?: string;
   readonly preview_mode: "next" | "recurring";
+  readonly discounts?: "" | { readonly coupon: string }[];
   readonly invoice_items?: {
     readonly price: string;
     readonly quantity: number;

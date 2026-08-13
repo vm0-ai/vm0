@@ -10025,6 +10025,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       (rawParams) => {
         const params = rawParams as {
           readonly customer?: string;
+          readonly discounts?: "" | readonly { readonly coupon: string }[];
           readonly invoice_items?: readonly {
             readonly metadata?: Readonly<Record<string, string>>;
           }[];
@@ -10056,12 +10057,16 @@ describe("POST /api/zero/billing/credit-checkout", () => {
                 },
               ]
             : [];
+        const discounted =
+          Array.isArray(params.discounts) && params.discounts.length > 0;
         return Promise.resolve({
           id: `in_preview_${randomUUID()}`,
           hosted_invoice_url: null,
           customer: params.customer ?? null,
           metadata: {},
-          amount_due: 1800 + (subscriptionRenewalLines.length > 0 ? 10_000 : 0),
+          amount_due:
+            (discounted ? 1800 : 2000) +
+            (subscriptionRenewalLines.length > 0 ? 10_000 : 0),
           currency: "usd",
           status: null,
           lines: {
@@ -10259,13 +10264,23 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     );
   });
 
-  it("excludes subscription renewal and confirms a saved-billing credit purchase", async () => {
+  it("applies a customer coupon without including subscription renewal", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
+    const couponId = `coupon_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: fixture.subscriptionId,
       default_payment_method: paymentMethodId,
+    });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: fixture.customerId,
+      discount: {
+        source: {
+          type: "coupon",
+          coupon: couponId,
+        },
+      },
     });
     mockCreditPurchasePreview(fixture.customerId);
 
@@ -10297,6 +10312,11 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     expect(
       context.mocks.stripe.checkout.sessions.create,
     ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        discounts: [{ coupon: couponId }],
+      }),
+    );
     expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith(
       expect.not.objectContaining({ customer: fixture.customerId }),
     );
@@ -10384,6 +10404,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       expect.objectContaining({
         customer: fixture.customerId,
         default_payment_method: paymentMethodId,
+        discounts: [{ coupon: couponId }],
         metadata: expect.objectContaining({
           purpose: "credit_purchase",
           orgId: fixture.orgId,
@@ -10442,7 +10463,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       hosted_invoice_url: null,
       customer: fixture.customerId,
       metadata: { purpose: "credit_purchase" },
-      amount_due: 1800,
+      amount_due: 2000,
       currency: "usd",
       status: "draft",
       lines: { has_more: false, data: [] },
@@ -10549,7 +10570,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       hosted_invoice_url: null,
       customer: fixture.customerId,
       metadata: { purpose: "credit_purchase" },
-      amount_due: 1800,
+      amount_due: 2000,
       currency: "usd",
       status: "draft",
       lines: { has_more: false, data: [] },
