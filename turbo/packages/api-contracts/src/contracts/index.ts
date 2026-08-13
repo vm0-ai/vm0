@@ -296,9 +296,9 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
-  zeroMorningBriefContract,
-  type ZeroMorningBriefContract,
-} from "./zero-morning-brief";
+  morningBriefContract,
+  type MorningBriefContract,
+} from "./morning-brief";
 export {
   emailMorningBriefUnsubscribeContract,
   type EmailMorningBriefUnsubscribeContract,
