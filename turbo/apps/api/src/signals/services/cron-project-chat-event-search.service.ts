@@ -130,8 +130,8 @@ async function durableChatEventSearchSchemaAvailable(
   db: Pick<Db, "select">,
 ): Promise<boolean> {
   // DB/API compatibility fallback (#26762): new API code can precede migration
-  // 0915 for an observed maximum of ~102 minutes. Keep legacy projection ticks
-  // working until 0915 is visible; remove after the phase-2 cutover is deployed
+  // 0916 for an observed maximum of ~102 minutes. Keep legacy projection ticks
+  // working until 0916 is visible; remove after the phase-2 cutover is deployed
   // and its API rollback window closes.
   const [state] = await db
     .select({
