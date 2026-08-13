@@ -215,7 +215,7 @@ class _ResolvedFirewallAuth:
 
 def is_billable_firewall(firewall_name: str, vm_info: dict) -> bool:
     """Return whether this firewall should emit connector/model usage."""
-    return firewall_name in (vm_info.get("billableFirewalls") or [])
+    return firewall_name in vm_info["billableFirewalls"]
 
 
 def _prepare_firewall_metadata(
@@ -227,8 +227,6 @@ def _prepare_firewall_metadata(
     api_entry = allow.api_entry
     firewall_base = api_entry["base"]
     api_id = api_entry.get("id", firewall_base)
-    # billableFirewalls is optional in the TS schema; runner may omit the
-    # field entirely for non-vm0 / no-billable-connector runs.
     firewall_billable = is_billable_firewall(allow.name, vm_info)
 
     flow.metadata[metadata_keys.FIREWALL_BASE] = firewall_base

@@ -57,7 +57,10 @@ class TestRegistryAuthCacheEviction:
         set_last_force_refresh_monotonic_at(retained_key, 200.0)
 
         # Update registry: remove run-abc-123, add run-other
-        new_data = {"vms": {"10.200.0.99": {"runId": "run-other"}}, "updatedAt": 0}
+        new_data = {
+            "vms": {"10.200.0.99": {"runId": "run-other", "billableFirewalls": []}},
+            "updatedAt": 0,
+        }
         registry_file.write_text(json.dumps(new_data))
 
         registry.load_registry(str(registry_file))  # reload triggers eviction
@@ -218,11 +221,17 @@ class TestRegistryAuthCacheEviction:
             json.dumps(
                 {
                     "vms": {
-                        "10.200.0.1": {"runId": ""},
-                        "10.200.0.2": {},
-                        "10.200.0.3": {"runId": "run-active"},
-                        "10.200.0.4": {"runId": "  \t"},
-                        "10.200.0.5": {"runId": " run-active "},
+                        "10.200.0.1": {"runId": "", "billableFirewalls": []},
+                        "10.200.0.2": {"billableFirewalls": []},
+                        "10.200.0.3": {
+                            "runId": "run-active",
+                            "billableFirewalls": [],
+                        },
+                        "10.200.0.4": {"runId": "  \t", "billableFirewalls": []},
+                        "10.200.0.5": {
+                            "runId": " run-active ",
+                            "billableFirewalls": [],
+                        },
                     },
                     "updatedAt": 0,
                 }
@@ -290,7 +299,10 @@ class TestRegistryAuthCacheEviction:
             json.dumps(
                 {
                     "vms": {
-                        "10.200.0.1": {"runId": "run-active"},
+                        "10.200.0.1": {
+                            "runId": "run-active",
+                            "billableFirewalls": [],
+                        },
                         "10.200.0.2": None,
                         "10.200.0.3": "broken",
                     },

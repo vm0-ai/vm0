@@ -27,13 +27,19 @@ class TestLoadRegistry:
             json.dumps(
                 {
                     "vms": {
-                        "10.200.0.1": {"runId": "run-active"},
+                        "10.200.0.1": {
+                            "runId": "run-active",
+                            "billableFirewalls": [],
+                        },
                         "10.200.0.2": "broken",
-                        "10.200.0.3": {},
-                        "10.200.0.4": {"runId": ""},
-                        "10.200.0.5": {"runId": 123},
-                        "10.200.0.6": {"runId": "  \t"},
-                        "10.200.0.7": {"runId": " run-active "},
+                        "10.200.0.3": {"billableFirewalls": []},
+                        "10.200.0.4": {"runId": "", "billableFirewalls": []},
+                        "10.200.0.5": {"runId": 123, "billableFirewalls": []},
+                        "10.200.0.6": {"runId": "  \t", "billableFirewalls": []},
+                        "10.200.0.7": {
+                            "runId": " run-active ",
+                            "billableFirewalls": [],
+                        },
                     },
                     "updatedAt": 0,
                 }
@@ -80,7 +86,10 @@ class TestLoadRegistry:
         assert "10.200.0.1" in result1
 
         # Modify the file
-        new_data = {"vms": {"10.200.0.99": {"runId": "new-run"}}, "updatedAt": 0}
+        new_data = {
+            "vms": {"10.200.0.99": {"runId": "new-run", "billableFirewalls": []}},
+            "updatedAt": 0,
+        }
         registry_file.write_text(json.dumps(new_data))
 
         result2 = registry.load_registry(str(registry_file))
@@ -141,7 +150,10 @@ class TestLoadRegistry:
             json.dumps(
                 {
                     "vms": {
-                        "10.200.0.1": {"runId": "good-run"},
+                        "10.200.0.1": {
+                            "runId": "good-run",
+                            "billableFirewalls": [],
+                        },
                         "10.200.0.2": None,
                         "10.200.0.3": "broken",
                         "10.200.0.4": ["broken"],
@@ -157,7 +169,9 @@ class TestLoadRegistry:
             result = registry.load_registry(str(path))
             cached = registry.load_registry(str(path))
 
-        assert result == {"10.200.0.1": {"runId": "good-run"}}
+        assert result == {
+            "10.200.0.1": {"runId": "good-run", "billableFirewalls": []},
+        }
         assert cached is result
         assert log.warn.call_count == 1
         warning = log.warn.call_args_list[0].args[0]
@@ -368,7 +382,10 @@ class TestLoadRegistry:
 
     def test_read_failure_after_open_does_not_poison_file_key(self, registry_file):
         registry.load_registry(str(registry_file))
-        new_registry = {"vms": {"10.200.0.99": {"runId": "new-run"}}, "updatedAt": 0}
+        new_registry = {
+            "vms": {"10.200.0.99": {"runId": "new-run", "billableFirewalls": []}},
+            "updatedAt": 0,
+        }
         registry_file.write_text(json.dumps(new_registry))
         read_results = iter(
             [
@@ -393,14 +410,18 @@ class TestLoadRegistry:
             recovered = registry.load_registry(str(registry_file))
 
         assert failed == {}
-        assert recovered == {"10.200.0.99": {"runId": "new-run"}}
+        assert recovered == {
+            "10.200.0.99": {"runId": "new-run", "billableFirewalls": []},
+        }
         assert spy.call_count == 3
         assert log.warn.call_count == 1
         assert "Failed to read" in log.warn.call_args_list[0].args[0]
 
     def test_read_failure_clears_previous_failed_key(self, tmp_path):
         path = tmp_path / "registry.json"
-        valid_registry = {"vms": {"10.0.0.1": {"runId": "r1"}}}
+        valid_registry = {
+            "vms": {"10.0.0.1": {"runId": "r1", "billableFirewalls": []}},
+        }
         valid_bytes = json.dumps(valid_registry, separators=(",", ":")).encode()
         path.write_bytes(b"{" + b" " * (len(valid_bytes) - 1))
         first_stat = path.stat()
@@ -429,7 +450,9 @@ class TestLoadRegistry:
             )
             recovered = registry.load_registry(str(path))
 
-        assert recovered == {"10.0.0.1": {"runId": "r1"}}
+        assert recovered == {
+            "10.0.0.1": {"runId": "r1", "billableFirewalls": []},
+        }
         assert log.warn.call_count == 2
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
         assert "Failed to read" in log.warn.call_args_list[1].args[0]
@@ -444,7 +467,18 @@ class TestLoadRegistry:
             assert log.warn.call_count == 1
 
             # File becomes valid → successful load clears the flag.
-            path.write_text(json.dumps({"vms": {"10.0.0.1": {"runId": "r1"}}}))
+            path.write_text(
+                json.dumps(
+                    {
+                        "vms": {
+                            "10.0.0.1": {
+                                "runId": "r1",
+                                "billableFirewalls": [],
+                            }
+                        }
+                    }
+                )
+            )
             result = registry.load_registry(str(path))
             assert "10.0.0.1" in result
             assert log.warn.call_count == 1  # no new warn on success
