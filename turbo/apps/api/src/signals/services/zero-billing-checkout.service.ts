@@ -491,7 +491,9 @@ export const previewExistingBillingCreditPurchase$ = command(
     const credits = quantity * CREDITS_PER_DOLLAR;
     const purchaseId = randomUUID();
     const invoice = await stripe.invoices.createPreview({
-      customer: billing.customerId,
+      // Keep this preview independent from the customer's active subscription.
+      // Passing the subscribed customer would make `next` include renewal lines,
+      // while confirmation creates a standalone invoice for this credit item.
       preview_mode: "next",
       invoice_items: [
         {

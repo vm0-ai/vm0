@@ -10024,6 +10024,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     context.mocks.stripe.invoices.createPreview.mockImplementation(
       (rawParams) => {
         const params = rawParams as {
+          readonly customer?: string;
           readonly invoice_items?: readonly {
             readonly metadata?: Readonly<Record<string, string>>;
           }[];
@@ -10033,17 +10034,40 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         if (!purchaseId) {
           throw new Error("Expected a credit purchase preview ID");
         }
+        const subscriptionRenewalLines =
+          params.customer === customerId
+            ? [
+                {
+                  id: `il_renewal_${randomUUID()}`,
+                  amount: 10_000,
+                  subtotal: 10_000,
+                  metadata: {},
+                  period: {
+                    start: currentSecond(),
+                    end: currentSecond(),
+                  },
+                  parent: {
+                    type: "subscription_item_details",
+                    subscription_item_details: {
+                      proration: false,
+                      proration_details: null,
+                    },
+                  },
+                },
+              ]
+            : [];
         return Promise.resolve({
           id: `in_preview_${randomUUID()}`,
           hosted_invoice_url: null,
-          customer: customerId,
+          customer: params.customer ?? null,
           metadata: {},
-          amount_due: 1800,
+          amount_due: 1800 + (subscriptionRenewalLines.length > 0 ? 10_000 : 0),
           currency: "usd",
           status: null,
           lines: {
             has_more: false,
             data: [
+              ...subscriptionRenewalLines,
               {
                 id: `il_preview_${randomUUID()}`,
                 amount: 2000,
@@ -10235,7 +10259,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     );
   });
 
-  it("previews and confirms a credit purchase with saved billing", async () => {
+  it("excludes subscription renewal and confirms a saved-billing credit purchase", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
@@ -10273,6 +10297,9 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     expect(
       context.mocks.stripe.checkout.sessions.create,
     ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith(
+      expect.not.objectContaining({ customer: fixture.customerId }),
+    );
     if (!("previewToken" in preview.body)) {
       throw new Error("Expected a credit purchase preview");
     }
