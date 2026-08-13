@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { command } from "ccstate";
 import type {
   ConcurrencySubscriptionChangePreviewResponse,
@@ -21,6 +23,7 @@ import {
   type StripeSubscription,
   type StripeSubscriptionItem,
   type StripeSubscriptionSchedule,
+  type StripeSubscriptionUpdateItemParam,
 } from "../external/stripe-client";
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -347,7 +350,6 @@ async function scheduleConcurrencyChange(
   if (!item?.quantity) {
     throw new Error("Concurrency subscription has no active concurrency item");
   }
-  const period = concurrencyItemPeriod(item);
   const stripe = getStripeClient();
   const existingScheduleId = stripeObjectId(subscription.schedule);
   const existingSchedule = existingScheduleId
@@ -359,7 +361,7 @@ async function scheduleConcurrencyChange(
     : await stripe.subscriptionSchedules.create(
         { from_subscription: subscription.id },
         {
-          idempotencyKey: `concurrency-change:${subscription.id}:${period.end}:${targetQuantity}:schedule-create`,
+          idempotencyKey: `concurrency-change:${subscription.id}:${randomUUID()}:schedule-create`,
         },
       );
   signal.throwIfAborted();
@@ -378,7 +380,7 @@ async function scheduleConcurrencyChange(
       schedulePeriod,
     ),
     {
-      idempotencyKey: `concurrency-change:${subscription.id}:${schedulePeriod.end}:${targetQuantity}:schedule-update`,
+      idempotencyKey: `concurrency-change:${subscription.id}:${randomUUID()}:schedule-update`,
     },
   );
   signal.throwIfAborted();
@@ -642,6 +644,41 @@ function deferredConcurrencyPreviewResponse(
   };
 }
 
+interface ScheduledConcurrencyPreview {
+  readonly id: string;
+  readonly item: StripeSubscriptionItem;
+  readonly schedule: StripeSubscriptionSchedule;
+}
+
+function concurrencyRecurringPreviewParams(
+  subscription: StripeSubscription,
+  items: StripeSubscriptionUpdateItemParam[],
+  currentQuantity: number,
+  targetQuantity: number,
+  scheduledPreview: ScheduledConcurrencyPreview | null,
+): StripeInvoiceCreatePreviewParams {
+  if (!scheduledPreview) {
+    return {
+      subscription: subscription.id,
+      preview_mode: "recurring",
+      subscription_details: { items },
+    };
+  }
+  return {
+    schedule: scheduledPreview.id,
+    preview_mode: "next",
+    schedule_details: concurrencyScheduleUpdateParams(
+      subscription,
+      targetQuantity < currentQuantity ? scheduledPreview.schedule : null,
+      targetQuantity,
+      concurrencySchedulePeriod(
+        scheduledPreview.item,
+        scheduledPreview.schedule,
+      ),
+    ),
+  };
+}
+
 export const previewStripeConcurrencySubscriptionChange$ = command(
   async (
     _,
@@ -684,7 +721,7 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         : { price: args.priceId, quantity: targetQuantity },
     ];
     const scheduledPreview =
-      scheduleId && item && targetQuantity < currentQuantity
+      scheduleId && item
         ? {
             id: scheduleId,
             item,
@@ -692,26 +729,13 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
           }
         : null;
     signal.throwIfAborted();
-    const recurringPreviewParams: StripeInvoiceCreatePreviewParams =
-      scheduledPreview
-        ? {
-            schedule: scheduledPreview.id,
-            preview_mode: "next",
-            schedule_details: concurrencyScheduleUpdateParams(
-              subscription,
-              scheduledPreview.schedule,
-              targetQuantity,
-              concurrencySchedulePeriod(
-                scheduledPreview.item,
-                scheduledPreview.schedule,
-              ),
-            ),
-          }
-        : {
-            subscription: subscription.id,
-            preview_mode: "recurring",
-            subscription_details: { items },
-          };
+    const recurringPreviewParams = concurrencyRecurringPreviewParams(
+      subscription,
+      items,
+      currentQuantity,
+      targetQuantity,
+      scheduledPreview,
+    );
     const deferred = targetQuantity <= currentQuantity;
     if (deferred) {
       if (!item) {
