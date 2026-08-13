@@ -13,10 +13,10 @@ it("fails closed with a values-free error when run identities differ", async () 
   const legacyRunId = "legacy-sensitive-run-id";
   vi.stubEnv("OKOU_RUN_ID", canonicalRunId);
   vi.stubEnv("VM0_RUN_ID", legacyRunId);
-  vi.stubEnv("VM0_PI_SESSION_ID", "11111111-1111-4111-8111-111111111111");
-  vi.stubEnv("VM0_PI_SYSTEM_PROMPT", "system prompt");
+  vi.stubEnv("OKOU_PI_SESSION_ID", "11111111-1111-4111-8111-111111111111");
+  vi.stubEnv("OKOU_PI_SYSTEM_PROMPT", "system prompt");
   vi.stubEnv(
-    "VM0_PI_MODEL_CONFIG",
+    "OKOU_PI_MODEL_CONFIG",
     JSON.stringify({
       provider: "deepseek",
       baseUrl: "https://api.deepseek.com/",

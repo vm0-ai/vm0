@@ -211,6 +211,18 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
             guest_contracts::env::RUN_ID_ENV.into(),
             "ignored\0run-identity".into(),
         ),
+        (
+            guest_contracts::env::PI_SESSION_ID_ENV.into(),
+            "ignored\0pi-session".into(),
+        ),
+        (
+            guest_contracts::env::PI_SYSTEM_PROMPT_ENV.into(),
+            "ignored\0pi-prompt".into(),
+        ),
+        (
+            guest_contracts::env::PI_MODEL_CONFIG_ENV.into(),
+            "ignored\0pi-model".into(),
+        ),
         ("CUSTOM_ENV".into(), "kept".into()),
     ]));
 
@@ -219,6 +231,9 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert!(!user_env.contains_key("VM0_PROMPT"));
     assert!(!user_env.contains_key(guest_contracts::env::RUN_ID_ENV));
+    assert!(!user_env.contains_key(guest_contracts::env::PI_SESSION_ID_ENV));
+    assert!(!user_env.contains_key(guest_contracts::env::PI_SYSTEM_PROMPT_ENV));
+    assert!(!user_env.contains_key(guest_contracts::env::PI_MODEL_CONFIG_ENV));
 }
 
 #[test]
@@ -550,6 +565,18 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             "user-controlled-run-id".into(),
         ),
         (
+            guest_contracts::env::PI_SESSION_ID_ENV.into(),
+            "user-controlled-pi-session".into(),
+        ),
+        (
+            guest_contracts::env::PI_SYSTEM_PROMPT_ENV.into(),
+            "user-controlled-pi-prompt".into(),
+        ),
+        (
+            guest_contracts::env::PI_MODEL_CONFIG_ENV.into(),
+            "user-controlled-pi-model".into(),
+        ),
+        (
             guest_contracts::env::PROMPT_ENV.into(),
             "user prompt".into(),
         ),
@@ -634,6 +661,9 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     assert_eq!(user_env.get("OKOU_TOKEN").unwrap(), "legitimate-okou-token");
     for key in [
         guest_contracts::env::RUN_ID_ENV,
+        guest_contracts::env::PI_SESSION_ID_ENV,
+        guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::PI_MODEL_CONFIG_ENV,
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::API_TOKEN_ENV,
         guest_contracts::env::WORKING_DIR_ENV,
@@ -713,6 +743,9 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     }
     for key in [
         guest_contracts::env::RUN_ID_ENV,
+        guest_contracts::env::PI_SESSION_ID_ENV,
+        guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::PI_MODEL_CONFIG_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
@@ -724,6 +757,7 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
         );
     }
     assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
+    assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
 }
 
 #[test]
@@ -1222,6 +1256,26 @@ fn build_run_payload_for_run_omits_absent_codex_runtime_config() {
     let payload = build_run_payload_for_run(&ctx).unwrap();
 
     assert!(payload.codex_runtime_config.is_empty());
+}
+
+#[test]
+fn non_pi_execution_contexts_do_not_require_pi_resources() {
+    for framework in ["claude-code", "codex"] {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = framework.to_string();
+        ctx.pi_session_id = None;
+        ctx.pi_system_prompt = None;
+        ctx.pi_model_config = None;
+
+        assert!(
+            validate_context_for_test(&ctx).is_ok(),
+            "{framework} context should not require Pi resources"
+        );
+        let payload = build_run_payload_for_run(&ctx).unwrap();
+        assert!(payload.pi_session_id.is_empty());
+        assert!(payload.pi_system_prompt.is_empty());
+        assert!(payload.pi_model_config.is_empty());
+    }
 }
 
 #[test]

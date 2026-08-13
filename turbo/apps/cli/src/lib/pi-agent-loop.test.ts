@@ -31,9 +31,9 @@ const CONFIG: PiSandboxAgentConfig = {
 function piEnv(runIdEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     ...runIdEnv,
-    VM0_PI_SESSION_ID: SESSION_ID,
-    VM0_PI_SYSTEM_PROMPT: CONFIG.systemPrompt,
-    VM0_PI_MODEL_CONFIG: JSON.stringify({
+    OKOU_PI_SESSION_ID: SESSION_ID,
+    OKOU_PI_SYSTEM_PROMPT: CONFIG.systemPrompt,
+    OKOU_PI_MODEL_CONFIG: JSON.stringify({
       provider: "deepseek",
       baseUrl: "https://api.deepseek.com/",
       model: "deepseek-v4-flash",
@@ -148,6 +148,22 @@ describe("sandbox Pi agent loop", () => {
     expect(() => {
       return piSandboxAgentConfigFromEnv(piEnv({}));
     }).toThrowError("OKOU_RUN_ID is required for Pi execution");
+  });
+
+  it("names the canonical variable without exposing invalid model config", () => {
+    const invalidModelConfig = "credential-like-model-config{";
+    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+    env.OKOU_PI_MODEL_CONFIG = invalidModelConfig;
+
+    expect(() => {
+      return piSandboxAgentConfigFromEnv(env);
+    }).toThrowError("OKOU_PI_MODEL_CONFIG must contain valid JSON");
+    try {
+      piSandboxAgentConfigFromEnv(env);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).not.toContain(invalidModelConfig);
+    }
   });
 
   it("runs one native SQLite turn and emits only the chat projection", async () => {
