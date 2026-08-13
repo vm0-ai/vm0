@@ -36,7 +36,7 @@ import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { emailUnsubscribeRoutes } from "../../email-unsubscribe";
 import { userExportRoutes } from "../../user-export";
-import { zeroLogsRoutes } from "../../zero-logs";
+import { logsRoutes } from "../../logs";
 import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-delete";
 import { zeroMeModelProvidersListRoutes } from "../../zero-me-model-providers-list";
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "../../zero-me-model-providers-reset-subscription";
@@ -66,7 +66,7 @@ type UpdateUserPreferencesInput = z.input<
   typeof updateUserPreferencesRequestSchema
 >;
 
-type ZeroLogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
+type LogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
 
 interface ClerkOrg {
   readonly imageUrl: string | null;
@@ -140,14 +140,14 @@ function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
   };
 }
 
-async function requestZeroLogsList<TStatus extends 200 | 400 | 401 | 403>(
+async function requestLogsList<TStatus extends 200 | 400 | 401 | 403>(
   context: TestContext,
   actor: ApiTestUser | null,
-  query: ZeroLogsListQuery,
+  query: LogsListQuery,
   statuses: readonly TStatus[],
 ) {
   return await accept(
-    setupApp({ context, routes: zeroLogsRoutes })(logsListContract).list({
+    setupApp({ context, routes: logsRoutes })(logsListContract).list({
       headers: authenticate(context, actor),
       query,
     }),
@@ -595,15 +595,15 @@ export function createMiscRoutesApi(context: TestContext) {
     },
 
     async listLogs(actor: ApiTestUser) {
-      return await requestZeroLogsList(context, actor, {}, [200]);
+      return await requestLogsList(context, actor, {}, [200]);
     },
 
     async requestListLogs<TStatus extends 200 | 400 | 401 | 403>(
       actor: ApiTestUser | null,
-      query: ZeroLogsListQuery,
+      query: LogsListQuery,
       statuses: readonly TStatus[],
     ) {
-      return await requestZeroLogsList(context, actor, query, statuses);
+      return await requestLogsList(context, actor, query, statuses);
     },
 
     async readLog(
@@ -612,12 +612,10 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroLogsRoutes })(logsByIdContract).getById(
-          {
-            headers: authenticate(context, actor),
-            params: { id },
-          },
-        ),
+        setupApp({ context, routes: logsRoutes })(logsByIdContract).getById({
+          headers: authenticate(context, actor),
+          params: { id },
+        }),
         statuses,
       );
     },
