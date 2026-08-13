@@ -1610,26 +1610,6 @@ export const chatThreadEventsContract = c.router({
     },
     summary: "Get raw chat event rows after a seq cursor",
   },
-  queued: {
-    method: "GET",
-    path: "/api/okou/chat-threads/:threadId/queued-events",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    responses: {
-      200: z.object({
-        events: z.array(
-          z.object({
-            eventId: z.string(),
-            seqId: z.number().int().positive(),
-          }),
-        ),
-      }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "List authoritative queued chat events for a thread",
-  },
 });
 
 export const chatThreadArtifactsContract = c.router({

@@ -349,56 +349,6 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
-  it("lists the authoritative queue without requiring a snapshot", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const owner = bdd.user({ orgId });
-    await api.grantProEntitlement(owner);
-    await api.ensureOrgModelProvider(owner);
-    api.configureRunnerGroup();
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Authoritative queue agent",
-    });
-    const active = await chat.requestSendEvent(
-      owner,
-      {
-        agentId: agent.agentId,
-        prompt: `authoritative-queue-blocker-${randomUUID()}`,
-      },
-      [201],
-    );
-    if (active.status !== 201 || active.body.runId === null) {
-      throw new Error("Expected an active blocker run");
-    }
-    const queuedEventId = randomUUID();
-    const queued = await chat.requestSendEvent(
-      owner,
-      {
-        agentId: agent.agentId,
-        threadId: active.body.threadId,
-        clientEventId: queuedEventId,
-        prompt: `authoritative-queue-pending-${randomUUID()}`,
-      },
-      [201],
-    );
-    if (queued.status !== 201) {
-      throw new Error("Expected the second message to be queued");
-    }
-    expect(queued.body.runId).toBeNull();
-    const threadId = active.body.threadId;
-
-    const response = await accept(
-      eventsClient().queued({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [200],
-    );
-    expect(response.body.events).toStrictEqual([
-      { eventId: queuedEventId, seqId: expect.any(Number) },
-    ]);
-    await api.requestCancelRun(owner, active.body.runId, [200]);
-  }, 60_000);
-
   it("immediately retires snapshot versions below the supported minimum", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {

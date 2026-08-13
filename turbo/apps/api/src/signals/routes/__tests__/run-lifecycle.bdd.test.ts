@@ -5867,7 +5867,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain("okou chat send");
     expect(appendSystemPrompt).toContain("okou chat cancel");
-    expect(appendSystemPrompt).not.toContain("okou chat queued");
     await api.requestCancelRun(actor, run.runId, [200]);
 
     await upsertOrgPlanEntitlementFixture({
@@ -12497,7 +12496,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       appendSystemPrompt.indexOf("- Cross-thread chat run completion:"),
     );
     expect(appendSystemPrompt).toContain("okou upgrade pro");
-    expect(appendSystemPrompt).not.toContain("okou chat queued");
     expect(appendSystemPrompt).not.toContain(
       "`okou browser use` creates, reuses, or resumes a remote browser",
     );
