@@ -856,12 +856,16 @@ export const startCreditCheckout$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCreditCheckoutContract);
+    const savedBillingCreditPurchaseEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
       client.create({
         body: {
           credits: selection.credits,
           ...(selection.customAmount === true ? { customAmount: true } : {}),
-          previewExistingBilling: true,
+          ...(savedBillingCreditPurchaseEnabled
+            ? { previewExistingBilling: true }
+            : {}),
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
         },
@@ -874,6 +878,10 @@ export const startCreditCheckout$ = command(
       set(internalCreditPurchasePreview$, result.body);
       return;
     }
+    // Hosted Checkout is the canonical response when saved billing is absent.
+    // During rollout it also lets a switched-on app tolerate an API from before
+    // preview support for the ~2-day old-client window. Remove that rollout-only
+    // responsibility after #26842; the unavailable-billing path remains.
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {

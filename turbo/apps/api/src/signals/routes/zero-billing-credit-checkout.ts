@@ -108,6 +108,10 @@ const creditCheckoutAuthed$ = command(
       }
     }
 
+    // This shared route also serves the commit-addressed CLI, which requires
+    // hosted Checkout, while old app builds can omit this opt-in for about two
+    // days during rollout. Remove the rollout compatibility after #26842; keep
+    // an explicit hosted-checkout contract for CLI before narrowing this field.
     if (previewExistingBilling === true) {
       const preview = await set(
         previewExistingBillingCreditPurchase$,

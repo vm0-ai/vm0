@@ -231,11 +231,6 @@ export interface StripeInvoiceLine {
   readonly amount: number;
   readonly subtotal?: number | null;
   readonly metadata?: Record<string, string> | null;
-  readonly discount_amounts?:
-    | readonly {
-        readonly amount: number;
-      }[]
-    | null;
   readonly quantity?: number | null;
   readonly price?: { readonly id: string } | null;
   readonly pricing?: {

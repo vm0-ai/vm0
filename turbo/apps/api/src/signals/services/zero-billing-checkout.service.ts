@@ -17,9 +17,9 @@ import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import {
   getStripeClient,
+  stripeErrorInfo,
   type StripeClient,
   type StripeInvoice,
-  type StripeInvoiceLine,
   type StripeMetadataParam,
   type StripeSubscription,
 } from "../external/stripe-client";
@@ -31,7 +31,7 @@ import {
   previewStripeConcurrencySubscriptionChange$,
 } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
-import { safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -438,33 +438,25 @@ async function existingCreditPaymentMethodId(
   return paymentMethods.data[0]?.id ?? null;
 }
 
-function creditPurchasePreviewLine(
+function assertCreditPurchasePreviewLine(
   invoice: StripeInvoice,
   purchaseId: string,
-): StripeInvoiceLine {
-  const line = invoice.lines.data.find((candidate) => {
+): void {
+  const hasLine = invoice.lines.data.some((candidate) => {
     return (
       candidate.metadata?.[CREDIT_PURCHASE_PREVIEW_LINE_METADATA_KEY] ===
       purchaseId
     );
   });
-  if (!line) {
+  if (!hasLine) {
     throw new Error("Stripe credit purchase preview is missing its line item");
   }
-  return line;
 }
 
-function creditPurchasePreviewAmount(line: StripeInvoiceLine): number {
-  const subtotal = line.subtotal ?? line.amount;
-  const discounts = (line.discount_amounts ?? []).reduce((total, discount) => {
-    return total + discount.amount;
-  }, 0);
-  const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
-    return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
-  }, 0);
-  const amount = subtotal - discounts + exclusiveTax;
+function creditPurchasePayableAmount(invoice: StripeInvoice): number {
+  const amount = invoice.amount_due;
   if (!Number.isSafeInteger(amount) || amount < 0) {
-    throw new Error("Stripe credit purchase preview has an invalid amount");
+    throw new Error("Stripe credit purchase invoice has an invalid amount");
   }
   return amount;
 }
@@ -515,9 +507,8 @@ export const previewExistingBillingCreditPurchase$ = command(
     if (invoice.currency.length !== 3) {
       throw new Error("Stripe credit purchase preview has an invalid currency");
     }
-    const amountCents = creditPurchasePreviewAmount(
-      creditPurchasePreviewLine(invoice, purchaseId),
-    );
+    assertCreditPurchasePreviewLine(invoice, purchaseId);
+    const amountCents = creditPurchasePayableAmount(invoice);
     const expiresAt = new Date(
       nowDate().getTime() + CREDIT_PURCHASE_PREVIEW_TTL_MS,
     ).toISOString();
@@ -545,6 +536,33 @@ export const previewExistingBillingCreditPurchase$ = command(
   },
 );
 
+function isPaymentActionRequired(error: unknown): boolean {
+  const code = stripeErrorInfo(error)?.code;
+  return (
+    code === "authentication_required" ||
+    code === "invoice_payment_intent_requires_action" ||
+    code === "payment_intent_action_required"
+  );
+}
+
+async function finalizeCreditPurchaseInvoice(
+  stripe: StripeClient,
+  invoice: StripeInvoice,
+  purchaseId: string,
+  signal: AbortSignal,
+): Promise<StripeInvoice> {
+  if (invoice.status !== "draft") {
+    return invoice;
+  }
+  const finalized = await stripe.invoices.finalizeInvoice(
+    invoice.id,
+    {},
+    { idempotencyKey: `credit-purchase:${purchaseId}:finalize` },
+  );
+  signal.throwIfAborted();
+  return finalized;
+}
+
 async function payCreditPurchaseInvoice(
   stripe: StripeClient,
   invoice: StripeInvoice,
@@ -552,20 +570,23 @@ async function payCreditPurchaseInvoice(
   signal: AbortSignal,
 ): Promise<CreditPurchaseConfirmResponse> {
   let current = invoice;
-  if (current.status === "draft") {
-    current = await stripe.invoices.finalizeInvoice(
-      current.id,
-      {},
-      { idempotencyKey: `credit-purchase:${purchaseId}:finalize` },
-    );
-    signal.throwIfAborted();
-  }
   if (current.status === "open") {
-    current = await stripe.invoices.pay(
-      current.id,
-      {},
-      { idempotencyKey: `credit-purchase:${purchaseId}:pay` },
+    const paid = await settle(
+      stripe.invoices.pay(
+        current.id,
+        {},
+        { idempotencyKey: `credit-purchase:${purchaseId}:pay` },
+      ),
+      signal,
     );
+    if (paid.ok) {
+      current = paid.value;
+    } else {
+      if (!isPaymentActionRequired(paid.error)) {
+        throw paid.error;
+      }
+      current = await stripe.invoices.retrieve(current.id);
+    }
     signal.throwIfAborted();
   }
   if (current.status === "paid") {
@@ -674,11 +695,16 @@ export const confirmExistingBillingCreditPurchase$ = command(
       { idempotencyKey: `credit-purchase:${preview.purchaseId}:invoice-item` },
     );
     signal.throwIfAborted();
-    const confirmedInvoice = await stripe.invoices.retrieve(invoice.id);
+    const draftInvoice = await stripe.invoices.retrieve(invoice.id);
     signal.throwIfAborted();
-    const confirmedAmountCents = creditPurchasePreviewAmount(
-      creditPurchasePreviewLine(confirmedInvoice, preview.purchaseId),
+    assertCreditPurchasePreviewLine(draftInvoice, preview.purchaseId);
+    const confirmedInvoice = await finalizeCreditPurchaseInvoice(
+      stripe,
+      draftInvoice,
+      preview.purchaseId,
+      signal,
     );
+    const confirmedAmountCents = creditPurchasePayableAmount(confirmedInvoice);
     if (
       confirmedInvoice.currency !== preview.currency ||
       confirmedAmountCents !== preview.amountCents

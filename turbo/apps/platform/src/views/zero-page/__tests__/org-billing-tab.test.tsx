@@ -194,8 +194,11 @@ function usagePackCatalogResponse() {
   };
 }
 
-function mockBillingStory(): void {
+function mockBillingStory(): {
+  readonly creditCheckoutRequest: () => CreditCheckoutRequest | null;
+} {
   let billingStatus = activeProBillingStatus();
+  let creditCheckoutRequest: CreditCheckoutRequest | null = null;
 
   context.mocks.data.org({
     id: "org_1",
@@ -219,11 +222,15 @@ function mockBillingStory(): void {
       return respond(200, billingStatus.autoRecharge);
     },
   );
-  context.mocks.api(zeroBillingCreditCheckoutContract.create, ({ respond }) => {
-    return respond(200, {
-      url: "https://billing.stripe.com/checkout/credit-purchase",
-    });
-  });
+  context.mocks.api(
+    zeroBillingCreditCheckoutContract.create,
+    ({ body, respond }) => {
+      creditCheckoutRequest = body;
+      return respond(200, {
+        url: "https://billing.stripe.com/checkout/credit-purchase",
+      });
+    },
+  );
   context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
     billingStatus = {
       ...billingStatus,
@@ -247,6 +254,11 @@ function mockBillingStory(): void {
     };
     return respond(200, { status: "restored" });
   });
+  return {
+    creditCheckoutRequest: () => {
+      return creditCheckoutRequest;
+    },
+  };
 }
 
 async function openBillingTab(
@@ -3350,7 +3362,9 @@ describe("organization billing settings", () => {
       },
     );
 
-    await openBillingTab();
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
     const locationBeforePurchase = window.location.href;
     click(screen.getByText("Quick buy $20.00"));
 
@@ -3389,8 +3403,10 @@ describe("organization billing settings", () => {
   });
 
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {
-    mockBillingStory();
-    await openBillingTab();
+    const billingStory = mockBillingStory();
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: false,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
@@ -3507,6 +3523,12 @@ describe("organization billing settings", () => {
         "https://billing.stripe.com/checkout/credit-purchase",
       );
     });
+    expect(billingStory.creditCheckoutRequest()).not.toHaveProperty(
+      "previewExistingBilling",
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Review credit purchase" }),
+    ).not.toBeInTheDocument();
   });
 
   it("schedules and restores a team plan downgrade from the pricing page", async () => {

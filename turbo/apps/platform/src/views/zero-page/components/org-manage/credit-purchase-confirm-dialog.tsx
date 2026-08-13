@@ -1,6 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@vm0/core";
 import { Button } from "@vm0/ui";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   closeCreditPurchasePreview$,
@@ -34,12 +36,19 @@ function formatCreditPurchaseAmount(
 
 export function CreditPurchaseConfirmDialog() {
   const { t } = useTranslation();
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ??
+    false;
   const preview = useGet(creditPurchasePreview$);
   const close = useSet(closeCreditPurchasePreview$);
   const pageSignal = useGet(pageSignal$);
   const [confirmLoadable, confirm] = useLoadableSet(confirmCreditPurchase$);
   const confirming = confirmLoadable.state === "loading";
   const error = confirmLoadable.state === "hasError";
+
+  if (!enabled) {
+    return null;
+  }
 
   return (
     <Dialog

@@ -29,7 +29,7 @@ import {
   webhookStripeContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
-import type StripeSDK from "stripe";
+import StripeSDK from "stripe";
 import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -10051,8 +10051,6 @@ describe("POST /api/zero/billing/credit-checkout", () => {
                 metadata: {
                   credit_purchase_preview_id: purchaseId,
                 },
-                discount_amounts: [{ amount: 200 }],
-                taxes: [],
                 period: { start: currentSecond(), end: currentSecond() },
                 parent: null,
               },
@@ -10327,8 +10325,6 @@ describe("POST /api/zero/billing/credit-checkout", () => {
               metadata: {
                 credit_purchase_preview_id: confirmedPurchaseId,
               },
-              discount_amounts: [{ amount: 200 }],
-              taxes: [],
               period: { start: currentSecond(), end: currentSecond() },
               parent: null,
             },
@@ -10382,6 +10378,230 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         idempotencyKey: expect.stringContaining("credit-purchase:"),
       }),
     );
+  });
+
+  it("rejects payment when the finalized invoice amount differs from the preview", async () => {
+    const fixture = await createSubscriptionOrg({ tier: "pro" });
+    const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
+    const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: fixture.subscriptionId,
+      default_payment_method: paymentMethodId,
+    });
+    mockCreditPurchasePreview(fixture.customerId);
+
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
+    const preview = await accept(
+      client.create({
+        body: {
+          credits: 20_000,
+          previewExistingBilling: true,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (!("previewToken" in preview.body)) {
+      throw new Error("Expected a credit purchase preview");
+    }
+
+    const draftInvoice = {
+      id: invoiceId,
+      hosted_invoice_url: null,
+      customer: fixture.customerId,
+      metadata: { purpose: "credit_purchase" },
+      amount_due: 1800,
+      currency: "usd",
+      status: "draft",
+      lines: { has_more: false, data: [] },
+      parent: null,
+    };
+    context.mocks.stripe.invoices.create.mockResolvedValue(draftInvoice);
+    let confirmedPurchaseId: string | null = null;
+    context.mocks.stripe.invoiceItems.create.mockImplementation((rawParams) => {
+      const params = rawParams as {
+        readonly metadata?: Readonly<Record<string, string>>;
+      };
+      confirmedPurchaseId = params.metadata?.credit_purchase_preview_id ?? null;
+      return Promise.resolve({
+        id: `ii_credit_${randomUUID().slice(0, 8)}`,
+      });
+    });
+    context.mocks.stripe.invoices.retrieve.mockImplementation(() => {
+      if (!confirmedPurchaseId) {
+        throw new Error("Expected a confirmed credit purchase ID");
+      }
+      return Promise.resolve({
+        ...draftInvoice,
+        lines: {
+          has_more: false,
+          data: [
+            {
+              id: `il_credit_${randomUUID().slice(0, 8)}`,
+              amount: 2000,
+              subtotal: 2000,
+              metadata: {
+                credit_purchase_preview_id: confirmedPurchaseId,
+              },
+              period: { start: currentSecond(), end: currentSecond() },
+              parent: null,
+            },
+          ],
+        },
+      });
+    });
+    const changedInvoice = {
+      ...draftInvoice,
+      amount_due: 1900,
+      status: "open",
+    };
+    context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue(
+      changedInvoice,
+    );
+    context.mocks.stripe.invoices.voidInvoice.mockResolvedValue({
+      ...changedInvoice,
+      status: "void",
+    });
+
+    const confirmation = await accept(
+      client.confirm({
+        body: { previewToken: preview.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(confirmation.body.error.code).toBe("BAD_REQUEST");
+    expect(context.mocks.stripe.invoices.voidInvoice).toHaveBeenCalledWith(
+      invoiceId,
+      {},
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("credit-purchase:"),
+      }),
+    );
+    expect(context.mocks.stripe.invoices.pay).not.toHaveBeenCalled();
+  });
+
+  it("returns the hosted invoice when saved-billing payment requires authentication", async () => {
+    const fixture = await createSubscriptionOrg({ tier: "pro" });
+    const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
+    const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: fixture.subscriptionId,
+      default_payment_method: paymentMethodId,
+    });
+    mockCreditPurchasePreview(fixture.customerId);
+
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
+    const preview = await accept(
+      client.create({
+        body: {
+          credits: 20_000,
+          previewExistingBilling: true,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (!("previewToken" in preview.body)) {
+      throw new Error("Expected a credit purchase preview");
+    }
+
+    const draftInvoice = {
+      id: invoiceId,
+      hosted_invoice_url: null,
+      customer: fixture.customerId,
+      metadata: { purpose: "credit_purchase" },
+      amount_due: 1800,
+      currency: "usd",
+      status: "draft",
+      lines: { has_more: false, data: [] },
+      parent: null,
+    };
+    context.mocks.stripe.invoices.create.mockResolvedValue(draftInvoice);
+    let confirmedPurchaseId: string | null = null;
+    context.mocks.stripe.invoiceItems.create.mockImplementation((rawParams) => {
+      const params = rawParams as {
+        readonly metadata?: Readonly<Record<string, string>>;
+      };
+      confirmedPurchaseId = params.metadata?.credit_purchase_preview_id ?? null;
+      return Promise.resolve({
+        id: `ii_credit_${randomUUID().slice(0, 8)}`,
+      });
+    });
+    const finalizedInvoice = {
+      ...draftInvoice,
+      status: "open",
+      hosted_invoice_url:
+        "https://invoice.stripe.com/saved-billing-authentication",
+    };
+    context.mocks.stripe.invoices.retrieve
+      .mockImplementationOnce(() => {
+        if (!confirmedPurchaseId) {
+          throw new Error("Expected a confirmed credit purchase ID");
+        }
+        return Promise.resolve({
+          ...draftInvoice,
+          lines: {
+            has_more: false,
+            data: [
+              {
+                id: `il_credit_${randomUUID().slice(0, 8)}`,
+                amount: 2000,
+                subtotal: 2000,
+                metadata: {
+                  credit_purchase_preview_id: confirmedPurchaseId,
+                },
+                period: { start: currentSecond(), end: currentSecond() },
+                parent: null,
+              },
+            ],
+          },
+        });
+      })
+      .mockResolvedValueOnce(finalizedInvoice);
+    context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue(
+      finalizedInvoice,
+    );
+    context.mocks.stripe.invoices.pay.mockRejectedValue(
+      new StripeSDK.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        code: "invoice_payment_intent_requires_action",
+        message: "This payment requires customer authentication",
+      }),
+    );
+
+    const confirmation = await accept(
+      client.confirm({
+        body: { previewToken: preview.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(confirmation.body).toStrictEqual({
+      status: "pending_payment",
+      hostedInvoiceUrl:
+        "https://invoice.stripe.com/saved-billing-authentication",
+    });
+    expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith(
+      invoiceId,
+      {},
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("credit-purchase:"),
+      }),
+    );
+    expect(context.mocks.stripe.invoices.retrieve).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to Stripe checkout when saved billing is unavailable", async () => {

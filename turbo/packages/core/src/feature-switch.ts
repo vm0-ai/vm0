@@ -334,6 +334,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
   },
+  [FeatureSwitchKey.SavedBillingCreditPurchase]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Preview saved-billing credit purchases and confirm them in the app.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
