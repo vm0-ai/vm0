@@ -84,6 +84,14 @@ const cronProjectChatEventSearchResponseSchema = z.object({
   threads: z.number(),
   indexedEvents: z.number(),
   deletedDocs: z.number(),
+  durableThreads: z.number(),
+  durableIndexedMessages: z.number(),
+  durableDeletedMessages: z.number(),
+  convergence: z.object({
+    eligibleThreads: z.number(),
+    legacyCaughtUpThreads: z.number(),
+    durableCaughtUpThreads: z.number(),
+  }),
 });
 
 const chatEventSnapshotConvergenceSchema = z.object({
