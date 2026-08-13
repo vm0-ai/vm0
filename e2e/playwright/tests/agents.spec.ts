@@ -22,9 +22,6 @@ test("reveal the default agent unread action from the whole row", async ({
     throw new Error("Could not resolve the default agent from the sidebar");
   }
 
-  await page.route("**/api/okou/chat-thread-unread-agents", async (route) => {
-    await route.fulfill({ json: { agentIds: [defaultAgentId] } });
-  });
   await page.route("**/api/okou/indicators", async (route) => {
     await route.fulfill({
       json: {

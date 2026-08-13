@@ -356,12 +356,13 @@ export function mockThread(options?: {
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, {
-      threadIds:
+      agents: {},
+      threads:
         options?.activeRunIds && options.activeRunIds.length > 0
-          ? [THREAD_ID]
-          : [],
+          ? { [THREAD_ID]: "active" }
+          : {},
     });
   });
   context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {

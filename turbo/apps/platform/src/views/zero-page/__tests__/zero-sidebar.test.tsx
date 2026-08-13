@@ -197,9 +197,6 @@ function mockChatThreadSnapshot(
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [...activeThreadIds()] });
-  });
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, {
       agents: {},
@@ -216,10 +213,6 @@ function mockUnreadAgents(
   unreadAgentIds: () => readonly string[],
   onRequest: () => void = () => {},
 ): void {
-  context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
-    onRequest();
-    return respond(200, { agentIds: [...unreadAgentIds()] });
-  });
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     onRequest();
     return respond(200, {
@@ -503,9 +496,6 @@ describe("zero sidebar", () => {
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
-    });
-    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
-      return never();
     });
     context.mocks.api(chatThreadsContract.indicators, ({ never }) => {
       indicatorRequests += 1;
@@ -2597,7 +2587,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
     });
 
     const nav = await waitFor(() => {

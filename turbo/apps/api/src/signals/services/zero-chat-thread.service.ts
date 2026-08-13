@@ -343,71 +343,6 @@ export function zeroChatThreadUnreads(args: {
 }
 
 /**
- * Agents that currently have at least one unread thread for the user. Uses
- * the same timestamp watermark comparison as `zeroChatThreadUnreads`.
- */
-export function zeroChatThreadUnreadAgentIds(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): Computed<Promise<readonly string[]>> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
-    const rows = await db
-      .selectDistinct({ agentId: chatThreads.agentComposeId })
-      .from(chatThreads)
-      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .crossJoinLateral(lastRunFinish)
-      .where(
-        and(
-          eq(chatThreads.userId, args.userId),
-          eq(zeroAgents.orgId, args.orgId),
-          or(
-            isNull(chatThreads.lastReadAt),
-            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
-          ),
-          noActiveRunsForCurrentThreadCondition(db),
-          noActiveGoalsForCurrentThreadCondition(db),
-        ),
-      );
-    return rows.map((row) => {
-      return row.agentId;
-    });
-  });
-}
-
-/** The user's unread thread ids in the current organization. */
-export function zeroChatThreadUnreadThreadIds(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): Computed<Promise<readonly string[]>> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
-    const rows = await db
-      .select({ threadId: chatThreads.id })
-      .from(chatThreads)
-      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .crossJoinLateral(lastRunFinish)
-      .where(
-        and(
-          eq(chatThreads.userId, args.userId),
-          eq(zeroAgents.orgId, args.orgId),
-          or(
-            isNull(chatThreads.lastReadAt),
-            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
-          ),
-          noActiveRunsForCurrentThreadCondition(db),
-          noActiveGoalsForCurrentThreadCondition(db),
-        ),
-      );
-    return rows.map((row) => {
-      return row.threadId;
-    });
-  });
-}
-
-/**
  * Active and unread indicators for the user's agents and threads in the
  * current organization. Active threads are complete; unread threads are the
  * latest 50 terminal markers from the last seven days. Active threads are
@@ -508,38 +443,6 @@ export function zeroChatIndicators(args: {
       }
     }
     return { agents, threads };
-  });
-}
-
-/**
- * Chat threads owned by the user in the current org that currently have at
- * least one non-terminal run. Used by local-first thread lists to hydrate the
- * transient sidebar running indicator outside lifecycle event replay.
- */
-export function zeroChatThreadActiveRunThreadIds(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): Computed<Promise<readonly string[]>> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const rows = await db
-      .selectDistinct({ threadId: zeroRuns.chatThreadId })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-      .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
-      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .where(
-        and(
-          eq(chatThreads.userId, args.userId),
-          eq(zeroAgents.orgId, args.orgId),
-          isNotNull(zeroRuns.chatThreadId),
-          inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
-        ),
-      );
-
-    return rows.flatMap((row) => {
-      return row.threadId ? [row.threadId] : [];
-    });
   });
 }
 
