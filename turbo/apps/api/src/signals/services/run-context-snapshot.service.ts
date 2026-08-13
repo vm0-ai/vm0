@@ -1,5 +1,5 @@
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { NetworkPolicies } from "@vm0/connectors/firewall-types";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { NetworkPolicies } from "@okouai/connectors/firewall-types";
 
 type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];

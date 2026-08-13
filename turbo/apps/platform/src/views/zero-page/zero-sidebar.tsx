@@ -12,7 +12,7 @@ import {
   Plug,
   Search,
 } from "lucide-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Button,
   Tooltip,
@@ -20,7 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
   sidebarOff$,

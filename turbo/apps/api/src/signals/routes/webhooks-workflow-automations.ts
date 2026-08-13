@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { webhookWorkflowAutomationContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookWorkflowAutomationContract } from "@okouai/api-contracts/contracts/webhooks";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";

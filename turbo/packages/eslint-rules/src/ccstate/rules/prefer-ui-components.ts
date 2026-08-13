@@ -2,7 +2,7 @@
  * ESLint rule: prefer-ui-components
  *
  * Catches raw `<button>` / `<input>` / `<textarea>` elements that re-implement a
- * `@vm0/ui` component instead of using it. Hand-rolling them is how the app
+ * `@okouai/ui` component instead of using it. Hand-rolling them is how the app
  * ended up with three different corner radii on the same icon toolbar.
  *
  * The rule only fires on the two shapes that are unambiguously a component:
@@ -128,13 +128,13 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Disallow raw button/input/textarea elements that re-implement a @vm0/ui component.",
+        "Disallow raw button/input/textarea elements that re-implement a @okouai/ui component.",
       recommended: true,
     },
     schema: [],
     messages: {
       preferUiComponent:
-        "This <{{tag}}> re-implements a shared component ({{marker}}). Use <{{replacement}}> from @vm0/ui so sizing, radius and states stay consistent.",
+        "This <{{tag}}> re-implements a shared component ({{marker}}). Use <{{replacement}}> from @okouai/ui so sizing, radius and states stay consistent.",
     },
   },
   create(context) {

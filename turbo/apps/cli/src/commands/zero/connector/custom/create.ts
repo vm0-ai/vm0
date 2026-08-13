@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import chalk from "chalk";
 import { Command } from "commander";
 

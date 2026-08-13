@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { agents$ } from "../agent.ts";
 import {
   createCardSignalsRegistry,

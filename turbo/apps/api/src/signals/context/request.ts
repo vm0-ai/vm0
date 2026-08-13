@@ -1,7 +1,7 @@
 import type {
   AppRoute,
   SchemaOutput,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import { computed, type Computed } from "ccstate";
 
 import { badRequest, badRequestMessage } from "../../lib/error";

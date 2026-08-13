@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroPersonalModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroPersonalModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

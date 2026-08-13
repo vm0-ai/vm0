@@ -2,9 +2,9 @@ import { command } from "ccstate";
 import {
   testUserConfigStateContract,
   type TestUserConfigStateActionBody,
-} from "@vm0/api-contracts/contracts/test-user-config-state";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/api-contracts/contracts/test-user-config-state";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";

@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { testComputerUseStateContract } from "@vm0/api-contracts/contracts/test-computer-use-state";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { testComputerUseStateContract } from "@okouai/api-contracts/contracts/test-computer-use-state";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";

@@ -7,11 +7,14 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { ILLUSTRATION_TEMPLATE_ITEMS, VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { logsListContract } from "@vm0/api-contracts/contracts/logs";
-import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+} from "@okouai/core";
+import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { logsListContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroBrowserContract } from "@okouai/api-contracts/contracts/zero-browser";
 
 import {
   detachedSetupPage,

@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 
-import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import type { StrapiIntegration } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
 import {
   ArrowLeft,
   CircleCheck,
@@ -10,7 +10,7 @@ import {
   Trash,
   Webhook,
 } from "lucide-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import {
   Dialog,
   DialogClose,
@@ -20,10 +20,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@vm0/ui/components/ui/dialog";
-import { Input } from "@vm0/ui/components/ui/input";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/ui/components/ui/dialog";
+import { Input } from "@okouai/ui/components/ui/input";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";

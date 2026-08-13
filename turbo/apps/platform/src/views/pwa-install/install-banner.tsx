@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
   Button,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   installBannerVisible$,
   iosInstallModalOpen$,

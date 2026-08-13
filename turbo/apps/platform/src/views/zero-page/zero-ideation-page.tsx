@@ -2,7 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useLastResolved, useSet } from "ccstate-react";
 import { ArrowUpRight, MessageCircle, Search } from "lucide-react";
-import { Card, CardContent, cn, Input } from "@vm0/ui";
+import { Card, CardContent, cn, Input } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";

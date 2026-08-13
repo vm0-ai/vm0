@@ -1,7 +1,7 @@
 import type {
   ResolvedAttachFile,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { appendCapturedPreviewBypassToUrl } from "../../lib/preview-bypass-cookie.ts";
 import { resolveApiBase } from "../api-base.ts";
 

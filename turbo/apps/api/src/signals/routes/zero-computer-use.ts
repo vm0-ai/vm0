@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { desktopProductFromClientHeader } from "@vm0/api-contracts/contracts/client-headers";
+import { desktopProductFromClientHeader } from "@okouai/api-contracts/contracts/client-headers";
 import {
   zeroComputerUseAuditEventsContract,
   zeroComputerUseCommandContract,
@@ -8,13 +8,13 @@ import {
   zeroComputerUseHostsContract,
   zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import {
   COMPUTER_USE_MCP_PLUGIN,
   COMPUTER_USE_PLUGIN_CALL_KIND,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

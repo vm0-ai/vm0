@@ -9,7 +9,7 @@ import {
   zeroWebSearchRequestSchema,
   type ZeroWebSearchResponse,
   type ZeroWebSearchRecency,
-} from "@vm0/api-contracts/contracts/zero-web-search";
+} from "@okouai/api-contracts/contracts/zero-web-search";
 
 import { callZeroWebSearch } from "../../../lib/api/domains/zero-web-search";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";

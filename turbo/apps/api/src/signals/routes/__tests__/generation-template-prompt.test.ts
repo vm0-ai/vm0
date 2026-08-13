@@ -5,11 +5,11 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
-} from "@vm0/core";
+} from "@okouai/core";
 import {
   findImageStyle,
   findWebsiteTemplatePackage,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,

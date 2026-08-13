@@ -1,9 +1,9 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import { openClaudeCodeDeviceAuthDialog$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialog$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";

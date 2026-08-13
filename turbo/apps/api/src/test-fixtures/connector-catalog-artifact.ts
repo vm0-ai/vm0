@@ -1,7 +1,7 @@
 import {
   getConnectorAuthProviderRegistrationCapabilities,
   type ConnectorAuthProviderRegistrationCapability,
-} from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/auth-providers";
 
 import type {
   ConnectorCatalogArtifact,

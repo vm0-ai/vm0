@@ -1,4 +1,4 @@
-import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
+import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

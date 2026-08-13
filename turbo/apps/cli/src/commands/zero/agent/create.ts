@@ -1,4 +1,4 @@
-import type { ZeroAgentVisibility } from "@vm0/api-contracts/contracts/zero-agents";
+import type { ZeroAgentVisibility } from "@okouai/api-contracts/contracts/zero-agents";
 import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";

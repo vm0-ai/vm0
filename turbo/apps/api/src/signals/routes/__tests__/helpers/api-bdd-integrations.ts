@@ -25,31 +25,31 @@ import {
   type SlackUploadInitBody,
   type TelegramUploadInitBody,
   type TelegramUploadCompleteBody,
-} from "@vm0/api-contracts/contracts/integrations";
-import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
+} from "@okouai/api-contracts/contracts/integrations";
+import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import {
   githubOauthContract,
   type GithubAppSetupCallbackQuery,
   type GithubOauthConnectCallbackQuery,
   type GithubOauthConnectQuery,
   type GithubOauthInstallQuery,
-} from "@vm0/api-contracts/contracts/github-oauth";
-import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
-import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
-import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+} from "@okouai/api-contracts/contracts/github-oauth";
+import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
+import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
+import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
-import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
-import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
-import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/zero-model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
+import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
+import { zeroUserModelPreferenceContract } from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import { HttpResponse, http } from "msw";
 import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";

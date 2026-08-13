@@ -1,4 +1,4 @@
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 
 type StatusDotVariant =
   | "success"

@@ -1,12 +1,12 @@
 import { useLastResolved, useLoadable } from "ccstate-react";
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/ui/components/ui/dialog";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { scopeDiff$ } from "../../../../signals/zero-page/settings/connectors.ts";

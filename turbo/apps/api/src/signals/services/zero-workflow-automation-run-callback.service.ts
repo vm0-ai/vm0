@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";

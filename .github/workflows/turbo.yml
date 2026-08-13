@@ -426,14 +426,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      # The two heavy app type-checks (api, @vm0/app ≈ 57% of the former
+      # The two heavy app type-checks (api, @okouai/app ≈ 57% of the former
       # serial total) run in the separate lint-types-apps job below. Here we
       # check everything else. Dependency packages resolve via source
       # (exports point at src/*.ts, no build step), so the apps job can run
       # its tsc standalone without re-running these — no duplicated work.
       - name: Type Check (shared packages)
         working-directory: turbo
-        run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@vm0/app'
+        run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@okouai/app'
 
   lint-types-apps:
     needs: [detect-turbo-ts-checks]
@@ -494,9 +494,9 @@ jobs:
           ' "$result_file"
 
           exit "$status"
-      - name: Type Check (@vm0/app)
+      - name: Type Check (@okouai/app)
         working-directory: turbo
-        run: pnpm --filter @vm0/app run check-types
+        run: pnpm --filter @okouai/app run check-types
 
   lint-format:
     needs: [detect-turbo-ts-checks]
@@ -558,7 +558,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
+        run: pnpm --filter @okouai/db db:migrate
       - name: Bench API
         working-directory: turbo
         env:
@@ -596,7 +596,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Bench App
         working-directory: turbo
-        run: pnpm -F @vm0/app exec vitest bench --run --outputJson bench-results.json
+        run: pnpm -F @okouai/app exec vitest bench --run --outputJson bench-results.json
       - name: Print bench summary
         if: success() || failure()
         working-directory: turbo/apps/platform
@@ -730,7 +730,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/okou-cli --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -762,7 +762,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -807,7 +807,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
+        run: pnpm --filter @okouai/db db:migrate
       - name: Test API
         working-directory: turbo
         env:
@@ -845,13 +845,13 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/core --project=@okouai/ui --project=@okouai/api-contracts --project=@okouai/db --coverage.enabled --coverage.reporter=json
       - name: Test Connectors
         working-directory: turbo
-        run: pnpm -F @vm0/connectors exec vitest run --reporter=default
+        run: pnpm -F @okouai/connectors exec vitest run --reporter=default
       - name: Test ESLint Config
         working-directory: turbo
-        run: pnpm -F @vm0/eslint-config test
+        run: pnpm -F @okouai/eslint-config test
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -992,7 +992,7 @@ jobs:
             if [ -z "$PARENT_DATABASE_URL" ]; then
               PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
             fi
-            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @vm0/db db:migrate)
+            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @okouai/db db:migrate)
           fi
 
           BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
@@ -1016,7 +1016,7 @@ jobs:
           fi
 
           cd turbo
-          DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
+          DATABASE_URL="$DATABASE_URL" pnpm -F @okouai/db db:migrate
           ENV=preview DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
 
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
@@ -1321,8 +1321,8 @@ jobs:
           VITE_VAPID_PUBLIC_KEY_PROD: ${{ vars.VAPID_PUBLIC_KEY_PROD }}
         run: |
           cd turbo
-          pnpm --filter @vm0/app exec vite build --sourcemap
-          pnpm --filter @vm0/app exec sentry-cli sourcemaps inject dist
+          pnpm --filter @okouai/app exec vite build --sourcemap
+          pnpm --filter @okouai/app exec sentry-cli sourcemaps inject dist
 
       - name: Create artifact manifest
         if: steps.existing.outputs.exists != 'true'
@@ -2053,10 +2053,10 @@ jobs:
 
       - name: Install CLI dependencies
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/okou-cli...
+        run: cd turbo && pnpm install --frozen-lockfile --filter @okouai/cli...
       - name: Build CLI
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm --filter @vm0/okou-cli build
+        run: cd turbo && pnpm --filter @okouai/cli build
         env:
           DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
 
@@ -2209,9 +2209,9 @@ jobs:
           package_root="$(mktemp -d)"
           tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
           node_prefix=$(dirname "$(dirname "$(command -v node)")")
-          cli_dir="$node_prefix/lib/node_modules/@vm0/okou-cli"
+          cli_dir="$node_prefix/lib/node_modules/@okouai/cli"
           sudo rm -rf "$cli_dir"
-          sudo mkdir -p "$node_prefix/lib/node_modules/@vm0"
+          sudo mkdir -p "$node_prefix/lib/node_modules/@okouai"
           sudo cp -a "$package_root/package" "$cli_dir"
           sudo chmod +x "$cli_dir/okou.js"
           sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/okou"
@@ -3055,10 +3055,10 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/runtime-api-schema
 
-          pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out /tmp/runtime-api-schema/candidate.json
+          pnpm --filter @okouai/api-contracts run build:runtime-api-schema -- --out /tmp/runtime-api-schema/candidate.json
 
           if [ -f /tmp/runtime-api-schema/current.json ]; then
-            pnpm --filter @vm0/api-contracts run lint-runtime-api-compat -- \
+            pnpm --filter @okouai/api-contracts run lint-runtime-api-compat -- \
               --against /tmp/runtime-api-schema/current.json \
               --current /tmp/runtime-api-schema/candidate.json \
               --report-out /tmp/runtime-api-schema/report.json \

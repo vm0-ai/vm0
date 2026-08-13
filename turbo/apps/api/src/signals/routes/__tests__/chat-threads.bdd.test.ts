@@ -4,20 +4,20 @@ import { HttpResponse, http } from "msw";
 import {
   cronCompactChatThreadSnapshotsContract,
   cronProjectChatEventSearchContract,
-} from "@vm0/api-contracts/contracts/cron";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { testCronCleanupSandboxesStateContract } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+} from "@okouai/api-contracts/contracts/cron";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   chatThreadsContract,
   type ChatEvent,
   type UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";

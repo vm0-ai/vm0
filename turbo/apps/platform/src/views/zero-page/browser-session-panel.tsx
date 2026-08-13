@@ -9,8 +9,8 @@ import {
 import {
   ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
   ZERO_BROWSER_SCREEN_WIDTH,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { Button, cn } from "@vm0/ui";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { Button, cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 

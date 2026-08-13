@@ -12,11 +12,11 @@ import {
   modelProviderTypeSchema,
   type ModelProviderFramework,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { modelProviderConnections } from "@vm0/db/schema/model-provider-gateway";
-import { secrets } from "@vm0/db/schema/secret";
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { modelProviderConnections } from "@okouai/db/schema/model-provider-gateway";
+import { secrets } from "@okouai/db/schema/secret";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";

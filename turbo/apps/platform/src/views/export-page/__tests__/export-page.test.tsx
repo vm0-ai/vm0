@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
+import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
 import { describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";

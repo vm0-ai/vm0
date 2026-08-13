@@ -7,7 +7,7 @@
 import {
   logsByIdContract,
   type LogDetail,
-} from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/logs";
 import { mockApi } from "../msw-contract.ts";
 
 // Mock data for log details

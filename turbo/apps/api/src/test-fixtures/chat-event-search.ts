@@ -5,8 +5,8 @@ import {
   chatEventSearchMessages,
   chatEventSearchMessageWatermarks,
   chatEventSearchWatermarks,
-} from "@vm0/db/schema/chat-event-search";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/chat-event-search";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { asc, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";

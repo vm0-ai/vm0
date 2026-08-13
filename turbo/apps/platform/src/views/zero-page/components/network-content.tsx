@@ -11,8 +11,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@vm0/ui";
-import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/ui";
+import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import { useTranslation } from "react-i18next";
 import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
