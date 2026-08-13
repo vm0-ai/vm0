@@ -25,6 +25,8 @@ import {
   VIDEO_MODELS,
   resolveVideoGenerationOptions,
   type ResolvedVideoGenerationOptions,
+  type VideoAspectRatio,
+  type VideoDuration,
   type VideoModel,
   type VideoModelConfig,
 } from "@vm0/core/video-model-catalog";
@@ -80,15 +82,27 @@ function SettingsPanel({ children }: { readonly children: ReactNode }) {
 const RATIO_GLYPH_SPAN = 20;
 
 /**
+ * Proportions per accepted ratio. A table keyed by the literal union keeps the
+ * unparseable ratio unrepresentable, rather than parsing a string and choosing
+ * what to draw when it does not split into two numbers.
+ */
+const RATIO_GLYPH_SIDES = {
+  "21:9": [21, 9],
+  "16:9": [16, 9],
+  "4:3": [4, 3],
+  "1:1": [1, 1],
+  "3:4": [3, 4],
+  "9:16": [9, 16],
+} as const satisfies Record<VideoAspectRatio, readonly [number, number]>;
+
+/**
  * The ratio drawn at its true proportion. Numbers alone make the user do the
  * arithmetic; the outline answers "which way up, and how wide" before the label
  * is read. Lucide's rectangles are a single fixed shape, so the rect is sized
  * here instead.
  */
-function AspectRatioGlyph({ ratio }: { readonly ratio: string }) {
-  const [rawWidth, rawHeight] = ratio.split(":").map(Number);
-  const width = rawWidth ?? 1;
-  const height = rawHeight ?? 1;
+function AspectRatioGlyph({ ratio }: { readonly ratio: VideoAspectRatio }) {
+  const [width, height] = RATIO_GLYPH_SIDES[ratio];
   const longest = Math.max(width, height);
   const boxWidth = (width / longest) * RATIO_GLYPH_SPAN;
   const boxHeight = (height / longest) * RATIO_GLYPH_SPAN;
@@ -173,7 +187,7 @@ function FixedValueField({
  * single accepted value is read only, and everything else is a grid of
  * equal-width chips the user can hit in one click.
  */
-function VideoOptionField({
+function VideoOptionField<Option extends string>({
   label,
   value,
   values,
@@ -181,10 +195,10 @@ function VideoOptionField({
   onChange,
 }: {
   readonly label: string;
-  readonly value: string;
-  readonly values: readonly string[];
-  readonly renderGlyph?: (option: string) => ReactNode;
-  readonly onChange: (next: string) => void;
+  readonly value: Option;
+  readonly values: readonly Option[];
+  readonly renderGlyph?: (option: Option) => ReactNode;
+  readonly onChange: (next: Option) => void;
 }) {
   if (values.length <= 1) {
     return <FixedValueField label={label} value={value} />;
@@ -231,21 +245,23 @@ function VideoOptionField({
 function VideoDurationField({
   label,
   value,
-  values,
+  durations,
   onChange,
 }: {
   readonly label: string;
-  readonly value: string;
-  readonly values: readonly string[];
-  readonly onChange: (next: string) => void;
+  readonly value: VideoDuration;
+  readonly durations: readonly VideoDuration[];
+  readonly onChange: (next: VideoDuration) => void;
 }) {
-  if (values.length <= 1) {
+  const first = durations[0];
+  const last = durations[durations.length - 1];
+  if (first === undefined || last === undefined || durations.length <= 1) {
     return <FixedValueField label={label} value={value} />;
   }
-  const last = values.length - 1;
+  const lastIndex = durations.length - 1;
   const index = Math.max(
     0,
-    values.findIndex((candidate) => {
+    durations.findIndex((candidate) => {
       return candidate === value;
     }),
   );
@@ -260,15 +276,15 @@ function VideoDurationField({
       <Slider
         ticks
         min={0}
-        max={last}
+        max={lastIndex}
         step={1}
         value={index}
         aria-label={label}
         getAriaValueText={(_formatted, current) => {
-          return values[current] ?? value;
+          return durations[current] ?? value;
         }}
         onValueChange={(next) => {
-          const duration = values[typeof next === "number" ? next : 0];
+          const duration = durations[next];
           if (duration !== undefined) {
             onChange(duration);
           }
@@ -277,8 +293,8 @@ function VideoDurationField({
       {/* The two ends state the model's range, which is what actually differs
           from one model to the next. */}
       <div className="flex justify-between text-[11px] tabular-nums text-muted-foreground">
-        <span>{values[0]}</span>
-        <span>{values[last]}</span>
+        <span>{first}</span>
+        <span>{last}</span>
       </div>
     </div>
   );
@@ -286,9 +302,9 @@ function VideoDurationField({
 
 /**
  * Model choice for the whole video tab. Video generation is the most expensive
- * thing the composer can start, so the decision sits above the templates as its
- * own labelled control rather than hiding inside a chip the user edits after
- * committing to a template.
+ * thing the composer can start, so the decision sits in the template dialog's
+ * header band rather than hiding inside a chip the user edits after committing
+ * to a template.
  *
  * It is the app's DropdownMenu, so item radius, padding, text size, the state
  * layer hover and keyboard navigation all come from the component.
@@ -397,13 +413,8 @@ function VideoSettingsPane({
           renderGlyph={(option) => {
             return <AspectRatioGlyph ratio={option} />;
           }}
-          onChange={(next) => {
-            const aspectRatio = config.aspectRatios.find((candidate) => {
-              return candidate === next;
-            });
-            if (aspectRatio !== undefined) {
-              onChange({ ...resolved, aspectRatio });
-            }
+          onChange={(aspectRatio) => {
+            onChange({ ...resolved, aspectRatio });
           }}
         />
         <VideoOptionField
@@ -412,13 +423,8 @@ function VideoSettingsPane({
           })}
           value={resolved.resolution}
           values={config.resolutions}
-          onChange={(next) => {
-            const resolution = config.resolutions.find((candidate) => {
-              return candidate === next;
-            });
-            if (resolution !== undefined) {
-              onChange({ ...resolved, resolution });
-            }
+          onChange={(resolution) => {
+            onChange({ ...resolved, resolution });
           }}
         />
       </SettingsPanel>
@@ -428,14 +434,9 @@ function VideoSettingsPane({
             return $.chat.templates.videoOptionsDuration;
           })}
           value={resolved.duration}
-          values={config.durations}
-          onChange={(next) => {
-            const duration = config.durations.find((candidate) => {
-              return candidate === next;
-            });
-            if (duration !== undefined) {
-              onChange({ ...resolved, duration });
-            }
+          durations={config.durations}
+          onChange={(duration) => {
+            onChange({ ...resolved, duration });
           }}
         />
       </SettingsPanel>
