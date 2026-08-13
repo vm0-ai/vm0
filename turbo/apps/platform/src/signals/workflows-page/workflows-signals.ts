@@ -245,7 +245,12 @@ const internalWorkflowAutomationCreateDialog$ =
 const internalCreatedWorkflowWebhookAutomation$ =
   state<WorkflowWebhookAutomationSummary | null>(null);
 const internalWorkflowAutomationPickerOpen$ = state(false);
-const internalWorkflowWebhookUpgradeDialogOpen$ = state(false);
+type WorkflowWebhookUpgradeDialogSource =
+  | { readonly action: "create"; readonly workflowId: string }
+  | { readonly action: "enable"; readonly automationId: string }
+  | { readonly action: "menu" };
+const internalWorkflowWebhookUpgradeDialogSource$ =
+  state<WorkflowWebhookUpgradeDialogSource | null>(null);
 const internalCreateStrapiIntegrationId$ = state<string | null>(null);
 const internalWorkflowAutomationPickerCategory$ =
   state<WorkflowAutomationCategoryKey>("schedule");
@@ -568,12 +573,19 @@ export const setWorkflowAutomationPickerOpen$ = command(
 );
 
 export const workflowWebhookUpgradeDialogOpen$ = computed((get) => {
-  return get(internalWorkflowWebhookUpgradeDialogOpen$);
+  return get(internalWorkflowWebhookUpgradeDialogSource$) !== null;
+});
+
+export const workflowWebhookUpgradeDialogSource$ = computed((get) => {
+  return get(internalWorkflowWebhookUpgradeDialogSource$);
 });
 
 export const setWorkflowWebhookUpgradeDialogOpen$ = command(
   ({ set }, open: boolean) => {
-    set(internalWorkflowWebhookUpgradeDialogOpen$, open);
+    set(
+      internalWorkflowWebhookUpgradeDialogSource$,
+      open ? { action: "menu" } : null,
+    );
   },
 );
 
@@ -1418,7 +1430,10 @@ export const createWorkflowWebhookAutomation$ = command(
     signal.throwIfAborted();
     if (result.status === 402) {
       if (result.body.error.code === "TEAM_REQUIRED") {
-        set(internalWorkflowWebhookUpgradeDialogOpen$, true);
+        set(internalWorkflowWebhookUpgradeDialogSource$, {
+          action: "create",
+          workflowId: input.workflowId,
+        });
         return null;
       }
       throw new Error(result.body.error.message);
@@ -1593,7 +1608,10 @@ export const setWorkflowAutomationEnabled$ = command(
     signal.throwIfAborted();
     if (result.status === 402) {
       if (result.body.error.code === "TEAM_REQUIRED") {
-        set(internalWorkflowWebhookUpgradeDialogOpen$, true);
+        set(internalWorkflowWebhookUpgradeDialogSource$, {
+          action: "enable",
+          automationId: input.automationId,
+        });
         return;
       }
       throw new Error(result.body.error.message);

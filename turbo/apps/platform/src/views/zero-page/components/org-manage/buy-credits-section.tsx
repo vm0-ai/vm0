@@ -8,6 +8,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import {
   buyCreditsCustomDollars$,
   buyCreditsSelection$,
+  creditPurchaseOrigin$,
   setBuyCreditsCustomDollars$,
   setBuyCreditsSelection$,
   startCreditCheckout$,
@@ -203,12 +204,14 @@ export function BuyCreditsSection() {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCreditCheckout$);
+  const purchaseOrigin = useGet(creditPurchaseOrigin$);
   const selection = useGet(buyCreditsSelection$);
   const customDollars = useGet(buyCreditsCustomDollars$);
   const setSelection = useSet(setBuyCreditsSelection$);
   const setCustomDollars = useSet(setBuyCreditsCustomDollars$);
 
-  const preparing = checkoutLoadable.state === "loading";
+  const preparing =
+    checkoutLoadable.state === "loading" || purchaseOrigin === "billing";
   const buyDollars = resolveBuyDollars(selection, customDollars);
   const buyInvalid = buyDollars === null;
   const buyLabel = preparing
@@ -245,7 +248,10 @@ export function BuyCreditsSection() {
     const payload: CreditCheckoutSelection =
       selection === "custom" ? { credits, customAmount: true } : { credits };
     const newTab = e.metaKey || e.ctrlKey;
-    detach(checkout(payload, newTab, pageSignal), Reason.DomCallback);
+    detach(
+      checkout(payload, newTab, "billing", pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   return (

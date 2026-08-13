@@ -2043,7 +2043,7 @@ function ManagedSubscriptionOrderSummary({
   const [confirmationLoadable, confirmChange] = useLoadableSet(
     confirmUsagePackSubscriptionChange$,
   );
-  const previewing = previewLoadable.state === "loading";
+  const previewing = previewLoadable.state === "loading" || preview !== null;
   const confirming = confirmationLoadable.state === "loading";
   const error =
     previewLoadable.state === "hasError" ||
@@ -2230,7 +2230,8 @@ function MigrationOrderSummary({
   const [previewLoadable, previewMigration] = useLoadableSet(
     previewUsagePackMigration$,
   );
-  const previewing = previewLoadable.state === "loading";
+  const preview = useGet(usagePackMigrationPreview$);
+  const previewing = previewLoadable.state === "loading" || preview !== null;
   const previewError = previewLoadable.state === "hasError";
   const monthlyTotal = plan.basePriceUsd + totals.totalUsd;
   const currentMonthlyTotal = sourceTier === "pro" ? 20 : 200;
@@ -2317,7 +2318,8 @@ function MigrationRevisionOrderSummary({
   const [previewLoadable, previewRevision] = useLoadableSet(
     previewUsagePackMigrationRevision$,
   );
-  const previewing = previewLoadable.state === "loading";
+  const preview = useGet(usagePackMigrationRevisionPreview$);
+  const previewing = previewLoadable.state === "loading" || preview !== null;
   const previewError = previewLoadable.state === "hasError";
   const currentPlan = usagePackPlan(configuration.tier);
   const currentTotals = migrationConfigurationTotals(configuration, catalog);

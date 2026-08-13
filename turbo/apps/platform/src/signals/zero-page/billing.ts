@@ -67,6 +67,8 @@ type DowngradeTargetTier = "limited-free-1" | "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
+type CreditPurchaseOrigin = "billing" | "chat";
+type ConcurrencyPurchaseOrigin = "billing" | "queue";
 export type ConcurrencyChangeMode = "quantity" | "cancel";
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
@@ -258,6 +260,7 @@ interface ConcurrencySubscriptionConfirmDialogState {
 interface ConcurrencyPurchaseConfirmDialogState {
   readonly action: "purchase";
   readonly newTab: boolean;
+  readonly origin: ConcurrencyPurchaseOrigin;
   readonly quantity: number;
   readonly preview: ConcurrencySubscriptionChangePreviewResponse;
 }
@@ -266,10 +269,16 @@ export type ConcurrencyConfirmDialogState =
   | ConcurrencyPurchaseConfirmDialogState
   | ConcurrencySubscriptionConfirmDialogState;
 
+interface CreditPurchasePreviewState {
+  readonly origin: CreditPurchaseOrigin;
+  readonly preview: CreditPurchasePreviewResponse;
+}
+
 const internalConcurrencyConfirmDialog$ =
   state<ConcurrencyConfirmDialogState | null>(null);
-const internalCreditPurchasePreview$ =
-  state<CreditPurchasePreviewResponse | null>(null);
+const internalCreditPurchasePreview$ = state<CreditPurchasePreviewState | null>(
+  null,
+);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -294,7 +303,10 @@ export const concurrencyConfirmDialog$ = computed((get) => {
   return get(internalConcurrencyConfirmDialog$);
 });
 export const creditPurchasePreview$ = computed((get) => {
-  return get(internalCreditPurchasePreview$);
+  return get(internalCreditPurchasePreview$)?.preview ?? null;
+});
+export const creditPurchaseOrigin$ = computed((get) => {
+  return get(internalCreditPurchasePreview$)?.origin ?? null;
 });
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
@@ -1022,6 +1034,7 @@ export const startCreditCheckout$ = command(
     { get, set },
     selection: CreditCheckoutSelection,
     newTab: boolean,
+    origin: CreditPurchaseOrigin,
     signal: AbortSignal,
   ) => {
     const successUrl = checkoutReturnUrl();
@@ -1060,7 +1073,10 @@ export const startCreditCheckout$ = command(
     );
     signal.throwIfAborted();
     if (!("url" in result.body)) {
-      set(internalCreditPurchasePreview$, result.body);
+      set(internalCreditPurchasePreview$, {
+        origin,
+        preview: result.body,
+      });
       return;
     }
     // Hosted Checkout is the canonical response when saved billing is absent.
@@ -1077,10 +1093,11 @@ export const startCreditCheckout$ = command(
 
 export const confirmCreditPurchase$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const preview = get(internalCreditPurchasePreview$);
-    if (!preview) {
+    const previewState = get(internalCreditPurchasePreview$);
+    if (!previewState) {
       throw new Error("Credit purchase preview is not available");
     }
+    const { preview } = previewState;
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCreditCheckoutContract);
     const result = await accept(
@@ -1157,6 +1174,7 @@ export const openConcurrencyPurchaseReview$ = command(
     { get, set },
     quantity: number,
     newTab: boolean,
+    origin: ConcurrencyPurchaseOrigin,
     signal: AbortSignal,
   ): Promise<void> => {
     const createClient = get(zeroClient$);
@@ -1173,6 +1191,7 @@ export const openConcurrencyPurchaseReview$ = command(
     set(internalConcurrencyConfirmDialog$, {
       action: "purchase",
       newTab,
+      origin,
       quantity,
       preview: result.body,
     });

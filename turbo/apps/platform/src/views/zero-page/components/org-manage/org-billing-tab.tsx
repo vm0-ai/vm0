@@ -2099,8 +2099,12 @@ function ConcurrencyPurchaseDialog({
   const [reviewLoadable, review] = useLoadableSet(
     openConcurrencyPurchaseReview$,
   );
+  const confirmDialog = useGet(concurrencyConfirmDialog$);
   const checkoutLoading =
-    checkoutLoadable.state === "loading" || reviewLoadable.state === "loading";
+    checkoutLoadable.state === "loading" ||
+    reviewLoadable.state === "loading" ||
+    (confirmDialog?.action === "purchase" &&
+      confirmDialog.origin === "billing");
   const quantity = quantityOverride ?? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN;
   const actionLabel = checkoutLoading
     ? i18n.t(($) => {
@@ -2167,7 +2171,12 @@ function ConcurrencyPurchaseDialog({
             onClick={(e) => {
               detach(
                 reviewAvailable
-                  ? review(quantity, e.metaKey || e.ctrlKey, pageSignal)
+                  ? review(
+                      quantity,
+                      e.metaKey || e.ctrlKey,
+                      "billing",
+                      pageSignal,
+                    )
                   : checkout(quantity, e.metaKey || e.ctrlKey, pageSignal),
                 Reason.DomCallback,
               );

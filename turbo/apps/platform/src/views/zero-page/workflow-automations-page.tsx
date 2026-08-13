@@ -52,6 +52,7 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   setWorkflowAutomationEnabled$,
+  workflowWebhookUpgradeDialogSource$,
   type WorkflowAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import {
@@ -724,8 +725,12 @@ export function WorkflowAutomationEnabledSwitch({
   const [enabledLoadable, setEnabled] = useLoadableSet(
     setWorkflowAutomationEnabled$,
   );
+  const upgradeDialogSource = useGet(workflowWebhookUpgradeDialogSource$);
   const { t } = useTranslation();
-  const busy = enabledLoadable.state === "loading";
+  const busy =
+    enabledLoadable.state === "loading" ||
+    (upgradeDialogSource?.action === "enable" &&
+      upgradeDialogSource.automationId === entry.automation.id);
   const title = workflowTitle(entry.workflow);
 
   return (
