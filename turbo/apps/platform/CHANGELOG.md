@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.747.0](https://github.com/vm0-ai/vm0/compare/app-v0.746.0...app-v0.747.0) (2026-08-13)
+
+
+### Features
+
+* add conversation locator rail behind a feature switch ([#26052](https://github.com/vm0-ai/vm0/issues/26052)) ([f50df2d](https://github.com/vm0-ai/vm0/commit/f50df2d6786a4646ca110921e78ebd63eab63038))
+* **chat:** stack every message a user sent back to back ([#27014](https://github.com/vm0-ai/vm0/issues/27014)) ([8e8586b](https://github.com/vm0-ai/vm0/commit/8e8586bf34fc335fe6d28ff4a4eb151d606db726))
+
+
+### Bug Fixes
+
+* **platform:** restore activity event log ([#27004](https://github.com/vm0-ai/vm0/issues/27004)) ([0ebee7b](https://github.com/vm0-ai/vm0/commit/0ebee7b8eeefbe07d638c86479a22dcea7dfa73e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.6
+    * @okouai/core bumped to 8.559.0
+
 ## [0.746.0](https://github.com/vm0-ai/vm0/compare/app-v0.745.0...app-v0.746.0) (2026-08-13)
 
 

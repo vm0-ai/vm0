@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.445.2](https://github.com/vm0-ai/vm0/compare/api-v1.445.1...api-v1.445.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **api:** record chat event snapshot completion ([#27019](https://github.com/vm0-ai/vm0/issues/27019)) ([577cfc1](https://github.com/vm0-ai/vm0/commit/577cfc1a1bb252e760e9bda9b694e39f937b9f33))
+* **platform:** restore activity event log ([#27004](https://github.com/vm0-ai/vm0/issues/27004)) ([0ebee7b](https://github.com/vm0-ai/vm0/commit/0ebee7b8eeefbe07d638c86479a22dcea7dfa73e))
+
+
+### Performance Improvements
+
+* **api:** attribute pi launch resource latency ([#27012](https://github.com/vm0-ai/vm0/issues/27012)) ([4e02383](https://github.com/vm0-ai/vm0/commit/4e02383aea54de5ab2e1092ea949e82e41b57c48))
+* **api:** avoid duplicate goal run preparation ([#27008](https://github.com/vm0-ai/vm0/issues/27008)) ([3a4fafb](https://github.com/vm0-ai/vm0/commit/3a4fafb1b968bcd2127f1d7bda0c7a01ccd334ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.6
+    * @okouai/core bumped to 8.559.0
+    * @okouai/db bumped to 1.198.7
+    * @okouai/pi-agent-runtime bumped to 1.4.14
+
 ## [1.445.1](https://github.com/vm0-ai/vm0/compare/api-v1.445.0...api-v1.445.1) (2026-08-13)
 
 
