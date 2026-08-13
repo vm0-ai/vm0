@@ -3,20 +3,26 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import {
+  assertStage2PooledTransactionShape,
+  createBackfillTimeoutExecutionSql,
+  productionBackfillCall,
+  stage2Migration,
+} from "./agent-run-metadata-stage-2-test-fixtures";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 
 const expansionMigration = "0919_clammy_mastermind";
-const testDatabase = "migration_agent_run_metadata_stage_2_lock_draft";
+const testDatabase = "migration_agent_run_metadata_stage_2_lock";
 
-export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
+export async function validateAgentRunMetadataStage2Lock(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const draftPath = path.join(
-    scriptDirectory,
-    "agent-run-metadata-stage-2-draft.sql",
-  );
   const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
+  const migrationPath = path.join(
+    migrationsDirectory,
+    `${stage2Migration}.sql`,
+  );
   const adminUrl = new URL(databaseUrl);
   adminUrl.pathname = "/postgres";
   const testUrl = new URL(databaseUrl);
@@ -27,21 +33,26 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
   await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
   await admin.query(`CREATE DATABASE "${testDatabase}"`);
 
-  const draft = await fs.readFile(draftPath, "utf8");
-  const locatedBackfillStatement = draft
+  const migrationSql = await fs.readFile(migrationPath, "utf8");
+  assertStage2PooledTransactionShape(migrationSql);
+  const statements = migrationSql
     .split("--> statement-breakpoint")
     .map((statement) => {
       return statement.trim();
     })
-    .find((statement) => {
-      return statement.includes(
-        "Stage 2 backfill no-progress timeout must be positive",
-      );
+    .filter((statement) => {
+      return statement.length > 0;
     });
-  assert.ok(locatedBackfillStatement);
-  const backfillStatement: string = locatedBackfillStatement;
-  assert.match(backfillStatement, /FOR UPDATE OF "target" SKIP LOCKED/u);
-  const batchStatement = backfillStatement.match(
+  const locatedBackfillProcedure = statements.find((statement) => {
+    return statement.includes(
+      "Stage 2 backfill no-progress timeout must be between 0 and 30 seconds",
+    );
+  });
+  assert.ok(locatedBackfillProcedure);
+  const backfillProcedure: string = locatedBackfillProcedure;
+  assert.equal(statements.includes(productionBackfillCall), true);
+  assert.match(backfillProcedure, /FOR UPDATE OF "target" SKIP LOCKED/u);
+  const batchStatement = backfillProcedure.match(
     /WITH "batch" AS MATERIALIZED \(([\s\S]*?)\),\s*"updated" AS \(([\s\S]*?)\)\s*SELECT/u,
   );
   assert.ok(batchStatement);
@@ -76,12 +87,12 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
   assert.doesNotMatch(updateSql, /"zero_runs"|"candidate"/u);
   assert.doesNotMatch(updateSql, /\bJOIN\b/iu);
   assert.deepEqual(
-    [...draft.matchAll(/FOR UPDATE OF\s+"([^"]+)"/gu)].map((match) => {
+    [...migrationSql.matchAll(/FOR UPDATE OF\s+"([^"]+)"/gu)].map((match) => {
       return match[1];
     }),
     ["target"],
   );
-  assert.doesNotMatch(draft, /\bLOCK\s+TABLE\b/iu);
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
 
   async function connect(): Promise<Client> {
     const client = new Client({ connectionString: testUrl.toString() });
@@ -289,6 +300,7 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
     migrationsDirectory,
     expansionMigration,
   );
+  await setup.query(backfillProcedure);
   try {
     {
       const ids = await seed(setup, 1);
@@ -327,12 +339,11 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
           });
         }
         assert.equal(sourceWriterPaused, true);
-        await runner.query(`SET statement_timeout = '1s'`);
-        await runner.query(backfillStatement);
+        await runner.query(productionBackfillCall);
         assert.equal(await mismatchCount(runner), 0);
         await pauseController.query("COMMIT");
         await writing;
-        await runner.query(backfillStatement);
+        await runner.query(productionBackfillCall);
         assert.equal(await mismatchCount(runner), 0);
       } finally {
         await pauseController.query("ROLLBACK").catch(() => {
@@ -351,10 +362,9 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
       const runner = await connect();
       try {
         await lockTarget(promoter, ids[0]!);
-        await runner.query(
-          `SET vm0.agent_run_metadata_backfill_no_progress_timeout = '1 second'`,
+        const running = runner.query(
+          createBackfillTimeoutExecutionSql(productionBackfillCall, "1 second"),
         );
-        const running = runner.query(backfillStatement);
         await waitForMismatchCount(setup, 1);
         await promoter.query(
           `UPDATE "agent_runs" SET "status" = "status" WHERE "id" = $1`,
@@ -382,10 +392,9 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
       const runner = await connect();
       try {
         await lockTarget(deleter, ids[0]!);
-        await runner.query(
-          `SET vm0.agent_run_metadata_backfill_no_progress_timeout = '1 second'`,
+        const running = runner.query(
+          createBackfillTimeoutExecutionSql(productionBackfillCall, "1 second"),
         );
-        const running = runner.query(backfillStatement);
         await waitForMismatchCount(setup, 1);
         await deleter.query(`DELETE FROM "agent_runs" WHERE "id" = $1`, [
           ids[0],
@@ -411,11 +420,13 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
       const runner = await connect();
       try {
         await lockTarget(locker, ids[0]!);
-        await runner.query(
-          `SET vm0.agent_run_metadata_backfill_no_progress_timeout = '250ms'`,
-        );
         await assert.rejects(
-          runner.query(backfillStatement),
+          runner.query(
+            createBackfillTimeoutExecutionSql(
+              productionBackfillCall,
+              "250 milliseconds",
+            ),
+          ),
           /Stage 2 backfill made no progress for 00:00:00.25 while eligible rows remained/,
         );
         assert.equal(await mismatchCount(runner), 1);
@@ -440,10 +451,27 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
         assert.deepEqual(prematureLedgerRows.rows, [{ count: 0 }]);
 
         await locker.query("COMMIT");
-        await runner.query(backfillStatement);
+        await runner.query(productionBackfillCall);
         assert.equal(await mismatchCount(runner), 0);
         assert.deepEqual(await readStrandedCount(runner, ids), [
           { agentOnly: 0, zeroOnly: 0 },
+        ]);
+        const timeoutSettings = await runner.query<{
+          lockTimeout: string;
+          statementTimeout: string;
+          transactionTimeout: string;
+        }>(`
+          SELECT
+            current_setting('lock_timeout') AS "lockTimeout",
+            current_setting('statement_timeout') AS "statementTimeout",
+            current_setting('transaction_timeout') AS "transactionTimeout"
+        `);
+        assert.deepEqual(timeoutSettings.rows, [
+          {
+            lockTimeout: "0",
+            statementTimeout: "0",
+            transactionTimeout: "0",
+          },
         ]);
       } finally {
         await locker.query("ROLLBACK").catch(() => {
@@ -454,6 +482,9 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
       }
     }
   } finally {
+    await setup.query(
+      'DROP PROCEDURE IF EXISTS "backfill_agent_run_metadata_stage2"(interval)',
+    );
     await setup.end();
     await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
     await admin.end();
@@ -463,7 +494,7 @@ export async function validateAgentRunMetadataStage2LockDraft(): Promise<void> {
 }
 
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
-  validateAgentRunMetadataStage2LockDraft().catch((error: unknown) => {
+  validateAgentRunMetadataStage2Lock().catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });

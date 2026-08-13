@@ -3,6 +3,7 @@ import type { Client } from "pg";
 
 export const productionAgentOnlyDigest = "4418a1e0da8c1a2c34563a996d4b337c";
 export const productionCallbackDigest = "408462129a863fe84c3b51c9d6e6951b";
+export const stage2Migration = "0921_agent_run_metadata_stage_2";
 
 export const acceptedAgentOnlyIds = [
   "0cad9bdf-0238-4c82-82f8-3299c5442fcc",
@@ -42,6 +43,11 @@ const composeId = "00000000-0000-4000-8000-000000092200";
 const sessionId = "00000000-0000-4000-8000-000000092201";
 const fixtureUserId = "stage2-migration-fixture-user";
 const fixtureOrgId = "stage2-migration-fixture-org";
+export const productionBackfillCall = `CALL "backfill_agent_run_metadata_stage2"(interval '30 seconds');`;
+const productionTransactionTimeout = "SET LOCAL transaction_timeout = '5min';";
+const fixtureTransactionTimeout = "SET LOCAL transaction_timeout = '1s';";
+
+type BackfillTestTimeout = "1 second" | "250 milliseconds";
 
 export const targetMetadataColumns = [
   "trigger_source",
@@ -213,6 +219,175 @@ export async function seedPairedMetadataMismatches(
 
 function countOccurrences(value: string, expected: string): number {
   return value.split(expected).length - 1;
+}
+
+function splitMigrationStatements(sql: string): string[] {
+  return sql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+}
+
+export function createBackfillTimeoutExecutionSql(
+  productionSql: string,
+  timeout: BackfillTestTimeout,
+): string {
+  assert.equal(countOccurrences(productionSql, productionBackfillCall), 1);
+  const fixtureCall = `CALL "backfill_agent_run_metadata_stage2"(interval '${timeout}');`;
+  assert.equal(countOccurrences(productionSql, fixtureCall), 0);
+
+  const executionSql = productionSql.replace(
+    productionBackfillCall,
+    fixtureCall,
+  );
+  assert.equal(countOccurrences(executionSql, productionBackfillCall), 0);
+  assert.equal(countOccurrences(executionSql, fixtureCall), 1);
+  return executionSql;
+}
+
+export function createTransactionTimeoutExecutionSql(
+  productionSql: string,
+): string {
+  assert.equal(
+    countOccurrences(productionSql, productionTransactionTimeout),
+    2,
+  );
+  assert.equal(countOccurrences(productionSql, fixtureTransactionTimeout), 0);
+
+  const executionSql = productionSql.replaceAll(
+    productionTransactionTimeout,
+    fixtureTransactionTimeout,
+  );
+  assert.equal(countOccurrences(executionSql, productionTransactionTimeout), 0);
+  assert.equal(countOccurrences(executionSql, fixtureTransactionTimeout), 2);
+  return executionSql;
+}
+
+export function assertStage2PooledTransactionShape(sql: string): void {
+  const statements = splitMigrationStatements(sql);
+  for (const statement of statements) {
+    const executableStatement = statement.replace(
+      /^(?:--[^\n]*(?:\n|$)\s*)+/u,
+      "",
+    );
+    assert.doesNotMatch(executableStatement, /^SET(?!\s+LOCAL\b)/u);
+    assert.doesNotMatch(executableStatement, /^RESET\b/u);
+  }
+  assert.doesNotMatch(
+    sql,
+    /vm0\.agent_run_metadata_backfill_no_progress_timeout/u,
+  );
+  assert.equal(countOccurrences(sql, productionBackfillCall), 1);
+  assert.equal(
+    countOccurrences(
+      sql,
+      "v_minimum_server_version_num CONSTANT integer := 170000;",
+    ),
+    1,
+  );
+  assert.equal(countOccurrences(sql, productionTransactionTimeout), 2);
+
+  const preflight = statements.find((statement) => {
+    return statement.includes(
+      "Stage 2 preflight requires PostgreSQL server_version_num",
+    );
+  });
+  assert.ok(preflight);
+  const serverVersionCheck = preflight.indexOf(
+    "SELECT current_setting('server_version_num')::integer",
+  );
+  const ledgerCheck = preflight.indexOf(
+    'FROM "drizzle"."__drizzle_migrations"',
+  );
+  assert.ok(serverVersionCheck >= 0);
+  assert.ok(ledgerCheck > serverVersionCheck);
+
+  const procedure = statements.find((statement) => {
+    return statement.startsWith(
+      'CREATE OR REPLACE PROCEDURE "backfill_agent_run_metadata_stage2"(',
+    );
+  });
+  assert.ok(procedure);
+  const firstCandidate = procedure.indexOf('WITH "batch" AS MATERIALIZED');
+  assert.ok(firstCandidate > 0);
+  const beforeFirstCandidate = procedure.slice(0, firstCandidate);
+  const initialLockTimeout = beforeFirstCandidate.lastIndexOf(
+    "SET LOCAL lock_timeout = '1s';",
+  );
+  const initialTransactionTimeout = beforeFirstCandidate.lastIndexOf(
+    productionTransactionTimeout,
+  );
+  assert.ok(initialLockTimeout >= 0);
+  assert.ok(initialTransactionTimeout > initialLockTimeout);
+  assert.doesNotMatch(procedure, /SET LOCAL statement_timeout\b/u);
+
+  assert.equal((procedure.match(/\bCOMMIT;/gu) ?? []).length, 1);
+  assert.equal(
+    (
+      procedure.match(
+        /COMMIT;\s*SET LOCAL lock_timeout = '1s';\s*SET LOCAL transaction_timeout = '5min';/gu,
+      ) ?? []
+    ).length,
+    1,
+  );
+
+  const isBegin = (statement: string): boolean => {
+    return /(?:^|\n)BEGIN(?: TRANSACTION[^;]*)?;\s*$/u.test(statement);
+  };
+  const beginIndexes = statements
+    .map((statement, index) => {
+      return isBegin(statement) ? index : -1;
+    })
+    .filter((index) => {
+      return index >= 0;
+    });
+  assert.ok(beginIndexes.length > 0);
+  for (const beginIndex of beginIndexes) {
+    assert.equal(statements[beginIndex + 1], "SET LOCAL lock_timeout = '1s';");
+    assert.match(
+      statements[beginIndex + 2] ?? "",
+      /^SET LOCAL statement_timeout = '[^']+';$/u,
+    );
+  }
+
+  let inExplicitTransaction = false;
+  const concurrentBuilds: string[] = [];
+  for (const statement of statements) {
+    if (isBegin(statement)) {
+      assert.equal(inExplicitTransaction, false);
+      inExplicitTransaction = true;
+      continue;
+    }
+    if (statement === "COMMIT;") {
+      assert.equal(inExplicitTransaction, true);
+      inExplicitTransaction = false;
+      continue;
+    }
+    if (/^(?:CREATE|DROP) INDEX CONCURRENTLY\b/u.test(statement)) {
+      assert.equal(inExplicitTransaction, false);
+    }
+    if (statement.startsWith("CREATE INDEX CONCURRENTLY")) {
+      concurrentBuilds.push(statement);
+    }
+    if (statement === productionBackfillCall) {
+      assert.equal(inExplicitTransaction, false);
+    }
+  }
+  assert.equal(inExplicitTransaction, false);
+  assert.deepEqual(
+    concurrentBuilds.map((statement) => {
+      return statement.match(/"(idx_agent_runs_[^"]+)"/u)?.[1];
+    }),
+    [
+      "idx_agent_runs_chat_thread_id",
+      "idx_agent_runs_workflow_automation",
+      "idx_agent_runs_goal",
+    ],
+  );
 }
 
 export function assertProductionExceptionConstants(

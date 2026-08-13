@@ -3,12 +3,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import {
+  assertStage2PooledTransactionShape,
+  stage2Migration,
+} from "./agent-run-metadata-stage-2-test-fixtures";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 
 const expansionMigration = "0919_clammy_mastermind";
-const testDatabase = "migration_agent_run_metadata_stage_2_index_draft";
+const testDatabase = "migration_agent_run_metadata_stage_2_index";
 
-export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> {
+export async function validateAgentRunMetadataStage2Index(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -21,16 +25,17 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
   await admin.connect();
   await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
   await admin.query(`CREATE DATABASE "${testDatabase}"`);
-  const draft = await fs.readFile(
-    path.join(scriptDirectory, "agent-run-metadata-stage-2-draft.sql"),
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${stage2Migration}.sql`),
     "utf8",
   );
-  const statements = draft
+  const statements = migrationSql
     .split("--> statement-breakpoint")
     .map((statement) => {
       return statement.trim();
     })
     .filter(Boolean);
+  assertStage2PooledTransactionShape(migrationSql);
   const recoveryGuardIndex = statements.findIndex((statement) => {
     return statement.includes("invalid-index recovery artifact");
   });
@@ -45,8 +50,6 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
   assert.ok(recoveryGuardIndex >= 0);
   assert.ok(desiredGuardIndex > recoveryGuardIndex);
   assert.ok(firstCreateIndex > desiredGuardIndex);
-  const desiredGuard = statements[desiredGuardIndex]!;
-  const indexPhase = statements.slice(recoveryGuardIndex, firstCreateIndex + 3);
   const constraintGuardIndex = statements.findIndex((statement) => {
     return statement.includes(
       "Stage 2 constraint % has a conflicting definition",
@@ -61,8 +64,16 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
   });
   assert.ok(constraintGuardIndex > firstCreateIndex);
   assert.ok(finalValidationBeginIndex > constraintGuardIndex);
-  const constraintPhase = statements.slice(
+  const indexPhaseStart = statements.lastIndexOf("BEGIN;", recoveryGuardIndex);
+  const constraintPhaseStart = statements.lastIndexOf(
+    "BEGIN;",
     constraintGuardIndex,
+  );
+  assert.ok(indexPhaseStart >= 0);
+  assert.ok(constraintPhaseStart > indexPhaseStart);
+  const indexPhase = statements.slice(indexPhaseStart, constraintPhaseStart);
+  const constraintPhase = statements.slice(
+    constraintPhaseStart,
     finalValidationBeginIndex,
   );
 
@@ -82,6 +93,45 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
     for (const statement of constraintPhase) {
       await client.query(statement);
     }
+  }
+
+  async function runTransactionContaining(
+    client: Client,
+    statementIndex: number,
+  ): Promise<void> {
+    const beginIndex = statements.lastIndexOf("BEGIN;", statementIndex);
+    const commitIndex = statements.indexOf("COMMIT;", statementIndex);
+    assert.ok(beginIndex >= 0);
+    assert.ok(commitIndex > statementIndex);
+    for (const statement of statements.slice(beginIndex, commitIndex + 1)) {
+      await client.query(statement);
+    }
+  }
+
+  async function expectPhaseFailure(
+    client: Client,
+    phase: () => Promise<void>,
+    expected: RegExp,
+  ): Promise<void> {
+    await assert.rejects(phase(), expected);
+    await client.query("ROLLBACK");
+  }
+
+  async function readIndexIdentities(
+    client: Client,
+  ): Promise<{ name: string; oid: string }[]> {
+    const result = await client.query<{ name: string; oid: string }>(`
+      SELECT "relname" AS "name", "oid"::text AS "oid"
+      FROM "pg_class"
+      WHERE "relnamespace" = 'public'::regnamespace
+        AND "relname" IN (
+          'idx_agent_runs_chat_thread_id',
+          'idx_agent_runs_workflow_automation',
+          'idx_agent_runs_goal'
+        )
+      ORDER BY "relname"
+    `);
+    return result.rows;
   }
 
   async function readArtifact(
@@ -200,7 +250,7 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
   );
   try {
     await leaveInvalidDesiredIndex();
-    await client.query(desiredGuard);
+    await runTransactionContaining(client, desiredGuardIndex);
     assert.deepEqual(
       await readArtifact(
         client,
@@ -234,13 +284,23 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
       ),
       undefined,
     );
+    const correctPartialArtifacts = await readIndexIdentities(client);
+    assert.equal(correctPartialArtifacts.length, 3);
+    await runIndexPhase(client);
+    assert.deepEqual(
+      await readIndexIdentities(client),
+      correctPartialArtifacts,
+    );
 
     await client.query(`
       CREATE INDEX "idx_agent_runs_chat_thread_id_stage2_invalid"
       ON "agent_runs" ("id")
     `);
-    await assert.rejects(
-      runIndexPhase(client),
+    await expectPhaseFailure(
+      client,
+      () => {
+        return runIndexPhase(client);
+      },
       /invalid-index recovery artifact idx_agent_runs_chat_thread_id_stage2_invalid has conflicting definition or state/,
     );
     assert.ok(
@@ -258,8 +318,11 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
       CREATE INDEX "idx_agent_runs_chat_thread_id"
       ON "agent_runs" ("id")
     `);
-    await assert.rejects(
-      runIndexPhase(client),
+    await expectPhaseFailure(
+      client,
+      () => {
+        return runIndexPhase(client);
+      },
       /Stage 2 index idx_agent_runs_chat_thread_id has a conflicting definition/,
     );
     assert.match(
@@ -286,8 +349,11 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
       ADD CONSTRAINT "agent_runs_chat_thread_id_chat_threads_id_fk"
       CHECK ("chat_thread_id" IS NULL) NOT VALID
     `);
-    await assert.rejects(
-      runConstraintPhase(client),
+    await expectPhaseFailure(
+      client,
+      () => {
+        return runConstraintPhase(client);
+      },
       /Stage 2 constraint agent_runs_chat_thread_id_chat_threads_id_fk has a conflicting definition/,
     );
     const wrongConstraint = await client.query<{
@@ -322,7 +388,7 @@ export async function validateAgentRunMetadataStage2IndexDraft(): Promise<void> 
 }
 
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
-  validateAgentRunMetadataStage2IndexDraft().catch((error: unknown) => {
+  validateAgentRunMetadataStage2Index().catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });

@@ -6,10 +6,12 @@ import { Client } from "pg";
 import {
   acceptedAgentOnlyIds,
   assertProductionExceptionConstants,
+  assertStage2PooledTransactionShape,
   createCallbackFixtureExecutionSql,
   seedAcceptedAgentOnlyRows,
   seedAcceptedCallbacks,
   seedAgentRunFixtureParents,
+  stage2Migration,
   targetMetadataColumns,
 } from "./agent-run-metadata-stage-2-test-fixtures";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
@@ -17,7 +19,7 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 const minimumLedgerTimestamp = 1786617147388;
 const previousMigration = "0918_add_video_model_columns";
 const expansionMigration = "0919_clammy_mastermind";
-const testDatabase = "migration_agent_run_metadata_stage_2_preflight_draft";
+const testDatabase = "migration_agent_run_metadata_stage_2_preflight";
 
 interface MutationState {
   readonly agentDigest: string;
@@ -180,16 +182,16 @@ const callbackShapeDrifts: readonly ShapeDrift[] = [
   },
 ];
 
-export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<void> {
+export async function validateAgentRunMetadataStage2Preflight(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-  const draft = await fs.readFile(
-    path.join(scriptDirectory, "agent-run-metadata-stage-2-draft.sql"),
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${stage2Migration}.sql`),
     "utf8",
   );
-  const statements = draft
+  const statements = migrationSql
     .split("--> statement-breakpoint")
     .map((statement) => {
       return statement.trim();
@@ -202,10 +204,11 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
       "Stage 2 preflight requires migration ledger timestamp",
     );
   });
-  assert.equal(preflightIndex, 4);
+  assert.equal(preflightIndex, 3);
   const productionPreflight = statements[preflightIndex]!;
-  assertProductionExceptionConstants(draft, 2);
+  assertProductionExceptionConstants(migrationSql, 2);
   assertProductionExceptionConstants(productionPreflight, 1);
+  assertStage2PooledTransactionShape(migrationSql);
 
   const adminUrl = new URL(databaseUrl);
   adminUrl.pathname = "/postgres";
@@ -296,8 +299,6 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
 
     const resetSession = async (): Promise<void> => {
       await client.query("ROLLBACK");
-      await client.query("RESET lock_timeout");
-      await client.query("RESET statement_timeout");
     };
 
     const runPreflightStart = async (): Promise<void> => {
@@ -330,9 +331,24 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
         await runPreflightStart();
         await client.query(preflight);
         await client.query(statements[preflightIndex + 1]!);
-        await client.query("RESET lock_timeout");
-        await client.query("RESET statement_timeout");
         assert.deepEqual(await readMutationState(), before);
+        const timeouts = await client.query<{
+          lockTimeout: string;
+          statementTimeout: string;
+          transactionTimeout: string;
+        }>(`
+          SELECT
+            current_setting('lock_timeout') AS "lockTimeout",
+            current_setting('statement_timeout') AS "statementTimeout",
+            current_setting('transaction_timeout') AS "transactionTimeout"
+        `);
+        assert.deepEqual(timeouts.rows, [
+          {
+            lockTimeout: "0",
+            statementTimeout: "0",
+            transactionTimeout: "0",
+          },
+        ]);
         return notices;
       } finally {
         client.off("notice", listener);
@@ -343,6 +359,42 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
       client,
       migrationsDirectory,
       previousMigration,
+    );
+    const currentServerVersion = await client.query<{ version: number }>(`
+      SELECT current_setting('server_version_num')::integer AS "version"
+    `);
+    const serverVersion = currentServerVersion.rows[0]?.version;
+    assert.ok(serverVersion);
+    const productionVersionDeclaration =
+      "v_minimum_server_version_num CONSTANT integer := 170000;";
+    const unsupportedVersionDeclaration = `v_minimum_server_version_num CONSTANT integer := ${serverVersion + 1};`;
+    assert.equal(
+      productionPreflight.split(productionVersionDeclaration).length - 1,
+      1,
+    );
+    assert.equal(
+      productionPreflight.includes(unsupportedVersionDeclaration),
+      false,
+    );
+    const unsupportedVersionPreflight = productionPreflight.replace(
+      productionVersionDeclaration,
+      unsupportedVersionDeclaration,
+    );
+    assert.equal(
+      unsupportedVersionPreflight.includes(productionVersionDeclaration),
+      false,
+    );
+    assert.equal(
+      unsupportedVersionPreflight.split(unsupportedVersionDeclaration).length -
+        1,
+      1,
+    );
+    await expectPreflightFailure(
+      new RegExp(
+        `Stage 2 preflight requires PostgreSQL server_version_num >= ${serverVersion + 1}, found ${serverVersion}`,
+        "u",
+      ),
+      unsupportedVersionPreflight,
     );
     await expectPreflightFailure(
       /Stage 2 preflight requires migration ledger timestamp >= 1786617147388, found /,
@@ -665,12 +717,6 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
     await client.query("RESET session_replication_role").catch(() => {
       return undefined;
     });
-    await client.query("RESET lock_timeout").catch(() => {
-      return undefined;
-    });
-    await client.query("RESET statement_timeout").catch(() => {
-      return undefined;
-    });
     await client.end();
     await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
     await admin.end();
@@ -680,7 +726,7 @@ export async function validateAgentRunMetadataStage2PreflightDraft(): Promise<vo
 }
 
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
-  validateAgentRunMetadataStage2PreflightDraft().catch((error: unknown) => {
+  validateAgentRunMetadataStage2Preflight().catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });
