@@ -30,7 +30,7 @@ const createInner$ = command(async ({ set }, signal: AbortSignal) => {
   return { status: 200 as const, body: tokenRequest };
 });
 
-export const zeroRealtimeTokenRoutes: readonly RouteEntry[] = [
+export const realtimeTokenRoutes: readonly RouteEntry[] = [
   {
     route: platformRealtimeTokenContract.create,
     handler: createInner$,
