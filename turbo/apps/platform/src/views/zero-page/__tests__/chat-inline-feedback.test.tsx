@@ -460,6 +460,7 @@ describe("chat inline feedback", () => {
     await user.keyboard("{ArrowDown}{Enter}");
 
     const feedbackNote = await findForwardFeedbackNote(dialog);
+    expect(within(dialog).getAllByText("Forward to")).toHaveLength(1);
     expect(within(dialog).getByText("Launch ownership")).toBeInTheDocument();
     expect(within(dialog).queryByText("Content")).toBeNull();
     expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);

@@ -297,12 +297,7 @@ export function ChatForwardDialog({
         {target ? null : <ForwardContent text={selection.quote} />}
         {target && composerState ? (
           <>
-            <div className="flex items-center gap-2 px-5 pt-4 text-sm text-muted-foreground">
-              <span>
-                {t(($) => {
-                  return $.chat.forward.to;
-                })}
-              </span>
+            <div className="px-5 pt-4">
               <ForwardTargetContent target={target} />
             </div>
             <ForwardComposer state={composerState} />
