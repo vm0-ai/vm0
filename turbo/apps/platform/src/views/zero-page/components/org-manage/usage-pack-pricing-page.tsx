@@ -1959,22 +1959,16 @@ function ManagedSubscriptionOrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
-      className="rounded-xl bg-card p-4 zero-border"
     >
-      <h4 className="text-sm font-medium text-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.orderSummary;
-        })}
-      </h4>
-      {hasConfigurationChange ? (
+      {/* Without a change there is nothing to compare, and the ledger above
+          already carries the current totals. */}
+      {hasConfigurationChange && (
         <ManagedSubscriptionComparison
           currentTotals={currentTotals}
           management={management}
           plan={plan}
           totals={totals}
         />
-      ) : (
-        <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
       )}
       {hasDowngrade && management.currentPeriodEnd && (
         <SubscriptionChangeNotice

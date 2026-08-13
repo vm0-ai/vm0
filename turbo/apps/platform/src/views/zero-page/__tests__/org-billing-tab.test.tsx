@@ -1547,9 +1547,11 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
+    // With nothing changed there is no comparison and no repeated summary; the
+    // ledger above already carries the current state.
     expect(
-      within(orderSummary).getByText("Concurrent slots").parentElement,
-    ).toHaveTextContent("Concurrent slots2");
+      within(orderSummary).queryByText("Concurrent slots"),
+    ).not.toBeInTheDocument();
     expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
     click(packageSelect);
     click(
