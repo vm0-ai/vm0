@@ -67,8 +67,10 @@ function chatSearchMessageId(
 
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   return {
-    // Already-open App builds still use messageId as their React key. Keep the
-    // field during rollout, but derive it from the durable canonical identity.
+    // Old Platform/App clients can use messageId as a React key for up to the
+    // ~2-day client-skew window. Keep it derived from durable identity until
+    // #26921 migrates current clients to (chatThreadId, seqId), then remove
+    // messageId/sequenceNumber after that client deploy has aged past 2 days.
     messageId: chatSearchMessageId(row),
     chatThreadId: row.chatThreadId,
     role: row.role,
