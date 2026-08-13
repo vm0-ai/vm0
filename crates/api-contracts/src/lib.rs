@@ -1,5 +1,5 @@
-//! Rust bindings for selected `@okouai/api-contracts` routes, DTOs, and shared
-//! constants.
+//! Rust bindings for selected `@okouai/api-contracts` routes, DTOs, response
+//! decode paths, and shared constants.
 //!
 //! Route constants under [`generated::routes`] are generated from the
 //! TypeScript supported-route registry. Request/response DTOs under
@@ -25,6 +25,8 @@
 
 pub mod generated;
 
+mod decode_path;
 mod route;
 
+pub use decode_path::{DecodePathCursor, DecodePathMapSegment, DecodePathSchema};
 pub use route::{Method, ResolvedRoute, Route, RouteTemplate};
