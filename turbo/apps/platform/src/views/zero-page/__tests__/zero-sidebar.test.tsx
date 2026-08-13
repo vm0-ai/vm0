@@ -2547,8 +2547,8 @@ describe("zero sidebar", () => {
       throw new Error("Default agent unread container not found");
     }
 
-    expect(defaultMenuTrigger).toHaveClass("group-hover:!opacity-100");
-    expect(defaultUnreadContainer).toHaveClass("group-hover:!opacity-0");
+    expect(defaultMenuTrigger).toHaveClass("group-hover:opacity-100!");
+    expect(defaultUnreadContainer).toHaveClass("group-hover:opacity-0!");
 
     click(defaultMenuTrigger);
     expect(defaultMenuTrigger).toHaveAttribute("data-popup-open");
