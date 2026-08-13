@@ -1,14 +1,14 @@
 import {
-  ZERO_PEOPLE_SEARCH_DEFAULT_LIMIT,
-  ZERO_PEOPLE_SEARCH_MAX_LIMIT,
-  zeroPeopleSearchRequestSchema,
-} from "@okouai/api-contracts/contracts/zero-people-search";
+  PEOPLE_SEARCH_DEFAULT_LIMIT,
+  PEOPLE_SEARCH_MAX_LIMIT,
+  peopleSearchRequestSchema,
+} from "@okouai/api-contracts/contracts/people-search";
 import chalk from "chalk";
 import { Command, InvalidArgumentError, Option } from "commander";
 
-import { callZeroPeopleSearch } from "../../../lib/api/domains/zero-people-search";
-import type { ZeroPeopleSearchResponse } from "@okouai/api-contracts/contracts/zero-people-search";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { callPeopleSearch } from "../../lib/api/domains/people-search";
+import type { PeopleSearchResponse } from "@okouai/api-contracts/contracts/people-search";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface PeopleSearchOptions {
   readonly limit: number;
@@ -18,19 +18,19 @@ interface PeopleSearchOptions {
 function parseLimit(value: string): number {
   if (!/^\d+$/.test(value)) {
     throw new InvalidArgumentError(
-      `limit must be an integer from 1 to ${ZERO_PEOPLE_SEARCH_MAX_LIMIT}`,
+      `limit must be an integer from 1 to ${PEOPLE_SEARCH_MAX_LIMIT}`,
     );
   }
   const limit = Number(value);
-  if (limit < 1 || limit > ZERO_PEOPLE_SEARCH_MAX_LIMIT) {
+  if (limit < 1 || limit > PEOPLE_SEARCH_MAX_LIMIT) {
     throw new InvalidArgumentError(
-      `limit must be an integer from 1 to ${ZERO_PEOPLE_SEARCH_MAX_LIMIT}`,
+      `limit must be an integer from 1 to ${PEOPLE_SEARCH_MAX_LIMIT}`,
     );
   }
   return limit;
 }
 
-function renderMetadata(response: ZeroPeopleSearchResponse): void {
+function renderMetadata(response: PeopleSearchResponse): void {
   console.log(chalk.dim(`  Provider: ${response.provider}`));
   console.log(chalk.dim(`  Billing category: ${response.billingCategory}`));
   console.log(chalk.dim(`  Billing quantity: ${response.billingQuantity}`));
@@ -38,7 +38,7 @@ function renderMetadata(response: ZeroPeopleSearchResponse): void {
 }
 
 function renderProfile(
-  profile: ZeroPeopleSearchResponse["profiles"][number],
+  profile: PeopleSearchResponse["profiles"][number],
   index: number,
 ): void {
   console.log(`${index + 1}. ${profile.name}`);
@@ -63,7 +63,7 @@ function renderProfile(
   }
 }
 
-function renderProfiles(response: ZeroPeopleSearchResponse): void {
+function renderProfiles(response: PeopleSearchResponse): void {
   if (response.profiles.length === 0) {
     console.log(
       chalk.dim(
@@ -77,22 +77,22 @@ function renderProfiles(response: ZeroPeopleSearchResponse): void {
   }
 }
 
-export const zeroPeopleSearchCommand = new Command()
+export const peopleSearchCommand = new Command()
   .name("people-search")
   .description("Find professionals through managed Okou people search")
   .argument("<query>", "Professional research query")
   .addOption(
     new Option(
       "--limit <count>",
-      `Maximum profiles (1-${ZERO_PEOPLE_SEARCH_MAX_LIMIT})`,
+      `Maximum profiles (1-${PEOPLE_SEARCH_MAX_LIMIT})`,
     )
-      .default(ZERO_PEOPLE_SEARCH_DEFAULT_LIMIT)
+      .default(PEOPLE_SEARCH_DEFAULT_LIMIT)
       .argParser(parseLimit),
   )
   .option("--json", "Print the raw people-search response as JSON")
   .action(
     withErrorHandler(async (query: string, options: PeopleSearchOptions) => {
-      const request = zeroPeopleSearchRequestSchema.safeParse({
+      const request = peopleSearchRequestSchema.safeParse({
         query,
         limit: options.limit,
       });
@@ -102,7 +102,7 @@ export const zeroPeopleSearchCommand = new Command()
             "people-search request is invalid",
         );
       }
-      const response = await callZeroPeopleSearch(request.data);
+      const response = await callPeopleSearch(request.data);
       if (options.json) {
         console.log(JSON.stringify(response));
         return;
@@ -123,7 +123,7 @@ Examples:
 Notes:
   - Authenticates via OKOU_TOKEN (requires people-search:read capability) or a CLI token
   - Successful requests use managed credits, including searches with no matches
-  - Queries are sent to vm0's managed Perplexity provider; never include secrets or private context
+  - Queries are sent to Okou's managed Perplexity provider; never include secrets or private context
   - Profile fields are model-extracted from public professional sources and are not verified facts
   - Verify important claims using the provider-backed source URLs shown with each profile
   - Use only for legitimate professional research; never for harassment, doxxing, stalking, unauthorized background screening, or unlawful employment/privacy decisions

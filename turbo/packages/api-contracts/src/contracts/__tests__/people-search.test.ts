@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_QUERY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
-  zeroPeopleSearchRequestSchema,
-  zeroPeopleSearchResponseSchema,
-} from "../zero-people-search";
+  PEOPLE_SEARCH_MAX_NAME_CHARS,
+  PEOPLE_SEARCH_MAX_QUERY_CHARS,
+  PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
+  peopleSearchRequestSchema,
+  peopleSearchResponseSchema,
+} from "../people-search";
 
 const baseResponse = {
   query: "platform engineering leaders at Notion",
@@ -32,10 +32,10 @@ const baseResponse = {
   ],
 } as const;
 
-describe("zeroPeopleSearchRequestSchema", () => {
+describe("peopleSearchRequestSchema", () => {
   it("trims queries and applies the default limit", () => {
     expect(
-      zeroPeopleSearchRequestSchema.parse({
+      peopleSearchRequestSchema.parse({
         query: "  platform engineering leaders  ",
       }),
     ).toStrictEqual({
@@ -46,24 +46,22 @@ describe("zeroPeopleSearchRequestSchema", () => {
 
   it.each([
     { query: "", limit: 5 },
-    { query: "x".repeat(ZERO_PEOPLE_SEARCH_MAX_QUERY_CHARS + 1), limit: 5 },
+    { query: "x".repeat(PEOPLE_SEARCH_MAX_QUERY_CHARS + 1), limit: 5 },
     { query: "valid", limit: 0 },
     { query: "valid", limit: 21 },
     { query: "valid", limit: 1.5 },
   ])("rejects invalid requests", (request) => {
-    expect(zeroPeopleSearchRequestSchema.safeParse(request).success).toBe(
-      false,
-    );
+    expect(peopleSearchRequestSchema.safeParse(request).success).toBe(false);
   });
 });
 
-describe("zeroPeopleSearchResponseSchema", () => {
+describe("peopleSearchResponseSchema", () => {
   it("accepts bounded profiles and a valid empty result", () => {
-    expect(zeroPeopleSearchResponseSchema.safeParse(baseResponse).success).toBe(
+    expect(peopleSearchResponseSchema.safeParse(baseResponse).success).toBe(
       true,
     );
     expect(
-      zeroPeopleSearchResponseSchema.safeParse({
+      peopleSearchResponseSchema.safeParse({
         ...baseResponse,
         profiles: [],
       }).success,
@@ -72,7 +70,7 @@ describe("zeroPeopleSearchResponseSchema", () => {
 
   it("rejects profiles without provider-backed sources", () => {
     expect(
-      zeroPeopleSearchResponseSchema.safeParse({
+      peopleSearchResponseSchema.safeParse({
         ...baseResponse,
         profiles: [{ ...baseResponse.profiles[0], sources: [] }],
       }).success,
@@ -81,7 +79,7 @@ describe("zeroPeopleSearchResponseSchema", () => {
 
   it("rejects non-HTTP source URLs", () => {
     expect(
-      zeroPeopleSearchResponseSchema.safeParse({
+      peopleSearchResponseSchema.safeParse({
         ...baseResponse,
         profiles: [
           {
@@ -102,22 +100,22 @@ describe("zeroPeopleSearchResponseSchema", () => {
     for (const profile of [
       {
         ...baseResponse.profiles[0],
-        name: "x".repeat(ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS + 1),
+        name: "x".repeat(PEOPLE_SEARCH_MAX_NAME_CHARS + 1),
       },
       {
         ...baseResponse.profiles[0],
-        summary: "x".repeat(ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS + 1),
+        summary: "x".repeat(PEOPLE_SEARCH_MAX_SUMMARY_CHARS + 1),
       },
     ]) {
       expect(
-        zeroPeopleSearchResponseSchema.safeParse({
+        peopleSearchResponseSchema.safeParse({
           ...baseResponse,
           profiles: [profile],
         }).success,
       ).toBe(false);
     }
     expect(
-      zeroPeopleSearchResponseSchema.safeParse({
+      peopleSearchResponseSchema.safeParse({
         ...baseResponse,
         limit: 20,
         profiles: Array.from({ length: 21 }, () => {

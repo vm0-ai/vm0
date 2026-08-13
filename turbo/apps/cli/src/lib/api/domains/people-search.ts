@@ -1,17 +1,17 @@
 import {
-  zeroPeopleSearchContract,
-  type ZeroPeopleSearchRequest,
-  type ZeroPeopleSearchResponse,
-} from "@okouai/api-contracts/contracts/zero-people-search";
+  peopleSearchContract,
+  type PeopleSearchRequest,
+  type PeopleSearchResponse,
+} from "@okouai/api-contracts/contracts/people-search";
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function callZeroPeopleSearch(
-  body: ZeroPeopleSearchRequest,
-): Promise<ZeroPeopleSearchResponse> {
+export async function callPeopleSearch(
+  body: PeopleSearchRequest,
+): Promise<PeopleSearchResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroPeopleSearchContract, config);
+  const client = initClient(peopleSearchContract, config);
   const result = await client.search({ headers: {}, body });
   if (result.status === 200) {
     return result.body;

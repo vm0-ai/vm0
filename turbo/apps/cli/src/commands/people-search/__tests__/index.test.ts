@@ -15,12 +15,10 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroPeopleSearchCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { peopleSearchCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(
-  path.join(os.tmpdir(), "zero-people-search-home-"),
-);
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "people-search-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -74,8 +72,8 @@ describe("okou people-search command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-zero-token");
-    zeroPeopleSearchCommand.setOptionValue("limit", 5);
-    zeroPeopleSearchCommand.setOptionValue("json", undefined);
+    peopleSearchCommand.setOptionValue("limit", 5);
+    peopleSearchCommand.setOptionValue("json", undefined);
   });
 
   afterEach(async () => {
@@ -109,7 +107,7 @@ describe("okou people-search command", () => {
   }
 
   it("documents the default and maximum profile limits", () => {
-    const help = zeroPeopleSearchCommand.helpInformation();
+    const help = peopleSearchCommand.helpInformation();
 
     expect(help).toContain("Maximum profiles (1-20)");
     expect(help).toContain("(default: 5)");
@@ -127,7 +125,7 @@ describe("okou people-search command", () => {
       ),
     );
 
-    await zeroPeopleSearchCommand.parseAsync([
+    await peopleSearchCommand.parseAsync([
       "node",
       "cli",
       "platform engineering leaders",
@@ -148,7 +146,7 @@ describe("okou people-search command", () => {
       }),
     );
 
-    await zeroPeopleSearchCommand.parseAsync([
+    await peopleSearchCommand.parseAsync([
       "node",
       "cli",
       "platform engineering leaders",
@@ -173,7 +171,7 @@ describe("okou people-search command", () => {
       }),
     );
 
-    await zeroPeopleSearchCommand.parseAsync([
+    await peopleSearchCommand.parseAsync([
       "node",
       "cli",
       "very narrow professional query",
@@ -196,7 +194,7 @@ describe("okou people-search command", () => {
     );
 
     await expect(
-      zeroPeopleSearchCommand.parseAsync(["node", "cli", ...args]),
+      peopleSearchCommand.parseAsync(["node", "cli", ...args]),
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(message);
@@ -220,7 +218,7 @@ describe("okou people-search command", () => {
     );
 
     await expect(
-      zeroPeopleSearchCommand.parseAsync(["node", "cli", "leaders"]),
+      peopleSearchCommand.parseAsync(["node", "cli", "leaders"]),
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(

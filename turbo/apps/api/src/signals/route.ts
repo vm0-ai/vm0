@@ -128,7 +128,7 @@ import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroScrapeRoutes } from "./routes/zero-scrape";
-import { zeroPeopleSearchRoutes } from "./routes/zero-people-search";
+import { peopleSearchRoutes } from "./routes/people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
@@ -297,7 +297,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMcpConnectorsRoutes,
   ...zeroWeatherRoutes,
   ...zeroScrapeRoutes,
-  ...zeroPeopleSearchRoutes,
+  ...peopleSearchRoutes,
   ...zeroWebSearchRoutes,
   ...zeroBrowserRoutes,
   ...zeroBrowserAuthorizationRoutes,

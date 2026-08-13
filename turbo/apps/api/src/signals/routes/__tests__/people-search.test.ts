@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroPeopleSearchContract,
-  type ZeroPeopleSearchRequest,
-} from "@okouai/api-contracts/contracts/zero-people-search";
+  peopleSearchContract,
+  type PeopleSearchRequest,
+} from "@okouai/api-contracts/contracts/people-search";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { zeroWebSearchContract } from "@okouai/api-contracts/contracts/zero-web-search";
@@ -26,7 +26,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroPeopleSearchRoutes } from "../zero-people-search";
+import { peopleSearchRoutes } from "../people-search";
 import { zeroWebSearchRoutes } from "../zero-web-search";
 import {
   createBddApi,
@@ -42,9 +42,9 @@ const PERPLEXITY_AGENT_URL = "https://api.perplexity.ai/v1/agent";
 const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
 const MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024;
 
-const peopleSearchRoutes: readonly RouteEntry[] = [
+const peopleSearchTestRoutes: readonly RouteEntry[] = [
   ...zeroBillingStatusRoutes,
-  ...zeroPeopleSearchRoutes,
+  ...peopleSearchRoutes,
 ];
 
 interface AuthHeaders {
@@ -73,7 +73,7 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
 function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
   return setupAppWithRoutes({
     context,
-    routes: peopleSearchRoutes,
+    routes: peopleSearchTestRoutes,
     usagePricingResolution,
   });
 }
@@ -160,8 +160,8 @@ function configureProvider(): void {
 }
 
 function defaultRequest(
-  overrides: Partial<ZeroPeopleSearchRequest> = {},
-): ZeroPeopleSearchRequest {
+  overrides: Partial<PeopleSearchRequest> = {},
+): PeopleSearchRequest {
   return {
     query: "platform engineering leaders at Notion",
     limit: 5,
@@ -263,10 +263,10 @@ function webSearchProviderResponse() {
 async function successfulRequest(
   actor: ApiTestUser,
   pricing: UsagePricingFixture,
-  body: ZeroPeopleSearchRequest = defaultRequest(),
+  body: PeopleSearchRequest = defaultRequest(),
 ) {
   return await accept(
-    client(pricing.resolution)(zeroPeopleSearchContract).search({
+    client(pricing.resolution)(peopleSearchContract).search({
       headers: authenticate(actor),
       body,
     }),
@@ -293,7 +293,7 @@ describe("okou people-search route", () => {
     });
 
     const response = await accept(
-      client()(zeroPeopleSearchContract).search({
+      client()(peopleSearchContract).search({
         headers: { authorization: `Bearer ${token}` },
         body: defaultRequest(),
       }),
@@ -446,7 +446,7 @@ describe("okou people-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: { authorization: `Bearer ${token}` },
         body: defaultRequest(),
       }),
@@ -603,7 +603,7 @@ describe("okou people-search route", () => {
         }),
       );
       const response = await accept(
-        client(pricing.resolution)(zeroPeopleSearchContract).search({
+        client(pricing.resolution)(peopleSearchContract).search({
           headers: authenticate(actor),
           body: defaultRequest({ limit: 1 }),
         }),
@@ -629,7 +629,7 @@ describe("okou people-search route", () => {
     );
     mockEnv("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN", undefined);
     const noCredential = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -640,7 +640,7 @@ describe("okou people-search route", () => {
 
     configureProvider();
     const noPrice = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -666,7 +666,7 @@ describe("okou people-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -690,7 +690,7 @@ describe("okou people-search route", () => {
       }),
     );
     const rateLimited = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -710,7 +710,7 @@ describe("okou people-search route", () => {
       }),
     );
     const timedOut = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -729,7 +729,7 @@ describe("okou people-search route", () => {
       }),
     );
     const oversized = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -761,7 +761,7 @@ describe("okou people-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -820,7 +820,7 @@ describe("okou people-search route", () => {
     );
 
     await accept(
-      client(pricing.resolution)(zeroPeopleSearchContract).search({
+      client(pricing.resolution)(peopleSearchContract).search({
         headers: { authorization: `Bearer ${token}` },
         body: defaultRequest(),
       }),
