@@ -61,7 +61,7 @@ class _AddressResolver(Protocol):
         raise NotImplementedError
 
 
-class _ForwardRequestAbortHandle(Protocol):
+class ForwardRequestAbort(Protocol):
     """Cancellation and socket ownership consumed by auth.base transport."""
 
     def register_async_cancel(self, cancel: Callable[[], object]) -> None:
@@ -107,13 +107,13 @@ class InvalidAuthBaseRequestHeadersError(Exception):
     """Raised when client representation headers cannot be forwarded safely."""
 
 
-class _ValidatedAddress(NamedTuple):
+class ValidatedAddress(NamedTuple):
     family: socket.AddressFamily
     host: str
     port: int
 
 
-class _PreparedForwardRequest(NamedTuple):
+class PreparedForwardRequest(NamedTuple):
     host: str
     port: int | None
     target: str
@@ -132,13 +132,13 @@ def reset_transport_state_for_tests() -> None:
     _dns_resolver = None
 
 
-def _validated_socket_address(address: _ValidatedAddress) -> _SocketAddress:
+def _validated_socket_address(address: ValidatedAddress) -> _SocketAddress:
     if address.family == socket.AF_INET6:
         return address.host, address.port, 0, 0
     return address.host, address.port
 
 
-def _remaining_deadline_seconds(deadline: float) -> float:
+def remaining_deadline_seconds(deadline: float) -> float:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise AuthBaseForwardingDeadlineExceededError("auth.base forwarding deadline exceeded")
@@ -177,13 +177,13 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
         port: int | None,
         *,
         deadline: float,
-        abort_handle: _ForwardRequestAbortHandle,
-        validated_addresses: tuple[_ValidatedAddress, ...],
+        abort_handle: ForwardRequestAbort,
+        validated_addresses: tuple[ValidatedAddress, ...],
     ) -> None:
         super().__init__(
             host,
             port=port,
-            timeout=_remaining_deadline_seconds(deadline),
+            timeout=remaining_deadline_seconds(deadline),
         )
         self._abort_handle = abort_handle
         self._deadline = deadline
@@ -202,7 +202,7 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
             raw_sock = socket.socket(address.family, socket.SOCK_STREAM)
             try:
                 self._abort_handle.register_socket(raw_sock)
-                raw_sock.settimeout(_remaining_deadline_seconds(self._deadline))
+                raw_sock.settimeout(remaining_deadline_seconds(self._deadline))
                 raw_sock.connect(_validated_socket_address(address))
                 self._abort_handle.raise_if_aborted()
             except OSError as exc:
@@ -245,7 +245,7 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
     def set_remaining_timeout(self) -> None:
         self._abort_handle.raise_if_aborted()
         if self.sock is not None:
-            self.sock.settimeout(_remaining_deadline_seconds(self._deadline))
+            self.sock.settimeout(remaining_deadline_seconds(self._deadline))
 
     def close(self) -> None:
         sock = self.sock
@@ -261,8 +261,8 @@ def _make_validated_https_connection(
     port: int | None,
     *,
     deadline: float,
-    abort_handle: _ForwardRequestAbortHandle,
-    validated_addresses: tuple[_ValidatedAddress, ...],
+    abort_handle: ForwardRequestAbort,
+    validated_addresses: tuple[ValidatedAddress, ...],
 ) -> _ValidatedTLSConnection:
     return _ValidatedTLSConnection(
         host,
@@ -478,12 +478,12 @@ def _read_response_body(resp) -> bytes:
     return body
 
 
-def _validate_request_body_size(body: bytes | None) -> None:
+def validate_request_body_size(body: bytes | None) -> None:
     if body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES:
         raise ForwardedRequestTooLargeError("Forwarded auth.base request body too large")
 
 
-def _request_body_size(body: bytes | None) -> int:
+def request_body_size(body: bytes | None) -> int:
     return len(body) if body is not None else 0
 
 
@@ -507,14 +507,14 @@ def _get_dns_resolver() -> _AddressResolver:
 
 def _validated_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address, port: int):
     family = socket.AF_INET6 if address.version == IPV6_VERSION else socket.AF_INET
-    return _ValidatedAddress(family, address.compressed, port)
+    return ValidatedAddress(family, address.compressed, port)
 
 
-async def _resolve_validated_addresses(
+async def resolve_validated_addresses(
     host: str,
     port: int,
-    abort_handle: _ForwardRequestAbortHandle,
-) -> tuple[_ValidatedAddress, ...]:
+    abort_handle: ForwardRequestAbort,
+) -> tuple[ValidatedAddress, ...]:
     try:
         literal_address = ipaddress.ip_address(host)
     except ValueError:
@@ -532,7 +532,7 @@ async def _resolve_validated_addresses(
         resolved_hosts = [literal_address.compressed]
 
     seen: set[str] = set()
-    addresses: list[_ValidatedAddress] = []
+    addresses: list[ValidatedAddress] = []
     for resolved_host in resolved_hosts:
         address = ipaddress.ip_address(resolved_host)
         key = address.compressed
@@ -547,7 +547,7 @@ async def _resolve_validated_addresses(
     return tuple(addresses)
 
 
-def _prepare_forward_request(url: str) -> _PreparedForwardRequest:
+def prepare_forward_request(url: str) -> PreparedForwardRequest:
     parsed = split_runtime_url(url)
     _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
@@ -558,16 +558,16 @@ def _prepare_forward_request(url: str) -> _PreparedForwardRequest:
         port = parsed.port
     except ValueError as exc:
         raise ValueError("Invalid upstream URL: invalid port") from exc
-    return _PreparedForwardRequest(host, port, _request_target(parsed))
+    return PreparedForwardRequest(host, port, _request_target(parsed))
 
 
-def _forward_request_sync(
-    prepared: _PreparedForwardRequest,
+def forward_request_sync(
+    prepared: PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
-    validated_addresses: tuple[_ValidatedAddress, ...],
-    abort_handle: _ForwardRequestAbortHandle,
+    validated_addresses: tuple[ValidatedAddress, ...],
+    abort_handle: ForwardRequestAbort,
     deadline: float,
 ) -> tuple[int, bytes, http.Headers]:
     """Forward an HTTPS request to the real URL and return (status, body, headers).

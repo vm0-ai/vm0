@@ -673,7 +673,7 @@ class TestForwardRequestAsyncWrapper:
             forwarder._run_forward_request_worker(
                 future,
                 contextvars.copy_context(),
-                transport._prepare_forward_request("https://example.com"),
+                transport.prepare_forward_request("https://example.com"),
                 "GET",
                 [],
                 None,
@@ -954,7 +954,7 @@ class TestForwardRequestAsyncWrapper:
             forwarder._run_forward_request_worker(
                 future,
                 contextvars.copy_context(),
-                transport._prepare_forward_request("https://example.com"),
+                transport.prepare_forward_request("https://example.com"),
                 "GET",
                 [],
                 None,

@@ -441,16 +441,16 @@ def _release_forward_request_resources(
 
 def _forward_request_sync_in_context(
     context: contextvars.Context,
-    prepared: auth_base_transport._PreparedForwardRequest,
+    prepared: auth_base_transport.PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
-    validated_addresses: tuple[auth_base_transport._ValidatedAddress, ...],
+    validated_addresses: tuple[auth_base_transport.ValidatedAddress, ...],
     abort_handle: _ForwardRequestAbortHandle,
     deadline: float,
 ) -> tuple[int, bytes, http.Headers]:
     return context.run(
-        auth_base_transport._forward_request_sync,
+        auth_base_transport.forward_request_sync,
         prepared,
         method,
         headers,
@@ -491,11 +491,11 @@ def _set_forward_request_terminal_exception(
 def _run_forward_request_worker(
     future: Future[tuple[int, bytes, http.Headers]],
     context: contextvars.Context,
-    prepared: auth_base_transport._PreparedForwardRequest,
+    prepared: auth_base_transport.PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
-    validated_addresses: tuple[auth_base_transport._ValidatedAddress, ...],
+    validated_addresses: tuple[auth_base_transport.ValidatedAddress, ...],
     abort_handle: _ForwardRequestAbortHandle,
     deadline: float,
 ) -> None:
@@ -543,11 +543,11 @@ def _run_forward_request_worker(
 
 def _start_forward_request_worker(
     context: contextvars.Context,
-    prepared: auth_base_transport._PreparedForwardRequest,
+    prepared: auth_base_transport.PreparedForwardRequest,
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
-    validated_addresses: tuple[auth_base_transport._ValidatedAddress, ...],
+    validated_addresses: tuple[auth_base_transport.ValidatedAddress, ...],
     abort_handle: _ForwardRequestAbortHandle,
     deadline: float,
 ) -> Future[tuple[int, bytes, http.Headers]]:
@@ -614,9 +614,9 @@ async def forward_request(
     Request body size, admission saturation, shutdown, URL/header/destination validation, upstream
     forwarding, and response processing failures propagate to the caller.
     """
-    body_bytes = auth_base_transport._request_body_size(body)
+    body_bytes = auth_base_transport.request_body_size(body)
     try:
-        auth_base_transport._validate_request_body_size(body)
+        auth_base_transport.validate_request_body_size(body)
     except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
         if admission is not None:
             release_forward_request_admission(admission)
@@ -640,7 +640,7 @@ async def forward_request(
         semaphore = _get_forward_request_admission_semaphore()
         context = contextvars.copy_context()
         try:
-            async with asyncio.timeout(auth_base_transport._remaining_deadline_seconds(deadline)):
+            async with asyncio.timeout(auth_base_transport.remaining_deadline_seconds(deadline)):
                 await semaphore.acquire()
                 semaphore_acquired = True
         except TimeoutError as exc:
@@ -655,11 +655,11 @@ async def forward_request(
             abort_handle.abort_for_shutdown()
             raise RuntimeError("auth.base forwarding workers are shut down")
 
-        prepared = auth_base_transport._prepare_forward_request(url)
+        prepared = auth_base_transport.prepare_forward_request(url)
         effective_port = prepared.port if prepared.port is not None else DEFAULT_HTTPS_PORT
         try:
-            async with asyncio.timeout(auth_base_transport._remaining_deadline_seconds(deadline)):
-                validated_addresses = await auth_base_transport._resolve_validated_addresses(
+            async with asyncio.timeout(auth_base_transport.remaining_deadline_seconds(deadline)):
+                validated_addresses = await auth_base_transport.resolve_validated_addresses(
                     prepared.host,
                     effective_port,
                     abort_handle,
@@ -675,7 +675,7 @@ async def forward_request(
             raise
 
         deadline_timer = loop.call_later(
-            auth_base_transport._remaining_deadline_seconds(deadline),
+            auth_base_transport.remaining_deadline_seconds(deadline),
             abort_handle.abort_for_deadline,
         )
         future = _start_forward_request_worker(

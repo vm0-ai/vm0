@@ -271,7 +271,7 @@ class TestAuthBaseForwarderTransportSecurity:
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
@@ -314,7 +314,7 @@ class TestAuthBaseForwarderTransportSecurity:
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
@@ -355,12 +355,12 @@ class TestAuthBaseForwarderTransportSecurity:
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET6,
                     "2001:4860:4860::8888",
                     443,
                 ),
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
@@ -419,7 +419,7 @@ class TestAuthBaseForwarderTransportSecurity:
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
@@ -453,7 +453,7 @@ class TestAuthBaseForwarderTransportSecurity:
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
@@ -484,7 +484,7 @@ class TestAuthBaseForwarderTransportSecurity:
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
@@ -513,7 +513,7 @@ class TestAuthBaseForwarderTransportSecurity:
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                transport._ValidatedAddress(
+                transport.ValidatedAddress(
                     transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
