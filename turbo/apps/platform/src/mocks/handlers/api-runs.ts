@@ -29,7 +29,6 @@ export const apiRunsHandlers = [
     respond(200, {
       events: [],
       hasMore: false,
-      framework: "claude-code",
       status: "completed",
       lastEventSequence: null,
     }),

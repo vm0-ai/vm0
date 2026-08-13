@@ -6,7 +6,6 @@ import {
   type NetworkLogsResponse,
   type RunEvent,
 } from "@okouai/api-contracts/contracts/runs";
-import { agentComposeVersions } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { and, eq } from "drizzle-orm";
 
@@ -26,26 +25,8 @@ import {
 } from "./log-pagination";
 import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
-import { runContextCliAgentType } from "./run-context-framework.service";
 
 type ServiceDb = Pick<Db, "select">;
-
-interface AgentComposeContent {
-  agent?: { framework?: string };
-  agents?: Record<string, { framework?: string } | undefined>;
-}
-
-function extractFramework(composeContent: unknown): string {
-  const content = composeContent as AgentComposeContent | null | undefined;
-  if (content?.agent?.framework) {
-    return content.agent.framework;
-  }
-
-  const agents = content?.agents;
-  const agentNames = agents ? Object.keys(agents) : [];
-  const firstAgent = agentNames.length > 0 ? agents?.[agentNames[0]!] : null;
-  return firstAgent?.framework ?? "claude-code";
-}
 
 async function verifyRunOwnership(
   db: ServiceDb,
@@ -178,19 +159,14 @@ export function zeroRunAgentEvents(
     const db = get(db$);
 
     // Verify ownership and get the run metadata needed by the Activity reader.
-    const [runWithCompose] = await db
+    const [run] = await db
       .select({
         id: agentRuns.id,
         createdAt: agentRuns.createdAt,
         status: agentRuns.status,
         lastEventSequence: agentRuns.lastEventSequence,
-        composeContent: agentComposeVersions.content,
       })
       .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
       .where(
         and(
           eq(agentRuns.id, params.runId),
@@ -200,13 +176,9 @@ export function zeroRunAgentEvents(
       )
       .limit(1);
 
-    if (!runWithCompose) {
+    if (!run) {
       return null;
     }
-
-    const framework =
-      (await get(runContextCliAgentType(params.runId))) ??
-      extractFramework(runWithCompose.composeContent);
 
     const { limit, order } = params;
     const previousCursorValue = sequenceCursorValue(params.cursor, order);
@@ -215,7 +187,7 @@ export function zeroRunAgentEvents(
     const paginationFilter = buildAgentEventPaginationFilters(params);
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
-| where _time >= datetime("${runWithCompose.createdAt.toISOString()}")
+| where _time >= datetime("${run.createdAt.toISOString()}")
 ${paginationFilter}
 | order by sequenceNumber ${order}
 | limit ${limit + 1}`;
@@ -245,9 +217,8 @@ ${paginationFilter}
       }),
       hasMore,
       ...(nextCursor ? { nextCursor } : {}),
-      framework,
-      status: runStatusSchema.parse(runWithCompose.status),
-      lastEventSequence: runWithCompose.lastEventSequence,
+      status: runStatusSchema.parse(run.status),
+      lastEventSequence: run.lastEventSequence,
     };
   });
 }

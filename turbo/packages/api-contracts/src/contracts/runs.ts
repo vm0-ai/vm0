@@ -501,7 +501,6 @@ const agentEventsResponseSchema = z.object({
   events: z.array(runEventSchema),
   hasMore: z.boolean(),
   nextCursor: z.string().nullable().optional(),
-  framework: z.string(),
   status: runStatusSchema,
   lastEventSequence: eventSequenceNumberSchema.nullable(),
 });

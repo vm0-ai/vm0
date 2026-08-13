@@ -1941,7 +1941,6 @@ describe("RUN-04: agent run telemetry families", () => {
           agentEvent(run.runId, 0, "First event"),
           agentEvent(run.runId, 1, "Second event"),
         ],
-        runContext: [{ runId: run.runId, cliAgentType: "claude-code" }],
       },
     });
 
@@ -1964,7 +1963,6 @@ describe("RUN-04: agent run telemetry families", () => {
       ],
       hasMore: true,
       nextCursor: "sequence:asc:0",
-      framework: "claude-code",
       status: "completed",
       lastEventSequence: 1,
     });

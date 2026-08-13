@@ -72,7 +72,6 @@ describe("activity paged events", () => {
             events: [makeAssistantEvent(0, "Page one content")],
             hasMore: true,
             nextCursor: "second-page",
-            framework: "claude-code",
             status: "completed",
             lastEventSequence: 1,
           } satisfies AgentEventsResponse);
@@ -87,7 +86,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [makeAssistantEvent(1, "Page two content")],
             hasMore: false,
-            framework: "claude-code",
             status: "completed",
             lastEventSequence: 1,
           } satisfies AgentEventsResponse);
@@ -96,7 +94,6 @@ describe("activity paged events", () => {
         return respond(200, {
           events: [],
           hasMore: false,
-          framework: "claude-code",
           status: "completed",
           lastEventSequence: null,
         } satisfies AgentEventsResponse);
@@ -145,7 +142,6 @@ describe("activity paged events", () => {
             events: [makeAssistantEvent(0, "Page one content")],
             hasMore: true,
             nextCursor: "second-page",
-            framework: "claude-code",
             status: "completed",
             lastEventSequence: 1,
           } satisfies AgentEventsResponse);
@@ -154,7 +150,6 @@ describe("activity paged events", () => {
         return respond(200, {
           events: [makeAssistantEvent(1, "Page two content")],
           hasMore: false,
-          framework: "claude-code",
           status: "completed",
           lastEventSequence: 1,
         } satisfies AgentEventsResponse);
@@ -195,7 +190,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [makeAssistantEvent(1, "Second cursor page")],
             hasMore: false,
-            framework: "claude-code",
             status: "completed",
             lastEventSequence: 1,
           } satisfies AgentEventsResponse);
@@ -204,7 +198,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [],
             hasMore: false,
-            framework: "claude-code",
             status: "completed",
             lastEventSequence: null,
           } satisfies AgentEventsResponse);
@@ -214,7 +207,6 @@ describe("activity paged events", () => {
           events: [makeAssistantEvent(0, "First cursor page")],
           hasMore: true,
           nextCursor: "server-page-2",
-          framework: "claude-code",
           status: "completed",
           lastEventSequence: 1,
         } satisfies AgentEventsResponse);
@@ -256,7 +248,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [makeAssistantEvent(0, "Running event")],
             hasMore: false,
-            framework: "claude-code",
             status: "running",
             lastEventSequence: null,
           } satisfies AgentEventsResponse);
@@ -265,7 +256,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [],
             hasMore: false,
-            framework: "claude-code",
             status: "completed",
             lastEventSequence: 1,
           } satisfies AgentEventsResponse);
@@ -273,7 +263,6 @@ describe("activity paged events", () => {
         return respond(200, {
           events: [makeAssistantEvent(1, "Final indexed event")],
           hasMore: false,
-          framework: "claude-code",
           status: "completed",
           lastEventSequence: 1,
         } satisfies AgentEventsResponse);
@@ -309,7 +298,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [],
             hasMore: false,
-            framework: "claude-code",
             status: "running",
             lastEventSequence: null,
           } satisfies AgentEventsResponse);
@@ -317,7 +305,6 @@ describe("activity paged events", () => {
         return respond(200, {
           events: [makeAssistantEvent(0, "First indexed event")],
           hasMore: false,
-          framework: "claude-code",
           status: "completed",
           lastEventSequence: 0,
         } satisfies AgentEventsResponse);
@@ -354,7 +341,6 @@ describe("activity paged events", () => {
               ? [makeAssistantEvent(0, "Only indexed event")]
               : [],
           hasMore: false,
-          framework: "claude-code",
           status: "completed",
           lastEventSequence: 2,
         } satisfies AgentEventsResponse);
@@ -463,7 +449,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [makeAssistantEvent(0, "First run event")],
             hasMore: false,
-            framework: "claude-code",
             status: "completed",
             lastEventSequence: 0,
           } satisfies AgentEventsResponse);
@@ -474,7 +459,6 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [makeAssistantEvent(0, "Second run initial event")],
             hasMore: false,
-            framework: "claude-code",
             status: secondRunRequestCount === 1 ? "running" : "completed",
             lastEventSequence: secondRunRequestCount === 1 ? null : 1,
           } satisfies AgentEventsResponse);
@@ -485,7 +469,6 @@ describe("activity paged events", () => {
             makeAssistantEvent(1, "Second run final event"),
           ],
           hasMore: false,
-          framework: "claude-code",
           status: "completed",
           lastEventSequence: 1,
         } satisfies AgentEventsResponse);
