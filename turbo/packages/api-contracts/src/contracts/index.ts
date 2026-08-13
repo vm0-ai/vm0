@@ -128,18 +128,18 @@ export {
   type QueueResponse,
 } from "./runs";
 export {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  ZERO_RECOGNITION_MAX_PROMPT_CHARS,
-  ZERO_RECOGNITION_MAX_TEXT_CHARS,
-  zeroRecognitionContract,
-  zeroRecognitionImageMimeTypeSchema,
-  zeroRecognitionRequestSchema,
-  zeroRecognitionResponseSchema,
-  type ZeroRecognitionContract,
-  type ZeroRecognitionImageMimeType,
-  type ZeroRecognitionRequest,
-  type ZeroRecognitionResponse,
-} from "./zero-recognition";
+  IMAGE_RECOGNITION_MAX_FILE_BYTES,
+  IMAGE_RECOGNITION_MAX_PROMPT_CHARS,
+  IMAGE_RECOGNITION_MAX_TEXT_CHARS,
+  imageRecognitionContract,
+  imageRecognitionMimeTypeSchema,
+  imageRecognitionRequestSchema,
+  imageRecognitionResponseSchema,
+  type ImageRecognitionContract,
+  type ImageRecognitionMimeType,
+  type ImageRecognitionRequest,
+  type ImageRecognitionResponse,
+} from "./image-recognition";
 export {
   TRANSLATION_MAX_LANGUAGE_CHARS,
   TRANSLATION_MAX_RESULT_TEXT_CHARS,
