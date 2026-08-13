@@ -1102,14 +1102,16 @@ describe("okou browser route", () => {
     });
     expect(providerStopAttempts).toStrictEqual([providerIds[0]]);
 
+    // Each deletion can promote a queued run and revoke its marker on another
+    // fixture thread. Settle that route-owned work before deleting the next one.
     for (const threadId of [
       first.threadId,
       other.threadId,
       candidate.threadId,
     ]) {
       await chat.deleteThread(actor, threadId);
+      await flushWaitUntilForTest();
     }
-    await flushWaitUntilForTest();
     expect(providerStopAttempts).toStrictEqual([
       providerIds[0],
       providerIds[1],
