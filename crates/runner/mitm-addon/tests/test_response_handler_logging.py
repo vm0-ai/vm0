@@ -15,7 +15,7 @@ import http_network_log
 import mitm_addon
 import request_classification
 import request_streaming
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import BODY_CAPTURE_LIMIT, STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -367,15 +367,24 @@ def test_network_log_omits_url_above_processing_limit(tmp_path, real_flow, mitm_
     assert len(serialized.encode()) <= 1_000_000
 
 
-def test_network_log_does_not_attribute_non_url_oversize_to_url(tmp_path, real_flow, mitm_ctx):
+def test_capture_headers_preserve_in_budget_sanitization(tmp_path, real_flow, mitm_ctx):
     raw_url = "https://target.example.com/path"
-    oversized_headers = http.Headers(
-        [(f"x-{index:04d}-{'a' * 249}".encode(), b"redacted") for index in range(4_000)]
-    )
     flow = real_flow(
-        with_response=False,
         host="target.example.com",
-        request_headers=oversized_headers,
+        request_headers=http.Headers(
+            [
+                (b"Content-Type", b"application/json"),
+                (b"content-type", b"text/plain"),
+                (b"Authorization", b"Bearer secret"),
+            ]
+        ),
+        response_headers=http.Headers(
+            [
+                (b"Accept-Encoding", b"gzip, br"),
+                (b"accept-encoding", b"zstd"),
+                (b"Server", b"private-origin"),
+            ]
+        ),
     )
     log_path = tmp_path / "network.jsonl"
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
@@ -389,17 +398,69 @@ def test_network_log_does_not_attribute_non_url_oversize_to_url(tmp_path, real_f
         host="target.example.com",
         port=443,
     )
-    flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [entry] = read_jsonl_entries_after_flush(log_path)
+    assert entry["request_headers"] == {
+        "Content-Type": "application/json",
+        "Authorization": "***",
+    }
+    assert entry["response_headers"] == {
+        "Accept-Encoding": "gzip, br",
+        "Server": "***",
+    }
+    assert "request_headers_truncated" not in entry
+    assert "response_headers_truncated" not in entry
+
+
+def test_capture_headers_bound_both_sides_and_final_row(tmp_path, real_flow, mitm_ctx):
+    raw_url = "https://target.example.com/path"
+    request_headers = http.Headers(
+        [(f"x-{index:04d}-{'a' * 249}".encode(), b"redacted") for index in range(1_000)]
+    )
+    response_headers = http.Headers([(f"y-{index:04d}".encode(), b"v") for index in range(1_000)])
+    body = b"\x00" * BODY_CAPTURE_LIMIT
+    flow = real_flow(
+        host="target.example.com",
+        request_headers=request_headers,
+        request_body=body,
+        response_headers=response_headers,
+        response_body=body,
+    )
+    log_path = tmp_path / "network.jsonl"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    flow.metadata[metadata_keys.CAPTURE_BODY] = True
+    http_network_log.set_target(
+        flow,
+        url=raw_url,
+        host="target.example.com",
+        port=443,
+    )
 
     with mitm_ctx():
         mitm_addon.response(flow)
 
     serialized = read_jsonl_text_after_flush(log_path)
     entry = json.loads(serialized)
-    assert len(serialized.encode()) > 1_000_000
+    assert len(serialized.encode()) <= 1_000_000
     assert entry["url"] == raw_url
     assert "url_truncated" not in entry
     assert "url_original_char_count" not in entry
+    assert len(entry["request_headers"]) == 124
+    assert f"x-{123:04d}-{'a' * 249}" in entry["request_headers"]
+    assert f"x-{124:04d}-{'a' * 249}" not in entry["request_headers"]
+    assert entry["request_headers_truncated"] is True
+    assert len(entry["response_headers"]) == 512
+    assert f"y-{511:04d}" in entry["response_headers"]
+    assert f"y-{512:04d}" not in entry["response_headers"]
+    assert entry["response_headers_truncated"] is True
+    assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT
+    assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
 
 @pytest.mark.parametrize("delimiter", ["?", "#"], ids=["query", "fragment"])
