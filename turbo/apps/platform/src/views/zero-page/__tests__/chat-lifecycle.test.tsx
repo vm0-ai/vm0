@@ -382,7 +382,11 @@ describe("chat lifecycle", () => {
     });
     const composerCard = composer.closest(".zero-composer");
     expect(composerCard).not.toBeNull();
-    expect(composerCard?.closest("[data-chat-composer]")).not.toBeNull();
+    const composerFooter = composerCard?.closest("[data-chat-composer]");
+    expect(composerFooter).not.toBeNull();
+    expect(composerFooter).toHaveStyle({
+      paddingBottom: "max(0.5rem - var(--sab), 0px)",
+    });
 
     await sendMessageInUI(user, composer, "Continue working");
 

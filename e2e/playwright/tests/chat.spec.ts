@@ -9,6 +9,8 @@ const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
 const imageLayoutThreadId = "b0000000-0000-4000-a000-000000000736";
 const cardSpacingThreadId = "b0000000-0000-4000-a000-000000000737";
 const forwardLayoutThreadId = "b0000000-0000-4000-a000-000000000738";
+const forwardLayoutThreadTitle =
+  "Forward composer layout with a very long thread title";
 // Card slots carry the same block margins as the paragraphs around them, and
 // adjacent margins collapse into one gap.
 const cardSlotGapPx = 8;
@@ -522,7 +524,7 @@ async function mockForwardLayoutThread(
     createdAt,
     selectedModel: null,
     threadId: forwardLayoutThreadId,
-    title: "Forward composer layout",
+    title: forwardLayoutThreadTitle,
     events: [
       {
         id: "msg-forward-layout-assistant",
@@ -1185,13 +1187,35 @@ test("forward composer stays inside the modal on narrow screens", async ({
   await page.getByRole("button", { name: /^Forward\b/ }).click();
 
   const dialog = page.getByRole("dialog", { name: "Forward to" });
-  await dialog.getByRole("option").first().click();
-  const composerDialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("option", { name: forwardLayoutThreadTitle })
+    .click();
+  const composerDialog = page.getByRole("dialog", {
+    name: forwardLayoutThreadTitle,
+  });
+  const title = composerDialog.getByRole("heading", {
+    name: forwardLayoutThreadTitle,
+  });
+  const composerSurface = composerDialog.locator("[data-chat-composer]");
   const composer = composerDialog.locator(".zero-composer");
 
   for (const width of [360, 320]) {
     await page.setViewportSize({ width, height: 780 });
+    await expectInside(title, composerDialog);
     await expectInside(composer, composerDialog);
+    await expect
+      .poll(async () => {
+        return await composerSurface.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return [
+            style.paddingTop,
+            style.paddingRight,
+            style.paddingBottom,
+            style.paddingLeft,
+          ];
+        });
+      })
+      .toEqual(["20px", "20px", "20px", "20px"]);
   }
 });
 

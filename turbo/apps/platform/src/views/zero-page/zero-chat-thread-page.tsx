@@ -4931,6 +4931,11 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
     <footer
       data-chat-composer
       className="relative shrink-0 bg-[hsl(var(--background))]"
+      style={{
+        // Overlap the footer's breathing room with the root-owned safe area;
+        // --sab is zero while the software keyboard is open.
+        paddingBottom: "max(0.5rem - var(--sab), 0px)",
+      }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div
