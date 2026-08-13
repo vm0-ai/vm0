@@ -51,7 +51,7 @@ import { createAppWithRoutes } from "../../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
-import { now } from "../../../../lib/time";
+import { now, withNowScopeForTest } from "../../../../lib/time";
 import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import {
   createDirectRunFixture,
@@ -1107,13 +1107,17 @@ export function createRunsApi(context: TestContext) {
     },
 
     async heartbeatRunner(group?: string) {
-      return await accept(
-        runApp(context)(runnersHeartbeatContract).heartbeat({
-          headers: runnerHeaders(true),
-          body: runnerHeartbeatBody({ group }),
-        }),
-        [200],
-      );
+      // Claim setup must not let a feature-specific mocked clock prune runner
+      // rows owned by parallel files in the shared test database.
+      return await withNowScopeForTest(async () => {
+        return await accept(
+          runApp(context)(runnersHeartbeatContract).heartbeat({
+            headers: runnerHeaders(true),
+            body: runnerHeartbeatBody({ group }),
+          }),
+          [200],
+        );
+      });
     },
 
     async requestHeartbeatRunner(
