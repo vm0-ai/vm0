@@ -779,10 +779,20 @@ pub trait JobProvider: Send + Sync {
     /// Default no-op — only relevant for API-backed providers.
     async fn defer_poll_until(&self, _deadline: Instant) {}
 
-    /// Release discovery resources (subscriptions, background tasks).
+    /// Stop provider-owned discovery work and release its resources.
     ///
-    /// Called once after `discover()` returns `None` and before draining
-    /// in-flight jobs. `complete()` calls may still arrive after this.
+    /// Called once when the runner will perform no further discovery.
+    /// [`discover()`](JobProvider::discover) may never have started, may have
+    /// returned `None`, or may still be pending when a lifecycle transition
+    /// ends the reactor. In the last case, callers drop the pending future
+    /// before invoking this method so provider-local borrows and guards are
+    /// released first. This ordering preserves the fix for the shutdown
+    /// deadlock reported in #8890 (PR #8898).
+    ///
+    /// During normal reactor teardown, the runner sends a final
+    /// [`heartbeat()`](JobProvider::heartbeat) after this method returns and
+    /// then drains in-flight jobs. Concurrent
+    /// [`complete()`](JobProvider::complete) calls may therefore still arrive.
     async fn shutdown(&self);
 }
 
