@@ -99,7 +99,7 @@ def _start_http1_request(
         http_layer.handle_event(
             events.DataReceived(
                 client,
-                f"{method} / HTTP/1.1\r\nHost: placeholder.example.com\r\n\r\n".encode(),
+                f"{method} / HTTP/1.1\r\nHost: {PLACEHOLDER_HOST}\r\n\r\n".encode(),
             )
         )
     )
