@@ -11,6 +11,7 @@ import {
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import {
+  ensureRunnerOrganizationReady,
   startVideoOnboardingCheckout,
   waitForPaidOnboardingCompletion,
 } from "./lib/onboarding";
@@ -94,6 +95,11 @@ async function main(): Promise<void> {
           appUrl,
           { activeOrganizationId: target.organizationId },
         );
+        await ensureRunnerOrganizationReady({
+          apiUrl,
+          clerkSessionToken,
+          vercelAutomationBypassSecret,
+        });
         if (target.upgradeToPro) {
           await completePaidOnboarding(page, target, appUrl, outputDirectory);
           clerkSessionToken = await refreshClerkSessionToken(page, {
