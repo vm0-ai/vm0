@@ -17,7 +17,7 @@ import {
   Button,
   Input,
 } from "@vm0/ui";
-import { Crown, Minus, Plus } from "lucide-react";
+import { Crown } from "lucide-react";
 import {
   CONCURRENCY_QUANTITY_MAX,
   CONCURRENCY_QUANTITY_MIN,
@@ -385,61 +385,31 @@ function ConcurrencyQuantityControl({
             return $.queue.purchase.quantity;
           })}
         </span>
-        <div className="flex h-9 items-center rounded-lg border border-border/70 bg-background">
-          <Button
-            type="button"
-            aria-label={t(($) => {
-              return $.queue.purchase.decreaseQuantity;
-            })}
-            disabled={quantity <= CONCURRENCY_QUANTITY_MIN || loading}
-            variant="quiet"
-            size="icon"
-            className="rounded-l-lg disabled:opacity-40"
-            onClick={() => {
-              onQuantityChange(quantity - 1);
-            }}
-          >
-            <Minus size={14} />
-          </Button>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={CONCURRENCY_QUANTITY_MIN}
-            max={CONCURRENCY_QUANTITY_MAX}
-            step={1}
-            value={quantity}
-            disabled={loading}
-            aria-label={t(($) => {
-              return $.queue.purchase.quantity;
-            })}
-            className="h-9 w-14 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus-visible:ring-1 focus-visible:ring-inset"
-            onChange={(event) => {
-              const nextQuantity = event.currentTarget.valueAsNumber;
-              if (
-                Number.isInteger(nextQuantity) &&
-                nextQuantity >= CONCURRENCY_QUANTITY_MIN &&
-                nextQuantity <= CONCURRENCY_QUANTITY_MAX
-              ) {
-                onQuantityChange(nextQuantity);
-              }
-            }}
-          />
-          <Button
-            type="button"
-            aria-label={t(($) => {
-              return $.queue.purchase.increaseQuantity;
-            })}
-            disabled={quantity >= CONCURRENCY_QUANTITY_MAX || loading}
-            variant="quiet"
-            size="icon"
-            className="rounded-r-lg disabled:opacity-40"
-            onClick={() => {
-              onQuantityChange(quantity + 1);
-            }}
-          >
-            <Plus size={14} />
-          </Button>
-        </div>
+        <Input
+          type="text"
+          inputMode="numeric"
+          pattern="[1-9][0-9]*"
+          value={quantity}
+          disabled={loading}
+          aria-label={t(($) => {
+            return $.queue.purchase.quantity;
+          })}
+          className="h-9 w-16 bg-background px-2 text-center text-sm font-medium tabular-nums shadow-none focus:border-[hsl(var(--gray-400))] focus:ring-0"
+          onChange={(event) => {
+            const nextValue = event.currentTarget.value;
+            if (!/^[1-9]\d*$/.test(nextValue)) {
+              return;
+            }
+            const nextQuantity = Number(nextValue);
+            if (
+              Number.isInteger(nextQuantity) &&
+              nextQuantity >= CONCURRENCY_QUANTITY_MIN &&
+              nextQuantity <= CONCURRENCY_QUANTITY_MAX
+            ) {
+              onQuantityChange(nextQuantity);
+            }
+          }}
+        />
       </div>
     </div>
   );
