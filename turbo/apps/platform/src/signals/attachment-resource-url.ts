@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { zeroWebFilesContract } from "@vm0/api-contracts/contracts/zero-web-files";
+import { zeroWebFilesContract } from "@okouai/api-contracts/contracts/zero-web-files";
 import { accept } from "../lib/accept.ts";
 import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";

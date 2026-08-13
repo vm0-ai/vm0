@@ -405,7 +405,7 @@ fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::R
 }
 
 #[test]
-fn app_server_shell_prompt_executes_inherited_environment() -> std::io::Result<()> {
+fn app_server_shell_prompt_excludes_trailing_prompt_content() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server_with_env(
         dir.path(),
@@ -432,7 +432,9 @@ fn app_server_shell_prompt_executes_inherited_environment() -> std::io::Result<(
         "turn/start",
         json!({
             "threadId": thread_id,
-            "input": [text_input("@shell@\nprintf 'shell:%s' \"$MOCK_SHELL_VALUE\"")]
+            "input": [text_input(
+                "@shell@\nprintf 'shell:%s' \"$MOCK_SHELL_VALUE\"\n@end-shell@\n\n[Web file] runner-content.txt (text/plain)\n   [ID] file-123"
+            )]
         }),
     )?;
 
@@ -481,7 +483,7 @@ fn app_server_shell_prompt_reports_stderr_and_failure() -> std::io::Result<()> {
         json!({
             "threadId": thread_id,
             "input": [text_input(
-                "@shell@\nprintf stdout; printf stderr >&2; exit 7"
+                "@shell@\nprintf stdout; printf stderr >&2; exit 7\n@end-shell@"
             )]
         }),
     )?;
@@ -500,6 +502,42 @@ fn app_server_shell_prompt_reports_stderr_and_failure() -> std::io::Result<()> {
     }
 
     assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_shell_prompt_requires_end_marker() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("runtime-turn-complete"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": { "cwd": "/tmp" }
+    }))?;
+    let thread_started = server.read_required()?;
+    assert_eq!(thread_started["method"], "thread/started");
+    let started = server.read_required()?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.send(&json!({
+        "id": 3,
+        "method": "turn/start",
+        "params": {
+            "threadId": thread_id,
+            "input": [text_input("@shell@\nprintf unbounded")]
+        }
+    }))?;
+
+    assert!(server.read_message()?.is_none());
+    assert_ne!(server.close_and_wait()?, 0);
     Ok(())
 }
 

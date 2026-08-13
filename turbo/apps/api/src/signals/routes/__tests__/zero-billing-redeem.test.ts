@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import StripeSDK from "stripe";
-import { zeroBillingRedeemContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingRedeemContract } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";

@@ -4,12 +4,12 @@ import type {
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogPermissionSummary,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 interface TestConnectorAuthMethod {
   readonly detail: PublicConnectorCatalogAuthMethodDetail;

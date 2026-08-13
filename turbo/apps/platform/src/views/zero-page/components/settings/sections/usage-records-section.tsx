@@ -1,6 +1,6 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { Tabs, TabsList, TabsTrigger } from "@okouai/ui";
 
 import {
   PersonalUsageRecord,

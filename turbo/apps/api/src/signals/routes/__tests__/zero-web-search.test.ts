@@ -8,9 +8,9 @@ import {
   ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
   zeroWebSearchContract,
   type ZeroWebSearchRequest,
-} from "@vm0/api-contracts/contracts/zero-web-search";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/zero-web-search";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";

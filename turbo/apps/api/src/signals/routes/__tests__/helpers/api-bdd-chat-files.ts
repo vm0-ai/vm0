@@ -26,32 +26,32 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
   type ZeroIndicators,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   artifactCatalogContract,
   type ArtifactCatalogKind,
   type ArtifactDetail,
   type ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
-import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/artifact-catalog";
+import type { ApiErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   isSupportedRunModel,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
   type HostedSiteDeploymentsResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
-} from "@vm0/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/zero-host";
 import {
   zeroUploadsContract,
   type UploadCompleteResponse,
   type UploadPrepareResponse,
-} from "@vm0/api-contracts/contracts/zero-uploads";
+} from "@okouai/api-contracts/contracts/zero-uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import {

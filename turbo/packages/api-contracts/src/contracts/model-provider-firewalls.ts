@@ -1,4 +1,4 @@
-import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
+import type { ExpandedFirewallConfig } from "@okouai/connectors/firewall-types";
 
 import type {
   ModelProviderFramework,

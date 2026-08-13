@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 
-import { isStoredScreenshotPointer } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { computerUseCommands } from "@vm0/db/schema/computer-use-host";
+import { isStoredScreenshotPointer } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { computerUseCommands } from "@okouai/db/schema/computer-use-host";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";

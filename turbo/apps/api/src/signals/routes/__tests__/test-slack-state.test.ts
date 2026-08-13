@@ -5,11 +5,11 @@ import type {
   TestSlackStateDeleteResponse,
   TestSlackStatePostResponse,
   TestSlackStateResponse,
-} from "@vm0/api-contracts/contracts/test-slack-state";
+} from "@okouai/api-contracts/contracts/test-slack-state";
 import type {
   TestTelegramStateResponse,
   TestTelegramStateSeedResponse,
-} from "@vm0/api-contracts/contracts/test-telegram-state";
+} from "@okouai/api-contracts/contracts/test-telegram-state";
 import { describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../../signals/api-client.ts";

@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import { and, eq, lte } from "drizzle-orm";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";

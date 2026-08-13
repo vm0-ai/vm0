@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
-import { emailSuppressions } from "@vm0/db/schema/email-suppression";
+import { zeroEmailInboundContract } from "@okouai/api-contracts/contracts/zero-email";
+import { emailSuppressions } from "@okouai/db/schema/email-suppression";
 
 import { request$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";

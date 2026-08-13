@@ -7,12 +7,12 @@ import {
   type ChatRunOptionsRequest,
   type ChatThreadServiceTier,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { triggerAblyEvent, triggerAblyReconnect } from "../../../mocks/ably.ts";
 import {

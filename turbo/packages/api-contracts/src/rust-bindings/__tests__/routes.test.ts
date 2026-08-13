@@ -187,7 +187,7 @@ describe("Rust route bindings", () => {
     const rendered = renderRustRoutes(rustRouteBindings);
 
     expect(rendered).toContain(
-      "//! Generated Rust route bindings for selected `@vm0/api-contracts` routes.",
+      "//! Generated Rust route bindings for selected `@okouai/api-contracts` routes.",
     );
     expect(rendered).toContain(
       "/// Generated route bindings under `runners::jobs::by_id::claim`.",

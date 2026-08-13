@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingRedeemCodeContract } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";

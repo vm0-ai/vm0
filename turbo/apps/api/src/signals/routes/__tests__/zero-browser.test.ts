@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { testBrowserReconcileContract } from "@vm0/api-contracts/contracts/test-browser-reconcile";
+import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import {
   zeroBrowserAuthorizationRequestsContract,
   zeroBrowserContract,
-} from "@vm0/api-contracts/contracts/zero-browser";
+} from "@okouai/api-contracts/contracts/zero-browser";
 import {
   chatThreadComputerUseHostContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
 import { describe, expect, test as vitestTest } from "vitest";
 import { z } from "zod";

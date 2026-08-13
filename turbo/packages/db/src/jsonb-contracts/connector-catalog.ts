@@ -1,8 +1,8 @@
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorCatalogCompatibilityReason } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorCatalogCompatibilityReason } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 
 export interface ConnectorCatalogCompatibilityFilteredAuthMethod {
   readonly connectorSlug: ConnectorSlug;

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach } from "vitest";
 

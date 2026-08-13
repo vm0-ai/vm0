@@ -1,4 +1,4 @@
-import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
+import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/zero-host";
 import {
   completeHostedSite,
   prepareHostedSite,

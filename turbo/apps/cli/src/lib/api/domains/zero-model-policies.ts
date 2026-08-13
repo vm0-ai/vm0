@@ -1,6 +1,6 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import type { OrgModelPoliciesResponse } from "@okouai/api-contracts/contracts/model-providers";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

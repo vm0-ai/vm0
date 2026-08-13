@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
-import { CopyButton } from "@vm0/ui";
-import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+import { CopyButton } from "@okouai/ui";
+import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import { useTranslation } from "react-i18next";
 import { formatSize, InlineBadge } from "./network-badge.tsx";
 import { i18n } from "../../../i18n/index.ts";

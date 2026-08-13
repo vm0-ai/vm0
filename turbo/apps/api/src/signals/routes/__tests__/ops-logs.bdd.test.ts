@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import type {
   GenerationTemplateRequest,
   UserMessageInputDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroAgentInstructionsContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext, accept } from "../../../__tests__/test-context";

@@ -218,6 +218,41 @@ async def test_auth_base_requestheaders_rejects_saturated_admission_before_auth(
     assert network_log_entry["firewall_error"] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
 
 
+def test_auth_base_requestheaders_releases_new_admission_after_attach_failure(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(declared_size)),
+        ),
+    )
+    original_admission = auth_base_forwarder.reserve_forward_request_admission(4)
+    auth_base_forwarder.attach_forward_request_admission_to_flow(flow, original_admission)
+
+    try:
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            pytest.raises(RuntimeError, match="already attached"),
+        ):
+            mitm_addon.requestheaders(flow)
+
+        assert flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] is original_admission
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (1, 4)
+    finally:
+        auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+
+    assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
 @pytest.mark.parametrize(
     ("method", "request_header_pairs"),
     [

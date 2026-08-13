@@ -7,10 +7,10 @@ import {
   integrationsFeishuUploadInitContract,
   type FeishuResourceType,
   type FeishuUploadCompleteBody,
-} from "@vm0/api-contracts/contracts/integrations";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+} from "@okouai/api-contracts/contracts/integrations";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
 import { sanitizeArtifactFilename } from "../../lib/file-url";

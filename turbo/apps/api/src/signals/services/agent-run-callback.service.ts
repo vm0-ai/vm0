@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { and, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";

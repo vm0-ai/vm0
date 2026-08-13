@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import {
   ZERO_RECOGNITION_MAX_FILE_BYTES,
   ZERO_RECOGNITION_MAX_PROMPT_CHARS,
-} from "@vm0/api-contracts/contracts/zero-recognition";
+} from "@okouai/api-contracts/contracts/zero-recognition";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

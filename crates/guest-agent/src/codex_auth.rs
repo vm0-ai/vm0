@@ -30,6 +30,7 @@ use api_contracts::generated::constants::codex_oauth_token::placeholders::{
 };
 use base64::Engine;
 use chrono::{DateTime, Utc};
+use guest_contracts::runtime_paths::{self, PrivateFileReplacementTarget};
 use serde_json::{Value, json};
 
 use crate::error::AgentError;
@@ -60,6 +61,7 @@ const FAR_FUTURE_EXP_SECS: i64 = 100 * 365 * 24 * 3600;
 /// hostname from inside the sandbox (Epic #11872 risk-mitigation row).
 pub(crate) const REFRESH_TOKEN_NOOP_URL: &str = "http://127.0.0.1:1/blocked";
 const CODEX_HOME_MODE: u32 = 0o700;
+#[cfg(test)]
 const AUTH_JSON_MODE: u32 = 0o600;
 
 pub(crate) enum DesiredCodexAuth<'a> {
@@ -222,29 +224,12 @@ fn remove_auth_json(codex_home: &Path) -> Result<(), AgentError> {
 }
 
 fn write_auth_json_atomic(codex_home: &Path, serialized: &str) -> Result<(), AgentError> {
-    use std::io::Write as _;
-    use std::os::unix::fs::PermissionsExt;
-
     let auth_path = codex_home.join("auth.json");
-    let mut temp = tempfile::NamedTempFile::new_in(codex_home)?;
-
-    {
-        let file = temp.as_file_mut();
-        file.set_permissions(std::fs::Permissions::from_mode(AUTH_JSON_MODE))?;
-        file.write_all(serialized.as_bytes())?;
-        file.flush()?;
-    }
-
-    temp.persist(&auth_path).map_err(|e| {
-        AgentError::Io(std::io::Error::new(
-            e.error.kind(),
-            format!(
-                "failed to replace {} atomically: {}",
-                auth_path.display(),
-                e.error
-            ),
-        ))
-    })?;
+    runtime_paths::replace_private_atomic(
+        auth_path,
+        serialized,
+        PrivateFileReplacementTarget::ReplaceFinalEntry,
+    )?;
     Ok(())
 }
 

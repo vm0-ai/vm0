@@ -7,7 +7,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   findVideoTemplate,
   listVideoTemplates,
-} from "@vm0/core/resource-registry";
+} from "@okouai/core/resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { createVideoTemplateAuthoringPacket } from "./video-template-authoring";
 import {

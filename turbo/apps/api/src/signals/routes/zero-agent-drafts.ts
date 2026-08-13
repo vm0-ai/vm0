@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
-import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroAgentDrafts } from "@vm0/db/schema/zero-agent-draft";
+import { zeroAgentDraftContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroAgentDrafts } from "@okouai/db/schema/zero-agent-draft";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

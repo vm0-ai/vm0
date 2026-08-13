@@ -1,4 +1,4 @@
-import { testChatEventSnapshotContract } from "@vm0/api-contracts/contracts/test-chat-event-snapshot";
+import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";

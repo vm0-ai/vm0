@@ -5,7 +5,7 @@ import {
   ZERO_RECOGNITION_MAX_PROMPT_CHARS,
   zeroRecognitionImageMimeTypeSchema,
   type ZeroRecognitionImageMimeType,
-} from "@vm0/api-contracts/contracts/zero-recognition";
+} from "@okouai/api-contracts/contracts/zero-recognition";
 import { Command } from "commander";
 
 import { ApiRequestError } from "../../../lib/api/core/client-factory";

@@ -1,4 +1,4 @@
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramMessages } from "@okouai/db/schema/telegram-message";
 
 import type { Db } from "../external/db";
 

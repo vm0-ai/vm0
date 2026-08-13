@@ -8,7 +8,7 @@ import {
   CLIENT_VERSION_HEADER,
   DESKTOP_PRODUCT_OKOU,
   DESKTOP_PRODUCT_ZERO,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 
 function uuidSequence(...values: readonly string[]): () => string {

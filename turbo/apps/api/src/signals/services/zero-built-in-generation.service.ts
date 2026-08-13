@@ -5,8 +5,8 @@ import {
   type BuiltInGenerationError,
   type BuiltInGenerationStatus,
   type BuiltInGenerationType,
-} from "@vm0/db/schema/built-in-generation-job";
-import type { ZeroBuiltInGenerationResponse } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+} from "@okouai/db/schema/built-in-generation-job";
+import type { ZeroBuiltInGenerationResponse } from "@okouai/api-contracts/contracts/zero-built-in-generation";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";

@@ -4,27 +4,27 @@ import { command, createStore } from "ccstate";
 import {
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
-import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/chat-events";
+import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
 import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { modelProviderCredentialScopeSchema } from "@okouai/api-contracts/contracts/model-providers";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import {
   chatEventTerminalPredicate,
   chatEvents,
   type ChatEventUserMessage,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   asc,
@@ -626,6 +626,8 @@ interface ChatThreadForRunRow {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
+  readonly title: string | null;
 }
 
 interface ChatRunInfo {
@@ -2053,6 +2055,8 @@ async function runCompletedChatCallbackSideEffects(
       runId: args.runId,
       runStatus: "completed",
       lastResultText: args.lastResultText,
+      sourceAgentId: args.chatThread.agentId,
+      sourceThreadTitle: args.chatThread.title,
     },
     signal,
   );
@@ -2185,6 +2189,8 @@ async function runFailedChatCallbackSideEffects(
       // Failed runs surface their error separately; patterns only ever match
       // assistant output, so terminal errors dispatch with no matchable text.
       lastResultText: null,
+      sourceAgentId: args.chatThread.agentId,
+      sourceThreadTitle: args.chatThread.title,
     },
     signal,
   );
@@ -2440,6 +2446,8 @@ async function chatThreadForRunFromDb(
       chatThreadId: zeroRuns.chatThreadId,
       userId: chatThreads.userId,
       orgId: agentRuns.orgId,
+      agentId: chatThreads.agentComposeId,
+      title: chatThreads.title,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -2454,6 +2462,8 @@ async function chatThreadForRunFromDb(
     chatThreadId: row.chatThreadId,
     userId: row.userId,
     orgId: row.orgId,
+    agentId: row.agentId,
+    title: row.title,
   };
 }
 

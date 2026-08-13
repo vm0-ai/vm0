@@ -6,19 +6,19 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@vm0/ui/components/ui/dropdown-menu";
+} from "@okouai/ui/components/ui/dropdown-menu";
 import {
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from "@vm0/ui/components/ui/popover";
-import { Slider } from "@vm0/ui/components/ui/slider";
-import { Switch } from "@vm0/ui/components/ui/switch";
-import { cn } from "@vm0/ui";
+} from "@okouai/ui/components/ui/popover";
+import { Slider } from "@okouai/ui/components/ui/slider";
+import { Switch } from "@okouai/ui/components/ui/switch";
+import { cn } from "@okouai/ui";
 import type {
   GenerationTemplateRequest,
   VideoGenerationOptions,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
@@ -29,7 +29,7 @@ import {
   type VideoDuration,
   type VideoModel,
   type VideoModelConfig,
-} from "@vm0/core/video-model-catalog";
+} from "@okouai/core/video-model-catalog";
 import { useTranslation } from "react-i18next";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 

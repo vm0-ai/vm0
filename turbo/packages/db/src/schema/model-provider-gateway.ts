@@ -10,7 +10,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ModelProviderSurfaceModelMappings } from "@vm0/db/jsonb-contracts/model-provider-surface";
+import type { ModelProviderSurfaceModelMappings } from "@okouai/db/jsonb-contracts/model-provider-surface";
 import { secrets } from "./secret";
 
 export const modelProviderConnections = pgTable(

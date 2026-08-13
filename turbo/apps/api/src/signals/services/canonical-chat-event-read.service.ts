@@ -1,5 +1,5 @@
-import { userMessageDocumentSchema } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import { userMessageDocumentSchema } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import { sql, type SQLWrapper } from "drizzle-orm";
 
 import {

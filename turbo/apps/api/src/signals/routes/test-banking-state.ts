@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   testBankingStateContract,
   type TestBankingStateActionBody,
-} from "@vm0/api-contracts/contracts/test-banking-state";
+} from "@okouai/api-contracts/contracts/test-banking-state";
 import {
   bankingAccessAuditEvents,
   bankingAccounts,
@@ -10,7 +10,7 @@ import {
   bankingConnections,
   type BankingConnectionStatus,
   type BankingOperationScope,
-} from "@vm0/db/schema/banking";
+} from "@okouai/db/schema/banking";
 import { and, asc, eq } from "drizzle-orm";
 
 import { bodyResultOf } from "../context/request";

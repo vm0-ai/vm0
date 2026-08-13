@@ -6,7 +6,7 @@ import type {
   ChatThreadArtifactRun,
   ChatThreadDraft,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";

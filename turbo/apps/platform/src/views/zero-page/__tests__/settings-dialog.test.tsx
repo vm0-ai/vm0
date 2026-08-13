@@ -1,12 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   type UserLocale,
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { describe, expect, it } from "vitest";
 
 import {

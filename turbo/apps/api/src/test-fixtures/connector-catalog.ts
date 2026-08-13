@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { getConnectorAuthProviderRegistrationCapabilities } from "@vm0/connectors/auth-providers";
+import { getConnectorAuthProviderRegistrationCapabilities } from "@okouai/connectors/auth-providers";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
   connectorCatalogSyncState,
-} from "@vm0/db/schema/connector-catalog";
+} from "@okouai/db/schema/connector-catalog";
 import { and, asc, eq } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../lib/env";

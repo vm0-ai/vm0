@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
-import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
-import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
-import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
+import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
+import { zeroAttributionContract } from "@okouai/api-contracts/contracts/zero-attribution";
+import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -21,20 +21,20 @@ import {
   type CreditCheckoutRequest,
   type RedeemCodeRequest,
   type RedeemRequest,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
-import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroBuiltInGenerationContract } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
+import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import {
   zeroUsageRecordContract,
   type UsageRecordRange,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-video-io-generate";
-import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { zeroVoiceIoSpeechContract } from "@vm0/api-contracts/contracts/zero-voice-io-speech";
-import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
+} from "@okouai/api-contracts/contracts/zero-usage-record";
+import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
+import { zeroVoiceIoQuotaContract } from "@okouai/api-contracts/contracts/zero-voice-io-quota";
+import { zeroVoiceIoSpeechContract } from "@okouai/api-contracts/contracts/zero-voice-io-speech";
+import { zeroVoiceIoSttContract } from "@okouai/api-contracts/contracts/zero-voice-io-stt";
 
 import { mockEnv } from "../../../../lib/env";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

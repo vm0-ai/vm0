@@ -2,15 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { and, count, eq } from "drizzle-orm";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   type ZeroAgentVisibility,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

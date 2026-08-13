@@ -13,9 +13,9 @@ import type {
   ZeroMailAttachment,
   ZeroMailDraft,
   ZeroMailInlineImage,
-} from "@vm0/api-contracts/contracts/zero-mail";
-import { Button } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/zero-mail";
+import { Button } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { CSSProperties, ReactNode } from "react";

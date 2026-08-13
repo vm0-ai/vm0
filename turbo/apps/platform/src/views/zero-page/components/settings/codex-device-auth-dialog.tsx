@@ -6,9 +6,9 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { Button } from "@vm0/ui/components/ui/button";
-import { CopyButton } from "@vm0/ui/components/ui/copy-button";
+} from "@okouai/ui/components/ui/dialog";
+import { Button } from "@okouai/ui/components/ui/button";
+import { CopyButton } from "@okouai/ui/components/ui/copy-button";
 import { Loader2 } from "lucide-react";
 
 import {

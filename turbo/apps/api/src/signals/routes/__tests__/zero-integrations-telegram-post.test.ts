@@ -4,12 +4,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import type {
   TestTelegramStateActionBody,
   TestTelegramStateActionResponse,
   TestTelegramStateResponse,
-} from "@vm0/api-contracts/contracts/test-telegram-state";
+} from "@okouai/api-contracts/contracts/test-telegram-state";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { desktopProductFromClientHeader } from "@vm0/api-contracts/contracts/client-headers";
+import { desktopProductFromClientHeader } from "@okouai/api-contracts/contracts/client-headers";
 import {
   zeroComputerUseHostsContract,
   type ComputerUseHost,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";

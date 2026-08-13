@@ -1,5 +1,5 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../../env.ts";

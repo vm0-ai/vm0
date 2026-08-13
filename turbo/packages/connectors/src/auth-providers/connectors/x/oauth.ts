@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";

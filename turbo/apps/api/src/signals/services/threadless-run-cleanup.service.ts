@@ -1,11 +1,11 @@
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import {
   and,

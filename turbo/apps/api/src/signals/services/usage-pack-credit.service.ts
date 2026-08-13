@@ -1,8 +1,8 @@
 import {
   usagePackCreditGrants,
   type UsagePackCreditGrantType,
-} from "@vm0/db/schema/usage-pack-credit-grant";
-import { usagePackAllocations } from "@vm0/db/schema/usage-pack-subscription";
+} from "@okouai/db/schema/usage-pack-credit-grant";
+import { usagePackAllocations } from "@okouai/db/schema/usage-pack-subscription";
 import { and, desc, eq, gt, inArray, sql, sum } from "drizzle-orm";
 
 import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";

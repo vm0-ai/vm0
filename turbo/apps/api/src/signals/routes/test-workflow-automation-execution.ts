@@ -1,4 +1,4 @@
-import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
+import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";

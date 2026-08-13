@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
+import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";

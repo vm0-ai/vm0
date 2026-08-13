@@ -5,7 +5,7 @@ import {
   type AppRouter,
   type InitClientArgs,
   type InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import type { UsagePricingResolution } from "../signals/context/usage-pricing-resolution";

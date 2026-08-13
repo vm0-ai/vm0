@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";

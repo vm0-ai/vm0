@@ -1,8 +1,8 @@
 import { command, computed } from "ccstate";
-import { zeroPresentationTemplatesContract } from "@vm0/api-contracts/contracts/zero-presentation-templates";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { presentationTemplates } from "@vm0/db/schema/presentation-template";
+import { zeroPresentationTemplatesContract } from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { env } from "../../lib/env";

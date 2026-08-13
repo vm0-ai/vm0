@@ -1,10 +1,10 @@
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   FirewallBaseUrlResolutionError,
   hasUnsafeFirewallPath,
   resolveFirewallBaseUrlTemplate,
   type FirewallBaseHostPolicy,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 import { safeSync, safeUrlParse } from "../utils";
 import type {

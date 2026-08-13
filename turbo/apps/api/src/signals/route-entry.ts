@@ -1,5 +1,5 @@
-import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
-import { apiNamespaceAliasPaths } from "@vm0/api-contracts/contracts/api-namespaces";
+import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
+import { apiNamespaceAliasPaths } from "@okouai/api-contracts/contracts/api-namespaces";
 import type { SignalRouteHandler } from "./context/route";
 
 export type { SignalRouteHandler };

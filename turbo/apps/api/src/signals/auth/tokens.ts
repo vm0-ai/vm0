@@ -3,9 +3,9 @@ import { createHmac, hkdfSync } from "node:crypto";
 import {
   ZERO_CAPABILITIES,
   ZeroCapability,
-} from "@vm0/api-contracts/contracts/composes";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/composes";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

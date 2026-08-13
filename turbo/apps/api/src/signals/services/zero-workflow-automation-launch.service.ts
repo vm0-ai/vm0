@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
@@ -25,6 +25,7 @@ import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
+import type { ChatAgentRunSourceAnnotation } from "./zero-chat-user-message.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 
@@ -79,7 +80,8 @@ export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly automationContext: WorkflowAutomationContext;
   readonly apiStartTime: number;
-  // Display-only source context stored in the user-message automation part.
+  readonly agentRunSource?: ChatAgentRunSourceAnnotation;
+  // Display-only trigger summary used by workflow annotations and run history.
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
   // Automated schedule ticks coalesce while pending. Explicit manual runs set

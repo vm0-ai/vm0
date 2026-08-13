@@ -1,4 +1,4 @@
-//! Rust bindings for selected `@vm0/api-contracts` routes, DTOs, and shared
+//! Rust bindings for selected `@okouai/api-contracts` routes, DTOs, and shared
 //! constants.
 //!
 //! Route constants under [`generated::routes`] are generated from the
@@ -8,7 +8,7 @@
 //! [`generated::constants`]. Regenerate all bindings with:
 //!
 //! ```bash
-//! cd turbo && pnpm -F @vm0/api-contracts generate:rust
+//! cd turbo && pnpm -F @okouai/api-contracts generate:rust
 //! ```
 //!
 //! Static routes are generated as [`Route`] constants. Routes with path

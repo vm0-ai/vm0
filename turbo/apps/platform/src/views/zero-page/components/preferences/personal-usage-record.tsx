@@ -8,7 +8,7 @@ import {
   Phone,
   Bot,
 } from "lucide-react";
-import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
+import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
 import type {
   UsageRecordKind,
   UsageRecordRange,
@@ -16,8 +16,8 @@ import type {
   UsageRecordRow,
   UsageRecordScope,
   UsageRecordSource,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import type { UsageMembersResponse } from "@vm0/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/zero-usage-record";
+import type { UsageMembersResponse } from "@okouai/api-contracts/contracts/zero-usage";
 import {
   Button,
   DropdownMenu,
@@ -27,13 +27,13 @@ import {
   BrandGithub,
   BrandSlack,
   BrandTelegram,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
+} from "@okouai/ui/components/ui/tooltip";
 import {
   loadMoreUsageRecord$,
   myUsageRecordAsync$,
