@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.444.3](https://github.com/vm0-ai/vm0/compare/api-v1.444.2...api-v1.444.3) (2026-08-13)
+
+
+### Refactoring
+
+* **api:** remove queued chat events endpoint ([#26957](https://github.com/vm0-ai/vm0/issues/26957)) ([0d16785](https://github.com/vm0-ai/vm0/commit/0d16785142c9cc5b563ad5db4a8059ce0ef82f39))
+* **chat:** retire legacy search projection ([#26967](https://github.com/vm0-ai/vm0/issues/26967)) ([1f669bc](https://github.com/vm0-ai/vm0/commit/1f669bc1f46c9f0701ef2772df398f08eca8a37f))
+* **model-provider:** neutralize device auth modules ([#26965](https://github.com/vm0-ai/vm0/issues/26965)) ([f11e0a1](https://github.com/vm0-ai/vm0/commit/f11e0a13759ab812f4cc328c2a9662e70f1bacc4))
+* **org:** neutralize the organization logo vertical slice ([#26961](https://github.com/vm0-ai/vm0/issues/26961)) ([74e3061](https://github.com/vm0-ai/vm0/commit/74e30614ebaf1c2fad8cad2991bb783823b18882))
+* **x:** neutralize image share to x naming ([#26970](https://github.com/vm0-ai/vm0/issues/26970)) ([a1b49d0](https://github.com/vm0-ai/vm0/commit/a1b49d08801e5b1d2ee2ed1c4c5af8f99faf8212))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.3
+    * @okouai/core bumped to 8.556.1
+    * @okouai/db bumped to 1.198.4
+    * @okouai/pi-agent-runtime bumped to 1.4.11
+
 ## [1.444.2](https://github.com/vm0-ai/vm0/compare/api-v1.444.1...api-v1.444.2) (2026-08-13)
 
 
