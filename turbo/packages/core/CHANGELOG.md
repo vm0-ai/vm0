@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.559.0](https://github.com/vm0-ai/vm0/compare/core-v8.558.0...core-v8.559.0) (2026-08-13)
+
+
+### Features
+
+* add conversation locator rail behind a feature switch ([#26052](https://github.com/vm0-ai/vm0/issues/26052)) ([f50df2d](https://github.com/vm0-ai/vm0/commit/f50df2d6786a4646ca110921e78ebd63eab63038))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.6
+
 ## [8.558.0](https://github.com/vm0-ai/vm0/compare/core-v8.557.0...core-v8.558.0) (2026-08-13)
 
 
