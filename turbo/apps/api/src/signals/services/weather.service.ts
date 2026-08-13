@@ -1,11 +1,11 @@
 import {
-  ZERO_WEATHER_ATTRIBUTION,
-  type ZeroWeatherCurrentRequest,
-  type ZeroWeatherForecastDailyRequest,
-  type ZeroWeatherForecastHourlyRequest,
-  type ZeroWeatherHistoryHourlyRequest,
-  type ZeroWeatherConditionsResponse,
-} from "@okouai/api-contracts/contracts/zero-weather";
+  WEATHER_ATTRIBUTION,
+  type WeatherCurrentRequest,
+  type WeatherForecastDailyRequest,
+  type WeatherForecastHourlyRequest,
+  type WeatherHistoryHourlyRequest,
+  type WeatherConditionsResponse,
+} from "@okouai/api-contracts/contracts/weather";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
@@ -45,8 +45,8 @@ interface WeatherErrorResponse {
   };
 }
 
-type ZeroWeatherCommandResponse =
-  | { readonly status: 200; readonly body: ZeroWeatherConditionsResponse }
+type WeatherCommandResponse =
+  | { readonly status: 200; readonly body: WeatherConditionsResponse }
   | WeatherErrorResponse
   | ManagedUsageErrorResponse;
 
@@ -69,7 +69,7 @@ interface AuthedWeatherArgs<TBody extends WeatherRequestBody> {
 interface WeatherRequestArgs {
   readonly auth: AuthContext & { readonly orgId: string };
   readonly body: WeatherRequestBody;
-  readonly operation: ZeroWeatherConditionsResponse["operation"];
+  readonly operation: WeatherConditionsResponse["operation"];
   readonly category: string;
   readonly providerUrl: string;
 }
@@ -174,16 +174,16 @@ function runIdForUsage(auth: AuthContext): string | undefined {
     : undefined;
 }
 
-const zeroWeatherRequest$ = command(
+const weatherRequest$ = command(
   async (
     { set },
     args: WeatherRequestArgs,
     signal: AbortSignal,
-  ): Promise<ZeroWeatherCommandResponse> => {
+  ): Promise<WeatherCommandResponse> => {
     const apiKey = env("OKOU_WEATHER_GOOGLE_WEATHER_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Weather Google Weather provider is not configured",
+        "Okou Weather Google Weather provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -198,7 +198,7 @@ const zeroWeatherRequest$ = command(
           provider: PROVIDER,
           category: args.category,
         },
-        label: "Zero Weather",
+        label: "Okou Weather",
       },
       signal,
     );
@@ -233,10 +233,10 @@ const zeroWeatherRequest$ = command(
       signal,
     );
 
-    const body: ZeroWeatherConditionsResponse = {
+    const body: WeatherConditionsResponse = {
       operation: args.operation,
       provider: PROVIDER,
-      attribution: ZERO_WEATHER_ATTRIBUTION,
+      attribution: WEATHER_ATTRIBUTION,
       creditsCharged,
       billingCategory: args.category,
       billingQuantity: 1,
@@ -246,14 +246,14 @@ const zeroWeatherRequest$ = command(
   },
 );
 
-export const zeroWeatherCurrent$ = command(
+export const weatherCurrent$ = command(
   async (
     { set },
-    args: AuthedWeatherArgs<ZeroWeatherCurrentRequest>,
+    args: AuthedWeatherArgs<WeatherCurrentRequest>,
     signal: AbortSignal,
   ) => {
     return await set(
-      zeroWeatherRequest$,
+      weatherRequest$,
       {
         ...args,
         operation: "current",
@@ -265,14 +265,14 @@ export const zeroWeatherCurrent$ = command(
   },
 );
 
-export const zeroWeatherForecastHourly$ = command(
+export const weatherForecastHourly$ = command(
   async (
     { set },
-    args: AuthedWeatherArgs<ZeroWeatherForecastHourlyRequest>,
+    args: AuthedWeatherArgs<WeatherForecastHourlyRequest>,
     signal: AbortSignal,
   ) => {
     return await set(
-      zeroWeatherRequest$,
+      weatherRequest$,
       {
         ...args,
         operation: "forecast.hourly",
@@ -284,14 +284,14 @@ export const zeroWeatherForecastHourly$ = command(
   },
 );
 
-export const zeroWeatherForecastDaily$ = command(
+export const weatherForecastDaily$ = command(
   async (
     { set },
-    args: AuthedWeatherArgs<ZeroWeatherForecastDailyRequest>,
+    args: AuthedWeatherArgs<WeatherForecastDailyRequest>,
     signal: AbortSignal,
   ) => {
     return await set(
-      zeroWeatherRequest$,
+      weatherRequest$,
       {
         ...args,
         operation: "forecast.daily",
@@ -303,14 +303,14 @@ export const zeroWeatherForecastDaily$ = command(
   },
 );
 
-export const zeroWeatherHistoryHourly$ = command(
+export const weatherHistoryHourly$ = command(
   async (
     { set },
-    args: AuthedWeatherArgs<ZeroWeatherHistoryHourlyRequest>,
+    args: AuthedWeatherArgs<WeatherHistoryHourlyRequest>,
     signal: AbortSignal,
   ) => {
     return await set(
-      zeroWeatherRequest$,
+      weatherRequest$,
       {
         ...args,
         operation: "history.hourly",

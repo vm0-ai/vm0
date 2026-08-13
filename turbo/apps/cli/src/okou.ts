@@ -298,7 +298,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "weather",
     description: "Use managed Okou weather services",
     load: async () => {
-      return (await import("./commands/zero/weather")).zeroWeatherCommand;
+      return (await import("./commands/weather")).weatherCommand;
     },
   },
   {
