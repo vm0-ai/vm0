@@ -203,6 +203,10 @@ async function openAccountMenu(): Promise<HTMLElement> {
 
 interface MockAdminBillingStatusOptions {
   readonly failFirstRequest?: boolean;
+  readonly firstRequestGate?: {
+    readonly onStarted: () => void;
+    readonly waitUntil: Promise<void>;
+  };
   readonly onRequest?: () => void;
 }
 
@@ -211,49 +215,56 @@ function mockAdminBillingStatus(
   options: MockAdminBillingStatusOptions = {},
 ): void {
   let requestCount = 0;
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    requestCount += 1;
-    options.onRequest?.();
-    if (options.failFirstRequest && requestCount === 1) {
-      return respond(500, {
-        error: {
-          message: "Failed to load billing status",
-          code: "INTERNAL_SERVER_ERROR",
+  context.mocks.api(
+    zeroBillingStatusContract.get,
+    async ({ respond, withSignal }) => {
+      requestCount += 1;
+      options.onRequest?.();
+      if (requestCount === 1 && options.firstRequestGate) {
+        options.firstRequestGate.onStarted();
+        await withSignal(options.firstRequestGate.waitUntil);
+      }
+      if (options.failFirstRequest && requestCount === 1) {
+        return respond(500, {
+          error: {
+            message: "Failed to load billing status",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
+      }
+      return respond(200, {
+        tier: "pro",
+        credits,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
         },
+        creditBreakdown: [
+          {
+            category: "plan",
+            tier: "pro",
+            label: "Pro credits",
+            credits: 10_000,
+          },
+          {
+            category: "promotional",
+            label: "Launch bonus",
+            credits: 2500,
+          },
+        ],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
       });
-    }
-    return respond(200, {
-      tier: "pro",
-      credits,
-      onboardingPaymentPending: false,
-      subscriptionStatus: "active",
-      currentPeriodEnd: "2026-04-01T00:00:00Z",
-      cancelAtPeriodEnd: false,
-      scheduledChange: null,
-      hasSubscription: true,
-      autoRecharge: { enabled: false, threshold: null, amount: null },
-      creditExpiry: {
-        expiringNextCycle: 0,
-        nextExpiryDate: null,
-      },
-      creditBreakdown: [
-        {
-          category: "plan",
-          tier: "pro",
-          label: "Pro credits",
-          credits: 10_000,
-        },
-        {
-          category: "promotional",
-          label: "Launch bonus",
-          credits: 2500,
-        },
-      ],
-      creditGrants: [],
-      concurrencyLimit: 0,
-      concurrencySubscriptions: [],
-    });
-  });
+    },
+  );
 }
 
 function mockAdminAccountSidebar(): void {
@@ -698,6 +709,72 @@ describe("zero sidebar account menu", () => {
 
     catchUpCanFinish.resolve();
     await foregroundReady.promise;
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+    });
+  });
+
+  it("joins a foreground billing request after the catch-up barrier settles", async () => {
+    let billingRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(12_500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+    });
+
+    const initialMenu = await openAccountMenu();
+    await waitFor(() => {
+      expect(
+        within(initialMenu).getByText("12,500 credits"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const foregroundRequestStarted = context.mocks.deferred<void>();
+    const foregroundResponseReady = context.mocks.deferred<void>();
+    mockAdminBillingStatus(500, {
+      firstRequestGate: {
+        onStarted: () => {
+          foregroundRequestStarted.resolve();
+        },
+        waitUntil: foregroundResponseReady.promise,
+      },
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+
+    window.dispatchEvent(new Event("focus"));
+    await foregroundRequestStarted.promise;
+    await waitFor(() => {
+      expect(context.store.get(foregroundReady$).pending).toBeFalsy();
+    });
+
+    const menu = await openAccountMenu();
+    foregroundResponseReady.resolve();
     await waitFor(() => {
       expect(within(menu).getByText("500 credits")).toBeInTheDocument();
       expect(billingRequests).toBe(1);

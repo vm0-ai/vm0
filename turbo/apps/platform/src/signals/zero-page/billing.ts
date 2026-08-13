@@ -29,7 +29,7 @@ import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
 import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
-import { settle, tapError } from "../utils.ts";
+import { settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution$,
@@ -370,12 +370,33 @@ export const setConcurrencyTargetQuantity$ = command(
  * Async computed signal that fetches billing status on first access.
  * Use with useLastLoadable() in views for automatic loading.
  */
-export const billingStatusAsync$ = computed(async (get) => {
+interface BillingStatusResource {
+  readonly pending: () => boolean;
+  readonly promise: Promise<BillingStatusResponse>;
+}
+
+const billingStatusResource$ = computed((get): BillingStatusResource => {
   get(billingReload$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroBillingStatusContract);
-  const result = await accept(client.get(), [200]);
-  return result.body;
+  let pending = true;
+  const load = async (): Promise<BillingStatusResponse> => {
+    const result = await accept(client.get(), [200]);
+    return result.body;
+  };
+  const promise = withCleanup(load(), () => {
+    pending = false;
+  });
+  return {
+    pending: () => {
+      return pending;
+    },
+    promise,
+  };
+});
+
+export const billingStatusAsync$ = computed((get) => {
+  return get(billingStatusResource$).promise;
 });
 
 export const usagePackCatalogAsync$ = computed(async (get) => {
@@ -430,6 +451,14 @@ export const reloadAccountMenuBillingStatus$ = command(
     signal.throwIfAborted();
     const foregroundReady = get(foregroundReady$);
     if (!foregroundReady.pending) {
+      const resource = get(billingStatusResource$);
+      if (resource.pending()) {
+        const result = await settle(resource.promise, signal);
+        if (!result.ok) {
+          set(reloadBillingStatus$);
+        }
+        return;
+      }
       set(reloadBillingStatus$);
       return;
     }
