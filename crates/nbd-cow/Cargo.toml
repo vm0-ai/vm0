@@ -14,7 +14,7 @@ bench = ["dep:serde_json", "dep:tempfile"]
 [dependencies]
 bitvec = { workspace = true }
 libc = { workspace = true }
-nix = { workspace = true, features = ["fs", "socket"] }
+nix = { workspace = true, features = ["fs", "socket", "uio"] }
 serde_json = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true }
