@@ -3835,13 +3835,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("selects same-thread reuse preferences from runner heartbeats", async () => {
+  it("validates same-thread reuse heartbeat inventory shapes", async () => {
     const {
       reuseRunnerId,
       api,
       cliAgentSessionId,
-      first,
-      heartbeatHolder,
       nextReuseSnapshotSequence,
       pollFollowUp,
       reuseKey,
@@ -3924,6 +3922,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "noPreference",
       reason: "noViableHolder",
     });
+  });
+
+  it("selects workspace and reusable-sandbox preferences from runner heartbeats", async () => {
+    const {
+      reuseRunnerId,
+      api,
+      cliAgentSessionId,
+      heartbeatHolder,
+      nextReuseSnapshotSequence,
+      pollFollowUp,
+      reuseKey,
+      runnerGroup,
+    } = await setupSameThreadReuseScenario();
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reuseRunnerId,
@@ -4019,6 +4030,40 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       mode: "stopping",
     });
 
+    for (const { runId, resolution, tier } of [
+      {
+        runId: reusableOverWorkspace.run.runId,
+        resolution: "matching_reusable_sandbox",
+        tier: "reusableSandbox",
+      },
+      {
+        runId: capableWorkspaceHolder.run.runId,
+        resolution: "matching_workspace_cache",
+        tier: "workspaceCache",
+      },
+    ]) {
+      for (const actionType of [
+        "runner_notification_affinity_lookup",
+        "runner_poll_pending_job_lookup",
+      ]) {
+        const events = sandboxOperationEventsForRunByAction(runId, actionType);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toStrictEqual(
+          expect.objectContaining({
+            runner_preference_resolution: resolution,
+            runner_preference_decision_kind: "preference",
+            runner_preference_tier: tier,
+            reuse_key_kind: "thread",
+          }),
+        );
+      }
+    }
+  });
+
+  it("selects reusable-sandbox preferences by profile and history generation", async () => {
+    const { reuseRunnerId, first, heartbeatHolder, pollFollowUp } =
+      await setupSameThreadReuseScenario();
+
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [{ profile: "vm0/large", workspaceAffinityVersion: 1 }],
@@ -4070,35 +4115,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       tier: "exactSandbox",
       expiresAt: expect.any(String),
     });
-
-    for (const { runId, resolution, tier } of [
-      {
-        runId: reusableOverWorkspace.run.runId,
-        resolution: "matching_reusable_sandbox",
-        tier: "reusableSandbox",
-      },
-      {
-        runId: capableWorkspaceHolder.run.runId,
-        resolution: "matching_workspace_cache",
-        tier: "workspaceCache",
-      },
-    ]) {
-      for (const actionType of [
-        "runner_notification_affinity_lookup",
-        "runner_poll_pending_job_lookup",
-      ]) {
-        const events = sandboxOperationEventsForRunByAction(runId, actionType);
-        expect(events).toHaveLength(1);
-        expect(events[0]).toStrictEqual(
-          expect.objectContaining({
-            runner_preference_resolution: resolution,
-            runner_preference_decision_kind: "preference",
-            runner_preference_tier: tier,
-            reuse_key_kind: "thread",
-          }),
-        );
-      }
-    }
   });
 
   it("prefers the live finalizing source before generic reuse without renewing its deadline", async () => {
