@@ -1,0 +1,248 @@
+import assert from "node:assert/strict";
+import { createServer, type Server } from "node:http";
+import { test } from "node:test";
+
+import { chromium } from "@playwright/test";
+
+import { withLoadedClerkTestingPage } from "./auth";
+
+type ClerkFixtureMode = "absent" | "incomplete" | "loaded" | "recover";
+
+interface ClerkFixture {
+  readonly appUrl: string;
+  readonly documentRequestCount: () => number;
+  readonly frontendRequestCount: () => number;
+}
+
+const FIXTURE_QUERY_SECRET = "do-not-log-capability";
+
+test("isolates runner Clerk bootstrap recovery before side effects", async (context) => {
+  const browser = await chromium.launch();
+  try {
+    await context.test(
+      "retries a stalled bootstrap in a clean context",
+      async () => {
+        await withClerkFixture("recover", async (fixture) => {
+          let callbackCount = 0;
+          const state = await withLoadedClerkTestingPage(
+            browser,
+            {
+              appUrl: fixture.appUrl,
+              bootstrapTimeoutsMs: [100, 1_000],
+              contextOptions: {},
+            },
+            async (page) => {
+              callbackCount += 1;
+              return page.evaluate(() => {
+                return {
+                  hasLoadedClerk: Boolean(window.Clerk?.loaded),
+                  poison: localStorage.getItem("clerk-bootstrap-poison"),
+                };
+              });
+            },
+          );
+
+          assert.deepEqual(state, { hasLoadedClerk: true, poison: null });
+          assert.equal(callbackCount, 1);
+          assert.equal(fixture.documentRequestCount(), 2);
+          assert.equal(fixture.frontendRequestCount(), 2);
+        });
+      },
+    );
+
+    await context.test("reports a sanitized terminal timeout", async () => {
+      await withClerkFixture("incomplete", async (fixture) => {
+        await assert.rejects(
+          withLoadedClerkTestingPage(
+            browser,
+            {
+              appUrl: fixture.appUrl,
+              bootstrapTimeoutsMs: [100, 100],
+              contextOptions: {},
+            },
+            async () => {
+              throw new Error("callback must not run");
+            },
+          ),
+          (error: unknown) => {
+            assert(error instanceof Error);
+            assert.match(
+              error.message,
+              /Clerk bootstrap timed out after 2 attempts: ClerkJS present but not loaded; last Clerk request: GET \/v1\/client -> 503/u,
+            );
+            assert.doesNotMatch(
+              error.message,
+              new RegExp(FIXTURE_QUERY_SECRET),
+            );
+            return true;
+          },
+        );
+        assert.equal(fixture.documentRequestCount(), 2);
+        assert.equal(fixture.frontendRequestCount(), 2);
+      });
+    });
+
+    await context.test("distinguishes an absent ClerkJS global", async () => {
+      await withClerkFixture("absent", async (fixture) => {
+        await assert.rejects(
+          withLoadedClerkTestingPage(
+            browser,
+            {
+              appUrl: fixture.appUrl,
+              bootstrapTimeoutsMs: [100, 100],
+              contextOptions: {},
+            },
+            async () => {
+              throw new Error("callback must not run");
+            },
+          ),
+          (error: unknown) => {
+            assert(error instanceof Error);
+            assert.match(
+              error.message,
+              /Clerk bootstrap timed out after 2 attempts: ClerkJS absent; last Clerk request: GET \/v1\/client -> 200/u,
+            );
+            return true;
+          },
+        );
+        assert.equal(fixture.documentRequestCount(), 2);
+      });
+    });
+
+    await context.test("does not retry errors after bootstrap", async () => {
+      await withClerkFixture("loaded", async (fixture) => {
+        const callbackError = new Error("post-bootstrap side effect failed");
+        await assert.rejects(
+          withLoadedClerkTestingPage(
+            browser,
+            {
+              appUrl: fixture.appUrl,
+              bootstrapTimeoutsMs: [100, 1_000],
+              contextOptions: {},
+            },
+            async () => {
+              throw callbackError;
+            },
+          ),
+          (error: unknown) => error === callbackError,
+        );
+        assert.equal(fixture.documentRequestCount(), 1);
+        assert.equal(fixture.frontendRequestCount(), 0);
+      });
+    });
+  } finally {
+    await browser.close();
+  }
+});
+
+async function withClerkFixture<Result>(
+  mode: ClerkFixtureMode,
+  use: (fixture: ClerkFixture) => Promise<Result>,
+): Promise<Result> {
+  let documentRequests = 0;
+  let frontendRequests = 0;
+  const server = createServer((request, response) => {
+    const requestUrl = request.url;
+    if (!requestUrl) {
+      throw new Error("Clerk fixture request URL is required");
+    }
+    const pathname = new URL(requestUrl, "http://clerk.fixture").pathname;
+    if (pathname === "/_/skeleton") {
+      documentRequests += 1;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end(clerkFixtureDocument(mode, documentRequests));
+      return;
+    }
+    if (pathname === "/v1/client") {
+      frontendRequests += 1;
+      if (mode === "recover" && frontendRequests === 1) {
+        return;
+      }
+      response.writeHead(mode === "incomplete" ? 503 : 200, {
+        "Content-Type": "application/json",
+      });
+      response.end("{}");
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  await listen(server);
+  const address = server.address();
+  assert(address && typeof address === "object");
+  const previousFrontendApi = process.env.CLERK_FAPI;
+  const previousTestingToken = process.env.CLERK_TESTING_TOKEN;
+  process.env.CLERK_FAPI = `127.0.0.1:${address.port}`;
+  process.env.CLERK_TESTING_TOKEN = "fixture-testing-token";
+  try {
+    return await use({
+      appUrl: `http://127.0.0.1:${address.port}`,
+      documentRequestCount: () => documentRequests,
+      frontendRequestCount: () => frontendRequests,
+    });
+  } finally {
+    restoreEnvironmentVariable("CLERK_FAPI", previousFrontendApi);
+    restoreEnvironmentVariable("CLERK_TESTING_TOKEN", previousTestingToken);
+    await close(server);
+  }
+}
+
+function clerkFixtureDocument(
+  mode: ClerkFixtureMode,
+  documentRequest: number,
+): string {
+  if (mode === "loaded") {
+    return `<!doctype html><script>window.Clerk = { loaded: true };</script>`;
+  }
+  if (mode === "absent") {
+    return `<!doctype html><script>fetch("/v1/client?__clerk_testing_token=${FIXTURE_QUERY_SECRET}");</script>`;
+  }
+  const poisonFirstContext =
+    mode === "recover" && documentRequest === 1
+      ? `localStorage.setItem("clerk-bootstrap-poison", "true");`
+      : "";
+  const finishBootstrap =
+    mode === "recover"
+      ? `if (!localStorage.getItem("clerk-bootstrap-poison")) { window.Clerk.loaded = true; }`
+      : "";
+  return `<!doctype html>
+<script>
+  window.Clerk = { loaded: false };
+  ${poisonFirstContext}
+  fetch("/v1/client?__clerk_testing_token=${FIXTURE_QUERY_SECRET}").then(() => {
+    ${finishBootstrap}
+  });
+</script>`;
+}
+
+async function listen(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+}
+
+async function close(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+    server.closeAllConnections();
+  });
+}
+
+function restoreEnvironmentVariable(
+  name: "CLERK_FAPI" | "CLERK_TESTING_TOKEN",
+  value: string | undefined,
+): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
