@@ -546,6 +546,7 @@ def registry_file(tmp_path):
         "vms": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
+                "billableFirewalls": [],
                 "sandboxToken": "tok-xyz",
                 "registeredAt": 1700000000000,
                 "networkLogPath": str(tmp_path / "network.jsonl"),
@@ -553,6 +554,7 @@ def registry_file(tmp_path):
             },
             "10.200.0.2": {
                 "runId": "run-def-456",
+                "billableFirewalls": [],
                 "sandboxToken": "tok-abc",
                 "registeredAt": 1700000000000,
                 "networkLogPath": str(tmp_path / "network-2.jsonl"),

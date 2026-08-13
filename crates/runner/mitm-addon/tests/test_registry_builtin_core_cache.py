@@ -95,7 +95,11 @@ class TestRegistryBuiltinCoreCache:
             firewalls = [builtin_entry, inline_entry]
             if builtin_index == 1:
                 firewalls.reverse()
-            return {"runId": run_id, "firewalls": firewalls}
+            return {
+                "runId": run_id,
+                "billableFirewalls": [],
+                "firewalls": firewalls,
+            }
 
         path, cache_path = write_registry_with_cache(
             tmp_path,
