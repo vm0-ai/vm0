@@ -23,6 +23,7 @@ import {
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 
 const context = testContext();
 
@@ -623,6 +624,49 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(within(menu).getByText("125 credits")).toBeInTheDocument();
       expect(billingRequests).toBe(2);
+    });
+  });
+
+  it("defers minimal-layout billing refresh until the account menu opens", async () => {
+    let billingRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/connect?agentId=${AGENT_ID}`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await screen.findByText("Zero needs GitHub to proceed");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+    expect(billingRequests).toBe(0);
+
+    mockedClerk.sessionTouch.mockClear();
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+    const foregroundReady = context.store.get(foregroundReady$);
+    await foregroundReady.promise;
+    expect(billingRequests).toBe(0);
+
+    const menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
     });
   });
 

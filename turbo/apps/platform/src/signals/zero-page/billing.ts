@@ -232,7 +232,7 @@ const maybeShowPendingRestoreToast$ = command(
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
-const completedForegroundBillingReload$ = state<number | null>(null);
+const handledRemoteBillingReload$ = state<number | null>(null);
 const usagePackManagementReload$ = state(0);
 const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
@@ -437,10 +437,18 @@ export const reloadAccountMenuBillingStatus$ = command(
       return;
     }
 
+    const reloadVersion = get(billingReload$);
     await settle(foregroundReady.promise, signal);
     signal.throwIfAborted();
     const currentReloadVersion = get(billingReload$);
-    if (get(completedForegroundBillingReload$) !== currentReloadVersion) {
+    if (
+      currentReloadVersion === reloadVersion ||
+      get(handledRemoteBillingReload$) !== currentReloadVersion
+    ) {
+      set(reloadBillingStatus$);
+    }
+    const billingResult = await settle(get(billingStatusAsync$), signal);
+    if (!billingResult.ok) {
       set(reloadBillingStatus$);
     }
   },
@@ -544,12 +552,14 @@ export const handleBillingRedirect$ = command(
 );
 
 const reloadBillingStatusFromRemoteChange$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
     set(reloadQueueData$);
     set(reloadUsagePackManagement$);
     set(reloadUsageRecords$);
     await set(reconcilePendingBillingPayment$, signal);
+    signal.throwIfAborted();
+    set(handledRemoteBillingReload$, get(billingReload$));
   },
 );
 
@@ -562,21 +572,8 @@ const reloadBillingStatusFromRealtime$ = command(
 );
 
 const reloadBillingStatusOnForeground$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const reloadResult = await settle(
-      (async () => {
-        await set(reloadBillingStatusFromRemoteChange$, signal);
-        signal.throwIfAborted();
-        const reloadVersion = get(billingReload$);
-        await get(billingStatusAsync$);
-        signal.throwIfAborted();
-        return reloadVersion;
-      })(),
-      signal,
-    );
-    if (reloadResult.ok) {
-      set(completedForegroundBillingReload$, reloadResult.value);
-    }
+  async ({ set }, signal: AbortSignal) => {
+    await settle(set(reloadBillingStatusFromRemoteChange$, signal), signal);
   },
 );
 
