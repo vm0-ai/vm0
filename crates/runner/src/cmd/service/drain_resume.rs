@@ -50,10 +50,10 @@
 //!
 //! Enabling is best effort for the same boot-versus-runtime reason as drain.
 //! Reload, signal, or acknowledgement failure uses
-//! [`rollback_resume_transition`] to recreate a removed `Restart=no` override,
-//! restore captured boot enablement, and reload systemd. Resume therefore
-//! restores the protected draining configuration even when SIGUSR2 was sent
-//! but the expected process did not acknowledge it.
+//! [`rollback_resume_transition`] to restore captured boot enablement and
+//! reload systemd. If this attempt removed a `Restart=no` override, rollback
+//! recreates it first. This applies even after SIGUSR2 was sent; any rollback
+//! failure is added to the transition error.
 //!
 //! ## Enforcement
 //!
