@@ -323,6 +323,29 @@ export const updateUserPreferences$ = command(
   },
 );
 
+/**
+ * Columns the request writes. Each preference maps to its own columns, so one
+ * being cleared can never blank another that the same request also set.
+ */
+function userModelPreferenceColumns(
+  preference: UpdateUserModelPreferenceRequest,
+): Partial<typeof orgMembersMetadata.$inferInsert> {
+  return {
+    // A null run model clears its tier too: the tier only qualifies a model.
+    ...(preference.selectedModel === null
+      ? { selectedModel: null, serviceTier: null }
+      : {
+          selectedModel: preference.selectedModel,
+          serviceTier: preference.serviceTier,
+        }),
+    // Absent means "leave it alone", so an older bundle that knows only the run
+    // model keeps its stored video default. Null clears it explicitly.
+    ...("selectedVideoModel" in preference
+      ? { selectedVideoModel: preference.selectedVideoModel ?? null }
+      : {}),
+  };
+}
+
 export const updateUserModelPreference$ = command(
   async (
     { get, set },
@@ -332,62 +355,20 @@ export const updateUserModelPreference$ = command(
     signal: AbortSignal,
   ): Promise<UserModelPreferenceResponse> => {
     const writeDb = set(writeDb$);
-    // Applied before the run-model branch so clearing the run model cannot
-    // swallow a video default sent in the same request.
-    if ("selectedVideoModel" in args.preference) {
-      const changedAt = nowDate();
-      const selectedVideoModel = args.preference.selectedVideoModel ?? null;
-      await writeDb
-        .insert(orgMembersMetadata)
-        .values({
-          orgId: args.orgId,
-          userId: args.userId,
-          selectedVideoModel,
-          createdAt: changedAt,
-          updatedAt: changedAt,
-        })
-        .onConflictDoUpdate({
-          target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-          set: { selectedVideoModel, updatedAt: changedAt },
-        });
-      signal.throwIfAborted();
-    }
-
-    if (args.preference.selectedModel === null) {
-      await writeDb
-        .update(orgMembersMetadata)
-        .set({ selectedModel: null, serviceTier: null, updatedAt: nowDate() })
-        .where(
-          and(
-            eq(orgMembersMetadata.orgId, args.orgId),
-            eq(orgMembersMetadata.userId, args.userId),
-          ),
-        );
-      signal.throwIfAborted();
-      return get(
-        userModelPreference({ orgId: args.orgId, userId: args.userId }),
-      );
-    }
-
     const updatedAt = nowDate();
-    const serviceTier = args.preference.serviceTier;
+    const columns = userModelPreferenceColumns(args.preference);
     await writeDb
       .insert(orgMembersMetadata)
       .values({
         orgId: args.orgId,
         userId: args.userId,
-        selectedModel: args.preference.selectedModel,
-        serviceTier,
+        ...columns,
         createdAt: updatedAt,
         updatedAt,
       })
       .onConflictDoUpdate({
         target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-        set: {
-          selectedModel: args.preference.selectedModel,
-          serviceTier,
-          updatedAt,
-        },
+        set: { ...columns, updatedAt },
       });
     signal.throwIfAborted();
 
