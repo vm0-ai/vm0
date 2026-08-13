@@ -1,15 +1,15 @@
 -- vm0:non-transactional
--- Draft only: final migration generation is pending the open migration dependency.
-SET lock_timeout = '1s';
---> statement-breakpoint
-SET statement_timeout = '30min';
---> statement-breakpoint
+-- Foreground callers use mixed lock orders. This backfill locks only the
+-- agent_runs target with SKIP LOCKED and never waits for a zero_runs source row.
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
 --> statement-breakpoint
 SET LOCAL statement_timeout = '5min';
 --> statement-breakpoint
 DO $$
 DECLARE
+	v_minimum_server_version_num CONSTANT integer := 170000;
 	v_minimum_ledger_timestamp CONSTANT bigint := 1786617147388;
 	v_expected_agent_only_digest CONSTANT text := '4418a1e0da8c1a2c34563a996d4b337c';
 	v_expected_callback_digest CONSTANT text := '408462129a863fe84c3b51c9d6e6951b';
@@ -73,6 +73,7 @@ DECLARE
 	v_actual_inbound_fk_definitions text[];
 	v_actual_non_fk_definitions text[];
 	v_actual_agent_only_ids uuid[];
+	v_server_version_num integer;
 	v_ledger_timestamp bigint;
 	v_agent_run_count bigint;
 	v_zero_run_count bigint;
@@ -95,6 +96,15 @@ DECLARE
 	v_fk record;
 	v_pristine boolean;
 BEGIN
+	SELECT current_setting('server_version_num')::integer
+	INTO v_server_version_num;
+
+	IF v_server_version_num < v_minimum_server_version_num THEN
+		RAISE EXCEPTION 'Stage 2 preflight requires PostgreSQL server_version_num >= %, found %',
+			v_minimum_server_version_num,
+			v_server_version_num;
+	END IF;
+
 	SELECT max("created_at")
 	INTO v_ledger_timestamp
 	FROM "drizzle"."__drizzle_migrations";
@@ -512,30 +522,29 @@ $$;
 --> statement-breakpoint
 COMMIT;
 --> statement-breakpoint
-DO $$
+CREATE OR REPLACE PROCEDURE "backfill_agent_run_metadata_stage2"(
+	p_no_progress_timeout interval
+)
+LANGUAGE plpgsql AS $$
 DECLARE
 	v_scan_after uuid := NULL;
 	v_updated_ids uuid[];
 	v_batch_count integer;
 	v_remaining boolean;
 	v_no_progress_started_at timestamp with time zone := clock_timestamp();
-	v_no_progress_timeout interval := least(
-		coalesce(
-			nullif(
-				current_setting(
-					'vm0.agent_run_metadata_backfill_no_progress_timeout',
-					true
-				),
-				''
-			)::interval,
-			interval '30 seconds'
-		),
-		interval '30 seconds'
-	);
 BEGIN
-	IF v_no_progress_timeout <= interval '0 seconds' THEN
-		RAISE EXCEPTION 'Stage 2 backfill no-progress timeout must be positive';
+	IF
+		p_no_progress_timeout IS NULL
+		OR p_no_progress_timeout <= interval '0 seconds'
+		OR p_no_progress_timeout > interval '30 seconds'
+	THEN
+		RAISE EXCEPTION 'Stage 2 backfill no-progress timeout must be between 0 and 30 seconds';
 	END IF;
+
+	-- statement_timeout is armed before CALL arrives, so PostgreSQL 17
+	-- transaction_timeout is the effective bound for each internal segment.
+	SET LOCAL lock_timeout = '1s';
+	SET LOCAL transaction_timeout = '5min';
 
 	LOOP
 		WITH "batch" AS MATERIALIZED (
@@ -663,6 +672,8 @@ BEGIN
 		END IF;
 
 		COMMIT;
+		SET LOCAL lock_timeout = '1s';
+		SET LOCAL transaction_timeout = '5min';
 
 		IF v_batch_count > 0 THEN
 			PERFORM pg_sleep(0.05);
@@ -714,9 +725,9 @@ BEGIN
 			EXIT;
 		END IF;
 
-		IF clock_timestamp() - v_no_progress_started_at >= v_no_progress_timeout THEN
+		IF clock_timestamp() - v_no_progress_started_at >= p_no_progress_timeout THEN
 			RAISE EXCEPTION 'Stage 2 backfill made no progress for % while eligible rows remained',
-				v_no_progress_timeout;
+				p_no_progress_timeout;
 		END IF;
 
 		v_scan_after := NULL;
@@ -724,6 +735,16 @@ BEGIN
 	END LOOP;
 END;
 $$;
+--> statement-breakpoint
+CALL "backfill_agent_run_metadata_stage2"(interval '30 seconds');
+--> statement-breakpoint
+DROP PROCEDURE IF EXISTS "backfill_agent_run_metadata_stage2"(interval);
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
 --> statement-breakpoint
 DO $$
 DECLARE
@@ -740,14 +761,6 @@ BEGIN
 				(
 					'idx_agent_runs_chat_thread_id_stage2_invalid',
 					'CREATE INDEX idx_agent_runs_chat_thread_id_stage2_invalid ON public.agent_runs USING btree (chat_thread_id) WHERE (chat_thread_id IS NOT NULL)'
-				),
-				(
-					'idx_agent_runs_workflow_automation_stage2_invalid',
-					'CREATE INDEX idx_agent_runs_workflow_automation_stage2_invalid ON public.agent_runs USING btree (workflow_automation_id) WHERE (workflow_automation_id IS NOT NULL)'
-				),
-				(
-					'idx_agent_runs_goal_stage2_invalid',
-					'CREATE INDEX idx_agent_runs_goal_stage2_invalid ON public.agent_runs USING btree (goal_id) WHERE (goal_id IS NOT NULL)'
 				)
 		) AS "index_spec"("name", "definition")
 	LOOP
@@ -779,11 +792,15 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
 DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_chat_thread_id_stage2_invalid";
 --> statement-breakpoint
-DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_workflow_automation_stage2_invalid";
+BEGIN;
 --> statement-breakpoint
-DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_goal_stage2_invalid";
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
 --> statement-breakpoint
 DO $$
 DECLARE
@@ -801,16 +818,6 @@ BEGIN
 					'idx_agent_runs_chat_thread_id',
 					'idx_agent_runs_chat_thread_id_stage2_invalid',
 					'CREATE INDEX idx_agent_runs_chat_thread_id ON public.agent_runs USING btree (chat_thread_id) WHERE (chat_thread_id IS NOT NULL)'
-				),
-				(
-					'idx_agent_runs_workflow_automation',
-					'idx_agent_runs_workflow_automation_stage2_invalid',
-					'CREATE INDEX idx_agent_runs_workflow_automation ON public.agent_runs USING btree (workflow_automation_id) WHERE (workflow_automation_id IS NOT NULL)'
-				),
-				(
-					'idx_agent_runs_goal',
-					'idx_agent_runs_goal_stage2_invalid',
-					'CREATE INDEX idx_agent_runs_goal ON public.agent_runs USING btree (goal_id) WHERE (goal_id IS NOT NULL)'
 				)
 		) AS "index_spec"("name", "recovery_name", "definition")
 	LOOP
@@ -850,23 +857,324 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
 DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_chat_thread_id_stage2_invalid";
---> statement-breakpoint
-DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_workflow_automation_stage2_invalid";
---> statement-breakpoint
-DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_goal_stage2_invalid";
 --> statement-breakpoint
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_agent_runs_chat_thread_id"
 ON "agent_runs" USING btree ("chat_thread_id")
 WHERE "chat_thread_id" IS NOT NULL;
 --> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
+--> statement-breakpoint
+DO $$
+DECLARE
+	v_definition text;
+	v_ready boolean;
+	v_valid boolean;
+BEGIN
+	SELECT
+		pg_get_indexdef("index_class"."oid"),
+		"index_row"."indisready",
+		"index_row"."indisvalid"
+	INTO v_definition, v_ready, v_valid
+	FROM "pg_class" AS "index_class"
+	INNER JOIN "pg_namespace" AS "index_namespace"
+		ON "index_namespace"."oid" = "index_class"."relnamespace"
+	INNER JOIN "pg_index" AS "index_row"
+		ON "index_row"."indexrelid" = "index_class"."oid"
+	WHERE "index_namespace"."nspname" = 'public'
+		AND "index_class"."relname" = 'idx_agent_runs_chat_thread_id'
+		AND "index_class"."relkind" = 'i';
+
+	IF
+		NOT FOUND
+		OR v_definition IS DISTINCT FROM 'CREATE INDEX idx_agent_runs_chat_thread_id ON public.agent_runs USING btree (chat_thread_id) WHERE (chat_thread_id IS NOT NULL)'
+		OR NOT v_ready
+		OR NOT v_valid
+	THEN
+		RAISE EXCEPTION 'Stage 2 index idx_agent_runs_chat_thread_id is not exact, ready, and valid';
+	END IF;
+END;
+$$;
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
+--> statement-breakpoint
+DO $$
+DECLARE
+	v_relation_kind "char";
+	v_definition text;
+	v_ready boolean;
+	v_valid boolean;
+BEGIN
+	SELECT
+		"index_class"."relkind",
+		pg_get_indexdef("index_class"."oid"),
+		"index_row"."indisready",
+		"index_row"."indisvalid"
+	INTO v_relation_kind, v_definition, v_ready, v_valid
+	FROM "pg_class" AS "index_class"
+	INNER JOIN "pg_namespace" AS "index_namespace"
+		ON "index_namespace"."oid" = "index_class"."relnamespace"
+	LEFT JOIN "pg_index" AS "index_row"
+		ON "index_row"."indexrelid" = "index_class"."oid"
+	WHERE "index_namespace"."nspname" = 'public'
+		AND "index_class"."relname" = 'idx_agent_runs_workflow_automation_stage2_invalid';
+
+	IF FOUND AND (
+		v_relation_kind <> 'i'
+		OR v_definition IS DISTINCT FROM 'CREATE INDEX idx_agent_runs_workflow_automation_stage2_invalid ON public.agent_runs USING btree (workflow_automation_id) WHERE (workflow_automation_id IS NOT NULL)'
+		OR v_ready IS NULL
+		OR v_valid IS NULL
+		OR v_valid
+	) THEN
+		RAISE EXCEPTION 'Stage 2 invalid-index recovery artifact idx_agent_runs_workflow_automation_stage2_invalid has conflicting definition or state';
+	END IF;
+END;
+$$;
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_workflow_automation_stage2_invalid";
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
+--> statement-breakpoint
+DO $$
+DECLARE
+	v_relation_kind "char";
+	v_definition text;
+	v_ready boolean;
+	v_valid boolean;
+BEGIN
+	SELECT
+		"index_class"."relkind",
+		pg_get_indexdef("index_class"."oid"),
+		"index_row"."indisready",
+		"index_row"."indisvalid"
+	INTO v_relation_kind, v_definition, v_ready, v_valid
+	FROM "pg_class" AS "index_class"
+	INNER JOIN "pg_namespace" AS "index_namespace"
+		ON "index_namespace"."oid" = "index_class"."relnamespace"
+	LEFT JOIN "pg_index" AS "index_row"
+		ON "index_row"."indexrelid" = "index_class"."oid"
+	WHERE "index_namespace"."nspname" = 'public'
+		AND "index_class"."relname" = 'idx_agent_runs_workflow_automation';
+
+	IF FOUND THEN
+		IF
+			v_relation_kind <> 'i'
+			OR v_definition IS DISTINCT FROM 'CREATE INDEX idx_agent_runs_workflow_automation ON public.agent_runs USING btree (workflow_automation_id) WHERE (workflow_automation_id IS NOT NULL)'
+		THEN
+			RAISE EXCEPTION 'Stage 2 index idx_agent_runs_workflow_automation has a conflicting definition';
+		END IF;
+
+		IF NOT v_ready OR NOT v_valid THEN
+			ALTER INDEX "public"."idx_agent_runs_workflow_automation"
+				RENAME TO "idx_agent_runs_workflow_automation_stage2_invalid";
+		END IF;
+	END IF;
+END;
+$$;
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_workflow_automation_stage2_invalid";
+--> statement-breakpoint
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_agent_runs_workflow_automation"
 ON "agent_runs" USING btree ("workflow_automation_id")
 WHERE "workflow_automation_id" IS NOT NULL;
 --> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
+--> statement-breakpoint
+DO $$
+DECLARE
+	v_definition text;
+	v_ready boolean;
+	v_valid boolean;
+BEGIN
+	SELECT
+		pg_get_indexdef("index_class"."oid"),
+		"index_row"."indisready",
+		"index_row"."indisvalid"
+	INTO v_definition, v_ready, v_valid
+	FROM "pg_class" AS "index_class"
+	INNER JOIN "pg_namespace" AS "index_namespace"
+		ON "index_namespace"."oid" = "index_class"."relnamespace"
+	INNER JOIN "pg_index" AS "index_row"
+		ON "index_row"."indexrelid" = "index_class"."oid"
+	WHERE "index_namespace"."nspname" = 'public'
+		AND "index_class"."relname" = 'idx_agent_runs_workflow_automation'
+		AND "index_class"."relkind" = 'i';
+
+	IF
+		NOT FOUND
+		OR v_definition IS DISTINCT FROM 'CREATE INDEX idx_agent_runs_workflow_automation ON public.agent_runs USING btree (workflow_automation_id) WHERE (workflow_automation_id IS NOT NULL)'
+		OR NOT v_ready
+		OR NOT v_valid
+	THEN
+		RAISE EXCEPTION 'Stage 2 index idx_agent_runs_workflow_automation is not exact, ready, and valid';
+	END IF;
+END;
+$$;
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
+--> statement-breakpoint
+DO $$
+DECLARE
+	v_relation_kind "char";
+	v_definition text;
+	v_ready boolean;
+	v_valid boolean;
+BEGIN
+	SELECT
+		"index_class"."relkind",
+		pg_get_indexdef("index_class"."oid"),
+		"index_row"."indisready",
+		"index_row"."indisvalid"
+	INTO v_relation_kind, v_definition, v_ready, v_valid
+	FROM "pg_class" AS "index_class"
+	INNER JOIN "pg_namespace" AS "index_namespace"
+		ON "index_namespace"."oid" = "index_class"."relnamespace"
+	LEFT JOIN "pg_index" AS "index_row"
+		ON "index_row"."indexrelid" = "index_class"."oid"
+	WHERE "index_namespace"."nspname" = 'public'
+		AND "index_class"."relname" = 'idx_agent_runs_goal_stage2_invalid';
+
+	IF FOUND AND (
+		v_relation_kind <> 'i'
+		OR v_definition IS DISTINCT FROM 'CREATE INDEX idx_agent_runs_goal_stage2_invalid ON public.agent_runs USING btree (goal_id) WHERE (goal_id IS NOT NULL)'
+		OR v_ready IS NULL
+		OR v_valid IS NULL
+		OR v_valid
+	) THEN
+		RAISE EXCEPTION 'Stage 2 invalid-index recovery artifact idx_agent_runs_goal_stage2_invalid has conflicting definition or state';
+	END IF;
+END;
+$$;
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_goal_stage2_invalid";
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
+--> statement-breakpoint
+DO $$
+DECLARE
+	v_relation_kind "char";
+	v_definition text;
+	v_ready boolean;
+	v_valid boolean;
+BEGIN
+	SELECT
+		"index_class"."relkind",
+		pg_get_indexdef("index_class"."oid"),
+		"index_row"."indisready",
+		"index_row"."indisvalid"
+	INTO v_relation_kind, v_definition, v_ready, v_valid
+	FROM "pg_class" AS "index_class"
+	INNER JOIN "pg_namespace" AS "index_namespace"
+		ON "index_namespace"."oid" = "index_class"."relnamespace"
+	LEFT JOIN "pg_index" AS "index_row"
+		ON "index_row"."indexrelid" = "index_class"."oid"
+	WHERE "index_namespace"."nspname" = 'public'
+		AND "index_class"."relname" = 'idx_agent_runs_goal';
+
+	IF FOUND THEN
+		IF
+			v_relation_kind <> 'i'
+			OR v_definition IS DISTINCT FROM 'CREATE INDEX idx_agent_runs_goal ON public.agent_runs USING btree (goal_id) WHERE (goal_id IS NOT NULL)'
+		THEN
+			RAISE EXCEPTION 'Stage 2 index idx_agent_runs_goal has a conflicting definition';
+		END IF;
+
+		IF NOT v_ready OR NOT v_valid THEN
+			ALTER INDEX "public"."idx_agent_runs_goal"
+				RENAME TO "idx_agent_runs_goal_stage2_invalid";
+		END IF;
+	END IF;
+END;
+$$;
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+DROP INDEX CONCURRENTLY IF EXISTS "idx_agent_runs_goal_stage2_invalid";
+--> statement-breakpoint
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_agent_runs_goal"
 ON "agent_runs" USING btree ("goal_id")
 WHERE "goal_id" IS NOT NULL;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
+--> statement-breakpoint
+DO $$
+DECLARE
+	v_definition text;
+	v_ready boolean;
+	v_valid boolean;
+BEGIN
+	SELECT
+		pg_get_indexdef("index_class"."oid"),
+		"index_row"."indisready",
+		"index_row"."indisvalid"
+	INTO v_definition, v_ready, v_valid
+	FROM "pg_class" AS "index_class"
+	INNER JOIN "pg_namespace" AS "index_namespace"
+		ON "index_namespace"."oid" = "index_class"."relnamespace"
+	INNER JOIN "pg_index" AS "index_row"
+		ON "index_row"."indexrelid" = "index_class"."oid"
+	WHERE "index_namespace"."nspname" = 'public'
+		AND "index_class"."relname" = 'idx_agent_runs_goal'
+		AND "index_class"."relkind" = 'i';
+
+	IF
+		NOT FOUND
+		OR v_definition IS DISTINCT FROM 'CREATE INDEX idx_agent_runs_goal ON public.agent_runs USING btree (goal_id) WHERE (goal_id IS NOT NULL)'
+		OR NOT v_ready
+		OR NOT v_valid
+	THEN
+		RAISE EXCEPTION 'Stage 2 index idx_agent_runs_goal is not exact, ready, and valid';
+	END IF;
+END;
+$$;
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
 --> statement-breakpoint
 DO $$
 DECLARE
@@ -920,19 +1228,55 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '5min';
+--> statement-breakpoint
 ALTER TABLE "agent_runs"
 VALIDATE CONSTRAINT "agent_runs_chat_thread_id_chat_threads_id_fk";
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '5min';
 --> statement-breakpoint
 ALTER TABLE "agent_runs"
 VALIDATE CONSTRAINT "agent_runs_workflow_automation_id_zero_workflow_automations_id_";
 --> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '5min';
+--> statement-breakpoint
 ALTER TABLE "agent_runs"
 VALIDATE CONSTRAINT "agent_runs_goal_id_thread_goals_id_fk";
+--> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
+BEGIN;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '5min';
 --> statement-breakpoint
 ALTER TABLE "agent_runs"
 VALIDATE CONSTRAINT "agent_runs_autonomy_budget_check";
 --> statement-breakpoint
+COMMIT;
+--> statement-breakpoint
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+--> statement-breakpoint
+SET LOCAL lock_timeout = '1s';
 --> statement-breakpoint
 SET LOCAL statement_timeout = '5min';
 --> statement-breakpoint
@@ -1550,7 +1894,3 @@ END;
 $$;
 --> statement-breakpoint
 COMMIT;
---> statement-breakpoint
-RESET lock_timeout;
---> statement-breakpoint
-RESET statement_timeout;

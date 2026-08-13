@@ -7,12 +7,15 @@ import postgres from "postgres";
 import { Client } from "pg";
 import {
   assertProductionExceptionConstants,
+  assertStage2PooledTransactionShape,
   assertStage2NoticeVariableBindings,
   createCallbackFixtureExecutionSql,
+  createTransactionTimeoutExecutionSql,
   productionAgentOnlyDigest,
   seedAcceptedAgentOnlyRows,
   seedAcceptedCallbacks,
   seedPairedMetadataMismatches,
+  stage2Migration,
 } from "./agent-run-metadata-stage-2-test-fixtures";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import {
@@ -23,8 +26,8 @@ import {
 const expansionMigration = "0919_clammy_mastermind";
 const minimumLedgerTimestamp = 1786617147388;
 const runnerFixtureTimestamp = minimumLedgerTimestamp + 1;
-const finalTestDatabase = "migration_agent_run_metadata_stage_2_final_draft";
-const runnerTestDatabase = "migration_agent_run_metadata_stage_2_runner_draft";
+const finalTestDatabase = "migration_agent_run_metadata_stage_2_final";
+const runnerTestDatabase = "migration_agent_run_metadata_stage_2_runner";
 
 function splitMigrationStatements(sql: string): string[] {
   return sql
@@ -126,7 +129,8 @@ async function expectFinalSnapshotFailure(
 ): Promise<void> {
   await client.query(statements[finalStart]!);
   await client.query(statements[finalStart + 1]!);
-  await assert.rejects(client.query(statements[finalStart + 2]!), expected);
+  await client.query(statements[finalStart + 2]!);
+  await assert.rejects(client.query(statements[finalStart + 3]!), expected);
   await client.query("ROLLBACK");
 }
 
@@ -266,17 +270,18 @@ async function validateFinalArtifacts(client: Client): Promise<void> {
   assert.deepEqual(recovery.rows, [{ count: 0 }]);
 }
 
-export async function validateAgentRunMetadataStage2FinalDraft(): Promise<void> {
+export async function validateAgentRunMetadataStage2Final(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-  const draft = await fs.readFile(
-    path.join(scriptDirectory, "agent-run-metadata-stage-2-draft.sql"),
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${stage2Migration}.sql`),
     "utf8",
   );
-  assertProductionExceptionConstants(draft, 2);
-  assertStage2NoticeVariableBindings(draft);
+  assertProductionExceptionConstants(migrationSql, 2);
+  assertStage2PooledTransactionShape(migrationSql);
+  assertStage2NoticeVariableBindings(migrationSql);
 
   const { admin, client } = await createTestDatabase(
     databaseUrl,
@@ -297,15 +302,16 @@ export async function validateAgentRunMetadataStage2FinalDraft(): Promise<void> 
     `);
 
     const executionSql = createCallbackFixtureExecutionSql(
-      draft,
+      migrationSql,
       callbackDigest,
       2,
     );
     const statements = splitMigrationStatements(executionSql);
     const finalStarts = statements
       .map((statement, index) => {
-        return statement ===
-          "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;"
+        return statement.endsWith(
+          "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;",
+        )
           ? index
           : -1;
       })
@@ -469,13 +475,19 @@ export async function validateAgentRunMetadataStage2FinalDraft(): Promise<void> 
     const timeouts = await client.query<{
       lockTimeout: string;
       statementTimeout: string;
+      transactionTimeout: string;
     }>(`
       SELECT
         current_setting('lock_timeout') AS "lockTimeout",
-        current_setting('statement_timeout') AS "statementTimeout"
+        current_setting('statement_timeout') AS "statementTimeout",
+        current_setting('transaction_timeout') AS "transactionTimeout"
     `);
     assert.deepEqual(timeouts.rows, [
-      { lockTimeout: "0", statementTimeout: "0" },
+      {
+        lockTimeout: "0",
+        statementTimeout: "0",
+        transactionTimeout: "0",
+      },
     ]);
   } finally {
     await dropTestDatabase(admin, client, finalTestDatabase);
@@ -528,36 +540,137 @@ async function runActualMigrationRunner(
   const originalDirectory = process.cwd();
   process.chdir(fixtureDirectory);
   try {
-    await sql.unsafe(
-      "SET vm0.agent_run_metadata_backfill_no_progress_timeout = '250ms'",
-    );
-    const configuredTimeout = await sql<{ timeout: string }[]>`
-      SELECT current_setting(
-        'vm0.agent_run_metadata_backfill_no_progress_timeout'
-      ) AS "timeout"
-    `;
-    assert.deepEqual([...configuredTimeout], [{ timeout: "250ms" }]);
     await applyPendingMigrations(sql);
     return sql;
   } catch (error) {
-    await sql.end();
+    await sql.end({ timeout: 1 }).catch(() => {
+      return undefined;
+    });
     throw error;
   } finally {
     process.chdir(originalDirectory);
   }
 }
 
-export async function validateAgentRunMetadataStage2RunnerDraft(): Promise<void> {
+async function validateStatementTimeoutCallProtocol(
+  testUrl: URL,
+): Promise<void> {
+  const sql = postgres(testUrl.toString(), { max: 1 });
+  try {
+    await sql.unsafe(`
+      CREATE OR REPLACE PROCEDURE "stage2_statement_timeout_protocol_probe"()
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        SET LOCAL statement_timeout = '50ms';
+        PERFORM pg_sleep(0.2);
+      END;
+      $$
+    `);
+    const startedAt = process.hrtime.bigint();
+    await sql.unsafe('CALL "stage2_statement_timeout_protocol_probe"()');
+    const elapsedMilliseconds =
+      Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    assert.ok(
+      elapsedMilliseconds >= 150,
+      `expected in-CALL statement_timeout to be ineffective, completed in ${elapsedMilliseconds.toFixed(1)}ms`,
+    );
+    assert.ok(
+      elapsedMilliseconds < 5_000,
+      `statement_timeout protocol probe exceeded 5s: ${elapsedMilliseconds.toFixed(1)}ms`,
+    );
+    const settings = await sql<
+      { statementTimeout: string; transactionTimeout: string }[]
+    >`
+      SELECT
+        current_setting('statement_timeout') AS "statementTimeout",
+        current_setting('transaction_timeout') AS "transactionTimeout"
+    `;
+    assert.deepEqual(
+      [...settings],
+      [{ statementTimeout: "0", transactionTimeout: "0" }],
+    );
+  } finally {
+    await sql
+      .unsafe(
+        'DROP PROCEDURE IF EXISTS "stage2_statement_timeout_protocol_probe"()',
+      )
+      .catch(() => {
+        return undefined;
+      });
+    await sql.end({ timeout: 1 });
+  }
+}
+
+async function installTransactionTimeoutProbe(
+  client: Client,
+  slowRunId: string,
+): Promise<void> {
+  await client.query(`CREATE SCHEMA "stage2_test"`);
+  await client.query(`
+    CREATE TABLE "stage2_test"."transaction_timeout_probe" (
+      "singleton" boolean PRIMARY KEY DEFAULT true CHECK ("singleton"),
+      "backend_pid" integer,
+      "slow_run_id" uuid NOT NULL
+    )
+  `);
+  await client.query(
+    `
+      INSERT INTO "stage2_test"."transaction_timeout_probe" ("slow_run_id")
+      VALUES ($1)
+    `,
+    [slowRunId],
+  );
+  await client.query(`
+    CREATE OR REPLACE FUNCTION "stage2_test"."transaction_timeout_probe_update"()
+    RETURNS trigger AS $$
+    BEGIN
+      UPDATE "stage2_test"."transaction_timeout_probe"
+      SET "backend_pid" = pg_backend_pid()
+      WHERE "backend_pid" IS DISTINCT FROM pg_backend_pid();
+      IF NEW."id" = (
+        SELECT "slow_run_id"
+        FROM "stage2_test"."transaction_timeout_probe"
+      ) THEN
+        PERFORM pg_sleep(3);
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await client.query(`
+    CREATE TRIGGER "stage2_transaction_timeout_probe_update"
+    BEFORE UPDATE OF "summary" ON "agent_runs"
+    FOR EACH ROW
+    EXECUTE FUNCTION "stage2_test"."transaction_timeout_probe_update"()
+  `);
+}
+
+async function dropTransactionTimeoutProbe(client: Client): Promise<void> {
+  await client.query(`
+    DROP TRIGGER IF EXISTS "stage2_transaction_timeout_probe_update"
+    ON "agent_runs"
+  `);
+  await client.query(`
+    DROP FUNCTION IF EXISTS "stage2_test"."transaction_timeout_probe_update"()
+  `);
+  await client.query(`DROP SCHEMA IF EXISTS "stage2_test" CASCADE`);
+}
+
+export async function validateAgentRunMetadataStage2Runner(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-  const draft = await fs.readFile(
-    path.join(scriptDirectory, "agent-run-metadata-stage-2-draft.sql"),
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${stage2Migration}.sql`),
     "utf8",
   );
-  assert.equal(draft.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER), true);
-  assertProductionExceptionConstants(draft, 2);
+  assert.equal(
+    migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER),
+    true,
+  );
+  assertProductionExceptionConstants(migrationSql, 2);
+  assertStage2PooledTransactionShape(migrationSql);
 
   const fixtureDirectory = await fs.mkdtemp(
     path.join(tmpdir(), "vm0-stage2-runner-"),
@@ -566,8 +679,6 @@ export async function validateAgentRunMetadataStage2RunnerDraft(): Promise<void>
     databaseUrl,
     runnerTestDatabase,
   );
-  const targetLocker = new Client({ connectionString: testUrl.toString() });
-  await targetLocker.connect();
   try {
     await applyMigrationsFromDirectoryUpToTag(
       client,
@@ -577,54 +688,96 @@ export async function validateAgentRunMetadataStage2RunnerDraft(): Promise<void>
     await seedAcceptedAgentOnlyRows(client);
     const callbackDigest = await seedAcceptedCallbacks(client);
     const runIds = await seedPairedMetadataMismatches(client, 502);
+    await validateStatementTimeoutCallProtocol(testUrl);
+    await installTransactionTimeoutProbe(client, runIds[500]!);
     await writeRunnerFixture(
       fixtureDirectory,
-      createCallbackFixtureExecutionSql(draft, callbackDigest, 2),
+      createTransactionTimeoutExecutionSql(
+        createCallbackFixtureExecutionSql(migrationSql, callbackDigest, 2),
+      ),
     );
 
-    await targetLocker.query("BEGIN");
-    await targetLocker.query(
-      `SELECT 1 FROM "agent_runs" WHERE "id" = $1 FOR UPDATE`,
-      [runIds[0]],
-    );
     const failureStartedAt = process.hrtime.bigint();
     await assert.rejects(
       runActualMigrationRunner(testUrl, fixtureDirectory),
-      /Stage 2 backfill made no progress for .* while eligible rows remained/,
+      /CONNECTION_CLOSED|transaction timeout/iu,
     );
     const failureElapsedMilliseconds =
       Number(process.hrtime.bigint() - failureStartedAt) / 1_000_000;
     assert.ok(
       failureElapsedMilliseconds < 5_000,
-      `expected the 250ms no-progress timeout to fail within 5s, took ${failureElapsedMilliseconds.toFixed(1)}ms`,
+      `expected the 1s transaction timeout to fail within 5s, took ${failureElapsedMilliseconds.toFixed(1)}ms`,
     );
     console.log(
-      `stage2 actual migration-runner bounded failure took ${failureElapsedMilliseconds.toFixed(1)}ms`,
+      `stage2 actual migration-runner transaction timeout took ${failureElapsedMilliseconds.toFixed(1)}ms`,
     );
+    const failedBackend = await client.query<{ backendPid: number }>(`
+      SELECT "backend_pid" AS "backendPid"
+      FROM "stage2_test"."transaction_timeout_probe"
+    `);
+    const failedBackendPid = failedBackend.rows[0]?.backendPid;
+    assert.ok(failedBackendPid);
+    const failedBackendActivity = await client.query<{ present: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1 FROM "pg_stat_activity" WHERE "pid" = $1
+        ) AS "present"
+      `,
+      [failedBackendPid],
+    );
+    assert.deepEqual(failedBackendActivity.rows, [{ present: false }]);
     const failedLedger = await client.query<{ count: number }>(`
       SELECT count(*)::integer AS "count"
       FROM "drizzle"."__drizzle_migrations"
       WHERE "created_at" = ${runnerFixtureTimestamp}
     `);
     assert.deepEqual(failedLedger.rows, [{ count: 0 }]);
-    assert.equal(await metadataMismatchCount(client), 1);
+    assert.equal(await metadataMismatchCount(client), 2);
+    const committedFirstBatch = await client.query<{ count: number }>(
+      `
+        SELECT count(*)::integer AS "count"
+        FROM "zero_runs" AS "source"
+        INNER JOIN "agent_runs" AS "target"
+          ON "target"."id" = "source"."id"
+        WHERE "target"."id" = ANY($1::uuid[])
+          AND "target"."summary" IS NOT DISTINCT FROM "source"."summary"
+      `,
+      [runIds.slice(0, 500)],
+    );
+    assert.deepEqual(committedFirstBatch.rows, [{ count: 500 }]);
 
-    await targetLocker.query("ROLLBACK");
+    await dropTransactionTimeoutProbe(client);
     const successfulRunner = await runActualMigrationRunner(
       testUrl,
       fixtureDirectory,
     );
     try {
       const timeouts = await successfulRunner<
-        { lockTimeout: string; statementTimeout: string }[]
+        {
+          backendPid: number;
+          lockTimeout: string;
+          statementTimeout: string;
+          transactionTimeout: string;
+        }[]
       >`
         SELECT
+          pg_backend_pid() AS "backendPid",
           current_setting('lock_timeout') AS "lockTimeout",
-          current_setting('statement_timeout') AS "statementTimeout"
+          current_setting('statement_timeout') AS "statementTimeout",
+          current_setting('transaction_timeout') AS "transactionTimeout"
       `;
+      assert.notEqual(timeouts[0]?.backendPid, failedBackendPid);
       assert.deepEqual(
-        [...timeouts],
-        [{ lockTimeout: "0", statementTimeout: "0" }],
+        [...timeouts].map(({ backendPid: _, ...row }) => {
+          return row;
+        }),
+        [
+          {
+            lockTimeout: "0",
+            statementTimeout: "0",
+            transactionTimeout: "0",
+          },
+        ],
       );
     } finally {
       await successfulRunner.end();
@@ -638,10 +791,9 @@ export async function validateAgentRunMetadataStage2RunnerDraft(): Promise<void>
     assert.equal(await metadataMismatchCount(client), 0);
     await validateFinalArtifacts(client);
   } finally {
-    await targetLocker.query("ROLLBACK").catch(() => {
+    await dropTransactionTimeoutProbe(client).catch(() => {
       return undefined;
     });
-    await targetLocker.end();
     await dropTestDatabase(admin, client, runnerTestDatabase);
     await fs.rm(fixtureDirectory, { recursive: true, force: true });
   }
@@ -652,8 +804,8 @@ export async function validateAgentRunMetadataStage2RunnerDraft(): Promise<void>
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
   Promise.resolve()
     .then(async () => {
-      await validateAgentRunMetadataStage2FinalDraft();
-      await validateAgentRunMetadataStage2RunnerDraft();
+      await validateAgentRunMetadataStage2Final();
+      await validateAgentRunMetadataStage2Runner();
     })
     .catch((error: unknown) => {
       console.error(error);
