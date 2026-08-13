@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  zeroAgentDraftRequestSchema,
-  zeroAgentDraftResponseSchema,
-} from "../zero-agents";
+  agentDraftRequestSchema,
+  agentDraftResponseSchema,
+} from "../agent-draft";
 
-describe("zero agent draft contract", () => {
+describe("agent draft contract", () => {
   it("rejects agent drafts that only carry the retired rich-input field", () => {
     const userMessage = {
       version: 1 as const,
@@ -13,7 +13,7 @@ describe("zero agent draft contract", () => {
     };
 
     expect(
-      zeroAgentDraftResponseSchema.safeParse({
+      agentDraftResponseSchema.safeParse({
         draftStructuredPrompt: userMessage,
         draftAttachments: null,
       }).success,
@@ -29,20 +29,18 @@ describe("zero agent draft contract", () => {
       draftAttachments: null,
     };
 
-    expect(zeroAgentDraftResponseSchema.parse(response)).toStrictEqual(
-      response,
-    );
+    expect(agentDraftResponseSchema.parse(response)).toStrictEqual(response);
   });
 
   it("requires userMessage for non-empty agent drafts", () => {
     expect(
-      zeroAgentDraftRequestSchema.safeParse({
+      agentDraftRequestSchema.safeParse({
         draftUserMessage: null,
         draftAttachments: null,
       }),
     ).toMatchObject({ success: true });
     expect(
-      zeroAgentDraftRequestSchema.safeParse({
+      agentDraftRequestSchema.safeParse({
         draftUserMessage: null,
         draftAttachments: [
           {

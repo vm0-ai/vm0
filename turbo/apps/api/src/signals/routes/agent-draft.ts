@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
-import { zeroAgentDraftContract } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroAgentDrafts } from "@okouai/db/schema/zero-agent-draft";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
+import { agentDrafts } from "@okouai/db/schema/agent-draft";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -24,7 +24,7 @@ function agentNotFound(agentId: string) {
 
 const getAgentDraftInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroAgentDraftContract.get));
+  const params = get(pathParamsOf(agentDraftContract.get));
 
   const agentExists = await get(
     zeroAgentExists({
@@ -39,15 +39,15 @@ const getAgentDraftInner$ = computed(async (get) => {
 
   const [draft] = await get(db$)
     .select({
-      draftUserMessage: zeroAgentDrafts.draftUserMessage,
-      draftAttachments: zeroAgentDrafts.draftAttachments,
+      draftUserMessage: agentDrafts.draftUserMessage,
+      draftAttachments: agentDrafts.draftAttachments,
     })
-    .from(zeroAgentDrafts)
+    .from(agentDrafts)
     .where(
       and(
-        eq(zeroAgentDrafts.userId, auth.userId),
-        eq(zeroAgentDrafts.orgId, auth.orgId),
-        eq(zeroAgentDrafts.agentId, params.id),
+        eq(agentDrafts.userId, auth.userId),
+        eq(agentDrafts.orgId, auth.orgId),
+        eq(agentDrafts.agentId, params.id),
       ),
     )
     .limit(1);
@@ -64,9 +64,9 @@ const getAgentDraftInner$ = computed(async (get) => {
 const patchAgentDraftInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroAgentDraftContract.patch));
+    const params = get(pathParamsOf(agentDraftContract.patch));
 
-    const bodyResult = await get(bodyResultOf(zeroAgentDraftContract.patch));
+    const bodyResult = await get(bodyResultOf(agentDraftContract.patch));
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -93,12 +93,12 @@ const patchAgentDraftInner$ = command(
       !(draftAttachments && draftAttachments.length > 0)
     ) {
       await writeDb
-        .delete(zeroAgentDrafts)
+        .delete(agentDrafts)
         .where(
           and(
-            eq(zeroAgentDrafts.userId, auth.userId),
-            eq(zeroAgentDrafts.orgId, auth.orgId),
-            eq(zeroAgentDrafts.agentId, params.id),
+            eq(agentDrafts.userId, auth.userId),
+            eq(agentDrafts.orgId, auth.orgId),
+            eq(agentDrafts.agentId, params.id),
           ),
         );
       signal.throwIfAborted();
@@ -107,7 +107,7 @@ const patchAgentDraftInner$ = command(
 
     const updatedAt = nowDate();
     await writeDb
-      .insert(zeroAgentDrafts)
+      .insert(agentDrafts)
       .values({
         userId: auth.userId,
         orgId: auth.orgId,
@@ -117,11 +117,7 @@ const patchAgentDraftInner$ = command(
         updatedAt,
       })
       .onConflictDoUpdate({
-        target: [
-          zeroAgentDrafts.userId,
-          zeroAgentDrafts.orgId,
-          zeroAgentDrafts.agentId,
-        ],
+        target: [agentDrafts.userId, agentDrafts.orgId, agentDrafts.agentId],
         set: {
           draftUserMessage,
           draftAttachments,
@@ -134,13 +130,13 @@ const patchAgentDraftInner$ = command(
   },
 );
 
-export const zeroAgentDraftRoutes: readonly RouteEntry[] = [
+export const agentDraftRoutes: readonly RouteEntry[] = [
   {
-    route: zeroAgentDraftContract.get,
+    route: agentDraftContract.get,
     handler: authRoute(agentReadAuth, getAgentDraftInner$),
   },
   {
-    route: zeroAgentDraftContract.patch,
+    route: agentDraftContract.patch,
     handler: authRoute(agentReadAuth, patchAgentDraftInner$),
   },
 ];

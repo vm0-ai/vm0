@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
-import { zeroAgentDraftContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import type { UserMessageInputDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
@@ -9,7 +9,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroAgentDraftRoutes } from "../zero-agent-drafts";
+import { agentDraftRoutes } from "../agent-draft";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -44,12 +44,10 @@ function authHeaders() {
 }
 
 function draftsClient() {
-  return setupApp({ context, routes: zeroAgentDraftRoutes })(
-    zeroAgentDraftContract,
-  );
+  return setupApp({ context, routes: agentDraftRoutes })(agentDraftContract);
 }
 
-describe("GET/PATCH /api/zero/agents/:id/draft", () => {
+describe("GET/PATCH /api/okou/agents/:id/draft", () => {
   it("returns an empty draft when none is saved", async () => {
     const fixture = await seedAgent();
     mocks.clerk.session(fixture.userId, fixture.orgId);
