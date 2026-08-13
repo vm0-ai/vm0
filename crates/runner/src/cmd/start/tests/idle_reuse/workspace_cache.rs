@@ -72,6 +72,8 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     let before_publication = env.handle.heartbeat_count();
+    env.handle.block_heartbeats();
+    let watcher_cursor = env.start_observer.cursor();
 
     let invalid_cache_key = "d".repeat(64);
     let invalid_staging = home
@@ -103,9 +105,16 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
         16 * 1024 * 1024,
     )
     .await;
-    env.start_observer
-        .wait_workspace_cache_change_observed(Duration::from_secs(5))
+    let watcher_cursor = env
+        .start_observer
+        .wait_workspace_cache_change_observed_after(watcher_cursor, Duration::from_secs(5))
         .await;
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(5))
+            .await,
+        "the first relevant cache heartbeat should remain blocked",
+    );
 
     let reuse_key = "thread:external-workspace-cache";
     let expected_workspace = WorkspaceCacheCapability {
@@ -120,6 +129,16 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
         16 * 1024 * 1024,
     )
     .await;
+    env.start_observer
+        .wait_workspace_cache_change_observed_after(watcher_cursor, Duration::from_secs(5))
+        .await;
+    assert_eq!(
+        env.handle.heartbeat_count(),
+        before_publication + 1,
+        "the watcher must consume a second event without overlapping the blocked heartbeat",
+    );
+    assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
+    env.handle.unblock_heartbeats();
 
     assert!(
         wait_heartbeat_matching_after(
@@ -141,8 +160,8 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
     );
     assert_eq!(
         env.handle.heartbeat_count(),
-        before_publication + 1,
-        "invalid and foreign cache events must not create extra provider heartbeats",
+        before_publication + 2,
+        "two relevant publications should produce only the active and coalesced heartbeats",
     );
 
     let before_removal = env.handle.heartbeat_count();

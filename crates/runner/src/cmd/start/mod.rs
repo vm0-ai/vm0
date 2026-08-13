@@ -1108,11 +1108,17 @@ impl StartLoopTestObserver {
         .await;
     }
 
-    async fn wait_workspace_cache_change_observed(&self, timeout: Duration) {
-        self.wait_for(timeout, "workspace-cache change", |event| {
-            matches!(event, StartLoopEvent::WorkspaceCacheChangeObserved).then_some(())
-        })
-        .await;
+    async fn wait_workspace_cache_change_observed_after(
+        &self,
+        cursor: StartLoopCursor,
+        timeout: Duration,
+    ) -> StartLoopCursor {
+        let ((), cursor) = self
+            .wait_after(cursor, timeout, "workspace-cache change", |event| {
+                matches!(event, StartLoopEvent::WorkspaceCacheChangeObserved).then_some(())
+            })
+            .await;
+        cursor
     }
 
     async fn wait_idle_cleanup_processed_with_expired_entries(&self, timeout: Duration) -> usize {
