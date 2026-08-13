@@ -21,8 +21,8 @@ import {
   zoomableImageCanvasZoomByKey$,
 } from "../../signals/view-component-state.ts";
 
-const IMAGE_ZOOM_STEP = Math.log(1.15);
-const IMAGE_DOUBLE_CLICK_ZOOM_STEP = Math.log(2);
+const IMAGE_ZOOM_STEP = 0.15;
+const IMAGE_DOUBLE_CLICK_ZOOM_STEP = 1;
 const IMAGE_TRACKPAD_ZOOM_SENSITIVITY = 0.03;
 const IMAGE_TRACKPAD_ZOOM_MAX_DELTA = 10;
 const IMAGE_WHEEL_LINE_HEIGHT = 16;
@@ -52,15 +52,14 @@ function proportionalImageWheelStep(
   event: ReactWheelEvent<HTMLDivElement>,
   scale: number,
 ): number {
-  const rawDelta = Math.abs(event.deltaY);
-  if (rawDelta === 0) {
+  if (event.deltaY === 0) {
     return 0;
   }
 
   const normalizedDelta = normalizedImageWheelDelta(event);
   const targetScale =
     scale * Math.exp(-normalizedDelta * IMAGE_TRACKPAD_ZOOM_SENSITIVITY);
-  return Math.abs(targetScale - scale) / rawDelta;
+  return Math.abs(targetScale - scale);
 }
 
 function proportionalImageWheelHandler(instance: ReactZoomPanPinchContext) {
@@ -337,7 +336,7 @@ export function ZoomableArtifactImageCanvas({
         velocityDisabled: true,
       }}
       pinch={{ allowPanning: false }}
-      smooth
+      smooth={false}
       trackPadPanning={{ disabled: false }}
       wheel={{
         activationKeys: isImageWheelZoomActivated,
