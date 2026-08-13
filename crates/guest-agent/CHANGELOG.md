@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.73.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.0...guest-agent-v0.73.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** retire legacy pi run id compatibility ([#26830](https://github.com/vm0-ai/vm0/issues/26830)) ([8ad8821](https://github.com/vm0-ai/vm0/commit/8ad8821431080de674c4d83159e344a31d7877ca))
+
 ## [0.73.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.72.0...guest-agent-v0.73.0) (2026-08-13)
 
 
