@@ -511,7 +511,7 @@ function renderBuiltInProvider(params: {
   if (command) {
     console.log("");
     console.log("Built-in command:");
-    console.log(`  vm0  ${command.label}`);
+    console.log(`  Okou  ${command.label}`);
     console.log(`  Models: ${command.models}`);
     if (generationType === "video" || generationType === "avatar-video") {
       if (videoGenerationAllowed === false) {
@@ -543,7 +543,7 @@ function renderBuiltInProvider(params: {
     providers.length === 1 ? "Built-in provider:" : "Built-in providers:",
   );
   for (const provider of providers) {
-    console.log(`  vm0  ${provider.label}  Model: ${provider.model}`);
+    console.log(`  Okou  ${provider.label}  Model: ${provider.model}`);
     console.log(`  Use: ${provider.command}`);
   }
 }

@@ -102,5 +102,5 @@ Example:
 Notes:
   - Available only in runs whose selected model does not support image input
   - Accepts one PNG, JPEG, or WebP image up to 20 MB
-  - Uses a fixed vm0-managed recognition model and prints only recognized text`,
+  - Uses a fixed Okou-managed recognition model and prints only recognized text`,
   );

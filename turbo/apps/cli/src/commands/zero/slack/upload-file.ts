@@ -262,7 +262,7 @@ Examples:
 
 Notes:
   - Uses the bot token (not user SLACK_TOKEN), so no files:write permission is needed
-  - Run-scoped calls publish to VM0 storage before Slack delivery
+  - Run-scoped calls publish to Okou storage before Slack delivery
   - Returns canonical asset details and Slack delivery status`,
   )
   .action(withErrorHandler(uploadFile));
