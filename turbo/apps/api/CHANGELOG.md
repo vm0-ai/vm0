@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.445.0](https://github.com/vm0-ai/vm0/compare/api-v1.444.3...api-v1.445.0) (2026-08-13)
+
+
+### Features
+
+* add user-friendly automation messages ([#26963](https://github.com/vm0-ai/vm0/issues/26963)) ([5c13a78](https://github.com/vm0-ai/vm0/commit/5c13a78454fb78da731ba59b5ebe56c532f8c608))
+
+
+### Bug Fixes
+
+* **chat:** preserve unread agent actions during active runs ([#26975](https://github.com/vm0-ai/vm0/issues/26975)) ([08bef36](https://github.com/vm0-ai/vm0/commit/08bef367636c45e40fb5a5b78272c864a6bc9857))
+
+
+### Refactoring
+
+* **agent:** canonicalize agent draft naming ([#26979](https://github.com/vm0-ai/vm0/issues/26979)) ([5403d6a](https://github.com/vm0-ai/vm0/commit/5403d6ae1ef87b4343751789c063aa88dbdc18f4))
+* **chat:** remove historical model recovery ([#26994](https://github.com/vm0-ai/vm0/issues/26994)) ([1cb34a0](https://github.com/vm0-ai/vm0/commit/1cb34a011952c801dc9f015e27802f2078304581))
+* **finance:** neutralize managed finance naming ([#26977](https://github.com/vm0-ai/vm0/issues/26977)) ([917fe51](https://github.com/vm0-ai/vm0/commit/917fe5141289c0b844062952b4b36fcd505ecd41)), closes [#26971](https://github.com/vm0-ai/vm0/issues/26971)
+* **maps:** neutralize the managed maps vertical slice ([#26992](https://github.com/vm0-ai/vm0/issues/26992)) ([4b0206d](https://github.com/vm0-ai/vm0/commit/4b0206d254e49aac18612dc613fdc9a0b071b98e))
+* **weather:** neutralize the managed weather and air-quality slice ([#26982](https://github.com/vm0-ai/vm0/issues/26982)) ([f386d93](https://github.com/vm0-ai/vm0/commit/f386d9386f5773a0109a8e7c1b32c22fa9317dd1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.4
+    * @okouai/core bumped to 8.557.0
+    * @okouai/db bumped to 1.198.5
+    * @okouai/pi-agent-runtime bumped to 1.4.12
+
 ## [1.444.3](https://github.com/vm0-ai/vm0/compare/api-v1.444.2...api-v1.444.3) (2026-08-13)
 
 
