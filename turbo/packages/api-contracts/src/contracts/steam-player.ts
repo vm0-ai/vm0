@@ -64,7 +64,7 @@ export const steamPlayerFollowedGamesSchema = z.object({
   appIds: z.array(z.number().int()),
 });
 
-export const zeroSteamPlayerResponseSchema = z.object({
+export const steamPlayerResponseSchema = z.object({
   steamId: z.string(),
   profile: steamPlayerProfileSchema.nullable(),
   ownedGames: steamPlayerOwnedGamesSchema.nullable(),
@@ -75,17 +75,15 @@ export const zeroSteamPlayerResponseSchema = z.object({
   followedGames: steamPlayerFollowedGamesSchema.nullable(),
 });
 
-export type ZeroSteamPlayerResponse = z.infer<
-  typeof zeroSteamPlayerResponseSchema
->;
+export type SteamPlayerResponse = z.infer<typeof steamPlayerResponseSchema>;
 
-export const zeroSteamPlayerContract = c.router({
+export const steamPlayerContract = c.router({
   getPlayer: {
     method: "GET",
     path: "/api/okou/connectors/steam/player",
     headers: authHeadersSchema,
     responses: {
-      200: zeroSteamPlayerResponseSchema,
+      200: steamPlayerResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

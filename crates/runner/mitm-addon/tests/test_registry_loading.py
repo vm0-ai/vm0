@@ -30,6 +30,7 @@ class TestLoadRegistry:
                         "10.200.0.1": {
                             "runId": "run-active",
                             "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                         },
                         "10.200.0.2": "broken",
                         "10.200.0.3": {"billableFirewalls": []},
@@ -87,7 +88,13 @@ class TestLoadRegistry:
 
         # Modify the file
         new_data = {
-            "vms": {"10.200.0.99": {"runId": "new-run", "billableFirewalls": []}},
+            "vms": {
+                "10.200.0.99": {
+                    "runId": "new-run",
+                    "billableFirewalls": [],
+                    "cliAgentType": "claude-code",
+                }
+            },
             "updatedAt": 0,
         }
         registry_file.write_text(json.dumps(new_data))
@@ -153,6 +160,7 @@ class TestLoadRegistry:
                         "10.200.0.1": {
                             "runId": "good-run",
                             "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                         },
                         "10.200.0.2": None,
                         "10.200.0.3": "broken",
@@ -170,7 +178,11 @@ class TestLoadRegistry:
             cached = registry.load_registry(str(path))
 
         assert result == {
-            "10.200.0.1": {"runId": "good-run", "billableFirewalls": []},
+            "10.200.0.1": {
+                "runId": "good-run",
+                "billableFirewalls": [],
+                "cliAgentType": "claude-code",
+            }
         }
         assert cached is result
         assert log.warn.call_count == 1
@@ -383,7 +395,13 @@ class TestLoadRegistry:
     def test_read_failure_after_open_does_not_poison_file_key(self, registry_file):
         registry.load_registry(str(registry_file))
         new_registry = {
-            "vms": {"10.200.0.99": {"runId": "new-run", "billableFirewalls": []}},
+            "vms": {
+                "10.200.0.99": {
+                    "runId": "new-run",
+                    "billableFirewalls": [],
+                    "cliAgentType": "claude-code",
+                }
+            },
             "updatedAt": 0,
         }
         registry_file.write_text(json.dumps(new_registry))
@@ -411,7 +429,11 @@ class TestLoadRegistry:
 
         assert failed == {}
         assert recovered == {
-            "10.200.0.99": {"runId": "new-run", "billableFirewalls": []},
+            "10.200.0.99": {
+                "runId": "new-run",
+                "billableFirewalls": [],
+                "cliAgentType": "claude-code",
+            }
         }
         assert spy.call_count == 3
         assert log.warn.call_count == 1
@@ -420,7 +442,13 @@ class TestLoadRegistry:
     def test_read_failure_clears_previous_failed_key(self, tmp_path):
         path = tmp_path / "registry.json"
         valid_registry = {
-            "vms": {"10.0.0.1": {"runId": "r1", "billableFirewalls": []}},
+            "vms": {
+                "10.0.0.1": {
+                    "runId": "r1",
+                    "billableFirewalls": [],
+                    "cliAgentType": "claude-code",
+                }
+            }
         }
         valid_bytes = json.dumps(valid_registry, separators=(",", ":")).encode()
         path.write_bytes(b"{" + b" " * (len(valid_bytes) - 1))
@@ -451,7 +479,11 @@ class TestLoadRegistry:
             recovered = registry.load_registry(str(path))
 
         assert recovered == {
-            "10.0.0.1": {"runId": "r1", "billableFirewalls": []},
+            "10.0.0.1": {
+                "runId": "r1",
+                "billableFirewalls": [],
+                "cliAgentType": "claude-code",
+            }
         }
         assert log.warn.call_count == 2
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
@@ -474,6 +506,7 @@ class TestLoadRegistry:
                             "10.0.0.1": {
                                 "runId": "r1",
                                 "billableFirewalls": [],
+                                "cliAgentType": "claude-code",
                             }
                         }
                     }

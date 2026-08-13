@@ -22,6 +22,7 @@ import {
 } from "./sidebar-chat-thread-item.ts";
 
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
+const CHAT_THREAD_VIRTUAL_FALLBACK_WINDOW_SIZE = 100;
 
 export interface SidebarChatThreadWindow {
   readonly startIndex: number;
@@ -85,10 +86,10 @@ export const sidebarChatThreadWindow$ = computed(
       scrollViewport,
       virtualListElement,
     );
+    const measuredViewportHeight =
+      scrollMetrics.clientHeight || scrollViewport?.clientHeight;
     const viewportHeight =
-      scrollMetrics.clientHeight ||
-      scrollViewport?.clientHeight ||
-      CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
+      measuredViewportHeight || CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
     const scrollTop = scrollMetrics.scrollTop;
     const { startIndex, endIndex } = getFixedVirtualRange({
       itemCount: chatThreads.length,
@@ -96,6 +97,15 @@ export const sidebarChatThreadWindow$ = computed(
       scrollTop,
       viewportHeight,
     });
+    const resolvedEndIndex = measuredViewportHeight
+      ? endIndex
+      : Math.min(
+          chatThreads.length,
+          Math.max(
+            endIndex,
+            startIndex + CHAT_THREAD_VIRTUAL_FALLBACK_WINDOW_SIZE,
+          ),
+        );
     const itemSignals = get(sidebarChatThreadItemSignalsRegistry$).reconcile(
       chatThreads.map((thread) => {
         return thread.id;
@@ -104,7 +114,7 @@ export const sidebarChatThreadWindow$ = computed(
 
     return {
       startIndex,
-      items: itemSignals.slice(startIndex, endIndex),
+      items: itemSignals.slice(startIndex, resolvedEndIndex),
     };
   },
 );

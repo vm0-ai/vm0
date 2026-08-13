@@ -78,6 +78,7 @@ def _write_resolved_host_policy_registry(
         vm_info={
             "runId": "run-resolved-host-policy",
             "billableFirewalls": [],
+            "cliAgentType": "claude-code",
             "sandboxToken": "tok-resolved-host-policy",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),

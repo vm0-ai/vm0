@@ -110,6 +110,124 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
 
 
+@pytest.mark.parametrize(
+    ("field_present", "cli_agent_type", "expected_reason", "expected_message"),
+    [
+        (
+            False,
+            None,
+            "missing_cli_agent_type",
+            "proxy registry VM entry is missing cliAgentType",
+        ),
+        (
+            True,
+            "",
+            "empty_cli_agent_type",
+            "proxy registry VM entry cliAgentType must be non-empty",
+        ),
+        (
+            True,
+            None,
+            "invalid_cli_agent_type",
+            "proxy registry VM entry cliAgentType must be a string",
+        ),
+        (
+            True,
+            123,
+            "invalid_cli_agent_type",
+            "proxy registry VM entry cliAgentType must be a string",
+        ),
+    ],
+)
+async def test_invalid_cli_agent_type_blocks_before_auth_injection(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    field_present,
+    cli_agent_type,
+    expected_reason,
+    expected_message,
+):
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer secret"}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+    if field_present:
+        vm_info["cliAgentType"] = cli_agent_type
+    else:
+        del vm_info["cliAgentType"]
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content) == {
+        "error": "invalid_registry_vm",
+        "message": expected_message,
+        "reason": expected_reason,
+    }
+    auth_fetch.assert_not_called()
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.CLI_AGENT_TYPE not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
+
+
+@pytest.mark.parametrize("cli_agent_type", ["claude-code", "codex", "custom-agent"])
+async def test_valid_cli_agent_type_is_copied_to_request_metadata(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    cli_agent_type,
+):
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer secret"}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+        vm_fields={"cliAgentType": cli_agent_type},
+    )
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.VM_RUN_ID] == vm_info["runId"]
+    assert flow.metadata[metadata_keys.CLI_AGENT_TYPE] == cli_agent_type
+
+
 async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
     tmp_path,
     real_flow,
