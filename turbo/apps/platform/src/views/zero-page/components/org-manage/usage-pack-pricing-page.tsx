@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Crown, User } from "lucide-react";
+import { ArrowLeft, Check, User } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -194,35 +194,38 @@ function planDescription(tier: UsagePackPlanTier): string {
       });
 }
 
+// Team repeats three of Pro's five rows, so it only lists what it adds and is
+// introduced by an "Everything on Pro, plus:" heading instead.
 function planFeatures(tier: UsagePackPlanTier): readonly string[] {
+  if (tier === "team") {
+    return [
+      i18n.t(($) => {
+        return $.billing.plans.features.tenConcurrentRuns;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.features.voiceInputTeam;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.features.prioritySupport;
+      }),
+    ];
+  }
   return [
-    tier === "pro"
-      ? i18n.t(($) => {
-          return $.billing.plans.features.twoConcurrentRuns;
-        })
-      : i18n.t(($) => {
-          return $.billing.plans.features.tenConcurrentRuns;
-        }),
+    i18n.t(($) => {
+      return $.billing.plans.features.twoConcurrentRuns;
+    }),
     i18n.t(($) => {
       return $.billing.plans.features.sharedAndPrivateAgents;
     }),
     i18n.t(($) => {
       return $.billing.plans.features.byok;
     }),
-    tier === "pro"
-      ? i18n.t(($) => {
-          return $.billing.plans.features.voiceInputPro;
-        })
-      : i18n.t(($) => {
-          return $.billing.plans.features.voiceInputTeam;
-        }),
-    tier === "pro"
-      ? i18n.t(($) => {
-          return $.billing.plans.features.emailSupport;
-        })
-      : i18n.t(($) => {
-          return $.billing.plans.features.prioritySupport;
-        }),
+    i18n.t(($) => {
+      return $.billing.plans.features.voiceInputPro;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.features.emailSupport;
+    }),
   ];
 }
 
@@ -617,36 +620,82 @@ function MemberUsageConfiguration({
 
 function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <ul className="my-6 flex flex-col gap-2.5">
-      {planFeatures(tier).map((feature) => {
-        return (
-          <li key={feature} className="flex items-center gap-2">
-            <Check size={14} className="shrink-0" />
-            <span className="text-[13px] text-muted-foreground">{feature}</span>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col gap-2.5">
+      {tier === "team" && (
+        <p className="text-[13px] font-medium text-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.usagePacks.everythingOnPlus;
+            },
+            { plan: planName("pro") },
+          )}
+        </p>
+      )}
+      <ul className="flex flex-col gap-2.5">
+        {planFeatures(tier).map((feature) => {
+          return (
+            <li key={feature} className="flex items-start gap-2">
+              <Check size={14} className="mt-0.5 shrink-0" />
+              <span className="text-[13px] leading-snug text-foreground">
+                {feature}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function PlanPriceRow({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-[13px] text-muted-foreground">{label}</span>
+      <span className="text-[13px] font-medium tabular-nums text-foreground">
+        {value}
+        <span className="font-normal text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.perMonth;
+          })}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function PlanSelectionPanel({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 overflow-hidden rounded-xl bg-card zero-border sm:grid-cols-2">
+      {children}
+    </div>
   );
 }
 
 function PlanSelectionCard({
   action,
   busy,
+  divided,
   keepsMemberPackages,
-  minimumPackagePriceUsd,
+  minimumPackage,
   onAction,
   plan,
 }: {
   readonly action: PlanSelectionAction;
   readonly busy: boolean;
+  readonly divided: boolean;
   readonly keepsMemberPackages: boolean;
-  readonly minimumPackagePriceUsd: number;
+  readonly minimumPackage: UsagePackCatalogItem;
   readonly onAction: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const name = planName(plan.tier);
-  const displayedPriceUsd = plan.basePriceUsd + minimumPackagePriceUsd;
+  const displayedPriceUsd = plan.basePriceUsd + minimumPackage.priceUsd;
   const actionLabel =
     action === "convert"
       ? i18n.t(($) => {
@@ -678,68 +727,87 @@ function PlanSelectionCard({
         },
         { plan: name },
       )}
-      className="relative flex flex-col rounded-xl bg-card px-6 py-7 zero-border"
+      className={`flex flex-col px-5 py-6 ${
+        divided
+          ? "border-t-[0.7px] border-[hsl(var(--gray-200))] sm:border-l-[0.7px] sm:border-t-0"
+          : ""
+      }`}
     >
-      {plan.popular && (
-        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <Crown size={12} className="text-amber-500" />
-          {i18n.t(($) => {
-            return $.billing.plans.popular;
-          })}
-        </span>
-      )}
-
-      <img
-        src={plan.image}
-        alt=""
-        loading="lazy"
-        className="mb-2 h-20 w-20 object-contain"
-      />
-      <h3 className="text-base font-semibold text-foreground">{name}</h3>
-      <p className="mt-1 min-h-[42px] text-[13px] leading-relaxed text-muted-foreground">
+      <div className="flex items-center gap-2.5">
+        <img
+          src={plan.image}
+          alt=""
+          loading="lazy"
+          className="h-9 w-9 shrink-0 object-contain"
+        />
+        <h3 className="text-[15px] font-medium text-foreground">{name}</h3>
+      </div>
+      <p className="mt-2 min-h-[54px] text-xs leading-relaxed text-muted-foreground">
         {planDescription(plan.tier)}
       </p>
 
-      <div className="mt-5">
-        <p className="text-[12px] text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.startingAt;
-          })}
-        </p>
-        <p className="mt-1 text-3xl font-light tracking-tight text-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.pricePerMonth;
-            },
-            { price: formatUsd(displayedPriceUsd, 0) },
-          )}
-        </p>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          {keepsMemberPackages
-            ? i18n.t(($) => {
-                return $.billing.plans.usagePacks.existingPackagesUnchanged;
-              })
-            : i18n.t(
-                ($) => {
-                  return $.billing.plans.usagePacks.minimumPackageBreakdown;
-                },
-                {
-                  base: formatUsd(plan.basePriceUsd, 0),
-                  package: formatUsd(minimumPackagePriceUsd, 0),
-                },
-              )}
-        </p>
+      <div className="mt-4">
+        <div className="pb-3">
+          <PlanPriceRow
+            label={i18n.t(($) => {
+              return $.billing.plans.sectionTitle;
+            })}
+            value={formatUsd(plan.basePriceUsd, 0)}
+          />
+        </div>
+        <div className="h-px bg-border" />
+        <div className="py-3">
+          <PlanPriceRow
+            label={i18n.t(($) => {
+              return $.billing.plans.usagePacks.memberPackages;
+            })}
+            value={formatUsd(minimumPackage.priceUsd, 0)}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {keepsMemberPackages
+              ? i18n.t(($) => {
+                  return $.billing.plans.usagePacks.existingPackagesUnchanged;
+                })
+              : i18n.t(
+                  ($) => {
+                    return $.billing.plans.usagePacks.creditsPerMember;
+                  },
+                  {
+                    credits: formatLocalizedNumber(minimumPackage.totalCredits),
+                  },
+                )}
+          </p>
+        </div>
       </div>
 
-      <PlanFeatureList tier={plan.tier} />
+      <div className="-mx-5 flex items-baseline justify-between gap-3 border-y-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-5 py-3.5">
+        <span className="text-[13px] font-medium text-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.monthlyTotal;
+          })}
+        </span>
+        <span className="text-3xl font-light tracking-tight tabular-nums text-foreground">
+          {formatUsd(displayedPriceUsd, 0)}
+          <span className="text-[13px] font-normal tracking-normal text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.perMonth;
+            })}
+          </span>
+        </span>
+      </div>
+
       <Button
         type="button"
-        className="mt-auto h-11 w-full text-sm font-medium"
+        variant={plan.popular ? "default" : "outline"}
+        className="mt-5 h-10 w-full text-sm font-medium"
         disabled={action === "disabled" || busy}
         onClick={onAction}
       >
         {actionLabel}
       </Button>
+
+      <div className="my-5 h-px bg-border" />
+      <PlanFeatureList tier={plan.tier} />
     </article>
   );
 }
@@ -748,10 +816,12 @@ function UsagePackPageHeader({
   description,
   onBack,
   title,
+  trailing,
 }: {
-  readonly description: string;
+  readonly description?: string;
   readonly onBack: () => void;
   readonly title: string;
+  readonly trailing?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
@@ -780,11 +850,27 @@ function UsagePackPageHeader({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <div>
+      <div className="min-w-0 flex-1">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
-        <p className="text-[13px] text-muted-foreground">{description}</p>
+        {description && (
+          <p className="text-[13px] text-muted-foreground">{description}</p>
+        )}
       </div>
+      {trailing}
     </div>
+  );
+}
+
+function PricingStepIndicator({ current }: { readonly current: 1 | 2 }) {
+  return (
+    <span className="shrink-0 text-xs text-muted-foreground">
+      {i18n.t(
+        ($) => {
+          return $.billing.plans.usagePacks.stepOfTotal;
+        },
+        { current, total: 2 },
+      )}
+    </span>
   );
 }
 
@@ -810,69 +896,13 @@ function PricingPageHeader({
       }
       description={
         step === 1
-          ? t(($) => {
-              return $.billing.plans.usagePacks.choosePlanDescription;
-            })
+          ? undefined
           : t(($) => {
               return $.billing.plans.usagePacks.configurePackagesDescription;
             })
       }
+      trailing={<PricingStepIndicator current={step} />}
     />
-  );
-}
-
-function PricingStep({
-  active,
-  label,
-  number,
-}: {
-  readonly active: boolean;
-  readonly label: string;
-  readonly number: number;
-}) {
-  return (
-    <li
-      aria-current={active ? "step" : undefined}
-      className={`flex items-center gap-2 text-xs font-medium ${
-        active ? "text-primary" : "text-muted-foreground"
-      }`}
-    >
-      <span
-        className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${
-          active ? "bg-primary text-primary-foreground" : "zero-badge"
-        }`}
-      >
-        {number}
-      </span>
-      {label}
-    </li>
-  );
-}
-
-function PricingSteps({ current }: { readonly current: 1 | 2 }) {
-  return (
-    <ol
-      aria-label={i18n.t(($) => {
-        return $.billing.plans.usagePacks.purchaseSteps;
-      })}
-      className="flex items-center rounded-xl bg-muted/30 px-4 py-3 zero-border"
-    >
-      <PricingStep
-        active={current === 1}
-        label={i18n.t(($) => {
-          return $.billing.plans.usagePacks.planStep;
-        })}
-        number={1}
-      />
-      <span className="mx-4 h-px flex-1 bg-border" aria-hidden="true" />
-      <PricingStep
-        active={current === 2}
-        label={i18n.t(($) => {
-          return $.billing.plans.usagePacks.packagesStep;
-        })}
-        number={2}
-      />
-    </ol>
   );
 }
 
@@ -1107,9 +1137,8 @@ function PlanSelectionStep({
   return (
     <>
       <PricingPageHeader onBack={onBack} step={1} />
-      <PricingSteps current={1} />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {USAGE_PACK_PLANS.map((plan) => {
+      <PlanSelectionPanel>
+        {USAGE_PACK_PLANS.map((plan, index) => {
           const action = usagePackPlanAction(
             checkoutAllowed,
             currentTier,
@@ -1121,8 +1150,9 @@ function PlanSelectionStep({
               key={plan.tier}
               action={action}
               busy={loading}
+              divided={index > 0}
               keepsMemberPackages={managedTier !== null}
-              minimumPackagePriceUsd={minimumPackage.priceUsd}
+              minimumPackage={minimumPackage}
               plan={plan}
               onAction={() => {
                 onAction(plan.tier, action);
@@ -1130,7 +1160,7 @@ function PlanSelectionStep({
             />
           );
         })}
-      </div>
+      </PlanSelectionPanel>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </>
   );
@@ -2028,7 +2058,6 @@ function PackageConfigurationStep({
   return (
     <>
       <PricingPageHeader onBack={onBack} step={2} />
-      <PricingSteps current={2} />
       <SelectedPlanSummary plan={plan} onChange={onBack} />
       <MemberUsageConfiguration
         catalog={catalog}
@@ -2568,42 +2597,40 @@ export function UsagePackMigrationPlanSelectionPage({
       {!catalog ? (
         <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
       ) : (
-        <>
-          <PricingSteps current={1} />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {USAGE_PACK_PLANS.map((plan) => {
-              const action = configuration
-                ? usagePackPlanAction(
-                    false,
-                    configuration.tier,
-                    configuration.tier,
-                    plan.tier,
-                  )
-                : "convert";
-              return (
-                <PlanSelectionCard
-                  key={plan.tier}
-                  action={action}
-                  busy={false}
-                  keepsMemberPackages={configuration !== null}
-                  minimumPackagePriceUsd={
-                    usagePackCatalogItem(catalog, MINIMUM_USAGE_PACK_USD)
-                      .priceUsd
-                  }
-                  plan={plan}
-                  onAction={() => {
-                    setMemberUsageSelections(
-                      configuration
-                        ? migrationConfigurationSelections(configuration)
-                        : {},
-                    );
-                    onSelect(plan.tier);
-                  }}
-                />
-              );
-            })}
-          </div>
-        </>
+        <PlanSelectionPanel>
+          {USAGE_PACK_PLANS.map((plan, index) => {
+            const action = configuration
+              ? usagePackPlanAction(
+                  false,
+                  configuration.tier,
+                  configuration.tier,
+                  plan.tier,
+                )
+              : "convert";
+            return (
+              <PlanSelectionCard
+                key={plan.tier}
+                action={action}
+                busy={false}
+                divided={index > 0}
+                keepsMemberPackages={configuration !== null}
+                minimumPackage={usagePackCatalogItem(
+                  catalog,
+                  MINIMUM_USAGE_PACK_USD,
+                )}
+                plan={plan}
+                onAction={() => {
+                  setMemberUsageSelections(
+                    configuration
+                      ? migrationConfigurationSelections(configuration)
+                      : {},
+                  );
+                  onSelect(plan.tier);
+                }}
+              />
+            );
+          })}
+        </PlanSelectionPanel>
       )}
     </div>
   );

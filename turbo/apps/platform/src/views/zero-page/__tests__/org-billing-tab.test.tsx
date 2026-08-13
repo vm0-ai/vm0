@@ -419,13 +419,17 @@ describe("organization billing settings", () => {
     expect(choosePlanHeading).toBeInTheDocument();
     const proPlan = await screen.findByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
-    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
+    expect(proPlan).toHaveTextContent("Plan$0/month");
+    expect(proPlan).toHaveTextContent("Member packages$20/month");
+    expect(proPlan).toHaveTextContent("Monthly total$20/month");
     expect(
-      within(proPlan).getByText("$0 plan + $20 required member package"),
+      within(proPlan).getByText(/credits per member$/u),
     ).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(teamPlan).toHaveTextContent("Plan$160/month");
+    expect(teamPlan).toHaveTextContent("Member packages$20/month");
+    expect(teamPlan).toHaveTextContent("Monthly total$180/month");
     expect(
-      within(teamPlan).getByText("$160 plan + $20 required member package"),
+      within(teamPlan).getByText("Everything on Pro, plus:"),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("group", { name: "Member usage" }),
@@ -1534,8 +1538,8 @@ describe("organization billing settings", () => {
     const proPlan = screen.getByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
     expect(buttonByText("Manage", proPlan)).not.toBeDisabled();
-    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(proPlan).toHaveTextContent("Monthly total$20/month");
+    expect(teamPlan).toHaveTextContent("Monthly total$180/month");
     expect(
       within(teamPlan).getByText("Existing member packages stay unchanged."),
     ).toBeInTheDocument();
@@ -2199,9 +2203,7 @@ describe("organization billing settings", () => {
     expect(
       screen.queryByRole("heading", { name: "Compare plans" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("list", { name: "Purchase steps" }),
-    ).toHaveTextContent("Packages");
+    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
     const packageSelect = await screen.findByRole("combobox", {
       name: "Usage for Alex Chen",
     });
