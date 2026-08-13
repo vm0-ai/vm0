@@ -25,7 +25,7 @@ import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
 } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
-import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroUserPreferencesContract,
   updateUserPreferencesRequestSchema,
@@ -43,7 +43,7 @@ import { zeroMeModelProvidersResetSubscriptionRoutes } from "../../zero-me-model
 import { zeroMeModelProvidersUpsertRoutes } from "../../zero-me-model-providers-upsert";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroOrgLogoRoutes } from "../../zero-org-logo";
+import { orgLogoRoutes } from "../../org-logo";
 import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import { zeroWorkflowsRoutes } from "../../zero-workflows";
@@ -197,9 +197,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroOrgLogoRoutes })(
-          zeroOrgLogoContract,
-        ).get({
+        setupApp({ context, routes: orgLogoRoutes })(orgLogoContract).get({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -216,9 +214,7 @@ export function createMiscRoutesApi(context: TestContext) {
         body.append("file", file);
       }
       return await accept(
-        setupApp({ context, routes: zeroOrgLogoRoutes })(
-          zeroOrgLogoContract,
-        ).post({
+        setupApp({ context, routes: orgLogoRoutes })(orgLogoContract).post({
           headers: authenticate(context, actor),
           body,
         }),
