@@ -99,11 +99,13 @@ async function prepareRunnerAccounts(
 }
 
 async function cleanupRunnerAccountGeneration(): Promise<void> {
+  requiredEnvironmentVariable("JOB_REF");
   const result = await cleanupCurrentClerkTestGeneration(RUNNER_TEST_ROLES);
   console.log("Cleaned up runner E2E account generation", result);
 }
 
 async function cleanupRunnerAccountRun(): Promise<void> {
+  requiredEnvironmentVariable("JOB_REF");
   const result = await cleanupCurrentClerkTestRun(RUNNER_TEST_ROLES);
   console.log("Cleaned up runner E2E workflow run", result);
 }

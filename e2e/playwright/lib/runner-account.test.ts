@@ -245,6 +245,20 @@ test("run cleanup removes every runner generation for the exact workflow run", a
   }
 });
 
+test("cleanup commands require an explicit job ref", async () => {
+  const environment: Readonly<NodeJS.ProcessEnv> = {
+    ...runnerEnvironment("http://127.0.0.1:1/v1"),
+    JOB_REF: undefined,
+  };
+
+  for (const command of ["cleanup-generation", "cleanup-run"] as const) {
+    await assert.rejects(
+      runRunnerAccount(command, environment),
+      /JOB_REF environment variable is required/,
+    );
+  }
+});
+
 test("partial runner preparation cleans resources without outputs", async () => {
   const fixture = await startClerkFixture({ failUserCreateAt: 2 });
   const tempDirectory = await mkdtemp(
@@ -493,7 +507,7 @@ function runnerEnvironment(
 
 async function runRunnerAccount(
   command: "prepare" | "cleanup-generation" | "cleanup-run",
-  environment: Readonly<Record<string, string>>,
+  environment: Readonly<NodeJS.ProcessEnv>,
 ): Promise<void> {
   await execFileAsync(
     process.execPath,
