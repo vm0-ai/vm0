@@ -89,9 +89,13 @@ const updateUserModelPreferenceInner$ = command(
       signal,
     );
     signal.throwIfAborted();
-    await publishUserPreferenceChangedForUserSafely(auth.userId, [
+    const kinds: UserPreferenceChangedPayload["kinds"] = [
       "defaultModel",
-    ] satisfies UserPreferenceChangedPayload["kinds"]);
+      ...("selectedVideoModel" in body.data
+        ? (["defaultVideoModel"] as const)
+        : []),
+    ];
+    await publishUserPreferenceChangedForUserSafely(auth.userId, kinds);
     signal.throwIfAborted();
     return { status: 200 as const, body: result };
   },

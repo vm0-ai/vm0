@@ -993,6 +993,115 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toBe("priority");
   });
 
+  it("stores a member video default independent of the run model", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: zeroUserModelPreferenceRoutes,
+    })(zeroUserModelPreferenceContract);
+
+    const stored = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      }),
+      [200],
+    );
+    expect(stored.body).toMatchObject({
+      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+    });
+
+    // Clearing the run model must not take the video default with it.
+    const cleared = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: null, serviceTier: null },
+      }),
+      [200],
+    );
+    expect(cleared.body).toMatchObject({
+      selectedModel: null,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+    });
+
+    const explicitlyCleared = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: null,
+          serviceTier: null,
+          selectedVideoModel: null,
+        },
+      }),
+      [200],
+    );
+    expect(explicitlyCleared.body.selectedVideoModel).toBeNull();
+  });
+
+  it("keeps the stored video default when an older bundle omits it", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: zeroUserModelPreferenceRoutes,
+    })(zeroUserModelPreferenceContract);
+
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedVideoModel: "MiniMax-H3",
+        },
+      }),
+      [200],
+    );
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+        },
+      }),
+      [200],
+    );
+
+    expect(
+      (await accept(preferenceClient.get({ headers: authHeaders() }), [200]))
+        .body.selectedVideoModel,
+    ).toBe("MiniMax-H3");
+  });
+
+  it("rejects a video default outside the catalog", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: zeroUserModelPreferenceRoutes,
+    })(zeroUserModelPreferenceContract);
+
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          // @ts-expect-error -- the contract rejects ids outside the catalog.
+          selectedVideoModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+        },
+      }),
+      [400],
+    );
+  });
+
   it("allows compatible member OAuth provider routes", async () => {
     const fixture = await seedFixture();
     useSession(fixture);

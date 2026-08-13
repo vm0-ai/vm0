@@ -11,6 +11,7 @@ import type {
   UserModelPreferenceResponse,
 } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { isVideoModelId } from "@vm0/api-contracts/contracts/video-models";
 import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   SecretResponse,
@@ -157,6 +158,7 @@ export function userModelPreference({
       .select({
         selectedModel: orgMembersMetadata.selectedModel,
         serviceTier: orgMembersMetadata.serviceTier,
+        selectedVideoModel: orgMembersMetadata.selectedVideoModel,
         updatedAt: orgMembersMetadata.updatedAt,
       })
       .from(orgMembersMetadata)
@@ -173,10 +175,19 @@ export function userModelPreference({
       : null;
     const serviceTier: ChatThreadServiceTier | null =
       selectedModel && row?.serviceTier === "priority" ? "priority" : null;
+    // A model retired from the catalog reads as unset rather than throwing:
+    // the column is not re-validated when the catalog changes.
+    const selectedVideoModel = isVideoModelId(row?.selectedVideoModel)
+      ? row.selectedVideoModel
+      : null;
     return {
       selectedModel,
       serviceTier,
-      updatedAt: selectedModel ? (row?.updatedAt.toISOString() ?? null) : null,
+      selectedVideoModel,
+      updatedAt:
+        selectedModel || selectedVideoModel
+          ? (row?.updatedAt.toISOString() ?? null)
+          : null,
     };
   });
 }
@@ -321,6 +332,27 @@ export const updateUserModelPreference$ = command(
     signal: AbortSignal,
   ): Promise<UserModelPreferenceResponse> => {
     const writeDb = set(writeDb$);
+    // Applied before the run-model branch so clearing the run model cannot
+    // swallow a video default sent in the same request.
+    if ("selectedVideoModel" in args.preference) {
+      const changedAt = nowDate();
+      const selectedVideoModel = args.preference.selectedVideoModel ?? null;
+      await writeDb
+        .insert(orgMembersMetadata)
+        .values({
+          orgId: args.orgId,
+          userId: args.userId,
+          selectedVideoModel,
+          createdAt: changedAt,
+          updatedAt: changedAt,
+        })
+        .onConflictDoUpdate({
+          target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+          set: { selectedVideoModel, updatedAt: changedAt },
+        });
+      signal.throwIfAborted();
+    }
+
     if (args.preference.selectedModel === null) {
       await writeDb
         .update(orgMembersMetadata)
@@ -332,7 +364,9 @@ export const updateUserModelPreference$ = command(
           ),
         );
       signal.throwIfAborted();
-      return { selectedModel: null, serviceTier: null, updatedAt: null };
+      return get(
+        userModelPreference({ orgId: args.orgId, userId: args.userId }),
+      );
     }
 
     const updatedAt = nowDate();

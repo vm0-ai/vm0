@@ -29,7 +29,10 @@ export type BrowserSessionChangedPayload = z.infer<
  * Consumers subscribe and reload the corresponding resource when its key is
  * present in the payload's `kinds`.
  */
-export const userPreferenceKinds = ["defaultModel"] as const;
+export const userPreferenceKinds = [
+  "defaultModel",
+  "defaultVideoModel",
+] as const;
 
 export type UserPreferenceKind = (typeof userPreferenceKinds)[number];
 

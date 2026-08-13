@@ -19,6 +19,18 @@ export const VIDEO_MODEL_IDS = [
 
 export type VideoModelId = (typeof VIDEO_MODEL_IDS)[number];
 
+const VIDEO_MODEL_ID_SET: ReadonlySet<string> = new Set(VIDEO_MODEL_IDS);
+
+/**
+ * Persisted video model ids are projected without being re-validated against
+ * the catalog, so a stored id can outlive the model it names.
+ */
+export function isVideoModelId(
+  model: string | null | undefined,
+): model is VideoModelId {
+  return typeof model === "string" && VIDEO_MODEL_ID_SET.has(model);
+}
+
 export const VIDEO_ASPECT_RATIOS = [
   "21:9",
   "16:9",
