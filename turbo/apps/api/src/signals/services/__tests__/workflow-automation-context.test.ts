@@ -7,9 +7,7 @@ import {
   persistedWorkflowAutomationEventPayload,
   restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
-  workflowAutomationAgentPrompt,
   workflowAutomationAppendSystemPrompt,
-  workflowAutomationDisplayMessage,
   workflowAutomationEventUsesUserFriendlyMessage,
   workflowAutomationPrompt,
   workflowAutomationTrigger,
@@ -352,38 +350,6 @@ const cases: readonly WorkflowAutomationContextCase[] = [
   },
 ];
 
-const displayMessages: Readonly<Record<WorkflowAutomationEventType, string>> = {
-  "chat-run-finished": "A run in the watched chat thread completed.",
-  "gmail-new-message": "A new email arrived.",
-  "gmail-label-applied": 'Gmail label "Follow up" was added to an email.',
-  "github-pull-request": 'GitHub pull request #24480 was merged into "main".',
-  "github-deployment-status-created":
-    'A GitHub deployment changed to "success".',
-  "github-issue-comment-created": 'GitHub user "octocat" added a comment.',
-  "github-pull-request-review-submitted":
-    'GitHub user "octocat" submitted a pull request review with state "approved".',
-  "github-workflow-job-completed":
-    'GitHub Actions job "test" completed with conclusion "success".',
-  "github-workflow-run-completed":
-    'GitHub Actions workflow ".github/workflows/ci.yml" completed with conclusion "failure".',
-  "google-calendar-event-created": "A Google Calendar event was created.",
-  "google-calendar-event-updated": "A Google Calendar event was updated.",
-  "google-calendar-event-cancelled": "A Google Calendar event was cancelled.",
-  "google-forms-response-submitted":
-    'A new response was submitted to Google Form "Customer feedback".',
-  "google-meet-transcript-generated": "A Google Meet transcript is ready.",
-  "notion-child-page-created":
-    "A Notion child page was created under the configured parent page.",
-  "notion-database-item-created": "A Notion database item was created.",
-  "notion-page-content-updated": "A Notion page was updated.",
-  "strapi-entry-published":
-    'Strapi entry "article-123" was published in Publishing.',
-  "stripe-invoice-paid": 'Stripe invoice "in_stripe" was paid.',
-  "webhook-received": "A signed webhook request was received.",
-  schedule: "This workflow started on schedule.",
-  manual: "A manual run of this workflow was requested.",
-};
-
 describe("workflow automation context lookup contracts", () => {
   it("covers every trigger renderer exactly once", () => {
     expect(
@@ -448,18 +414,6 @@ describe("workflow automation context lookup contracts", () => {
       const restoredUserFriendlyPayload =
         restoredWorkflowAutomationEventPayload(userFriendlyPayload);
       expect(restoredUserFriendlyPayload).toStrictEqual(payload);
-
-      expect(workflowAutomationDisplayMessage(restoredContext)).toBe(
-        displayMessages[eventType],
-      );
-      const agentPrompt = workflowAutomationAgentPrompt(restoredContext);
-      expect(agentPrompt).toContain(
-        `/workflow-context-test\n\nAutomation event\nType: ${eventType}\nSummary: ${trigger}`,
-      );
-      expect(agentPrompt).toContain(
-        `\n\nEvent data:\n${JSON.stringify(payload, null, 2)}`,
-      );
-      expect(agentPrompt).not.toContain("# Current context");
     },
   );
 
@@ -473,7 +427,6 @@ describe("workflow automation context lookup contracts", () => {
         firedAt: "2026-08-01T13:00:00.000Z",
       },
       trigger: "schedule fired at 2026-08-01T13:00:00.000Z (every 300s).",
-      displayMessage: "The next recurring run started.",
     },
     {
       payload: {
@@ -485,23 +438,13 @@ describe("workflow automation context lookup contracts", () => {
       },
       trigger:
         "schedule fired at 2026-08-01T14:00:00.000Z (once in America/Los_Angeles).",
-      displayMessage: "The one-time scheduled run started.",
     },
-  ])(
-    "reconstructs the legacy and user-friendly schedule variants",
-    ({ payload, trigger, displayMessage }) => {
-      expect(
-        workflowAutomationTrigger({
-          eventType: "schedule",
-          eventPayload: payload,
-        }),
-      ).toBe(trigger);
-      const context = storedWorkflowAutomationContext({
-        workflowName: "workflow-context-test",
+  ])("reconstructs the legacy schedule variants", ({ payload, trigger }) => {
+    expect(
+      workflowAutomationTrigger({
         eventType: "schedule",
         eventPayload: payload,
-      });
-      expect(workflowAutomationDisplayMessage(context)).toBe(displayMessage);
-    },
-  );
+      }),
+    ).toBe(trigger);
+  });
 });

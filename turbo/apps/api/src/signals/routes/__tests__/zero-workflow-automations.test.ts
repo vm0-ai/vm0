@@ -40,7 +40,10 @@ import {
   mockGoogleCalendarConnectorOAuth,
   mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
-import { chatEventAutomationPart } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
@@ -3997,7 +4000,10 @@ describe("okou workflow automations", () => {
     const requestedAt = Date.UTC(2026, 7, 1, 12, 34, 56);
     mockNow(requestedAt);
     const runnerGroup = runs.configureRunnerGroup();
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -4072,29 +4078,22 @@ describe("okou workflow automations", () => {
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.body.runId);
     const requestedAtIso = new Date(requestedAt).toISOString();
-    expect(claim.prompt).toBe(
-      `/${WORKFLOW_NAME}\nTrigger: manual run requested at ${requestedAtIso}.`,
+    expect(claim.prompt).toContain(
+      `/${WORKFLOW_NAME}\n\nAutomation event\nType: manual\nSummary: manual run requested at ${requestedAtIso}.`,
     );
-    expect(claim.appendSystemPrompt).toContain(
-      [
-        "# Current context",
-        `Run created by workflow automation "${WORKFLOW_NAME}".`,
-        `Trigger: manual run requested at ${requestedAtIso}.`,
-        `Procedure: skill "${WORKFLOW_NAME}".`,
-        "Output destination: this web chat thread, read by the user.",
-        "",
-        "# This run's event",
-        JSON.stringify(
-          {
-            automationId: created.body.id,
-            trigger: "manual",
-            requestedAt: requestedAtIso,
-          },
-          null,
-          2,
-        ),
-      ].join("\n"),
+    expect(claim.prompt).toContain(
+      JSON.stringify(
+        {
+          automationId: created.body.id,
+          trigger: "manual",
+          requestedAt: requestedAtIso,
+        },
+        null,
+        2,
+      ),
     );
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
 
     const automation = await wf.readAutomation(created.body.id);
     expect(typeof automation.lastRunAt).toBe("string");
@@ -4111,8 +4110,8 @@ describe("okou workflow automations", () => {
     });
     expect(workflowMessage).toBeDefined();
     expect(workflowMessage?.runId).toBe(run.body.runId);
-    expect(chatEventAutomationPart(workflowMessage!)?.automationBrief).toMatch(
-      /^Once at \d{1,2}:\d{2} [AP]M, [A-Z][a-z]{2} \d{1,2}, \d{4} \(Asia\/Shanghai\)$/u,
+    expect(chatEventDisplayText(workflowMessage!)).toBe(
+      "A manual run of this workflow was requested.",
     );
   });
 

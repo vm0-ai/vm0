@@ -10,6 +10,7 @@ import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -31,8 +32,12 @@ import {
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { chatEventAutomationPart } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
@@ -98,12 +103,10 @@ function sandboxOperationEvents(): readonly Record<string, unknown>[] {
 }
 
 function expectGmailEventContextInPrompt(
-  appendSystemPrompt: string,
+  prompt: string,
   expected: Record<string, unknown>,
 ): void {
-  expect(appendSystemPrompt).toContain(
-    `# This run's event\n${JSON.stringify(expected, null, 2)}`,
-  );
+  expect(prompt).toContain(JSON.stringify(expected, null, 2));
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -565,10 +568,10 @@ function requireAutomationChatThreadId(
   return automation.chatThreadId;
 }
 
-async function workflowAutomationBriefs(
+async function workflowAutomationDisplayTexts(
   actor: ApiTestUser,
   chatThreadId: string,
-): Promise<readonly (string | null | undefined)[]> {
+): Promise<readonly (string | null)[]> {
   const { events } = await chatApi.listThreadEvents(actor, chatThreadId, {
     limit: 20,
   });
@@ -577,7 +580,7 @@ async function workflowAutomationBriefs(
       return event.eventType === "input.prompt";
     })
     .map((event) => {
-      return chatEventAutomationPart(event)?.automationBrief;
+      return chatEventDisplayText(event);
     });
 }
 
@@ -877,6 +880,9 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
 
     const created = await accept(
       automationsClient().create({
@@ -929,15 +935,12 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    const expectedAutomationBrief = [
-      "Gmail new message",
-      "From: Customer Example <customer@example.com>",
-      "Subject: Invoice needs a reply",
-    ].join("\n");
+    const expectedDisplayMessage =
+      'A new email arrived from Customer Example <customer@example.com> with subject "Invoice needs a reply".';
 
     await expect(
-      workflowAutomationBriefs(actor, chatThreadId),
-    ).resolves.toContain(expectedAutomationBrief);
+      workflowAutomationDisplayTexts(actor, chatThreadId),
+    ).resolves.toContain(expectedDisplayMessage);
     await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
       {
         lastRunAt: expect.any(String),
@@ -954,13 +957,9 @@ describe("POST /api/webhooks/gmail", () => {
     }
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
-    const appendSystemPrompt = claim.appendSystemPrompt;
-    if (typeof appendSystemPrompt !== "string") {
-      throw new Error("Expected appendSystemPrompt on the claimed run");
-    }
-    expect(appendSystemPrompt).toContain("Not included below: the email body.");
-    expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expectGmailEventContextInPrompt(appendSystemPrompt, {
+    expect(claim.prompt).toContain("Not included below: the email body.");
+    expect(claim.prompt).not.toContain("Please draft a helpful reply.");
+    expectGmailEventContextInPrompt(claim.prompt, {
       automationId: created.body.id,
       event: "new_message",
       emailAddress: gmailEmail,
@@ -971,6 +970,8 @@ describe("POST /api/webhooks/gmail", () => {
       cc: [],
       subject: "Invoice needs a reply",
     });
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
     const timingEvents = sandboxOperationEvents().filter((event) => {
       return event.automation_event_source === "gmail";
     });
@@ -1029,13 +1030,13 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 0,
       duplicates: 1,
     });
-    const triggerBriefsAfterDuplicate = await workflowAutomationBriefs(
+    const displayMessagesAfterDuplicate = await workflowAutomationDisplayTexts(
       actor,
       chatThreadId,
     );
     expect(
-      triggerBriefsAfterDuplicate.filter((brief) => {
-        return brief === expectedAutomationBrief;
+      displayMessagesAfterDuplicate.filter((message) => {
+        return message === expectedDisplayMessage;
       }),
     ).toHaveLength(1);
   });
@@ -1053,6 +1054,9 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
 
     const created = await accept(
       automationsClient().create({
@@ -1097,13 +1101,9 @@ describe("POST /api/webhooks/gmail", () => {
       duplicates: 0,
     });
     await expect(
-      workflowAutomationBriefs(actor, chatThreadId),
+      workflowAutomationDisplayTexts(actor, chatThreadId),
     ).resolves.toContain(
-      [
-        "Gmail label applied: Support",
-        "From: Support Team <support@example.com>",
-        "Subject: Support request",
-      ].join("\n"),
+      'Gmail label "Support" was added to an email from Support Team <support@example.com> with subject "Support request".',
     );
     await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
       {

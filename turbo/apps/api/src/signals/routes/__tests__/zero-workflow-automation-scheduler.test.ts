@@ -7,6 +7,7 @@ import {
   zeroAgentsMainContract,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -24,7 +25,11 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { chatEventAutomationPart } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
@@ -219,11 +224,18 @@ async function onlyWorkflowRunMessage(
   return messages[0]!;
 }
 
-function friendlyTriggeredAtPattern(timezone: string): string {
-  return String.raw`Triggered at \d{1,2}:\d{2} [AP]M, [A-Z][a-z]{2} \d{1,2}, \d{4} \(${timezone.replace(
-    /\//gu,
-    String.raw`\/`,
-  )}\)`;
+async function onlyWorkflowDisplayText(
+  threadId: string,
+): Promise<string | null> {
+  const messages = await wf.readThreadEvents(threadId);
+  const workflowMessages = messages.filter((message) => {
+    return (
+      message.eventType === "input.prompt" &&
+      chatEventAutomationPart(message)?.workflowName === WORKFLOW_NAME
+    );
+  });
+  expect(workflowMessages).toHaveLength(1);
+  return chatEventDisplayText(workflowMessages[0]!);
 }
 
 async function completeRunThroughSandbox(
@@ -401,6 +413,9 @@ describe("okou workflow automation scheduler", () => {
 
   it("fires a due cron automation: creates a run, posts to the thread, sets last run state", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
+    await updateFeatureSwitchesForUser(context, scenario, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -434,13 +449,8 @@ describe("okou workflow automation scheduler", () => {
         triggerSource: "automation-schedule",
       }),
     );
-    expect(run.triggerBrief).toMatch(
-      new RegExp(
-        `^${friendlyTriggeredAtPattern(
-          "Asia/Shanghai",
-        )}\\nSchedule: Every day at 5:00 PM$`,
-        "u",
-      ),
+    await expect(onlyWorkflowDisplayText(threadId)).resolves.toBe(
+      "This workflow started on schedule.",
     );
 
     const automation = await wf.readAutomation(created.body.id);
@@ -450,6 +460,9 @@ describe("okou workflow automation scheduler", () => {
 
   it("disables a one-time automation when it fires", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
+    await updateFeatureSwitchesForUser(context, scenario, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -500,27 +513,22 @@ describe("okou workflow automation scheduler", () => {
     expect(automation.enabled).toBeFalsy();
     expect(automation.nextRunAt).toBeNull();
 
-    const run = await onlyWorkflowRunMessage(threadId);
-    expect(run.triggerBrief).toMatch(
-      new RegExp(
-        `^Once at \\d{1,2}:\\d{2} [AP]M, [A-Z][a-z]{2} \\d{1,2}, \\d{4} \\(Asia\\/Shanghai\\)$`,
-        "u",
-      ),
+    await expect(onlyWorkflowDisplayText(threadId)).resolves.toBe(
+      "The one-time scheduled run started.",
     );
   });
 
-  it("fires a due loop automation with a persisted friendly automation brief", async () => {
+  it("fires a due loop automation with a user-facing message", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
+    await updateFeatureSwitchesForUser(context, scenario, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
     const automation = await createDueLoopAutomation(scenario, 3600);
 
     await executeDueWorkflowAutomations(automation.automationId);
 
-    const run = await onlyWorkflowRunMessage(automation.threadId);
-    expect(run.triggerBrief).toMatch(
-      new RegExp(
-        `^${friendlyTriggeredAtPattern("Asia/Shanghai")}\\nEvery 1 hour$`,
-        "u",
-      ),
+    await expect(onlyWorkflowDisplayText(automation.threadId)).resolves.toBe(
+      "The next recurring run started.",
     );
     await disableAutomation(automation.automationId);
   });
