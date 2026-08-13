@@ -872,6 +872,19 @@ const chatThreadCreateBodySchema = z.object({
   title: z.string().optional(),
 });
 
+/**
+ * Built-in video model pinned to a chat thread. Unlike the run model this
+ * carries no provider routing, no service tier, and no org policy row: every
+ * catalog model is selectable by every workspace.
+ */
+const videoModelRequestSchema = z.enum(VIDEO_MODEL_IDS);
+
+const chatThreadVideoModelUpdateBodySchema = z.object({
+  /** Video model id, or null to fall back to the member and system defaults. */
+  model: videoModelRequestSchema.nullable(),
+  eventId: chatThreadEventIdSchema.optional(),
+});
+
 const chatThreadModelSelectionUpdateBodySchema = z.object({
   /**
    * Selected model id, or null to clear the thread's selected model.
@@ -1336,6 +1349,28 @@ export const chatThreadModelSelectionContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Update a chat thread model selection",
+  },
+});
+
+/**
+ * Update a chat thread's video model pin. Separate from the model-selection
+ * route because it shares none of its provider, tier, or policy resolution.
+ */
+export const chatThreadVideoModelContract = c.router({
+  update: {
+    method: "POST",
+    path: "/api/okou/chat-threads/:id/video-model",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: chatThreadVideoModelUpdateBodySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update a chat thread video model",
   },
 });
 

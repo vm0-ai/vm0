@@ -49,6 +49,7 @@ import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
+import { zeroChatThreadVideoModelRoutes } from "./zero-chat-threads-video-model";
 import { zeroChatThreadPatchRoutes } from "./zero-chat-threads-patch";
 import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
 import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
@@ -513,4 +514,5 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   ...zeroChatThreadPinRoutes,
   ...zeroChatThreadRenameRoutes,
   ...zeroChatThreadUnpinRoutes,
+  ...zeroChatThreadVideoModelRoutes,
 ];

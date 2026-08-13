@@ -161,3 +161,25 @@ export async function setChatThreadVideoModelFixture(
     .set({ selectedVideoModel })
     .where(eq(chatThreads.id, chatThreadId));
 }
+
+/**
+ * Reads the pinned video model straight from the row. No product endpoint
+ * exposes it: the client learns the pin by replaying chat-thread events, and
+ * the snapshot endpoint only serves state that compaction has already written.
+ */
+export async function readChatThreadVideoModelFixture(
+  chatThreadId: string,
+): Promise<{
+  readonly selectedModel: string | null;
+  readonly selectedVideoModel: string | null;
+} | null> {
+  const [thread] = await db()
+    .select({
+      selectedModel: chatThreads.selectedModel,
+      selectedVideoModel: chatThreads.selectedVideoModel,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, chatThreadId))
+    .limit(1);
+  return thread ?? null;
+}
