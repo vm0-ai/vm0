@@ -996,9 +996,9 @@
         "planChangeError": "Could not prepare the subscription change. Try again.",
         "planStep": "Plan",
         "purchasedCredits": "Purchased credits",
+        "selectedPlan": "Selected plan",
         "selectPlan": "Start with {{plan}}",
         "selectUsage": "Usage for {{name}}",
-        "selectedPlan": "Selected plan",
         "stepOfTotal": "Step {{current}} of {{total}}",
         "totalCredits": "Total credits"
       }

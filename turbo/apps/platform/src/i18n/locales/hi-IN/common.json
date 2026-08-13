@@ -996,9 +996,9 @@
         "planChangeError": "सदस्यता परिवर्तन तैयार नहीं किया जा सका। फिर से कोशिश करें।",
         "planStep": "प्लान",
         "purchasedCredits": "खरीदे गए क्रेडिट",
+        "selectedPlan": "चुना गया प्लान",
         "selectPlan": "{{plan}} के साथ शुरू करें",
         "selectUsage": "{{name}} के लिए उपयोग",
-        "selectedPlan": "चुना गया प्लान",
         "stepOfTotal": "चरण {{current}} / {{total}}",
         "totalCredits": "कुल क्रेडिट"
       }

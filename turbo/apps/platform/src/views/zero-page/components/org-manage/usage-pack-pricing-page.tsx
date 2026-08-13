@@ -669,6 +669,72 @@ function PlanPriceRow({
   );
 }
 
+function PlanPriceBreakdown({
+  basePriceUsd,
+  keepsMemberPackages,
+  minimumPackage,
+  totalPriceUsd,
+}: {
+  readonly basePriceUsd: number;
+  readonly keepsMemberPackages: boolean;
+  readonly minimumPackage: UsagePackCatalogItem;
+  readonly totalPriceUsd: number;
+}) {
+  return (
+    <>
+      <div className="mt-4">
+        <div className="pb-3">
+          <PlanPriceRow
+            label={i18n.t(($) => {
+              return $.billing.plans.sectionTitle;
+            })}
+            value={formatUsd(basePriceUsd, 0)}
+          />
+        </div>
+        <div className="h-px bg-border" />
+        <div className="py-3">
+          <PlanPriceRow
+            label={i18n.t(($) => {
+              return $.billing.plans.usagePacks.memberPackages;
+            })}
+            value={formatUsd(minimumPackage.priceUsd, 0)}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {keepsMemberPackages
+              ? i18n.t(($) => {
+                  return $.billing.plans.usagePacks.existingPackagesUnchanged;
+                })
+              : i18n.t(
+                  ($) => {
+                    return $.billing.plans.usagePacks.creditsPerMember;
+                  },
+                  {
+                    credits: formatLocalizedNumber(minimumPackage.totalCredits),
+                  },
+                )}
+          </p>
+        </div>
+      </div>
+
+      <div className="-mx-5 flex items-baseline justify-between gap-3 border-y-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-5 py-3.5">
+        <span className="text-[13px] font-medium text-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.monthlyTotal;
+          })}
+        </span>
+        <span className="text-3xl font-light tracking-tight tabular-nums text-foreground">
+          {formatUsd(totalPriceUsd, 0)}
+          <span className="text-[13px] font-normal tracking-normal text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.perMonth;
+            })}
+          </span>
+        </span>
+      </div>
+    </>
+  );
+}
+
 function PlanSelectionPanel({ children }: { readonly children: ReactNode }) {
   return (
     <div className="grid grid-cols-1 overflow-hidden rounded-xl bg-card zero-border sm:grid-cols-2">
@@ -746,55 +812,12 @@ function PlanSelectionCard({
         {planDescription(plan.tier)}
       </p>
 
-      <div className="mt-4">
-        <div className="pb-3">
-          <PlanPriceRow
-            label={i18n.t(($) => {
-              return $.billing.plans.sectionTitle;
-            })}
-            value={formatUsd(plan.basePriceUsd, 0)}
-          />
-        </div>
-        <div className="h-px bg-border" />
-        <div className="py-3">
-          <PlanPriceRow
-            label={i18n.t(($) => {
-              return $.billing.plans.usagePacks.memberPackages;
-            })}
-            value={formatUsd(minimumPackage.priceUsd, 0)}
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            {keepsMemberPackages
-              ? i18n.t(($) => {
-                  return $.billing.plans.usagePacks.existingPackagesUnchanged;
-                })
-              : i18n.t(
-                  ($) => {
-                    return $.billing.plans.usagePacks.creditsPerMember;
-                  },
-                  {
-                    credits: formatLocalizedNumber(minimumPackage.totalCredits),
-                  },
-                )}
-          </p>
-        </div>
-      </div>
-
-      <div className="-mx-5 flex items-baseline justify-between gap-3 border-y-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-5 py-3.5">
-        <span className="text-[13px] font-medium text-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.monthlyTotal;
-          })}
-        </span>
-        <span className="text-3xl font-light tracking-tight tabular-nums text-foreground">
-          {formatUsd(displayedPriceUsd, 0)}
-          <span className="text-[13px] font-normal tracking-normal text-muted-foreground">
-            {i18n.t(($) => {
-              return $.billing.plans.perMonth;
-            })}
-          </span>
-        </span>
-      </div>
+      <PlanPriceBreakdown
+        basePriceUsd={plan.basePriceUsd}
+        keepsMemberPackages={keepsMemberPackages}
+        minimumPackage={minimumPackage}
+        totalPriceUsd={displayedPriceUsd}
+      />
 
       <Button
         type="button"

@@ -996,9 +996,9 @@
         "planChangeError": "Perubahan langganan tidak dapat disiapkan. Coba lagi.",
         "planStep": "Paket",
         "purchasedCredits": "Kredit yang dibeli",
+        "selectedPlan": "Paket yang dipilih",
         "selectPlan": "Mulai dengan {{plan}}",
         "selectUsage": "Penggunaan untuk {{name}}",
-        "selectedPlan": "Paket yang dipilih",
         "stepOfTotal": "Langkah {{current}} dari {{total}}",
         "totalCredits": "Total kredit"
       }

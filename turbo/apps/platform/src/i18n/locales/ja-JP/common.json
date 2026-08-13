@@ -996,9 +996,9 @@
         "planChangeError": "サブスクリプションの変更を準備できませんでした。もう一度お試しください。",
         "planStep": "プラン",
         "purchasedCredits": "購入クレジット",
+        "selectedPlan": "選択したプラン",
         "selectPlan": "{{plan}} で始める",
         "selectUsage": "{{name}} の利用設定",
-        "selectedPlan": "選択したプラン",
         "stepOfTotal": "ステップ {{current}}/{{total}}",
         "totalCredits": "合計クレジット"
       }

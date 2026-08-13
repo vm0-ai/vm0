@@ -1017,9 +1017,9 @@
         "planChangeError": "Não foi possível preparar a alteração da assinatura. Tente novamente.",
         "planStep": "Plano",
         "purchasedCredits": "Créditos comprados",
+        "selectedPlan": "Plano selecionado",
         "selectPlan": "Começar com {{plan}}",
         "selectUsage": "Uso de {{name}}",
-        "selectedPlan": "Plano selecionado",
         "stepOfTotal": "Etapa {{current}} de {{total}}",
         "totalCredits": "Total de créditos"
       }

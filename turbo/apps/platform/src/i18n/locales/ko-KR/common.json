@@ -996,9 +996,9 @@
         "planChangeError": "구독 변경을 준비하지 못했습니다. 다시 시도하세요.",
         "planStep": "플랜",
         "purchasedCredits": "구매 크레딧",
+        "selectedPlan": "선택한 플랜",
         "selectPlan": "{{plan}} 시작하기",
         "selectUsage": "{{name}} 사용량",
-        "selectedPlan": "선택한 플랜",
         "stepOfTotal": "{{total}}단계 중 {{current}}단계",
         "totalCredits": "총 크레딧"
       }

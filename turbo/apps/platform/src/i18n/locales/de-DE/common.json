@@ -996,9 +996,9 @@
         "planChangeError": "Die Abonnementänderung konnte nicht vorbereitet werden. Versuche es erneut.",
         "planStep": "Plan",
         "purchasedCredits": "Gekaufte Credits",
+        "selectedPlan": "Ausgewählter Plan",
         "selectPlan": "Mit {{plan}} starten",
         "selectUsage": "Nutzung für {{name}}",
-        "selectedPlan": "Ausgewählter Plan",
         "stepOfTotal": "Schritt {{current}} von {{total}}",
         "totalCredits": "Credits insgesamt"
       }

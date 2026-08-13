@@ -1017,9 +1017,9 @@
         "planChangeError": "Impossible de préparer la modification de l’abonnement. Réessayez.",
         "planStep": "Forfait",
         "purchasedCredits": "Crédits achetés",
+        "selectedPlan": "Forfait sélectionné",
         "selectPlan": "Commencer avec {{plan}}",
         "selectUsage": "Utilisation de {{name}}",
-        "selectedPlan": "Forfait sélectionné",
         "stepOfTotal": "Étape {{current}} sur {{total}}",
         "totalCredits": "Crédits totaux"
       }

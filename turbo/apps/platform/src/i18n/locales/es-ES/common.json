@@ -1017,9 +1017,9 @@
         "planChangeError": "No se pudo preparar el cambio de suscripción. Inténtalo de nuevo.",
         "planStep": "Plan",
         "purchasedCredits": "Créditos comprados",
+        "selectedPlan": "Plan seleccionado",
         "selectPlan": "Empezar con {{plan}}",
         "selectUsage": "Uso de {{name}}",
-        "selectedPlan": "Plan seleccionado",
         "stepOfTotal": "Paso {{current}} de {{total}}",
         "totalCredits": "Créditos totales"
       }

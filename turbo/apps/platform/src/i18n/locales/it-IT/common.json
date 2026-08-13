@@ -1017,9 +1017,9 @@
         "planChangeError": "Impossibile preparare la modifica dell’abbonamento. Riprova.",
         "planStep": "Piano",
         "purchasedCredits": "Crediti acquistati",
+        "selectedPlan": "Piano selezionato",
         "selectPlan": "Inizia con {{plan}}",
         "selectUsage": "Utilizzo per {{name}}",
-        "selectedPlan": "Piano selezionato",
         "stepOfTotal": "Passaggio {{current}} di {{total}}",
         "totalCredits": "Crediti totali"
       }
