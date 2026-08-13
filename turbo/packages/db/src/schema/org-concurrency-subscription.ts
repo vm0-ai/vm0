@@ -26,6 +26,8 @@ export const orgConcurrencySubscriptions = pgTable(
     subscriptionStatus: varchar("subscription_status", { length: 20 }),
     currentPeriodEnd: timestamp("current_period_end"),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    scheduledSlots: integer("scheduled_slots"),
+    scheduledChangeAt: timestamp("scheduled_change_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -37,6 +39,10 @@ export const orgConcurrencySubscriptions = pgTable(
         table.currentPeriodEnd,
       ),
       check("chk_org_concurrency_subscriptions_slots", sql`${table.slots} > 0`),
+      check(
+        "chk_org_concurrency_subscriptions_scheduled_slots",
+        sql`${table.scheduledSlots} IS NULL OR ${table.scheduledSlots} > 0`,
+      ),
     ];
   },
 );

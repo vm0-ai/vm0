@@ -226,8 +226,12 @@ function stripeEvent(args: {
   };
 }
 
-function subscriptionLines(periodEndUnix: number): {
+function subscriptionLines(
+  periodEndUnix: number,
+  priceId = "price_bdd_pro",
+): {
   readonly data: readonly {
+    readonly price: { readonly id: string };
     readonly period: { readonly end: number };
     readonly parent: { readonly type: "subscription_item_details" };
   }[];
@@ -235,6 +239,7 @@ function subscriptionLines(periodEndUnix: number): {
   return {
     data: [
       {
+        price: { id: priceId },
         period: { end: periodEndUnix },
         parent: { type: "subscription_item_details" },
       },
@@ -3145,8 +3150,9 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     );
     expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
 
-    // Invoices without a subscription line period fail loudly and roll back.
-    const broken = await api.postStripeEvent(
+    // Invoices without a Plan line can belong to another item on the shared
+    // subscription and must not renew Plan credits.
+    await api.postStripeEvent(
       stripeEvent({
         type: "invoice.paid",
         object: {
@@ -3162,9 +3168,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
         },
       }),
-      [500],
+      [200],
     );
-    expect(broken.body).toStrictEqual({ error: "Internal server error" });
     expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
   });
 
@@ -3435,7 +3440,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       customer: granted.customerId,
       metadata: {},
       parent: { subscription_details: { subscription: teamSubscriptionId } },
-      lines: subscriptionLines(teamPeriodEnd),
+      lines: subscriptionLines(teamPeriodEnd, "price_bdd_team"),
     };
     await Promise.all([
       api.postStripeEvent(
@@ -3704,7 +3709,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
               subscription: teamSubscriptionId,
             },
           },
-          lines: subscriptionLines(epochSeconds(30)),
+          lines: subscriptionLines(epochSeconds(30), "price_bdd_team"),
         },
       }),
       [200],
@@ -3972,6 +3977,30 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       id: subscriptionId,
       cancelAtPeriodEnd: false,
     });
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      customer: granted.customerId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: { data: [] },
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: subscriptionId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: { data: [] },
+        },
+      }),
+      [200],
+    );
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([]);
+    const afterItemRemoved = await runs.readRunQueue(actor);
+    expect(afterItemRemoved.body.concurrency.limit).toBe(2);
 
     await api.postStripeEvent(
       stripeEvent({

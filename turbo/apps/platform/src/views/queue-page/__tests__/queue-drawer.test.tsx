@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -82,6 +82,7 @@ function concurrencyWithMemberUsage(): ConcurrencyInfo {
 function mockConcurrencyCapability(
   canBuyConcurrency: boolean,
   concurrencySubscriptions: BillingStatusResponse["concurrencySubscriptions"] = [],
+  purchaseReviewAvailable = false,
 ): void {
   const status: BillingStatusResponse = {
     tier: "pro",
@@ -99,6 +100,9 @@ function mockConcurrencyCapability(
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions,
+    ...(purchaseReviewAvailable
+      ? { concurrencyPurchaseReviewAvailable: true }
+      : {}),
   };
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, status);
@@ -195,6 +199,18 @@ function getButtonByText(text: string): HTMLElement {
 
   if (!button) {
     throw new Error(`Could not find button: ${text}`);
+  }
+
+  return button;
+}
+
+function getButtonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+
+  if (!button) {
+    throw new Error(`Could not find button with label: ${label}`);
   }
 
   return button;
@@ -404,10 +420,11 @@ describe("queue drawer", () => {
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
   });
 
-  it("starts Checkout for a Team admin buying concurrency for the first time", async () => {
+  it("reviews and confirms concurrency for a Team admin buying it for the first time", async () => {
     let checkoutQuantity: number | null = null;
     let checkoutSuccessUrl: string | null = null;
-    mockConcurrencyCapability(true);
+    let previewQuantity: number | null = null;
+    mockConcurrencyCapability(true, [], true);
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -429,13 +446,24 @@ describe("queue drawer", () => {
       );
     });
     context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.preview,
+      ({ body, respond }) => {
+        previewQuantity = body.quantity;
+        return respond(200, {
+          currentQuantity: 0,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 7000,
+          nextRecurringAmountCents: 22_000,
+          currency: "usd",
+        });
+      },
+    );
+    context.mocks.api(
       zeroBillingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         checkoutQuantity = body.quantity;
         checkoutSuccessUrl = body.successUrl;
-        return respond(200, {
-          url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
-        });
+        return respond(200, { url: body.successUrl });
       },
     );
 
@@ -447,24 +475,39 @@ describe("queue drawer", () => {
       expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
     });
 
-    const increaseQuantityButton = queryAllByRoleFast("button").find((el) => {
-      return el.getAttribute("aria-label") === "Increase concurrency quantity";
+    const quantityInput = screen.getByRole("textbox", {
+      name: "Quantity",
     });
-    if (!increaseQuantityButton) {
-      throw new Error("Increase concurrency quantity button not found");
-    }
-    click(increaseQuantityButton);
+    expect(
+      getButtonByLabel("Decrease concurrency quantity"),
+    ).toBeInTheDocument();
+    expect(
+      getButtonByLabel("Increase concurrency quantity"),
+    ).toBeInTheDocument();
+    fireEvent.change(quantityInput, { target: { value: "" } });
+    expect(quantityInput).toHaveValue("");
+    expect(getButtonByText("Buy $0/month")).toBeDisabled();
+    fireEvent.change(quantityInput, { target: { value: "5" } });
     await waitFor(() => {
-      expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
+      expect(screen.getByText("Buy $500/month")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Buy $200/month"));
+    click(screen.getByText("Buy $500/month"));
+
+    await screen.findByText("$70.00");
+    const reviewDialog = screen.getByRole("dialog", {
+      name: "Buy concurrency",
+    });
+    expect(previewQuantity).toBe(5);
+    expect(within(reviewDialog).getByText("5")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$220.00/month")).toBeInTheDocument();
+    click(within(reviewDialog).getByText("Confirm"));
 
     await waitFor(() => {
-      expect(checkoutQuantity).toBe(2);
-      expect(window.location.href).toBe(
-        "https://checkout.stripe.com/test?concurrency=2",
-      );
+      expect(checkoutQuantity).toBe(5);
+      expect(
+        screen.queryByRole("dialog", { name: "Buy concurrency" }),
+      ).toBeNull();
     });
     if (!checkoutSuccessUrl) {
       throw new Error("Concurrency checkout success URL was not captured");

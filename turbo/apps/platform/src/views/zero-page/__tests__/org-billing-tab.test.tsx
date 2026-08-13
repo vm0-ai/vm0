@@ -2901,8 +2901,9 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("starts an initial concurrency checkout before a subscription exists", async () => {
+  it("reviews and confirms an initial concurrency purchase", async () => {
     let requestedQuantity: number | null = null;
+    let previewedQuantity: number | null = null;
 
     context.mocks.data.org({
       id: "org_1",
@@ -2910,15 +2911,29 @@ describe("organization billing settings", () => {
       role: "admin",
     });
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, activeTeamBillingStatus());
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencyPurchaseReviewAvailable: true,
+      });
     });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.preview,
+      ({ body, respond }) => {
+        previewedQuantity = body.quantity;
+        return respond(200, {
+          currentQuantity: 0,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 12_000,
+          nextRecurringAmountCents: 36_000,
+          currency: "usd",
+        });
+      },
+    );
     context.mocks.api(
       zeroBillingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         requestedQuantity = body.quantity;
-        return respond(200, {
-          url: `https://checkout.stripe.com/concurrency?quantity=${body.quantity}`,
-        });
+        return respond(200, { url: body.successUrl });
       },
     );
 
@@ -2942,10 +2957,66 @@ describe("organization billing settings", () => {
 
     click(buttonByText("Buy $200/month", purchaseDialog));
 
+    await screen.findByText("$120.00");
+    const reviewDialog = screen.getByRole("dialog", {
+      name: "Buy concurrency",
+    });
+    await waitFor(() => {
+      expect(previewedQuantity).toBe(2);
+      expect(within(reviewDialog).getByText("$120.00")).toBeInTheDocument();
+      expect(within(reviewDialog).getByText("2")).toBeInTheDocument();
+      expect(
+        within(reviewDialog).getByText("$360.00/month"),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText("Confirm", reviewDialog));
+
     await waitFor(() => {
       expect(requestedQuantity).toBe(2);
+      expect(
+        screen.getByText(
+          "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "Buy concurrency" }),
+      ).toBeNull();
+    });
+  });
+
+  it("falls back to Checkout with an older billing API", async () => {
+    let requestedQuantity: number | null = null;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Team Concurrency Compatibility Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeTeamBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        requestedQuantity = body.quantity;
+        return respond(200, {
+          url: `https://checkout.stripe.com/concurrency?quantity=${body.quantity}`,
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    click(buttonByText("Buy concurrency"));
+    const purchaseDialog = await screen.findByRole("dialog", {
+      name: "Buy concurrency",
+    });
+    click(buttonByText("Buy $100/month", purchaseDialog));
+
+    await waitFor(() => {
+      expect(requestedQuantity).toBe(1);
       expect(window.location.href).toBe(
-        "https://checkout.stripe.com/concurrency?quantity=2",
+        "https://checkout.stripe.com/concurrency?quantity=1",
       );
     });
   });
@@ -2953,6 +3024,22 @@ describe("organization billing settings", () => {
   it("lets an admin enter a lower concurrency subscription quantity", async () => {
     let previewedQuantity: number | null = null;
     let confirmedQuantity: number | null = null;
+    let billingStatus: BillingStatusResponse = {
+      ...activeTeamBillingStatus(),
+      concurrencyLimit: 15,
+      concurrencySubscriptions: [
+        {
+          id: "sub_concurrency_reduce",
+          quantity: 5,
+          currentPeriodEnd: "2026-06-01T00:00:00Z",
+          cancelAtPeriodEnd: false,
+          canReduce: true,
+          canChangeInApp: true,
+          scheduledQuantity: null,
+          scheduledChangeAt: null,
+        },
+      ],
+    };
 
     context.mocks.data.org({
       id: "org_1",
@@ -2960,20 +3047,7 @@ describe("organization billing settings", () => {
       role: "admin",
     });
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, {
-        ...activeTeamBillingStatus(),
-        concurrencyLimit: 15,
-        concurrencySubscriptions: [
-          {
-            id: "sub_concurrency_reduce",
-            quantity: 5,
-            currentPeriodEnd: "2026-06-01T00:00:00Z",
-            cancelAtPeriodEnd: false,
-            canReduce: true,
-            canChangeInApp: true,
-          },
-        ],
-      });
+      return respond(200, billingStatus);
     });
     context.mocks.api(
       zeroBillingConcurrencySubscriptionContract.previewChange,
@@ -2985,6 +3059,7 @@ describe("organization billing settings", () => {
           immediateAmountCents: 0,
           nextRecurringAmountCents: body.quantity * 10_000,
           currency: "usd",
+          effectiveAt: "2026-06-01T00:00:00Z",
         });
       },
     );
@@ -2992,9 +3067,22 @@ describe("organization billing settings", () => {
       zeroBillingConcurrencySubscriptionContract.confirmChange,
       ({ body, respond }) => {
         confirmedQuantity = body.quantity;
+        billingStatus = {
+          ...billingStatus,
+          concurrencySubscriptions: billingStatus.concurrencySubscriptions.map(
+            (subscription) => {
+              return {
+                ...subscription,
+                scheduledQuantity: body.quantity,
+                scheduledChangeAt: "2026-06-01T00:00:00Z",
+              };
+            },
+          ),
+        };
         return respond(200, {
-          status: "processing",
+          status: "completed",
           hostedInvoiceUrl: null,
+          effectiveAt: "2026-06-01T00:00:00Z",
         });
       },
     );
@@ -3023,6 +3111,14 @@ describe("organization billing settings", () => {
     });
     expect(previewedQuantity).toBe(3);
     expect(within(reviewDialog).queryByText("Due now")).not.toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText(
+        "Your current slots stay active through this billing period. The lower quantity starts at renewal with no refund or account credit.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText("Scheduled for Jun 1, 2026"),
+    ).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$300.00/month")).toBeInTheDocument();
 
     click(buttonByText("Confirm", reviewDialog));
@@ -3030,6 +3126,9 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(confirmedQuantity).toBe(3);
       expect(window.location.href).toBe(locationBeforeChange);
+      expect(
+        screen.getByText("Changes to 3 slots on Jun 1, 2026"),
+      ).toBeInTheDocument();
     });
   });
 

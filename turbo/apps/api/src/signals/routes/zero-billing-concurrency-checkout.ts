@@ -3,7 +3,11 @@ import { zeroBillingConcurrencyCheckoutContract } from "@vm0/api-contracts/contr
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
-import { badRequestMessage, providerUnavailable } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  providerUnavailable,
+} from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -13,7 +17,11 @@ import {
   activeConcurrencySubscriptions,
   type ActiveConcurrencySubscription,
 } from "../services/org-concurrency-entitlements.service";
-import { startConcurrencyPurchase$ } from "../services/zero-billing-checkout.service";
+import {
+  previewInitialConcurrencyPurchase$,
+  startConcurrencyPurchase$,
+} from "../services/zero-billing-checkout.service";
+import { previewConcurrencySubscriptionChange$ } from "../services/zero-billing-concurrency-subscription.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -75,6 +83,104 @@ async function loadConcurrencyPurchaseTarget(
   };
 }
 
+const concurrencyCheckoutPreviewAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    signal.throwIfAborted();
+
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingConcurrencyCheckoutContract.preview),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const target = await loadConcurrencyPurchaseTarget(
+      get(db$),
+      auth.orgId,
+      signal,
+    );
+    if (!target.ok) {
+      return badRequestMessage(target.message);
+    }
+
+    const result = target.existingSubscription
+      ? await set(
+          previewConcurrencySubscriptionChange$,
+          {
+            orgId: auth.orgId,
+            subscriptionId: target.existingSubscription.id,
+            quantity:
+              target.existingSubscription.quantity + bodyResult.data.quantity,
+          },
+          signal,
+        )
+      : await set(
+          previewInitialConcurrencyPurchase$,
+          {
+            orgId: auth.orgId,
+            priceId: target.priceId,
+            quantity: bodyResult.data.quantity,
+          },
+          signal,
+        );
+    signal.throwIfAborted();
+    if (!result.ok) {
+      switch (result.reason) {
+        case "invalid_quantity": {
+          return badRequestMessage(
+            "Concurrency quantity cannot exceed 1000 slots",
+          );
+        }
+        case "missing_plan_subscription":
+        case "not_found": {
+          return badRequestMessage(
+            "An active Plan subscription is required to buy concurrency",
+          );
+        }
+        case "canceling": {
+          return badRequestMessage(
+            "Restore the concurrency subscription before buying more slots",
+          );
+        }
+        case "no_change": {
+          return badRequestMessage("Concurrency quantity must change");
+        }
+        case "pending_update": {
+          return conflict(
+            "Complete the pending concurrency update before adding slots",
+          );
+        }
+      }
+    }
+
+    return { status: 200 as const, body: result.preview };
+  },
+);
+
+const concurrencyCheckoutPreview$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        {
+          requireOrganization: true,
+          missingOrganizationStatus: 401,
+          requiredCapability: "billing:write",
+        },
+        concurrencyCheckoutPreviewAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
 const concurrencyCheckoutAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -114,18 +220,32 @@ const concurrencyCheckoutAuthed$ = command(
         quantity,
         priceId: target.priceId,
         existingSubscriptionId: target.existingSubscription?.id,
+        hasScheduledConcurrencyChange:
+          target.existingSubscription?.scheduledQuantity !== null &&
+          target.existingSubscription?.scheduledQuantity !== undefined,
         successUrl,
-        cancelUrl,
       },
       signal,
     );
     signal.throwIfAborted();
     if (!purchase.ok) {
-      return badRequestMessage(
-        purchase.reason === "invalid_quantity"
-          ? "Concurrency quantity cannot exceed 1000 slots"
-          : "Complete the pending concurrency update before adding slots",
-      );
+      switch (purchase.reason) {
+        case "invalid_quantity": {
+          return badRequestMessage(
+            "Concurrency quantity cannot exceed 1000 slots",
+          );
+        }
+        case "missing_plan_subscription": {
+          return badRequestMessage(
+            "An active Plan subscription is required to buy concurrency",
+          );
+        }
+        case "pending_update": {
+          return conflict(
+            "Complete the pending concurrency update before adding slots",
+          );
+        }
+      }
     }
 
     return { status: 200 as const, body: { url: purchase.url } };
@@ -151,6 +271,10 @@ const concurrencyCheckout$ = command(async ({ set }, signal: AbortSignal) => {
 });
 
 export const zeroBillingConcurrencyCheckoutRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroBillingConcurrencyCheckoutContract.preview,
+    handler: concurrencyCheckoutPreview$,
+  },
   {
     route: zeroBillingConcurrencyCheckoutContract.create,
     handler: concurrencyCheckout$,
