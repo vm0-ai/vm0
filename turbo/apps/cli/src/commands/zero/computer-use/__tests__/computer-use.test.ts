@@ -344,6 +344,44 @@ describe("computer-use command visibility", () => {
     await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
   });
 
+  it("should prefer the canonical backend URL without adding a trailing slash", async () => {
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "canonical.example.test/");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://legacy.example.test");
+
+    server.use(
+      http.post(
+        "https://canonical.example.test/api/okou/computer-use/commands",
+        () => {
+          return HttpResponse.json({
+            commandId: "cmd_canonical_origin",
+            status: "queued",
+          });
+        },
+      ),
+      http.get(
+        "https://canonical.example.test/api/okou/computer-use/commands/cmd_canonical_origin",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_canonical_origin",
+            kind: "apps.list",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: {},
+            result: { apps: [] },
+            timeoutMs: 15_000,
+            createdAt: "2026-08-13T10:00:00.000Z",
+            claimedAt: "2026-08-13T10:00:00.100Z",
+            completedAt: "2026-08-13T10:00:00.200Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
+  });
+
   it("should write screenshot and app state data to local files in command result console output", async () => {
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");

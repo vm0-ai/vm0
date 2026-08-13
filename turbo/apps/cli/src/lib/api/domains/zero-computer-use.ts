@@ -26,25 +26,6 @@ import {
   headersWithCliClientHeaders,
 } from "../client-headers";
 
-function normalizeConfiguredUrl(value: string): string {
-  return value.startsWith("http") ? value : `https://${value}`;
-}
-
-function resolveComputerUseApiBaseUrl(baseUrl: string): string {
-  const override = process.env.VM0_API_BACKEND_URL;
-  if (override) {
-    return normalizeConfiguredUrl(override).replace(/\/$/, "");
-  }
-
-  const url = new URL(baseUrl);
-  if (url.hostname === "www.okou.ai" || url.hostname === "app.okou.ai") {
-    url.hostname = "api.okou.ai";
-  } else if (url.hostname === "www.vm0.ai" || url.hostname === "app.vm0.ai") {
-    url.hostname = "api.vm0.ai";
-  }
-  return url.toString().replace(/\/$/, "");
-}
-
 function buildHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = {};
   if (token) {
@@ -54,7 +35,7 @@ function buildHeaders(token?: string): Record<string, string> {
 }
 
 async function getComputerUseClientConfig() {
-  const baseUrl = resolveComputerUseApiBaseUrl(await getBaseUrl());
+  const baseUrl = (await getBaseUrl()).replace(/\/$/, "");
   const token = await getActiveToken();
   if (!token) {
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
