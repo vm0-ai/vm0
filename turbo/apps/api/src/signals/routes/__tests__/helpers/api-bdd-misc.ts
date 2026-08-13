@@ -30,10 +30,8 @@ import {
   zeroUserPreferencesContract,
   updateUserPreferencesRequestSchema,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
-import { createApp } from "../../../../app-factory";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { emailUnsubscribeRoutes } from "../../email-unsubscribe";
@@ -60,22 +58,6 @@ const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
   ...zeroMeModelProvidersResetSubscriptionRoutes,
 ]);
 
-const TEST_APP_ROUTES = Object.freeze([
-  ...emailUnsubscribeRoutes,
-  ...userExportRoutes,
-  ...zeroLogsRoutes,
-  ...zeroMeModelProvidersDeleteRoutes,
-  ...zeroMeModelProvidersListRoutes,
-  ...zeroMeModelProvidersResetSubscriptionRoutes,
-  ...zeroMeModelProvidersUpsertRoutes,
-  ...zeroModelPoliciesRoutes,
-  ...zeroModelProvidersRoutes,
-  ...zeroOrgLogoRoutes,
-  ...zeroPushSubscriptionsRoutes,
-  ...zeroUserPreferencesRoutes,
-  ...zeroWorkflowsRoutes,
-]);
-
 interface AuthHeaders {
   readonly authorization?: string;
 }
@@ -84,9 +66,6 @@ type UpdateUserPreferencesInput = z.input<
   typeof updateUserPreferencesRequestSchema
 >;
 
-type ZeroLogsSearchQuery = z.input<
-  (typeof zeroLogsSearchContract.searchLogs)["query"]
->;
 type ZeroLogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
 
 interface ClerkOrg {
@@ -159,23 +138,6 @@ function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
       yield buffer;
     },
   };
-}
-
-async function requestZeroLogsSearch<TStatus extends 200 | 400 | 401 | 403>(
-  context: TestContext,
-  actor: ApiTestUser | null,
-  query: ZeroLogsSearchQuery,
-  statuses: readonly TStatus[],
-) {
-  return await accept(
-    setupApp({ context, routes: zeroLogsRoutes })(
-      zeroLogsSearchContract,
-    ).searchLogs({
-      headers: authenticate(context, actor),
-      query,
-    }),
-    statuses,
-  );
 }
 
 async function requestZeroLogsList<TStatus extends 200 | 400 | 401 | 403>(
@@ -646,38 +608,6 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await requestZeroLogsList(context, actor, query, statuses);
-    },
-
-    async requestSearchLogs<TStatus extends 200 | 400 | 401 | 403>(
-      actor: ApiTestUser | null,
-      query: ZeroLogsSearchQuery,
-      statuses: readonly TStatus[],
-    ) {
-      return await requestZeroLogsSearch(context, actor, query, statuses);
-    },
-
-    async rawSearchLogs(
-      actor: ApiTestUser,
-      queryString: string,
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      const { authorization } = authenticate(context, actor);
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const response = await app.request(
-        `/api/zero/logs/search${queryString}`,
-        {
-          method: "GET",
-          headers: authorization === undefined ? {} : { authorization },
-        },
-      );
-      const body: unknown = await response.json();
-      return { status: response.status, body };
-    },
-
-    async searchLogs(actor: ApiTestUser, keyword: string) {
-      return await requestZeroLogsSearch(context, actor, { keyword }, [200]);
     },
 
     async readLog(

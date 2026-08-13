@@ -187,16 +187,6 @@ const getRunResponseSchema = z.object({
 });
 
 /**
- * Run event schema
- */
-const runEventSchema = z.object({
-  sequenceNumber: eventSequenceNumberSchema,
-  eventType: z.string(),
-  eventData: z.unknown(),
-  createdAt: z.string(),
-});
-
-/**
  * Run result schema (present when status = 'completed')
  */
 const runResultSchema = z.object({
@@ -246,23 +236,9 @@ const cancelRunResponseSchema = z.object({
   message: z.string(),
 });
 
-/**
- * Telemetry metric schema
- */
-const telemetryMetricSchema = z.object({
-  ts: z.string(),
-  cpu: z.number(),
-  mem_used: z.number(),
-  mem_total: z.number(),
-  disk_used: z.number(),
-  disk_total: z.number(),
-});
-
-type LogPaginationCursorKind = "sequence" | "time";
 type LogPaginationOrder = "asc" | "desc";
 
 interface LogPaginationQueryOptions {
-  readonly cursorKind: LogPaginationCursorKind;
   readonly maxLimit?: number;
   readonly defaultLimit?: number;
   readonly defaultOrder?: LogPaginationOrder;
@@ -277,40 +253,6 @@ function rejectBlankQueryNumber(value: unknown): unknown {
   }
 
   return value;
-}
-
-const safeIntegerQueryNumberSchema = z.preprocess(
-  rejectBlankQueryNumber,
-  z.coerce.number().refine(Number.isSafeInteger, {
-    message: "Value must be a safe integer",
-  }),
-);
-
-const sequenceQueryNumberSchema = safeIntegerQueryNumberSchema
-  .refine(
-    (value) => {
-      return value >= -1;
-    },
-    { message: "Sequence cursor must be at least -1" },
-  )
-  .refine(
-    (value) => {
-      return value <= MAX_EVENT_SEQUENCE_NUMBER;
-    },
-    { message: "Sequence cursor is out of range" },
-  );
-
-function boundedIntegerQueryNumberSchema(min: number, max: number) {
-  return z.preprocess(
-    rejectBlankQueryNumber,
-    z.coerce.number().int().min(min).max(max),
-  );
-}
-
-function logSinceQuerySchema(cursorKind: LogPaginationCursorKind) {
-  return cursorKind === "time"
-    ? timestampQueryNumberSchema
-    : sequenceQueryNumberSchema;
 }
 
 function exactUtcTimestamp(value: string): string | null {
@@ -388,18 +330,11 @@ function timeCursorTieBreakerValue(rawValue: string): string | null {
   return hasControlCharacter(decoded) ? null : decoded;
 }
 
-type ParsedLogCursor =
-  | {
-      readonly kind: "sequence";
-      readonly order: LogPaginationOrder;
-      readonly value: number;
-    }
-  | {
-      readonly kind: "time";
-      readonly order: LogPaginationOrder;
-      readonly timestamp: string;
-      readonly tieBreaker: string;
-    };
+interface ParsedLogCursor {
+  readonly order: LogPaginationOrder;
+  readonly timestamp: string;
+  readonly tieBreaker: string;
+}
 
 function parseLogCursor(cursor: string): ParsedLogCursor | null {
   const timeMatch = /^time:(asc|desc):([^:]+):(.+)$/.exec(cursor);
@@ -419,37 +354,9 @@ function parseLogCursor(cursor: string): ParsedLogCursor | null {
     const tieBreaker = timeCursorTieBreakerValue(rawTieBreaker);
     return timestamp === null || tieBreaker === null
       ? null
-      : { kind: "time", order, timestamp, tieBreaker };
+      : { order, timestamp, tieBreaker };
   }
-
-  const sequenceMatch = /^sequence:(asc|desc):(-?\d+)$/.exec(cursor);
-  if (!sequenceMatch) {
-    return null;
-  }
-
-  const order = sequenceMatch[1];
-  const rawValue = sequenceMatch[2];
-  if ((order !== "asc" && order !== "desc") || rawValue === undefined) {
-    return null;
-  }
-
-  if (!/^-?\d+$/.test(rawValue)) {
-    return null;
-  }
-
-  const value = Number(rawValue);
-  if (!Number.isSafeInteger(value)) {
-    return null;
-  }
-
-  return { kind: "sequence", order, value };
-}
-
-function sequenceCursorOutOfRange(cursor: ParsedLogCursor): boolean {
-  return (
-    cursor.kind === "sequence" &&
-    (cursor.value < -1 || cursor.value > MAX_EVENT_SEQUENCE_NUMBER)
-  );
+  return null;
 }
 
 export function createLogPaginationQuerySchema(
@@ -457,7 +364,7 @@ export function createLogPaginationQuerySchema(
 ) {
   return z
     .object({
-      since: logSinceQuerySchema(options.cursorKind).optional(),
+      since: timestampQueryNumberSchema.optional(),
       sinceTime: timestampQueryNumberSchema.optional(),
       cursor: z.string().min(1).optional(),
       limit: z
@@ -487,14 +394,6 @@ export function createLogPaginationQuerySchema(
         return;
       }
 
-      if (cursor.kind !== options.cursorKind) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["cursor"],
-          message: `Cursor must be a ${options.cursorKind} cursor`,
-        });
-      }
-
       if (cursor.order !== query.order) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -502,44 +401,8 @@ export function createLogPaginationQuerySchema(
           message: "Cursor order must match query order",
         });
       }
-
-      if (sequenceCursorOutOfRange(cursor)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["cursor"],
-          message: "Sequence cursor is out of range",
-        });
-      }
     });
 }
-
-/**
- * System log response schema
- */
-const systemLogResponseSchema = z.object({
-  systemLog: z.string(),
-  hasMore: z.boolean(),
-  nextCursor: z.string().nullable().optional(),
-});
-
-/**
- * Metrics response schema
- */
-const metricsResponseSchema = z.object({
-  metrics: z.array(telemetryMetricSchema),
-  hasMore: z.boolean(),
-  nextCursor: z.string().nullable().optional(),
-});
-
-/**
- * Agent events response schema (for logs command)
- */
-const agentEventsResponseSchema = z.object({
-  events: z.array(runEventSchema),
-  hasMore: z.boolean(),
-  nextCursor: z.string().nullable().optional(),
-  framework: z.string(),
-});
 
 /**
  * Network log action semantics:
@@ -704,36 +567,6 @@ const networkLogsResponseSchema = z.object({
 });
 
 /**
- * Logs search result schema
- */
-const searchResultSchema = z.object({
-  runId: z.string(),
-  agentName: z.string(),
-  framework: z.string().nullable().optional(),
-  matchedEvent: runEventSchema,
-  contextBefore: z.array(runEventSchema),
-  contextAfter: z.array(runEventSchema),
-});
-
-/**
- * Logs search response schema
- */
-const logsSearchResponseSchema = z.object({
-  results: z.array(searchResultSchema),
-  hasMore: z.boolean(),
-});
-
-const logsSearchQuerySchema = z.object({
-  keyword: z.string().trim().min(1),
-  agentId: z.string().uuid().optional(),
-  runId: z.string().uuid().optional(),
-  since: timestampQueryNumberSchema.optional(),
-  limit: boundedIntegerQueryNumberSchema(1, 50).default(20),
-  before: boundedIntegerQueryNumberSchema(0, 10).default(0),
-  after: boundedIntegerQueryNumberSchema(0, 10).default(0),
-});
-
-/**
  * Queue entry schema — own entries have real data, others have null for private fields
  * Ownership is detected via runId: non-null = own entry, null = other user's entry
  */
@@ -799,13 +632,8 @@ export {
   runListItemSchema,
   runsListResponseSchema,
   cancelRunResponseSchema,
-  runEventSchema,
   runResultSchema,
   runStateSchema,
-  telemetryMetricSchema,
-  systemLogResponseSchema,
-  metricsResponseSchema,
-  agentEventsResponseSchema,
   networkLogActionSchema,
   modelCatalogCacheStatusSchema,
   modelCatalogCacheBypassReasonSchema,
@@ -815,9 +643,6 @@ export {
   modelCatalogCacheEvictionCountSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
-  searchResultSchema,
-  logsSearchQuerySchema,
-  logsSearchResponseSchema,
   queueEntrySchema,
   runningTaskSchema,
   concurrencyMemberUsageSchema,
@@ -829,16 +654,11 @@ export {
 export type RunStatus = z.infer<typeof runStatusSchema>;
 export type RunResult = z.infer<typeof runResultSchema>;
 export type RunState = z.infer<typeof runStateSchema>;
-export type RunEvent = z.infer<typeof runEventSchema>;
 export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
 export type GetRunResponse = z.infer<typeof getRunResponseSchema>;
 export type RunListItem = z.infer<typeof runListItemSchema>;
 export type RunsListResponse = z.infer<typeof runsListResponseSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
-export type TelemetryMetric = z.infer<typeof telemetryMetricSchema>;
-export type SystemLogResponse = z.infer<typeof systemLogResponseSchema>;
-export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
-export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
 export type NetworkLogAction = z.infer<typeof networkLogActionSchema>;
 export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
 export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
@@ -852,8 +672,6 @@ export type AxiomNetworkEvent = Omit<NetworkLogEntry, "timestamp"> & {
   runId: string;
   userId: string;
 };
-export type SearchResult = z.infer<typeof searchResultSchema>;
-export type LogsSearchResponse = z.infer<typeof logsSearchResponseSchema>;
 export type QueueEntry = z.infer<typeof queueEntrySchema>;
 export type RunningTask = z.infer<typeof runningTaskSchema>;
 export type ConcurrencyMemberUsage = z.infer<
