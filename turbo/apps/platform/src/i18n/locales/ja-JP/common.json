@@ -1041,6 +1041,7 @@
         "hour": "{{value}}時間",
         "left": "残り {{value}}",
         "minute": "{{value}}分",
+        "remaining": "{{remaining}} / {{total}} クレジット",
         "remainingAria": "使用許容量 {{label}} が残っています",
         "resets": "{{date}}にリセット",
         "resetsRaw": "リセット: {{value}}",
@@ -4022,6 +4023,7 @@
         "usage": {
           "balanceDescription": "チームが使える残高です。",
           "balanceTitle": "クレジット残高",
+          "balanceUsageDescription": "チームのクレジット残高と使用量。",
           "usageDescription": "チャット、オートメーション、チャネル全体でのクレジットの使用状況。",
           "usageTitle": "クレジット使用量"
         }

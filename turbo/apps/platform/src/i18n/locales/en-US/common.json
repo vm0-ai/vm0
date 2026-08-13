@@ -1041,6 +1041,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} left",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} credits",
         "remainingAria": "Usage allowance {{label}} remaining",
         "resets": "Resets {{date}}",
         "resetsRaw": "Resets {{value}}",
@@ -4023,6 +4024,7 @@
         "usage": {
           "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
+          "balanceUsageDescription": "Your team's credit balance and usage.",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"
         }

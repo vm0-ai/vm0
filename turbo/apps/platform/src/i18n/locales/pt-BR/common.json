@@ -1062,6 +1062,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} restantes",
         "minute": "{{value}}min",
+        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Saldo restante da franquia de uso de {{label}}",
         "resets": "Reinicia em {{date}}",
         "resetsRaw": "Reinicia em {{value}}",
@@ -4073,6 +4074,7 @@
         "usage": {
           "balanceDescription": "O que resta para a sua equipe gastar.",
           "balanceTitle": "Saldo de créditos",
+          "balanceUsageDescription": "O saldo de créditos e o uso da sua equipe.",
           "usageDescription": "Seu uso de créditos em conversas, automações e canais.",
           "usageTitle": "Uso de créditos"
         }

@@ -1041,6 +1041,7 @@
         "hour": "{{value}}h",
         "left": "{{value}} शेष",
         "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} क्रेडिट",
         "remainingAria": "उपयोग भत्ता {{label}} शेष है",
         "resets": "{{date}} रीसेट करता है",
         "resetsRaw": "{{value}} रीसेट करता है",
@@ -4023,6 +4024,7 @@
         "usage": {
           "balanceDescription": "आपकी टीम के पास खर्च करने के लिए कितना बचा है।",
           "balanceTitle": "क्रेडिट शेष",
+          "balanceUsageDescription": "आपकी टीम का क्रेडिट बैलेंस और उपयोग।",
           "usageDescription": "चैट, ऑटोमेशन और चैनलों पर आपका क्रेडिट उपयोग।",
           "usageTitle": "क्रेडिट उपयोग"
         }
