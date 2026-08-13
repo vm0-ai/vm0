@@ -349,6 +349,7 @@ impl WorkspaceCacheWatcher {
         if let Some(cache_key) = self.cache_key_by_watch.remove(&watch) {
             self.watch_by_cache_key.remove(&cache_key);
         }
+        let _ = self.inotify.get_ref().0.rm_watch(watch);
     }
 }
 
