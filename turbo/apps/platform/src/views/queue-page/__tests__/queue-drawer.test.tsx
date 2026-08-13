@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -463,30 +463,31 @@ describe("queue drawer", () => {
       expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
     });
 
-    const increaseQuantityButton = queryAllByRoleFast("button").find((el) => {
-      return el.getAttribute("aria-label") === "Increase concurrency quantity";
+    const quantityInput = screen.getByRole("spinbutton", {
+      name: "Quantity",
     });
-    if (!increaseQuantityButton) {
-      throw new Error("Increase concurrency quantity button not found");
-    }
-    click(increaseQuantityButton);
+    fireEvent.change(quantityInput, { target: { value: "0" } });
+    expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+    fireEvent.change(quantityInput, { target: { value: "1.5" } });
+    expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+    fireEvent.change(quantityInput, { target: { value: "5" } });
     await waitFor(() => {
-      expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
+      expect(screen.getByText("Buy $500/month")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Buy $200/month"));
+    click(screen.getByText("Buy $500/month"));
 
     await screen.findByText("$70.00");
     const reviewDialog = screen.getByRole("dialog", {
       name: "Buy concurrency",
     });
-    expect(previewQuantity).toBe(2);
-    expect(within(reviewDialog).getByText("2")).toBeInTheDocument();
+    expect(previewQuantity).toBe(5);
+    expect(within(reviewDialog).getByText("5")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$220.00/month")).toBeInTheDocument();
     click(within(reviewDialog).getByText("Confirm"));
 
     await waitFor(() => {
-      expect(checkoutQuantity).toBe(2);
+      expect(checkoutQuantity).toBe(5);
       expect(
         screen.queryByRole("dialog", { name: "Buy concurrency" }),
       ).toBeNull();

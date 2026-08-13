@@ -24,6 +24,9 @@ function clampConcurrencyQuantity(quantity: number): number {
 }
 
 export const setConcurrencyQuantity$ = command(({ set }, quantity: number) => {
+  if (!Number.isInteger(quantity)) {
+    return;
+  }
   set(internalConcurrencyQuantity$, clampConcurrencyQuantity(quantity));
 });
 

@@ -15,6 +15,7 @@ import {
   SheetHeader,
   SheetTitle,
   Button,
+  Input,
 } from "@vm0/ui";
 import { Crown, Minus, Plus } from "lucide-react";
 import {
@@ -400,9 +401,29 @@ function ConcurrencyQuantityControl({
           >
             <Minus size={14} />
           </Button>
-          <span className="flex h-9 w-12 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
-            {quantity}
-          </span>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={CONCURRENCY_QUANTITY_MIN}
+            max={CONCURRENCY_QUANTITY_MAX}
+            step={1}
+            value={quantity}
+            disabled={loading}
+            aria-label={t(($) => {
+              return $.queue.purchase.quantity;
+            })}
+            className="h-9 w-14 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus-visible:ring-1 focus-visible:ring-inset"
+            onChange={(event) => {
+              const nextQuantity = event.currentTarget.valueAsNumber;
+              if (
+                Number.isInteger(nextQuantity) &&
+                nextQuantity >= CONCURRENCY_QUANTITY_MIN &&
+                nextQuantity <= CONCURRENCY_QUANTITY_MAX
+              ) {
+                onQuantityChange(nextQuantity);
+              }
+            }}
+          />
           <Button
             type="button"
             aria-label={t(($) => {
