@@ -55,9 +55,6 @@ pub const CONTROL_MEMORY_RESERVE_BYTES: u64 = 384 * 1024 * 1024;
 /// Additional distance between workload `memory.high` and `memory.max`.
 pub const WORKLOAD_MEMORY_HIGH_HEADROOM_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Minimum useful workload memory after reserving Guest control headroom.
-pub const MIN_WORKLOAD_MEMORY_BYTES: u64 = 384 * 1024 * 1024;
-
 /// Maximum number of processes accepted in one workload leaf.
 pub const WORKLOAD_PIDS_MAX: u64 = 2048;
 
@@ -110,7 +107,7 @@ impl WorkloadResourcePolicy {
     ///
     /// `vcpu` is the number of online processors and `memory_bytes` is physical
     /// memory visible to the Guest. The calculation fails when the Guest cannot
-    /// leave both the calibrated control reserve and a useful workload budget.
+    /// preserve the fixed control reserve and workload high-limit headroom.
     pub fn for_guest_capacity(vcpu: u32, memory_bytes: u64) -> Result<Self, &'static str> {
         let total_cpu_us = u64::from(vcpu)
             .checked_mul(WORKLOAD_CPU_PERIOD_US)
@@ -122,7 +119,7 @@ impl WorkloadResourcePolicy {
 
         let memory_max_bytes = memory_bytes
             .checked_sub(CONTROL_MEMORY_RESERVE_BYTES)
-            .filter(|limit| *limit >= MIN_WORKLOAD_MEMORY_BYTES)
+            .filter(|limit| *limit > 0)
             .ok_or("guest memory capacity cannot preserve control headroom")?;
         let memory_high_bytes = memory_max_bytes
             .checked_sub(WORKLOAD_MEMORY_HIGH_HEADROOM_BYTES)
@@ -159,12 +156,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_capacity_without_memory_headroom() {
-        let error = WorkloadResourcePolicy::for_guest_capacity(
-            1,
-            CONTROL_MEMORY_RESERVE_BYTES + MIN_WORKLOAD_MEMORY_BYTES - 1,
-        )
-        .unwrap_err();
+    fn rejects_capacity_without_control_memory_headroom() {
+        let error = WorkloadResourcePolicy::for_guest_capacity(1, CONTROL_MEMORY_RESERVE_BYTES)
+            .unwrap_err();
 
         assert_eq!(
             error,
@@ -173,15 +167,13 @@ mod tests {
     }
 
     #[test]
-    fn derives_smallest_profile_policy_from_fixed_reserves() {
-        let policy = WorkloadResourcePolicy::for_guest_capacity(
-            1,
-            CONTROL_MEMORY_RESERVE_BYTES + MIN_WORKLOAD_MEMORY_BYTES,
-        )
-        .unwrap();
+    fn derives_small_profile_policy_from_fixed_reserves() {
+        let policy =
+            WorkloadResourcePolicy::for_guest_capacity(1, u64::from(1024_u32) * 1024 * 1024)
+                .unwrap();
 
         assert_eq!(policy.cpu_quota_us, 90_000);
-        assert_eq!(policy.memory_max_bytes, 384 * 1024 * 1024);
-        assert_eq!(policy.memory_high_bytes, 128 * 1024 * 1024);
+        assert_eq!(policy.memory_max_bytes, 640 * 1024 * 1024);
+        assert_eq!(policy.memory_high_bytes, 384 * 1024 * 1024);
     }
 }

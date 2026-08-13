@@ -522,13 +522,13 @@ async fn load_rejects_zero_memory_mb_in_profile() {
 }
 
 #[tokio::test]
-async fn load_accepts_profile_at_workload_containment_boundary() {
+async fn load_accepts_profile_below_default_calibration() {
     let fixture = ConfigFixture::new().await;
     let yaml = fixture.yaml_with_profile(
         "vm0/default",
         ProfileConfig {
             vcpu: 1,
-            memory_mb: 768,
+            memory_mb: 1024,
             ..default_profile_config()
         },
         "",
@@ -536,16 +536,16 @@ async fn load_accepts_profile_at_workload_containment_boundary() {
 
     let config = fixture.load_config(&yaml, true).await.unwrap();
     assert_eq!(config.profiles["vm0/default"].vcpu, 1);
-    assert_eq!(config.profiles["vm0/default"].memory_mb, 768);
+    assert_eq!(config.profiles["vm0/default"].memory_mb, 1024);
 }
 
 #[tokio::test]
-async fn load_rejects_memory_below_workload_containment_minimum() {
+async fn load_rejects_memory_without_fixed_containment_headroom() {
     let fixture = ConfigFixture::without_image_artifacts().await;
     let yaml = fixture.yaml_with_profile(
         "vm0/default",
         ProfileConfig {
-            memory_mb: 767,
+            memory_mb: 640,
             ..default_profile_config()
         },
         "",
@@ -553,7 +553,8 @@ async fn load_rejects_memory_below_workload_containment_minimum() {
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(
-        err.to_string().contains("cannot preserve control headroom"),
+        err.to_string()
+            .contains("cannot provide a workload high threshold"),
         "got: {err}"
     );
 }
