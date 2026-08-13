@@ -386,6 +386,17 @@ body {
   animation: zero-thinking-in 0.3s ease-out;
 }
 
+@keyframes zero-chat-skeleton-reveal {
+  to {
+    opacity: 1;
+  }
+}
+.zero-chat-skeleton-reveal {
+  /* Avoid flashing the skeleton when cached chat events resolve immediately. */
+  opacity: 0;
+  animation: zero-chat-skeleton-reveal 0s 100ms forwards;
+}
+
 /* Thinking indicator: 3-block loader */
 .zero-blocks {
   display: inline-grid;

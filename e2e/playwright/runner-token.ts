@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
-import { chromium } from "@playwright/test";
+import { chromium, type Page } from "@playwright/test";
 
 import {
   refreshClerkSessionToken,
@@ -14,7 +14,10 @@ import {
   startVideoOnboardingCheckout,
   waitForPaidOnboardingCompletion,
 } from "./lib/onboarding";
-import { fillStripeCheckout } from "./lib/stripe-checkout";
+import {
+  collectStripeCheckoutState,
+  fillStripeCheckout,
+} from "./lib/stripe-checkout";
 
 interface RunnerCredentialTarget {
   readonly email: string;
@@ -92,9 +95,7 @@ async function main(): Promise<void> {
           { activeOrganizationId: target.organizationId },
         );
         if (target.upgradeToPro) {
-          await startVideoOnboardingCheckout(page, { appUrl });
-          await fillStripeCheckout(page);
-          await waitForPaidOnboardingCompletion(page, { appUrl });
+          await completePaidOnboarding(page, target, appUrl, outputDirectory);
           clerkSessionToken = await refreshClerkSessionToken(page, {
             activeOrganizationId: target.organizationId,
           });
@@ -121,6 +122,70 @@ async function main(): Promise<void> {
   } finally {
     await browser.close();
   }
+}
+
+async function completePaidOnboarding(
+  page: Page,
+  target: RunnerCredentialTarget,
+  appUrl: string,
+  outputDirectory: string,
+): Promise<void> {
+  await startVideoOnboardingCheckout(page, { appUrl });
+  try {
+    await fillStripeCheckout(page);
+  } catch (error: unknown) {
+    try {
+      await captureStripeCheckoutFailure(page, target, outputDirectory);
+    } catch (diagnosticError: unknown) {
+      console.error("Unable to capture Stripe Checkout diagnostics", {
+        diagnosticErrorType:
+          diagnosticError instanceof Error
+            ? diagnosticError.name
+            : typeof diagnosticError,
+        target: target.fileName,
+      });
+    }
+    throw error;
+  }
+  await waitForPaidOnboardingCompletion(page, { appUrl });
+}
+
+async function captureStripeCheckoutFailure(
+  page: Page,
+  target: RunnerCredentialTarget,
+  outputDirectory: string,
+): Promise<void> {
+  const diagnosticDirectory = join(
+    outputDirectory,
+    "e2e-runner-checkout-diagnostics",
+  );
+  const fileStem = target.fileName.replace(/\.json$/u, "");
+  await mkdir(diagnosticDirectory, { recursive: true });
+
+  const results = await Promise.allSettled([
+    writeStripeCheckoutState(
+      page,
+      join(diagnosticDirectory, `${fileStem}.json`),
+    ),
+    page.screenshot({
+      fullPage: true,
+      path: join(diagnosticDirectory, `${fileStem}.png`),
+    }),
+  ]);
+  if (!results.some((result) => result.status === "fulfilled")) {
+    throw new Error("Unable to capture any Stripe Checkout diagnostic");
+  }
+}
+
+async function writeStripeCheckoutState(
+  page: Page,
+  path: string,
+): Promise<void> {
+  const state = await collectStripeCheckoutState(page);
+  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 function requiredEnvironmentVariable(name: string): string {

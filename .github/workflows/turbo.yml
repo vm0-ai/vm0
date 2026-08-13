@@ -1853,10 +1853,10 @@ jobs:
         run: cd e2e && pnpm install --frozen-lockfile
       - name: Check Playwright E2E types
         run: cd e2e && pnpm check-types
-      - name: Run Playwright fixture integration tests
-        run: cd e2e && pnpm test
       - name: Install Playwright browsers
         run: cd e2e && pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright fixture integration tests
+        run: cd e2e && pnpm test
       - name: Start Stripe webhook forwarding
         # Staging receives webhooks from the Dashboard endpoint; PR previews use
         # the long-running listener from deploy-stripe-listener.
@@ -2632,6 +2632,14 @@ jobs:
           E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
           E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Upload runner E2E Checkout diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: runner-e2e-checkout-diagnostics
+          path: /tmp/e2e-runner-checkout-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Upload runner E2E API tokens
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -2852,6 +2860,7 @@ jobs:
     needs:
       - prepare
       - deploy-api
+      - deploy-cli
       - deploy-runner-prepare
       - deploy-runner-start
       - cli-e2e-03-runner-prepare
@@ -2861,6 +2870,7 @@ jobs:
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
       needs.deploy-api.result == 'success' &&
+      needs.deploy-cli.result == 'success' &&
       needs.deploy-runner-prepare.result == 'success' &&
       needs.deploy-runner-start.result == 'success' &&
       needs.cli-e2e-03-runner-prepare.result == 'success' &&
