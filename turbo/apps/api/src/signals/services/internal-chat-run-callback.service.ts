@@ -152,7 +152,7 @@ import {
   type QueuedUserMessage,
 } from "./zero-chat-queued-event.service";
 import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brief-run-callback.service";
-import { sendUserPushNotifications } from "./zero-push-notifications.service";
+import { sendUserPushNotifications } from "./push-notifications.service";
 import {
   type ChatCompletionContextMessage,
   generateChatThreadRecommendedFollowupsFromContext,
