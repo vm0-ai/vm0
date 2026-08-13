@@ -244,16 +244,6 @@ export const apiAgentsHandlers = [
     return respond(200, { agents: {}, threads: {} });
   }),
 
-  // GET /api/okou/chat-threads/active-ids
-  mockApi(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
-  }),
-
-  // GET /api/okou/chat-threads/unread-ids
-  mockApi(chatThreadsContract.unreadIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
-  }),
-
   // GET /api/okou/chat-thread-drafts
   mockApi(chatThreadsContract.drafts, ({ respond }) => {
     return respond(200, { draftThreadIds: [] });
@@ -324,11 +314,6 @@ export const apiAgentsHandlers = [
   // GET /api/okou/chat-thread-unreads
   mockApi(chatThreadsContract.unreads, ({ respond }) => {
     return respond(200, { unreads: [] });
-  }),
-
-  // GET /api/okou/chat-thread-unread-agents
-  mockApi(chatThreadsContract.unreadAgents, ({ respond }) => {
-    return respond(200, { agentIds: [] });
   }),
 
   // POST /api/okou/chat-thread-unreads/mark-read

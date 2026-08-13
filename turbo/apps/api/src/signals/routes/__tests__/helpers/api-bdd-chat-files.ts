@@ -524,12 +524,16 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<readonly string[]> {
       const response = await accept(
-        threadsClient().activeIds({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body.threadIds;
+      return Object.entries(response.body.threads).flatMap(
+        ([threadId, indicator]) => {
+          return indicator === "active" ? [threadId] : [];
+        },
+      );
     },
 
     async listIndicators(actor: ApiTestUser): Promise<ZeroIndicators> {
@@ -546,32 +550,24 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<readonly string[]> {
       const response = await accept(
-        threadsClient().unreadIds({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body.threadIds;
+      return Object.entries(response.body.threads).flatMap(
+        ([threadId, indicator]) => {
+          return indicator === "unread" ? [threadId] : [];
+        },
+      );
     },
 
-    async requestListUnreadChatThreadIds(
+    async requestIndicators(
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401)[],
     ) {
       return await accept(
-        threadsClient().unreadIds({
-          headers: authenticate(context, actor),
-        }),
-        statuses,
-      );
-    },
-
-    async requestListUnreadAgents(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403)[],
-    ) {
-      return await accept(
-        threadsClient().unreadAgents({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -580,12 +576,16 @@ export function createChatFilesBddApi(context: TestContext) {
 
     async listUnreadAgents(actor: ApiTestUser): Promise<readonly string[]> {
       const response = await accept(
-        threadsClient().unreadAgents({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body.agentIds;
+      return Object.entries(response.body.agents).flatMap(
+        ([agentId, indicator]) => {
+          return indicator === "unread" ? [agentId] : [];
+        },
+      );
     },
 
     async markAgentThreadsRead(

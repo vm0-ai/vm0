@@ -1490,7 +1490,7 @@ describe("CHAT-01 chat thread read state", () => {
     });
   }, 120_000);
 
-  it("lists unread agent and thread ids", async () => {
+  it("lists unread agent and thread indicators", async () => {
     const {
       actor: owner,
       agentId: agentA,
@@ -1503,13 +1503,10 @@ describe("CHAT-01 chat thread read state", () => {
       })
     ).agentId;
 
-    const unauthenticated = await chat.requestListUnreadChatThreadIds(
-      null,
-      [401],
-    );
+    const unauthenticated = await chat.requestIndicators(null, [401]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
-    const orgless = await chat.requestListUnreadChatThreadIds(
+    const orgless = await chat.requestIndicators(
       bdd.user({ orgId: null }),
       [401],
     );
@@ -1741,7 +1738,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     await withMockNowForTest(currentTime, async () => {
       mockNow(currentTime - 7 * DAY_MS - 1);
-      const expiredRun = await completeChatRunInThread(actor, runnerGroup, {
+      await completeChatRunInThread(actor, runnerGroup, {
         agentId,
         prompt: "expired unread indicator",
       });
@@ -1759,9 +1756,6 @@ describe("CHAT-01 chat thread read state", () => {
       });
 
       mockNow(currentTime);
-      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
-        new Set([expiredRun.threadId, recentRun.threadId]),
-      );
       await expect(chat.listIndicators(actor)).resolves.toStrictEqual({
         agents: { [agentId]: "unread" },
         threads: {
@@ -1799,14 +1793,6 @@ describe("CHAT-01 chat thread read state", () => {
       }
 
       mockNow(firstCompletedAt + 60_000);
-      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
-        new Set(
-          runs.map((run) => {
-            return run.threadId;
-          }),
-        ),
-      );
-
       const indicators = await chat.listIndicators(actor);
       expect(indicators.agents).toStrictEqual({
         [agentA]: "unread",

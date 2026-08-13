@@ -739,7 +739,7 @@ export function mockChatLifecycle(
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     const activeThreadIds = new Set<string>();
     if (
       optionActiveRunIds.length > 0 ||
@@ -748,9 +748,16 @@ export function mockChatLifecycle(
       activeThreadIds.add(threadId);
     }
     return respond(200, {
-      threadIds: [...activeThreadIds].filter((id) => {
-        return UUID_PATTERN.test(id);
-      }),
+      agents: {},
+      threads: Object.fromEntries(
+        [...activeThreadIds]
+          .filter((id) => {
+            return UUID_PATTERN.test(id);
+          })
+          .map((id) => {
+            return [id, "active" as const];
+          }),
+      ),
     });
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
