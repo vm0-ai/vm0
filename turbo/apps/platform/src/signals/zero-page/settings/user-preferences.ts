@@ -3,7 +3,7 @@ import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
 } from "@okouai/api-contracts/contracts/zero-user-preferences";
-import { zeroMorningBriefContract } from "@okouai/api-contracts/contracts/zero-morning-brief";
+import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -66,7 +66,7 @@ export const triggerMorningBrief$ = command(
     _signal: AbortSignal,
   ): Promise<{ runId: string | null; queued: boolean }> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroMorningBriefContract);
+    const client = createClient(morningBriefContract);
     const result = await accept(
       client.trigger({ body: {}, fetchOptions: { signal: _signal } }),
       [200],
