@@ -3375,7 +3375,7 @@ function chatRunPresentationForGroups(
 function groupRendersContent(
   group: ChatEventGroup,
   embeddedFolds: readonly RunGroupFoldControl[],
-  completedWorkFold: unknown,
+  completedWorkFold: CompletedWorkFold | null,
 ): boolean {
   if (embeddedFolds.length > 0 || completedWorkFold !== null) {
     return true;
