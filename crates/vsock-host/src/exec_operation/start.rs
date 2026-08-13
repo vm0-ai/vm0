@@ -11,7 +11,7 @@ use vsock_proto::{
 
 use crate::{CompositeNormalOperation, FrameWriteObserver, Shared};
 
-use super::frame::{write_exec_start_frame, write_frame};
+use super::frame::{admit_exec_cancel_frame, write_exec_start_frame, write_frame};
 use super::handle::{
     ExecControlHandle, ExecOperationCancelOnDropGuard, ExecOperationHandle,
     ExecOperationWaitOutcome, ExecWaitCore, SupervisedExecHandle,
@@ -123,7 +123,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
     let deadline = exec_start_deadline(request.start_write_timeout)?;
 
     let ExecOperationRegistration {
-        seq,
+        route_id,
         diagnostic,
         result_rx,
         stream_rx,
@@ -144,7 +144,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
         deadline,
         write_exec_start_frame(
             shared,
-            seq,
+            route_id,
             &payload,
             &diagnostic,
             tracks_normal_operation,
@@ -158,7 +158,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
 
     Ok((
         ExecOperationHandle {
-            wait_core: ExecWaitCore::new(Arc::clone(shared), seq, diagnostic, result_rx),
+            wait_core: ExecWaitCore::new(Arc::clone(shared), route_id, diagnostic, result_rx),
             stream_rx,
         },
         deadline,
@@ -238,7 +238,7 @@ where
 
     let (start_tx, start_rx) = oneshot::channel();
     let ExecOperationRegistration {
-        seq,
+        route_id,
         diagnostic,
         result_rx,
         stream_rx,
@@ -258,13 +258,16 @@ where
             tracking: ExecOperationTracking::Tracked,
         },
     )?;
-    let mut start_cancel_on_drop =
-        ExecOperationCancelOnDropGuard::new_for_seq(Arc::clone(shared), seq, diagnostic.clone());
+    let mut start_cancel_on_drop = ExecOperationCancelOnDropGuard::new_for_route(
+        Arc::clone(shared),
+        route_id,
+        diagnostic.clone(),
+    );
     let start_write_result = time::timeout_at(
         deadline,
         write_exec_start_frame(
             shared,
-            seq,
+            route_id,
             &payload,
             &diagnostic,
             tracks_normal_operation,
@@ -300,9 +303,16 @@ where
             }
         }
         _ = time::sleep_until(deadline) => {
-            let payload = vsock_proto::encode_exec_cancel();
-            shared.remove_operation(seq);
+            let Some(_reservation) = admit_exec_cancel_frame(shared, route_id)? else {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "supervised exec route was replaced before start-timeout cancel",
+                ));
+            };
+            shared.remove_operation(route_id);
             registration_guard.disarm();
+            let seq = route_id.wire_seq();
+            let payload = vsock_proto::encode_exec_cancel();
             let cancel_result = tokio::time::timeout(
                 start_timeout_cancel_write_timeout,
                 write_frame(
@@ -341,13 +351,13 @@ where
     registration_guard.disarm();
 
     Ok(SupervisedExecHandle {
-        wait_core: ExecWaitCore::new(Arc::clone(shared), seq, diagnostic, result_rx),
+        wait_core: ExecWaitCore::new(Arc::clone(shared), route_id, diagnostic, result_rx),
         pid,
         cancel_handle_taken: false,
         stream_rx,
         control: control_nonce.map(|control_nonce| ExecControlHandle {
             shared: Arc::clone(shared),
-            target_seq: seq,
+            target_route_id: route_id,
             control_nonce,
         }),
     })

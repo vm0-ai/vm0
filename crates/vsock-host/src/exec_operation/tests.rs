@@ -15,7 +15,7 @@ use vsock_proto::{
 };
 
 use crate::tests::support::read_guest_message;
-use crate::{ConnectionState, Shared};
+use crate::{ConnectionState, RouteId, Shared};
 
 use super::diagnostics::*;
 use super::dispatch::dispatch_result;
@@ -31,6 +31,7 @@ fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
     let (result_tx, _result_rx) = oneshot::channel();
     let normal_operations = crate::operation_tracker::NormalOperationTracker::new();
     ExecOperation {
+        route_id: RouteId::from_raw(u64::from(seq)),
         normal_operation: Some(ExecOperationNormalTracking::Owned(
             normal_operations.reserve().unwrap(),
         )),
@@ -415,8 +416,10 @@ fn shared_with_logged_operation(
         frame_builder: tokio::sync::Mutex::new(()),
         file_write_gate: tokio::sync::Mutex::new(()),
         fd,
-        seq: AtomicU32::new(2),
+        temp_seq: AtomicU32::new(2),
         state: std::sync::Mutex::new(ConnectionState::Connected {
+            next_route_id: 2,
+            route_reservations: HashMap::new(),
             pending: HashMap::new(),
             operations: Operations::new(),
         }),
@@ -432,9 +435,11 @@ fn shared_with_logged_operation(
         let ConnectionState::Connected { operations, .. } = &mut *guard else {
             panic!("test shared state must be connected");
         };
+        let route_id = RouteId::from_raw(7);
         operations.insert(
-            7,
+            route_id,
             ExecOperation {
+                route_id,
                 normal_operation: None,
                 lifecycle,
                 diagnostic: diagnostic.clone(),
@@ -540,9 +545,14 @@ async fn supervised_cancel_frame_marks_terminal_result_as_host_requested_cancel(
         false,
     );
 
-    send_exec_cancel_frame(&shared, 7, &diagnostic, ExecWaitLifecycle::Supervised)
-        .await
-        .unwrap();
+    send_exec_cancel_frame(
+        &shared,
+        RouteId::from_raw(7),
+        &diagnostic,
+        ExecWaitLifecycle::Supervised,
+    )
+    .await
+    .unwrap();
 
     let payload = vsock_proto::encode_exec_result(
         ExecTermination::Cancelled,
@@ -586,7 +596,12 @@ async fn one_shot_cancel_handle_marks_terminal_result_as_host_requested_cancel()
         false,
     );
     let handle = ExecOperationHandle {
-        wait_core: ExecWaitCore::new(Arc::clone(&shared), 7, diagnostic, result_rx),
+        wait_core: ExecWaitCore::new(
+            Arc::clone(&shared),
+            RouteId::from_raw(7),
+            diagnostic,
+            result_rx,
+        ),
         stream_rx: None,
     };
 
@@ -1052,7 +1067,7 @@ fn exec_operation_close_snapshot_limits_logged_operations() {
     let mut operations = Operations::new();
     for seq in 0..active_count {
         operations.insert(
-            seq as u32,
+            RouteId::from_raw(seq as u64),
             exec_operation_for_snapshot(seq as u32, &format!("operation-{seq}")),
         );
     }
@@ -1068,7 +1083,7 @@ fn exec_operation_close_snapshot_limits_logged_operations() {
         active_count - EXEC_OPERATION_CLOSE_ACTIVE_LOG_LIMIT
     );
     for operation in snapshot.operations {
-        assert!(operations.contains(operation.seq));
+        assert!(operations.contains_seq(operation.seq));
         assert!(operation.label_log.starts_with("operation-"));
     }
 }

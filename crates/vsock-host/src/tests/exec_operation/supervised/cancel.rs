@@ -1,12 +1,15 @@
 use std::io;
+use std::sync::Arc;
 use std::time::Duration;
 
-use vsock_proto::{ExecTermination, MSG_EXEC_CANCEL};
+use vsock_proto::{ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use super::super::super::support::{
     assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
-    operation_count, read_guest_message, send_exec_result, wait_for_operation_count,
+    operation_count, read_guest_message, route_reservation_count, send_exec_result,
+    set_next_route_id, wait_for_operation_count, wait_for_route_reservation_count,
 };
+use super::super::start_capture_operation;
 use super::support::{
     StartedSupervisedExec, assert_no_guest_frame, send_guest_error, start_supervised_exec_fixture,
     supervised_request,
@@ -36,6 +39,62 @@ async fn supervised_exec_cancel_on_drop_sends_exec_cancel() {
     send_exec_result(&mut guest, start_seq, ExecTermination::Cancelled, b"", b"").await;
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
     assert_eq!(result.termination, ExecTermination::Cancelled);
+}
+
+#[tokio::test]
+async fn queued_cancel_reservation_prevents_wire_sequence_reuse() {
+    let StartedSupervisedExec {
+        host,
+        mut guest,
+        start,
+        mut handle,
+    } = start_supervised_exec_fixture(supervised_request("queued-cancel-route")).await;
+    let start_seq = start.seq();
+    let cancel_handle = handle
+        .take_cancel_handle()
+        .expect("supervised handle should expose a cancel handle");
+    let writer_guard = host.shared.writer.lock().await;
+    let cancel_task =
+        tokio::spawn(async move { cancel_handle.cancel(Duration::from_secs(5)).await });
+    wait_for_route_reservation_count(&host, 1).await;
+
+    send_exec_result(
+        &mut guest,
+        start_seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    wait_for_operation_count(&host, 0).await;
+    set_next_route_id(&host, (1_u64 << 32) + u64::from(start_seq));
+    let replacement_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { start_capture_operation(&host, "replacement").await })
+    };
+    wait_for_operation_count(&host, 1).await;
+
+    drop(writer_guard);
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start_seq);
+    let replacement_start = read_guest_message(&mut guest).await;
+    assert_eq!(replacement_start.msg_type, MSG_EXEC_START);
+    assert_eq!(replacement_start.seq, start_seq + 1);
+    cancel_task.await.unwrap().unwrap();
+    assert_eq!(route_reservation_count(&host), 0);
+
+    let replacement = replacement_task.await.unwrap();
+    send_exec_result(
+        &mut guest,
+        replacement_start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    replacement.wait(Duration::from_secs(5)).await.unwrap();
+    handle.wait(Duration::from_secs(5)).await.unwrap();
 }
 
 #[tokio::test]
@@ -291,6 +350,49 @@ async fn supervised_exec_cancel_handle_after_terminal_result_preserves_wait_and_
     assert_eq!(operation_count(&host), 0);
 
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn stale_cancel_handle_does_not_cancel_reused_wire_sequence() {
+    let StartedSupervisedExec {
+        host,
+        mut guest,
+        start,
+        mut handle,
+    } = start_supervised_exec_fixture(supervised_request("stale-cancel-handle")).await;
+    let start_seq = start.seq();
+    let cancel_handle = handle
+        .take_cancel_handle()
+        .expect("supervised handle should expose a cancel handle");
+    send_exec_result(
+        &mut guest,
+        start_seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    wait_for_operation_count(&host, 0).await;
+
+    set_next_route_id(&host, (1_u64 << 32) + u64::from(start_seq));
+    let replacement = start_capture_operation(&host, "replacement cancel target").await;
+    let replacement_start = read_guest_message(&mut guest).await;
+    assert_eq!(replacement_start.msg_type, MSG_EXEC_START);
+    assert_eq!(replacement_start.seq, start_seq);
+
+    cancel_handle.cancel(Duration::from_secs(5)).await.unwrap();
+    assert_no_guest_frame(&mut guest, "stale cancel must not target replacement");
+    assert_eq!(operation_count(&host), 1);
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+    send_exec_result(
+        &mut guest,
+        replacement_start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    replacement.wait(Duration::from_secs(5)).await.unwrap();
 }
 
 #[tokio::test]

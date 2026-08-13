@@ -82,8 +82,8 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 use connection::{
-    CompositeNormalOperation, ConnectionState, Shared, normal_operation_transition_error,
-    normal_request_on_shared_with_write_observer_frame_builder,
+    CompositeNormalOperation, ConnectionState, RouteId, RouteReservation, Shared,
+    normal_operation_transition_error, normal_request_on_shared_with_write_observer_frame_builder,
     request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
 #[cfg(test)]

@@ -1,13 +1,14 @@
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_START};
 
 use super::super::support::{
     MockGuest, await_mock_guest, captured_output_bytes, exec_capture_default, host_from_stream,
-    make_pair, normal_operation_readiness, read_guest_message, send_exec_result,
-    setup_host_and_guest, wait_for_operation_count,
+    make_pair, normal_operation_readiness, operation_count, read_guest_message, send_exec_result,
+    set_next_route_id, setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::operation_tracker::NormalOperationReadiness;
@@ -87,6 +88,46 @@ async fn exec_operation_tracks_until_terminal_result() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+}
+
+#[tokio::test]
+async fn stale_exec_handle_cleanup_does_not_remove_reused_wire_sequence() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let wire_seq = 23;
+    set_next_route_id(&host, wire_seq.into());
+
+    let first_handle = start_capture_operation(&host, "first generation").await;
+    let first_start = read_guest_message(&mut guest).await;
+    assert_eq!(first_start.msg_type, MSG_EXEC_START);
+    assert_eq!(first_start.seq, wire_seq);
+    send_exec_result(
+        &mut guest,
+        first_start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"first",
+        b"",
+    )
+    .await;
+    wait_for_operation_count(&host, 0).await;
+
+    set_next_route_id(&host, (1_u64 << 32) + u64::from(wire_seq));
+    let second_handle = start_capture_operation(&host, "second generation").await;
+    let second_start = read_guest_message(&mut guest).await;
+    assert_eq!(second_start.msg_type, MSG_EXEC_START);
+    assert_eq!(second_start.seq, first_start.seq);
+
+    drop(first_handle);
+    assert_eq!(operation_count(&host), 1);
+    send_exec_result(
+        &mut guest,
+        second_start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"second",
+        b"",
+    )
+    .await;
+    let result = second_handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(captured_output_bytes(&result.stdout), b"second");
 }
 
 /// `host.exec` with `timeout_ms == 0` must reject at the boundary rather
