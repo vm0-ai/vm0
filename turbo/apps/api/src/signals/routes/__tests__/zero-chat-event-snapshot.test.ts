@@ -207,6 +207,8 @@ describe("chat event snapshot read endpoints", () => {
       type: "feedback",
       quote: "Snapshot feedback quote",
       note: [{ type: "text", text: "Keep the canonical location." }],
+      eventId: "snapshot-feedback-source-event",
+      range: { start: 4, end: 13 },
     });
 
     const canonicalEvents = await accept(
@@ -243,7 +245,7 @@ describe("chat event snapshot read endpoints", () => {
     );
     // The snapshot cron scope is global, so an unsupported head left behind
     // would fail every later pass in the suite.
-    await setChatEventSnapshotHeadVersion(context, threadId, 4);
+    await setChatEventSnapshotHeadVersion(context, threadId, 5);
 
     const stranger = bdd.user({ orgId: `org_${randomUUID()}` });
     const strangerResponse = await accept(
@@ -420,7 +422,7 @@ describe("chat event snapshot read endpoints", () => {
     expect(readFakeChatEventObject(retiredKey)).toBeUndefined();
     const current = await readChatEventSnapshotHead(context, threadId);
     expect(current).toMatchObject({
-      archive_schema_version: 4,
+      archive_schema_version: 5,
       snapshot_count: 1,
     });
   }, 60_000);
@@ -447,7 +449,7 @@ describe("chat event snapshot read endpoints", () => {
     expect(readFakeChatEventObject(retiredKey)).toBeDefined();
     const current = await readChatEventSnapshotHead(context, threadId);
     expect(current).toMatchObject({
-      archive_schema_version: 4,
+      archive_schema_version: 5,
       snapshot_count: 1,
     });
   }, 60_000);

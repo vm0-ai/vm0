@@ -11,10 +11,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
-import {
-  featureSwitch$,
-  feedbackLocationApiSupported$,
-} from "../external/feature-switch.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
   ComposerFeedbackSignals,
   FeedbackRange,
@@ -269,9 +266,7 @@ function createSelectionState(threadId: string) {
           text: selection.text,
           threadId: selection.threadId,
           runId: selection.runId,
-          ...(get(feedbackLocationApiSupported$) &&
-          selection.eventId !== undefined &&
-          selection.range !== undefined
+          ...(selection.eventId !== undefined && selection.range !== undefined
             ? { eventId: selection.eventId, range: selection.range }
             : {}),
           ...(selection.source ? { source: selection.source } : {}),
@@ -335,9 +330,7 @@ function createStartFeedback(
     }
     set(feedback.add$, {
       quote: selection.text,
-      ...(get(feedbackLocationApiSupported$) &&
-      selection.eventId !== undefined &&
-      selection.range !== undefined
+      ...(selection.eventId !== undefined && selection.range !== undefined
         ? { eventId: selection.eventId, range: selection.range }
         : {}),
       ...(selection.source ? { source: selection.source } : {}),
@@ -400,9 +393,7 @@ function createStartForward(
       quote: selection.text,
       threadId: selection.threadId,
       runId: selection.runId,
-      ...(get(feedbackLocationApiSupported$) &&
-      selection.eventId !== undefined &&
-      selection.range !== undefined
+      ...(selection.eventId !== undefined && selection.range !== undefined
         ? { eventId: selection.eventId, range: selection.range }
         : {}),
       ...(selection.source ? { source: selection.source } : {}),

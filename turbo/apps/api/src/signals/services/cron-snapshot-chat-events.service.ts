@@ -37,7 +37,6 @@ import {
   type S3Object,
 } from "../external/s3";
 import { settle } from "../utils";
-import { projectLegacyChatEventRow } from "./chat-feedback-location-compatibility.service";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
@@ -84,7 +83,7 @@ interface SnapshotCandidate {
  * canonical payload/run/context row shape and retains gzip content metadata
  * so browser downloads are transparently decompressed.
  */
-export const ARCHIVE_SCHEMA_VERSION = 4;
+export const ARCHIVE_SCHEMA_VERSION = 5;
 /**
  * Old archive contracts below this version are no longer supported. Raise
  * this only after the App force-upgrade floor requires a reader that supports
@@ -201,15 +200,7 @@ export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRowV4 {
 }
 
 function archiveLine(row: ArchiveEventRow): Buffer {
-  // Snapshot URLs cannot vary by requesting App version. Until the
-  // capability-tagged reader has exceeded the ~2-day stale-client window,
-  // archive the previous strict feedback shape while keeping the canonical DB
-  // row intact. Cleanup must remove this projection and bump
-  // ARCHIVE_SCHEMA_VERSION so every existing head is rebuilt with locations.
-  // Follow-up: #26697.
-  return encodeArchiveLine(
-    projectLegacyChatEventRow(chatEventRowFromDbRow(row)),
-  );
+  return encodeArchiveLine(chatEventRowFromDbRow(row));
 }
 
 function sha256Hex(buffer: Buffer): string {

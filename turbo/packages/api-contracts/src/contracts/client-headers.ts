@@ -5,25 +5,6 @@ export const CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
 export const CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
 export const CLIENT_FORCE_UPGRADE_STATUS = 426;
 
-// Temporary App reader capability carried as SemVer build metadata on
-// X-Client-Version. This avoids introducing a new CORS header while stale App
-// bundles still need feedback locations projected out of persisted documents.
-// Remove after the App rollout has exceeded the ~2-day stale-client window.
-// Follow-up: #26697.
-export const CLIENT_FEEDBACK_LOCATION_VERSION_TAG = "feedback-location-v1";
-
-export function clientVersionWithTag(version: string, tag: string): string {
-  return version.includes("+") ? `${version}.${tag}` : `${version}+${tag}`;
-}
-
-export function clientVersionHasTag(
-  version: string | null | undefined,
-  tag: string,
-): boolean {
-  const buildMetadata = version?.split("+", 2)[1];
-  return buildMetadata?.split(".").includes(tag) ?? false;
-}
-
 // Canonical X-Client-Type wire values emitted by first-party clients.
 export const CLIENT_TYPE_APP = "App";
 export const CLIENT_TYPE_CLI = "CLI";

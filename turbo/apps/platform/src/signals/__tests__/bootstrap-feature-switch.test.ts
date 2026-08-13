@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { setupPage } from "../../__tests__/page-helper.ts";
 import {
   avatarTemplatesEnabled$,
-  feedbackLocationApiSupported$,
   featureSwitch$,
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
@@ -31,25 +30,6 @@ describe("bootstrap feature switch hydration", () => {
     expect(
       context.store.get(featureSwitch$)[FeatureSwitchKey.AhrefsConnector],
     ).toBeTruthy();
-    expect(context.store.get(feedbackLocationApiSupported$)).toBeFalsy();
-  });
-
-  it("enables feedback locations only after the API advertises support", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: {},
-        effectiveSwitches: {},
-        apiCapabilities: { feedbackLocationV1: true },
-      });
-    });
-
-    await setupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-    });
-
-    expect(context.store.get(feedbackLocationApiSupported$)).toBeTruthy();
   });
 
   it("keeps image recognition available without capability negotiation", async () => {

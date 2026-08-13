@@ -34,7 +34,8 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
 const CRON_SECRET = "test-cron-secret";
-const NON_CURRENT_ARCHIVE_SCHEMA_VERSION = 1;
+const RETIRED_ARCHIVE_SCHEMA_VERSION = 1;
+const PREVIOUS_ARCHIVE_SCHEMA_VERSION = 4;
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
 
@@ -92,7 +93,7 @@ interface ArchivedLine {
   readonly createdAt: string;
 }
 
-const ARCHIVE_V4_KEYS = [
+const ARCHIVE_V5_KEYS = [
   "chatThreadId",
   "contextId",
   "contextType",
@@ -135,7 +136,7 @@ function expectArchiveInvariants(
   const lastLine = lines[lines.length - 1];
   expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
-    expect(Object.keys(line).sort()).toStrictEqual(ARCHIVE_V4_KEYS);
+    expect(Object.keys(line).sort()).toStrictEqual(ARCHIVE_V5_KEYS);
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
@@ -209,7 +210,7 @@ describe("cron snapshot chat events", () => {
     expect(firstRaw).toContain(`${marker} first`);
     expect(firstRaw).toContain(`${marker} second`);
     const firstHead = await readChatEventSnapshotHead(context, threadId);
-    expect(firstHead.archive_schema_version).toBe(4);
+    expect(firstHead.archive_schema_version).toBe(5);
     expect(firstHead.object_key).toBe(firstPut.key);
 
     // Nothing new to archive: the same pass again must not touch the thread.
@@ -241,7 +242,7 @@ describe("cron snapshot chat events", () => {
     const secondRaw = gunzipSync(secondPut.body).toString("utf8");
     expect(secondRaw).toContain(`${marker} third`);
     const secondHead = await readChatEventSnapshotHead(context, threadId);
-    expect(secondHead.archive_schema_version).toBe(4);
+    expect(secondHead.archive_schema_version).toBe(5);
     expect(secondHead.object_key).toBe(secondPut.key);
 
     await runSnapshotCron();
@@ -296,7 +297,7 @@ describe("cron snapshot chat events", () => {
     );
   }, 60_000);
 
-  it("rebuilds an idle non-v4 head and reports convergence", async () => {
+  it("rebuilds an idle v4 head as v5 and reports convergence", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Version-only snapshot agent",
@@ -313,12 +314,12 @@ describe("cron snapshot chat events", () => {
     if (firstPut === undefined) {
       throw new Error("Expected a first-generation snapshot object");
     }
-    const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
+    const priorObjectKey = `chat-events/${threadId}/v4-${randomUUID()}.ndjson.gz`;
     writeFakeChatEventObject(priorObjectKey, firstPut.body);
     await setChatEventSnapshotHeadVersion(
       context,
       threadId,
-      NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+      PREVIOUS_ARCHIVE_SCHEMA_VERSION,
       priorObjectKey,
     );
 
@@ -327,7 +328,7 @@ describe("cron snapshot chat events", () => {
     expect(rebuilt.nonV4SnapshotHeads).toBe(0);
     expect(putsForThread(threadId)).toHaveLength(2);
     const rebuiltHead = await readChatEventSnapshotHead(context, threadId);
-    expect(rebuiltHead.archive_schema_version).toBe(4);
+    expect(rebuiltHead.archive_schema_version).toBe(5);
     expect(rebuiltHead.object_key).toBe(firstPut.key);
 
     await runSnapshotCron();
@@ -402,7 +403,7 @@ describe("cron snapshot chat events", () => {
       await setChatEventSnapshotHeadVersion(
         context,
         threadId,
-        NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+        RETIRED_ARCHIVE_SCHEMA_VERSION,
         priorObjectKey,
       );
     }
@@ -427,7 +428,7 @@ describe("cron snapshot chat events", () => {
     });
     for (const threadId of threadIds) {
       const head = await readChatEventSnapshotHead(context, threadId);
-      expect(head.archive_schema_version).toBe(4);
+      expect(head.archive_schema_version).toBe(5);
     }
   }, 90_000);
 
@@ -470,7 +471,7 @@ describe("cron snapshot chat events", () => {
     // Cron result counts cover every candidate in the shared test database;
     // the persisted generation count scopes the CAS assertion to this thread.
     expect(head.snapshot_count).toBe(parentHead.snapshot_count + 1);
-    expect(head.archive_schema_version).toBe(4);
+    expect(head.archive_schema_version).toBe(5);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);
     expect(head.object_key).not.toBe(parentHead.object_key);
   }, 90_000);
