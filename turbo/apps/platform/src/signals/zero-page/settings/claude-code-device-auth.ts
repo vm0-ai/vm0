@@ -1,10 +1,10 @@
 import { command, computed, state, type Command, type State } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  zeroClaudeCodeDeviceAuthContract,
+  claudeCodeDeviceAuthContract,
   type ClaudeCodeDeviceAuthMode,
   type ClaudeCodeDeviceAuthScope,
-} from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
+} from "@okouai/api-contracts/contracts/claude-code-device-auth";
 
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -106,7 +106,7 @@ const startClaudeCodeDeviceAuth$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
+    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -128,7 +128,7 @@ const completeClaudeCodeDeviceAuth$ = command(
     authorizationCode: string,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
+    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -148,7 +148,7 @@ const completeClaudeCodeDeviceAuth$ = command(
 
 const cancelClaudeCodeDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
+    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(

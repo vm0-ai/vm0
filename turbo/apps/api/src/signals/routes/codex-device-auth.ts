@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroClaudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
+import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -7,11 +7,11 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import {
-  cancelClaudeCodeDeviceAuth$,
-  claudeCodeDeviceAuthUnavailable,
-  completeClaudeCodeDeviceAuth$,
-  startClaudeCodeDeviceAuth,
-} from "../services/claude-code-device-auth.service";
+  cancelCodexDeviceAuth$,
+  codexDeviceAuthUnavailable,
+  completeCodexDeviceAuth$,
+  startCodexDeviceAuth,
+} from "../services/codex-device-auth.service";
 import type { RouteEntry } from "../route-entry";
 
 const modelProviderWriteAuth = {
@@ -29,20 +29,16 @@ const adminRequired = Object.freeze({
   }),
 });
 
-const startClaudeCodeDeviceAuthBody$ = bodyResultOf(
-  zeroClaudeCodeDeviceAuthContract.start,
+const startCodexDeviceAuthBody$ = bodyResultOf(codexDeviceAuthContract.start);
+const completeCodexDeviceAuthBody$ = bodyResultOf(
+  codexDeviceAuthContract.complete,
 );
-const completeClaudeCodeDeviceAuthBody$ = bodyResultOf(
-  zeroClaudeCodeDeviceAuthContract.complete,
-);
-const cancelClaudeCodeDeviceAuthBody$ = bodyResultOf(
-  zeroClaudeCodeDeviceAuthContract.cancel,
-);
+const cancelCodexDeviceAuthBody$ = bodyResultOf(codexDeviceAuthContract.cancel);
 
-const startClaudeCodeDeviceAuthInner$ = command(
+const startCodexDeviceAuthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const body = await get(startClaudeCodeDeviceAuthBody$);
+    const body = await get(startCodexDeviceAuthBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
@@ -58,7 +54,7 @@ const startClaudeCodeDeviceAuthInner$ = command(
       return badRequestMessage("modelProviderId is required for reconnect");
     }
 
-    const result = await startClaudeCodeDeviceAuth(
+    const result = await startCodexDeviceAuth(
       {
         writeDb: set(writeDb$),
         orgId: auth.orgId,
@@ -72,46 +68,56 @@ const startClaudeCodeDeviceAuthInner$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return claudeCodeDeviceAuthUnavailable(result.message);
+      return codexDeviceAuthUnavailable(result.message);
     }
 
     return {
       status: 200 as const,
       body: {
         sessionToken: result.sessionToken,
-        type: "claude-code" as const,
+        type: "codex" as const,
         status: "pending" as const,
         scope: result.scope,
         browserUrl: result.browserUrl,
+        verificationCode: result.verificationCode,
         expiresIn: result.expiresIn,
+        interval: result.interval,
       },
     };
   },
 );
 
-const completeClaudeCodeDeviceAuthInner$ = command(
+const completeCodexDeviceAuthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const body = await get(completeClaudeCodeDeviceAuthBody$);
+    const body = await get(completeCodexDeviceAuthBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
 
     const result = await set(
-      completeClaudeCodeDeviceAuth$,
+      completeCodexDeviceAuth$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
         orgRole: auth.orgRole,
         sessionToken: body.data.sessionToken,
-        authorizationCode: body.data.authorizationCode,
       },
       signal,
     );
     signal.throwIfAborted();
 
     switch (result.status) {
+      case "pending": {
+        return {
+          status: 200 as const,
+          body: {
+            status: "pending" as const,
+            errorMessage: result.errorMessage,
+          },
+        };
+      }
       case "complete": {
         return {
           status: 200 as const,
@@ -132,23 +138,23 @@ const completeClaudeCodeDeviceAuthInner$ = command(
         return result.response;
       }
       case "error": {
-        return claudeCodeDeviceAuthUnavailable(result.message);
+        return codexDeviceAuthUnavailable(result.message);
       }
     }
   },
 );
 
-const cancelClaudeCodeDeviceAuthInner$ = command(
+const cancelCodexDeviceAuthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const body = await get(cancelClaudeCodeDeviceAuthBody$);
+    const body = await get(cancelCodexDeviceAuthBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
 
     const result = await set(
-      cancelClaudeCodeDeviceAuth$,
+      cancelCodexDeviceAuth$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -175,23 +181,17 @@ const cancelClaudeCodeDeviceAuthInner$ = command(
   },
 );
 
-export const zeroClaudeCodeDeviceAuthRoutes: readonly RouteEntry[] = [
+export const codexDeviceAuthRoutes: readonly RouteEntry[] = [
   {
-    route: zeroClaudeCodeDeviceAuthContract.start,
-    handler: authRoute(modelProviderWriteAuth, startClaudeCodeDeviceAuthInner$),
+    route: codexDeviceAuthContract.start,
+    handler: authRoute(modelProviderWriteAuth, startCodexDeviceAuthInner$),
   },
   {
-    route: zeroClaudeCodeDeviceAuthContract.complete,
-    handler: authRoute(
-      modelProviderWriteAuth,
-      completeClaudeCodeDeviceAuthInner$,
-    ),
+    route: codexDeviceAuthContract.complete,
+    handler: authRoute(modelProviderWriteAuth, completeCodexDeviceAuthInner$),
   },
   {
-    route: zeroClaudeCodeDeviceAuthContract.cancel,
-    handler: authRoute(
-      modelProviderWriteAuth,
-      cancelClaudeCodeDeviceAuthInner$,
-    ),
+    route: codexDeviceAuthContract.cancel,
+    handler: authRoute(modelProviderWriteAuth, cancelCodexDeviceAuthInner$),
   },
 ];

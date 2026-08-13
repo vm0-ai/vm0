@@ -78,11 +78,11 @@ import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
 import { zeroSharedThreadRoutes } from "./routes/zero-shared-threads";
-import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device-auth";
+import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
-import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
+import { codexDeviceAuthRoutes } from "./routes/codex-device-auth";
 import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
 import { zeroConnectorCheckRoutes } from "./routes/zero-connector-check";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
@@ -97,7 +97,7 @@ import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
-import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
+import { imageShareXRoutes } from "./routes/image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
@@ -269,11 +269,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroChatThreadRoutes,
   ...zeroChatEventsRoutes,
   ...zeroSharedThreadRoutes,
-  ...zeroClaudeCodeDeviceAuthRoutes,
+  ...claudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
-  ...zeroCodexDeviceAuthRoutes,
+  ...codexDeviceAuthRoutes,
   ...zeroConnectorCatalogRoutes,
   ...zeroConnectorCheckRoutes,
   ...zeroConnectorsExternalCodeRoutes,
@@ -288,7 +288,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroImageIoGenerateRoutes,
-  ...zeroImageShareXRoutes,
+  ...imageShareXRoutes,
   ...zeroAvatarVideoRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,

@@ -5,31 +5,27 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroImageShareXRequestSchema = z.object({
+export const imageShareXRequestSchema = z.object({
   imageUrl: z.string().min(1),
   caption: z.string().max(280).optional(),
 });
 
-export const zeroImageShareXResponseSchema = z.object({
+export const imageShareXResponseSchema = z.object({
   tweetId: z.string(),
   tweetUrl: z.string(),
 });
 
-export type ZeroImageShareXRequest = z.infer<
-  typeof zeroImageShareXRequestSchema
->;
-export type ZeroImageShareXResponse = z.infer<
-  typeof zeroImageShareXResponseSchema
->;
+export type ImageShareXRequest = z.infer<typeof imageShareXRequestSchema>;
+export type ImageShareXResponse = z.infer<typeof imageShareXResponseSchema>;
 
-export const zeroImageShareXContract = c.router({
+export const imageShareXContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/image-share/x",
     headers: authHeadersSchema,
-    body: zeroImageShareXRequestSchema,
+    body: imageShareXRequestSchema,
     responses: {
-      200: zeroImageShareXResponseSchema,
+      200: imageShareXResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -41,4 +37,4 @@ export const zeroImageShareXContract = c.router({
   },
 });
 
-export type ZeroImageShareXContract = typeof zeroImageShareXContract;
+export type ImageShareXContract = typeof imageShareXContract;
