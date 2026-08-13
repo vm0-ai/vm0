@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.72.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.3...guest-agent-v0.72.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
 ## [0.71.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.2...guest-agent-v0.71.3) (2026-08-12)
 
 
