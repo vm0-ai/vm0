@@ -5,7 +5,7 @@ import { initContract } from "./trpc-contract";
 
 const c = initContract();
 
-export const zeroWebFilesContract = c.router({
+export const webFilesContract = c.router({
   download: {
     method: "GET",
     path: "/api/okou/web/download-file",
