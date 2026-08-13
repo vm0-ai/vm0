@@ -312,6 +312,28 @@ describe("organization usage settings", () => {
     });
   });
 
+  it("labels far-future credit grant expiries as never expiring", async () => {
+    mockUsageStory();
+    mockBillingStatus({
+      creditGrants: [
+        {
+          id: "grant-custom",
+          source: "atom_custom_credits",
+          label: "Custom credits",
+          amount: 12_000,
+          remaining: 12_000,
+          createdAt: "2026-03-01T00:00:00Z",
+          expiresAt: "2999-12-31T23:59:59Z",
+        },
+      ],
+    });
+    await openCreditBalance();
+
+    const neverExpires = await screen.findByText("Never expires");
+    expect(neverExpires).toBeInTheDocument();
+    expect(screen.queryByText("Dec 31, 2999")).toBeNull();
+  });
+
   it("keeps the usage records inside credit balance without the new pricing", async () => {
     mockUsageStory();
     detachedSetupPage({ context, path: "/?settings=usage" });
@@ -329,6 +351,19 @@ describe("organization usage settings", () => {
         return element.textContent === "Team usage";
       }),
     ).toBeTruthy();
+    expect(
+      queryAllByRoleFast("button").some((element) => {
+        return element.textContent === "Credit usage";
+      }),
+    ).toBeFalsy();
+  });
+
+  it("falls back from the usage records deep link without the new pricing", async () => {
+    mockUsageStory();
+    detachedSetupPage({ context, path: "/?settings=usage-records" });
+
+    const heading = await screen.findByRole("heading", { name: "Preference" });
+    expect(heading).toBeInTheDocument();
     expect(
       queryAllByRoleFast("button").some((element) => {
         return element.textContent === "Credit usage";
