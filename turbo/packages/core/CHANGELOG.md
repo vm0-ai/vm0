@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.557.0](https://github.com/vm0-ai/vm0/compare/core-v8.556.1...core-v8.557.0) (2026-08-13)
+
+
+### Features
+
+* add user-friendly automation messages ([#26963](https://github.com/vm0-ai/vm0/issues/26963)) ([5c13a78](https://github.com/vm0-ai/vm0/commit/5c13a78454fb78da731ba59b5ebe56c532f8c608))
+* **chat:** roll out unified indicator api ([#26960](https://github.com/vm0-ai/vm0/issues/26960)) ([169409d](https://github.com/vm0-ai/vm0/commit/169409de2f824947ff3077e44b98e26d647f24b8))
+
+
+### Refactoring
+
+* **agent:** canonicalize agent draft naming ([#26979](https://github.com/vm0-ai/vm0/issues/26979)) ([5403d6a](https://github.com/vm0-ai/vm0/commit/5403d6ae1ef87b4343751789c063aa88dbdc18f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.4
+
 ## [8.556.1](https://github.com/vm0-ai/vm0/compare/core-v8.556.0...core-v8.556.1) (2026-08-13)
 
 
