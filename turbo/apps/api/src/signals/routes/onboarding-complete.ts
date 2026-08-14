@@ -35,7 +35,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return await set(completeOnboarding$, { orgId: auth.orgId }, signal);
 });
 
-export const zeroOnboardingCompleteRoutes: readonly RouteEntry[] = [
+export const onboardingCompleteRoutes: readonly RouteEntry[] = [
   {
     route: onboardingCompleteContract.complete,
     handler: authRoute(

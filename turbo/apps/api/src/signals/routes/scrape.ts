@@ -1,13 +1,13 @@
-import { zeroScrapeContract } from "@okouai/api-contracts/contracts/zero-scrape";
+import { scrapeContract } from "@okouai/api-contracts/contracts/scrape";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { zeroScrape$ } from "../services/zero-scrape.service";
+import { scrape$ } from "../services/scrape.service";
 
-const scrapeBody$ = bodyResultOf(zeroScrapeContract.scrape);
+const scrapeBody$ = bodyResultOf(scrapeContract.scrape);
 
 const scrapeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -16,12 +16,12 @@ const scrapeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  return await set(zeroScrape$, { auth, body: bodyResult.data }, signal);
+  return await set(scrape$, { auth, body: bodyResult.data }, signal);
 });
 
-export const zeroScrapeRoutes: readonly RouteEntry[] = [
+export const scrapeRoutes: readonly RouteEntry[] = [
   {
-    route: zeroScrapeContract.scrape,
+    route: scrapeContract.scrape,
     handler: authRoute(
       {
         requireOrganization: true,

@@ -77,7 +77,7 @@ import { zeroBillingUsagePackCreditsRoutes } from "./routes/zero-billing-usage-p
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
-import { zeroSharedThreadRoutes } from "./routes/zero-shared-threads";
+import { sharedThreadRoutes } from "./routes/shared-threads";
 import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
@@ -106,8 +106,8 @@ import { weatherRoutes } from "./routes/weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
-import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
+import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
+import { onboardingStatusRoutes } from "./routes/onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
 import { zeroOrgDeleteRoutes } from "./routes/zero-org-delete";
 import { orgLogoRoutes } from "./routes/org-logo";
@@ -127,7 +127,7 @@ import { zeroMeModelProviderAccountRoutes } from "./routes/zero-me-model-provide
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
-import { zeroScrapeRoutes } from "./routes/zero-scrape";
+import { scrapeRoutes } from "./routes/scrape";
 import { peopleSearchRoutes } from "./routes/people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
@@ -268,7 +268,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBankingRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatEventsRoutes,
-  ...zeroSharedThreadRoutes,
+  ...sharedThreadRoutes,
   ...claudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
@@ -296,7 +296,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...mapsRoutes,
   ...zeroMcpConnectorsRoutes,
   ...weatherRoutes,
-  ...zeroScrapeRoutes,
+  ...scrapeRoutes,
   ...peopleSearchRoutes,
   ...zeroWebSearchRoutes,
   ...zeroBrowserRoutes,
@@ -321,8 +321,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
-  ...zeroOnboardingCompleteRoutes,
-  ...zeroOnboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
+  ...onboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgDeleteRoutes,
   ...orgLogoRoutes,

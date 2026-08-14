@@ -1,8 +1,8 @@
 import type {
-  ZeroScrapeBillingCategory,
-  ZeroScrapeRequest,
-  ZeroScrapeResponse,
-} from "@okouai/api-contracts/contracts/zero-scrape";
+  ScrapeBillingCategory,
+  ScrapeRequest,
+  ScrapeResponse,
+} from "@okouai/api-contracts/contracts/scrape";
 import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
@@ -17,7 +17,7 @@ import {
 import {
   validateScrapeTargetUrl,
   type ScrapeTargetPolicyError,
-} from "./zero-scrape-target-policy";
+} from "./scrape-target-policy";
 
 const PROVIDER = "firecrawl";
 const USAGE_KIND = "scrape";
@@ -47,12 +47,12 @@ const SCRAPE_MODE_CONFIG = {
     },
   },
 } as const satisfies Record<
-  ZeroScrapeRequest["mode"],
+  ScrapeRequest["mode"],
   {
     readonly firecrawlProxy: "basic" | "enhanced";
     readonly billingCategories: Record<
-      ZeroScrapeRequest["format"],
-      ZeroScrapeBillingCategory
+      ScrapeRequest["format"],
+      ScrapeBillingCategory
     >;
   }
 >;
@@ -71,7 +71,7 @@ interface ScrapeErrorResponse {
 
 interface AuthedScrapeArgs {
   readonly auth: AuthContext & { readonly orgId: string };
-  readonly body: ZeroScrapeRequest;
+  readonly body: ScrapeRequest;
 }
 
 interface ScrapeErrorResult {
@@ -98,7 +98,7 @@ interface FirecrawlScrapeData {
 }
 
 interface NormalizedScrapeBase {
-  readonly metadata?: ZeroScrapeResponse["metadata"];
+  readonly metadata?: ScrapeResponse["metadata"];
   readonly finalUrl?: string;
 }
 
@@ -114,29 +114,29 @@ type NormalizedScrape = NormalizedScrapeBase &
       }
   );
 
-interface ZeroScrapeSuccessArgs {
-  readonly request: ZeroScrapeRequest;
+interface ScrapeSuccessArgs {
+  readonly request: ScrapeRequest;
   readonly requestedUrl: URL;
   readonly normalized: NormalizedScrape;
   readonly creditsCharged: number;
 }
 
-interface ZeroScrapeSuccessBase {
+interface ScrapeSuccessBase {
   readonly requestedUrl: string;
   readonly finalUrl?: string;
   readonly provider: "firecrawl";
   readonly creditsCharged: number;
   readonly billingQuantity: number;
-  readonly metadata?: ZeroScrapeResponse["metadata"];
+  readonly metadata?: ScrapeResponse["metadata"];
 }
 
-type ZeroScrapeCommandResponse =
-  | { readonly status: 200; readonly body: ZeroScrapeResponse }
+type ScrapeCommandResponse =
+  | { readonly status: 200; readonly body: ScrapeResponse }
   | ScrapeErrorResponse
   | ManagedUsageErrorResponse;
 
 interface CompleteScrapeSuccessArgs {
-  readonly request: ZeroScrapeRequest;
+  readonly request: ScrapeRequest;
   readonly requestedUrl: URL;
   readonly firecrawlResult: FirecrawlBodyResult;
   readonly recordUsage: () => Promise<number>;
@@ -144,7 +144,7 @@ interface CompleteScrapeSuccessArgs {
 
 interface CompleteScrapeAfterProviderArgs {
   readonly apiKey: string;
-  readonly request: ZeroScrapeRequest;
+  readonly request: ScrapeRequest;
   readonly requestedUrl: URL;
   readonly recordUsage: () => Promise<number>;
 }
@@ -187,11 +187,11 @@ function runIdForUsage(auth: AuthContext): string | undefined {
     : undefined;
 }
 
-function billingCategory(args: ZeroScrapeRequest): ZeroScrapeBillingCategory {
+function billingCategory(args: ScrapeRequest): ScrapeBillingCategory {
   return SCRAPE_MODE_CONFIG[args.mode].billingCategories[args.format];
 }
 
-function firecrawlProxy(mode: ZeroScrapeRequest["mode"]): "basic" | "enhanced" {
+function firecrawlProxy(mode: ScrapeRequest["mode"]): "basic" | "enhanced" {
   return SCRAPE_MODE_CONFIG[mode].firecrawlProxy;
 }
 
@@ -274,7 +274,7 @@ async function readResponseBody(
 
 async function fetchFirecrawlScrape(
   apiKey: string,
-  request: ZeroScrapeRequest,
+  request: ScrapeRequest,
   targetUrl: URL,
   signal: AbortSignal,
 ): Promise<FirecrawlBodyResult> {
@@ -380,7 +380,7 @@ function optionalInteger(
 
 function normalizeMetadata(
   metadata: Record<string, unknown> | undefined,
-): ZeroScrapeResponse["metadata"] {
+): ScrapeResponse["metadata"] {
   if (!metadata) {
     return undefined;
   }
@@ -414,7 +414,7 @@ function metadataFinalUrl(
 }
 
 function normalizeFirecrawlData(
-  request: ZeroScrapeRequest,
+  request: ScrapeRequest,
   data: FirecrawlScrapeData,
 ): NormalizedScrape | ScrapeErrorResponse {
   const finalUrl = metadataFinalUrl(data.metadata);
@@ -454,9 +454,7 @@ function normalizeFirecrawlData(
   };
 }
 
-function successResponseBase(
-  args: ZeroScrapeSuccessArgs,
-): ZeroScrapeSuccessBase {
+function successResponseBase(args: ScrapeSuccessArgs): ScrapeSuccessBase {
   return {
     requestedUrl: args.requestedUrl.toString(),
     ...(args.normalized.finalUrl ? { finalUrl: args.normalized.finalUrl } : {}),
@@ -468,9 +466,9 @@ function successResponseBase(
 }
 
 function standardSuccessBody(
-  base: ZeroScrapeSuccessBase,
+  base: ScrapeSuccessBase,
   normalized: NormalizedScrape,
-): ZeroScrapeResponse {
+): ScrapeResponse {
   switch (normalized.format) {
     case "markdown": {
       return {
@@ -494,9 +492,9 @@ function standardSuccessBody(
 }
 
 function enhancedSuccessBody(
-  base: ZeroScrapeSuccessBase,
+  base: ScrapeSuccessBase,
   normalized: NormalizedScrape,
-): ZeroScrapeResponse {
+): ScrapeResponse {
   switch (normalized.format) {
     case "markdown": {
       return {
@@ -519,7 +517,7 @@ function enhancedSuccessBody(
   }
 }
 
-function successBody(args: ZeroScrapeSuccessArgs): ZeroScrapeResponse {
+function successBody(args: ScrapeSuccessArgs): ScrapeResponse {
   const base = successResponseBase(args);
   switch (args.request.mode) {
     case "standard": {
@@ -548,7 +546,7 @@ async function validateFinalUrl(
 
 async function completeScrapeSuccess(
   args: CompleteScrapeSuccessArgs,
-): Promise<ZeroScrapeCommandResponse> {
+): Promise<ScrapeCommandResponse> {
   if (args.firecrawlResult.kind === "error") {
     return args.firecrawlResult.error;
   }
@@ -587,7 +585,7 @@ async function completeScrapeSuccess(
 async function completeScrapeAfterProvider(
   args: CompleteScrapeAfterProviderArgs,
   providerSignal: AbortSignal,
-): Promise<ZeroScrapeCommandResponse> {
+): Promise<ScrapeCommandResponse> {
   const firecrawlResult = await fetchFirecrawlScrape(
     args.apiKey,
     args.request,
@@ -612,16 +610,16 @@ function isScrapeErrorResponse(value: unknown): value is ScrapeErrorResponse {
   );
 }
 
-export const zeroScrape$ = command(
+export const scrape$ = command(
   async (
     { get, set },
     args: AuthedScrapeArgs,
     signal: AbortSignal,
-  ): Promise<ZeroScrapeCommandResponse> => {
+  ): Promise<ScrapeCommandResponse> => {
     const apiKey = env("OKOU_SCRAPE_FIRECRAWL_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Scrape Firecrawl provider is not configured",
+        "Okou Scrape Firecrawl provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -646,7 +644,7 @@ export const zeroScrape$ = command(
           provider: PROVIDER,
           category,
         },
-        label: "Zero Scrape",
+        label: "Okou Scrape",
       },
       requestSignal,
     );
