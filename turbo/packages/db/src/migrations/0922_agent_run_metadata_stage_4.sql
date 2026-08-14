@@ -5,30 +5,50 @@ SET LOCAL lock_timeout = '1s';
 --> statement-breakpoint
 SET LOCAL statement_timeout = '10s';
 --> statement-breakpoint
-ALTER TABLE "agent_runs"
-ADD CONSTRAINT "agent_runs_metadata_presence_check"
-CHECK (
-  (
-    "trigger_source" IS NULL AND
-    "autonomy_budget" IS NULL AND
-    "workflow_automation_id" IS NULL AND
-    "goal_id" IS NULL AND
-    "model_provider" IS NULL AND
-    "model_provider_id" IS NULL AND
-    "model_provider_credential_scope" IS NULL AND
-    "selected_model" IS NULL AND
-    "codex_service_tier" IS NULL AND
-    "selected_video_model" IS NULL AND
-    "chat_thread_id" IS NULL AND
-    "api_started_at" IS NULL AND
-    "first_assistant_event_acknowledged_at" IS NULL AND
-    "summary" IS NULL AND
-    "trigger_brief" IS NULL
-  ) OR (
-    "trigger_source" IS NOT NULL AND
-    "autonomy_budget" IS NOT NULL
-  )
-) NOT VALID;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "pg_constraint"
+    WHERE "conrelid" = 'public.agent_runs'::regclass
+      AND "conname" = 'agent_runs_metadata_presence_check'
+  ) THEN
+    ALTER TABLE "agent_runs"
+    ADD CONSTRAINT "agent_runs_metadata_presence_check"
+    CHECK (
+      (
+        "trigger_source" IS NULL AND
+        "autonomy_budget" IS NULL AND
+        "workflow_automation_id" IS NULL AND
+        "goal_id" IS NULL AND
+        "model_provider" IS NULL AND
+        "model_provider_id" IS NULL AND
+        "model_provider_credential_scope" IS NULL AND
+        "selected_model" IS NULL AND
+        "codex_service_tier" IS NULL AND
+        "selected_video_model" IS NULL AND
+        "chat_thread_id" IS NULL AND
+        "api_started_at" IS NULL AND
+        "first_assistant_event_acknowledged_at" IS NULL AND
+        "summary" IS NULL AND
+        "trigger_brief" IS NULL
+      ) OR (
+        "trigger_source" IS NOT NULL AND
+        "autonomy_budget" IS NOT NULL
+      )
+    ) NOT VALID;
+  ELSIF NOT EXISTS (
+    SELECT 1
+    FROM "pg_constraint"
+    WHERE "conrelid" = 'public.agent_runs'::regclass
+      AND "conname" = 'agent_runs_metadata_presence_check'
+      AND "contype" = 'c'
+  ) THEN
+    RAISE EXCEPTION
+      'Stage 4 found an unexpected agent_runs_metadata_presence_check object';
+  END IF;
+END;
+$$;
 --> statement-breakpoint
 COMMIT;
 --> statement-breakpoint
@@ -84,9 +104,12 @@ BEGIN
     AND "function_row"."proname" = 'sync_zero_run_metadata_to_agent_runs'
     AND pg_get_function_identity_arguments("function_row"."oid") = '';
 
-  IF "bridge_trigger_count" <> 1 OR "bridge_function_count" <> 1 THEN
+  IF "bridge_trigger_count" NOT IN (0, 1)
+    OR "bridge_function_count" NOT IN (0, 1)
+    OR "bridge_trigger_count" <> "bridge_function_count"
+  THEN
     RAISE EXCEPTION
-      'Stage 4 expected one enabled metadata bridge trigger and function; found triggers=%, functions=%',
+      'Stage 4 expected matching bridge trigger/function state; found triggers=%, functions=%',
       "bridge_trigger_count",
       "bridge_function_count";
   END IF;
@@ -273,8 +296,8 @@ SET LOCAL lock_timeout = '1s';
 --> statement-breakpoint
 SET LOCAL statement_timeout = '10s';
 --> statement-breakpoint
-DROP TRIGGER "sync_zero_run_metadata_to_agent_runs" ON "zero_runs";
+DROP TRIGGER IF EXISTS "sync_zero_run_metadata_to_agent_runs" ON "zero_runs";
 --> statement-breakpoint
-DROP FUNCTION "sync_zero_run_metadata_to_agent_runs"();
+DROP FUNCTION IF EXISTS "sync_zero_run_metadata_to_agent_runs"();
 --> statement-breakpoint
 COMMIT;
