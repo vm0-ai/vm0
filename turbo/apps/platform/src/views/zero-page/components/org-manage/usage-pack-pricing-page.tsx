@@ -1,7 +1,8 @@
-import { ArrowLeft, Check, User } from "lucide-react";
+import { ArrowLeft, User, X } from "lucide-react";
 import {
   Button,
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -169,6 +170,19 @@ function planName(tier: UsagePackPlanTier): string {
 
 function planConcurrentSlots(tier: UsagePackPlanTier): number {
   return tier === "pro" ? 2 : 10;
+}
+
+// Both plans carry the same shared-agent allowance; Team only adds concurrency,
+// voice input and support on top of it.
+const SHARED_AGENT_COUNT = 7;
+
+function planVoiceInput(tier: UsagePackPlanTier): {
+  readonly minutes: number;
+  readonly requests: number;
+} {
+  return tier === "pro"
+    ? { minutes: 200, requests: 300 }
+    : { minutes: 500, requests: 500 };
 }
 
 function legacyPlanMonthlyCredits(tier: UsagePackPlanTier): number {
@@ -735,120 +749,152 @@ function MemberUsageConfiguration({
   );
 }
 
-function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
-  return (
-    <div className="flex flex-col gap-2.5">
-      {tier === "team" && (
-        <p className="text-[13px] font-medium text-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.usagePacks.everythingOnPlus;
-            },
-            { plan: planName("pro") },
-          )}
-        </p>
-      )}
-      <ul className="flex flex-col gap-2.5">
-        {planFeatures(tier).map((feature) => {
-          return (
-            <li key={feature} className="flex items-start gap-2">
-              <Check size={14} className="mt-0.5 shrink-0" />
-              <span className="text-[13px] leading-snug text-foreground">
-                {feature}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function PlanPriceRow({
-  label,
-  value,
+/* One price, expressed as a floor. A workspace pays the plan plus one package
+   for every member, and packages run from $20 to $200 -- so a single figure
+   would only ever be right for a one-member workspace on the cheapest package.
+   The line under the figure prints what makes it up. */
+function PlanPrice({
+  basePriceUsd,
+  catalog,
+  keepsMemberPackages,
 }: {
-  readonly label: string;
-  readonly value: string;
+  readonly basePriceUsd: number;
+  readonly catalog: readonly UsagePackCatalogItem[];
+  readonly keepsMemberPackages: boolean;
 }) {
+  const packagePrices = catalog.map((item) => {
+    return item.priceUsd;
+  });
+  const lowestPackageUsd = Math.min(...packagePrices);
+  const highestPackageUsd = Math.max(...packagePrices);
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-[13px] text-muted-foreground">{label}</span>
-      <span className="text-[13px] font-medium tabular-nums text-foreground">
-        {value}
-        <span className="font-normal text-muted-foreground">
+    <div className="-mx-6 mt-4 border-y-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-4">
+      <p className="text-2xl font-medium leading-tight tabular-nums text-foreground">
+        <span className="text-sm font-normal text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.priceFrom;
+          })}{" "}
+        </span>
+        {formatUsd(basePriceUsd + lowestPackageUsd, 0)}
+        <span className="text-sm font-normal text-muted-foreground">
           {i18n.t(($) => {
             return $.billing.plans.perMonth;
           })}
         </span>
-      </span>
+      </p>
+      <p className="mt-2 text-sm leading-snug text-muted-foreground">
+        {keepsMemberPackages
+          ? i18n.t(($) => {
+              return $.billing.plans.usagePacks.existingPackagesUnchanged;
+            })
+          : i18n.t(
+              ($) => {
+                return $.billing.plans.usagePacks.planPlusPackages;
+              },
+              {
+                highest: formatUsd(highestPackageUsd, 0),
+                lowest: formatUsd(lowestPackageUsd, 0),
+                plan: formatUsd(basePriceUsd, 0),
+              },
+            )}
+      </p>
     </div>
   );
 }
 
-function PlanPriceBreakdown({
-  basePriceUsd,
-  keepsMemberPackages,
-  minimumPackage,
-  totalPriceUsd,
-}: {
-  readonly basePriceUsd: number;
-  readonly keepsMemberPackages: boolean;
-  readonly minimumPackage: UsagePackCatalogItem;
-  readonly totalPriceUsd: number;
-}) {
-  return (
-    <>
-      <div className="mt-4">
-        <div className="pb-3">
-          <PlanPriceRow
-            label={i18n.t(($) => {
-              return $.billing.plans.sectionTitle;
-            })}
-            value={formatUsd(basePriceUsd, 0)}
-          />
-        </div>
-        <div className="h-px bg-border" />
-        <div className="py-3">
-          <PlanPriceRow
-            label={i18n.t(($) => {
-              return $.billing.plans.usagePacks.memberPackages;
-            })}
-            value={formatUsd(minimumPackage.priceUsd, 0)}
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            {keepsMemberPackages
-              ? i18n.t(($) => {
-                  return $.billing.plans.usagePacks.existingPackagesUnchanged;
-                })
-              : i18n.t(
-                  ($) => {
-                    return $.billing.plans.usagePacks.creditsPerMember;
-                  },
-                  {
-                    credits: formatLocalizedNumber(minimumPackage.totalCredits),
-                  },
-                )}
-          </p>
-        </div>
-      </div>
+/* Both plans list the same rows in the same order, so the two columns can be
+   read across rather than compared item by item between two unequal lists. */
+function planComparisonRows(
+  tier: UsagePackPlanTier,
+): readonly { readonly label: string; readonly value: string }[] {
+  const voice = planVoiceInput(tier);
+  return [
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.comparison.concurrentRuns;
+      }),
+      value: formatLocalizedNumber(planConcurrentSlots(tier)),
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.comparison.addOnConcurrency;
+      }),
+      value:
+        tier === "team"
+          ? i18n.t(($) => {
+              return $.billing.plans.comparison.available;
+            })
+          : "—",
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.comparison.sharedAgents;
+      }),
+      value: formatLocalizedNumber(SHARED_AGENT_COUNT),
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.comparison.privateAgents;
+      }),
+      value: i18n.t(($) => {
+        return $.billing.plans.comparison.unlimited;
+      }),
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.comparison.voiceInput;
+      }),
+      value: i18n.t(
+        ($) => {
+          return $.billing.plans.comparison.voiceInputValue;
+        },
+        {
+          minutes: formatLocalizedNumber(voice.minutes),
+          requests: formatLocalizedNumber(voice.requests),
+        },
+      ),
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.comparison.ownLlmKeys;
+      }),
+      value: i18n.t(($) => {
+        return $.billing.plans.comparison.included;
+      }),
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.comparison.support;
+      }),
+      value:
+        tier === "team"
+          ? i18n.t(($) => {
+              return $.billing.plans.comparison.supportPriority;
+            })
+          : i18n.t(($) => {
+              return $.billing.plans.comparison.supportEmail;
+            }),
+    },
+  ];
+}
 
-      <div className="-mx-5 flex items-baseline justify-between gap-3 border-y-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-5 py-3.5">
-        <span className="text-[13px] font-medium text-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.monthlyTotal;
-          })}
-        </span>
-        <span className="text-3xl font-light tracking-tight tabular-nums text-foreground">
-          {formatUsd(totalPriceUsd, 0)}
-          <span className="text-[13px] font-normal tracking-normal text-muted-foreground">
-            {i18n.t(($) => {
-              return $.billing.plans.perMonth;
-            })}
-          </span>
-        </span>
-      </div>
-    </>
+function PlanComparison({ tier }: { readonly tier: UsagePackPlanTier }) {
+  return (
+    <div className="mt-5 text-muted-foreground">
+      {planComparisonRows(tier).map((row, index) => {
+        return (
+          <div
+            key={row.label}
+            className={`flex items-baseline justify-between gap-4 py-1.5 text-sm font-medium leading-snug ${
+              index > 0 ? "border-t-[0.7px] border-[hsl(var(--gray-100))]" : ""
+            }`}
+          >
+            <span>{row.label}</span>
+            <span className="text-right tabular-nums">{row.value}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -863,22 +909,21 @@ function PlanSelectionPanel({ children }: { readonly children: ReactNode }) {
 function PlanSelectionCard({
   action,
   busy,
+  catalog,
   divided,
   keepsMemberPackages,
-  minimumPackage,
   onAction,
   plan,
 }: {
   readonly action: PlanSelectionAction;
   readonly busy: boolean;
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly divided: boolean;
   readonly keepsMemberPackages: boolean;
-  readonly minimumPackage: UsagePackCatalogItem;
   readonly onAction: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const name = planName(plan.tier);
-  const displayedPriceUsd = plan.basePriceUsd + minimumPackage.priceUsd;
   const actionLabel =
     action === "convert"
       ? i18n.t(($) => {
@@ -910,7 +955,7 @@ function PlanSelectionCard({
         },
         { plan: name },
       )}
-      className={`flex flex-col px-5 py-6 ${
+      className={`flex flex-col p-6 ${
         divided
           ? "border-t-[0.7px] border-[hsl(var(--gray-200))] sm:border-l-[0.7px] sm:border-t-0"
           : ""
@@ -923,31 +968,34 @@ function PlanSelectionCard({
           loading="lazy"
           className="h-9 w-9 shrink-0 object-contain"
         />
-        <h3 className="text-[15px] font-medium text-foreground">{name}</h3>
+        <h3 className="text-2xl font-medium leading-tight text-foreground">
+          {name}
+        </h3>
       </div>
-      <p className="mt-2 min-h-[54px] text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-2 min-h-[42px] text-sm leading-normal text-muted-foreground">
         {planDescription(plan.tier)}
       </p>
 
-      <PlanPriceBreakdown
+      <PlanPrice
         basePriceUsd={plan.basePriceUsd}
+        catalog={catalog}
         keepsMemberPackages={keepsMemberPackages}
-        minimumPackage={minimumPackage}
-        totalPriceUsd={displayedPriceUsd}
       />
 
-      <Button
-        type="button"
-        variant={plan.popular ? "default" : "outline"}
-        className="mt-5 h-10 w-full text-sm font-medium"
-        disabled={action === "disabled" || busy}
-        onClick={onAction}
-      >
-        {actionLabel}
-      </Button>
+      <PlanComparison tier={plan.tier} />
 
-      <div className="my-5 h-px bg-border" />
-      <PlanFeatureList tier={plan.tier} />
+      {/* The action closes the column, under everything it buys. */}
+      <div className="mt-auto pt-6">
+        <Button
+          type="button"
+          variant={plan.popular ? "default" : "outline"}
+          className="h-10 w-full text-sm font-medium"
+          disabled={action === "disabled" || busy}
+          onClick={onAction}
+        >
+          {actionLabel}
+        </Button>
+      </div>
     </article>
   );
 }
@@ -1069,11 +1117,13 @@ function pricingStepTitle(step: 1 | 2): string {
    to the billing tab. */
 function PricingStepDialog({
   children,
+  flush = false,
   onBack,
   onClose,
   step,
 }: {
   readonly children: ReactNode;
+  readonly flush?: boolean;
   readonly onBack?: () => void;
   readonly onClose: () => void;
   readonly step: 1 | 2;
@@ -1090,19 +1140,34 @@ function PricingStepDialog({
     >
       <DialogContent
         aria-describedby={undefined}
-        closeLabel={t(($) => {
-          return $.settings.shared.close;
-        })}
-        className="flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        showCloseButton={false}
+        className="flex h-[min(46rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
       >
-        <DialogHeader className="flex-row shrink-0 items-center gap-3 space-y-0 border-b-[0.7px] border-[hsl(var(--gray-200))] px-5 py-4 pr-16 text-left">
+        {/* The close button is an item in this row rather than a box pinned to
+            the frame, so the title, the step counter and the close glyph share
+            one centre line and one right inset. */}
+        <DialogHeader className="h-14 flex-row shrink-0 items-center gap-3 space-y-0 border-b-[0.7px] border-[hsl(var(--gray-200))] py-0 pl-6 pr-4 text-left">
           {onBack && <PricingBackButton onBack={onBack} />}
           <DialogTitle className="min-w-0 flex-1 text-base font-medium leading-none">
             {pricingStepTitle(step)}
           </DialogTitle>
           <PricingStepIndicator current={step} />
+          <DialogClose
+            className="icon-button -ml-1 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={t(($) => {
+              return $.settings.shared.close;
+            })}
+          >
+            <X size={20} />
+          </DialogClose>
         </DialogHeader>
-        <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+        <div
+          className={
+            flush
+              ? "flex min-h-0 flex-1 flex-col"
+              : "dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto p-5"
+          }
+        >
           {children}
         </div>
       </DialogContent>
@@ -1211,34 +1276,41 @@ function PlanSelectionStep({
     action: PlanSelectionAction,
   ) => void;
 }) {
-  const minimumPackage = usagePackCatalogItem(catalog, MINIMUM_USAGE_PACK_USD);
   return (
     /* No panel border inside the dialog frame -- the only rule between the two
        plans is the hairline the second column carries, and it runs the full
-       height of the body so the frame reads as two columns, not two cards. */
-    <div className="grid flex-1 grid-cols-1 sm:grid-cols-2">
-      {USAGE_PACK_PLANS.map((plan, index) => {
-        const action = usagePackPlanAction(
-          checkoutAllowed,
-          currentTier,
-          managedTier,
-          plan.tier,
-        );
-        return (
-          <PlanSelectionCard
-            key={plan.tier}
-            action={action}
-            busy={false}
-            divided={index > 0}
-            keepsMemberPackages={managedTier !== null}
-            minimumPackage={minimumPackage}
-            plan={plan}
-            onAction={() => {
-              onAction(plan.tier, action);
-            }}
-          />
-        );
-      })}
+       height of the body so the frame reads as two columns, not two cards.
+       The columns take the scroll; the note stays pinned to the frame. */
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="dialog-scrollable grid min-h-0 flex-1 grid-cols-1 overflow-y-auto sm:grid-cols-2">
+        {USAGE_PACK_PLANS.map((plan, index) => {
+          const action = usagePackPlanAction(
+            checkoutAllowed,
+            currentTier,
+            managedTier,
+            plan.tier,
+          );
+          return (
+            <PlanSelectionCard
+              key={plan.tier}
+              action={action}
+              busy={false}
+              catalog={catalog}
+              divided={index > 0}
+              keepsMemberPackages={managedTier !== null}
+              plan={plan}
+              onAction={() => {
+                onAction(plan.tier, action);
+              }}
+            />
+          );
+        })}
+      </div>
+      <p className="shrink-0 border-t-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 text-sm leading-snug text-muted-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.packagePerMemberNote;
+        })}
+      </p>
     </div>
   );
 }
@@ -2811,12 +2883,9 @@ export function UsagePackMigrationPlanSelectionPage({
                 key={plan.tier}
                 action={action}
                 busy={false}
+                catalog={catalog}
                 divided={index > 0}
                 keepsMemberPackages={configuration !== null}
-                minimumPackage={usagePackCatalogItem(
-                  catalog,
-                  MINIMUM_USAGE_PACK_USD,
-                )}
                 plan={plan}
                 onAction={() => {
                   setMemberUsageSelections(
@@ -2953,6 +3022,7 @@ export function UsagePackPricingDialogs({
   });
   return (
     <PricingStepDialog
+      flush={!selectedPlan}
       step={selectedPlan ? 2 : 1}
       onBack={
         selectedPlan
@@ -2967,7 +3037,11 @@ export function UsagePackPricingDialogs({
       }}
     >
       {!catalog || !managementLoaded ? (
-        <div className="flex-1 animate-pulse rounded-xl bg-muted/40" />
+        <div
+          className={`flex-1 animate-pulse rounded-xl bg-muted/40 ${
+            selectedPlan ? "" : "m-5"
+          }`}
+        />
       ) : selectedPlan ? (
         <PackageConfigurationStep
           catalog={catalog}
