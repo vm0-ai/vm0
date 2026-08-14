@@ -7,7 +7,7 @@ import { bodyResultOf } from "../context/request";
 import { normalizeWebUploadContentType } from "../../lib/uploads-constants";
 import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
-import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
+import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 
 const completeBody$ = bodyResultOf(zeroUploadsContract.complete);

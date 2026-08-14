@@ -11,7 +11,7 @@ import {
   completeMultipartS3Upload,
 } from "../external/s3";
 import { resolveArtifactMultipartUpload$ } from "../services/artifact-storage.service";
-import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
+import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 
 const completeMultipartInner$ = command(
