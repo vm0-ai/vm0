@@ -384,6 +384,11 @@ jobs:
           retention-days: 1
           compression-level: 1
 
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        run: bash .github/scripts/report-cgroup-memory-peak.sh
+
   build:
     name: Build runner image (${{ matrix.label }})
     runs-on: ubuntu-latest

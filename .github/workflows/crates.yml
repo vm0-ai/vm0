@@ -398,6 +398,11 @@ jobs:
               --test production_identity -- \
               --ignored --exact production_env_script_remains_until_operation_cleanup
 
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        run: bash .github/scripts/report-cgroup-memory-peak.sh
+
   coverage:
     runs-on: ubuntu-latest-8-cores
     timeout-minutes: 20
@@ -455,6 +460,11 @@ jobs:
           files: crates/lcov.info
           flags: rust
 
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        run: bash .github/scripts/report-cgroup-memory-peak.sh
+
   api-contracts-rust-bindings:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -497,6 +507,11 @@ jobs:
       - name: Check runner firewall base URL contract
         working-directory: crates
         run: cargo test -p runner types::tests::firewall_base_url_validation_matches_shared_contract -- --exact
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        run: bash .github/scripts/report-cgroup-memory-peak.sh
 
   mitm-addon-test:
     runs-on: ubuntu-latest
@@ -609,6 +624,11 @@ jobs:
           scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
           # shellcheck disable=SC2029
           ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=4096 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        run: bash .github/scripts/report-cgroup-memory-peak.sh
 
   runner-build:
     runs-on: ubuntu-latest
