@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
+import { builtInGenerationAcceptedResponseSchema } from "./built-in-generation";
 
 const c = initContract();
 
@@ -163,7 +163,7 @@ export const zeroAvatarVideoContract = c.router({
     body: zeroAvatarVideoGenerateRequestSchema,
     responses: {
       200: zeroAvatarVideoGenerateResponseSchema,
-      202: zeroBuiltInGenerationAcceptedResponseSchema,
+      202: builtInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,

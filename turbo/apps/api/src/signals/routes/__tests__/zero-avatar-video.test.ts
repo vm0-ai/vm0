@@ -25,7 +25,7 @@ import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generation
 import { artifactCatalogRoutes } from "../artifact-catalog";
 import { zeroAvatarVideoRoutes } from "../zero-avatar-video";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
+import { builtInGenerationRoutes } from "../built-in-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -69,7 +69,7 @@ function createAvatarVideoTestApp(
     routes: [
       ...zeroAvatarVideoRoutes,
       ...artifactCatalogRoutes,
-      ...zeroBuiltInGenerationRoutes,
+      ...builtInGenerationRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
     ],

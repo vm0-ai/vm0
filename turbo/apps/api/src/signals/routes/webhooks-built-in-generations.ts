@@ -28,7 +28,7 @@ import {
   getBuiltInGenerationWebhookJob$,
   readBuiltInGenerationRequestInternal,
   type BuiltInGenerationWebhookJob,
-} from "../services/zero-built-in-generation.service";
+} from "../services/built-in-generation.service";
 import {
   completeRunBuiltInAdmission$,
   type RunBuiltInAdmission,

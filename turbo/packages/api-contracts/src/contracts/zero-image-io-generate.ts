@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
+import { builtInGenerationAcceptedResponseSchema } from "./built-in-generation";
 
 const c = initContract();
 const stringOrStringArraySchema = z.union([
@@ -82,7 +82,7 @@ export const zeroImageIoGenerateContract = c.router({
     body: zeroImageIoGenerateRequestSchema,
     responses: {
       200: zeroImageIoGenerateResponseSchema,
-      202: zeroBuiltInGenerationAcceptedResponseSchema,
+      202: builtInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
