@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.753.1](https://github.com/vm0-ai/vm0/compare/app-v0.753.0...app-v0.753.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** catch up open chat threads after reconnect ([#27279](https://github.com/vm0-ai/vm0/issues/27279)) ([171027e](https://github.com/vm0-ai/vm0/commit/171027e9a020b474172440e8bd311b86859791c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.1
+    * @okouai/core bumped to 8.560.4
+
 ## [0.753.0](https://github.com/vm0-ai/vm0/compare/app-v0.752.0...app-v0.753.0) (2026-08-14)
 
 
