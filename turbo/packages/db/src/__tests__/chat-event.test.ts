@@ -114,11 +114,6 @@ describe("chatEvents schema", () => {
         name: "chat_events_chat_thread_id_chat_threads_id_fk",
         onDelete: "cascade",
       },
-      {
-        columns: ["revokes_event_id"],
-        name: "chat_events_revokes_event_id_chat_events_id_fk",
-        onDelete: "no action",
-      },
     ]);
   });
 });

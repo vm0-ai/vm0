@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { testChatEventRetentionContract } from "@okouai/api-contracts/contracts/test-chat-event-retention";
 import { cronRetainChatEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { createStore } from "ccstate";
-import { delay } from "signal-timers";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -18,7 +17,6 @@ import {
   seedRetentionOutputEvent$,
   seedRetentionOutputEvents$,
   seedRetentionPendingEvent$,
-  seedRetentionRevokeGroup$,
   seedRetentionRun$,
   setRetentionRunStatus$,
   settleRetentionActiveInput$,
@@ -36,7 +34,6 @@ const CRON_SECRET = "test-chat-event-retention-secret";
 const DEPLOYMENT_SHA = "a".repeat(40);
 const OLD_OFFSET_MS = -60_000;
 const NEW_OFFSET_MS = 60_000;
-const CROSS_BOUNDARY_OFFSET_MS = 10_000;
 
 function fixtureClient() {
   return setupApp({ context, routes: testChatEventRetentionRoutes })(
@@ -112,6 +109,12 @@ describe("chat event retention cron", () => {
       { chatThreadId: threadId, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
+    const batchEventIds = await store.set(
+      seedRetentionOutputEvents$,
+      { chatThreadId: threadId, count: 500, offsetMs: OLD_OFFSET_MS },
+      context.signal,
+    );
+    const oldEventIds = [oldEventId, ...batchEventIds];
     const retainedEventId = await store.set(
       seedRetentionOutputEvent$,
       { chatThreadId: threadId, offsetMs: NEW_OFFSET_MS },
@@ -128,11 +131,13 @@ describe("chat event retention cron", () => {
     const cutoff = new Date(result.cutoff);
 
     expect(result).toMatchObject({
+      scanLimit: 1000,
       deleteLimit: 500,
-      candidates: 1,
-      deleted: 1,
+      candidates: 501,
+      deleted: 500,
+      skippedBatchLimit: 1,
       overlapPrevented: false,
-      hasMore: false,
+      hasMore: true,
     });
     expect(
       before
@@ -148,8 +153,22 @@ describe("chat event retention cron", () => {
         })
         ?.createdAt.getTime(),
     ).toBeGreaterThanOrEqual(cutoff.getTime());
-    await expect(eventRows(oldEventId, retainedEventId)).resolves.toMatchObject(
-      [{ id: retainedEventId }],
+    const retainedAfterFirstBatch = await eventRows(
+      ...oldEventIds,
+      retainedEventId,
+    );
+    expect(
+      retainedAfterFirstBatch.filter((row) => {
+        return oldEventIds.includes(row.id);
+      }),
+    ).toHaveLength(1);
+    expect(retainedAfterFirstBatch).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: retainedEventId,
+          revokesEventId: null,
+        }),
+      ]),
     );
 
     const completionEvents = retentionCompletionEvents();
@@ -159,20 +178,28 @@ describe("chat event retention cron", () => {
       context: "api:cron:retain-chat-events",
       deploymentCommitSha: DEPLOYMENT_SHA,
       cutoff: result.cutoff,
+      scanLimit: 1000,
       scanned: result.scanned,
-      candidates: 1,
-      deleted: 1,
+      candidates: 501,
+      deleted: 500,
       skippedSnapshot: 0,
       skippedSearchWatermark: 0,
       skippedPendingRunless: 0,
       skippedNonterminalRun: 0,
       skippedActiveInput: 0,
-      skippedRevokeGroup: 0,
-      hasMore: false,
+      skippedBatchLimit: 1,
+      hasMore: true,
     });
 
     const retry = await retainFixtures(threadId);
-    expect(retry).toMatchObject({ deleted: 0, candidates: 0, hasMore: false });
+    expect(retry).toMatchObject({ deleted: 1, candidates: 1, hasMore: false });
+    const finalRetry = await retainFixtures(threadId);
+    expect(finalRetry).toMatchObject({
+      deleted: 0,
+      candidates: 0,
+      hasMore: false,
+    });
+    await expect(eventRows(...oldEventIds)).resolves.toHaveLength(0);
     await expect(eventRows(retainedEventId)).resolves.toHaveLength(1);
   }, 60_000);
 
@@ -328,71 +355,6 @@ describe("chat event retention cron", () => {
       ),
     ).resolves.toHaveLength(0);
   }, 60_000);
-
-  it("deletes only reference-closed revoke groups across cutoff and batch boundaries", async () => {
-    const threadId = await createFixtureThread("revoke-groups");
-    const cutoffGroup = await store.set(
-      seedRetentionRevokeGroup$,
-      {
-        chatThreadId: threadId,
-        targetOffsetMs: -180_000,
-        revokerOffsetMs: CROSS_BOUNDARY_OFFSET_MS,
-      },
-      context.signal,
-    );
-    await store.set(
-      seedRetentionOutputEvents$,
-      { chatThreadId: threadId, count: 499, offsetMs: -120_000 },
-      context.signal,
-    );
-    const batchGroup = await store.set(
-      seedRetentionRevokeGroup$,
-      {
-        chatThreadId: threadId,
-        targetOffsetMs: OLD_OFFSET_MS - 1,
-        revokerOffsetMs: OLD_OFFSET_MS,
-      },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      { chatThreadId: threadId },
-      context.signal,
-    );
-
-    const first = await retainFixtures(threadId);
-    expect(first).toMatchObject({
-      candidates: 501,
-      deleted: 499,
-      skippedCutoffBoundary: 1,
-      skippedRevokeGroup: 1,
-      skippedBatchLimit: 2,
-      hasMore: true,
-    });
-    await expect(
-      eventRows(
-        cutoffGroup.targetId,
-        cutoffGroup.revokerId,
-        batchGroup.targetId,
-        batchGroup.revokerId,
-      ),
-    ).resolves.toHaveLength(4);
-
-    await delay(CROSS_BOUNDARY_OFFSET_MS + 1000, { signal: context.signal });
-    const second = await retainFixtures(threadId);
-    expect(second).toMatchObject({ deleted: 4, hasMore: false });
-    await expect(
-      eventRows(
-        cutoffGroup.targetId,
-        cutoffGroup.revokerId,
-        batchGroup.targetId,
-        batchGroup.revokerId,
-      ),
-    ).resolves.toHaveLength(0);
-
-    const retry = await retainFixtures(threadId);
-    expect(retry).toMatchObject({ deleted: 0, candidates: 0, hasMore: false });
-  }, 90_000);
 
   it("prevents overlapping retention transactions without waiting", async () => {
     const threadId = await createFixtureThread("overlap");

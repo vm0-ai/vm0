@@ -21,23 +21,20 @@ import { tryLockChatEventRetention } from "./chat-event-retention-lock.service";
 
 const CHAT_EVENT_RETENTION_DAYS = 30;
 const CHAT_EVENT_RETENTION_DELETE_LIMIT = 500;
-const CHAT_EVENT_RETENTION_ROOT_SCAN_LIMIT = 1000;
-const CHAT_EVENT_RETENTION_GROUP_LIMIT = CHAT_EVENT_RETENTION_DELETE_LIMIT + 1;
+const CHAT_EVENT_RETENTION_SCAN_LIMIT = 1000;
 
 export interface ChatEventRetentionStats {
   readonly cutoff: string;
-  readonly rootScanLimit: number;
+  readonly scanLimit: number;
   readonly deleteLimit: number;
   readonly scanned: number;
   readonly candidates: number;
   readonly deleted: number;
-  readonly skippedCutoffBoundary: number;
   readonly skippedSnapshot: number;
   readonly skippedSearchWatermark: number;
   readonly skippedPendingRunless: number;
   readonly skippedNonterminalRun: number;
   readonly skippedActiveInput: number;
-  readonly skippedRevokeGroup: number;
   readonly skippedBatchLimit: number;
   readonly hasMore: boolean;
   readonly overlapPrevented: boolean;
@@ -58,13 +55,11 @@ const retentionRowSchema = z.object({
   scanned: z.int().nonnegative(),
   candidates: z.int().nonnegative(),
   deleted: z.int().nonnegative(),
-  skippedCutoffBoundary: z.int().nonnegative(),
   skippedSnapshot: z.int().nonnegative(),
   skippedSearchWatermark: z.int().nonnegative(),
   skippedPendingRunless: z.int().nonnegative(),
   skippedNonterminalRun: z.int().nonnegative(),
   skippedActiveInput: z.int().nonnegative(),
-  skippedRevokeGroup: z.int().nonnegative(),
   skippedBatchLimit: z.int().nonnegative(),
 });
 
@@ -107,22 +102,20 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
   return sql`
     classified AS MATERIALIZED (
       SELECT
-        member.*,
+        event.*,
         CASE
-          WHEN member.created_at >= ${cutoff}::timestamp
-            THEN 'cutoff_boundary'
           WHEN head.id IS NULL
             OR head.archive_schema_version
               <> ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-            OR head.last_seq_id < member.seq_id
+            OR head.last_seq_id < event.seq_id
             OR head.last_event_id IS NULL
             OR head.object_key !~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
             THEN 'snapshot'
           WHEN watermark.chat_thread_id IS NULL
-            OR watermark.indexed_seq_id < member.seq_id
+            OR watermark.indexed_seq_id < event.seq_id
             THEN 'search_watermark'
-          WHEN member.run_id IS NULL
-            AND member.event_type IN (
+          WHEN event.run_id IS NULL
+            AND event.event_type IN (
               'input.prompt',
               'input.automation',
               'input.goal',
@@ -131,7 +124,7 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
             AND NOT EXISTS (
               SELECT 1
               FROM ${chatEvents} pending_revoker
-              WHERE pending_revoker.revokes_event_id = member.id
+              WHERE pending_revoker.revokes_event_id = event.id
             )
             THEN 'pending_runless'
           WHEN run.id IS NOT NULL
@@ -142,7 +135,7 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
             FROM ${activeInputDeliveryItems} delivery_item
             INNER JOIN ${activeInputDeliveries} delivery
               ON delivery.id = delivery_item.delivery_id
-            WHERE delivery_item.source_event_id = member.id
+            WHERE delivery_item.source_event_id = event.id
               AND (
                 delivery.status = 'open'
                 OR delivery_item.disposition IS NULL
@@ -151,50 +144,25 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
             THEN 'active_input'
           ELSE NULL
         END AS skip_reason
-      FROM locked_members member
+      FROM locked_events event
       LEFT JOIN ${chatEventSnapshots} head
-        ON head.chat_thread_id = member.chat_thread_id
+        ON head.chat_thread_id = event.chat_thread_id
        AND head.is_head = true
       LEFT JOIN ${chatEventSearchMessageWatermarks} watermark
-        ON watermark.chat_thread_id = member.chat_thread_id
-      LEFT JOIN ${agentRuns} run ON run.id = member.run_id
+        ON watermark.chat_thread_id = event.chat_thread_id
+      LEFT JOIN ${agentRuns} run ON run.id = event.run_id
     ),
-    group_summary AS MATERIALIZED (
-      SELECT
-        classified.root_id,
-        count(*)::int AS group_rows,
-        min(classified.created_at) AS oldest_created_at,
-        bool_or(classified.skip_reason IS NOT NULL) AS unsafe,
-        bool_or(classified.depth = ${CHAT_EVENT_RETENTION_GROUP_LIMIT})
-          AS overflow
+    selected_events AS MATERIALIZED (
+      SELECT classified.id
       FROM classified
-      GROUP BY classified.root_id
-    ),
-    valid_group_order AS MATERIALIZED (
-      SELECT
-        group_summary.root_id,
-        group_summary.group_rows,
-        sum(group_summary.group_rows) OVER (
-          ORDER BY
-            group_summary.oldest_created_at ASC,
-            group_summary.root_id ASC
-        )::int AS running_rows
-      FROM group_summary
-      WHERE NOT group_summary.unsafe
-        AND NOT group_summary.overflow
-    ),
-    selected_groups AS MATERIALIZED (
-      SELECT valid_group_order.root_id
-      FROM valid_group_order
-      WHERE valid_group_order.running_rows
-        <= ${CHAT_EVENT_RETENTION_DELETE_LIMIT}
+      WHERE classified.skip_reason IS NULL
+      ORDER BY classified.created_at ASC, classified.id ASC
+      LIMIT ${CHAT_EVENT_RETENTION_DELETE_LIMIT}
     ),
     deleted_rows AS (
       DELETE FROM ${chatEvents} event
-      USING classified, selected_groups
-      WHERE event.id = classified.id
-        AND classified.root_id = selected_groups.root_id
-        AND classified.skip_reason IS NULL
+      USING selected_events
+      WHERE event.id = selected_events.id
         AND event.created_at < ${cutoff}::timestamp
       RETURNING event.id
     )
@@ -205,13 +173,9 @@ function retentionSummarySql(): SQL {
   return sql`
     SELECT
       count(*)::int AS scanned,
-      count(*) FILTER (
-        WHERE NOT group_summary.unsafe AND NOT group_summary.overflow
-      )::int AS candidates,
+      count(*) FILTER (WHERE classified.skip_reason IS NULL)::int
+        AS candidates,
       (SELECT count(*)::int FROM deleted_rows) AS deleted,
-      count(*) FILTER (
-        WHERE classified.skip_reason = 'cutoff_boundary'
-      )::int AS "skippedCutoffBoundary",
       count(*) FILTER (
         WHERE classified.skip_reason = 'snapshot'
       )::int AS "skippedSnapshot",
@@ -227,19 +191,11 @@ function retentionSummarySql(): SQL {
       count(*) FILTER (
         WHERE classified.skip_reason = 'active_input'
       )::int AS "skippedActiveInput",
-      count(*) FILTER (
-        WHERE classified.skip_reason IS NULL
-          AND (group_summary.unsafe OR group_summary.overflow)
-      )::int AS "skippedRevokeGroup",
       (
-        count(*) FILTER (
-          WHERE NOT group_summary.unsafe AND NOT group_summary.overflow
-        )
+        count(*) FILTER (WHERE classified.skip_reason IS NULL)
         - (SELECT count(*) FROM deleted_rows)
       )::int AS "skippedBatchLimit"
     FROM classified
-    INNER JOIN group_summary
-      ON group_summary.root_id = classified.root_id
   `;
 }
 
@@ -248,42 +204,20 @@ function retainChatEventsSql(
   scope: ChatEventRetentionScope,
 ): SQL {
   return sql`
-    WITH RECURSIVE
-    root_seed AS MATERIALIZED (
-      SELECT event.id
-      FROM ${chatEvents} event
-      WHERE event.created_at < ${cutoff}::timestamp
-        AND event.revokes_event_id IS NULL
-        AND ${retentionScopePredicate(scope)}
-      ORDER BY event.created_at ASC, event.id ASC
-      LIMIT ${CHAT_EVENT_RETENTION_ROOT_SCAN_LIMIT}
-      FOR UPDATE OF event SKIP LOCKED
-    ),
-    revoke_groups(root_id, event_id, depth) AS (
-      SELECT root_seed.id, root_seed.id, 1
-      FROM root_seed
-
-      UNION ALL
-
-      SELECT revoke_groups.root_id, revoker.id, revoke_groups.depth + 1
-      FROM revoke_groups
-      INNER JOIN ${chatEvents} revoker
-        ON revoker.revokes_event_id = revoke_groups.event_id
-      WHERE revoke_groups.depth < ${CHAT_EVENT_RETENTION_GROUP_LIMIT}
-    ),
-    locked_members AS MATERIALIZED (
+    WITH locked_events AS MATERIALIZED (
       SELECT
-        revoke_groups.root_id,
-        revoke_groups.depth,
         event.id,
         event.chat_thread_id,
         event.run_id,
         event.event_type,
         event.seq_id,
         event.created_at
-      FROM revoke_groups
-      INNER JOIN ${chatEvents} event ON event.id = revoke_groups.event_id
-      FOR UPDATE OF event
+      FROM ${chatEvents} event
+      WHERE event.created_at < ${cutoff}::timestamp
+        AND ${retentionScopePredicate(scope)}
+      ORDER BY event.created_at ASC, event.id ASC
+      LIMIT ${CHAT_EVENT_RETENTION_SCAN_LIMIT}
+      FOR UPDATE OF event SKIP LOCKED
     ),
     ${retentionSafetyAndSelectionSql(cutoff)}
     ${retentionSummarySql()}
@@ -314,7 +248,6 @@ async function hasMoreRetainableRows(
          AND watermark.indexed_seq_id >= event.seq_id
         LEFT JOIN ${agentRuns} run ON run.id = event.run_id
         WHERE event.created_at < ${cutoff}::timestamp
-          AND event.revokes_event_id IS NULL
           AND ${retentionScopePredicate(scope)}
           AND NOT (
             event.run_id IS NULL
@@ -370,18 +303,16 @@ async function retainChatEventBatch(
     if (!acquired) {
       return {
         cutoff: cutoffDate.toISOString(),
-        rootScanLimit: CHAT_EVENT_RETENTION_ROOT_SCAN_LIMIT,
+        scanLimit: CHAT_EVENT_RETENTION_SCAN_LIMIT,
         deleteLimit: CHAT_EVENT_RETENTION_DELETE_LIMIT,
         scanned: 0,
         candidates: 0,
         deleted: 0,
-        skippedCutoffBoundary: 0,
         skippedSnapshot: 0,
         skippedSearchWatermark: 0,
         skippedPendingRunless: 0,
         skippedNonterminalRun: 0,
         skippedActiveInput: 0,
-        skippedRevokeGroup: 0,
         skippedBatchLimit: 0,
         hasMore: false,
         overlapPrevented: true,
@@ -402,7 +333,7 @@ async function retainChatEventBatch(
     signal.throwIfAborted();
     return {
       cutoff: cutoffDate.toISOString(),
-      rootScanLimit: CHAT_EVENT_RETENTION_ROOT_SCAN_LIMIT,
+      scanLimit: CHAT_EVENT_RETENTION_SCAN_LIMIT,
       deleteLimit: CHAT_EVENT_RETENTION_DELETE_LIMIT,
       ...retention,
       hasMore,

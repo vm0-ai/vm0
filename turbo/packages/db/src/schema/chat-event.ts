@@ -11,7 +11,6 @@ import {
   bigint,
   uniqueIndex,
   jsonb,
-  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
@@ -73,12 +72,7 @@ export const chatEvents = pgTable(
     // Attribution only: identifies the run that consumed or produced this row.
     // A null value on an unrevoked input identifies pending queue or active-input state.
     runId: uuid("run_id"),
-    revokesEventId: uuid("revokes_event_id").references(
-      (): AnyPgColumn => {
-        return chatEvents.id;
-      },
-      { onDelete: "no action" },
-    ),
+    revokesEventId: uuid("revokes_event_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     payload: jsonb("payload").$type<ChatEventPayload>(),
     /**

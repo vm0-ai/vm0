@@ -286,15 +286,19 @@ describe("archived chat event consumers", () => {
       hidden.targetId,
       hidden.replacementId,
       hiddenRevokerId,
+      invisible.targetId,
     ];
     await archiveAndRetain(fixture.threadId, allEventIds);
-    await expect(
-      store.set(
-        readRetentionEvents$,
-        [invisible.targetId, invisible.replacementId],
-        context.signal,
-      ),
-    ).resolves.toHaveLength(2);
+    const hotEvents = await store.set(
+      readRetentionEvents$,
+      [invisible.targetId, invisible.replacementId],
+      context.signal,
+    );
+    expect(
+      hotEvents.map(({ id }) => {
+        return id;
+      }),
+    ).toStrictEqual([invisible.replacementId]);
 
     mockOptionalEnv("OPENROUTER_API_KEY", "archive-sharing-key");
     chatCallbacks.mockOpenRouterCompletions(() => {

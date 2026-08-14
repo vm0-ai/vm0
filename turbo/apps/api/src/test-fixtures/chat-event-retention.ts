@@ -123,47 +123,6 @@ export const seedRetentionPendingEvent$ = command(
   },
 );
 
-export const seedRetentionRevokeGroup$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly targetOffsetMs?: number;
-      readonly revokerOffsetMs?: number;
-    },
-    signal: AbortSignal,
-  ): Promise<{ readonly targetId: string; readonly revokerId: string }> => {
-    const result = await set(writeDb$).transaction(async (tx) => {
-      const target = await insertChatEvent(tx, {
-        chatThreadId: args.chatThreadId,
-        eventType: "input.prompt",
-        runId: null,
-        contextType: "web",
-        userMessage: {
-          version: 1,
-          parts: [{ type: "text", text: `revoked-${randomUUID()}` }],
-        },
-        createdAt: retentionCreatedAt(args.targetOffsetMs),
-      });
-      if (target === null) {
-        throw new Error("Expected retention revoke target insertion");
-      }
-      const revoker = await revokeChatEvent(tx, target.id, {
-        chatThreadId: args.chatThreadId,
-        eventType: "control.revoke",
-        runId: null,
-        createdAt: retentionCreatedAt(args.revokerOffsetMs),
-      });
-      if (revoker === null) {
-        throw new Error("Expected retention revoker insertion");
-      }
-      return { targetId: target.id, revokerId: revoker.id };
-    });
-    signal.throwIfAborted();
-    return result;
-  },
-);
-
 export const seedRetentionInvisibleReplacement$ = command(
   async (
     { set },
