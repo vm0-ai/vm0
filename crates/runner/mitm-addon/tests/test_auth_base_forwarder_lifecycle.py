@@ -259,7 +259,6 @@ class TestForwardRequestAsyncWrapper:
                     wraps=transport.prepare_forward_request,
                 ) as prepare_forward_request,
                 patch.object(loop, "call_later") as schedule_deadline,
-                patch.object(forwarder, "_start_forward_request_worker") as start_worker,
                 fake_forwarder_upstream() as upstream,
             ):
                 with pytest.raises(RuntimeError, match="workers are shut down"):
@@ -273,13 +272,16 @@ class TestForwardRequestAsyncWrapper:
                 track_active_handle.assert_called_once()
                 prepare_forward_request.assert_not_called()
                 schedule_deadline.assert_not_called()
-                start_worker.assert_not_called()
                 assert upstream.resolve_calls == []
                 assert upstream.sockets == []
 
             assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
             with forwarder._forward_request_active_handles_lock:
                 assert not forwarder._forward_request_active_handles
+            with forwarder._forward_request_pending_futures_lock:
+                assert not forwarder._forward_request_pending_futures
+            with forwarder._forward_request_workers_lock:
+                assert not forwarder._forward_request_workers
             assert forwarder._get_forward_request_admission_semaphore() is semaphore
 
             with fake_forwarder_upstream():
