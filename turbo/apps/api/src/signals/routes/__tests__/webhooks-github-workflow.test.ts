@@ -866,7 +866,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    await accept(
+    const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -888,6 +888,9 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       }),
       [201],
     );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
 
     const response = await postGithubWebhook({
       event: "workflow_run",
@@ -901,6 +904,20 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     expect(response).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
+    const threadEvents = await wf.readThreadEvents(created.body.chatThreadId);
+    const visibleEvent = threadEvents.find((event) => {
+      return (
+        event.eventType === "input.automation" ||
+        event.eventType === "input.prompt"
+      );
+    });
+    if (!visibleEvent) {
+      throw new Error("Expected a visible startup-failure automation event");
+    }
+    expect(chatEventDisplayText(visibleEvent)).toBe(
+      'GitHub Actions workflow ".github/workflows/turbo.yml" completed with conclusion "startup_failure".',
+    );
+
     await runsApi.heartbeatRunner();
     const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
     const runId = listedRuns.runs[0]?.id;
@@ -908,11 +925,13 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected a startup-failure workflow automation");
     }
     const claim = await runsApi.claimRunnerJob(runId);
-    expect(claim.appendSystemPrompt).toContain(
+    expect(claim.prompt).toContain(
       'GitHub Actions workflow ".github/workflows/turbo.yml" completed with conclusion "startup_failure"',
     );
-    expect(claim.appendSystemPrompt).toContain('"name": null');
-    expect(claim.appendSystemPrompt).toContain('"actor": null');
-    expect(claim.appendSystemPrompt).toContain('"triggeringActor": null');
+    expect(claim.prompt).toContain('"name": null');
+    expect(claim.prompt).toContain('"actor": null');
+    expect(claim.prompt).toContain('"triggeringActor": null');
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
   });
 });

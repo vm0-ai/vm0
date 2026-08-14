@@ -1177,8 +1177,9 @@ describe("POST /api/webhooks/gmail", () => {
     if (typeof appendSystemPrompt !== "string") {
       throw new Error("Expected appendSystemPrompt on the queued run");
     }
-    expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expectGmailEventContextInPrompt(appendSystemPrompt, {
+    expect(claim.prompt).toContain("Not included below: the email body.");
+    expect(claim.prompt).not.toContain("Please draft a helpful reply.");
+    expectGmailEventContextInPrompt(claim.prompt, {
       automationId: created.body.id,
       event: "new_message",
       emailAddress: gmailEmail,
@@ -1189,5 +1190,7 @@ describe("POST /api/webhooks/gmail", () => {
       cc: [],
       subject: "Invoice needs a reply",
     });
+    expect(appendSystemPrompt).toContain("# Agent Identity");
+    expect(appendSystemPrompt).not.toContain("# Current context");
   });
 });
