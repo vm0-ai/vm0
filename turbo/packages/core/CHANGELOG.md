@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.559.5](https://github.com/vm0-ai/vm0/compare/core-v8.559.4...core-v8.559.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models through openrouter ([#27077](https://github.com/vm0-ai/vm0/issues/27077)) ([964b19e](https://github.com/vm0-ai/vm0/commit/964b19eb456c63794c2041c1eb69cfd475a6b078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+
 ## [8.559.4](https://github.com/vm0-ai/vm0/compare/core-v8.559.3...core-v8.559.4) (2026-08-14)
 
 
