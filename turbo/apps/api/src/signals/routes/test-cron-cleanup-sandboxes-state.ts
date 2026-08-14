@@ -180,9 +180,13 @@ async function seedRunForAction(
   }
 
   const threadless = readOptionalBoolean(body, "threadless") === true;
-  const pairedMetadata = threadless
-    ? normalizeRunMetadata({ triggerSource: triggerSource.data })
-    : null;
+  const status = readOptionalString(body, "status") ?? "pending";
+  // Queued fixtures can be promoted through the production metadata writer.
+  // Lifecycle-only fixtures that never enter that path intentionally stay null.
+  const runMetadata =
+    threadless || status === "queued"
+      ? normalizeRunMetadata({ triggerSource: triggerSource.data })
+      : null;
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -190,7 +194,7 @@ async function seedRunForAction(
       orgId,
       agentComposeVersionId,
       sessionId: session.id,
-      status: readOptionalString(body, "status") ?? "pending",
+      status,
       prompt: readOptionalString(body, "prompt") ?? "cleanup sandboxes test",
       sandboxId:
         readOptionalString(body, "sandbox_id") ?? `sandbox-${randomUUID()}`,
@@ -201,7 +205,7 @@ async function seedRunForAction(
         body,
         "cancellation_recovery_completed",
       ),
-      ...pairedMetadata,
+      ...runMetadata,
     })
     .returning({ id: agentRuns.id, sandboxId: agentRuns.sandboxId });
   signal.throwIfAborted();
@@ -209,8 +213,8 @@ async function seedRunForAction(
     return actionBadRequest("failed to seed run");
   }
 
-  if (pairedMetadata) {
-    await db.insert(zeroRuns).values({ id: run.id, ...pairedMetadata });
+  if (threadless && runMetadata) {
+    await db.insert(zeroRuns).values({ id: run.id, ...runMetadata });
     signal.throwIfAborted();
   }
 
@@ -788,7 +792,7 @@ async function attachRunThreadForAction(
   }
   await writeRunMetadata(db, {
     patch: { chatThreadId: thread.id },
-    where: eq(zeroRuns.id, runId),
+    where: eq(agentRuns.id, runId),
   });
   signal.throwIfAborted();
   return actionOk({ thread_id: thread.id });

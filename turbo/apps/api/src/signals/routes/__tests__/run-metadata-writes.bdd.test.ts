@@ -11,19 +11,16 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
-  measureRunMetadataBridgeTargetUpdates,
-  readPairedRunAutonomyBudgets,
   readRunMetadataPair,
   saveRunSummaryFixture,
   setRunAutonomyBudgetFixture,
-  verifyRunMetadataTargetFailureRollback,
 } from "./helpers/runtime-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 
-test("normalizes metadata and preserves compatibility-writer transaction semantics", async () => {
+test("normalizes metadata and writes only agent run metadata", async () => {
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected the metadata writer actor to have an org");
@@ -49,8 +46,7 @@ test("normalizes metadata and preserves compatibility-writer transaction semanti
   });
 
   const initialMetadata = await readRunMetadataPair(context, run.runId);
-  expect(initialMetadata.agent_run).toStrictEqual(initialMetadata.zero_run);
-  expect(initialMetadata.zero_run).toStrictEqual({
+  expect(initialMetadata.agent_run).toStrictEqual({
     trigger_source: "test",
     autonomy_budget: 10,
     workflow_automation_id: null,
@@ -67,34 +63,12 @@ test("normalizes metadata and preserves compatibility-writer transaction semanti
     summary: null,
     trigger_brief: null,
   });
+  expect(initialMetadata.zero_run).toBeNull();
 
-  await expect(
-    readPairedRunAutonomyBudgets(context, run.runId),
-  ).resolves.toStrictEqual({ zeroRun: 10, agentRun: 10 });
-
-  await setRunAutonomyBudgetFixture(context, run.runId, 4, {
-    disableBridge: true,
-  });
-
-  await expect(
-    readPairedRunAutonomyBudgets(context, run.runId),
-  ).resolves.toStrictEqual({ zeroRun: 4, agentRun: 4 });
-
-  await expect(
-    measureRunMetadataBridgeTargetUpdates(context, run.runId, 5),
-  ).resolves.toBe(1);
-  await expect(
-    readPairedRunAutonomyBudgets(context, run.runId),
-  ).resolves.toStrictEqual({ zeroRun: 5, agentRun: 5 });
-
-  await expect(
-    verifyRunMetadataTargetFailureRollback(context, run.runId, 6),
-  ).resolves.toStrictEqual({
-    targetWriteFailed: true,
-    errorCode: "55P03",
-    zeroRun: 5,
-    agentRun: 5,
-  });
+  await setRunAutonomyBudgetFixture(context, run.runId, 4);
+  const updatedMetadata = await readRunMetadataPair(context, run.runId);
+  expect(updatedMetadata.agent_run?.autonomy_budget).toBe(4);
+  expect(updatedMetadata.zero_run).toBeNull();
 
   mockOptionalEnv("OPENROUTER_API_KEY", "metadata-summary-key");
   let generatedSummary = "Initial metadata summary";
@@ -112,10 +86,8 @@ test("normalizes metadata and preserves compatibility-writer transaction semanti
     resultText: "the metadata writer completed",
   });
   let summarizedMetadata = await readRunMetadataPair(context, run.runId);
-  expect(summarizedMetadata.agent_run).toStrictEqual(
-    summarizedMetadata.zero_run,
-  );
-  expect(summarizedMetadata.zero_run?.summary).toBe(generatedSummary);
+  expect(summarizedMetadata.agent_run?.summary).toBe(generatedSummary);
+  expect(summarizedMetadata.zero_run).toBeNull();
 
   generatedSummary = "Replacement metadata summary";
   await saveRunSummaryFixture(context, {
@@ -125,8 +97,6 @@ test("normalizes metadata and preserves compatibility-writer transaction semanti
     resultText: "the replacement completed",
   });
   summarizedMetadata = await readRunMetadataPair(context, run.runId);
-  expect(summarizedMetadata.agent_run).toStrictEqual(
-    summarizedMetadata.zero_run,
-  );
-  expect(summarizedMetadata.zero_run?.summary).toBe(generatedSummary);
+  expect(summarizedMetadata.agent_run?.summary).toBe(generatedSummary);
+  expect(summarizedMetadata.zero_run).toBeNull();
 });
