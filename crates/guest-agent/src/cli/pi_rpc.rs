@@ -18,6 +18,7 @@ pub(super) struct PiRpcProjection {
     started_at: Instant,
     emitted_session_init: bool,
     final_assistant: Option<Value>,
+    terminal_error: bool,
 }
 
 impl PiRpcProjection {
@@ -28,6 +29,7 @@ impl PiRpcProjection {
             started_at: Instant::now(),
             emitted_session_init: false,
             final_assistant: None,
+            terminal_error: false,
         }
     }
 
@@ -37,17 +39,23 @@ impl PiRpcProjection {
         record: Value,
         responses: &mpsc::UnboundedSender<Value>,
     ) -> Result<Option<Value>, AgentError> {
+        if self.terminal_error {
+            return Ok(None);
+        }
         match record.get("type").and_then(Value::as_str) {
             Some("response") => self.project_response(record, responses),
             Some("message_end") => self.project_message_end(record),
             Some("agent_settled") => Ok(Some(self.project_agent_settled())),
-            Some("extension_error") => Err(AgentError::Execution(format!(
-                "Pi RPC extension failed: {}",
-                record
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown extension error")
-            ))),
+            Some("extension_error") => {
+                self.terminal_error = true;
+                Err(AgentError::Execution(format!(
+                    "Pi RPC extension failed: {}",
+                    record
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown extension error")
+                )))
+            }
             _ => Ok(None),
         }
     }
@@ -449,6 +457,53 @@ mod tests {
         assert_eq!(
             rx.try_recv().expect("response should be routed")["id"],
             "state"
+        );
+    }
+
+    #[test]
+    fn projection_discards_buffered_records_after_extension_failure() {
+        let (responses, _rx) = mpsc::unbounded_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let error = projection
+            .project(
+                json!({
+                    "type": "extension_error",
+                    "event": "message_end",
+                    "error": "forced SQLite checkpoint failure",
+                }),
+                &responses,
+            )
+            .expect_err("checkpoint failure should terminate projection");
+        assert!(
+            error
+                .to_string()
+                .contains("forced SQLite checkpoint failure")
+        );
+
+        assert!(
+            projection
+                .project(
+                    json!({
+                        "type": "message_end",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{ "type": "text", "text": "must not project" }],
+                            "model": "model",
+                            "timestamp": 1,
+                            "usage": {},
+                            "stopReason": "stop",
+                        }
+                    }),
+                    &responses,
+                )
+                .expect("buffered message should be discarded")
+                .is_none()
+        );
+        assert!(
+            projection
+                .project(json!({ "type": "agent_settled" }), &responses)
+                .expect("buffered terminal event should be discarded")
+                .is_none()
         );
     }
 

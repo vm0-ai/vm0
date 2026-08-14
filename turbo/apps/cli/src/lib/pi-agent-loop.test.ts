@@ -245,6 +245,21 @@ function writeSseResponse(response: ServerResponse, body: string): void {
   response.end(body);
 }
 
+async function installFailingEntryTrigger(databasePath: string): Promise<void> {
+  const database = await createNodeSqliteFactory().open(databasePath);
+  try {
+    database.exec(`
+      CREATE TRIGGER vm0_test_fail_pi_checkpoint
+      BEFORE INSERT ON entries
+      BEGIN
+        SELECT RAISE(FAIL, 'forced SQLite checkpoint failure');
+      END;
+    `);
+  } finally {
+    database.close();
+  }
+}
+
 async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   let timeout: NodeJS.Timeout | undefined;
   try {
@@ -581,6 +596,82 @@ describe("sandbox Pi agent loop", () => {
       await provider.close();
       await rm(root, { recursive: true, force: true });
       await rm(skillDirectory, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("reports a real SQLite checkpoint failure before the buffered message event", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-rpc-checkpoint-"));
+    const sessionDirectory = join(root, "sessions");
+    const databasePath = join(sessionDirectory, "sessions.sqlite");
+    const provider = await ProviderHarness.start();
+    let host: RpcHost | undefined;
+
+    try {
+      await mkdir(sessionDirectory, { recursive: true });
+      const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+      env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+        provider: "deepseek",
+        baseUrl: provider.baseUrl,
+        model: "deepseek-v4-flash",
+        apiKeyEnv: "OPENAI_API_KEY",
+      });
+      host = new RpcHost({ cwd: root, databasePath, env });
+
+      host.send({ id: "state", type: "get_state" });
+      await host.waitFor((record) => {
+        return record.type === "response" && record.id === "state";
+      });
+      await installFailingEntryTrigger(databasePath);
+
+      host.send({
+        id: "checkpoint-failure",
+        type: "prompt",
+        message: "force the native SQLite checkpoint failure",
+      });
+      await host.waitFor((record) => {
+        return record.type === "response" && record.id === "checkpoint-failure";
+      });
+      const checkpointError = await host.waitFor((record) => {
+        return (
+          record.type === "extension_error" && record.event === "message_end"
+        );
+      });
+      expect(String(checkpointError.error)).toContain(
+        "forced SQLite checkpoint failure",
+      );
+      const bufferedMessage = await host.waitFor((record) => {
+        return record.type === "message_end";
+      });
+      expect(bufferedMessage).toMatchObject({
+        message: { role: "user" },
+      });
+
+      const request = await provider.nextRequest();
+      request.respond("uncheckpointed provider answer");
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      const checkpointErrorIndex = host.records.indexOf(checkpointError);
+      const bufferedMessageIndex = host.records.indexOf(bufferedMessage);
+      expect(checkpointErrorIndex).toBeGreaterThanOrEqual(0);
+      expect(bufferedMessageIndex).toBeGreaterThan(checkpointErrorIndex);
+
+      await host.close();
+      host = undefined;
+
+      const database = await createNodeSqliteFactory().open(databasePath);
+      try {
+        const row = database
+          .prepare("SELECT COUNT(*) AS count FROM entries")
+          .get<{ count: number }>();
+        expect(row?.count).toBe(0);
+      } finally {
+        database.close();
+      }
+    } finally {
+      await host?.terminate();
+      await provider.close();
+      await rm(root, { recursive: true, force: true });
     }
   }, 20_000);
 });
