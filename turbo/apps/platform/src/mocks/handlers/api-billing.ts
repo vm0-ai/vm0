@@ -40,7 +40,6 @@ function defaultBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 0,
     concurrencySubscriptions: [],
-    paymentMethodManagementAvailable: true,
   };
 }
 
