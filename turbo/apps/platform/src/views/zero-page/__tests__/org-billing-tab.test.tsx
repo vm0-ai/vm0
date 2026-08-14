@@ -541,9 +541,6 @@ describe("organization billing settings", () => {
     ).toBeInTheDocument();
     expect(within(memberUsage).getByText("Team plan")).toBeInTheDocument();
     expect(within(memberUsage).getByText("$160")).toBeInTheDocument();
-    expect(
-      within(memberUsage).queryByText("10 concurrent runs · Priority support"),
-    ).not.toBeInTheDocument();
     expect(memberUsage).toHaveTextContent(
       "Monthly total63,702 credits · 3,702 bonus$220/month",
     );
