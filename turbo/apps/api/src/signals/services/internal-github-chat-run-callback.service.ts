@@ -23,7 +23,7 @@ import {
   postGithubIssueComment,
   removeGithubCommentReaction,
 } from "./github-issues-api.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { resolveGithubAgentReplyFooterText } from "./zero-github-footer.service";
 

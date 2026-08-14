@@ -51,7 +51,7 @@ import {
 } from "../services/zero-workflow-user-automation-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
-import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
+import { createUserMessageDocument } from "../services/chat-user-message.service";
 import { loadWorkflowVolumeFiles } from "../services/workflow-volume.service";
 import {
   encryptWorkflowWebhookSecret,

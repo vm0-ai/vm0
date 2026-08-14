@@ -13,8 +13,8 @@ import { db } from "../lib/db";
 import {
   insertChatEvent,
   replaceChatEvent,
-} from "../signals/services/zero-chat-event.service";
-import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
+} from "../signals/services/chat-event.service";
+import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 
 interface ChatEventSearchProjectionFixture {
   readonly lastChatEventSeqId: number;

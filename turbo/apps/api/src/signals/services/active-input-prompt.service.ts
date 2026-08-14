@@ -17,7 +17,7 @@ import { loadTelegramQueuedLaunchMaterial } from "./telegram-queued-launch-conte
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
 import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";

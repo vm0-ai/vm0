@@ -3,8 +3,8 @@ import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, eq, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import { revokeChatEvent, insertChatEvent } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { revokeChatEvent, insertChatEvent } from "./chat-event.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import type { Tx } from "../../lib/db-types";
 import { canonicalChatEventGoalId } from "./canonical-chat-event-read.service";
 

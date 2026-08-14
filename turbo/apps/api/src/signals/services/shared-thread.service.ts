@@ -15,9 +15,9 @@ import {
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import { generateSharedThreadTitle } from "./zero-chat-title.service";
-import { projectUserMessageForPublicShare } from "./zero-chat-user-message.service";
+import { projectUserMessageForPublicShare } from "./chat-user-message.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventGoalId,

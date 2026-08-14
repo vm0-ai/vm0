@@ -5,7 +5,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { runOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
+import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 
 export async function publishArtifactsChangedForRun(
   writeDb: Db,

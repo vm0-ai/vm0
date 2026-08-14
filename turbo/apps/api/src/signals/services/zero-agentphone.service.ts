@@ -54,12 +54,12 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import {
   chatEventTypeIn,
   chatInputPromptDispatchCondition,
-} from "./zero-chat-event-type.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+} from "./chat-event-type.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
 import {
   updateUserModelPreference$,
   userModelPreference,

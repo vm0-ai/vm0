@@ -73,13 +73,13 @@ import {
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
 import {
   chatEventTypeIn,
   chatInputPromptDispatchCondition,
-} from "./zero-chat-event-type.service";
+} from "./chat-event-type.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
 import {
   formatTelegramUserDisplayName,

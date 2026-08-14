@@ -12,7 +12,7 @@ import type { Db } from "../external/db";
 import { createSlackClient } from "../external/slack-message-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const ACTIVE_INGRESS_STATUSES = ["pending", "processing"] as const;

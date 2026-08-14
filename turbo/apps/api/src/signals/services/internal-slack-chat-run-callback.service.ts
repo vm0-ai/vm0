@@ -14,7 +14,7 @@ import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import { createSlackClient } from "../external/slack-message-client";

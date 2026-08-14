@@ -8,8 +8,8 @@ import { writeDb$, type Db } from "../external/db";
 import { runTimeBudgetEventIdForRun } from "./assistant-event-id";
 import { lockChatQueueThread } from "./chat-event-queue.service";
 import { notifyRunningChatRunOfPendingInput } from "./chat-thread-queue-drain.service";
-import { insertChatEvent } from "./zero-chat-event.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { insertChatEvent } from "./chat-event.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
 
 const RUN_TIME_BUDGET_LIMIT_MS = 120 * 60 * 1000;
 const RUN_TIME_BUDGET_REMAINING_MS = 5 * 60 * 1000;

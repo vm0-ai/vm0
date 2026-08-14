@@ -18,11 +18,11 @@ import { writeDb$, type Db } from "../external/db";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
-import { insertChatEvents } from "./zero-chat-event.service";
+import { insertChatEvents } from "./chat-event.service";
 import {
   chatEventTypeIn,
   runOwnedChatEventCondition,
-} from "./zero-chat-event-type.service";
+} from "./chat-event-type.service";
 import { canonicalChatEventError } from "./canonical-chat-event-read.service";
 import { publishFirstAssistantEventCreatedSafely } from "./zero-chat-first-assistant-event-metric.service";
 import {

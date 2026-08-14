@@ -80,7 +80,7 @@ import {
   insertChatEvent,
   type NewChatEvent,
   replaceChatEvent,
-} from "./zero-chat-event.service";
+} from "./chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
   agentRunSourceTitleSnapshot,
@@ -89,7 +89,7 @@ import {
   userMessageFileParts,
   withAgentRunSourceAnnotation,
   type ChatAgentRunSourceAnnotation,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   discardUnclaimedUserMessage,
@@ -108,7 +108,7 @@ import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
   chatEventTypeIn,
   runOwnedChatEventCondition,
-} from "./zero-chat-event-type.service";
+} from "./chat-event-type.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventError,

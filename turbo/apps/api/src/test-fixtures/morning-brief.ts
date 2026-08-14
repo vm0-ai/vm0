@@ -5,9 +5,9 @@ import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
-import { insertChatEvent } from "../signals/services/zero-chat-event.service";
+import { insertChatEvent } from "../signals/services/chat-event.service";
 import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
-import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
+import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 
 export async function readMorningBriefDeliveryFixture(args: {
   readonly orgId: string;

@@ -27,12 +27,12 @@ import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import {
   chatEventTextCondition,
   chatEventTypeIn,
-} from "./zero-chat-event-type.service";
+} from "./chat-event-type.service";
 import {
   type ChatAgentRunSourceAnnotation,
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,

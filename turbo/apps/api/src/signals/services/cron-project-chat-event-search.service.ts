@@ -25,7 +25,7 @@ import { writeDb$, type Db } from "../external/db";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,

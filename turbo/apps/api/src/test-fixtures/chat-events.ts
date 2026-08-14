@@ -36,12 +36,12 @@ import {
   insertChatEvent,
   insertChatEvents,
   replaceChatEvent,
-} from "../signals/services/zero-chat-event.service";
+} from "../signals/services/chat-event.service";
 import { canonicalChatEventUserMessage } from "../signals/services/canonical-chat-event-read.service";
 import {
   chatInputPromptDispatchCondition,
   runOwnedChatEventForRunCondition,
-} from "../signals/services/zero-chat-event-type.service";
+} from "../signals/services/chat-event-type.service";
 import {
   acquireVm0ManagedModelKeyFixture,
   releaseVm0ManagedModelKeyFixture,
@@ -49,7 +49,7 @@ import {
 import { visibleChatEventCondition } from "../signals/services/zero-chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
-import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
+import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**

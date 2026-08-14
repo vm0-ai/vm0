@@ -39,10 +39,10 @@ import {
   revokeChatEvent,
   replaceLoadedChatEvent,
   replaceChatEvent,
-} from "./zero-chat-event.service";
+} from "./chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   childAutonomyBudget,
@@ -53,7 +53,7 @@ import type { Tx } from "../../lib/db-types";
 import {
   createUserMessageDocument,
   withRunModelAnnotation,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
 
 type DbTransaction = Tx;

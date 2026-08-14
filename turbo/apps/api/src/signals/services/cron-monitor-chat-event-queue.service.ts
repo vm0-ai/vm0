@@ -23,7 +23,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { STALE_QUEUE_ITEM_AGE_MS } from "./chat-thread-queue-drain.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 const ORPHANED_CHAT_EVENT_ERROR_CODE = "ORPHANED_QUEUED_CHAT_MESSAGES";
 const monitoredEventRevoker = alias(chatEvents, "monitored_event_revoker");
