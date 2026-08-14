@@ -65,7 +65,7 @@ import { zeroIntegrationsAgentPhoneRoutes } from "../../zero-integrations-agentp
 import { zeroIntegrationsGithubUploadCompleteRoutes } from "../../zero-integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
-import { zeroIntegrationsPhoneMessageRoutes } from "../../zero-integrations-phone-message";
+import { integrationsPhoneMessageRoutes } from "../../integrations-phone-message";
 import { zeroIntegrationsPhoneUploadCompleteRoutes } from "../../zero-integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { zeroIntegrationsSlackRoutes } from "../../zero-integrations-slack";
@@ -95,7 +95,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroIntegrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
-  ...zeroIntegrationsPhoneMessageRoutes,
+  ...integrationsPhoneMessageRoutes,
   ...zeroIntegrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
@@ -1817,7 +1817,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsPhoneMessageRoutes,
+        routes: integrationsPhoneMessageRoutes,
       })(integrationsPhoneMessageContract);
       return await accept(
         client.sendMessage({
