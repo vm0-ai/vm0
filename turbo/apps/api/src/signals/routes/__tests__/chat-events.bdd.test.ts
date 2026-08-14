@@ -7566,12 +7566,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoWithOptionsPrompt).toContain(
       "Parameters the user set explicitly",
     );
-    expect(videoWithOptionsPrompt).toContain("- Model: veo3.1-fast");
+    expect(videoWithOptionsPrompt).not.toContain("- Model:");
     expect(videoWithOptionsPrompt).toContain("- Aspect ratio: 9:16");
     expect(videoWithOptionsPrompt).toContain("- Resolution: 1080p");
     expect(videoWithOptionsPrompt).not.toContain("Duration:");
     expect(videoWithOptionsPrompt).toContain(
-      "`--model veo3.1-fast --aspect-ratio 9:16 --resolution 1080p` verbatim",
+      "`--aspect-ratio 9:16 --resolution 1080p` verbatim",
     );
     await cancelChatRun(actor, videoWithOptions.runId);
 
