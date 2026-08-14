@@ -14,13 +14,13 @@ import {
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
 } from "./helpers/zero-integrations-slack";
-import { zeroIntegrationsSlackUploadInitRoutes } from "../zero-integrations-slack-upload-init";
+import { integrationsSlackUploadInitRoutes } from "../integrations-slack-upload-init";
 
 const context = testContext();
 const store = createStore();
 const LARGE_DIRECT_UPLOAD_BYTES = 100 * 1024 * 1024 + 1;
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -54,7 +54,7 @@ function sandboxToken(args: {
   });
 }
 
-describe("POST /api/zero/integrations/slack/upload-file/init", () => {
+describe("POST /api/okou/integrations/slack/upload-file/init", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
 
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
   it("returns 401 when no auth token is provided", async () => {
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -121,7 +121,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -144,11 +144,11 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -165,11 +165,11 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
   it("returns 400 for invalid request bodies", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -187,11 +187,11 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
   it("returns a Slack-issued upload URL and file id on the happy path", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -212,11 +212,11 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
   it("rejects large canonical uploads after asset graduation", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -246,7 +246,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
   it("forwards Slack non-ok upload URL responses as 400 SLACK_ERROR", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValueOnce({
       ok: false,
@@ -255,7 +255,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -271,7 +271,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
   it("forwards malformed Slack upload URL responses as 400 SLACK_ERROR", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValueOnce({
       ok: true,
@@ -280,7 +280,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
@@ -296,7 +296,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
   it("forwards Slack platform errors as 400 SLACK_ERROR", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     context.mocks.slack.files.getUploadURLExternal.mockRejectedValueOnce(
       Object.assign(new Error("invalid_filename"), {
@@ -306,7 +306,7 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
