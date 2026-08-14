@@ -396,14 +396,14 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
             {member.name}
           </span>
           {member.isCurrent && (
-            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground zero-badge">
+            <span className="shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground zero-badge">
               {i18n.t(($) => {
                 return $.settings.workspace.members.you;
               })}
             </span>
           )}
           {member.isPending && (
-            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground zero-badge">
+            <span className="shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground zero-badge">
               {i18n.t(($) => {
                 return $.settings.workspace.members.pending;
               })}
@@ -411,7 +411,7 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
           )}
         </span>
         {member.email && member.email !== member.name && (
-          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+          <span className="mt-0.5 block truncate text-sm text-muted-foreground">
             {member.email}
           </span>
         )}
@@ -422,7 +422,7 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 
 /* Every ledger row lands on the same three columns: who or what the line is,
    the control, and the money. The money column is wide enough for the total
-   row's 30px figure at five digits -- it is the one number that has to fit,
+   row's 24px figure at five digits -- it is the one number that has to fit,
    and a shared width is what keeps every amount on one right edge. */
 const LEDGER_ROW =
   "grid grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_9.5rem] items-center gap-3 py-2.5";
@@ -441,14 +441,12 @@ function LedgerPrice({
     <span
       className={
         strong
-          ? "text-right text-3xl font-light tracking-tight tabular-nums text-foreground"
+          ? "text-right text-2xl font-medium tracking-tight tabular-nums text-foreground"
           : "text-right text-sm font-medium tabular-nums text-foreground"
       }
     >
       {formatUsd(value, fractionDigits)}
-      <span
-        className={`font-normal text-muted-foreground ${strong ? "text-[13px] tracking-normal" : "text-xs"}`}
-      >
+      <span className="text-sm font-normal tracking-normal text-muted-foreground">
         {i18n.t(($) => {
           return $.billing.plans.perMonth;
         })}
@@ -499,7 +497,7 @@ function LedgerPlanRow({ plan }: { readonly plan: UsagePackPlan }) {
               { plan: planName(plan.tier) },
             )}
           </span>
-          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+          <span className="mt-0.5 block truncate text-sm text-muted-foreground">
             {planSummaryLine(plan.tier)}
           </span>
         </span>
@@ -526,7 +524,7 @@ function LedgerTotalRow({
           return $.billing.plans.usagePacks.monthlyTotal;
         })}
       </span>
-      <span className="truncate text-xs text-muted-foreground">
+      <span className="truncate text-sm text-muted-foreground">
         {bonusCredits > 0
           ? i18n.t(
               ($) => {
@@ -606,7 +604,7 @@ function MemberUsageRow({
           >
             {/* The price lives in its own column, so the trigger only carries
                 what the package buys. */}
-            <span className="truncate">
+            <span className="min-w-0 flex-1 truncate text-left">
               {usagePackCreditsLabel(usagePackCatalogItem(catalog, selection))}
             </span>
           </SelectTrigger>
@@ -625,7 +623,7 @@ function MemberUsageRow({
           </SelectContent>
         </Select>
         {downgradeSummary && (
-          <p className="mt-1 truncate text-[10px] font-medium text-amber-600 dark:text-amber-300">
+          <p className="mt-1 truncate text-sm font-medium text-amber-600 dark:text-amber-300">
             {downgradeSummary}
           </p>
         )}
@@ -637,7 +635,7 @@ function MemberUsageRow({
 
 function MemberUsageFooter() {
   return (
-    <p className="text-xs leading-relaxed text-muted-foreground">
+    <p className="text-sm leading-relaxed text-muted-foreground">
       {i18n.t(($) => {
         return $.billing.plans.usagePacks.memberExclusive;
       })}
@@ -1030,7 +1028,7 @@ function PricingBackButton({
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          <p className="text-xs">
+          <p className="text-sm">
             {t(($) => {
               return $.billing.common.back;
             })}
@@ -1068,7 +1066,7 @@ function UsagePackPageHeader({
 
 function PricingStepIndicator({ current }: { readonly current: 1 | 2 }) {
   return (
-    <span className="shrink-0 text-xs text-muted-foreground">
+    <span className="shrink-0 text-sm text-muted-foreground">
       {i18n.t(
         ($) => {
           return $.billing.plans.usagePacks.stepOfTotal;
@@ -1206,7 +1204,7 @@ function OrderSummary({
       })}
     >
       {checkoutError && (
-        <p className="mb-3 text-xs text-destructive">{checkoutError}</p>
+        <p className="mb-3 text-sm text-destructive">{checkoutError}</p>
       )}
       <Button
         className="h-10 w-full text-sm font-medium"
@@ -1671,9 +1669,9 @@ function SubscriptionComparisonTable({
         aria-label={i18n.t(($) => {
           return $.billing.plans.usagePacks.management.comparison;
         })}
-        className="w-full table-fixed text-[13px]"
+        className="w-full table-fixed text-sm"
       >
-        <thead className="bg-muted/40 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <thead className="bg-muted/40 text-sm font-medium uppercase tracking-wide text-muted-foreground">
           <tr>
             <th scope="col" className="w-[40%] px-3 py-2 text-left" />
             <th scope="col" className="w-[30%] px-3 py-2 text-right">
@@ -1698,17 +1696,17 @@ function SubscriptionComparisonTable({
               >
                 <th
                   scope="row"
-                  className={`px-3 py-2.5 text-left ${monthlyTotal ? "font-semibold text-foreground" : "font-normal text-muted-foreground"}`}
+                  className={`px-3 py-2.5 text-left ${monthlyTotal ? "font-medium text-foreground" : "font-normal text-muted-foreground"}`}
                 >
                   {row.label}
                 </th>
                 <td
-                  className={`px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-semibold" : ""}`}
+                  className={`px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-medium" : ""}`}
                 >
                   {row.current}
                 </td>
                 <td
-                  className={`px-3 py-2.5 text-right ${monthlyTotal || row.changed ? "font-semibold" : "font-medium"} ${row.changed ? "text-primary" : "text-foreground"}`}
+                  className={`px-3 py-2.5 text-right font-medium ${row.changed ? "text-primary" : "text-foreground"}`}
                 >
                   {row.next}
                 </td>
@@ -1729,7 +1727,7 @@ function SubscriptionChangeNotice({
   readonly effectiveAt: string;
 }) {
   return (
-    <div className="mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+    <div className="mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-sm leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
       <p>{description}</p>
       <p className="mt-1 font-medium">
         {i18n.t(
@@ -2249,13 +2247,13 @@ function ManagedSubscriptionOrderSummary({
         />
       )}
       {hasPendingChange && !hasScheduledDowngrade && (
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 text-sm text-muted-foreground">
           {i18n.t(($) => {
             return $.billing.plans.usagePacks.management.processing;
           })}
         </p>
       )}
-      {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
+      {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       <Button
         type="button"
         className="mt-4 h-10 w-full text-sm font-medium"
