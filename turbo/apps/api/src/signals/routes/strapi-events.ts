@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { zeroStrapiEventsContract } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import { strapiEventsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";
@@ -24,7 +24,7 @@ function errorResponse(message: string, status: 400 | 401 | 403 | 404 | 413) {
 
 const post$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
-    const params = get(pathParamsOf(zeroStrapiEventsContract.post));
+    const params = get(pathParamsOf(strapiEventsContract.post));
     const request = get(request$);
     const contentLength = Number.parseInt(
       request.raw.headers.get("content-length") ?? "0",
@@ -72,6 +72,6 @@ const post$ = command(
   },
 );
 
-export const zeroStrapiEventsRoutes: readonly RouteEntry[] = [
-  { route: zeroStrapiEventsContract.post, handler: post$ },
+export const strapiEventsRoutes: readonly RouteEntry[] = [
+  { route: strapiEventsContract.post, handler: post$ },
 ];

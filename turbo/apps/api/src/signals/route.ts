@@ -134,8 +134,8 @@ import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
-import { zeroStrapiIntegrationsRoutes } from "./routes/zero-strapi-integrations";
-import { zeroStrapiEventsRoutes } from "./routes/zero-strapi-events";
+import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
+import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
@@ -211,7 +211,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksGoogleWorkspaceEventsRoutes,
   ...webhooksNotionRoutes,
   ...webhooksWorkflowAutomationsRoutes,
-  ...zeroStrapiEventsRoutes,
+  ...strapiEventsRoutes,
   ...webhooksStripeRoutes,
   ...webhooksStripeAutomationEventsRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
@@ -335,7 +335,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserModelPreferenceRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
-  ...zeroStrapiIntegrationsRoutes,
+  ...strapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,
   ...zeroSlackOauthRoutes,

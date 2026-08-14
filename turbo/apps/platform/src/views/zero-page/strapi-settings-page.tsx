@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 
-import type { StrapiIntegration } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import type { StrapiIntegration } from "@okouai/api-contracts/contracts/strapi-integrations";
 import {
   ArrowLeft,
   CircleCheck,
@@ -43,7 +43,7 @@ import {
   strapiIntegrations$,
   strapiRevealedSecret$,
   updateStrapiIntegrationForm$,
-} from "../../signals/zero-page/zero-strapi.ts";
+} from "../../signals/zero-page/strapi.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 
@@ -394,7 +394,7 @@ function StrapiIntegrationForm() {
   );
 }
 
-export function ZeroStrapiSettingsPage() {
+export function StrapiSettingsPage() {
   const { t } = useTranslation();
   const integrationsLoadable = useLastLoadable(strapiIntegrations$);
   const adminLoadable = useLastLoadable(isOrgAdmin$);

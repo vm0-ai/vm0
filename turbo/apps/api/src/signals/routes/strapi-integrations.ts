@@ -1,6 +1,6 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { zeroStrapiIntegrationsContract } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { command, computed } from "ccstate";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -75,9 +75,7 @@ const create$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
-  const bodyResult = await get(
-    bodyResultOf(zeroStrapiIntegrationsContract.create),
-  );
+  const bodyResult = await get(bodyResultOf(strapiIntegrationsContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -109,7 +107,7 @@ const revealSecret$ = computed(async (get) => {
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
-  const params = get(pathParamsOf(zeroStrapiIntegrationsContract.revealSecret));
+  const params = get(pathParamsOf(strapiIntegrationsContract.revealSecret));
   const secret = await revealStrapiIntegrationSecret(get(db$), {
     orgId: auth.orgId,
     integrationId: params.integrationId,
@@ -127,7 +125,7 @@ const checkTest$ = computed(async (get) => {
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
-  const params = get(pathParamsOf(zeroStrapiIntegrationsContract.checkTest));
+  const params = get(pathParamsOf(strapiIntegrationsContract.checkTest));
   const result = await checkStrapiIntegrationTest(get(db$), {
     orgId: auth.orgId,
     integrationId: params.integrationId,
@@ -145,7 +143,7 @@ const remove$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
-  const params = get(pathParamsOf(zeroStrapiIntegrationsContract.remove));
+  const params = get(pathParamsOf(strapiIntegrationsContract.remove));
   const result = await removeStrapiIntegration({
     db: set(writeDb$),
     orgId: auth.orgId,
@@ -164,10 +162,7 @@ const remove$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const handlers: Readonly<
-  Record<
-    keyof typeof zeroStrapiIntegrationsContract,
-    SignalRouteHandler<unknown>
-  >
+  Record<keyof typeof strapiIntegrationsContract, SignalRouteHandler<unknown>>
 > = {
   list: authRoute(strapiIntegrationAuth, list$),
   create: authRoute(strapiIntegrationAuth, create$),
@@ -176,16 +171,16 @@ const handlers: Readonly<
   remove: authRoute(strapiIntegrationAuth, remove$),
 };
 
-export const zeroStrapiIntegrationsRoutes: readonly RouteEntry[] = [
-  { route: zeroStrapiIntegrationsContract.list, handler: handlers.list },
-  { route: zeroStrapiIntegrationsContract.create, handler: handlers.create },
+export const strapiIntegrationsRoutes: readonly RouteEntry[] = [
+  { route: strapiIntegrationsContract.list, handler: handlers.list },
+  { route: strapiIntegrationsContract.create, handler: handlers.create },
   {
-    route: zeroStrapiIntegrationsContract.revealSecret,
+    route: strapiIntegrationsContract.revealSecret,
     handler: handlers.revealSecret,
   },
   {
-    route: zeroStrapiIntegrationsContract.checkTest,
+    route: strapiIntegrationsContract.checkTest,
     handler: handlers.checkTest,
   },
-  { route: zeroStrapiIntegrationsContract.remove, handler: handlers.remove },
+  { route: strapiIntegrationsContract.remove, handler: handlers.remove },
 ];
