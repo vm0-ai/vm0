@@ -1,9 +1,9 @@
 /**
  * Test fixtures for the run video-model snapshot.
  *
- * The member default has no write endpoint yet, and the snapshot column is
- * write-only until endpoint enforcement lands, so neither side of the
- * resolution chain is reachable through a product API.
+ * Retired member defaults cannot be written through the current endpoint, and
+ * the snapshot column is write-only until endpoint enforcement lands. These
+ * historical-input and snapshot-output cases therefore need direct DB access.
  */
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { zeroRuns } from "@okouai/db/schema/zero-run";

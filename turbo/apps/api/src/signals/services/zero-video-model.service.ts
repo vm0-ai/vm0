@@ -5,9 +5,9 @@
  * result is snapshotted onto the run row when the run is dispatched, so
  * re-pinning the thread mid-run cannot change what an in-flight run produces.
  */
+import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import {
   DEFAULT_VIDEO_MODEL,
-  VIDEO_MODEL_CONFIGS,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -28,7 +28,7 @@ function catalogedVideoModel(
   if (value === undefined || value === null) {
     return null;
   }
-  return value in VIDEO_MODEL_CONFIGS ? (value as VideoModel) : null;
+  return isVideoModelId(value) ? value : null;
 }
 
 async function threadVideoModel(

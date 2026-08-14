@@ -10408,6 +10408,24 @@ describe("CHAT-02: run video model snapshot", () => {
       readRunVideoModelFixture(retiredEverywhere.runId),
     ).resolves.toBe(DEFAULT_VIDEO_MODEL);
     await cancelChatRun(actor, retiredEverywhere.runId);
+
+    // `in` on a normal object also matches inherited Object.prototype keys.
+    // Persisted strings must match an own catalog id exactly.
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    await setChatThreadVideoModelFixture(anchor.threadId, "toString");
+    const inheritedObjectKey = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "an inherited object key is not a catalog model",
+    });
+    await expect(
+      readRunVideoModelFixture(inheritedObjectKey.runId),
+    ).resolves.toBe("MiniMax-H3");
+    await cancelChatRun(actor, inheritedObjectKey.runId);
   }, 90_000);
 
   it("snapshots a video model onto runs that own no chat thread", async () => {
