@@ -507,7 +507,7 @@ fn configure_resource_policy(
     write_cgroup_value(
         workload_path,
         MEMORY_OOM_GROUP_FILE,
-        "1",
+        policy.memory_oom_group,
         "configure workload memory.oom.group",
     )?;
     write_cgroup_value(

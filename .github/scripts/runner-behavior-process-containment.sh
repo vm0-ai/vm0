@@ -122,6 +122,7 @@ test "$(cat "$parent/control/memory.min")" = "$expected_control_memory_min"
 grep -Eq '^[0-9]+ [0-9]+$' "$parent/workload/cpu.max"
 test "$(cat "$parent/workload/memory.high")" = max
 test "$(cat "$parent/workload/memory.max")" = "$expected_workload_memory_max"
+test "$(cat "$parent/workload/memory.oom.group")" = 0
 test "$(cat "$parent/workload/pids.max")" = max
 test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT:-}"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")
@@ -672,16 +673,29 @@ read -r METRICS_COUNT METRICS_SPAN_SECS METRICS_MAX_GAP_SECS <<<"$METRICS_SUMMAR
 rm -f "$PRESSURE_SUBMIT_OUTPUT"
 PRESSURE_SUBMIT_OUTPUT=""
 
-echo "--- Pressure: exhaust workload memory without killing Guest Agent ---"
+echo "--- Pressure: kill a high-memory tool without terminating the run ---"
 # Reuse the pressure VM again to prove reclaim left it safe to park while
-# isolating terminal OOM from the active-input provider session.
+# isolating workload OOM from the active-input provider session.
 MEMORY_CHAT_THREAD_ID="$PRESSURE_CHAT_THREAD_ID"
 MEMORY_SESSION_ID="e2e-process-containment-memory"
 MEMORY_PROMPT=$(cat <<'PROMPT'
+set -eu
 test -f /tmp/vm0-process-containment/memory-reclaim-vm
 sudo -n python3 - <<'PY'
+import os
 import pathlib
+import signal
+import subprocess
 import time
+
+
+def read_events(path):
+    events = {}
+    for line in path.read_text().splitlines():
+        key, value = line.split()
+        events[key] = int(value)
+    return events
+
 
 relative = next(
     line.removeprefix("0::").strip()
@@ -690,44 +704,73 @@ relative = next(
 )
 workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
 (workload / "memory.max").write_text(str(256 * 1024 * 1024))
-chunk_size = 16 * 1024 * 1024
-chunks = []
-while True:
-    chunk = bytearray(chunk_size)
-    for offset in range(0, chunk_size, 4096):
-        chunk[offset] = 1
-    chunks.append(chunk)
-    time.sleep(0.1)
+before = read_events(workload / "memory.events")
+
+pid = os.fork()
+if pid == 0:
+    chunk_size = 16 * 1024 * 1024
+    chunks = []
+    while True:
+        chunk = bytearray(chunk_size)
+        chunk[::4096] = b"\x01" * (chunk_size // 4096)
+        chunks.append(chunk)
+        time.sleep(0.05)
+
+_, status = os.waitpid(pid, 0)
+if not os.WIFSIGNALED(status) or os.WTERMSIG(status) != signal.SIGKILL:
+    raise RuntimeError(f"memory pressure child was not SIGKILLed: status={status}")
+
+after = read_events(workload / "memory.events")
+if after.get("oom_kill", 0) <= before.get("oom_kill", 0):
+    raise RuntimeError("memory pressure did not record an OOM-killed process")
+if after.get("oom_group_kill", 0) != before.get("oom_group_kill", 0):
+    raise RuntimeError("memory pressure triggered a group OOM kill")
+
+subprocess.run(["/bin/true"], check=True)
+pathlib.Path(
+    "/tmp/vm0-process-containment/memory-oom-runtime-survived"
+).write_text("ready\n")
+print(
+    "memory-oom-runtime-survived "
+    f"oom_kill={after.get('oom_kill', 0) - before.get('oom_kill', 0)} "
+    "oom_group_kill=0"
+)
 PY
 PROMPT
 )
 SECONDS=0
-if MEMORY_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+MEMORY_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --timeout 30 \
   --chat-thread-id "$MEMORY_CHAT_THREAD_ID" \
   --session-id "$MEMORY_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt "$MEMORY_PROMPT" \
-  --active-input 'after=1s,text=memory-pressure-control'); then
-  printf '%s\n' "$MEMORY_RESULT"
-  fail "memory exhaustion unexpectedly completed successfully"
-else
-  MEMORY_SUBMIT_STATUS=$?
-fi
+  --active-input 'after=1s,text=memory-pressure-control') \
+  || fail "memory-pressure run did not recover after killing the tool process"
 MEMORY_ELAPSED=$SECONDS
 printf '%s\n' "$MEMORY_RESULT"
-[ "$MEMORY_SUBMIT_STATUS" -ne 0 ] \
-  || fail "memory exhaustion did not fail the workload"
 [ "$MEMORY_ELAPSED" -lt 20 ] \
-  || fail "memory exhaustion was not bounded: ${MEMORY_ELAPSED}s"
+  || fail "memory-pressure recovery was not bounded: ${MEMORY_ELAPSED}s"
 MEMORY_RESULT_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_RESULT")
 MEMORY_RUN_ID=$(jq -r '.run_id // empty' <<<"$MEMORY_RESULT_JSON")
 [ -n "$MEMORY_RUN_ID" ] || fail "memory-pressure result omitted run ID"
 MEMORY_STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${MEMORY_RUN_ID}.log"
+sudo grep -F -q 'memory-oom-runtime-survived oom_kill=' "$MEMORY_STREAM_LOG" \
+  || fail "memory-pressure runtime did not continue after the tool was killed"
 sudo grep -F -q 'workload resource limit reached' "$MEMORY_STREAM_LOG" \
-  || fail "memory-pressure failure was not classified"
-sudo grep -E -q 'memory_oom(_kill)?=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
+  || fail "memory-pressure resource event was not classified"
+sudo grep -E -q 'memory_oom_kill=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
   || fail "memory-pressure diagnostics omitted the OOM event"
+sudo grep -F -q 'memory_oom_group_kill=0' "$MEMORY_STREAM_LOG" \
+  || fail "memory-pressure diagnostics reported a group OOM kill"
+
+echo "--- Pressure: prove individual OOM preserved VM reuse ---"
+sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$MEMORY_CHAT_THREAD_ID" \
+  --session-id "$MEMORY_SESSION_ID" \
+  --feature-flag sandboxReuse=true \
+  --prompt 'test -f /tmp/vm0-process-containment/memory-oom-runtime-survived' \
+  || fail "memory-pressure recovery did not preserve safe VM reuse"
 
 echo "--- Pressure: exhaust workload PID capacity and reclaim descendants ---"
 PID_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
@@ -812,13 +855,15 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 
 LOGS=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
   || fail "failed to read runner logs"
-MEMORY_FAILURE_LOG=$(printf '%s\n' "$LOGS" \
+printf '%s\n' "$LOGS" \
   | grep -F "run_id=$MEMORY_RUN_ID" \
-  | grep -F 'job execution failed' \
-  | tail -1) \
-  || fail "missing memory-pressure terminal failure log"
-if ! grep -E 'workload_memory_oom(_kill)?_events=[1-9][0-9]*' <<<"$MEMORY_FAILURE_LOG" >/dev/null; then
-  fail "memory-pressure terminal log omitted structured workload OOM counters"
+  | grep -F 'job finished' \
+  >/dev/null \
+  || fail "missing successful memory-pressure terminal log"
+if printf '%s\n' "$LOGS" \
+  | grep -F "run_id=$MEMORY_RUN_ID" \
+  | grep -F 'job execution failed' >/dev/null; then
+  fail "memory-pressure run was reported as failed"
 fi
 LEAK_LINE=$(printf '%s\n' "$LOGS" \
   | grep -F 'exec process containment cleaned' \
@@ -854,7 +899,7 @@ PID_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$PID_CLEANUP
 echo "PASS: detached user/root descendants were reclaimed"
 echo "PASS: leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
 echo "PASS: compressed CPU pressure kept process control and ${METRICS_COUNT} metric samples live"
-echo "PASS: workload OOM was classified in ${MEMORY_ELAPSED}s without killing Guest Agent"
+echo "PASS: individual workload OOM preserved the run in ${MEMORY_ELAPSED}s and allowed reuse"
 echo "PASS: pids.max cleanup reclaimed ${PID_INITIAL_MEMBERS} members in ${PID_CLEANUP_MS}ms"
 
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force

@@ -71,6 +71,13 @@ pub const WORKLOAD_MEMORY_RESERVE_BYTES: u64 = 128 * 1024 * 1024;
 /// Value written to workload `memory.high` to avoid unmonitored soft-limit reclaim.
 pub const WORKLOAD_MEMORY_HIGH: &str = "max";
 
+/// Value written to workload `memory.oom.group` for per-process OOM selection.
+///
+/// The agent runtime and its tool descendants share the workload cgroup. Keeping
+/// group OOM disabled lets the kernel kill an individual high-memory process
+/// without unconditionally terminating the entire agent runtime.
+pub const WORKLOAD_MEMORY_OOM_GROUP: &str = "0";
+
 /// Value written to workload `pids.max` while no production ceiling is calibrated.
 ///
 /// The PID controller remains enabled for accounting and operation-local
@@ -93,6 +100,8 @@ pub struct WorkloadResourcePolicy {
     pub memory_high: &'static str,
     /// Workload hard memory limit in bytes.
     pub memory_max_bytes: u64,
+    /// Value written to the workload `memory.oom.group` cgroup file.
+    pub memory_oom_group: &'static str,
     /// Protected Guest Agent memory in bytes.
     pub control_memory_min_bytes: u64,
     /// Value written to the workload `pids.max` cgroup file.
@@ -150,6 +159,7 @@ impl WorkloadResourcePolicy {
             cpu_period_us: WORKLOAD_CPU_PERIOD_US,
             memory_high: WORKLOAD_MEMORY_HIGH,
             memory_max_bytes,
+            memory_oom_group: WORKLOAD_MEMORY_OOM_GROUP,
             control_memory_min_bytes: CONTROL_MEMORY_MIN_BYTES,
             pids_max: WORKLOAD_PIDS_MAX,
         })
@@ -170,6 +180,7 @@ mod tests {
         assert_eq!(policy.cpu_period_us, 100_000);
         assert_eq!(policy.memory_high, "max");
         assert_eq!(policy.memory_max_bytes, 3968 * 1024 * 1024);
+        assert_eq!(policy.memory_oom_group, "0");
         assert_eq!(policy.control_memory_min_bytes, 384 * 1024 * 1024);
         assert_eq!(policy.pids_max, "max");
     }

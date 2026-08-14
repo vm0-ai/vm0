@@ -481,7 +481,7 @@ fn verify_workload_policy(workload_path: &Path) -> io::Result<()> {
         ),
         (MEMORY_HIGH_FILE, policy.memory_high.to_string()),
         (MEMORY_MAX_FILE, policy.memory_max_bytes.to_string()),
-        (MEMORY_OOM_GROUP_FILE, "1".to_string()),
+        (MEMORY_OOM_GROUP_FILE, policy.memory_oom_group.to_string()),
         (PIDS_MAX_FILE, policy.pids_max.to_string()),
     ] {
         let actual = std::fs::read_to_string(workload_path.join(filename))?;
