@@ -353,15 +353,16 @@ echo "--- Pressure: sustain CPU saturation with live process control ---"
 PRESSURE_CHAT_THREAD_ID="$CHAT_THREAD_ID"
 PRESSURE_SESSION_ID="e2e-process-containment-pressure"
 PRESSURE_SUBMIT_OUTPUT=$(mktemp)
-# Queue one input immediately while this script resolves the sandbox. Keep the
-# final input after the pressure command so the mock turn cannot finish first.
+# Prime the local input queue before a reused VM can emit its first result.
+# Keep the final input after the pressure command so the mock turn cannot
+# finish first.
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --timeout 80 \
   --chat-thread-id "$PRESSURE_CHAT_THREAD_ID" \
   --session-id "$PRESSURE_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt '@active-input-smoke:8' \
-  --active-input 'after=100ms,text=cpu-pressure-ready' \
+  --active-input 'after=1ms,text=cpu-pressure-ready' \
   --active-input 'after=2s,text=cpu-pressure-one' \
   --active-input 'after=4s,text=cpu-pressure-two' \
   --active-input 'after=6s,text=cpu-pressure-three' \
