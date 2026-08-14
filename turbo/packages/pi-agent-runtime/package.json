@@ -29,7 +29,6 @@
     "@okouai/eslint-config": "workspace:*",
     "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
-    "msw": "^2.13.2",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",
     "typescript": "6.0.3",
