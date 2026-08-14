@@ -1,11 +1,12 @@
 import { command } from "ccstate";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
 import { deletePresentationTemplateObjects$ } from "./presentation-template-object.service";
+import { cleanupPresentationTemplatePackage$ } from "./presentation-template-package.service";
 
 export const deletePresentationTemplate$ = command(
   async (
@@ -29,7 +30,6 @@ export const deletePresentationTemplate$ = command(
             eq(presentationTemplates.id, args.templateId),
             eq(presentationTemplates.orgId, args.orgId),
             eq(presentationTemplates.ownerUserId, args.ownerUserId),
-            inArray(presentationTemplates.status, ["pending", "failed"]),
           ),
         )
         .limit(1);
@@ -52,6 +52,11 @@ export const deletePresentationTemplate$ = command(
     }
 
     await set(deletePresentationTemplateObjects$, template.id, signal);
+    await set(
+      cleanupPresentationTemplatePackage$,
+      { orgId: args.orgId, templateId: template.id, force: true },
+      signal,
+    );
     const [deleted] = await db
       .delete(presentationTemplates)
       .where(

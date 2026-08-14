@@ -58,6 +58,7 @@ export const triggerSourceSchema = z.enum([
   "automation-schedule",
   "automation-event",
   "goal",
+  "template-import",
 ]);
 
 export type TriggerSource = z.infer<typeof triggerSourceSchema>;
