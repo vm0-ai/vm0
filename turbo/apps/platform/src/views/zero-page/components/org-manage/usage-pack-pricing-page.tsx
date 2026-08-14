@@ -1,4 +1,4 @@
-import { ArrowLeft, User, X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -35,6 +35,7 @@ import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { currentUserInfo$ } from "../../../../signals/auth.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { UserAvatar } from "../../../components/avatar.tsx";
 import {
   closeUsagePackSubscriptionChangePreview$,
   confirmUsagePackSubscriptionChange$,
@@ -207,41 +208,6 @@ function planDescription(tier: UsagePackPlanTier): string {
       });
 }
 
-// Team repeats three of Pro's five rows, so it only lists what it adds and is
-// introduced by an "Everything on Pro, plus:" heading instead.
-function planFeatures(tier: UsagePackPlanTier): readonly string[] {
-  if (tier === "team") {
-    return [
-      i18n.t(($) => {
-        return $.billing.plans.features.tenConcurrentRuns;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.features.voiceInputTeam;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.features.prioritySupport;
-      }),
-    ];
-  }
-  return [
-    i18n.t(($) => {
-      return $.billing.plans.features.twoConcurrentRuns;
-    }),
-    i18n.t(($) => {
-      return $.billing.plans.features.sharedAndPrivateAgents;
-    }),
-    i18n.t(($) => {
-      return $.billing.plans.features.byok;
-    }),
-    i18n.t(($) => {
-      return $.billing.plans.features.voiceInputPro;
-    }),
-    i18n.t(($) => {
-      return $.billing.plans.features.emailSupport;
-    }),
-  ];
-}
-
 function usagePackCatalogItem(
   catalog: readonly UsagePackCatalogItem[],
   usagePackUsd: UsagePackUsd,
@@ -379,17 +345,11 @@ function memberName(member: OrgMember): string {
 function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-muted-foreground">
-        {member.imageUrl ? (
-          <img
-            src={member.imageUrl}
-            alt={member.name}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <User size={15} />
-        )}
-      </span>
+      <UserAvatar
+        imageUrl={member.imageUrl}
+        initial={member.name.charAt(0).toUpperCase()}
+        name={member.name}
+      />
       <span className="min-w-0">
         <span className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">
@@ -425,7 +385,7 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
    row's 24px figure at five digits -- it is the one number that has to fit,
    and a shared width is what keeps every amount on one right edge. */
 const LEDGER_ROW =
-  "grid grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_9.5rem] items-center gap-3 py-2.5";
+  "grid min-h-16 grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_9.5rem] items-center gap-3 py-2.5";
 const LEDGER_RULE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
 
 function LedgerPrice({
@@ -473,33 +433,25 @@ function usagePackCreditsLabel(item: UsagePackCatalogItem): string {
       );
 }
 
-function planSummaryLine(tier: UsagePackPlanTier): string {
-  const features = planFeatures(tier);
-  return `${features[0]} · ${features[features.length - 1]}`;
-}
-
 function LedgerPlanRow({ plan }: { readonly plan: UsagePackPlan }) {
   return (
     <div className={LEDGER_ROW}>
       <div className="flex min-w-0 items-center gap-3">
-        <img
-          src={plan.image}
-          alt=""
-          loading="lazy"
-          className="h-8 w-8 shrink-0 object-contain"
-        />
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {i18n.t(
-              ($) => {
-                return $.billing.plans.namedPlan;
-              },
-              { plan: planName(plan.tier) },
-            )}
-          </span>
-          <span className="mt-0.5 block truncate text-sm text-muted-foreground">
-            {planSummaryLine(plan.tier)}
-          </span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+          <img
+            src={plan.image}
+            alt=""
+            loading="lazy"
+            className="h-10 w-10 max-w-none object-contain"
+          />
+        </span>
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.namedPlan;
+            },
+            { plan: planName(plan.tier) },
+          )}
         </span>
       </div>
       <div />
@@ -524,7 +476,7 @@ function LedgerTotalRow({
           return $.billing.plans.usagePacks.monthlyTotal;
         })}
       </span>
-      <span className="truncate text-sm text-muted-foreground">
+      <span className="truncate px-3 text-sm text-muted-foreground">
         {bonusCredits > 0
           ? i18n.t(
               ($) => {
@@ -583,7 +535,7 @@ function MemberUsageRow({
         )
     : null;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_4.5rem] items-center gap-3 py-2.5">
+    <div className={LEDGER_ROW}>
       <MemberIdentity member={member} />
       <div className="min-w-0">
         <Select
