@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { integrationsTelegramUploadInitContract } from "@okouai/api-contracts/contracts/integrations";
+import { integrationsPhoneUploadInitContract } from "@okouai/api-contracts/contracts/integrations";
 
 import { env } from "../../lib/env";
 import { sanitizeArtifactFilename } from "../../lib/file-url";
@@ -12,24 +12,23 @@ import type { RouteEntry } from "../route-entry";
 
 const PUT_URL_TTL_SECONDS = 3600;
 
-const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+const init$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
-
   const bodyResult = await get(
-    bodyResultOf(integrationsTelegramUploadInitContract.init),
+    bodyResultOf(integrationsPhoneUploadInitContract.init),
   );
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
 
-  const { filename, contentType, length } = bodyResult.data;
-  const sanitized = sanitizeArtifactFilename(filename);
+  const body = bodyResult.data;
+  const filename = sanitizeArtifactFilename(body.filename);
   const artifact = await set(
     allocateArtifactObject$,
     {
       userId: auth.userId,
-      filename,
+      filename: body.filename,
     },
     signal,
   );
@@ -39,7 +38,7 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     generatePresignedPutUrl(
       bucket,
       artifact.key,
-      contentType,
+      body.contentType,
       PUT_URL_TTL_SECONDS,
       { usePublicEndpoint: true, metadata: artifact.metadata },
     ),
@@ -52,17 +51,17 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       uploadId: artifact.id,
       uploadUrl,
       fileUrl: artifact.url,
-      filename: sanitized,
-      contentType,
-      size: length,
+      filename,
+      contentType: body.contentType,
+      size: body.length,
       ...(uploadHeaders ? { uploadHeaders } : {}),
     },
   };
 });
 
-export const zeroIntegrationsTelegramUploadInitRoutes: readonly RouteEntry[] = [
+export const integrationsPhoneUploadInitRoutes: readonly RouteEntry[] = [
   {
-    route: integrationsTelegramUploadInitContract.init,
-    handler: authRoute({ requiredCapability: "telegram:write" }, initInner$),
+    route: integrationsPhoneUploadInitContract.init,
+    handler: authRoute({ requiredCapability: "phone:write" }, init$),
   },
 ];

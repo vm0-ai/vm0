@@ -63,11 +63,11 @@ import { testSlackStateRoutes } from "../../test-slack-state";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroIntegrationsAgentPhoneRoutes } from "../../zero-integrations-agentphone";
 import { zeroIntegrationsGithubUploadCompleteRoutes } from "../../zero-integrations-github-upload-complete";
-import { zeroIntegrationsGithubUploadInitRoutes } from "../../zero-integrations-github-upload-init";
+import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
 import { zeroIntegrationsPhoneMessageRoutes } from "../../zero-integrations-phone-message";
 import { zeroIntegrationsPhoneUploadCompleteRoutes } from "../../zero-integrations-phone-upload-complete";
-import { zeroIntegrationsPhoneUploadInitRoutes } from "../../zero-integrations-phone-upload-init";
+import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { zeroIntegrationsSlackRoutes } from "../../zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "../../zero-integrations-slack-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "../../zero-integrations-slack-upload-complete";
@@ -75,7 +75,7 @@ import { zeroIntegrationsSlackUploadInitRoutes } from "../../zero-integrations-s
 import { zeroIntegrationsTelegramRoutes } from "../../zero-integrations-telegram";
 import { zeroIntegrationsTelegramMessageRoutes } from "../../zero-integrations-telegram-message";
 import { zeroIntegrationsTelegramUploadCompleteRoutes } from "../../zero-integrations-telegram-upload-complete";
-import { zeroIntegrationsTelegramUploadInitRoutes } from "../../zero-integrations-telegram-upload-init";
+import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroSlackChannelsRoutes } from "../../zero-slack-channels";
@@ -93,18 +93,18 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroFeatureSwitchesRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsGithubUploadCompleteRoutes,
-  ...zeroIntegrationsGithubUploadInitRoutes,
+  ...integrationsGithubUploadInitRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,
   ...zeroIntegrationsPhoneUploadCompleteRoutes,
-  ...zeroIntegrationsPhoneUploadInitRoutes,
+  ...integrationsPhoneUploadInitRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,
-  ...zeroIntegrationsTelegramUploadInitRoutes,
+  ...integrationsTelegramUploadInitRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
@@ -1543,7 +1543,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramUploadInitRoutes,
+        routes: integrationsTelegramUploadInitRoutes,
       })(integrationsTelegramUploadInitContract);
       return await accept(
         client.init({
@@ -1627,7 +1627,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsGithubUploadInitRoutes,
+        routes: integrationsGithubUploadInitRoutes,
       })(integrationsGithubUploadInitContract);
       return await accept(
         client.init({
@@ -1763,7 +1763,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsPhoneUploadInitRoutes,
+        routes: integrationsPhoneUploadInitRoutes,
       })(integrationsPhoneUploadInitContract);
       return await accept(
         client.init({
