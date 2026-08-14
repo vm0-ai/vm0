@@ -20,7 +20,7 @@ import {
   seedTelegramInstallation$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
-import { zeroIntegrationsTelegramUploadCompleteRoutes } from "../zero-integrations-telegram-upload-complete";
+import { integrationsTelegramUploadCompleteRoutes } from "../integrations-telegram-upload-complete";
 
 const context = testContext();
 const store = createStore();
@@ -145,7 +145,7 @@ async function seedSendableContext(): Promise<UploadCompleteFixture> {
   };
 }
 
-describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
+describe("POST /api/okou/integrations/telegram/upload-file/complete", () => {
   const fixtures: UploadCompleteFixture[] = [];
 
   afterEach(async () => {
@@ -196,7 +196,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+      routes: integrationsTelegramUploadCompleteRoutes,
     })(integrationsTelegramUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -258,7 +258,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+      routes: integrationsTelegramUploadCompleteRoutes,
     })(integrationsTelegramUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -285,7 +285,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     });
     const client = setupApp({
       context,
-      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+      routes: integrationsTelegramUploadCompleteRoutes,
     })(integrationsTelegramUploadCompleteContract);
 
     const response = await accept(
@@ -334,7 +334,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+      routes: integrationsTelegramUploadCompleteRoutes,
     })(integrationsTelegramUploadCompleteContract);
     const response = await accept(
       client.complete({

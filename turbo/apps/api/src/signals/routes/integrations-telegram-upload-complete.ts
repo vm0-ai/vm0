@@ -193,10 +193,9 @@ const telegramWriteAuth = {
   requiredCapability: "telegram:write",
 } as const;
 
-export const zeroIntegrationsTelegramUploadCompleteRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: integrationsTelegramUploadCompleteContract.complete,
-      handler: authRoute(telegramWriteAuth, completeInner$),
-    },
-  ];
+export const integrationsTelegramUploadCompleteRoutes: readonly RouteEntry[] = [
+  {
+    route: integrationsTelegramUploadCompleteContract.complete,
+    handler: authRoute(telegramWriteAuth, completeInner$),
+  },
+];
