@@ -416,8 +416,9 @@ def _classify_request(
 
     if upstream_admission.api_destination_matches(
         api_url,
-        trusted_authority.host,
-        trusted_authority.port,
+        scheme=flow.request.scheme,
+        hostname=trusted_authority.host,
+        port=trusted_authority.port,
     ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
         return ApiAllow(vm_info=vm_info)
 

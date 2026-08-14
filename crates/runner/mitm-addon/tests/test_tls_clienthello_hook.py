@@ -68,6 +68,25 @@ class TestTlsClienthello:
         assert binding.kinds == frozenset(("api_allow",))
         assert binding.original_address == ("203.0.113.10", 443)
 
+    def test_registered_vm_does_not_bind_tls_api_host_for_configured_http_origin(
+        self, registry_file, make_tls_data, mitm_ctx
+    ):
+        data = make_tls_data(
+            client_ip="10.200.0.1",
+            sni="pr-test-api.vm6.ai",
+            client_sni="",
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_file),
+            api_url="http://pr-test-api.vm6.ai:443",
+        ):
+            mitm_addon.tls_clienthello(data)
+
+        assert data.ignore_connection is False
+        assert data.context.server.address == ("203.0.113.10", 443)
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
     def test_registered_vm_does_not_bind_connected_api_edge_from_sni_only(
         self, registry_file, make_tls_data, mitm_ctx
     ):

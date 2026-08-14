@@ -319,6 +319,29 @@ def test_server_connect_treats_api_hostname_on_other_port_as_connector(
     assert binding.kinds == frozenset(("connector_auth",))
 
 
+def test_server_connect_treats_api_origin_on_other_scheme_as_connector(
+    tmp_path,
+    mitm_ctx,
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        base="https://api.vm0.ai:443",
+    )
+    data = _data(
+        sni="api.vm0.ai",
+        address=("203.0.113.10", 443),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="http://api.vm0.ai:443"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("api.vm0.ai", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.port == 443
+    assert binding.kinds == frozenset(("connector_auth",))
+
+
 def test_server_connect_does_not_prebind_platform_connector_auth(tmp_path, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
