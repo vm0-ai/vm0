@@ -7,6 +7,7 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
+  SharedDatabaseHeartbeat,
 } from "./bridge.ts";
 import { SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME } from "./protocol.ts";
 import type {
@@ -71,10 +72,13 @@ async function withTransportTimeout<T>(
 }
 
 function sameCredential(
-  left: SharedDatabaseIdentity | null,
-  right: SharedDatabaseIdentity,
+  left: SharedDatabaseHeartbeat | null,
+  right: SharedDatabaseHeartbeat,
 ): boolean {
-  return left?.userId === right.userId && left.orgId === right.orgId;
+  return (
+    left?.identity.userId === right.identity.userId &&
+    left.identity.orgId === right.identity.orgId
+  );
 }
 
 function dataKeyMatchesIdentity(
@@ -90,7 +94,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly controlRequestTimeoutMs: number;
   private connection: Connection | null = null;
   private connecting: Promise<Connection> | null = null;
-  private identity: SharedDatabaseIdentity | null = null;
+  private heartbeatRegistration: SharedDatabaseHeartbeat | null = null;
   private ownerSignal: AbortSignal | null = null;
   private generation = 0;
 
@@ -102,15 +106,18 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   async heartbeat(
-    identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<void> {
     this.bindOwner(signal);
-    const credentialChanged = !sameCredential(this.identity, identity);
-    this.identity = identity;
+    const credentialChanged = !sameCredential(
+      this.heartbeatRegistration,
+      heartbeat,
+    );
+    this.heartbeatRegistration = heartbeat;
     if (credentialChanged) {
       for (const [id, subscription] of this.subscriptions) {
-        if (!dataKeyMatchesIdentity(subscription.dataKey, identity)) {
+        if (!dataKeyMatchesIdentity(subscription.dataKey, heartbeat.identity)) {
           this.subscriptions.delete(id);
           this.subscriptionSignals.delete(id);
         } else {
@@ -132,7 +139,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
       return;
     }
     const result = await settle(
-      this.renewConnection(current, identity, credentialChanged),
+      this.renewConnection(current, heartbeat, credentialChanged),
       signal,
     );
     if (result.ok) {
@@ -167,7 +174,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();
-    const identity = this.requireIdentity();
+    const identity = this.requireHeartbeatRegistration().identity;
     if (!dataKeyMatchesIdentity(dataKey, identity)) {
       throw new Error(
         "Shared database data key does not match client identity",
@@ -245,7 +252,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
 
   private async createConnection(): Promise<Connection> {
     const ownerSignal = this.requireOwnerSignal();
-    const identity = this.requireIdentity();
+    const heartbeat = this.requireHeartbeatRegistration();
     const controller = createChildAbortController(ownerSignal);
     const generation = ++this.generation;
     this.options.events.statusChanged("connecting");
@@ -264,7 +271,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     const connection = { bridge, controller, generation };
     this.connection = connection;
     const result = await settle(
-      this.initializeConnection(connection, identity),
+      this.initializeConnection(connection, heartbeat),
       controller.signal,
     );
     if (!result.ok) {
@@ -276,11 +283,11 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
 
   private async renewConnection(
     connection: Connection,
-    identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
     registerSubscriptions: boolean,
   ): Promise<void> {
     await this.runControlRequest(
-      connection.bridge.heartbeat(identity, connection.controller.signal),
+      connection.bridge.heartbeat(heartbeat, connection.controller.signal),
       connection,
     );
     if (registerSubscriptions) {
@@ -298,10 +305,10 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
 
   private async initializeConnection(
     connection: Connection,
-    identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
   ): Promise<void> {
     await this.runControlRequest(
-      connection.bridge.heartbeat(identity, connection.controller.signal),
+      connection.bridge.heartbeat(heartbeat, connection.controller.signal),
       connection,
     );
     await this.registerSubscriptions(connection);
@@ -381,11 +388,11 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     }
   }
 
-  private requireIdentity(): SharedDatabaseIdentity {
-    if (!this.identity) {
+  private requireHeartbeatRegistration(): SharedDatabaseHeartbeat {
+    if (!this.heartbeatRegistration) {
       throw new Error("Shared database heartbeat is required first");
     }
-    return this.identity;
+    return this.heartbeatRegistration;
   }
 
   private requireOwnerSignal(): AbortSignal {

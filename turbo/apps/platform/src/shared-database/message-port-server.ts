@@ -119,8 +119,15 @@ export class SharedDatabaseMessagePortServer {
           return this.store.set(
             heartbeatSharedDatabaseWorker$,
             clientId,
-            message.identity,
-            message.apiBaseUrl,
+            {
+              identity: message.identity,
+              apiBaseUrl: message.apiBaseUrl,
+              ...(message.vercelProtectionBypass
+                ? {
+                    vercelProtectionBypass: message.vercelProtectionBypass,
+                  }
+                : {}),
+            },
             requestSignal,
           );
         });

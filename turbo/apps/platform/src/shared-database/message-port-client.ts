@@ -1,13 +1,13 @@
 import {
   parseSharedDatabaseQueryResult,
   type SharedDatabaseDataKey,
-  type SharedDatabaseIdentity,
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
 } from "./data-key.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
+  SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "./bridge.ts";
 import {
@@ -73,7 +73,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   async heartbeat(
-    identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<void> {
     this.bindOwner(signal);
@@ -81,8 +81,11 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       {
         type: "heartbeat",
         requestId: crypto.randomUUID(),
-        identity,
+        identity: heartbeat.identity,
         apiBaseUrl: this.apiBaseUrl,
+        ...(heartbeat.vercelProtectionBypass
+          ? { vercelProtectionBypass: heartbeat.vercelProtectionBypass }
+          : {}),
       },
       signal,
     );

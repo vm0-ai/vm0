@@ -5,7 +5,10 @@ import {
   createChildAbortController,
   createDeferredPromise,
 } from "../../signals/utils.ts";
-import type { SharedDatabaseBridge } from "../bridge.ts";
+import type {
+  SharedDatabaseBridge,
+  SharedDatabaseHeartbeat,
+} from "../bridge.ts";
 import type {
   SharedDatabaseDataKey,
   SharedDatabaseIdentity,
@@ -17,15 +20,17 @@ import { ReconnectingSharedDatabaseBridge } from "../reconnecting-client.ts";
 
 class FakeBridge implements SharedDatabaseBridge {
   readonly callbacks: (() => void)[] = [];
+  readonly heartbeats: SharedDatabaseHeartbeat[] = [];
   readonly heartbeatSignals: AbortSignal[] = [];
   heartbeatCalls = 0;
   timeoutHeartbeatCall: number | null = null;
 
   async heartbeat(
-    _identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<void> {
     this.heartbeatCalls += 1;
+    this.heartbeats.push(heartbeat);
     this.heartbeatSignals.push(signal);
     if (this.heartbeatCalls === this.timeoutHeartbeatCall) {
       await createDeferredPromise<void>(signal).promise;
@@ -69,6 +74,16 @@ function identity(): SharedDatabaseIdentity {
   };
 }
 
+function heartbeat(
+  overrides: Partial<SharedDatabaseIdentity> = {},
+  vercelProtectionBypass?: string,
+): SharedDatabaseHeartbeat {
+  return {
+    identity: { ...identity(), ...overrides },
+    ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+  };
+}
+
 function dataKey(): SharedDatabaseDataKey {
   const currentIdentity = identity();
   return {
@@ -98,7 +113,7 @@ describe("reconnecting shared database bridge", () => {
       },
     });
     const owner = createChildAbortController(context.signal);
-    await bridge.heartbeat(identity(), owner.signal);
+    await bridge.heartbeat(heartbeat({}, "preview-secret"), owner.signal);
     expect(bridges).toHaveLength(1);
 
     let appends = 0;
@@ -114,13 +129,16 @@ describe("reconnecting shared database bridge", () => {
     firstBridge.timeoutHeartbeatCall = 2;
 
     await bridge.heartbeat(
-      { ...identity(), token: "replacement-token" },
+      heartbeat({ token: "replacement-token" }, "preview-secret"),
       owner.signal,
     );
 
     expect(bridges).toHaveLength(2);
     expect(firstBridge.heartbeatSignals[0]?.aborted).toBeTruthy();
     const recoveredBridge = bridges[1]!;
+    expect(recoveredBridge.heartbeats).toMatchObject([
+      { vercelProtectionBypass: "preview-secret" },
+    ]);
     expect(recoveredBridge.callbacks).toHaveLength(1);
     recoveredBridge.callbacks[0]?.();
     expect(appends).toBe(1);

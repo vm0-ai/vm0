@@ -9,6 +9,7 @@ import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { openDB } from "idb";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -130,7 +131,10 @@ function snapshotNdjson(rows: readonly ChatEventRow[]): string {
     .join("\n")}\n`;
 }
 
-async function connectRuntime(events: WorkerEvent[] = []): Promise<string> {
+async function connectRuntime(
+  events: WorkerEvent[] = [],
+  vercelProtectionBypass?: string,
+): Promise<string> {
   const clientId = crypto.randomUUID();
   context.workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
   context.workerStore.set(
@@ -143,8 +147,11 @@ async function connectRuntime(events: WorkerEvent[] = []): Promise<string> {
   await context.workerStore.set(
     heartbeatSharedDatabaseWorker$,
     clientId,
-    identity(),
-    location.origin,
+    {
+      identity: identity(),
+      apiBaseUrl: location.origin,
+      ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+    },
     context.signal,
   );
   return clientId;
@@ -164,6 +171,136 @@ async function query<TKey extends ChatEventDataKey | ChatThreadEventDataKey>(
 }
 
 describe("shared database worker runtime", () => {
+  it("forwards the dedicated Preview bypass to every API contract request", async () => {
+    const bypassByRoute = new Map<string, (string | null)[]>();
+    const recordBypass = (route: string, request: Request): void => {
+      const values = bypassByRoute.get(route) ?? [];
+      values.push(request.headers.get("x-vercel-protection-bypass"));
+      bypassByRoute.set(route, values);
+    };
+    context.mocks.api(
+      platformRealtimeTokenContract.create,
+      ({ request, respond }) => {
+        recordBypass("realtime-token", request);
+        return respond(200, {
+          keyName: "mock-key",
+          clientId: "test-user-123",
+          timestamp: Date.parse(CREATED_AT),
+          capability: '{"*":["*"]}',
+          nonce: "mock-nonce",
+          mac: "mock-mac",
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadEventsContract.snapshot,
+      ({ request, respond }) => {
+        recordBypass("chat-event-snapshot", request);
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      },
+    );
+    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
+      recordBypass("chat-event-rows", request);
+      return respond(200, { rows: [] });
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ request, respond }) => {
+      recordBypass("chat-thread-snapshot", request);
+      return respond(200, {
+        chatThreads: [],
+        latestEventId: null,
+        latestSeqId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ request, respond }) => {
+      recordBypass("chat-thread-events", request);
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    const clientId = await connectRuntime([], "preview-secret");
+    context.workerStore.set(
+      subscribeSharedDatabaseWorker$,
+      clientId,
+      crypto.randomUUID(),
+      chatThreadEventKey(),
+    );
+    await vi.waitFor(() => {
+      expect(bypassByRoute.get("realtime-token")).toStrictEqual([
+        "preview-secret",
+      ]);
+    });
+    await query(clientId, {
+      dataKey: chatEventKey(crypto.randomUUID()),
+      afterSeqId: null,
+      consistency: "catch-up",
+    });
+    await query(clientId, {
+      dataKey: chatThreadEventKey(),
+      afterSeqId: null,
+      consistency: "catch-up",
+    });
+
+    expect(Array.from(bypassByRoute.keys()).sort()).toStrictEqual(
+      [
+        "chat-event-rows",
+        "chat-event-snapshot",
+        "chat-thread-events",
+        "chat-thread-snapshot",
+        "realtime-token",
+      ].sort(),
+    );
+    for (const values of bypassByRoute.values()) {
+      expect(values.length).toBeGreaterThan(0);
+      expect(
+        values.every((value) => {
+          return value === "preview-secret";
+        }),
+      ).toBeTruthy();
+    }
+  });
+
+  it("omits the Preview bypass outside Preview", async () => {
+    const observedBypassHeaders: (string | null)[] = [];
+    context.mocks.api(
+      chatThreadEventsContract.snapshot,
+      ({ request, respond }) => {
+        observedBypassHeaders.push(
+          request.headers.get("x-vercel-protection-bypass"),
+        );
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      },
+    );
+    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
+      observedBypassHeaders.push(
+        request.headers.get("x-vercel-protection-bypass"),
+      );
+      return respond(200, { rows: [] });
+    });
+
+    const clientId = await connectRuntime();
+    await query(clientId, {
+      dataKey: chatEventKey(crypto.randomUUID()),
+      afterSeqId: null,
+      consistency: "catch-up",
+    });
+
+    expect(observedBypassHeaders.length).toBeGreaterThanOrEqual(2);
+    expect(
+      observedBypassHeaders.every((value) => {
+        return value === null;
+      }),
+    ).toBeTruthy();
+  });
+
   it("keeps full cache-only queries for both datasets off the network", async () => {
     const clientId = await connectRuntime();
     let networkRequests = 0;
@@ -687,8 +824,7 @@ describe("shared database worker runtime", () => {
     await context.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       clientId,
-      identity(),
-      location.origin,
+      { identity: identity(), apiBaseUrl: location.origin },
       context.signal,
     );
     expect(workerEvents.at(-1)).toMatchObject({
@@ -1173,8 +1309,7 @@ describe("shared database worker runtime", () => {
     await context.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       clientId,
-      identity(),
-      location.origin,
+      { identity: identity(), apiBaseUrl: location.origin },
       context.signal,
     );
     await expect(
@@ -1190,8 +1325,10 @@ describe("shared database worker runtime", () => {
     await context.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       clientId,
-      { ...identity(), token: "replacement-token" },
-      location.origin,
+      {
+        identity: { ...identity(), token: "replacement-token" },
+        apiBaseUrl: location.origin,
+      },
       context.signal,
     );
     expect(authorizationHeaders).toStrictEqual([

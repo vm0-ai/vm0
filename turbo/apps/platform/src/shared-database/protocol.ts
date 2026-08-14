@@ -17,6 +17,7 @@ const heartbeatRequestSchema = z
     requestId: requestIdSchema,
     identity: sharedDatabaseIdentitySchema,
     apiBaseUrl: z.string().url(),
+    vercelProtectionBypass: z.string().min(1).optional(),
   })
   .strict();
 

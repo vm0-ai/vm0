@@ -1,16 +1,20 @@
 import { command, state } from "ccstate";
 import type {
   SharedDatabaseDataKey,
-  SharedDatabaseIdentity,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
+import type { SharedDatabaseHeartbeat } from "./bridge.ts";
 import {
   SharedDatabaseWorkerRuntime,
   type WorkerClientEmitter,
 } from "./worker-runtime.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
+
+interface SharedDatabaseWorkerHeartbeat extends SharedDatabaseHeartbeat {
+  readonly apiBaseUrl: string;
+}
 
 function requireRuntime(
   runtime: SharedDatabaseWorkerRuntime | null,
@@ -40,15 +44,15 @@ export const heartbeatSharedDatabaseWorker$ = command(
   async (
     { get },
     clientId: string,
-    identity: SharedDatabaseIdentity,
-    apiBaseUrl: string,
+    heartbeat: SharedDatabaseWorkerHeartbeat,
     signal: AbortSignal,
   ): Promise<void> => {
     signal.throwIfAborted();
     await requireRuntime(get(workerRuntimeState$)).heartbeat(
       clientId,
-      identity,
-      apiBaseUrl,
+      heartbeat.identity,
+      heartbeat.apiBaseUrl,
+      heartbeat.vercelProtectionBypass,
     );
     signal.throwIfAborted();
   },

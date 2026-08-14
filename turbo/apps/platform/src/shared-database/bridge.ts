@@ -6,9 +6,14 @@ import type {
 } from "./data-key.ts";
 import type { SharedDatabaseConnectionStatus } from "./protocol.ts";
 
+export interface SharedDatabaseHeartbeat {
+  readonly identity: SharedDatabaseIdentity;
+  readonly vercelProtectionBypass?: string;
+}
+
 export interface SharedDatabaseBridge {
   heartbeat(
-    identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<void>;
   query<TKey extends SharedDatabaseDataKey>(

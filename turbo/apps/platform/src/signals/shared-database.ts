@@ -3,11 +3,13 @@ import type {
   ChatEventDataKey,
   ChatThreadEventDataKey,
   SharedDatabaseDataKey,
-  SharedDatabaseIdentity,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../shared-database/data-key.ts";
-import type { SharedDatabaseBridge } from "../shared-database/bridge.ts";
+import type {
+  SharedDatabaseBridge,
+  SharedDatabaseHeartbeat,
+} from "../shared-database/bridge.ts";
 import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
 
 const sharedDatabaseBridgeState$ = state<SharedDatabaseBridge | null>(null);
@@ -47,11 +49,11 @@ function requireBridge(
 export const heartbeatSharedDatabase$ = command(
   async (
     { get },
-    identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<void> => {
     await requireBridge(get(sharedDatabaseBridgeState$)).heartbeat(
-      identity,
+      heartbeat,
       signal,
     );
   },

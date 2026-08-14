@@ -2,11 +2,13 @@ import type { Store } from "ccstate";
 import {
   parseSharedDatabaseQueryResult,
   type SharedDatabaseDataKey,
-  type SharedDatabaseIdentity,
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
 } from "./data-key.ts";
-import type { SharedDatabaseBridge } from "./bridge.ts";
+import type {
+  SharedDatabaseBridge,
+  SharedDatabaseHeartbeat,
+} from "./bridge.ts";
 import type { SharedDatabaseWorkerMessage } from "./protocol.ts";
 import {
   bootstrapSharedDatabaseWorker$,
@@ -71,15 +73,14 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   async heartbeat(
-    identity: SharedDatabaseIdentity,
+    heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<void> {
     this.bindOwner(signal);
     await this.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       this.clientId,
-      identity,
-      this.apiBaseUrl,
+      { ...heartbeat, apiBaseUrl: this.apiBaseUrl },
       this.workerSignal,
     );
     await this.afterWorkerHeartbeat?.();

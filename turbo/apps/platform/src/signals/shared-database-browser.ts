@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
 import { jsonParseOr, onDomEventFn, setLoop } from "./utils.ts";
@@ -104,12 +105,18 @@ export const heartbeatSharedDatabaseNow$ = command(
     if (!token) {
       throw new Error("Clerk token is required for the shared database");
     }
+    const apiBaseUrl = resolveApiBaseForTarget("api");
+    const vercelProtectionBypass =
+      getCapturedPreviewBypassForTarget(apiBaseUrl);
     await set(
       heartbeatSharedDatabase$,
       {
-        userId: identity.userId,
-        orgId: identity.orgId,
-        token,
+        identity: {
+          userId: identity.userId,
+          orgId: identity.orgId,
+          token,
+        },
+        ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
       },
       signal,
     );

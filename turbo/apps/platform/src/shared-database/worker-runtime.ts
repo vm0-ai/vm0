@@ -80,6 +80,7 @@ interface CredentialState {
   readonly orgId: string;
   token: string;
   apiBaseUrl: string;
+  vercelProtectionBypass: string | undefined;
   authBlocked: boolean;
   rejectedToken: string | null;
   updatedAt: number;
@@ -286,6 +287,7 @@ export class SharedDatabaseWorkerRuntime {
     clientId: string,
     identity: SharedDatabaseIdentity,
     apiBaseUrl: string,
+    vercelProtectionBypass: string | undefined,
   ): Promise<void> {
     this.rootSignal.throwIfAborted();
     this.pruneStaleClients();
@@ -314,6 +316,7 @@ export class SharedDatabaseWorkerRuntime {
         orgId: identity.orgId,
         token: identity.token,
         apiBaseUrl,
+        vercelProtectionBypass,
         authBlocked: false,
         rejectedToken: null,
         updatedAt: now(),
@@ -325,6 +328,7 @@ export class SharedDatabaseWorkerRuntime {
     const resumesAuthentication =
       credential.authBlocked && identity.token !== credential.rejectedToken;
     credential.apiBaseUrl = apiBaseUrl;
+    credential.vercelProtectionBypass = vercelProtectionBypass;
     credential.updatedAt = now();
     if (!credential.authBlocked || resumesAuthentication) {
       credential.token = identity.token;
@@ -628,6 +632,9 @@ export class SharedDatabaseWorkerRuntime {
       () => {
         return requestToken;
       },
+      () => {
+        return credential.vercelProtectionBypass;
+      },
     );
 
     let remoteRows: ChatEventRow[] = [];
@@ -801,6 +808,9 @@ export class SharedDatabaseWorkerRuntime {
       credential.apiBaseUrl,
       () => {
         return requestToken;
+      },
+      () => {
+        return credential.vercelProtectionBypass;
       },
     );
     const cachedCursor = chatThreadEventCursor(cached);
@@ -1291,6 +1301,9 @@ export class SharedDatabaseWorkerRuntime {
       credential.apiBaseUrl,
       () => {
         return requestToken;
+      },
+      () => {
+        return credential.vercelProtectionBypass;
       },
     );
     const result = await client.create({ body: {} });

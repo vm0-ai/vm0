@@ -96,18 +96,20 @@ export function appendCapturedPreviewBypassToUrl(url: URL): void {
   appendPreviewBypassToUrl(url, window.location, document.cookie);
 }
 
+export function getCapturedPreviewBypassForTarget(
+  target: PreviewBypassTarget,
+): string | null {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return null;
+  }
+  return previewBypassForTarget(target, window.location, document.cookie);
+}
+
 export function addCapturedPreviewBypassHeader(
   headers: Headers,
   target: PreviewBypassTarget,
 ): void {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    return;
-  }
-  const bypass = previewBypassForTarget(
-    target,
-    window.location,
-    document.cookie,
-  );
+  const bypass = getCapturedPreviewBypassForTarget(target);
   if (bypass) {
     headers.set(VERCEL_PROTECTION_BYPASS_NAME, bypass);
   }

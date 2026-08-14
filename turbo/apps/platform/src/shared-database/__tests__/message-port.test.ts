@@ -13,6 +13,7 @@ import {
 } from "../../signals/shared-database.ts";
 import type {
   SharedDatabaseBridgeEvents,
+  SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "../bridge.ts";
 import type { ChatEventDataKey, SharedDatabaseIdentity } from "../data-key.ts";
@@ -96,6 +97,13 @@ function identity(): SharedDatabaseIdentity {
   };
 }
 
+function heartbeat(vercelProtectionBypass?: string): SharedDatabaseHeartbeat {
+  return {
+    identity: identity(),
+    ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+  };
+}
+
 function dataKey(threadId: string): ChatEventDataKey {
   const current = identity();
   return {
@@ -152,7 +160,7 @@ describe("shared database MessagePort protocol", () => {
     expect(platformStore).not.toBe(workerStore);
     await platformStore.set(
       heartbeatSharedDatabase$,
-      identity(),
+      heartbeat(),
       context.signal,
     );
 
@@ -222,7 +230,7 @@ describe("shared database MessagePort protocol", () => {
     const { platformStore } = installProtocolBridge();
     await platformStore.set(
       heartbeatSharedDatabase$,
-      identity(),
+      heartbeat(),
       context.signal,
     );
     const key = dataKey(crypto.randomUUID());
@@ -325,8 +333,8 @@ describe("shared database MessagePort protocol", () => {
     const staleOwner = createChildAbortController(context.signal);
     const subscription = createChildAbortController(context.signal);
     try {
-      await firstTab.heartbeat(identity(), firstOwner.signal);
-      await staleTab.heartbeat(identity(), staleOwner.signal);
+      await firstTab.heartbeat(heartbeat(), firstOwner.signal);
+      await staleTab.heartbeat(heartbeat(), staleOwner.signal);
 
       const key = dataKey(crypto.randomUUID());
       const canonicalRow = row(key.threadId, 1);
@@ -360,13 +368,13 @@ describe("shared database MessagePort protocol", () => {
       });
 
       mockNow(start + 2 * 60 * 1000, context.signal);
-      await firstTab.heartbeat(identity(), firstOwner.signal);
+      await firstTab.heartbeat(heartbeat(), firstOwner.signal);
       mockNow(start + 4 * 60 * 1000, context.signal);
-      await firstTab.heartbeat(identity(), firstOwner.signal);
+      await firstTab.heartbeat(heartbeat(), firstOwner.signal);
 
       expect(firstTabTransports).toBe(1);
       expect(staleTabTransports).toBe(1);
-      await staleTab.heartbeat(identity(), staleOwner.signal);
+      await staleTab.heartbeat(heartbeat(), staleOwner.signal);
       expect(staleTabTransports).toBe(2);
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
@@ -391,6 +399,7 @@ describe("shared database MessagePort protocol", () => {
     const statuses: SharedDatabaseConnectionStatus[] = [];
     let reloads = 0;
     let subscriptionId: string | null = null;
+    let observedHeartbeat: SharedDatabaseClientMessage | null = null;
     let unsubscribeObserved = false;
     const key = dataKey(crypto.randomUUID());
     const bridge = new MessagePortSharedDatabaseBridge(
@@ -408,6 +417,7 @@ describe("shared database MessagePort protocol", () => {
     serverPort.addEventListener("message", (event) => {
       const message = event.data as SharedDatabaseClientMessage;
       if (message.type === "heartbeat") {
+        observedHeartbeat = message;
         serverPort.postMessage({
           type: "result",
           requestId: message.requestId,
@@ -444,7 +454,13 @@ describe("shared database MessagePort protocol", () => {
     serverPort.start();
 
     const owner = createChildAbortController(context.signal);
-    await bridge.heartbeat(identity(), owner.signal);
+    await bridge.heartbeat(heartbeat("preview-secret"), owner.signal);
+    expect(observedHeartbeat).toMatchObject({
+      type: "heartbeat",
+      identity: identity(),
+      apiBaseUrl: location.origin,
+      vercelProtectionBypass: "preview-secret",
+    });
 
     const subscription = createChildAbortController(context.signal);
     let callbacks = 0;

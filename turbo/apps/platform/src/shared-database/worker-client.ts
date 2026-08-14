@@ -13,6 +13,7 @@ export function createSharedDatabaseContractClient<TContract extends AppRouter>(
   contract: TContract,
   baseUrl: string,
   getToken: () => string,
+  getVercelProtectionBypass: () => string | undefined,
 ): InitClientReturn<TContract, InitClientArgs> {
   return initClient(contract, {
     baseUrl,
@@ -21,6 +22,10 @@ export function createSharedDatabaseContractClient<TContract extends AppRouter>(
     api: async (args: ApiFetcherArgs) => {
       const headers = new Headers(args.headers);
       headers.set("Authorization", `Bearer ${getToken()}`);
+      const vercelProtectionBypass = getVercelProtectionBypass();
+      if (vercelProtectionBypass) {
+        headers.set("X-Vercel-Protection-Bypass", vercelProtectionBypass);
+      }
       addClientHeaders(headers);
       const response = await trpcRestFetchApi({
         ...args,
