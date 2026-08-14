@@ -83,6 +83,7 @@ type BillingDowngradeCheckoutTargetTier =
   | "pro-suspend"
   | "pro";
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
+const ATOM_GRANT_EXPIRATION_TARGET_TIER = "pro-suspend";
 
 type WriteTx = Tx;
 type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
@@ -859,7 +860,8 @@ function atomGrantInvoiceDetails(
     grantExpiresAt,
     creditExpiresAt: atomGrantCreditExpiresAt(grantExpiresAt),
     customerId,
-    credits: monthlyCreditsForTier(tier),
+    credits:
+      metadata.planVersion === "usagePack" ? 0 : monthlyCreditsForTier(tier),
   };
 }
 
@@ -1663,35 +1665,37 @@ async function processAtomPlanGrantInvoicePaid(
       return false;
     }
 
-    await expireCredits(tx, details.orgId);
-    const inserted = await createExpiresRecord(tx, details.orgId, {
-      source: "subscription_renewal",
-      stripeInvoiceId: invoice.id,
-      amount: details.credits,
-      expiresAt: details.creditExpiresAt,
-    });
-    if (!inserted) {
-      if (
-        lockedOrg.tier === details.tier &&
-        lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
-        lockedOrg.stripeSubscriptionId === null
-      ) {
-        await upsertAtomGrantPlanEntitlement(tx, invoice, details);
+    if (details.credits > 0) {
+      await expireCredits(tx, details.orgId);
+      const inserted = await createExpiresRecord(tx, details.orgId, {
+        source: "subscription_renewal",
+        stripeInvoiceId: invoice.id,
+        amount: details.credits,
+        expiresAt: details.creditExpiresAt,
+      });
+      if (!inserted) {
+        if (
+          lockedOrg.tier === details.tier &&
+          lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
+          lockedOrg.stripeSubscriptionId === null
+        ) {
+          await upsertAtomGrantPlanEntitlement(tx, invoice, details);
+        }
+        await cancelReplacedSubscriptionsAfterAtomGrant({
+          orgId: details.orgId,
+          customerId: details.customerId,
+          invoiceId: invoice.id,
+          knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
+        });
+        L.debug("atom grant invoice credits already processed", {
+          invoiceId: invoice.id,
+          orgId: details.orgId,
+        });
+        return true;
       }
-      await cancelReplacedSubscriptionsAfterAtomGrant({
-        orgId: details.orgId,
-        customerId: details.customerId,
-        invoiceId: invoice.id,
-        knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
-      });
-      L.debug("atom grant invoice credits already processed", {
-        invoiceId: invoice.id,
-        orgId: details.orgId,
-      });
-      return true;
-    }
 
-    await grantOrgCredits(tx, details.orgId, details.credits);
+      await grantOrgCredits(tx, details.orgId, details.credits);
+    }
     await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
         return await writeTx
@@ -1709,7 +1713,7 @@ async function processAtomPlanGrantInvoicePaid(
             currentPeriodEnd: details.grantExpiresAt,
             pendingSubscriptionScheduleId: null,
             pendingSubscriptionTargetTier: details.grantExpiresAt
-              ? CANCELED_SUBSCRIPTION_TARGET_TIER
+              ? ATOM_GRANT_EXPIRATION_TARGET_TIER
               : null,
             pendingSubscriptionChangeAt: details.grantExpiresAt,
             updatedAt: nowDate(),

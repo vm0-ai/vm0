@@ -169,7 +169,7 @@ describe("billing entitlement reconciliation", () => {
       kind: "atom-grant",
       orgId: seededFixture(selectedFixtures, "atom-grant").orgId,
       status: "expired",
-      tier: "limited-free-1",
+      tier: "pro-suspend",
       credits: 0,
       stripeSubscriptionId: null,
     });

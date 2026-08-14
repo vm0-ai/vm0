@@ -611,12 +611,14 @@ describe("usage pack subscription Stripe lifecycle", () => {
     expect(planState.org).toStrictEqual(
       expect.objectContaining({
         tier: "pro",
+        credits: 0,
         stripeSubscriptionId: null,
         subscriptionStatus: "atom_grant",
         currentPeriodEnd: new Date(grantPeriod.end * 1000).toISOString(),
         memberInviteUsagePackRequired: true,
       }),
     );
+    expect(planState.legacyCredits).toStrictEqual([]);
     expect(planState.fulfillmentInvoiceIds).toStrictEqual([]);
 
     const grantInvoiceId = `in_atom_member_pack_${randomUUID()}`;
@@ -664,6 +666,8 @@ describe("usage pack subscription Stripe lifecycle", () => {
         expiresAt: new Date(grantPeriod.end * 1000).toISOString(),
       },
     ]);
+    expect(grantedState.org?.credits).toBe(0);
+    expect(grantedState.legacyCredits).toStrictEqual([]);
     expect(grantedState.fulfillmentInvoiceIds).toStrictEqual([]);
 
     await postStripeEvent(
