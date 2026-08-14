@@ -407,9 +407,11 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 }
 
 /* Every ledger row lands on the same three columns: who or what the line is,
-   the control, and the money. */
+   the control, and the money. The money column is wide enough for the total
+   row's 30px figure at five digits -- it is the one number that has to fit,
+   and a shared width is what keeps every amount on one right edge. */
 const LEDGER_ROW =
-  "grid grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_4.5rem] items-center gap-3 py-2.5";
+  "grid grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_9.5rem] items-center gap-3 py-2.5";
 const LEDGER_RULE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
 
 function LedgerPrice({
@@ -950,6 +952,36 @@ function PlanSelectionCard({
   );
 }
 
+function PricingBackButton({ onBack }: { readonly onBack: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            onClick={onBack}
+            variant="quiet"
+            size="icon-xs"
+            aria-label={t(($) => {
+              return $.billing.common.back;
+            })}
+          >
+            <ArrowLeft size={16} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">
+            {t(($) => {
+              return $.billing.common.back;
+            })}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function UsagePackPageHeader({
   description,
   onBack,
@@ -961,33 +993,9 @@ function UsagePackPageHeader({
   readonly title: string;
   readonly trailing?: ReactNode;
 }) {
-  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-3">
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              onClick={onBack}
-              variant="quiet"
-              size="icon-xs"
-              aria-label={t(($) => {
-                return $.billing.common.back;
-              })}
-            >
-              <ArrowLeft size={16} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p className="text-xs">
-              {t(($) => {
-                return $.billing.common.back;
-              })}
-            </p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <PricingBackButton onBack={onBack} />
       <div className="min-w-0 flex-1">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
         {description && (
@@ -1034,6 +1042,71 @@ function PricingPageHeader({
       }
       trailing={<PricingStepIndicator current={step} />}
     />
+  );
+}
+
+function pricingStepTitle(step: 1 | 2): string {
+  return step === 1
+    ? i18n.t(($) => {
+        return $.billing.plans.usagePacks.choosePlan;
+      })
+    : i18n.t(($) => {
+        return $.billing.plans.usagePacks.configurePackages;
+      });
+}
+
+/* Both pricing steps are their own modal rather than a page inside Settings:
+   picking a plan is a decision the workspace makes in one sitting, and a
+   dialog keeps the billing overview it is decided against in place behind it.
+   The two steps share one dialog frame at one fixed width and height, so
+   moving between them only changes the body -- the header band, the step
+   counter and the outer edges hold still. The height is the taller step's
+   (plan selection), and the body insets its content so no rule, tint or column
+   runs into the frame.
+
+   The dialog is mounted only while the flow is open, so the plan catalog and
+   the subscription it loads stay owned by the flow rather than by every visit
+   to the billing tab. */
+function PricingStepDialog({
+  children,
+  onBack,
+  onClose,
+  step,
+}: {
+  readonly children: ReactNode;
+  readonly onBack?: () => void;
+  readonly onClose: () => void;
+  readonly step: 1 | 2;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        aria-describedby={undefined}
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+        className="flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+      >
+        <DialogHeader className="flex-row shrink-0 items-center gap-3 space-y-0 border-b-[0.7px] border-[hsl(var(--gray-200))] px-5 py-4 pr-16 text-left">
+          {onBack && <PricingBackButton onBack={onBack} />}
+          <DialogTitle className="min-w-0 flex-1 text-base font-medium leading-none">
+            {pricingStepTitle(step)}
+          </DialogTitle>
+          <PricingStepIndicator current={step} />
+        </DialogHeader>
+        <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+          {children}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1126,19 +1199,13 @@ function PlanSelectionStep({
   catalog,
   checkoutAllowed,
   currentTier,
-  error,
-  loading,
   managedTier,
-  onBack,
   onAction,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
-  readonly error: string | null;
-  readonly loading: boolean;
   readonly managedTier: UsagePackPlanTier | null;
-  readonly onBack: () => void;
   readonly onAction: (
     plan: UsagePackPlanTier,
     action: PlanSelectionAction,
@@ -1146,34 +1213,33 @@ function PlanSelectionStep({
 }) {
   const minimumPackage = usagePackCatalogItem(catalog, MINIMUM_USAGE_PACK_USD);
   return (
-    <>
-      <PricingPageHeader onBack={onBack} step={1} />
-      <PlanSelectionPanel>
-        {USAGE_PACK_PLANS.map((plan, index) => {
-          const action = usagePackPlanAction(
-            checkoutAllowed,
-            currentTier,
-            managedTier,
-            plan.tier,
-          );
-          return (
-            <PlanSelectionCard
-              key={plan.tier}
-              action={action}
-              busy={loading}
-              divided={index > 0}
-              keepsMemberPackages={managedTier !== null}
-              minimumPackage={minimumPackage}
-              plan={plan}
-              onAction={() => {
-                onAction(plan.tier, action);
-              }}
-            />
-          );
-        })}
-      </PlanSelectionPanel>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-    </>
+    /* No panel border inside the dialog frame -- the only rule between the two
+       plans is the hairline the second column carries, and it runs the full
+       height of the body so the frame reads as two columns, not two cards. */
+    <div className="grid flex-1 grid-cols-1 sm:grid-cols-2">
+      {USAGE_PACK_PLANS.map((plan, index) => {
+        const action = usagePackPlanAction(
+          checkoutAllowed,
+          currentTier,
+          managedTier,
+          plan.tier,
+        );
+        return (
+          <PlanSelectionCard
+            key={plan.tier}
+            action={action}
+            busy={false}
+            divided={index > 0}
+            keepsMemberPackages={managedTier !== null}
+            minimumPackage={minimumPackage}
+            plan={plan}
+            onAction={() => {
+              onAction(plan.tier, action);
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -2145,12 +2211,10 @@ function ManagedSubscriptionOrderSummary({
 function PackageConfigurationStep({
   catalog,
   management,
-  onBack,
   plan,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly management: UsagePackManagementResponse | null;
-  readonly onBack: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const selections = useGet(memberUsageSelections$);
@@ -2180,8 +2244,7 @@ function PackageConfigurationStep({
   const totals = memberUsageTotals(members ?? [], selections, catalog);
 
   return (
-    <>
-      <PricingPageHeader onBack={onBack} step={2} />
+    <div className="flex flex-1 flex-col gap-5">
       <MemberUsageConfiguration
         catalog={catalog}
         management={management}
@@ -2190,24 +2253,33 @@ function PackageConfigurationStep({
         plan={plan}
         totals={totals}
       />
-      <MemberUsageFooter />
-      {management ? (
-        <ManagedSubscriptionOrderSummary
-          currentTotals={managedMemberUsageTotals(management, members, catalog)}
-          management={management}
-          members={members}
-          plan={plan}
-          selections={selections}
-          totals={totals}
-        />
-      ) : (
-        <CheckoutOrderSummary
-          members={members}
-          plan={plan}
-          selections={selections}
-        />
-      )}
-    </>
+      {/* The frame keeps step 1's height, so a short member list leaves slack
+          below the ledger. Spend it above the fine print and the action, which
+          stay together at the foot of the dialog. */}
+      <div className="mt-auto flex flex-col gap-5">
+        <MemberUsageFooter />
+        {management ? (
+          <ManagedSubscriptionOrderSummary
+            currentTotals={managedMemberUsageTotals(
+              management,
+              members,
+              catalog,
+            )}
+            management={management}
+            members={members}
+            plan={plan}
+            selections={selections}
+            totals={totals}
+          />
+        ) : (
+          <CheckoutOrderSummary
+            members={members}
+            plan={plan}
+            selections={selections}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -2849,19 +2921,18 @@ export function UsagePackMigrationPage({
   );
 }
 
-export function UsagePackPricingPage({
+export function UsagePackPricingDialogs({
   checkoutAllowed,
   currentTier,
-  onBack,
+  onClose,
 }: {
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
-  readonly onBack: () => void;
+  readonly onClose: () => void;
 }) {
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
   const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
   const setMemberUsageSelections = useSet(setMemberUsageSelections$);
-  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
   const catalogLoadable = useLoadable(usagePackCatalogAsync$);
   const managementLoadable = useLoadable(usagePackManagementAsync$);
   const catalog =
@@ -2879,35 +2950,34 @@ export function UsagePackPricingPage({
     );
   });
   return (
-    <div
-      className="flex flex-col gap-5 outline-none"
-      ref={usagePackPricingPageRef}
-      role="group"
-      tabIndex={-1}
+    <PricingStepDialog
+      step={selectedPlan ? 2 : 1}
+      onBack={
+        selectedPlan
+          ? () => {
+              setSelectedPlan(null);
+            }
+          : undefined
+      }
+      onClose={() => {
+        setSelectedPlan(null);
+        onClose();
+      }}
     >
       {!catalog || !managementLoaded ? (
-        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+        <div className="flex-1 animate-pulse rounded-xl bg-muted/40" />
       ) : selectedPlan ? (
         <PackageConfigurationStep
           catalog={catalog}
           management={management}
           plan={selectedPlan}
-          onBack={() => {
-            setSelectedPlan(null);
-          }}
         />
       ) : (
         <PlanSelectionStep
           catalog={catalog}
           checkoutAllowed={checkoutAllowed}
           currentTier={currentTier}
-          error={null}
-          loading={false}
           managedTier={management?.tier ?? null}
-          onBack={() => {
-            setSelectedPlan(null);
-            onBack();
-          }}
           onAction={(plan, action) => {
             if (action === "disabled") {
               return;
@@ -2928,6 +2998,6 @@ export function UsagePackPricingPage({
           }}
         />
       )}
-    </div>
+    </PricingStepDialog>
   );
 }
