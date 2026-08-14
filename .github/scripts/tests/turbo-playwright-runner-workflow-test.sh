@@ -336,7 +336,6 @@ end
 raise "missing real Claude account bootstrap" unless claude_step
 claude_script = claude_step.fetch("run")
 %w[
-  /api/okou/model-providers
   /api/okou/model-policies
   /api/okou/feature-switches
   claude-sonnet-4-6
@@ -346,9 +345,9 @@ claude_script = claude_step.fetch("run")
     raise "real Claude bootstrap must include #{required_fragment}"
   end
 end
-unless claude_step.dig("env", "ANTHROPIC_API_KEY") ==
-    "${{ secrets.CI_ANTHROPIC_API_KEY }}"
-  raise "real Claude bootstrap must receive the Anthropic credential"
+unless claude_script.include?('defaultProviderType: "vm0"') &&
+    claude_script.include?("modelProviderId: null")
+  raise "real Claude bootstrap must use the VM0-managed provider"
 end
 
 shard_step = runner.fetch("steps").find do |step|
