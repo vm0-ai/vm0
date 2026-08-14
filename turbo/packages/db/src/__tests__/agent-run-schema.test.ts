@@ -1,4 +1,4 @@
-import { getTableConfig } from "drizzle-orm/pg-core";
+import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 function foreignKeyReference(
@@ -69,6 +69,56 @@ describe("agentRuns circular foreign keys", () => {
     expect(goal.reference.columns).toEqual([agentRuns.goalId]);
     expect(goal.reference.foreignTable).toBe(threadGoals);
     expect(goal.reference.foreignColumns).toEqual([threadGoals.id]);
+
+    const agentRunConfig = getTableConfig(agentRuns);
+    expect(agentRuns.triggerSource.notNull).toBe(false);
+    expect(agentRuns.triggerSource.hasDefault).toBe(false);
+    expect(agentRuns.autonomyBudget.notNull).toBe(false);
+    expect(agentRuns.autonomyBudget.hasDefault).toBe(false);
+
+    const metadataPresenceCheck = agentRunConfig.checks.find((check) => {
+      return check.name === "agent_runs_metadata_presence_check";
+    });
+    expect(metadataPresenceCheck).toBeDefined();
+    if (!metadataPresenceCheck) {
+      throw new Error("Missing agent-run metadata-presence check");
+    }
+    const metadataPresenceSql = new PgDialect().sqlToQuery(
+      metadataPresenceCheck.value,
+    ).sql;
+    const metadataColumns = [
+      "trigger_source",
+      "autonomy_budget",
+      "workflow_automation_id",
+      "goal_id",
+      "model_provider",
+      "model_provider_id",
+      "model_provider_credential_scope",
+      "selected_model",
+      "codex_service_tier",
+      "selected_video_model",
+      "chat_thread_id",
+      "api_started_at",
+      "first_assistant_event_acknowledged_at",
+      "summary",
+      "trigger_brief",
+    ] as const;
+    for (const column of metadataColumns) {
+      expect(metadataPresenceSql).toContain(`"agent_runs"."${column}" IS NULL`);
+    }
+    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(15);
+    expect(metadataPresenceSql.match(/ IS NOT NULL/gu)).toHaveLength(2);
+    expect(metadataPresenceSql).toContain(
+      '"agent_runs"."trigger_source" IS NOT NULL',
+    );
+    expect(metadataPresenceSql).toContain(
+      '"agent_runs"."autonomy_budget" IS NOT NULL',
+    );
+    expect(
+      agentRunConfig.checks.map((check) => {
+        return check.name;
+      }),
+    ).toContain("agent_runs_autonomy_budget_check");
 
     const agentSessionRun = foreignKeyReference(
       chatThreads,

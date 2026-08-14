@@ -1,6 +1,6 @@
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import { admitWorkflowAutomationEvent } from "../signals/services/workflow-chat-event-queue.service";
@@ -20,9 +20,9 @@ export async function readWorkflowRunTriggerSourceFixture(
   runId: string,
 ): Promise<string | null> {
   const [run] = await db()
-    .select({ triggerSource: zeroRuns.triggerSource })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ triggerSource: agentRuns.triggerSource })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return run?.triggerSource ?? null;
 }

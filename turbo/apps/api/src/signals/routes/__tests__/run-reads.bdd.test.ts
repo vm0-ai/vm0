@@ -372,6 +372,63 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     }
   });
 
+  it("keeps lifecycle-only logs visible without product metadata", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "lifecycle-only-log");
+    if (!actor.orgId) {
+      throw new Error("Lifecycle-only log reads require an org-scoped actor");
+    }
+    const lifecycleRun = await store.set(
+      seedRun$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        composeId: compose.composeId,
+        prompt: "accepted lifecycle-only history",
+        status: "failed",
+        completedAt: nowDate(),
+        lifecycleOnly: true,
+      },
+      context.signal,
+    );
+
+    const listed = await reads.requestListLogs(actor, {}, [200]);
+    mustOk(listed, "the lifecycle-only log list");
+    expect(
+      listed.body.data.find((entry) => {
+        return entry.id === lifecycleRun.runId;
+      }),
+    ).toMatchObject({
+      id: lifecycleRun.runId,
+      status: "failed",
+      triggerSource: null,
+    });
+
+    const detail = await reads.requestReadLogById(
+      actor,
+      lifecycleRun.runId,
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      id: lifecycleRun.runId,
+      triggerSource: null,
+      modelProvider: null,
+      selectedModel: null,
+    });
+
+    const productFiltered = await reads.requestListLogs(
+      actor,
+      { triggerSource: "test" },
+      [200],
+    );
+    mustOk(productFiltered, "the product-metadata log filter");
+    expect(
+      productFiltered.body.data.map((entry) => {
+        return entry.id;
+      }),
+    ).not.toContain(lifecycleRun.runId);
+  });
+
   it("lists, reads, and queues direct runs with status, agent, and window filters", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });

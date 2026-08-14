@@ -1,12 +1,12 @@
 import { command } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
   type CodexServiceTier,
   chatThreadsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -50,12 +50,12 @@ async function inheritedRunChatSettings(
 
   const [run] = await db
     .select({
-      selectedModel: zeroRuns.selectedModel,
+      selectedModel: agentRuns.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,
     })
-    .from(zeroRuns)
-    .leftJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .leftJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return {
     selectedModel: run?.selectedModel ?? null,

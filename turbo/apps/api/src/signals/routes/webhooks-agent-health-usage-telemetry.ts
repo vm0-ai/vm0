@@ -10,8 +10,7 @@ import {
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import { usageEvent } from "@okouai/db/schema/usage-event";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
   isSupportedRunModel,
   normalizeRunModelId,
@@ -186,10 +185,12 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   const [runModelContext] = hasModelEvents
     ? await db
         .select({
-          modelProvider: zeroRuns.modelProvider,
+          modelProvider: agentRuns.modelProvider,
         })
-        .from(zeroRuns)
-        .where(eq(zeroRuns.id, body.runId))
+        .from(agentRuns)
+        .where(
+          and(eq(agentRuns.id, body.runId), isNotNull(agentRuns.triggerSource)),
+        )
         .limit(1)
     : [];
   signal.throwIfAborted();
@@ -264,10 +265,12 @@ const modelUsageObservation$ = command(
     const db = set(writeDb$);
     const [runModelContext] = await db
       .select({
-        selectedModel: zeroRuns.selectedModel,
+        selectedModel: agentRuns.selectedModel,
       })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, body.runId))
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, body.runId), isNotNull(agentRuns.triggerSource)),
+      )
       .limit(1);
     signal.throwIfAborted();
 

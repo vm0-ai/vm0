@@ -10,7 +10,6 @@ import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhook
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -183,10 +182,9 @@ async function loadCompletionRun(
       status: agentRuns.status,
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
         eq(agentRuns.id, input.body.runId),
@@ -254,10 +252,9 @@ async function lockCompletionRun(
       status: agentRuns.status,
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
         eq(agentRuns.id, input.body.runId),

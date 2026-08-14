@@ -548,8 +548,8 @@ function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
       id: agentRuns.id,
       status: agentRuns.status,
       createdAt: agentRuns.createdAt,
-      triggerSource: zeroRuns.triggerSource,
-      chatThreadId: zeroRuns.chatThreadId,
+      triggerSource: agentRuns.triggerSource,
+      chatThreadId: agentRuns.chatThreadId,
       userId: agentRuns.userId,
       error: agentRuns.error,
       promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
@@ -557,7 +557,6 @@ function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
       ),
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .where(eq(agentRuns.orgId, orgId))
     .orderBy(desc(agentRuns.createdAt))
     .limit(50);
@@ -1006,9 +1005,8 @@ async function deleteTeamsRunsForOrg(
   const teamsAgentRuns = await db
     .select({ id: agentRuns.id })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .where(
-      and(eq(agentRuns.orgId, orgId), eq(zeroRuns.triggerSource, "teams")),
+      and(eq(agentRuns.orgId, orgId), eq(agentRuns.triggerSource, "teams")),
     );
   signal.throwIfAborted();
 

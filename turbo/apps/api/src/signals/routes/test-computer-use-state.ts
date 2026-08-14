@@ -7,7 +7,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -46,13 +46,12 @@ async function loadRunState(db: Db, runId: string): Promise<RunState | null> {
       id: agentRuns.id,
       sessionId: agentRuns.sessionId,
       agentComposeId: agentSessions.agentComposeId,
-      triggerSource: zeroRuns.triggerSource,
-      chatThreadId: zeroRuns.chatThreadId,
+      triggerSource: agentRuns.triggerSource,
+      chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(agentRuns.id, runId))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return run ?? null;
 }

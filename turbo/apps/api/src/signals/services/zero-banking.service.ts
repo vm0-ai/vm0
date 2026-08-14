@@ -17,7 +17,6 @@ import {
 } from "@okouai/db/schema/banking";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import {
   and,
@@ -400,11 +399,10 @@ async function findBankingRun(
     .select({
       runId: agentRuns.id,
       agentId: agentSessions.agentComposeId,
-      triggerSource: zeroRuns.triggerSource,
+      triggerSource: agentRuns.triggerSource,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
         eq(agentRuns.id, auth.runId),

@@ -38,6 +38,7 @@ interface SeedRunArgs {
   readonly error?: string | null;
   readonly lastEventSequence?: number | null;
   readonly selectedModel?: string | null;
+  readonly lifecycleOnly?: boolean;
 }
 
 interface InsertUsageEventArgs {
@@ -230,6 +231,7 @@ export const seedRun$ = command(
       error: args.error,
       last_event_sequence: args.lastEventSequence,
       selected_model: args.selectedModel,
+      lifecycle_only: args.lifecycleOnly,
     });
     if (!response.run_id) {
       throw new Error("seedRun$: response missing run_id");

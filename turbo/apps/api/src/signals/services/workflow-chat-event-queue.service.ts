@@ -3,9 +3,16 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
-import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+  sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
@@ -50,13 +57,13 @@ async function activeRunExistsForWorkflowThread(
   threadId: string,
 ): Promise<boolean> {
   const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
     .where(
       and(
-        eq(zeroRuns.chatThreadId, threadId),
+        eq(agentRuns.chatThreadId, threadId),
         inArray(agentRuns.status, ["queued", "pending", "running"]),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);

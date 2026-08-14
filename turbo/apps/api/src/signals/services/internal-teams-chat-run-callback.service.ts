@@ -7,7 +7,6 @@ import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
@@ -106,16 +105,15 @@ async function loadTeamsChatDeliveryContext(
     .select({
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
-        eq(zeroRuns.triggerSource, "teams"),
+        eq(agentRuns.triggerSource, "teams"),
       ),
     )
     .limit(1);

@@ -10,7 +10,6 @@ import {
 } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   asc,
@@ -115,9 +114,9 @@ function tokenExpr(usage: FinalizedUsageRelation) {
 function sourceExpr() {
   return sql`
     CASE
-      WHEN ${eq(zeroRuns.triggerSource, sql`'web'`)} THEN 'chat'
+      WHEN ${eq(agentRuns.triggerSource, sql`'web'`)} THEN 'chat'
       WHEN ${inArray(
-        zeroRuns.triggerSource,
+        agentRuns.triggerSource,
         sql`(
           'automation-schedule',
           'automation-event',
@@ -125,9 +124,9 @@ function sourceExpr() {
         )`,
       )} THEN 'automation'
       WHEN ${inArray(
-        zeroRuns.triggerSource,
+        agentRuns.triggerSource,
         PASSTHROUGH_TRIGGER_SOURCES,
-      )} THEN ${zeroRuns.triggerSource}
+      )} THEN ${agentRuns.triggerSource}
       ELSE 'other'
     END`.mapWith(usageRecordSourceDecoder);
 }
@@ -183,14 +182,14 @@ function usageRecordRunsWith(
         credits: usageRows.credits,
         tokens: usageRows.tokens,
         source: sourceExpr().as("source"),
-        chatThreadId: zeroRuns.chatThreadId,
-        summary: zeroRuns.summary,
+        chatThreadId: agentRuns.chatThreadId,
+        summary: agentRuns.summary,
         prompt: agentRuns.prompt,
         createdAt: agentRuns.createdAt,
       })
       .from(usageRows)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, usageRows.runId))
-      .innerJoin(agentRuns, eq(agentRuns.id, usageRows.runId)),
+      .innerJoin(agentRuns, eq(agentRuns.id, usageRows.runId))
+      .where(isNotNull(agentRuns.triggerSource)),
   );
   return { usageRows, runs };
 }
@@ -466,7 +465,7 @@ async function queryUsageRecordBreakdown(
     db
       .select({
         source: sourceExpr().as("source"),
-        chatThreadId: zeroRuns.chatThreadId,
+        chatThreadId: agentRuns.chatThreadId,
         runId: usage.runId,
         userId: usage.userId,
         kind: usageKindExpr(usage).as("kind"),
@@ -477,9 +476,10 @@ async function queryUsageRecordBreakdown(
         credits: usageCreditsExpr(usage).as("credits"),
       })
       .from(usage)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, usage.runId))
+      .innerJoin(agentRuns, eq(agentRuns.id, usage.runId))
       .where(
         and(
+          isNotNull(agentRuns.triggerSource),
           eq(usage.orgId, orgId),
           userId === null ? undefined : eq(usage.userId, userId),
         ),
