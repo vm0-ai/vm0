@@ -23,6 +23,7 @@ import {
 } from "../../signals/external/chat-idb-schema.ts";
 import { openDB } from "idb";
 import {
+  onSharedDatabase$,
   queryChatEventSharedDatabase$,
   setSharedDatabaseConnectionStatus$,
 } from "../../signals/shared-database.ts";
@@ -232,6 +233,93 @@ describe("shared database direct Platform bridge", () => {
     expect(context.store.get(zeroDebugRealtimeIndicator$)).toBe("reconnecting");
     context.store.set(setSharedDatabaseConnectionStatus$, "disconnected");
     expect(context.store.get(zeroDebugRealtimeIndicator$)).toBe("disconnected");
+  });
+
+  it("does not recursively invalidate after IndexedDB writes fail", async () => {
+    const threadId = crypto.randomUUID();
+    const remoteRow = row(threadId, 1);
+    const requestedSeqIds: number[] = [];
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
+    });
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      requestedSeqIds.push(query.sinceSeqId);
+      return respond(200, {
+        rows: query.sinceSeqId === 0 ? [remoteRow] : [],
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+      user: { id: userId(), fullName: "Direct Bridge User" },
+      session: { token: "direct-bridge-token" },
+      org: {
+        activeOrg: { id: orgId(), name: "Direct Bridge Org" },
+        memberships: [{ id: orgId() }],
+      },
+      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
+    });
+
+    const owner = createChildAbortController(context.signal);
+    const signals = createChatEventSignals(threadId);
+    await context.store.set(signals.setup$, owner.signal);
+    const dataKey = {
+      kind: "chat-event" as const,
+      userId: userId(),
+      orgId: orgId(),
+      threadId,
+    };
+    let appends = 0;
+    await context.store.set(
+      onSharedDatabase$,
+      dataKey,
+      () => {
+        appends += 1;
+      },
+      owner.signal,
+    );
+
+    const upgradedDb = await openDB(
+      `vm0-chat-${userId()}-${orgId()}`,
+      CHAT_IDB_VERSION + 1,
+    );
+    context.signal.addEventListener("abort", () => {
+      upgradedDb.close();
+    });
+
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    await vi.waitFor(() => {
+      expect(
+        context.store.get(signals.chatEvents$).map((event) => {
+          return event.seqId;
+        }),
+      ).toStrictEqual([1]);
+    });
+    expect(appends).toBe(1);
+    expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1]);
+
+    await context.store.set(
+      queryChatEventSharedDatabase$,
+      {
+        dataKey,
+        afterSeqId: remoteRow.seqId,
+        consistency: "catch-up",
+      },
+      owner.signal,
+    );
+    expect(appends).toBe(1);
+    expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1, 0, 1]);
+    owner.abort(new DOMException("chat closed", "AbortError"));
   });
 
   it("renders and invalidates ChatThreadEvent state through the direct bridge", async () => {

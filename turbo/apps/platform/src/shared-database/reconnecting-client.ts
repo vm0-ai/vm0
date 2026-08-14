@@ -8,6 +8,7 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
 } from "./bridge.ts";
+import { SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME } from "./protocol.ts";
 import type {
   SharedDatabaseDataKey,
   SharedDatabaseIdentity,
@@ -42,6 +43,14 @@ class SharedDatabaseTransportTimeoutError extends Error {
     super("Shared database worker transport timed out");
     this.name = "SharedDatabaseTransportTimeoutError";
   }
+}
+
+function isReconnectableTransportError(error: unknown): boolean {
+  return (
+    error instanceof SharedDatabaseTransportTimeoutError ||
+    (error instanceof Error &&
+      error.name === SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME)
+  );
 }
 
 async function withTransportTimeout<T>(
@@ -116,7 +125,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
       if (result.ok) {
         return;
       }
-      if (!(result.error instanceof SharedDatabaseTransportTimeoutError)) {
+      if (!isReconnectableTransportError(result.error)) {
         throw result.error;
       }
       await this.ensureConnection();
@@ -129,7 +138,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     if (result.ok) {
       return;
     }
-    if (!(result.error instanceof SharedDatabaseTransportTimeoutError)) {
+    if (!isReconnectableTransportError(result.error)) {
       throw result.error;
     }
     this.resetConnection(current, result.error);

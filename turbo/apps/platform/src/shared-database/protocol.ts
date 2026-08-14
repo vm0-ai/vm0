@@ -5,6 +5,9 @@ import {
   sharedDatabaseQuerySchema,
 } from "./data-key.ts";
 
+export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
+  "SharedDatabaseClientNotConnectedError";
+
 const requestIdSchema = z.string().min(1);
 const subscriptionIdSchema = z.string().min(1);
 

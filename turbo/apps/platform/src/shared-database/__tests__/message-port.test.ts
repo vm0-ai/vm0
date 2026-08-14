@@ -4,16 +4,21 @@ import { createStore, type Store } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
+import { mockNow } from "../../lib/time.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import {
   heartbeatSharedDatabase$,
   installSharedDatabaseBridge$,
   queryChatEventSharedDatabase$,
 } from "../../signals/shared-database.ts";
-import type { SharedDatabasePortLike } from "../bridge.ts";
+import type {
+  SharedDatabaseBridgeEvents,
+  SharedDatabasePortLike,
+} from "../bridge.ts";
 import type { ChatEventDataKey, SharedDatabaseIdentity } from "../data-key.ts";
 import { MessagePortSharedDatabaseBridge } from "../message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "../message-port-server.ts";
+import { ReconnectingSharedDatabaseBridge } from "../reconnecting-client.ts";
 import type {
   SharedDatabaseClientMessage,
   SharedDatabaseConnectionStatus,
@@ -267,6 +272,118 @@ describe("shared database MessagePort protocol", () => {
         ),
       ).resolves.toStrictEqual([canonicalRow]);
     });
+  });
+
+  it("reconnects a stale pruned tab and restores its subscription", async () => {
+    const workerStore = createStore();
+    workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+    const start = Date.parse("2030-01-01T00:00:00.000Z");
+    mockNow(start, context.signal);
+    const connectProtocolTransport = (
+      events: SharedDatabaseBridgeEvents,
+    ): MessagePortSharedDatabaseBridge => {
+      const [platformPort, workerPort] = messagePortPair();
+      new SharedDatabaseMessagePortServer(
+        workerStore,
+        workerPort,
+        context.signal,
+      );
+      return new MessagePortSharedDatabaseBridge(
+        platformPort,
+        location.origin,
+        events,
+      );
+    };
+
+    let firstTabTransports = 0;
+    let staleTabTransports = 0;
+    const staleTabStatuses: SharedDatabaseConnectionStatus[] = [];
+    const firstTab = new ReconnectingSharedDatabaseBridge({
+      createBridge: (events) => {
+        firstTabTransports += 1;
+        return connectProtocolTransport(events);
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged:
+          vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
+      },
+    });
+    const staleTab = new ReconnectingSharedDatabaseBridge({
+      createBridge: (events) => {
+        staleTabTransports += 1;
+        return connectProtocolTransport(events);
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged: (status) => {
+          staleTabStatuses.push(status);
+        },
+      },
+    });
+    const firstOwner = createChildAbortController(context.signal);
+    const staleOwner = createChildAbortController(context.signal);
+    const subscription = createChildAbortController(context.signal);
+    try {
+      await firstTab.heartbeat(identity(), firstOwner.signal);
+      await staleTab.heartbeat(identity(), staleOwner.signal);
+
+      const key = dataKey(crypto.randomUUID());
+      const canonicalRow = row(key.threadId, 1);
+      const topic = `chatThreadMessageCreated:${key.threadId}`;
+      const requestedSeqIds: number[] = [];
+      let appends = 0;
+      await staleTab.on(
+        key,
+        () => {
+          appends += 1;
+        },
+        subscription.signal,
+      );
+      await vi.waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+      });
+      context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      });
+      context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+        requestedSeqIds.push(query.sinceSeqId);
+        return respond(200, {
+          rows: query.sinceSeqId === 0 ? [canonicalRow] : [],
+        });
+      });
+
+      mockNow(start + 2 * 60 * 1000, context.signal);
+      await firstTab.heartbeat(identity(), firstOwner.signal);
+      mockNow(start + 4 * 60 * 1000, context.signal);
+      await firstTab.heartbeat(identity(), firstOwner.signal);
+
+      expect(firstTabTransports).toBe(1);
+      expect(staleTabTransports).toBe(1);
+      await staleTab.heartbeat(identity(), staleOwner.signal);
+      expect(staleTabTransports).toBe(2);
+      await vi.waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+        expect(staleTabStatuses.at(-1)).toBe("connected");
+      });
+
+      context.mocks.ably.trigger(topic);
+      await vi.waitFor(() => {
+        expect(requestedSeqIds).toStrictEqual([0, 1]);
+        expect(appends).toBe(1);
+      });
+    } finally {
+      subscription.abort();
+      staleOwner.abort();
+      firstOwner.abort();
+    }
   });
 
   it("validates results and handles callback cleanup plus control messages", async () => {

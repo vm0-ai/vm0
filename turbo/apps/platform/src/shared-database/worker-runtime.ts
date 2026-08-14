@@ -38,9 +38,10 @@ import {
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
 } from "./data-key.ts";
-import type {
-  SharedDatabaseConnectionStatus,
-  SharedDatabaseWorkerMessage,
+import {
+  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
+  type SharedDatabaseConnectionStatus,
+  type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 import { createSharedDatabaseContractClient } from "./worker-client.ts";
 import {
@@ -95,6 +96,7 @@ interface ChatEventActor {
   readonly kind: "chat-event";
   readonly dataKey: ChatEventDataKey;
   degraded: boolean;
+  observedSeqId: number | null;
   invalidationPending: boolean;
   inFlight: Promise<ChatEventSyncResult> | null;
 }
@@ -103,6 +105,7 @@ interface ChatThreadEventActor {
   readonly kind: "chat-thread-event";
   readonly dataKey: ChatThreadEventDataKey;
   degraded: boolean;
+  observedSeqId: number | null;
   invalidationPending: boolean;
   inFlight: Promise<ChatThreadEventSyncResult> | null;
 }
@@ -128,6 +131,34 @@ class SharedDatabaseHttpError extends Error {
   constructor(status: number) {
     super(`Shared database request failed with status ${status}`);
     this.name = "SharedDatabaseHttpError";
+  }
+}
+
+class SharedDatabaseClientNotConnectedError extends Error {
+  constructor() {
+    super("Shared database client is not connected");
+    this.name = SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME;
+  }
+}
+
+function advanceObservedSeqId(
+  actor: DatasetActor,
+  seqId: number | null,
+): boolean {
+  if (seqId === null) {
+    return false;
+  }
+  const previous = actor.observedSeqId;
+  actor.observedSeqId = Math.max(previous ?? seqId, seqId);
+  return seqId > (previous ?? THREAD_START_SEQ_ID);
+}
+
+function initializeObservedSeqId(
+  actor: DatasetActor,
+  seqId: number | null,
+): void {
+  if (actor.observedSeqId === null && seqId !== null) {
+    actor.observedSeqId = seqId;
   }
 }
 
@@ -527,6 +558,7 @@ export class SharedDatabaseWorkerRuntime {
     const cachedCursor = cachedCursorResult.ok
       ? cachedCursorResult.value
       : null;
+    initializeObservedSeqId(actor, cachedCursor?.lastSeqId ?? null);
     if (!cachedCursorResult.ok) {
       actor.degraded = true;
     }
@@ -637,9 +669,10 @@ export class SharedDatabaseWorkerRuntime {
       const written = await settle(write, signal);
       actor.degraded = !written.ok;
     }
+    const changed = advanceObservedSeqId(actor, cursor.lastSeqId);
     return {
       remoteRows,
-      changed: shouldWrite,
+      changed,
     };
   }
 
@@ -718,6 +751,7 @@ export class SharedDatabaseWorkerRuntime {
     );
     let result = cached;
     let cursor = chatThreadEventCursor(result);
+    initializeObservedSeqId(actor, cursor?.seqId ?? null);
     let replacement = false;
     let cursorFromServerSnapshot = false;
     let newEvents: ChatThreadEvent[] = [];
@@ -811,7 +845,10 @@ export class SharedDatabaseWorkerRuntime {
       const written = await settle(write, signal);
       actor.degraded = !written.ok;
     }
-    return { result, changed: shouldWrite };
+    return {
+      result,
+      changed: advanceObservedSeqId(actor, cursor?.seqId ?? null),
+    };
   }
 
   private async fetchChatThreadSnapshot(
@@ -941,6 +978,7 @@ export class SharedDatabaseWorkerRuntime {
             kind: "chat-event",
             dataKey,
             degraded: false,
+            observedSeqId: null,
             invalidationPending: false,
             inFlight: null,
           }
@@ -948,6 +986,7 @@ export class SharedDatabaseWorkerRuntime {
             kind: "chat-thread-event",
             dataKey,
             degraded: false,
+            observedSeqId: null,
             invalidationPending: false,
             inFlight: null,
           };
@@ -958,7 +997,7 @@ export class SharedDatabaseWorkerRuntime {
   private requireClient(clientId: string): WorkerClientRegistration {
     const client = this.clients.get(clientId);
     if (!client) {
-      throw new Error("Shared database client is not connected");
+      throw new SharedDatabaseClientNotConnectedError();
     }
     return client;
   }

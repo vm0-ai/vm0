@@ -81,64 +81,57 @@ function dataKey(): SharedDatabaseDataKey {
 
 describe("reconnecting shared database bridge", () => {
   it("recreates the revisioned transport and restores live subscriptions after heartbeat timeout", async () => {
-    vi.useFakeTimers();
-    try {
-      const bridges: FakeBridge[] = [];
-      const statuses: SharedDatabaseConnectionStatus[] = [];
-      const bridge = new ReconnectingSharedDatabaseBridge({
-        controlRequestTimeoutMs: 100,
-        createBridge: () => {
-          const created = new FakeBridge();
-          bridges.push(created);
-          return created;
+    const bridges: FakeBridge[] = [];
+    const statuses: SharedDatabaseConnectionStatus[] = [];
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      controlRequestTimeoutMs: 10,
+      createBridge: () => {
+        const created = new FakeBridge();
+        bridges.push(created);
+        return created;
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged: (status) => {
+          statuses.push(status);
         },
-        events: {
-          reloadRequired: vi.fn<() => void>(),
-          statusChanged: (status) => {
-            statuses.push(status);
-          },
-        },
-      });
-      const owner = createChildAbortController(context.signal);
-      await bridge.heartbeat(identity(), owner.signal);
-      expect(bridges).toHaveLength(1);
+      },
+    });
+    const owner = createChildAbortController(context.signal);
+    await bridge.heartbeat(identity(), owner.signal);
+    expect(bridges).toHaveLength(1);
 
-      let appends = 0;
-      const subscription = createChildAbortController(context.signal);
-      await bridge.on(
-        dataKey(),
-        () => {
-          appends += 1;
-        },
-        subscription.signal,
-      );
-      const firstBridge = bridges[0]!;
-      firstBridge.timeoutHeartbeatCall = 2;
+    let appends = 0;
+    const subscription = createChildAbortController(context.signal);
+    await bridge.on(
+      dataKey(),
+      () => {
+        appends += 1;
+      },
+      subscription.signal,
+    );
+    const firstBridge = bridges[0]!;
+    firstBridge.timeoutHeartbeatCall = 2;
 
-      const renewal = bridge.heartbeat(
-        { ...identity(), token: "replacement-token" },
-        owner.signal,
-      );
-      await vi.advanceTimersByTimeAsync(100);
-      await renewal;
+    await bridge.heartbeat(
+      { ...identity(), token: "replacement-token" },
+      owner.signal,
+    );
 
-      expect(bridges).toHaveLength(2);
-      expect(firstBridge.heartbeatSignals[0]?.aborted).toBeTruthy();
-      const recoveredBridge = bridges[1]!;
-      expect(recoveredBridge.callbacks).toHaveLength(1);
-      recoveredBridge.callbacks[0]?.();
-      expect(appends).toBe(1);
-      expect(statuses).toStrictEqual([
-        "connecting",
-        "disconnected",
-        "connecting",
-      ]);
+    expect(bridges).toHaveLength(2);
+    expect(firstBridge.heartbeatSignals[0]?.aborted).toBeTruthy();
+    const recoveredBridge = bridges[1]!;
+    expect(recoveredBridge.callbacks).toHaveLength(1);
+    recoveredBridge.callbacks[0]?.();
+    expect(appends).toBe(1);
+    expect(statuses).toStrictEqual([
+      "connecting",
+      "disconnected",
+      "connecting",
+    ]);
 
-      subscription.abort();
-      expect(recoveredBridge.callbacks).toHaveLength(0);
-      owner.abort();
-    } finally {
-      vi.useRealTimers();
-    }
+    subscription.abort();
+    expect(recoveredBridge.callbacks).toHaveLength(0);
+    owner.abort();
   });
 });

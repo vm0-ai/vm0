@@ -671,6 +671,91 @@ describe("shared database worker runtime", () => {
         consistency: "cache-only",
       }),
     ).resolves.toStrictEqual([]);
+
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: remoteRow.seqId,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual([]);
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "append";
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("notifies only once when degraded ChatThreadEvent writes keep failing", async () => {
+    const workerEvents: WorkerEvent[] = [];
+    const clientId = await connectRuntime(workerEvents);
+    const dataKey = chatThreadEventKey();
+    const snapshotEventId = crypto.randomUUID();
+    context.store.set(
+      subscribeSharedDatabaseWorker$,
+      clientId,
+      crypto.randomUUID(),
+      dataKey,
+    );
+    await query(clientId, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    });
+
+    const upgradedDb = await openDB(
+      `vm0-chat-${dataKey.userId}-${dataKey.orgId}`,
+      CHAT_IDB_VERSION + 1,
+    );
+    context.signal.addEventListener("abort", () => {
+      upgradedDb.close();
+    });
+    await vi.waitFor(() => {
+      expect(
+        workerEvents.filter((event) => {
+          return event.type === "reload-required";
+        }),
+      ).toHaveLength(1);
+    });
+
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [snapshotThread("degraded snapshot")],
+        latestEventId: snapshotEventId,
+        latestSeqId: 1,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    const expected = {
+      snapshot: {
+        chatThreads: [snapshotThread("degraded snapshot")],
+        latestEventId: snapshotEventId,
+        latestSeqId: 1,
+      },
+      events: [],
+    };
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual(expected);
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: 1,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual(expected);
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "append";
+      }),
+    ).toHaveLength(1);
   });
 
   it("blocks on 401 until heartbeat supplies a different token", async () => {
