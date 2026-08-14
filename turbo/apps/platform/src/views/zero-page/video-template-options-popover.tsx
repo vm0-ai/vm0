@@ -21,8 +21,8 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   DEFAULT_VIDEO_MODEL,
+  PUBLIC_VIDEO_MODELS,
   VIDEO_MODEL_CONFIGS,
-  VIDEO_MODELS,
   resolveVideoGenerationOptions,
   type ResolvedVideoGenerationOptions,
   type VideoAspectRatio,
@@ -57,10 +57,6 @@ function toVideoOptionsPatch(
       : { generateAudio: next.generateAudio }),
   };
 }
-
-const PUBLIC_VIDEO_MODELS = VIDEO_MODELS.filter((candidate) => {
-  return VIDEO_MODEL_CONFIGS[candidate].public;
-});
 
 /**
  * Groups the settings so the pane reads as blocks rather than a run of loose

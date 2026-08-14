@@ -6,7 +6,7 @@ import {
   type BuiltInGenerationStatus,
   type BuiltInGenerationType,
 } from "@okouai/db/schema/built-in-generation-job";
-import type { ZeroBuiltInGenerationResponse } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import type { BuiltInGenerationResponse } from "@okouai/api-contracts/contracts/built-in-generation";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
@@ -146,7 +146,7 @@ export function readBuiltInGenerationRequestInternal(
 
 function serializeBuiltInGenerationJob(
   job: BuiltInGenerationJobRow,
-): ZeroBuiltInGenerationResponse {
+): BuiltInGenerationResponse {
   return {
     generationId: job.id,
     type: job.type,
@@ -224,7 +224,7 @@ export const getBuiltInGenerationJob$ = command(
     { set },
     args: { readonly generationId: string; readonly orgId: string },
     signal: AbortSignal,
-  ): Promise<ZeroBuiltInGenerationResponse | null> => {
+  ): Promise<BuiltInGenerationResponse | null> => {
     const writeDb = set(writeDb$);
     const [job] = await writeDb
       .select({

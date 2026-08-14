@@ -4220,6 +4220,7 @@
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
+        "manageMoreModels": "Kelola model lainnya",
         "models": "Model",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
@@ -4234,7 +4235,8 @@
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "standard": "Standar"
+        "standard": "Standar",
+        "videoModels": "Model video"
       },
       "policies": {
         "actionsFor": "Tindakan untuk {{model}}",

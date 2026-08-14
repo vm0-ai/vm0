@@ -34,10 +34,11 @@ import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
 import { pgTextDecoder } from "../../lib/db-structured-result";
+import { logger } from "../../lib/log";
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
-import { bestEffort } from "../utils";
+import { bestEffort, settle } from "../utils";
 import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
@@ -55,6 +56,7 @@ import {
   connectorCredentialSecretReadCondition,
   connectorCredentialStorageIsCompatible,
   resolveConnectorCredentialAccess,
+  resolveStoredConnectorRuntimeMethod,
   type ConnectorCredentialAccess,
 } from "./connector-credential-access.service";
 import { publishBuiltinConnectorInvalidationAfterCommit } from "./connector-client-invalidation.service";
@@ -64,9 +66,11 @@ import {
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
 import { normalizeManualGrantSubmittedValuesWithMethod } from "./connector-catalog-form-fields.service";
-import { searchConnectorCatalog } from "./connector-catalog-reader.service";
 import {
-  getConnectorRuntimeMethod,
+  isConnectorCatalogUnavailableError,
+  searchConnectorCatalog,
+} from "./connector-catalog-reader.service";
+import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
@@ -80,6 +84,7 @@ import {
   type StoredConnectorConnectionRow as StoredConnectorRow,
 } from "./connector-connection-write.service";
 
+const log = logger("api:zero-connector-data");
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 interface ExternalUserInfo {
@@ -161,6 +166,27 @@ type PendingConnectorTokenRevoke = {
   readonly featureSwitchContext: FeatureSwitchContext;
 };
 
+/**
+ * External catalog availability must not turn persisted connector reads or
+ * local cleanup into server failures. Callers use a missing snapshot to skip
+ * runtime-dependent presentation and provider revocation only.
+ */
+export async function loadStoredConnectorRuntimeSnapshot(
+  db: ReadonlyDb,
+): Promise<ConnectorRuntimeSnapshot | null> {
+  const result = await settle(loadConnectorRuntimeSnapshot(db));
+  if (result.ok) {
+    return result.value;
+  }
+  if (!isConnectorCatalogUnavailableError(result.error)) {
+    throw result.error;
+  }
+  log.warn("Connector catalog unavailable while resolving stored connectors", {
+    error: result.error,
+  });
+  return null;
+}
+
 function parseOauthScopes(value: string | null): string[] | null {
   return value ? oauthScopesSchema.parse(JSON.parse(value)) : null;
 }
@@ -217,6 +243,29 @@ function storedConnectorRowToResponse(
     tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function storedConnectorRowWithRuntimeMethod(args: {
+  readonly connectorSlug: string;
+  readonly now: Date;
+  readonly row: StoredConnectorRow;
+  readonly snapshot: ConnectorRuntimeSnapshot;
+}): ConnectorWithRuntimeMethod | null {
+  const runtimeMethod = resolveStoredConnectorRuntimeMethod({
+    snapshot: args.snapshot,
+    stored: {
+      connectorId: args.row.id,
+      connectorSlug: args.connectorSlug,
+      authMethodId: args.row.authMethod,
+    },
+  });
+  if (runtimeMethod === undefined) {
+    return null;
+  }
+  return {
+    response: storedConnectorRowToResponse(args.row, runtimeMethod, args.now),
+    runtimeMethod,
   };
 }
 
@@ -431,28 +480,21 @@ export function zeroConnectorList(args: {
       );
     const [storedRows, snapshot] = await Promise.all([
       storedRowsPromise,
-      loadConnectorRuntimeSnapshot(db),
+      loadStoredConnectorRuntimeSnapshot(db),
     ]);
     const now = nowDate();
-    const connectorList: ConnectorWithRuntimeMethod[] = storedRows.map(
-      (row) => {
-        const runtimeMethod = getConnectorRuntimeMethod({
-          snapshot,
-          connectorSlug: row.connectorSlug,
-          authMethodId: row.authMethod,
-          requireExecutable: true,
-        });
-        if (runtimeMethod === undefined) {
-          throw new Error(
-            `Stored connector ${row.connectorSlug}:${row.authMethod} has no executable runtime method`,
-          );
-        }
-        return {
-          response: storedConnectorRowToResponse(row, runtimeMethod, now),
-          runtimeMethod,
-        };
-      },
-    );
+    const connectorList: ConnectorWithRuntimeMethod[] =
+      snapshot === null
+        ? []
+        : storedRows.flatMap((row) => {
+            const connector = storedConnectorRowWithRuntimeMethod({
+              connectorSlug: row.connectorSlug,
+              now,
+              row,
+              snapshot,
+            });
+            return connector === null ? [] : [connector];
+          });
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
 
@@ -514,8 +556,8 @@ function storedConnectorBySlug(args: {
   readonly userId: string;
   readonly connectorSlug: string;
   readonly snapshot: ConnectorRuntimeSnapshot;
-}): Computed<Promise<ConnectorResponse | null>> {
-  return computed(async (get): Promise<ConnectorResponse | null> => {
+}): Computed<Promise<ConnectorWithRuntimeMethod | null>> {
+  return computed(async (get): Promise<ConnectorWithRuntimeMethod | null> => {
     const db = get(db$);
     const oauthRows = await db
       .select({
@@ -544,18 +586,12 @@ function storedConnectorBySlug(args: {
 
     const oauthRow = oauthRows[0];
     if (oauthRow) {
-      const runtimeMethod = getConnectorRuntimeMethod({
-        snapshot: args.snapshot,
+      return storedConnectorRowWithRuntimeMethod({
         connectorSlug: args.connectorSlug,
-        authMethodId: oauthRow.authMethod,
-        requireExecutable: true,
+        now: nowDate(),
+        row: oauthRow,
+        snapshot: args.snapshot,
       });
-      if (runtimeMethod === undefined) {
-        throw new Error(
-          `Stored connector ${args.connectorSlug}:${oauthRow.authMethod} has no executable runtime method`,
-        );
-      }
-      return storedConnectorRowToResponse(oauthRow, runtimeMethod, nowDate());
     }
 
     return null;
@@ -570,8 +606,12 @@ export function zeroConnectorBySlug(args: {
 }): Computed<Promise<ConnectorResponse | null>> {
   return computed(async (get): Promise<ConnectorResponse | null> => {
     const snapshot =
-      args.snapshot ?? (await loadConnectorRuntimeSnapshot(get(db$)));
-    return await get(storedConnectorBySlug({ ...args, snapshot }));
+      args.snapshot ?? (await loadStoredConnectorRuntimeSnapshot(get(db$)));
+    if (snapshot === null) {
+      return null;
+    }
+    const connector = await get(storedConnectorBySlug({ ...args, snapshot }));
+    return connector?.response ?? null;
   });
 }
 
@@ -697,22 +737,28 @@ export const deleteZeroConnectorLocalState$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly connectorSlug: string;
-      readonly snapshot?: ConnectorRuntimeSnapshot;
+      readonly snapshot?: ConnectorRuntimeSnapshot | null;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);
     const snapshot =
-      args.snapshot ?? (await loadConnectorRuntimeSnapshot(get(db$)));
-    const featureSwitchOverrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
+      args.snapshot === undefined
+        ? await loadStoredConnectorRuntimeSnapshot(get(db$))
+        : args.snapshot;
+    const featureSwitchOverrides =
+      snapshot === null
+        ? null
+        : await get(userFeatureSwitchOverrides(args.orgId, args.userId));
     signal.throwIfAborted();
-    const featureSwitchContext = {
-      orgId: args.orgId,
-      userId: args.userId,
-      overrides: featureSwitchOverrides,
-    } satisfies FeatureSwitchContext;
+    const featureSwitchContext =
+      featureSwitchOverrides === null
+        ? null
+        : ({
+            orgId: args.orgId,
+            userId: args.userId,
+            overrides: featureSwitchOverrides,
+          } satisfies FeatureSwitchContext);
 
     let postCommitAbort: unknown = null;
     const deleteResult = await writeDb.transaction(async (tx) => {
@@ -745,31 +791,33 @@ export const deleteZeroConnectorLocalState$ = command(
         return { deleted: false, pendingTokenRevoke: null };
       }
 
-      const accessResult = resolveConnectorCredentialAccess({
-        snapshot,
-        stored: {
-          authMethodId: existing.authMethod,
-          connectorId: existing.id,
-          connectorSlug: args.connectorSlug,
-          orgId: args.orgId,
-          storageVersion: existing.storageVersion,
-          userId: args.userId,
-        },
-      });
-
       let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-      if (
-        accessResult.kind === "ok" &&
-        accessResult.access.runtimeMethod.method.revoke.kind === "token-revoke"
-      ) {
-        pendingTokenRevoke = await loadPendingConnectorTokenRevoke(
-          {
-            access: accessResult.access,
-            db: tx,
-            featureSwitchContext,
+      if (snapshot !== null && featureSwitchContext !== null) {
+        const accessResult = resolveConnectorCredentialAccess({
+          snapshot,
+          stored: {
+            authMethodId: existing.authMethod,
+            connectorId: existing.id,
+            connectorSlug: args.connectorSlug,
+            orgId: args.orgId,
+            storageVersion: existing.storageVersion,
+            userId: args.userId,
           },
-          signal,
-        );
+        });
+        if (
+          accessResult.kind === "ok" &&
+          accessResult.access.runtimeMethod.method.revoke.kind ===
+            "token-revoke"
+        ) {
+          pendingTokenRevoke = await loadPendingConnectorTokenRevoke(
+            {
+              access: accessResult.access,
+              db: tx,
+              featureSwitchContext,
+            },
+            signal,
+          );
+        }
       }
       signal.throwIfAborted();
 
@@ -1847,22 +1895,16 @@ export function zeroConnectorScopeDiff(args: {
 }): Computed<Promise<ScopeDiffResponse | null>> {
   return computed(async (get): Promise<ScopeDiffResponse | null> => {
     const snapshot =
-      args.snapshot ?? (await loadConnectorRuntimeSnapshot(get(db$)));
-    const connector = await get(zeroConnectorBySlug({ ...args, snapshot }));
-    if (!connector) {
+      args.snapshot ?? (await loadStoredConnectorRuntimeSnapshot(get(db$)));
+    if (snapshot === null) {
       return null;
     }
-    const runtimeMethod = getConnectorRuntimeMethod({
-      snapshot,
-      connectorSlug: args.connectorSlug,
-      authMethodId: connector.authMethod,
-      requireExecutable: true,
-    });
-    return runtimeMethod === undefined
+    const connector = await get(storedConnectorBySlug({ ...args, snapshot }));
+    return connector === null
       ? null
       : connectorAuthMethodScopeDiff(
-          runtimeMethod.method,
-          connector.oauthScopes,
+          connector.runtimeMethod.method,
+          connector.response.oauthScopes,
         );
   });
 }

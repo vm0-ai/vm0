@@ -1686,19 +1686,19 @@ export {
   type ZeroVideoIoGenerateResponse,
 } from "./zero-video-io-generate";
 export {
-  zeroBuiltInGenerationContract,
-  zeroBuiltInGenerationTypeSchema,
-  zeroBuiltInGenerationStatusSchema,
-  zeroBuiltInGenerationRealtimeSubscriptionSchema,
-  zeroBuiltInGenerationAcceptedResponseSchema,
-  zeroBuiltInGenerationResponseSchema,
-  type ZeroBuiltInGenerationContract,
-  type ZeroBuiltInGenerationType,
-  type ZeroBuiltInGenerationStatus,
-  type ZeroBuiltInGenerationRealtimeSubscription,
-  type ZeroBuiltInGenerationAcceptedResponse,
-  type ZeroBuiltInGenerationResponse,
-} from "./zero-built-in-generation";
+  builtInGenerationContract,
+  builtInGenerationTypeSchema,
+  builtInGenerationStatusSchema,
+  builtInGenerationRealtimeSubscriptionSchema,
+  builtInGenerationAcceptedResponseSchema,
+  builtInGenerationResponseSchema,
+  type BuiltInGenerationContract,
+  type BuiltInGenerationType,
+  type BuiltInGenerationStatus,
+  type BuiltInGenerationRealtimeSubscription,
+  type BuiltInGenerationAcceptedResponse,
+  type BuiltInGenerationResponse,
+} from "./built-in-generation";
 export {
   voiceIoQuotaContract,
   audioInputQuotaResponseSchema,

@@ -41,8 +41,56 @@ for required_state in \
   fi
 done
 
+browser_page_call_log="$(mktemp)"
 otp_call_log="$(mktemp)"
-trap 'rm -f "$otp_call_log"' EXIT
+trap 'rm -f "$browser_page_call_log" "$otp_call_log"' EXIT
+VM0_API_BACKEND_URL="https://api.example.com" \
+  BROWSER_PAGE_CALL_LOG="$browser_page_call_log" \
+  bash -c '
+    source "$1"
+    active_page="blank"
+    tab_listing="initial"
+    agent-browser() {
+      printf "%s\n" "$*" >> "$BROWSER_PAGE_CALL_LOG"
+      case "$*" in
+        "--json tab")
+          case "$tab_listing" in
+            initial)
+              printf "%s\n" '\''{"success":true,"data":{"tabs":[{"active":true,"index":7,"url":"about:blank"}]}}'\''
+              ;;
+            stolen)
+              printf "%s\n" '\''{"success":true,"data":{"tabs":[{"active":false,"index":7,"url":"https://app.example.com/sign-up"},{"active":true,"index":8,"url":"about:blank"}]}}'\''
+              ;;
+            missing)
+              printf "%s\n" '\''{"success":true,"data":{"tabs":[{"active":true,"index":8,"url":"about:blank"}]}}'\''
+              ;;
+          esac
+          ;;
+        "tab 7")
+          active_page="owned"
+          ;;
+        "eval "*)
+          [[ "$active_page" == "owned" ]] && printf "true\n" || printf "false\n"
+          ;;
+      esac
+    }
+    browser_setup
+    BROWSER_PAGE_URL="https://app.example.com/sign-up"
+    active_page="blank"
+    tab_listing="stolen"
+    wait_for_browser_target --timeout-seconds 1 --fn "window.__ready"
+    tab_listing="missing"
+    if agent_browser_on_page eval "window.__ready" 2>/dev/null; then
+      echo "browser helper accepted a missing owned page" >&2
+      exit 1
+    fi
+  ' _ "$browser_helper"
+expected_browser_page_calls=$'set viewport 1920 1080\n--json tab\n--json tab\ntab 7\neval Boolean(window.__ready)\n--json tab'
+if [[ "$(<"$browser_page_call_log")" != "$expected_browser_page_calls" ]]; then
+  echo "browser helper must restore its captured page before inspection" >&2
+  exit 1
+fi
+
 OTP_CALL_LOG="$otp_call_log" bash -c '
   source "$1"
   wait_for_browser_target() {
@@ -50,13 +98,17 @@ OTP_CALL_LOG="$otp_call_log" bash -c '
   }
   agent-browser() {
     printf "%s\n" "$*" >> "$OTP_CALL_LOG"
+    if [[ "$1" == "tab" ]]; then
+      return 0
+    fi
     if [[ "$1" == "get" && "$2" == "count" ]]; then
       printf "1\n"
     fi
   }
+  BROWSER_PAGE_INDEX=0
   enter_otp "424242"
 ' _ "$browser_helper"
-expected_otp_calls=$'get count input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]\nfill input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"] 424242'
+expected_otp_calls=$'tab 0\nget count input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]\ntab 0\nfill input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"] 424242'
 if [[ "$(<"$otp_call_log")" != "$expected_otp_calls" ]]; then
   echo "browser helper must leave OTP submission to Clerk" >&2
   exit 1

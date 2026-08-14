@@ -95,7 +95,7 @@ import { financeRoutes } from "./routes/finance";
 import { zeroSeoRoutes } from "./routes/zero-seo";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
-import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
+import { builtInGenerationRoutes } from "./routes/built-in-generation";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { imageShareXRoutes } from "./routes/image-share-x";
 import { logsRoutes } from "./routes/logs";
@@ -286,7 +286,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSeoRoutes,
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
-  ...zeroBuiltInGenerationRoutes,
+  ...builtInGenerationRoutes,
   ...zeroImageIoGenerateRoutes,
   ...imageShareXRoutes,
   ...zeroAvatarVideoRoutes,

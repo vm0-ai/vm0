@@ -276,6 +276,58 @@ def test_probe_reports_invalid_json_prefix():
     assert not result.field_seen
 
 
+@pytest.mark.parametrize(
+    "surrogate_escape",
+    [
+        pytest.param(b"\\ud800", id="high-surrogate"),
+        pytest.param(b"\\udfff", id="low-surrogate"),
+    ],
+)
+def test_probe_rejects_lone_surrogate_in_selected_value(surrogate_escape: bytes):
+    result = probe_top_level_string_field(b'{"type":"' + surrogate_escape + b'"}')
+
+    assert result.status == "invalid"
+    assert result.value is None
+    assert result.field_seen
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(
+            b'{"\\ud800":null,"type":"response.completed"}',
+            id="skipped-key-high-surrogate",
+        ),
+        pytest.param(
+            b'{"\\udfff":null,"type":"response.completed"}',
+            id="skipped-key-low-surrogate",
+        ),
+        pytest.param(
+            b'{"padding":"\\ud800","type":"response.completed"}',
+            id="skipped-value-high-surrogate",
+        ),
+        pytest.param(
+            b'{"padding":"\\udfff","type":"response.completed"}',
+            id="skipped-value-low-surrogate",
+        ),
+    ],
+)
+def test_probe_rejects_lone_surrogate_before_selected_field(body: bytes):
+    result = probe_top_level_string_field(body)
+
+    assert result.status == "invalid"
+    assert result.value is None
+    assert not result.field_seen
+
+
+def test_probe_decodes_surrogate_pair_in_selected_value():
+    result = probe_top_level_string_field(b'{"type":"\\ud83d\\ude00"}')
+
+    assert result.status == "found"
+    assert result.value == "\U0001f600"
+    assert result.field_seen
+
+
 def test_probe_reports_invalid_utf8_in_skipped_string():
     result = probe_top_level_string_field(b'{"padding":"\x80","type":"response.completed"}')
 

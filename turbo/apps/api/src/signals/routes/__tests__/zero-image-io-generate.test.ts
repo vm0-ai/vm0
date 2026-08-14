@@ -18,7 +18,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
+import { builtInGenerationRoutes } from "../built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
 import { zeroUsageRecordRoutes } from "../zero-usage-record";
 import {
@@ -133,7 +133,7 @@ function createImageIoTestApp(
   return createAppWithRoutes({
     signal: context.signal,
     routes: [
-      ...zeroBuiltInGenerationRoutes,
+      ...builtInGenerationRoutes,
       ...zeroImageIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,

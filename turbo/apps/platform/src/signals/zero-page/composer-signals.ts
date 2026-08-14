@@ -4,6 +4,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import {
@@ -159,6 +160,19 @@ interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly configureSelectedModel$: Command<Promise<void>, [AbortSignal]>;
 }
 
+/**
+ * Video model pinned to the chat thread. Absent on composers that have no
+ * thread to pin to yet, which is why every consumer treats the group as
+ * optional rather than reading a null selection.
+ */
+export interface ComposerVideoModelSignals {
+  readonly selectedVideoModel$: Computed<VideoModel | null>;
+  readonly setVideoModel$: Command<
+    Promise<void>,
+    [VideoModel | null, AbortSignal]
+  >;
+}
+
 interface ComposerComputerSignals {
   readonly computerUseHostId$: Computed<string | null>;
   readonly cloudBrowserEnabled$: Computed<boolean>;
@@ -221,6 +235,7 @@ export interface ComposerSignals {
   readonly connector: ComposerConnectorSignals;
   readonly draft: ComposerDraftSignals;
   readonly model: ComposerModelSignals;
+  readonly videoModel?: ComposerVideoModelSignals;
   readonly computer: ComposerComputerSignals;
   readonly submission: ComposerSubmissionSignals;
   readonly queue: ComposerQueueSignals;
@@ -241,6 +256,7 @@ interface CreateComposerSignalsOptions {
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
   readonly setModelSelection$: ComposerModelSignals["setModelSelection$"];
   readonly configureSelectedModel$: ComposerModelSignals["configureSelectedModel$"];
+  readonly videoModel?: ComposerVideoModelSignals;
   readonly computerUseHostId$: ComposerComputerSignals["computerUseHostId$"];
   readonly cloudBrowserEnabled$: ComposerComputerSignals["cloudBrowserEnabled$"];
   readonly setComputerUseHostId$: ComposerComputerSignals["setComputerUseHostId$"];
@@ -506,6 +522,7 @@ export function createComposerSignals(
       setModelSelection$: options.setModelSelection$,
       configureSelectedModel$: options.configureSelectedModel$,
     },
+    ...(options.videoModel ? { videoModel: options.videoModel } : {}),
     computer: {
       ...createComputerUseUiSignals(),
       computerUseHostId$: options.computerUseHostId$,
