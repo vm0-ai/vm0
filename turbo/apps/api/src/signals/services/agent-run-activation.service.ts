@@ -1,8 +1,10 @@
 import { command } from "ccstate";
 
+import { now } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
   notifyRunnerJob,
+  type RunnerJobPreActivationTiming,
   type RunnerJobNotification,
 } from "./runner-dispatch.service";
 import { recordSameThreadRunnerJobPersisted } from "./runner-job-queue-lifecycle.service";
@@ -12,25 +14,43 @@ export interface PendingRunActivation {
   readonly apiStartTime: number;
   readonly chatThreadId: string | undefined;
   readonly runnerNotification: RunnerJobNotification;
+  readonly timing: RunnerJobPreActivationTiming;
+}
+
+interface PendingRunActivationRequest {
+  readonly activation: PendingRunActivation;
+  readonly activationScheduledAt: number;
 }
 
 /** Common post-commit activation for direct and promoted pending runs. */
 export const activatePendingRun$ = command(
-  async ({ set }, input: PendingRunActivation): Promise<void> => {
+  async ({ set }, input: PendingRunActivationRequest): Promise<void> => {
+    const activationEnteredAt = now();
+    const activation = input.activation;
     // Activation follows a durable run/job commit and therefore must finish
     // independently from the request that initiated that commit.
-    if (input.chatThreadId !== undefined) {
+    if (activation.chatThreadId !== undefined) {
       recordSameThreadRunnerJobPersisted({
-        runId: input.runnerNotification.runId,
-        createdAt: input.runnerNotification.createdAt,
+        runId: activation.runnerNotification.runId,
+        createdAt: activation.runnerNotification.createdAt,
       });
       recordFirstAssistantEventEligibility({
-        runId: input.runnerNotification.runId,
-        apiStartedAt: input.apiStartTime,
+        runId: activation.runnerNotification.runId,
+        apiStartedAt: activation.apiStartTime,
       });
     }
+    const sameThreadMarkersCompletedAt = now();
 
     const db = set(writeDb$);
-    await notifyRunnerJob(db, input.runnerNotification);
+    const databaseReadyAt = now();
+    await notifyRunnerJob(db, activation.runnerNotification, {
+      preActivation: activation.timing,
+      activationScheduledAt: input.activationScheduledAt,
+      activationEnteredAt,
+      sameThreadMarkersCompletedAt,
+      databaseReadyAt,
+      sameThreadMarkers:
+        activation.chatThreadId === undefined ? "not_applicable" : "recorded",
+    });
   },
 );
