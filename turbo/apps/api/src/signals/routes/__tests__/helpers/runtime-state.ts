@@ -11,9 +11,6 @@ import type { TestContext } from "../../../../__tests__/test-context";
 import { testRuntimeStateRoutes } from "../../test-runtime-state";
 
 const RUNTIME_STATE_ROUTE = "/api/test/runtime-state";
-type RunMetadataPair = NonNullable<
-  TestRuntimeStateActionResponse["run_metadata_pair"]
->;
 
 function requestRuntimeState(
   context: TestContext,
@@ -175,38 +172,6 @@ export async function setRunAutonomyBudgetFixture(
     action: "set-run-autonomy-budget",
     run_id: runId,
     autonomy_budget: autonomyBudget,
-  });
-}
-
-export async function readRunMetadataPair(
-  context: TestContext,
-  runId: string,
-): Promise<RunMetadataPair> {
-  const response = await postAction(context, {
-    action: "read-run-metadata-pair",
-    run_id: runId,
-  });
-  if (!response.run_metadata_pair) {
-    throw new Error("readRunMetadataPair missing metadata pair");
-  }
-  return response.run_metadata_pair;
-}
-
-export async function saveRunSummaryFixture(
-  context: TestContext,
-  args: {
-    readonly runId: string;
-    readonly triggerSource: string;
-    readonly prompt: string;
-    readonly resultText: string;
-  },
-): Promise<void> {
-  await postAction(context, {
-    action: "save-run-summary",
-    run_id: args.runId,
-    trigger_source: args.triggerSource,
-    prompt: args.prompt,
-    result_text: args.resultText,
   });
 }
 
@@ -446,12 +411,14 @@ export async function setChatEventSnapshotHeadVersion(
   threadId: string,
   archiveSchemaVersion: number,
   objectKey?: string,
+  lastSeqId?: number,
 ): Promise<void> {
   await postAction(context, {
     action: "set-chat-event-snapshot-head-version",
     thread_id: threadId,
     archive_schema_version: archiveSchemaVersion,
     ...(objectKey === undefined ? {} : { object_key: objectKey }),
+    ...(lastSeqId === undefined ? {} : { last_seq_id: lastSeqId }),
   });
 }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.20](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.19...guest-session-prune-v0.3.20) (2026-08-14)
+
+## [0.3.19](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.18...guest-session-prune-v0.3.19) (2026-08-14)
+
 ## [0.3.18](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.17...guest-session-prune-v0.3.18) (2026-08-14)
 
 ## [0.3.17](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.16...guest-session-prune-v0.3.17) (2026-08-14)

@@ -10,8 +10,8 @@ entry points. The current suite covers:
 - Clerk sign-up and sign-in through the hosted form UI;
 - onboarding, chat submission, runner dispatch, and the assistant result through
   the deployed web application;
-- real Claude BYOK and vm0-managed Codex execution, including public usage
-  attribution;
+- real Claude BYOK, vm0-managed Codex, and vm0-managed Pi execution, including
+  public usage attribution;
 - active-run cancellation through the public run and chat-events APIs;
 - ordinary and empty chat attachments across continuation, plus runner-mounted
   workflow files and agent instructions;

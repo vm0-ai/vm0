@@ -470,6 +470,26 @@ fn prepare_for_reuse_rejects_stale_workload_memory_max() -> TestResult {
 }
 
 #[test]
+fn prepare_for_reuse_rejects_stale_workload_oom_group() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(
+        containment
+            .base
+            .join("exec-current/workload/memory.oom.group"),
+        b"1\n",
+    )?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
 fn prepare_for_reuse_rejects_helper_in_control_leaf() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
@@ -549,7 +569,7 @@ impl ContainmentFixture {
             ),
             ("memory.high", policy.memory_high.to_string()),
             ("memory.max", policy.memory_max_bytes.to_string()),
-            ("memory.oom.group", "1".to_string()),
+            ("memory.oom.group", policy.memory_oom_group.to_string()),
             ("pids.max", policy.pids_max.to_string()),
         ] {
             std::fs::write(workload.join(filename), value)?;

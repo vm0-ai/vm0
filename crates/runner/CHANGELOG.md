@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.168.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.13...runner-rs-v0.168.14) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
+## [0.168.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.12...runner-rs-v0.168.13) (2026-08-14)
+
+## [0.168.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.11...runner-rs-v0.168.12) (2026-08-14)
+
 ## [0.168.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.10...runner-rs-v0.168.11) (2026-08-14)
 
 ## [0.168.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.9...runner-rs-v0.168.10) (2026-08-14)

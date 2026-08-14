@@ -235,25 +235,18 @@ describe("okou chat messages command", () => {
       "utf8",
     );
     await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
-    const cursors: { eventId: string | null; seqId: string | null }[] = [];
+    const cursors: string[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
         throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, ({ request }) => {
-        const url = new URL(request.url);
-        const seqId = url.searchParams.get("sinceSeqId");
-        if (seqId === null) {
+        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
+        if (cursor === null) {
           throw new Error("Expected a rows cursor");
         }
-        expect(request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-        );
-        cursors.push({
-          eventId: url.searchParams.get("sinceEventId"),
-          seqId,
-        });
-        expect(seqId).toBe("4");
+        cursors.push(cursor);
+        expect(cursor).toBe("4");
         return HttpResponse.json(
           { rows: [rawEventRow(7), rawEventRow(10)] },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
@@ -269,7 +262,7 @@ describe("okou chat messages command", () => {
       outputDirectory,
     ]);
 
-    expect(cursors).toStrictEqual([{ eventId: rawEventRow(4).id, seqId: "4" }]);
+    expect(cursors).toStrictEqual(["4"]);
     expect((await readdir(threadDirectory)).sort()).toStrictEqual([
       "event-SEQ_ID_10.json",
       "event-SEQ_ID_4.json",

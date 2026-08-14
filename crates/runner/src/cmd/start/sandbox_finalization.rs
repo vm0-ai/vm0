@@ -1264,8 +1264,10 @@ mod tests {
             ),
             RestoredSessionFramework::Pi => (
                 FinalSessionHistoryFramework::Pi,
-                api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
-                    .to_string(),
+                format!(
+                    "{}/restored-{session_id}.jsonl",
+                    api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+                ),
             ),
         };
         let metadata = FinalSessionHistoryIdentity::new(

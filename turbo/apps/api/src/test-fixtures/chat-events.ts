@@ -942,6 +942,72 @@ export async function holdCheckpointReadsFixture(args: {
 }
 
 /**
+ * Holds chat-event reads so a route test can order one physical deletion
+ * between two database statements. Product APIs cannot pause at this boundary.
+ */
+export async function holdChatEventReadsFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat-event read lock holder pid");
+    }
+    await tx.execute(sql`LOCK TABLE ${chatEvents} IN ACCESS EXCLUSIVE MODE`);
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
+ * Queues one physical event deletion behind a held table read boundary. Once
+ * admitted, the exclusive lock makes the deletion run before later readers.
+ */
+export async function queueChatEventPhysicalDeletionFixture(args: {
+  readonly eventId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly done: Promise<void> }> {
+  const started = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    started.resolve(undefined);
+    await tx.execute(sql`LOCK TABLE ${chatEvents} IN ACCESS EXCLUSIVE MODE`);
+    const deleted = await tx
+      .delete(chatEvents)
+      .where(eq(chatEvents.id, args.eventId))
+      .returning({ id: chatEvents.id });
+    if (deleted.length !== 1) {
+      throw new Error("Expected one chat event to be physically deleted");
+    }
+  });
+  await started.promise;
+  return { done };
+}
+
+/**
  * Holds model-policy reads so a route test can pause after a queued goal
  * captured its target but before model resolution returns. Product APIs cannot
  * pause at this query boundary, and the fixture does not mutate policy rows.

@@ -227,7 +227,6 @@ const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES = [
   "api_dispatch_prepare_pi_launch_resources",
-  "api_dispatch_prepare_pi_launch_agent_name",
   "api_dispatch_prepare_pi_launch_resume_session",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
@@ -3679,7 +3678,7 @@ describe("CHAT-02: model-first provider policies", () => {
   }, 90_000);
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "runs Pi for %s and resumes its thread-scoped SQLite session",
+    "runs Pi for %s and resumes its thread-scoped JSONL session",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = actor.orgId;
@@ -3719,14 +3718,15 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(firstContext.piLaunchConfig).not.toHaveProperty(
         "appendSystemPrompt",
       );
-      expect(firstContext.piLaunchConfig).toMatchObject({
-        schemaVersion: 1,
-        skillSnapshot: {
-          schemaVersion: 1,
-          policyVersion: 1,
-          root: "/home/user/.pi/agent/skills",
-        },
-      });
+      expect(firstContext.piLaunchConfig).toStrictEqual({ schemaVersion: 2 });
+      expect(firstContext.storageManifest?.storageMounts).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            mountPath: "/home/user/.pi/agent",
+            instructionsTargetFilename: "AGENTS.md",
+          }),
+        ]),
+      );
       expect(firstContext.piModelConfig).toStrictEqual({
         provider: "deepseek",
         baseUrl: "https://api.deepseek.com/",
@@ -3749,7 +3749,7 @@ describe("CHAT-02: model-first provider policies", () => {
       ]);
 
       const historyHash = createHash("sha256")
-        .update(`pi sqlite checkpoint ${first.runId}`)
+        .update(`pi jsonl checkpoint ${first.runId}`)
         .digest("hex");
       await webhooks.requestAgentCheckpoint(
         {

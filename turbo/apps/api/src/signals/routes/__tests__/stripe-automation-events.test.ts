@@ -564,14 +564,11 @@ describe("Stripe automation event webhook", () => {
     expect(context.mocks.stripe.invoices.list).not.toHaveBeenCalled();
   });
 
-  it("queues every embedded line and current and legacy relationship identity without Stripe enrichment", async () => {
+  it("queues every embedded line and current relationship identities without Stripe enrichment", async () => {
     const current = await setupScenario({
       accountId: "acct_stripe_current_snapshot",
     });
-    const legacy = await setupScenario({
-      accountId: "acct_stripe_legacy_snapshot",
-    });
-    await runs.heartbeatRunner(legacy.runnerGroup);
+    await runs.heartbeatRunner(current.runnerGroup);
     const invoiceListCalls =
       context.mocks.stripe.invoices.list.mock.calls.length;
     const subscriptionRetrieveCalls =
@@ -643,30 +640,9 @@ describe("Stripe automation event webhook", () => {
         },
       }),
     );
-    await postStripeAutomationEvent(
-      invoicePaidEvent({
-        accountId: "acct_stripe_legacy_snapshot",
-        eventId: "evt_legacy_snapshot",
-        invoiceFields: {
-          parent: undefined,
-          subscription: "sub_legacy_snapshot",
-          payment_intent: "pi_legacy_snapshot",
-          payments: {
-            data: [
-              {
-                payment: "pay_legacy_snapshot",
-                payment_intent: "pi_legacy_relationship",
-              },
-            ],
-          },
-        },
-      }),
-    );
     expect((await executeAutomation(current)).body.executed).toBe(1);
-    expect((await executeAutomation(legacy)).body.executed).toBe(1);
 
     const currentClaim = await claimScenarioRun(current);
-    const legacyClaim = await claimScenarioRun(legacy);
     expect(currentClaim.prompt).toContain(
       "normalized, signed Stripe webhook snapshot",
     );
@@ -714,6 +690,51 @@ describe("Stripe automation event webhook", () => {
       .parse(currentContext);
     expect(currentEvent.invoice.lines.data).toHaveLength(31);
 
+    expect(context.mocks.stripe.invoices.list).toHaveBeenCalledTimes(
+      invoiceListCalls,
+    );
+    expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledTimes(
+      subscriptionRetrieveCalls,
+    );
+    expect(context.mocks.stripe.paymentMethods.retrieve).toHaveBeenCalledTimes(
+      paymentMethodRetrieveCalls,
+    );
+  });
+
+  it("queues legacy relationship identities without Stripe enrichment", async () => {
+    const legacy = await setupScenario({
+      accountId: "acct_stripe_legacy_snapshot",
+    });
+    await runs.heartbeatRunner(legacy.runnerGroup);
+    const invoiceListCalls =
+      context.mocks.stripe.invoices.list.mock.calls.length;
+    const subscriptionRetrieveCalls =
+      context.mocks.stripe.subscriptions.retrieve.mock.calls.length;
+    const paymentMethodRetrieveCalls =
+      context.mocks.stripe.paymentMethods.retrieve.mock.calls.length;
+
+    await postStripeAutomationEvent(
+      invoicePaidEvent({
+        accountId: "acct_stripe_legacy_snapshot",
+        eventId: "evt_legacy_snapshot",
+        invoiceFields: {
+          parent: undefined,
+          subscription: "sub_legacy_snapshot",
+          payment_intent: "pi_legacy_snapshot",
+          payments: {
+            data: [
+              {
+                payment: "pay_legacy_snapshot",
+                payment_intent: "pi_legacy_relationship",
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect((await executeAutomation(legacy)).body.executed).toBe(1);
+
+    const legacyClaim = await claimScenarioRun(legacy);
     expect(eventContextFromPrompt(legacyClaim.prompt)).toMatchObject({
       relationships: {
         subscriptionId: "sub_legacy_snapshot",

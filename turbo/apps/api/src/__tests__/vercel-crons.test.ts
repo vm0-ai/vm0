@@ -18,6 +18,7 @@ import {
   cronProjectChatEventSearchContract,
   cronRenewGmailWatchesContract,
   cronSnapshotChatEventsContract,
+  cronRetainChatEventsContract,
   cronRenewGoogleFormsWatchesContract,
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGoogleWorkspaceEventSubscriptionsContract,
@@ -63,6 +64,10 @@ const expectedVercelCrons = [
   {
     path: cronSnapshotChatEventsContract.snapshot.path,
     schedule: "*/10 * * * *",
+  },
+  {
+    path: cronRetainChatEventsContract.retain.path,
+    schedule: "* * * * *",
   },
   {
     path: cronExecuteWorkflowAutomationsContract.execute.path,

@@ -120,6 +120,7 @@ export const chatEvents = pgTable(
   },
   (table) => {
     return [
+      index("idx_chat_events_created_at_id").on(table.createdAt, table.id),
       index("idx_chat_events_thread_created").on(
         table.chatThreadId,
         table.createdAt,

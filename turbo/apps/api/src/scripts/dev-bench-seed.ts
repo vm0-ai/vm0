@@ -20,7 +20,6 @@ import {
 } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
@@ -33,7 +32,6 @@ const ALLOW_NON_LOCAL_ENV = "DEV_BENCH_SEED_ALLOW_NON_LOCAL";
 
 type Database = ReturnType<typeof db>;
 type AgentRunInsert = typeof agentRuns.$inferInsert;
-type ZeroRunInsert = typeof zeroRuns.$inferInsert;
 type ChatEventInsert = typeof chatEvents.$inferInsert;
 type SeedChatEventRow = Omit<
   ChatEventInsert,
@@ -47,7 +45,6 @@ type SeedChatEventRow = Omit<
 
 export interface BuiltProfileRows {
   readonly runRows: AgentRunInsert[];
-  readonly zeroRunRows: ZeroRunInsert[];
   readonly eventRows: SeedChatEventRow[];
 }
 
@@ -564,7 +561,6 @@ async function cleanupExistingBenchThreads(
     .delete(chatEvents)
     .where(inArray(chatEvents.chatThreadId, threadIds));
   if (runIds.length > 0) {
-    await database.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
     await database.delete(agentRuns).where(inArray(agentRuns.id, runIds));
   }
   if (sessionIds.length > 0) {
@@ -699,10 +695,6 @@ function appendRunEvents(
     createdAt: baseCreatedAt,
     startedAt: addMs(baseCreatedAt, 1000),
     completedAt: addMs(baseCreatedAt, 45_000 + eventCount * 100),
-    ...metadata,
-  });
-  args.rows.zeroRunRows.push({
-    id: runId,
     ...metadata,
   });
 
@@ -940,7 +932,6 @@ export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
   const workflowAutomationBriefs = buildWorkflowAutomationBriefs(args.profile);
   const rows: BuiltProfileRows = {
     runRows: [],
-    zeroRunRows: [],
     eventRows: [],
   };
   const runUserMessageRows: SeedChatEventRow[] = [];
@@ -976,9 +967,6 @@ async function insertProfileRows(
 ): Promise<void> {
   await chunkedInsert(rows.runRows, (chunk) => {
     return database.insert(agentRuns).values(chunk);
-  });
-  await chunkedInsert(rows.zeroRunRows, (chunk) => {
-    return database.insert(zeroRuns).values(chunk);
   });
   const eventRows = rows.eventRows.map((row) => {
     const seqId = row.seqId;
@@ -1079,9 +1067,7 @@ async function seedDevBench(args: {
     seeded.push({ profile, ...result });
   }
 
-  await database.execute(
-    sql`ANALYZE zero_runs, agent_runs, chat_threads, chat_events`,
-  );
+  await database.execute(sql`ANALYZE agent_runs, chat_threads, chat_events`);
 
   writeLine("Seeded prod-shaped chat benchmark threads:");
   for (const item of seeded) {

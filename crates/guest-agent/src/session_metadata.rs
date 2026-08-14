@@ -29,11 +29,32 @@ pub(crate) fn history_marker_payload_for_session_id_with_home(
                 &thread_id,
             ))
         }
-        Framework::Pi => is_valid_cli_agent_session_id(session_id).then(|| {
-            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
-                .to_string()
-        }),
+        // Pi selects the official JSONL filename at runtime. Its init event is
+        // the authority for that path, so it cannot be derived from the id.
+        Framework::Pi => None,
     }
+}
+
+pub(crate) fn is_pi_session_history_path(history_path_payload: &str) -> bool {
+    let path = Path::new(history_path_payload);
+    path.parent()
+        == Some(Path::new(
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+        ))
+        && path.extension().and_then(|extension| extension.to_str()) == Some("jsonl")
+        && path.file_name().is_some()
+}
+
+pub(crate) fn pi_history_path_payload(
+    event: &serde_json::Value,
+    session_id: &str,
+) -> Option<String> {
+    if !is_valid_cli_agent_session_id(session_id) {
+        return None;
+    }
+    let path = event.get("session_file")?.as_str()?;
+    let file_name = Path::new(path).file_name()?.to_str()?;
+    (is_pi_session_history_path(path) && file_name.contains(session_id)).then(|| path.to_string())
 }
 
 fn claude_history_path_payload_for_home(home: &str, session_id: &str) -> Option<String> {
@@ -66,12 +87,10 @@ fn codex_sessions_dir(home_dir: &Path) -> PathBuf {
 }
 
 pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'static str {
-    if session_history::is_codex_marker(history_path_payload) {
-        "codex"
-    } else if history_path_payload
-        == api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
-    {
+    if is_pi_session_history_path(history_path_payload) {
         "pi"
+    } else if session_history::is_codex_marker(history_path_payload) {
+        "codex"
     } else {
         "claude"
     }
@@ -216,28 +235,31 @@ mod tests {
     }
 
     #[test]
-    fn pi_history_marker_uses_versioned_native_sqlite_database() {
-        let marker = history_marker_payload_for_session_id_with_home(
-            Framework::Pi,
-            "/ignored-for-pi",
-            "00000000-0000-4000-8000-000000000001",
+    fn pi_history_marker_uses_official_init_session_file() {
+        let session_id = "00000000-0000-4000-8000-000000000001";
+        let marker = pi_history_path_payload(
+            &serde_json::json!({
+                "session_file": format!(
+                    "{}/2026-08-14T00-00-00_{session_id}.jsonl",
+                    api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+                ),
+            }),
+            session_id,
         )
-        .expect("safe chat thread id should produce a Pi marker");
+        .expect("official Pi session path should produce a marker");
 
-        assert_eq!(
-            marker,
-            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
-        );
+        assert!(marker.ends_with(&format!("_{session_id}.jsonl")));
         assert_eq!(session_history_marker_kind(&marker), "pi");
     }
 
     #[test]
-    fn pi_history_marker_rejects_unsafe_chat_thread_id() {
+    fn pi_history_marker_rejects_paths_outside_the_official_directory() {
         assert!(
-            history_marker_payload_for_session_id_with_home(
-                Framework::Pi,
-                "/ignored-for-pi",
-                "../../sessions.sqlite",
+            pi_history_path_payload(
+                &serde_json::json!({
+                    "session_file": "/tmp/00000000-0000-4000-8000-000000000001.jsonl",
+                }),
+                "00000000-0000-4000-8000-000000000001",
             )
             .is_none()
         );

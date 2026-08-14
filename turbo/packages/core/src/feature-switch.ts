@@ -303,7 +303,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Run web chat jobs with the sandbox-owned Pi agent loop and native SQLite session persistence.",
+      "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -383,6 +383,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Distinguish mid-run steer messages and show run actions only after the latest user message.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatSmoothAutoScroll]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Smoothly follow new chat content after the thread's initial scroll position is committed.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

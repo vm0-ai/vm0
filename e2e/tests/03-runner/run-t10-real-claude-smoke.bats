@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Real VM0-managed Claude smoke test through supported model, agent, and chat APIs.
+# Real VM0-managed Claude and Pi smoke tests through supported model, agent, and chat APIs.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
@@ -15,12 +15,21 @@ setup_file() {
     E2E_API_URL="$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials")"
     runner_e2e_require_environment
 
+    local feature_switches
+    feature_switches="$(runner_api_curl "/api/okou/feature-switches" \
+        -X POST \
+        -d '{"switches":{"realAgentInPreview":true,"piLoop":true}}')"
+    jq -e '
+        .effectiveSwitches.realAgentInPreview == true and
+        .effectiveSwitches.piLoop == true
+    ' <<<"$feature_switches" >/dev/null
+
     export RUNNER_AGENT_ID
     RUNNER_AGENT_ID="$(create_runner_agent \
         "e2e-real-claude-$(date +%s%3N)-$RANDOM")"
     set_runner_agent_instructions \
         "$RUNNER_AGENT_ID" \
-        "Real Claude smoke test instructions."
+        "Real agent smoke test instructions."
 }
 
 teardown_file() {
@@ -29,16 +38,17 @@ teardown_file() {
     fi
 }
 
-run_real_claude_chat() {
+run_real_chat() {
     local prompt="$1"
     local expected_output="$2"
+    local model="$3"
     local send_response run_id thread_id run_response chat_output
 
     send_response="$(runner_chat_send \
         "$RUNNER_AGENT_ID" \
         "$prompt" \
         "" \
-        "claude-sonnet-4-6")" || return 1
+        "$model")" || return 1
     run_id="$(jq -er '.runId | select(type == "string" and length > 0)' \
         <<< "$send_response")" || return 1
     thread_id="$(jq -er '.threadId | select(type == "string" and length > 0)' \
@@ -128,9 +138,10 @@ run_real_claude_steer() {
     ' <<<"$output"
     assert_success
 
-    run run_real_claude_chat \
+    run run_real_chat \
         "123+456. Reply only RESULT=<answer>." \
-        "RESULT=579"
+        "RESULT=579" \
+        "claude-sonnet-4-6"
 
     assert_success
     assert_output --partial '"status":"completed"'
@@ -138,6 +149,40 @@ run_real_claude_steer() {
     [[ -n "$(runner_chat_field "$output" '.runId')" ]]
     [[ -n "$(runner_chat_field "$output" '.threadId')" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
+}
+
+@test "vm0-managed real pi loop returns a successful answer" {
+    run runner_api_curl "/api/okou/model-policies"
+    assert_success
+    run jq -e '
+        any(.policies[]?;
+            .model == "deepseek-v4-flash" and
+            .defaultProviderType == "vm0" and
+            .credentialScope == "org" and
+            .modelProviderId == null
+        )
+    ' <<<"$output"
+    assert_success
+
+    run run_real_chat \
+        "123+456. Reply only RESULT=<answer>." \
+        "RESULT=579" \
+        "deepseek-v4-flash"
+
+    assert_success
+    assert_output --partial '"status":"completed"'
+    assert_output --partial "RESULT=579"
+    local pi_output run_id
+    pi_output="$output"
+    run_id="$(runner_chat_field "$pi_output" '.runId')"
+    [[ -n "$run_id" ]]
+    [[ -n "$(runner_chat_field "$pi_output" '.threadId')" ]]
+    [[ -n "$(runner_chat_field "$pi_output" '.sessionId')" ]]
+
+    run runner_api_curl "/api/okou/runs/${run_id}/context"
+    assert_success
+    run jq -e '.cliAgentType == "pi"' <<<"$output"
+    assert_success
 }
 
 @test "vm0-managed real claude steers an active run then starts a successor" {

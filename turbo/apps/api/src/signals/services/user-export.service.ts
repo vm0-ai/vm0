@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray, isNotNull, or } from "drizzle-orm";
-import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import {
+  chatEventCompatibilityRole,
+  isChatEventContentTextType,
+  isChatEventUserMessageTextType,
+} from "@okouai/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import type {
@@ -19,7 +23,6 @@ import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { conversations } from "@okouai/db/schema/conversation";
 import { blobs } from "@okouai/db/schema/blob";
-import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
@@ -68,11 +71,11 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./chat-user-message.service";
-import { chatEventTextCondition } from "./chat-event-type.service";
 import {
-  canonicalChatEventContent,
-  canonicalChatEventUserMessage,
+  canonicalArchivedChatEventContent,
+  canonicalArchivedChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
+import { readCurrentChatEventHistory } from "./chat-event-history.service";
 import { loadWorkflowVolumeFiles } from "./workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -764,37 +767,37 @@ async function collectConversationMessages(
   signal.throwIfAborted();
 
   for (const thread of threads) {
-    const rows = await runtime.db
-      .select({
-        eventType: chatEvents.eventType,
-        content: canonicalChatEventContent(),
-        userMessage: canonicalChatEventUserMessage(),
-        createdAt: chatEvents.createdAt,
-      })
-      .from(chatEvents)
-      .where(
-        and(eq(chatEvents.chatThreadId, thread.id), chatEventTextCondition()),
-      )
-      .orderBy(asc(chatEvents.seqId));
+    const rows = await readCurrentChatEventHistory(runtime, thread.id, signal);
     signal.throwIfAborted();
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
+      const userMessage = canonicalArchivedChatEventUserMessage(message);
+      const content = canonicalArchivedChatEventContent(message);
+      if (
+        !(
+          (isChatEventUserMessageTextType(message.eventType) &&
+            userMessage !== null) ||
+          (isChatEventContentTextType(message.eventType) && content !== null)
+        )
+      ) {
+        return [];
+      }
       const role = chatEventCompatibilityRole(message.eventType);
-      const userMessage =
-        requiredUserMessageForEvent(message.eventType, message.userMessage) ??
+      const requiredUserMessage =
+        requiredUserMessageForEvent(message.eventType, userMessage) ??
         undefined;
-      const content = userMessage
-        ? projectUserMessage(userMessage).displayText
-        : message.content;
-      if (!content) {
+      const projectedContent = requiredUserMessage
+        ? projectUserMessage(requiredUserMessage).displayText
+        : content;
+      if (!projectedContent) {
         return [];
       }
       return [
         {
           role,
-          content,
-          ...(userMessage ? { userMessage } : {}),
-          createdAt: message.createdAt.toISOString(),
+          content: projectedContent,
+          ...(requiredUserMessage ? { userMessage: requiredUserMessage } : {}),
+          createdAt: message.createdAt,
         },
       ];
     });

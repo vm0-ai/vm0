@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { schema } from "../index";
 import { chatAgentRunContext } from "../schema/chat-agent-run-context";
 import { chatEvents } from "../schema/chat-event";
-import { zeroRuns } from "../schema/zero-run";
 
 describe("chatAgentRunContext schema", () => {
   it("exports durable source-run provenance without live-entity references", () => {
@@ -68,6 +67,7 @@ describe("chatEvents schema", () => {
       "chat_events_run_event_seq_unique",
       "chat_events_run_terminal_unique",
       "chat_events_thread_seq_unique",
+      "idx_chat_events_created_at_id",
       "idx_chat_events_run_id",
       "idx_chat_events_thread_created",
       "idx_chat_events_thread_run_terminal_created",
@@ -120,23 +120,5 @@ describe("chatEvents schema", () => {
         onDelete: "no action",
       },
     ]);
-  });
-});
-
-describe("zeroRuns schema", () => {
-  it("keeps canonical goal provenance without the legacy run group", () => {
-    const config = getTableConfig(zeroRuns);
-    const columnNames = config.columns.map((column) => {
-      return column.name;
-    });
-    const indexNames = config.indexes.map((index) => {
-      return index.config.name;
-    });
-
-    expect(schema.zeroRuns).toBe(zeroRuns);
-    expect(columnNames).toContain("goal_id");
-    expect(columnNames).not.toContain("run_group_id");
-    expect(indexNames).toContain("idx_zero_runs_goal");
-    expect(indexNames).not.toContain("idx_zero_runs_run_group");
   });
 });

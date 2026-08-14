@@ -1,5 +1,56 @@
 # Changelog
 
+## [8.561.0](https://github.com/vm0-ai/vm0/compare/core-v8.560.5...core-v8.561.0) (2026-08-14)
+
+
+### Features
+
+* **chat:** smooth automatic tail scrolling ([#27290](https://github.com/vm0-ai/vm0/issues/27290)) ([f5352bd](https://github.com/vm0-ai/vm0/commit/f5352bd9d3079a713918f325480ac9ea0cdad806))
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.1
+
+## [8.560.5](https://github.com/vm0-ai/vm0/compare/core-v8.560.4...core-v8.560.5) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.0
+
+## [8.560.4](https://github.com/vm0-ai/vm0/compare/core-v8.560.3...core-v8.560.4) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.1
+
+## [8.560.3](https://github.com/vm0-ai/vm0/compare/core-v8.560.2...core-v8.560.3) (2026-08-14)
+
+
+### Refactoring
+
+* remove rolled-out automation feature switches ([#27256](https://github.com/vm0-ai/vm0/issues/27256)) ([91119e4](https://github.com/vm0-ai/vm0/commit/91119e4ff88250028c24e79d8b8045cc2c90f896))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.0
+
 ## [8.560.2](https://github.com/vm0-ai/vm0/compare/core-v8.560.1...core-v8.560.2) (2026-08-14)
 
 

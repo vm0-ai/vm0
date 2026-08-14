@@ -11,7 +11,6 @@ import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -141,12 +140,6 @@ async function seedActiveRun(
   if (!run) {
     throw new Error("Failed to seed orphan monitor run");
   }
-
-  await db.insert(zeroRuns).values({
-    id: run.id,
-    ...metadata,
-  });
-  signal.throwIfAborted();
 }
 
 async function seedGoalFixture(

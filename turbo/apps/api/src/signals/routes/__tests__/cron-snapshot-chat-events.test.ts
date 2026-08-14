@@ -863,7 +863,6 @@ describe("cron snapshot chat events", () => {
     expect(firstArchivedRow.seqId).toBeGreaterThan(1);
     expect(OBJECT_KEY_PATTERN.exec(put.key)?.[2]).toBe(coveredSeqId.toString());
     const head = await readChatEventSnapshotHead(context, threadId);
-    expect(head.last_event_id).toBe(lastPhysicalRow.id);
     expect(head.last_seq_id).toBe(coveredSeqId);
 
     await sendNoCreditMessage(owner, {
@@ -878,101 +877,101 @@ describe("cron snapshot chat events", () => {
       expect(row.seqId).toBeGreaterThan(previousSeqId);
       previousSeqId = row.seqId;
     }
-
-    const lastTailRow = tail.at(-1);
-    if (lastTailRow === undefined) {
-      throw new Error("Expected a sparse tail event");
-    }
-    await projectChatEventSearch(threadId);
-    const extension = await runSnapshotCron([threadId]);
-    expect(extension.success).toBeTruthy();
-    await expect(
-      readChatEventSnapshotHead(context, threadId),
-    ).resolves.toMatchObject({
-      last_event_id: lastTailRow.id,
-      last_seq_id: lastTailRow.seqId,
-    });
   }, 60_000);
 
-  it("refuses V4 to V5 when no lossless Snapshot migration exists", async () => {
+  it("skips every non-reusable existing head without rebuilding or replacing it", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
-      displayName: "Version-only snapshot agent",
+      displayName: "Fail-closed snapshot agent",
     });
-
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `version-only-${randomUUID()}`,
+    const fixtures = await Promise.all(
+      ["unsupported", "unreadable", "undecodable", "incomplete"].map(
+        async (kind) => {
+          const threadId = await sendNoCreditMessage(owner, {
+            agentId: agent.agentId,
+            prompt: `${kind}-${randomUUID()}`,
+          });
+          return { kind, threadId };
+        },
+      ),
+    );
+    const threadIds = fixtures.map((fixture) => {
+      return fixture.threadId;
     });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
+    await projectChatEventSearch(...threadIds);
+    await runSnapshotCron(threadIds);
 
-    const firstPut = putsForThread(threadId)[0];
-    if (firstPut === undefined) {
-      throw new Error("Expected a first-generation snapshot object");
+    for (const fixture of fixtures) {
+      const initialPut = putsForThread(fixture.threadId)[0];
+      if (initialPut === undefined) {
+        throw new Error("Expected an initial snapshot object");
+      }
+      if (fixture.kind === "unsupported") {
+        await setChatEventSnapshotHeadVersion(
+          context,
+          fixture.threadId,
+          PREVIOUS_ARCHIVE_SCHEMA_VERSION,
+        );
+      } else if (fixture.kind === "unreadable") {
+        await setChatEventSnapshotHeadVersion(
+          context,
+          fixture.threadId,
+          5,
+          `chat-events/${fixture.threadId}/missing-${randomUUID()}.ndjson.gz`,
+        );
+      } else if (fixture.kind === "undecodable") {
+        writeFakeChatEventObject(initialPut.key, Buffer.from("not-gzip"));
+      } else {
+        await setChatEventSnapshotHeadVersion(
+          context,
+          fixture.threadId,
+          5,
+          undefined,
+          0,
+        );
+      }
+
+      await sendNoCreditMessage(owner, {
+        agentId: agent.agentId,
+        threadId: fixture.threadId,
+        prompt: `${fixture.kind}-tail-${randomUUID()}`,
+      });
     }
-    const firstHead = await readChatEventSnapshotHead(context, threadId);
-    await setChatEventSnapshotHeadVersion(
-      context,
-      threadId,
-      PREVIOUS_ARCHIVE_SCHEMA_VERSION,
+    await projectChatEventSearch(...threadIds);
+    const blockedHeads = new Map(
+      await Promise.all(
+        fixtures.map(async (fixture) => {
+          return [
+            fixture.threadId,
+            await readChatEventSnapshotHead(context, fixture.threadId),
+          ] as const;
+        }),
+      ),
     );
 
-    await expect(runSnapshotCron([threadId])).rejects.toThrow(
-      "Unknown response status 500",
-    );
-    expect(putsForThread(threadId)).toHaveLength(1);
-    await expect(
-      readChatEventSnapshotHead(context, threadId),
-    ).resolves.toMatchObject({
-      archive_schema_version: PREVIOUS_ARCHIVE_SCHEMA_VERSION,
-      last_event_id: firstHead.last_event_id,
-      last_seq_id: firstHead.last_seq_id,
-      object_key: firstPut.key,
-      snapshot_count: firstHead.snapshot_count,
-    });
-  }, 60_000);
-
-  it("fails closed instead of rebuilding Raw history when a Snapshot is damaged", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Corruption agent",
+    const skipped = await runSnapshotCron(threadIds);
+    expect(skipped).toMatchObject({
+      snapshots: 0,
+      skippedUnreadableHeads: 1,
+      skippedUndecodableHeads: 1,
+      skippedIncompleteHeads: 1,
+      skippedUnsupportedHeads: 1,
+      unreadableParents: 2,
     });
 
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `corruption-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const originalHead = await readChatEventSnapshotHead(context, threadId);
-
-    const headPut = putsForThread(threadId)[0];
-    if (headPut === undefined) {
-      throw new Error("Expected a head snapshot object to corrupt");
+    for (const fixture of fixtures) {
+      expect(putsForThread(fixture.threadId)).toHaveLength(1);
+      const blockedHead = blockedHeads.get(fixture.threadId);
+      if (blockedHead === undefined) {
+        throw new Error("Expected blocked head metadata");
+      }
+      const currentHead = await readChatEventSnapshotHead(
+        context,
+        fixture.threadId,
+      );
+      expect(currentHead).toStrictEqual(blockedHead);
     }
-    const corrupted = Buffer.from(headPut.body);
-    const lastByte = corrupted.at(-1);
-    if (lastByte === undefined) {
-      throw new Error("Expected a non-empty snapshot object");
-    }
-    corrupted[corrupted.length - 1] = lastByte ^ 0xff;
-    writeFakeChatEventObject(headPut.key, corrupted);
-
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `corruption-tail-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-    await expect(runSnapshotCron([threadId])).rejects.toThrow(
-      "Unknown response status 500",
-    );
-    expect(putsForThread(threadId)).toHaveLength(1);
-    await expect(
-      readChatEventSnapshotHead(context, threadId),
-    ).resolves.toStrictEqual(originalHead);
-  }, 60_000);
+  }, 90_000);
 
   it("uses the exact parent metadata as a publication CAS", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });

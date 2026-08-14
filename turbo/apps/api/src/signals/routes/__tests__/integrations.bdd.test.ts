@@ -1721,7 +1721,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await flushWaitUntilForTest();
   });
 
-  it("keeps queued Web and Slack sends on one canonical session", async () => {
+  it("keeps queued Web and Slack inputs on one canonical route", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -1729,10 +1729,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     integrations.configureSlackAppMocks();
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
-    if (!actor.orgId) {
-      throw new Error("Expected canonical Slack actor to belong to an org");
-    }
-    const orgId = actor.orgId;
     const slackUserId = uniqueSlackUserId();
     const { teamId, botUserId } = await integrations.installSlackWorkspace(
       actor,
@@ -1785,7 +1781,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected canonical Slack route to own a chat thread");
     }
     const run1Id = await pollSlackRun(runnerGroup);
-    const claim1 = await runs.claimRunnerJob(run1Id);
+    await runs.claimRunnerJob(run1Id);
     const defaultAgentId = state.default_agent?.id;
     if (!defaultAgentId) {
       throw new Error("Expected canonical Slack thread to use a default agent");
@@ -1896,6 +1892,94 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return part.type === "source";
       }),
     ).toStrictEqual({ type: "source", kind: "slack" });
+  });
+
+  it("keeps queued Web and Slack sends on one canonical session", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected canonical Slack actor to belong to an org");
+    }
+    const orgId = actor.orgId;
+    const slackUserId = uniqueSlackUserId();
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      {
+        installerSlackUserId: slackUserId,
+      },
+    );
+    const channelId = "C_BDD_CANONICAL_SESSION_REUSE";
+    const threadTs = "2911.000100";
+    const event = {
+      type: "app_mention",
+      user: slackUserId,
+      text: `<@${botUserId}> establish the canonical session`,
+      ts: threadTs,
+      channel: channelId,
+      channel_type: "channel",
+    };
+    const eventBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
+      event,
+    });
+    await integrations.requestSlackEvent(
+      eventBody,
+      integrations.signedSlackIngressHeaders(eventBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    let state = await integrations.readSlackTestState(teamId);
+    const canonicalChatThreadId = state.chat_thread_routes[0]?.chatThreadId;
+    if (!canonicalChatThreadId) {
+      throw new Error("Expected canonical Slack route to own a chat thread");
+    }
+    const run1Id = await pollSlackRun(runnerGroup);
+    const claim1 = await runs.claimRunnerJob(run1Id);
+    const defaultAgentId = state.default_agent?.id;
+    if (!defaultAgentId) {
+      throw new Error("Expected canonical Slack thread to use a default agent");
+    }
+    const queuedWebMessage = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: defaultAgentId,
+        prompt: "keep the web session separate",
+        threadId: canonicalChatThreadId,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    expect(queuedWebMessage.body).toMatchObject({
+      runId: null,
+      threadId: canonicalChatThreadId,
+    });
+
+    const stickyBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
+      event: {
+        ...event,
+        text: "stay canonical on the same route",
+        ts: "2911.000200",
+        thread_ts: threadTs,
+      },
+    });
+    await integrations.requestSlackEvent(
+      stickyBody,
+      integrations.signedSlackIngressHeaders(stickyBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,

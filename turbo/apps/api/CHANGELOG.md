@@ -1,5 +1,88 @@
 # Changelog
 
+## [1.451.1](https://github.com/vm0-ai/vm0/compare/api-v1.451.0...api-v1.451.1) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.1
+    * @okouai/core bumped to 8.561.0
+    * @okouai/db bumped to 1.200.1
+    * @okouai/pi-agent-runtime bumped to 1.5.3
+
+## [1.451.0](https://github.com/vm0-ai/vm0/compare/api-v1.450.1...api-v1.451.0) (2026-08-14)
+
+
+### Features
+
+* retain 30 days of chat events ([#27278](https://github.com/vm0-ai/vm0/issues/27278)) ([d4a03d7](https://github.com/vm0-ai/vm0/commit/d4a03d7c292d9c6cd017b3e074c9ff053c005115))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.0
+    * @okouai/core bumped to 8.560.5
+    * @okouai/db bumped to 1.200.0
+    * @okouai/pi-agent-runtime bumped to 1.5.2
+
+## [1.450.1](https://github.com/vm0-ai/vm0/compare/api-v1.450.0...api-v1.450.1) (2026-08-14)
+
+
+### Refactoring
+
+* **db:** drop zero_runs ([#27277](https://github.com/vm0-ai/vm0/issues/27277)) ([1aef53c](https://github.com/vm0-ai/vm0/commit/1aef53cd02c39ac3f8e923cd0c1a2c923067bc1c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.1
+    * @okouai/core bumped to 8.560.4
+    * @okouai/db bumped to 1.199.1
+    * @okouai/pi-agent-runtime bumped to 1.5.1
+
+## [1.450.0](https://github.com/vm0-ai/vm0/compare/api-v1.449.1...api-v1.450.0) (2026-08-14)
+
+
+### Features
+
+* **chat:** negotiate chat event schema versions ([#26848](https://github.com/vm0-ai/vm0/issues/26848)) ([1065c81](https://github.com/vm0-ai/vm0/commit/1065c81ba4c4bc21dfa582f5fa955af93c862935))
+
+
+### Refactoring
+
+* **billing:** neutralize payment and realtime service filenames ([#27258](https://github.com/vm0-ai/vm0/issues/27258)) ([9179d2b](https://github.com/vm0-ai/vm0/commit/9179d2b84d74dd470378db0afcc23e940273cdb1))
+* **billing:** neutralize usage and recharge service filenames ([#27250](https://github.com/vm0-ai/vm0/issues/27250)) ([3d3e052](https://github.com/vm0-ai/vm0/commit/3d3e052e65a1ddebb5d7d50d0d4dd368b27efc32))
+* **chat:** neutralize core event service filenames ([#27261](https://github.com/vm0-ai/vm0/issues/27261)) ([d8f26b3](https://github.com/vm0-ai/vm0/commit/d8f26b38013b6ee83f49ab6624691bd43179c565))
+* **chat:** neutralize goal and chat utility service paths ([#27251](https://github.com/vm0-ai/vm0/issues/27251)) ([398f8d5](https://github.com/vm0-ai/vm0/commit/398f8d572f4a89bfe475242f78c69d74e3c1ceea))
+* **chat:** neutralize low-fanout helper filenames ([#27260](https://github.com/vm0-ai/vm0/issues/27260)) ([7656869](https://github.com/vm0-ai/vm0/commit/7656869a690e834eb30e6221ac62002192d9ae61))
+* **computer-use:** neutralize plugin contract filename ([#27268](https://github.com/vm0-ai/vm0/issues/27268)) ([6bb2b94](https://github.com/vm0-ai/vm0/commit/6bb2b947e0a2bb27359386bf4d17074f87c67828))
+* **generation:** neutralize per-run service filenames ([#27262](https://github.com/vm0-ai/vm0/issues/27262)) ([c1bc0c9](https://github.com/vm0-ai/vm0/commit/c1bc0c943febc95d479f1ac3e620c4a09452a76b))
+* remove rolled-out automation feature switches ([#27256](https://github.com/vm0-ai/vm0/issues/27256)) ([91119e4](https://github.com/vm0-ai/vm0/commit/91119e4ff88250028c24e79d8b8045cc2c90f896))
+* **test:** neutralize api helper filenames ([#27271](https://github.com/vm0-ai/vm0/issues/27271)) ([b3851bd](https://github.com/vm0-ai/vm0/commit/b3851bd61c5a1bf69fa0b0290221d8109b79def9))
+* **user:** neutralize user data service filename ([#27263](https://github.com/vm0-ai/vm0/issues/27263)) ([bfbfda5](https://github.com/vm0-ai/vm0/commit/bfbfda5bb77c34e2bd09041c7320206c4bf4b405))
+* **workflows:** neutralize automation brief and volume filenames ([#27259](https://github.com/vm0-ai/vm0/issues/27259)) ([d2c216d](https://github.com/vm0-ai/vm0/commit/d2c216dc04dfb84a086d1a8e2997198f39daa566))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.0
+    * @okouai/core bumped to 8.560.3
+    * @okouai/db bumped to 1.199.0
+    * @okouai/pi-agent-runtime bumped to 1.5.0
+
 ## [1.449.1](https://github.com/vm0-ai/vm0/compare/api-v1.449.0...api-v1.449.1) (2026-08-14)
 
 

@@ -2223,6 +2223,9 @@ function createChatThreadMessagePipeline(
   // position state: the render window computes from the read-only position
   // view, and the scroll signals that write the position are wired afterwards
   // with the window's ensure step.
+  const smoothAutoScrollEnabled$ = computed((get): boolean => {
+    return get(featureSwitch$)[FeatureSwitchKey.ChatSmoothAutoScroll] ?? false;
+  });
   const position = createThreadScrollPositionSignals(threadId);
   const resources = createPagedEventResources(
     threadId,
@@ -2253,6 +2256,7 @@ function createChatThreadMessagePipeline(
     threadId,
     position,
     renderWindow.ensureVisibleEventTrees$,
+    smoothAutoScrollEnabled$,
   );
   const initialEventsReady$ = state(false);
   const effects = createEventChangeEffects(
@@ -3917,6 +3921,8 @@ function createChatPanelSignalsWithDraft(
     {
       threadId,
       scrollContainer$: messages.scroll.scrollContainer$,
+      setIgnoreContentResizeScroll$:
+        messages.scroll.setIgnoreContentResizeScroll$,
     },
     signal,
   );
@@ -3942,6 +3948,9 @@ function createChatPanelSignalsWithDraft(
     scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
     awayFromBottom$: messages.scroll.awayFromBottom$,
+    ignoreContentResizeScroll$: messages.scroll.ignoreContentResizeScroll$,
+    setIgnoreContentResizeScroll$:
+      messages.scroll.setIgnoreContentResizeScroll$,
     scrollTo$: messages.scroll.scrollTo$,
     scrollToTop$: messages.scroll.scrollToTop$,
     scrollToBottom$: messages.scroll.scrollToBottom$,

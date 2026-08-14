@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.754.0](https://github.com/vm0-ai/vm0/compare/app-v0.753.2...app-v0.754.0) (2026-08-14)
+
+
+### Features
+
+* **chat:** smooth automatic tail scrolling ([#27290](https://github.com/vm0-ai/vm0/issues/27290)) ([f5352bd](https://github.com/vm0-ai/vm0/commit/f5352bd9d3079a713918f325480ac9ea0cdad806))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.1
+    * @okouai/core bumped to 8.561.0
+
+## [0.753.2](https://github.com/vm0-ai/vm0/compare/app-v0.753.1...app-v0.753.2) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.0
+    * @okouai/core bumped to 8.560.5
+
+## [0.753.1](https://github.com/vm0-ai/vm0/compare/app-v0.753.0...app-v0.753.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** catch up open chat threads after reconnect ([#27279](https://github.com/vm0-ai/vm0/issues/27279)) ([171027e](https://github.com/vm0-ai/vm0/commit/171027e9a020b474172440e8bd311b86859791c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.1
+    * @okouai/core bumped to 8.560.4
+
+## [0.753.0](https://github.com/vm0-ai/vm0/compare/app-v0.752.0...app-v0.753.0) (2026-08-14)
+
+
+### Features
+
+* **billing:** make the usage pack review a step in the plan flow ([#27235](https://github.com/vm0-ai/vm0/issues/27235)) ([65c29e1](https://github.com/vm0-ai/vm0/commit/65c29e14e12d821a1313f8806b5e459604e58139))
+* **chat:** negotiate chat event schema versions ([#26848](https://github.com/vm0-ai/vm0/issues/26848)) ([1065c81](https://github.com/vm0-ai/vm0/commit/1065c81ba4c4bc21dfa582f5fa955af93c862935))
+
+
+### Bug Fixes
+
+* **platform:** decouple foreground recovery from auth refresh ([#27230](https://github.com/vm0-ai/vm0/issues/27230)) ([1507816](https://github.com/vm0-ai/vm0/commit/15078161af87f9f368824019e03c82b6f859d040))
+* **platform:** prevent mobile model icon clipping ([#27179](https://github.com/vm0-ai/vm0/issues/27179)) ([6f6706b](https://github.com/vm0-ai/vm0/commit/6f6706b1aa1ed55636c4ef35dea428e6799a9bc1))
+* **platform:** skip markdown parsing for user messages ([#27273](https://github.com/vm0-ai/vm0/issues/27273)) ([92d2ebc](https://github.com/vm0-ai/vm0/commit/92d2ebc1d5fee336923330520dbf5cf002b46fda))
+
+
+### Refactoring
+
+* remove rolled-out automation feature switches ([#27256](https://github.com/vm0-ai/vm0/issues/27256)) ([91119e4](https://github.com/vm0-ai/vm0/commit/91119e4ff88250028c24e79d8b8045cc2c90f896))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.0
+    * @okouai/core bumped to 8.560.3
+
 ## [0.752.0](https://github.com/vm0-ai/vm0/compare/app-v0.751.0...app-v0.752.0) (2026-08-14)
 
 

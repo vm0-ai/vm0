@@ -21,6 +21,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/retain-chat-events",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/execute-workflow-automations",
       "schedule": "* * * * *"
     },

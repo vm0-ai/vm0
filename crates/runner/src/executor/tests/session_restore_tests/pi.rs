@@ -2,10 +2,10 @@ use super::super::super::session_restore::restore_session;
 use super::*;
 
 #[test]
-fn restore_session_writes_pi_sqlite_database_to_canonical_path() {
+fn restore_session_writes_pi_jsonl_to_canonical_directory() {
     let sandbox = MockSandbox::new("test");
     let session_id = "00000000-0000-4000-8000-000000000001";
-    let history = b"SQLite format 3\0\xff\x00native-pi-session";
+    let history = br#"{"type":"session","id":"00000000-0000-4000-8000-000000000001"}"#;
     let mut ctx = pi_context();
     ctx.pi_session_id = Some(session_id.to_string());
     ctx.resume_session = Some(resume_ref_for_history(session_id, history));
@@ -17,7 +17,10 @@ fn restore_session_writes_pi_sqlite_database_to_canonical_path() {
     assert_eq!(writes.len(), 1);
     assert_eq!(
         writes[0].path,
-        api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
+        format!(
+            "{}/restored-{session_id}.jsonl",
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+        )
     );
     assert_eq!(writes[0].content, history);
     assert_eq!(diagnostics.framework, "pi");
