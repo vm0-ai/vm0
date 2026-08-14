@@ -1,4 +1,4 @@
-import type { UsageRecordRange } from "@okouai/api-contracts/contracts/zero-usage-record";
+import type { UsageRecordRange } from "@okouai/api-contracts/contracts/usage-record";
 
 import { nowDate } from "../../lib/time";
 
