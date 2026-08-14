@@ -53,12 +53,20 @@ pub const CONTROL_CPU_RESERVE_US: u64 = 10_000;
 /// Minimum accumulated CPU throttling reported as material pressure.
 pub const MATERIAL_CPU_THROTTLED_USEC: u64 = 1_000_000;
 
-/// Memory kept outside the workload hard limit for Guest control services.
+/// Minimum protected memory for Guest control services.
 ///
 /// Cgroup v2 limits effective `memory.min` protection by every ancestor. The
 /// exec base, controlled operation, and control leaf must therefore all use
-/// this value so concurrent operation siblings cannot reclaim the reservation.
-pub const CONTROL_MEMORY_RESERVE_BYTES: u64 = 384 * 1024 * 1024;
+/// this value so concurrent operation siblings cannot reclaim protected use.
+pub const CONTROL_MEMORY_MIN_BYTES: u64 = 384 * 1024 * 1024;
+
+/// Memory kept outside the workload hard limit for new Guest control use.
+///
+/// Existing control use is protected from reclaim by [`CONTROL_MEMORY_MIN_BYTES`].
+/// This smaller reserve leaves capacity for control allocations that have not
+/// yet been charged while allowing the Guest to enter whole-memory reclaim
+/// before the workload reaches its local hard limit.
+pub const WORKLOAD_MEMORY_RESERVE_BYTES: u64 = 128 * 1024 * 1024;
 
 /// Value written to workload `memory.high` to avoid unmonitored soft-limit reclaim.
 pub const WORKLOAD_MEMORY_HIGH: &str = "max";
@@ -119,7 +127,7 @@ impl WorkloadResourcePolicy {
     ///
     /// `vcpu` is the number of online processors and `memory_bytes` is physical
     /// memory visible to the Guest. The calculation fails when the Guest cannot
-    /// preserve the fixed control reserve.
+    /// preserve the fixed control memory minimum.
     pub fn for_guest_capacity(vcpu: u32, memory_bytes: u64) -> Result<Self, &'static str> {
         let total_cpu_us = u64::from(vcpu)
             .checked_mul(WORKLOAD_CPU_PERIOD_US)
@@ -129,16 +137,20 @@ impl WorkloadResourcePolicy {
             .filter(|quota| *quota > 0)
             .ok_or("guest CPU capacity cannot preserve control headroom")?;
 
+        memory_bytes
+            .checked_sub(CONTROL_MEMORY_MIN_BYTES)
+            .filter(|remaining| *remaining > 0)
+            .ok_or("guest memory capacity cannot preserve control memory minimum")?;
         let memory_max_bytes = memory_bytes
-            .checked_sub(CONTROL_MEMORY_RESERVE_BYTES)
+            .checked_sub(WORKLOAD_MEMORY_RESERVE_BYTES)
             .filter(|limit| *limit > 0)
-            .ok_or("guest memory capacity cannot preserve control headroom")?;
+            .ok_or("guest memory capacity cannot preserve workload memory reserve")?;
         Ok(Self {
             cpu_quota_us,
             cpu_period_us: WORKLOAD_CPU_PERIOD_US,
             memory_high: WORKLOAD_MEMORY_HIGH,
             memory_max_bytes,
-            control_memory_min_bytes: CONTROL_MEMORY_RESERVE_BYTES,
+            control_memory_min_bytes: CONTROL_MEMORY_MIN_BYTES,
             pids_max: WORKLOAD_PIDS_MAX,
         })
     }
@@ -157,19 +169,19 @@ mod tests {
         assert_eq!(policy.cpu_quota_us, 190_000);
         assert_eq!(policy.cpu_period_us, 100_000);
         assert_eq!(policy.memory_high, "max");
-        assert_eq!(policy.memory_max_bytes, 3712 * 1024 * 1024);
+        assert_eq!(policy.memory_max_bytes, 3968 * 1024 * 1024);
         assert_eq!(policy.control_memory_min_bytes, 384 * 1024 * 1024);
         assert_eq!(policy.pids_max, "max");
     }
 
     #[test]
-    fn rejects_capacity_without_control_memory_headroom() {
-        let error = WorkloadResourcePolicy::for_guest_capacity(1, CONTROL_MEMORY_RESERVE_BYTES)
-            .unwrap_err();
+    fn rejects_capacity_without_control_memory_minimum() {
+        let error =
+            WorkloadResourcePolicy::for_guest_capacity(1, CONTROL_MEMORY_MIN_BYTES).unwrap_err();
 
         assert_eq!(
             error,
-            "guest memory capacity cannot preserve control headroom"
+            "guest memory capacity cannot preserve control memory minimum"
         );
     }
 
@@ -181,7 +193,7 @@ mod tests {
 
         assert_eq!(policy.cpu_quota_us, 90_000);
         assert_eq!(policy.memory_high, "max");
-        assert_eq!(policy.memory_max_bytes, 640 * 1024 * 1024);
+        assert_eq!(policy.memory_max_bytes, 896 * 1024 * 1024);
     }
 
     #[test]
@@ -192,6 +204,6 @@ mod tests {
 
         assert_eq!(policy.cpu_quota_us, 90_000);
         assert_eq!(policy.memory_high, "max");
-        assert_eq!(policy.memory_max_bytes, 631_275_520);
+        assert_eq!(policy.memory_max_bytes, 899_710_976);
     }
 }

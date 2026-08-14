@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.560.2](https://github.com/vm0-ai/vm0/compare/core-v8.560.1...core-v8.560.2) (2026-08-14)
+
+
+### Refactoring
+
+* **slack:** neutralize channels source shell ([#27231](https://github.com/vm0-ai/vm0/issues/27231)) ([bb501a7](https://github.com/vm0-ai/vm0/commit/bb501a7c5dbecf280e1bde08a931bd0b60726c3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.1
+
+## [8.560.1](https://github.com/vm0-ai/vm0/compare/core-v8.560.0...core-v8.560.1) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.0
+
 ## [8.560.0](https://github.com/vm0-ai/vm0/compare/core-v8.559.13...core-v8.560.0) (2026-08-14)
 
 

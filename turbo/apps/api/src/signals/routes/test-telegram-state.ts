@@ -712,7 +712,7 @@ async function updateRunForAction(
     patch: {
       selectedModel: readActionNullableString(body, "selected_model") ?? null,
     },
-    where: eq(zeroRuns.id, runId),
+    where: eq(agentRuns.id, runId),
   });
   signal.throwIfAborted();
   return actionOk();
@@ -1337,6 +1337,7 @@ async function seedRunningRunForAction(
     return actionBadRequest("failed to seed agent session");
   }
   const startedAt = nowDate();
+  const metadata = normalizeRunMetadata({ triggerSource: "telegram" });
   await db.insert(agentRuns).values({
     userId: required.user_id!,
     orgId: required.org_id!,
@@ -1346,6 +1347,7 @@ async function seedRunningRunForAction(
     prompt: "existing running telegram run",
     startedAt,
     lastHeartbeatAt: startedAt,
+    ...metadata,
   });
   signal.throwIfAborted();
   return actionOk({ agent_session_id: sessionId });

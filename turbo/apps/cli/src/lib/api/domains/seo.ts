@@ -1,20 +1,18 @@
 import {
-  zeroSeoContract,
-  type ZeroSeoBacklinksSummaryRequest,
-  type ZeroSeoKeywordIdeasRequest,
-  type ZeroSeoRankedKeywordsRequest,
-  type ZeroSeoResponse,
-  type ZeroSeoSerpRequest,
-} from "@okouai/api-contracts/contracts/zero-seo";
+  seoContract,
+  type SeoBacklinksSummaryRequest,
+  type SeoKeywordIdeasRequest,
+  type SeoRankedKeywordsRequest,
+  type SeoResponse,
+  type SeoSerpRequest,
+} from "@okouai/api-contracts/contracts/seo";
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function callZeroSeoSerp(
-  body: ZeroSeoSerpRequest,
-): Promise<ZeroSeoResponse> {
+export async function callSeoSerp(body: SeoSerpRequest): Promise<SeoResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroSeoContract, config);
+  const client = initClient(seoContract, config);
   const result = await client.serp({ headers: {}, body });
   if (result.status === 200) {
     return result.body;
@@ -22,11 +20,11 @@ export async function callZeroSeoSerp(
   handleError(result, "Failed to fetch SEO search results");
 }
 
-export async function callZeroSeoKeywordIdeas(
-  body: ZeroSeoKeywordIdeasRequest,
-): Promise<ZeroSeoResponse> {
+export async function callSeoKeywordIdeas(
+  body: SeoKeywordIdeasRequest,
+): Promise<SeoResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroSeoContract, config);
+  const client = initClient(seoContract, config);
   const result = await client.keywordIdeas({ headers: {}, body });
   if (result.status === 200) {
     return result.body;
@@ -34,11 +32,11 @@ export async function callZeroSeoKeywordIdeas(
   handleError(result, "Failed to fetch SEO keyword ideas");
 }
 
-export async function callZeroSeoRankedKeywords(
-  body: ZeroSeoRankedKeywordsRequest,
-): Promise<ZeroSeoResponse> {
+export async function callSeoRankedKeywords(
+  body: SeoRankedKeywordsRequest,
+): Promise<SeoResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroSeoContract, config);
+  const client = initClient(seoContract, config);
   const result = await client.rankedKeywords({ headers: {}, body });
   if (result.status === 200) {
     return result.body;
@@ -46,11 +44,11 @@ export async function callZeroSeoRankedKeywords(
   handleError(result, "Failed to fetch ranked keywords");
 }
 
-export async function callZeroSeoBacklinksSummary(
-  body: ZeroSeoBacklinksSummaryRequest,
-): Promise<ZeroSeoResponse> {
+export async function callSeoBacklinksSummary(
+  body: SeoBacklinksSummaryRequest,
+): Promise<SeoResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroSeoContract, config);
+  const client = initClient(seoContract, config);
   const result = await client.backlinksSummary({ headers: {}, body });
   if (result.status === 200) {
     return result.body;

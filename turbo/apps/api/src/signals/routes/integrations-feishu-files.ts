@@ -571,7 +571,7 @@ const feishuWriteAuth = {
   requiredCapability: "feishu:write",
 } as const;
 
-export const zeroIntegrationsFeishuFileRoutes: readonly RouteEntry[] = [
+export const integrationsFeishuFileRoutes: readonly RouteEntry[] = [
   {
     route: integrationsFeishuDownloadFileContract.download,
     handler: authRoute(feishuWriteAuth, download$),

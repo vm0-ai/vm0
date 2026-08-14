@@ -128,7 +128,6 @@ import { userCache } from "@okouai/db/schema/user-cache";
 import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
 import { variables } from "@okouai/db/schema/variable";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import type { PersistedStorageMount } from "@okouai/db/types";
 import {
   and,
@@ -5800,7 +5799,6 @@ async function insertLaunchRunRows(
   const createdAt = nowDate();
   const metadata = launchRunMetadataValues(args);
   await tx.insert(agentRuns).values(launchRunValues(args, createdAt, metadata));
-  await tx.insert(zeroRuns).values({ id: args.identity.runId, ...metadata });
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -6714,15 +6712,6 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
       .returning({ id: agentRuns.id, createdAt: agentRuns.createdAt }),
   );
   ctes.push(insertedRun);
-
-  const zeroRunValues = {
-    ...metadata,
-    id: returnedCteId(insertedRun),
-  };
-  const insertedZeroRun = args.tx
-    .$with("inserted_launch_zero_run")
-    .as(args.tx.insert(zeroRuns).values(zeroRunValues));
-  ctes.push(insertedZeroRun);
 
   appendLaunchCallbackCte({
     tx: args.tx,

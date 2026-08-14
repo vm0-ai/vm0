@@ -2,7 +2,7 @@ import {
   type SlackOrgStatus,
   zeroIntegrationsSlackContract,
 } from "@okouai/api-contracts/contracts/zero-integrations-slack";
-import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
+import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSlackOrgData: SlackOrgStatus = {
@@ -54,7 +54,7 @@ export const apiIntegrationsSlackOrgHandlers = [
   }),
 
   // GET /api/okou/slack/channels
-  mockApi(zeroSlackChannelsContract.list, ({ respond }) => {
+  mockApi(slackChannelsContract.list, ({ respond }) => {
     if (!mockSlackOrgData.isInstalled) {
       return respond(404, {
         error: { message: "No Slack installation", code: "NOT_FOUND" },

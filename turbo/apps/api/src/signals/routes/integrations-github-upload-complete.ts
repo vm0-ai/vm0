@@ -175,10 +175,9 @@ const githubWriteAuth = {
   requiredCapability: "github:write",
 } as const;
 
-export const zeroIntegrationsGithubUploadCompleteRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: integrationsGithubUploadCompleteContract.complete,
-      handler: authRoute(githubWriteAuth, complete$),
-    },
-  ];
+export const integrationsGithubUploadCompleteRoutes: readonly RouteEntry[] = [
+  {
+    route: integrationsGithubUploadCompleteContract.complete,
+    handler: authRoute(githubWriteAuth, complete$),
+  },
+];

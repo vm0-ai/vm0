@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.73.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.8...guest-agent-v0.73.9) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** let guest reclaim memory before workload oom ([#27206](https://github.com/vm0-ai/vm0/issues/27206)) ([d8bd1c7](https://github.com/vm0-ai/vm0/commit/d8bd1c7471c220f8595edcb64dde3e70840d4467))
+
 ## [0.73.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.7...guest-agent-v0.73.8) (2026-08-14)
 
 

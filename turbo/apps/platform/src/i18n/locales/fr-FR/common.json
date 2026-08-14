@@ -908,6 +908,21 @@
       "changeAnytime": "Passez à un niveau supérieur ou inférieur à tout moment.",
       "compare": "Comparer les forfaits",
       "compareAll": "Comparer tous les forfaits",
+      "comparison": {
+        "addOnConcurrency": "Concurrence supplémentaire",
+        "available": "Disponible",
+        "concurrentRuns": "Exécutions simultanées",
+        "included": "Oui",
+        "ownLlmKeys": "Vos propres clés LLM",
+        "privateAgents": "Agents privés",
+        "sharedAgents": "Agents partagés",
+        "support": "Assistance",
+        "supportEmail": "E-mail",
+        "supportPriority": "Prioritaire",
+        "unlimited": "Illimités",
+        "voiceInput": "Saisie vocale",
+        "voiceInputValue": "{{requests}}/jour · {{minutes}} min"
+      },
       "currentPlan": "Forfait actuel",
       "custom": {
         "name": "Personnalisé"
@@ -975,9 +990,7 @@
         "concurrentSlots": "Emplacements simultanés",
         "configurePackages": "Configurer les forfaits des membres",
         "credits": "Crédits",
-        "creditsPerMember": "{{credits}} crédits par membre",
         "currentMember": "Membre actuel",
-        "everythingOnPlus": "Tout {{plan}}, plus :",
         "existingPackagesUnchanged": "Les forfaits actuels des membres restent inchangés.",
         "management": {
           "comparison": "Comparaison de l’abonnement actuel et du nouveau",
@@ -1017,11 +1030,14 @@
         },
         "monthlyTotal": "Total mensuel",
         "orderSummary": "Récapitulatif de la commande",
+        "packagePerMemberNote": "Chaque membre a besoin d'un pack. Vous les choisissez à l'étape suivante.",
         "packCredits": "{{credits}} crédits",
         "packCreditsDiscount": "{{credits}} crédits · {{discount}} % de remise",
         "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",
         "planChangeError": "Impossible de préparer la modification de l’abonnement. Réessayez.",
+        "planPlusPackages": "Forfait {{plan}} · packs par membre de {{lowest}} à {{highest}}",
         "planStep": "Forfait",
+        "priceFrom": "à partir de",
         "purchasedCredits": "Crédits achetés",
         "selectPlan": "Commencer avec {{plan}}",
         "selectUsage": "Utilisation de {{name}}",
@@ -1711,7 +1727,6 @@
       "empty": "Envoyer un message pour commencer la conversation",
       "frequentlyUsed": "Fréquemment utilisé",
       "icon": "Icône de fil de discussion",
-      "loadingEarlier": "Chargement des messages précédents",
       "locator": {
         "you": "Vous"
       },

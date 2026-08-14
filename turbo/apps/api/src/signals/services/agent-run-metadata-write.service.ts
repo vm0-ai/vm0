@@ -1,12 +1,11 @@
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, inArray, or, sql, type SQL } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import type { Db } from "../external/db";
 
-export type RunMetadataValues = Pick<
-  typeof zeroRuns.$inferSelect,
+type StoredRunMetadataValues = Pick<
+  typeof agentRuns.$inferSelect,
   | "triggerSource"
   | "autonomyBudget"
   | "workflowAutomationId"
@@ -22,6 +21,17 @@ export type RunMetadataValues = Pick<
   | "firstAssistantEventAcknowledgedAt"
   | "summary"
   | "triggerBrief"
+>;
+
+export type RunMetadataValues = Readonly<
+  Omit<StoredRunMetadataValues, "triggerSource" | "autonomyBudget"> & {
+    readonly triggerSource: NonNullable<
+      StoredRunMetadataValues["triggerSource"]
+    >;
+    readonly autonomyBudget: NonNullable<
+      StoredRunMetadataValues["autonomyBudget"]
+    >;
+  }
 >;
 
 type RunMetadataInput = Readonly<
@@ -40,7 +50,7 @@ interface RunMetadataWriteArgs {
   readonly where: SQL;
 }
 
-interface RunMetadataSourceRow {
+interface RunMetadataRow {
   readonly id: string;
   readonly apiStartedAt: Date | null;
 }
@@ -68,129 +78,21 @@ export function normalizeRunMetadata(
   };
 }
 
-function targetMetadataDiffPredicate(patch: RunMetadataPatch): SQL {
-  const predicates: SQL[] = [];
-
-  if (patch.triggerSource !== undefined) {
-    predicates.push(
-      sql`${agentRuns.triggerSource} IS DISTINCT FROM ${patch.triggerSource}`,
-    );
-  }
-  if (patch.autonomyBudget !== undefined) {
-    predicates.push(
-      sql`${agentRuns.autonomyBudget} IS DISTINCT FROM ${patch.autonomyBudget}`,
-    );
-  }
-  if (patch.workflowAutomationId !== undefined) {
-    predicates.push(
-      sql`${agentRuns.workflowAutomationId} IS DISTINCT FROM ${patch.workflowAutomationId}`,
-    );
-  }
-  if (patch.goalId !== undefined) {
-    predicates.push(sql`${agentRuns.goalId} IS DISTINCT FROM ${patch.goalId}`);
-  }
-  if (patch.modelProvider !== undefined) {
-    predicates.push(
-      sql`${agentRuns.modelProvider} IS DISTINCT FROM ${patch.modelProvider}`,
-    );
-  }
-  if (patch.modelProviderId !== undefined) {
-    predicates.push(
-      sql`${agentRuns.modelProviderId} IS DISTINCT FROM ${patch.modelProviderId}`,
-    );
-  }
-  if (patch.modelProviderCredentialScope !== undefined) {
-    predicates.push(
-      sql`${agentRuns.modelProviderCredentialScope} IS DISTINCT FROM ${patch.modelProviderCredentialScope}`,
-    );
-  }
-  if (patch.selectedModel !== undefined) {
-    predicates.push(
-      sql`${agentRuns.selectedModel} IS DISTINCT FROM ${patch.selectedModel}`,
-    );
-  }
-  if (patch.codexServiceTier !== undefined) {
-    predicates.push(
-      sql`${agentRuns.codexServiceTier} IS DISTINCT FROM ${patch.codexServiceTier}`,
-    );
-  }
-  if (patch.selectedVideoModel !== undefined) {
-    predicates.push(
-      sql`${agentRuns.selectedVideoModel} IS DISTINCT FROM ${patch.selectedVideoModel}`,
-    );
-  }
-  if (patch.chatThreadId !== undefined) {
-    predicates.push(
-      sql`${agentRuns.chatThreadId} IS DISTINCT FROM ${patch.chatThreadId}`,
-    );
-  }
-  if (patch.apiStartedAt !== undefined) {
-    predicates.push(
-      sql`${agentRuns.apiStartedAt} IS DISTINCT FROM ${patch.apiStartedAt}`,
-    );
-  }
-  if (patch.firstAssistantEventAcknowledgedAt !== undefined) {
-    predicates.push(
-      sql`${agentRuns.firstAssistantEventAcknowledgedAt} IS DISTINCT FROM ${patch.firstAssistantEventAcknowledgedAt}`,
-    );
-  }
-  if (patch.summary !== undefined) {
-    predicates.push(
-      sql`${agentRuns.summary} IS DISTINCT FROM ${patch.summary}`,
-    );
-  }
-  if (patch.triggerBrief !== undefined) {
-    predicates.push(
-      sql`${agentRuns.triggerBrief} IS DISTINCT FROM ${patch.triggerBrief}`,
-    );
-  }
-
-  const predicate = or(...predicates);
-  if (!predicate) {
-    throw new Error("Run metadata patch must contain at least one field");
-  }
-  return predicate;
-}
-
-// DB/API compatibility for mixed Stage 3/4 rollout (observed up to ~102 minutes).
-// Remove via #26924 only after Stage 4 read cutover and bridge removal, once old
-// API revisions and deferred callbacks have drained through production gates.
 export async function writeRunMetadataInTransaction(
   tx: Tx,
   args: RunMetadataWriteArgs,
-): Promise<readonly RunMetadataSourceRow[]> {
-  const sourceRows = await tx
-    .update(zeroRuns)
-    .set(args.patch)
-    .where(args.where)
-    .returning({ id: zeroRuns.id, apiStartedAt: zeroRuns.apiStartedAt });
-
-  if (sourceRows.length === 0) {
-    return sourceRows;
-  }
-
-  await tx
+): Promise<readonly RunMetadataRow[]> {
+  return await tx
     .update(agentRuns)
     .set(args.patch)
-    .where(
-      and(
-        inArray(
-          agentRuns.id,
-          sourceRows.map((row) => {
-            return row.id;
-          }),
-        ),
-        targetMetadataDiffPredicate(args.patch),
-      ),
-    );
-
-  return sourceRows;
+    .where(args.where)
+    .returning({ id: agentRuns.id, apiStartedAt: agentRuns.apiStartedAt });
 }
 
 export function writeRunMetadata(
   db: Db,
   args: RunMetadataWriteArgs,
-): Promise<readonly RunMetadataSourceRow[]> {
+): Promise<readonly RunMetadataRow[]> {
   return db.transaction(async (tx) => {
     return await writeRunMetadataInTransaction(tx, args);
   });
