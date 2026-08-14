@@ -104,6 +104,48 @@ const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 
 const subscriberPokeTarget$ = state(new EventTarget());
 const SUBSCRIBER_POKE_EVENT = "poke";
+type RealtimeReadyCatchUpCommand = Command<Promise<void> | void, [AbortSignal]>;
+const realtimeReadyCatchUpCommands$ = state<
+  ReadonlySet<RealtimeReadyCatchUpCommand>
+>(new Set());
+
+/**
+ * Register snapshot catch-up that runs after realtime recovery and before the
+ * shared foreground-ready barrier resolves.
+ */
+export const subscribeRealtimeReadyCatchUp$ = command(
+  (
+    { get, set },
+    callback$: RealtimeReadyCatchUpCommand,
+    signal: AbortSignal,
+  ) => {
+    set(
+      realtimeReadyCatchUpCommands$,
+      new Set([...get(realtimeReadyCatchUpCommands$), callback$]),
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        const commands = new Set(get(realtimeReadyCatchUpCommands$));
+        commands.delete(callback$);
+        set(realtimeReadyCatchUpCommands$, commands);
+      },
+      { once: true },
+    );
+  },
+);
+
+const runRealtimeReadyCatchUp$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    await Promise.all(
+      [...get(realtimeReadyCatchUpCommands$)].map(async (callback$) => {
+        await set(callback$, signal);
+        signal.throwIfAborted();
+      }),
+    );
+    signal.throwIfAborted();
+  },
+);
 
 interface PendingAblySubscription {
   topic: string;
@@ -117,6 +159,7 @@ const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
 
 interface RealtimeSubscribeOptions {
   readonly onSubscribed?: () => void;
+  readonly runOnForegroundCatchUp?: boolean;
   readonly runOnSubscribe?: boolean;
 }
 
@@ -196,6 +239,7 @@ async function waitForTransientRetry(
 
 interface SubscribeChannelArgs {
   readonly channel: StableRealtimeChannel;
+  readonly listenForForegroundCatchUp: boolean;
   readonly topic: string | null;
   readonly callback: ChannelCallback;
   readonly poke: () => void;
@@ -206,6 +250,7 @@ interface SubscribeChannelArgs {
 async function subscribeChannel(
   {
     channel,
+    listenForForegroundCatchUp,
     topic,
     callback,
     poke,
@@ -225,9 +270,11 @@ async function subscribeChannel(
     unsubscribeChannel();
   };
 
-  subscriberPokeTarget.addEventListener(SUBSCRIBER_POKE_EVENT, poke, {
-    signal,
-  });
+  if (listenForForegroundCatchUp) {
+    subscriberPokeTarget.addEventListener(SUBSCRIBER_POKE_EVENT, poke, {
+      signal,
+    });
+  }
   signal.addEventListener("abort", unsubscribeChannel, { once: true });
 
   await onRejection(channel.subscribe(topic, callback), release);
@@ -274,6 +321,7 @@ const runWithChannel$ = command(
     await subscribeChannel(
       {
         channel,
+        listenForForegroundCatchUp: options?.runOnForegroundCatchUp !== false,
         topic,
         callback,
         poke: requestCatchUp,
@@ -524,6 +572,7 @@ const runWithChannelPayload$ = command(
     await subscribeChannel(
       {
         channel,
+        listenForForegroundCatchUp: options?.runOnForegroundCatchUp !== false,
         topic,
         callback,
         poke: requestCatchUp,
@@ -1010,6 +1059,8 @@ const foregroundRealtimeCatchUp$ = command(
 
     L.debug("foreground catch-up ready, poking subscribers");
     subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+    await set(runRealtimeReadyCatchUp$, signal);
+    signal.throwIfAborted();
   },
 );
 

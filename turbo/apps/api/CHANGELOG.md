@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.446.0](https://github.com/vm0-ai/vm0/compare/api-v1.445.5...api-v1.446.0) (2026-08-14)
+
+
+### Features
+
+* **connectors:** add playstation store web session ([#26923](https://github.com/vm0-ai/vm0/issues/26923)) ([9ff65da](https://github.com/vm0-ai/vm0/commit/9ff65da32860adc04ec37c526a39f1ef16d72a60))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.9
+    * @okouai/connectors bumped to 1.206.0
+    * @okouai/core bumped to 8.559.3
+    * @okouai/db bumped to 1.198.11
+    * @okouai/pi-agent-runtime bumped to 1.4.17
+
 ## [1.445.5](https://github.com/vm0-ai/vm0/compare/api-v1.445.4...api-v1.445.5) (2026-08-14)
 
 
