@@ -4,9 +4,9 @@ import {
   type UsagePackCreditsResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import {
-  zeroUsageRecordContract,
+  usageRecordContract,
   type UsageRecordRow,
-} from "@okouai/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/usage-record";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -218,7 +218,7 @@ function mockPersonalUsageStory(
     role,
   });
   mockBillingStatus(tier);
-  context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
+  context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
     requestedRanges.push(query.range);
     const offset = (query.page - 1) * query.pageSize;
 
@@ -787,7 +787,7 @@ describe("personal usage settings", () => {
     });
     mockBillingStatus();
     let usageRequests = 0;
-    context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
+    context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
       usageRequests += 1;
       const rows =
         usageRequests === 1

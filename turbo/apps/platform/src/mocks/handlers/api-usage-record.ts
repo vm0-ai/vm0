@@ -5,9 +5,9 @@
  */
 
 import {
-  zeroUsageRecordContract,
+  usageRecordContract,
   type UsageRecordResponse,
-} from "@okouai/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/usage-record";
 import { mockApi } from "../msw-contract.ts";
 
 const defaultResponse: UsageRecordResponse = {
@@ -32,7 +32,7 @@ export function resetMockUsageRecord(): void {
 }
 
 export const apiUsageRecordHandlers = [
-  mockApi(zeroUsageRecordContract.get, ({ query, respond }) => {
+  mockApi(usageRecordContract.get, ({ query, respond }) => {
     const page = query.page;
     const pageSize = query.pageSize;
     const source = query.source;

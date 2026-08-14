@@ -4,7 +4,7 @@ import type {
   MemberUsage,
   UsageMembersResponse,
 } from "@okouai/api-contracts/contracts/zero-usage";
-import type { UsageRecordRange } from "@okouai/api-contracts/contracts/zero-usage-record";
+import type { UsageRecordRange } from "@okouai/api-contracts/contracts/usage-record";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { clerk$, type ClerkUser } from "../external/clerk";
 import { writeDb$ } from "../external/db";

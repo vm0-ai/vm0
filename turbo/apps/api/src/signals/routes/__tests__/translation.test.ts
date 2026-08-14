@@ -5,7 +5,7 @@ import {
   TRANSLATION_MAX_SOURCE_TEXT_CHARS,
   translationContract,
 } from "@okouai/api-contracts/contracts/translation";
-import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
@@ -23,7 +23,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { translationRoutes } from "../translation";
-import { zeroUsageRecordRoutes } from "../zero-usage-record";
+import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -161,9 +161,7 @@ async function readUsageRecord(actor: TranslationActor) {
   context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
   const response = await accept(
-    setupApp({ context, routes: zeroUsageRecordRoutes })(
-      zeroUsageRecordContract,
-    ).get({
+    setupApp({ context, routes: usageRecordRoutes })(usageRecordContract).get({
       headers: { authorization: "Bearer clerk-session" },
       query: {
         page: 1,

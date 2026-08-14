@@ -1,11 +1,11 @@
 import { command } from "ccstate";
-import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { zeroUsageRecord$ } from "../services/zero-usage-record.service";
+import { usageRecord$ } from "../services/usage-record.service";
 import type { RouteEntry } from "../route-entry";
 import { isValidTimeZone } from "../utils";
 
@@ -24,7 +24,7 @@ function teamUsageRecordsUnavailable() {
 const getUsageRecordInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const query = get(queryOf(zeroUsageRecordContract.get));
+    const query = get(queryOf(usageRecordContract.get));
 
     if (!isValidTimeZone(query.tz)) {
       return badRequestMessage(`Invalid timezone: ${query.tz}`);
@@ -35,7 +35,7 @@ const getUsageRecordInner$ = command(
     }
 
     const body = await set(
-      zeroUsageRecord$,
+      usageRecord$,
       {
         userId: auth.userId,
         orgId: auth.orgId,
@@ -54,9 +54,9 @@ const getUsageRecordInner$ = command(
   },
 );
 
-export const zeroUsageRecordRoutes: readonly RouteEntry[] = [
+export const usageRecordRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUsageRecordContract.get,
+    route: usageRecordContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getUsageRecordInner$,
