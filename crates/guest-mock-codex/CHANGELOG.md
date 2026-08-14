@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.2...guest-mock-codex-v0.8.3) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+
 ## [0.8.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.1...guest-mock-codex-v0.8.2) (2026-08-13)
 
 ## [0.8.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.0...guest-mock-codex-v0.8.1) (2026-08-13)

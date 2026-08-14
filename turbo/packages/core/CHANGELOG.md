@@ -1,5 +1,71 @@
 # Changelog
 
+## [8.559.9](https://github.com/vm0-ai/vm0/compare/core-v8.559.8...core-v8.559.9) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.5
+
+## [8.559.8](https://github.com/vm0-ai/vm0/compare/core-v8.559.7...core-v8.559.8) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.4
+
+## [8.559.7](https://github.com/vm0-ai/vm0/compare/core-v8.559.6...core-v8.559.7) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.3
+
+## [8.559.6](https://github.com/vm0-ai/vm0/compare/core-v8.559.5...core-v8.559.6) (2026-08-14)
+
+
+### Refactoring
+
+* **queue-position:** neutralize api shell ([#27065](https://github.com/vm0-ai/vm0/issues/27065)) ([8a504ad](https://github.com/vm0-ai/vm0/commit/8a504ad7efba1fd5f3e9a6f1c423ec1780dec869))
+* **user-preferences:** neutralize the user preferences api shell ([#27075](https://github.com/vm0-ai/vm0/issues/27075)) ([a99b31b](https://github.com/vm0-ai/vm0/commit/a99b31be509880d93d1e53bae60bbb849cbca916))
+* **voice-io:** neutralize voice io naming ([#27071](https://github.com/vm0-ai/vm0/issues/27071)) ([28c0cb5](https://github.com/vm0-ai/vm0/commit/28c0cb5713c0ad7da688315236f4f48fec19cee7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.2
+
+## [8.559.5](https://github.com/vm0-ai/vm0/compare/core-v8.559.4...core-v8.559.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models through openrouter ([#27077](https://github.com/vm0-ai/vm0/issues/27077)) ([964b19e](https://github.com/vm0-ai/vm0/commit/964b19eb456c63794c2041c1eb69cfd475a6b078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+
+## [8.559.4](https://github.com/vm0-ai/vm0/compare/core-v8.559.3...core-v8.559.4) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.0
+
 ## [8.559.3](https://github.com/vm0-ai/vm0/compare/core-v8.559.2...core-v8.559.3) (2026-08-14)
 
 

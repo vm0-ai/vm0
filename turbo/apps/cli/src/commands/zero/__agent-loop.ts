@@ -25,7 +25,7 @@ export const zeroAgentLoopCommand = new Command()
       process.exitCode = await runPiSandboxAgentLoop(
         {
           io,
-          config: piSandboxAgentConfigFromEnv(),
+          config: await piSandboxAgentConfigFromEnv(),
           executionEnv,
         },
         abortController.signal,

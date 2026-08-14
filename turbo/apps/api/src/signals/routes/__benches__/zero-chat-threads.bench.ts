@@ -29,7 +29,7 @@ import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-
 import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
 import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
-import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
@@ -51,6 +51,7 @@ import {
 import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog-artifacts/loader";
 import { connectorCatalogSource } from "../../services/connector-catalog-source";
 import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
+import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";
 import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
@@ -60,7 +61,7 @@ import { zeroConnectorsRoutes } from "../zero-connectors";
 import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
 import { zeroOrgReadRoutes } from "../zero-org-read";
-import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
+import { userPreferencesRoutes } from "../user-preferences";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
   ...zeroMeModelProvidersListRoutes,
@@ -108,8 +109,8 @@ const connectorsClient = setupApp({ context, routes: zeroConnectorsRoutes })(
 );
 const userPreferencesClient = setupApp({
   context,
-  routes: zeroUserPreferencesRoutes,
-})(zeroUserPreferencesContract);
+  routes: userPreferencesRoutes,
+})(userPreferencesContract);
 const billingStatusClient = setupApp({
   context,
   routes: zeroBillingStatusRoutes,
@@ -504,23 +505,15 @@ async function seedBackgroundLoad(): Promise<void> {
     },
   );
 
-  const runRows: {
-    id: string;
-    userId: string;
-    orgId: string;
-    agentComposeVersionId: string;
-    sessionId: string;
-    status: string;
-    prompt: string;
-  }[] = [];
-  const zRunRows: {
-    id: string;
-    triggerSource: string;
-    chatThreadId: string;
-  }[] = [];
+  const runRows: (typeof agentRuns.$inferInsert)[] = [];
+  const zRunRows: (typeof zeroRuns.$inferInsert)[] = [];
   for (let t = 0; t < BACKGROUND_THREAD_COUNT; t++) {
     for (let r = 0; r < BACKGROUND_RUNS_PER_THREAD; r++) {
       const runId = randomUUID();
+      const metadata = normalizeRunMetadata({
+        triggerSource: "test",
+        chatThreadId: threadIds[t]!,
+      });
       runRows.push({
         id: runId,
         userId: bgUserId,
@@ -529,11 +522,11 @@ async function seedBackgroundLoad(): Promise<void> {
         sessionId: sessionIds[t]!,
         status: STATUSES[r % STATUSES.length]!,
         prompt: "bg",
+        ...metadata,
       });
       zRunRows.push({
         id: runId,
-        triggerSource: "test",
-        chatThreadId: threadIds[t]!,
+        ...metadata,
       });
     }
   }
@@ -609,20 +602,8 @@ async function seedTargetThreadRuns(
     throw new Error("target session insert returned no row");
   }
 
-  const runRows: {
-    id: string;
-    userId: string;
-    orgId: string;
-    agentComposeVersionId: string;
-    sessionId: string;
-    status: string;
-    prompt: string;
-  }[] = [];
-  const zRunRows: {
-    id: string;
-    triggerSource: string;
-    chatThreadId: string;
-  }[] = [];
+  const runRows: (typeof agentRuns.$inferInsert)[] = [];
+  const zRunRows: (typeof zeroRuns.$inferInsert)[] = [];
   const eventRows: {
     chatThreadId: string;
     runId: string;
@@ -636,6 +617,10 @@ async function seedTargetThreadRuns(
   const now = nowDate().getTime();
   for (let i = 0; i < TARGET_RUN_COUNT; i++) {
     const runId = randomUUID();
+    const metadata = normalizeRunMetadata({
+      triggerSource: "test",
+      chatThreadId: fixture.threadId,
+    });
     runRows.push({
       id: runId,
       userId: fixture.userId,
@@ -644,11 +629,11 @@ async function seedTargetThreadRuns(
       sessionId: session.id,
       status: STATUSES[i % STATUSES.length]!,
       prompt: `bench prompt ${String(i)}`,
+      ...metadata,
     });
     zRunRows.push({
       id: runId,
-      triggerSource: "test",
-      chatThreadId: fixture.threadId,
+      ...metadata,
     });
     for (let m = 0; m < TARGET_MESSAGES_PER_RUN; m++) {
       const latestAttachmentStart = TARGET_RUN_COUNT - TARGET_ATTACHMENT_COUNT;

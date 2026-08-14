@@ -1422,12 +1422,10 @@ function ConcurrencyQuantityControl({
 }
 
 function ConcurrencySubscriptionRow({
-  changing,
   canceled,
   onAction,
   subscription,
 }: {
-  changing: boolean;
   canceled: boolean;
   onAction: (args: {
     readonly action: "change" | "restore";
@@ -1474,7 +1472,6 @@ function ConcurrencySubscriptionRow({
         variant={canceled ? "default" : "outline"}
         size="sm"
         className="h-8 shrink-0 text-xs"
-        disabled={changing}
         onClick={() => {
           onAction({
             action,
@@ -1488,17 +1485,13 @@ function ConcurrencySubscriptionRow({
           });
         }}
       >
-        {changing
+        {canceled
           ? i18n.t(($) => {
-              return $.billing.common.updating;
+              return $.billing.common.restore;
             })
-          : canceled
-            ? i18n.t(($) => {
-                return $.billing.common.restore;
-              })
-            : i18n.t(($) => {
-                return $.billing.concurrency.changeButton;
-              })}
+          : i18n.t(($) => {
+              return $.billing.concurrency.changeButton;
+            })}
       </Button>
     </div>
   );
@@ -2106,8 +2099,12 @@ function ConcurrencyPurchaseDialog({
   const [reviewLoadable, review] = useLoadableSet(
     openConcurrencyPurchaseReview$,
   );
+  const confirmDialog = useGet(concurrencyConfirmDialog$);
   const checkoutLoading =
-    checkoutLoadable.state === "loading" || reviewLoadable.state === "loading";
+    checkoutLoadable.state === "loading" ||
+    reviewLoadable.state === "loading" ||
+    (confirmDialog?.action === "purchase" &&
+      confirmDialog.origin === "billing");
   const quantity = quantityOverride ?? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN;
   const actionLabel = checkoutLoading
     ? i18n.t(($) => {
@@ -2174,7 +2171,12 @@ function ConcurrencyPurchaseDialog({
             onClick={(e) => {
               detach(
                 reviewAvailable
-                  ? review(quantity, e.metaKey || e.ctrlKey, pageSignal)
+                  ? review(
+                      quantity,
+                      e.metaKey || e.ctrlKey,
+                      "billing",
+                      pageSignal,
+                    )
                   : checkout(quantity, e.metaKey || e.ctrlKey, pageSignal),
                 Reason.DomCallback,
               );
@@ -2195,7 +2197,6 @@ function ConcurrencyBillingSection({
 }) {
   const openPurchaseDialog = useSet(openConcurrencyPurchaseDialog$);
   const openConfirmDialog = useSet(openConcurrencyConfirmDialog$);
-  const dialog = useGet(concurrencyConfirmDialog$);
   const subscriptions = status?.concurrencySubscriptions ?? [];
   const concurrencyLimit = status?.concurrencyLimit ?? 0;
   const purchaseReviewAvailable =
@@ -2242,10 +2243,6 @@ function ConcurrencyBillingSection({
               <div key={subscription.id}>
                 {index > 0 && <div className="h-0 zero-border-t mx-5" />}
                 <ConcurrencySubscriptionRow
-                  changing={
-                    dialog?.action !== "purchase" &&
-                    dialog?.subscriptionId === subscription.id
-                  }
                   canceled={canceled}
                   onAction={openConfirmDialog}
                   subscription={subscription}

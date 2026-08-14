@@ -110,6 +110,7 @@ import {
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
+  readRunMetadataPair,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
@@ -4661,6 +4662,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "runner_notification_queue_to_entry",
       "runner_notification_affinity_lookup",
       "runner_notification_queue_to_publish_start",
+      "runner_notification_realtime_publish",
     ]) {
       const events = sandboxOperationEventsForRunByAction(
         protectedFollowUp.runId,
@@ -4677,12 +4679,50 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runner_group: runnerGroup,
           profile: "vm0/default",
           notification_target: "broadcast",
+          activation_origin: "direct",
+          same_thread_markers: "recorded",
           runner_preference_resolution: "exact_history_generation",
           reuse_key_kind: "thread",
           history_generation_run_id: first.runId,
         }),
       );
     }
+    for (const actionType of [
+      "runner_notification_queue_to_commit_return",
+      "runner_notification_queue_to_run_context_registered",
+      "runner_notification_queue_to_dispatch_timings_registered",
+      "runner_notification_queue_to_activation_scheduled",
+      "runner_notification_queue_to_activation_entry",
+      "runner_notification_queue_to_same_thread_markers_complete",
+      "runner_notification_queue_to_database_ready",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          activation_origin: "direct",
+          same_thread_markers: "recorded",
+        }),
+      );
+      expect(events[0]).not.toHaveProperty("history_generation_run_id");
+    }
+    expect(
+      sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        "runner_notification_queue_to_promotion_side_effects_registered",
+      ),
+    ).toHaveLength(0);
     expect(
       sandboxOperationEventsForRunByAction(
         protectedFollowUp.runId,
@@ -5495,6 +5535,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       "runner_notification_queue_to_entry",
       "runner_notification_affinity_lookup",
       "runner_notification_queue_to_publish_start",
+      "runner_notification_realtime_publish",
     ]) {
       const events = sandboxOperationEventsForRunByAction(
         third.runId,
@@ -5511,6 +5552,8 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           runner_group: runnerGroup,
           profile: "vm0/default",
           notification_target: "broadcast",
+          activation_origin: "promotion",
+          same_thread_markers: "not_applicable",
           runner_preference_resolution: "no_reuse_key",
           runner_preference_decision_kind: "noPreference",
           runner_preference_no_preference_reason: "noReuseKey",
@@ -5518,6 +5561,43 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         }),
       );
       expect(events[0]).not.toHaveProperty("history_generation_run_id");
+    }
+    for (const actionType of [
+      "runner_notification_queue_to_commit_return",
+      "runner_notification_queue_to_promotion_side_effects_registered",
+      "runner_notification_queue_to_activation_scheduled",
+      "runner_notification_queue_to_activation_entry",
+      "runner_notification_queue_to_same_thread_markers_complete",
+      "runner_notification_queue_to_database_ready",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        third.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          activation_origin: "promotion",
+          same_thread_markers: "not_applicable",
+        }),
+      );
+      expect(events[0]).not.toHaveProperty("history_generation_run_id");
+    }
+    for (const actionType of [
+      "runner_notification_queue_to_run_context_registered",
+      "runner_notification_queue_to_dispatch_timings_registered",
+    ]) {
+      expect(
+        sandboxOperationEventsForRunByAction(third.runId, actionType),
+      ).toHaveLength(0);
     }
     expect(
       sandboxOperationEventsForRunByAction(
@@ -5671,6 +5751,16 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     const stored = await api.readRun(actor, failed.runId);
     expect(stored.status).toBe("failed");
+    const failedMetadata = await readRunMetadataPair(context, failed.runId);
+    expect(failedMetadata.agent_run).toStrictEqual(failedMetadata.zero_run);
+    expect(failedMetadata.zero_run).toStrictEqual(
+      expect.objectContaining({
+        autonomy_budget: 10,
+        api_started_at: expect.any(String),
+        first_assistant_event_acknowledged_at: null,
+        summary: null,
+      }),
+    );
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: failed.runId }),
@@ -12770,6 +12860,16 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(queued.status).toBe("queued");
+    const queuedMetadata = await readRunMetadataPair(context, queued.runId);
+    expect(queuedMetadata.agent_run).toStrictEqual(queuedMetadata.zero_run);
+    expect(queuedMetadata.zero_run).toStrictEqual(
+      expect.objectContaining({
+        autonomy_budget: 10,
+        api_started_at: null,
+        first_assistant_event_acknowledged_at: null,
+        summary: null,
+      }),
+    );
     const queueState = await api.readRunQueue(actor);
     expect(queueState.body.queue[0]?.runId).toBe(queued.runId);
 
@@ -12785,6 +12885,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "pending",
     );
     expect(promoted.status).toBe("pending");
+    const promotedMetadata = await readRunMetadataPair(context, queued.runId);
+    expect(promotedMetadata.agent_run).toStrictEqual(promotedMetadata.zero_run);
+    expect(promotedMetadata.zero_run?.api_started_at).toBe(
+      new Date(promotedAt).toISOString(),
+    );
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
@@ -14453,6 +14558,14 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         run_id: runId,
       }),
     ]);
+    const acknowledgedMetadata = await readRunMetadataPair(context, runId);
+    expect(acknowledgedMetadata.agent_run).toStrictEqual(
+      acknowledgedMetadata.zero_run,
+    );
+    expect(
+      acknowledgedMetadata.zero_run?.first_assistant_event_acknowledged_at,
+    ).toBe(new Date(acknowledgedAt).toISOString());
+    expect(acknowledgedMetadata.zero_run?.api_started_at).toBe(apiStartedAtIso);
 
     await api.requestCancelRun(actor, runId, [200]);
   });

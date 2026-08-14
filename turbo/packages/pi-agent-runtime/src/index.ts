@@ -6,7 +6,10 @@ import {
   type AgentEvent,
   type AgentMessage,
 } from "@earendil-works/pi-agent-core";
-import type { RunSkillSnapshot } from "@okouai/api-contracts/contracts/runners";
+import type {
+  PiLaunchConfig,
+  RunSkillSnapshot,
+} from "@okouai/api-contracts/contracts/runners";
 
 import {
   isPiAgentModelSupported as isPiAgentModelSupportedImpl,
@@ -16,6 +19,7 @@ import {
   formatPiUserPrompt as formatPiUserPromptImpl,
   loadPiRunSkills as loadPiRunSkillsImpl,
   PI_BASE_SYSTEM_PROMPT as PI_BASE_SYSTEM_PROMPT_IMPL,
+  preparePiLaunchPrompt as preparePiLaunchPromptImpl,
   renderPiSystemPrompt as renderPiSystemPromptImpl,
 } from "./runtime";
 import type {
@@ -27,6 +31,7 @@ import type {
   PiAgentMessage,
   PiAgentModelConfig,
   PiRunSkills,
+  PreparedPiLaunchPrompt,
   Result,
   Skill,
 } from "./types";
@@ -110,6 +115,17 @@ export const renderPiSystemPrompt: (args: {
   readonly skills: readonly Skill[];
 }) => string = renderPiSystemPromptImpl;
 
+/** Build the Pi prompt from the exact Storage files already mounted in Sandbox. */
+export const preparePiLaunchPrompt: (
+  env: ExecutionEnv,
+  args: {
+    readonly launchConfig: PiLaunchConfig;
+    readonly appendSystemPrompt: string | null;
+    readonly prompt: string;
+  },
+  signal?: AbortSignal,
+) => Promise<PreparedPiLaunchPrompt> = preparePiLaunchPromptImpl;
+
 /** Whether Pi's native provider catalog knows this model. */
 export const isPiAgentModelSupported: (config: PiAgentModelConfig) => boolean =
   isPiAgentModelSupportedImpl;
@@ -158,6 +174,7 @@ export type {
   PiAssistantMessage,
   PiOpenAICompatibleProvider,
   PiRunSkills,
+  PreparedPiLaunchPrompt,
   Result,
   Skill,
 } from "./types";

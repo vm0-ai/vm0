@@ -16,7 +16,7 @@ import {
   type ZeroAgentResponse,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
-import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -28,7 +28,7 @@ import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -143,8 +143,8 @@ export function createBddApi(context: TestContext) {
   function userPreferencesClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroUserPreferencesRoutes,
-    })(zeroUserPreferencesContract);
+      routes: userPreferencesRoutes,
+    })(userPreferencesContract);
   }
 
   function agentsClient() {

@@ -24,6 +24,7 @@ import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
+import { normalizeRunMetadata } from "../signals/services/agent-run-metadata-write.service";
 import { onRejection } from "../signals/utils";
 
 const BULK_INSERT_CHUNK = 500;
@@ -668,6 +669,13 @@ function appendRunEvents(
 
   args.runUserMessageRows.push(userMessageRow);
   args.rows.eventRows.push(userMessageRow);
+  const metadata = normalizeRunMetadata({
+    triggerSource: args.workflowAutomationBrief ? "automation-schedule" : "web",
+    selectedModel: args.profile.selectedModel,
+    chatThreadId: args.threadId,
+    summary: `Synthetic ${args.profile.slug} run ${String(args.runIndex)}`,
+    triggerBrief: args.workflowAutomationBrief,
+  });
   args.rows.runRows.push({
     id: runId,
     userId: args.userId,
@@ -686,14 +694,11 @@ function appendRunEvents(
     createdAt: baseCreatedAt,
     startedAt: addMs(baseCreatedAt, 1000),
     completedAt: addMs(baseCreatedAt, 45_000 + eventCount * 100),
+    ...metadata,
   });
   args.rows.zeroRunRows.push({
     id: runId,
-    triggerSource: args.workflowAutomationBrief ? "automation-schedule" : "web",
-    selectedModel: args.profile.selectedModel,
-    chatThreadId: args.threadId,
-    summary: `Synthetic ${args.profile.slug} run ${String(args.runIndex)}`,
-    triggerBrief: args.workflowAutomationBrief,
+    ...metadata,
   });
 
   appendAssistantEvents({

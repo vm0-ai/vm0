@@ -9,6 +9,7 @@ import { publishUserSignal } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import { now } from "../../lib/time";
 import { tapError } from "../utils";
+import { writeRunMetadata } from "./agent-run-metadata-write.service";
 
 const L = logger("api:zero:chat-first-assistant-message-metric");
 
@@ -31,21 +32,20 @@ async function recordFirstAssistantEventAcknowledgement(args: {
   readonly runId: string;
   readonly acknowledgedAt: number;
 }): Promise<void> {
-  const [claimed] = await args.db
-    .update(zeroRuns)
-    .set({
+  const firstAssistantClaimWhere = and(
+    eq(zeroRuns.id, args.runId),
+    isNotNull(zeroRuns.apiStartedAt),
+    isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
+  );
+  if (!firstAssistantClaimWhere) {
+    throw new Error("First assistant acknowledgement predicate is empty");
+  }
+  const [claimed] = await writeRunMetadata(args.db, {
+    patch: {
       firstAssistantEventAcknowledgedAt: new Date(args.acknowledgedAt),
-    })
-    .where(
-      and(
-        eq(zeroRuns.id, args.runId),
-        isNotNull(zeroRuns.apiStartedAt),
-        isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
-      ),
-    )
-    .returning({
-      apiStartedAt: zeroRuns.apiStartedAt,
-    });
+    },
+    where: firstAssistantClaimWhere,
+  });
   if (!claimed?.apiStartedAt) {
     return;
   }

@@ -230,9 +230,34 @@ async def test_set_cookie_is_not_replayed_from_cached_brotli_response(real_flow)
             id="deep-json",
         ),
         pytest.param(
+            catalog_response(body=b"[]"),
+            "response_shape",
+            id="top-level-array",
+        ),
+        pytest.param(
+            catalog_response(body=b"null"),
+            "response_shape",
+            id="top-level-null",
+        ),
+        pytest.param(
+            catalog_response(body=b"123"),
+            "response_shape",
+            id="top-level-number",
+        ),
+        pytest.param(
+            catalog_response(body=b'"text"'),
+            "response_shape",
+            id="top-level-string",
+        ),
+        pytest.param(
             catalog_response(body=b'{"items":[]}'),
             "response_shape",
             id="wrong-shape",
+        ),
+        pytest.param(
+            catalog_response(headers={"Content-Length": str(len(CATALOG_BODY) + 1)}),
+            "response_body",
+            id="length-mismatch",
         ),
         pytest.param(
             catalog_response(headers={"Content-Length": str(catalog_cache.MAX_ENTRY_BYTES + 1)}),

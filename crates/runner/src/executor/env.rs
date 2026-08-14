@@ -150,12 +150,8 @@ fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), Strin
         .ok_or_else(|| "Pi execution context is missing pi_session_id".to_string())?;
     uuid::Uuid::parse_str(session_id)
         .map_err(|_| "Pi execution context has invalid pi_session_id".to_string())?;
-    if context
-        .pi_system_prompt
-        .as_deref()
-        .is_none_or(str::is_empty)
-    {
-        return Err("Pi execution context is missing pi_system_prompt".to_string());
+    if context.pi_launch_config.is_none() {
+        return Err("Pi execution context is missing pi_launch_config".to_string());
     }
     if context.pi_model_config.is_none() {
         return Err("Pi execution context is missing pi_model_config".to_string());
@@ -552,7 +548,7 @@ pub(super) fn prepare_run_payload_for_run(
         artifacts: serialize_artifacts_payload(context)?,
         feature_flags: serialize_feature_flags_payload(context)?,
         codex_runtime_config: serialize_codex_runtime_config_payload(context)?,
-        pi_system_prompt: context.pi_system_prompt.clone().unwrap_or_default(),
+        pi_launch_config: serialize_pi_launch_config_payload(context)?,
         pi_model_config: serialize_pi_model_config_payload(context)?,
         pi_session_id: context.pi_session_id.clone().unwrap_or_default(),
     };
@@ -630,6 +626,14 @@ fn serialize_codex_runtime_config_payload(context: &ExecutionContext) -> RunnerR
     };
     serde_json::to_string(config)
         .map_err(|e| RunnerError::Internal(format!("serialize Codex runtime config: {e}")))
+}
+
+fn serialize_pi_launch_config_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(config) = &context.pi_launch_config else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(config)
+        .map_err(|e| RunnerError::Internal(format!("serialize Pi launch config: {e}")))
 }
 
 fn serialize_pi_model_config_payload(context: &ExecutionContext) -> RunnerResult<String> {

@@ -810,7 +810,7 @@ export {
   type SendMode,
   userLocaleSchema,
   type UserLocale,
-} from "./zero-user-preferences";
+} from "./user-preferences";
 export {
   featureSwitchesResponseSchema,
   updateFeatureSwitchesRequestSchema,
@@ -1027,15 +1027,15 @@ export {
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export {
+  connectorCheckContract,
   connectorCheckDiagnosticResultSchema,
   connectorCheckPolicySchema,
   connectorCheckRequestSchema,
-  zeroConnectorCheckContract,
+  type ConnectorCheckContract,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckPolicy,
   type ConnectorCheckRequest,
-  type ZeroConnectorCheckContract,
-} from "./zero-connector-check";
+} from "./connector-check";
 export {
   connectorAuthMethodIdSchema,
   connectorSlugSchema,
@@ -1111,9 +1111,9 @@ export {
   type ZeroPersonalModelProviderAccountsByIdContract,
 } from "./zero-personal-model-providers";
 export {
-  zeroUserPreferencesContract,
-  type ZeroUserPreferencesContract,
-} from "./zero-user-preferences";
+  userPreferencesContract,
+  type UserPreferencesContract,
+} from "./user-preferences";
 export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
@@ -1375,27 +1375,27 @@ export {
   type PeopleSearchSource,
 } from "./people-search";
 export {
-  ZERO_WEB_SEARCH_DEFAULT_LIMIT,
-  ZERO_WEB_SEARCH_MAX_DATE_CHARS,
-  ZERO_WEB_SEARCH_MAX_DOMAIN_CHARS,
-  ZERO_WEB_SEARCH_MAX_DOMAINS,
-  ZERO_WEB_SEARCH_MAX_LIMIT,
-  ZERO_WEB_SEARCH_MAX_QUERY_CHARS,
-  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
-  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
-  ZERO_WEB_SEARCH_MAX_URL_CHARS,
-  zeroWebSearchContract,
-  zeroWebSearchDomainSchema,
-  zeroWebSearchRecencySchema,
-  zeroWebSearchRequestSchema,
-  zeroWebSearchResponseSchema,
-  zeroWebSearchResultSchema,
-  type ZeroWebSearchContract,
-  type ZeroWebSearchRecency,
-  type ZeroWebSearchRequest,
-  type ZeroWebSearchResponse,
-  type ZeroWebSearchResult,
-} from "./zero-web-search";
+  WEB_SEARCH_DEFAULT_LIMIT,
+  WEB_SEARCH_MAX_DATE_CHARS,
+  WEB_SEARCH_MAX_DOMAIN_CHARS,
+  WEB_SEARCH_MAX_DOMAINS,
+  WEB_SEARCH_MAX_LIMIT,
+  WEB_SEARCH_MAX_QUERY_CHARS,
+  WEB_SEARCH_MAX_SNIPPET_CHARS,
+  WEB_SEARCH_MAX_TITLE_CHARS,
+  WEB_SEARCH_MAX_URL_CHARS,
+  webSearchContract,
+  webSearchDomainSchema,
+  webSearchRecencySchema,
+  webSearchRequestSchema,
+  webSearchResponseSchema,
+  webSearchResultSchema,
+  type WebSearchContract,
+  type WebSearchRecency,
+  type WebSearchRequest,
+  type WebSearchResponse,
+  type WebSearchResult,
+} from "./web-search";
 export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
@@ -1434,13 +1434,10 @@ export {
   type ZeroSlackConnectContract,
 } from "./zero-slack-connect";
 export {
-  zeroSlackCommandsContract,
-  type ZeroSlackCommandsContract,
-} from "./zero-slack-commands";
-export {
-  zeroSlackEventsContract,
-  type ZeroSlackEventsContract,
-} from "./zero-slack-events";
+  slackCommandsContract,
+  type SlackCommandsContract,
+} from "./slack-commands";
+export { slackEventsContract, type SlackEventsContract } from "./slack-events";
 export {
   zeroTeamsBotContract,
   teamsInboundActivitySchema,
@@ -1472,9 +1469,9 @@ export {
   type ZeroTeamsOauthContract,
 } from "./zero-teams-oauth";
 export {
-  zeroSlackInteractiveContract,
-  type ZeroSlackInteractiveContract,
-} from "./zero-slack-interactive";
+  slackInteractiveContract,
+  type SlackInteractiveContract,
+} from "./slack-interactive";
 export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,
@@ -1492,9 +1489,9 @@ export {
   type SlackChannel,
 } from "./zero-slack-channels";
 export {
-  zeroQueuePositionContract,
-  type ZeroQueuePositionContract,
-} from "./zero-queue-position";
+  queuePositionContract,
+  type QueuePositionContract,
+} from "./queue-position";
 export {
   zeroComputerUseAuditEventsContract,
   zeroComputerUseAuthorizationRequestsContract,
@@ -1689,40 +1686,40 @@ export {
   type ZeroVideoIoGenerateResponse,
 } from "./zero-video-io-generate";
 export {
-  zeroBuiltInGenerationContract,
-  zeroBuiltInGenerationTypeSchema,
-  zeroBuiltInGenerationStatusSchema,
-  zeroBuiltInGenerationRealtimeSubscriptionSchema,
-  zeroBuiltInGenerationAcceptedResponseSchema,
-  zeroBuiltInGenerationResponseSchema,
-  type ZeroBuiltInGenerationContract,
-  type ZeroBuiltInGenerationType,
-  type ZeroBuiltInGenerationStatus,
-  type ZeroBuiltInGenerationRealtimeSubscription,
-  type ZeroBuiltInGenerationAcceptedResponse,
-  type ZeroBuiltInGenerationResponse,
-} from "./zero-built-in-generation";
+  builtInGenerationContract,
+  builtInGenerationTypeSchema,
+  builtInGenerationStatusSchema,
+  builtInGenerationRealtimeSubscriptionSchema,
+  builtInGenerationAcceptedResponseSchema,
+  builtInGenerationResponseSchema,
+  type BuiltInGenerationContract,
+  type BuiltInGenerationType,
+  type BuiltInGenerationStatus,
+  type BuiltInGenerationRealtimeSubscription,
+  type BuiltInGenerationAcceptedResponse,
+  type BuiltInGenerationResponse,
+} from "./built-in-generation";
 export {
-  zeroVoiceIoQuotaContract,
+  voiceIoQuotaContract,
   audioInputQuotaResponseSchema,
-  type ZeroVoiceIoQuotaContract,
+  type VoiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "./zero-voice-io-quota";
+} from "./voice-io-quota";
 export {
-  zeroVoiceIoSpeechContract,
-  zeroVoiceIoSpeechRequestSchema,
-  zeroVoiceIoSpeechResponseSchema,
-  type ZeroVoiceIoSpeechContract,
-  type ZeroVoiceIoSpeechRequest,
-  type ZeroVoiceIoSpeechResponse,
-} from "./zero-voice-io-speech";
+  voiceIoSpeechContract,
+  voiceIoSpeechRequestSchema,
+  voiceIoSpeechResponseSchema,
+  type VoiceIoSpeechContract,
+  type VoiceIoSpeechRequest,
+  type VoiceIoSpeechResponse,
+} from "./voice-io-speech";
 export {
-  zeroVoiceIoSttContract,
-  zeroVoiceIoSttResponseSchema,
-  zeroVoiceIoSttQuotaErrorSchema,
-  type ZeroVoiceIoSttContract,
-  type ZeroVoiceIoSttResponse,
-} from "./zero-voice-io-stt";
+  voiceIoSttContract,
+  voiceIoSttResponseSchema,
+  voiceIoSttQuotaErrorSchema,
+  type VoiceIoSttContract,
+  type VoiceIoSttResponse,
+} from "./voice-io-stt";
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,

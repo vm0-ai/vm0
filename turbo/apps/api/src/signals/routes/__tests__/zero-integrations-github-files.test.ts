@@ -21,13 +21,13 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroIntegrationsGithubUploadCompleteRoutes } from "../zero-integrations-github-upload-complete";
-import { zeroIntegrationsGithubUploadInitRoutes } from "../zero-integrations-github-upload-init";
+import { integrationsGithubUploadInitRoutes } from "../integrations-github-upload-init";
 import { zeroIntegrationsGithubDownloadFileRoutes } from "../zero-integrations-github-download-file";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...zeroIntegrationsGithubDownloadFileRoutes,
   ...zeroIntegrationsGithubUploadCompleteRoutes,
-  ...zeroIntegrationsGithubUploadInitRoutes,
+  ...integrationsGithubUploadInitRoutes,
 ]);
 
 const context = testContext();
@@ -283,7 +283,7 @@ describe("GitHub zero file integration routes", () => {
     const fixture = await seedFixture();
     const client = setupApp({
       context,
-      routes: zeroIntegrationsGithubUploadInitRoutes,
+      routes: integrationsGithubUploadInitRoutes,
     })(integrationsGithubUploadInitContract);
 
     const response = await accept(

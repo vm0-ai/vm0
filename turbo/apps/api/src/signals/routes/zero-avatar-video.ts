@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { zeroAvatarVideoContract } from "@okouai/api-contracts/contracts/zero-avatar-video";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -35,7 +35,7 @@ import {
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
   mergeBuiltInGenerationJobInternal$,
-} from "../services/zero-built-in-generation.service";
+} from "../services/built-in-generation.service";
 import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
@@ -75,7 +75,7 @@ function avatarVideoRequestRecord(
 
 function acceptedAvatarVideoResponse(
   generationId: string,
-  realtime: ZeroBuiltInGenerationRealtimeSubscription,
+  realtime: BuiltInGenerationRealtimeSubscription,
 ) {
   return {
     status: 202 as const,

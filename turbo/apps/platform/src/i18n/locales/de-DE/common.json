@@ -4221,6 +4221,7 @@
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",
         "loading": "Modelle werden geladen...",
+        "manageMoreModels": "Weitere Modelle verwalten",
         "models": "Modelle",
         "noConfiguredModels": "Keine konfigurierten Modelle",
         "priceTiers": {
@@ -4235,7 +4236,8 @@
           "claudeCodeOauth": "Claude Code (OAuth-Token)",
           "deepseek": "Deepseek"
         },
-        "standard": "Standard"
+        "standard": "Standard",
+        "videoModels": "Videomodelle"
       },
       "policies": {
         "actionsFor": "Aktionen für {{model}}",

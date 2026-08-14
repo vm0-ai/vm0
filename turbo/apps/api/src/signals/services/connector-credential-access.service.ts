@@ -17,12 +17,15 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
+import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 import {
   getConnectorRuntimeMethod,
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+
+const log = logger("api:connector-credential-access");
 
 /**
  * One executable stored connection, resolved against one immutable catalog
@@ -76,15 +79,37 @@ export function connectorCredentialStorageIsCompatible(args: {
   return args.storageVersion === args.runtimeMethod.method.storage.version;
 }
 
-export function resolveConnectorCredentialAccess(args: {
+export function resolveStoredConnectorRuntimeMethod(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly stored: ConnectorCredentialStoredIdentity;
-}): ConnectorCredentialAccessResult {
+  readonly stored: {
+    readonly authMethodId: string;
+    readonly connectorId: string;
+    readonly connectorSlug: string;
+  };
+}): ConnectorRuntimeMethod | undefined {
   const runtimeMethod = getConnectorRuntimeMethod({
     snapshot: args.snapshot,
     connectorSlug: args.stored.connectorSlug,
     authMethodId: args.stored.authMethodId,
     requireExecutable: true,
+  });
+  if (runtimeMethod === undefined) {
+    log.warn("Stored connector runtime method is unavailable", {
+      connectorId: args.stored.connectorId,
+      connectorSlug: args.stored.connectorSlug,
+      authMethodId: args.stored.authMethodId,
+    });
+  }
+  return runtimeMethod;
+}
+
+export function resolveConnectorCredentialAccess(args: {
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly stored: ConnectorCredentialStoredIdentity;
+}): ConnectorCredentialAccessResult {
+  const runtimeMethod = resolveStoredConnectorRuntimeMethod({
+    snapshot: args.snapshot,
+    stored: args.stored,
   });
   if (!runtimeMethod) {
     return { kind: "unavailable" };

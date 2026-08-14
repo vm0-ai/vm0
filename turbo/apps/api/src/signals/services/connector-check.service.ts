@@ -2,7 +2,7 @@ import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
-} from "@okouai/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/connector-check";
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
@@ -191,9 +191,6 @@ function pendingStoredConnectorRuntimes(
   >();
 
   for (const row of rows) {
-    if (!isConnectorSlug(args.snapshot, row.connectorSlug)) {
-      continue;
-    }
     if (pending.has(row.connectorSlug)) {
       throw new Error(
         `Duplicate stored connector state for ${row.connectorSlug}`,
@@ -210,6 +207,9 @@ function pendingStoredConnectorRuntimes(
         userId: args.userId,
       },
     });
+    if (!isConnectorSlug(args.snapshot, row.connectorSlug)) {
+      continue;
+    }
     if (accessResult.kind !== "ok") {
       pending.set(row.connectorSlug, null);
       continue;

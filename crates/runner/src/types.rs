@@ -137,9 +137,9 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
-    /// Complete Pi system prompt rendered once by the API for this run.
+    /// Non-secret Pi launch inputs resolved from mounted Storage in Sandbox.
     #[serde(default)]
-    pub pi_system_prompt: Option<String>,
+    pub pi_launch_config: Option<serde_json::Value>,
     /// Non-secret model metadata for the Pi Sandbox runtime.
     #[serde(default)]
     pub pi_model_config: Option<PiModelConfig>,
@@ -185,7 +185,7 @@ pub struct SecretConnectorMetadata {
 }
 
 /// Execution firewall entry supplied by the API.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum FirewallEntry {
     /// Built-in firewall resolved by the Python addon from the runner-written catalog cache.
@@ -1279,7 +1279,7 @@ impl FirewallAwsSigv4Auth {
 /// Per-firewall grant configuration: which permissions are authorized and
 /// what policy applies to unknown endpoints (not matching any rule).
 /// Firewall names absent from the map are fully permissive (all granted + allow unknown).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicy {
     /// Permission names granted by the user.
@@ -1846,7 +1846,10 @@ mod tests {
             "sandboxToken": "tok",
             "cliAgentType": "pi",
             "piSessionId": "22222222-2222-4222-8222-222222222222",
-            "piSystemPrompt": "fixed Pi prompt",
+            "piLaunchConfig": {
+                "schemaVersion": 1,
+                "agentName": "Okou"
+            },
             "piModelConfig": {
                 "provider": "deepseek",
                 "baseUrl": "https://api.deepseek.com/",
@@ -1862,7 +1865,13 @@ mod tests {
             context.pi_session_id.as_deref(),
             Some("22222222-2222-4222-8222-222222222222")
         );
-        assert_eq!(context.pi_system_prompt.as_deref(), Some("fixed Pi prompt"));
+        assert_eq!(
+            context
+                .pi_launch_config
+                .as_ref()
+                .and_then(|config| config["agentName"].as_str()),
+            Some("Okou")
+        );
         assert_eq!(
             context
                 .pi_model_config

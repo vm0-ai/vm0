@@ -235,6 +235,27 @@ class TestRegistryBuiltinCatalogValidation:
             == "https://acme.uspacy.com/v1/hooks/{hookKey}"
         )
 
+    @pytest.mark.parametrize(
+        "raw_json",
+        [
+            pytest.param("[]", id="array"),
+            pytest.param("null", id="null"),
+            pytest.param("123", id="number"),
+            pytest.param('"text"', id="string"),
+        ],
+    )
+    def test_non_object_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx, raw_json):
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_trusted_catalog_cache_text(cache_path, raw_json)
+
+        with mitm_ctx():
+            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is not None
+        assert snapshot.catalog is None
+        assert snapshot.cache_path == str(cache_path.absolute())
+        assert snapshot.unavailable_reason == "cache_invalid"
+
     def test_malformed_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"

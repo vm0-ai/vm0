@@ -11,6 +11,9 @@ import type { TestContext } from "../../../../__tests__/test-context";
 import { testRuntimeStateRoutes } from "../../test-runtime-state";
 
 const RUNTIME_STATE_ROUTE = "/api/test/runtime-state";
+type RunMetadataPair = NonNullable<
+  TestRuntimeStateActionResponse["run_metadata_pair"]
+>;
 
 function requestRuntimeState(
   context: TestContext,
@@ -167,12 +170,120 @@ export async function setRunAutonomyBudgetFixture(
   context: TestContext,
   runId: string,
   autonomyBudget: number,
+  options?: { readonly disableBridge?: boolean },
 ): Promise<void> {
   await postAction(context, {
     action: "set-run-autonomy-budget",
     run_id: runId,
     autonomy_budget: autonomyBudget,
+    ...(options?.disableBridge === true ? { disable_bridge: true } : {}),
   });
+}
+
+export async function readPairedRunAutonomyBudgets(
+  context: TestContext,
+  runId: string,
+): Promise<{
+  readonly zeroRun: number | null;
+  readonly agentRun: number | null;
+}> {
+  const response = await postAction(context, {
+    action: "read-run-autonomy-budget",
+    run_id: runId,
+  });
+  if (
+    !("autonomy_budget" in response) ||
+    !("agent_autonomy_budget" in response)
+  ) {
+    throw new Error("readPairedRunAutonomyBudgets missing paired budgets");
+  }
+  return {
+    zeroRun: response.autonomy_budget ?? null,
+    agentRun: response.agent_autonomy_budget ?? null,
+  };
+}
+
+export async function readRunMetadataPair(
+  context: TestContext,
+  runId: string,
+): Promise<RunMetadataPair> {
+  const response = await postAction(context, {
+    action: "read-run-metadata-pair",
+    run_id: runId,
+  });
+  if (!response.run_metadata_pair) {
+    throw new Error("readRunMetadataPair missing metadata pair");
+  }
+  return response.run_metadata_pair;
+}
+
+export async function saveRunSummaryFixture(
+  context: TestContext,
+  args: {
+    readonly runId: string;
+    readonly triggerSource: string;
+    readonly prompt: string;
+    readonly resultText: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "save-run-summary",
+    run_id: args.runId,
+    trigger_source: args.triggerSource,
+    prompt: args.prompt,
+    result_text: args.resultText,
+  });
+}
+
+export async function measureRunMetadataBridgeTargetUpdates(
+  context: TestContext,
+  runId: string,
+  autonomyBudget: number,
+): Promise<number> {
+  const response = await postAction(context, {
+    action: "measure-run-metadata-bridge-target-updates",
+    run_id: runId,
+    autonomy_budget: autonomyBudget,
+  });
+  if (response.agent_run_update_count === undefined) {
+    throw new Error(
+      "measureRunMetadataBridgeTargetUpdates missing update count",
+    );
+  }
+  return response.agent_run_update_count;
+}
+
+export async function verifyRunMetadataTargetFailureRollback(
+  context: TestContext,
+  runId: string,
+  autonomyBudget: number,
+): Promise<{
+  readonly targetWriteFailed: boolean;
+  readonly errorCode: string | null;
+  readonly zeroRun: number | null;
+  readonly agentRun: number | null;
+}> {
+  const response = await postAction(context, {
+    action: "verify-run-metadata-target-failure-rollback",
+    run_id: runId,
+    autonomy_budget: autonomyBudget,
+  });
+  if (
+    response.target_write_failed === undefined ||
+    !("target_write_error_code" in response) ||
+    !("autonomy_budget" in response) ||
+    !("agent_autonomy_budget" in response)
+  ) {
+    throw new Error(
+      "verifyRunMetadataTargetFailureRollback missing rollback evidence",
+    );
+  }
+  return {
+    targetWriteFailed: response.target_write_failed,
+    errorCode: response.target_write_error_code ?? null,
+    zeroRun: response.autonomy_budget ?? null,
+    agentRun: response.agent_autonomy_budget ?? null,
+  };
 }
 
 export async function readWorkflowAutomationAutonomyFixture(

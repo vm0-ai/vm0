@@ -1364,42 +1364,6 @@ async fn execute_job_claude_tool_validation_failure_skips_sandbox_create() {
 }
 
 #[tokio::test]
-async fn execute_job_pi_system_prompt_validation_failure_skips_sandbox_create() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
-    let secret = "Pi prompt before\0Pi prompt after";
-    let mut ctx = minimal_context();
-    ctx.pi_system_prompt = Some(secret.into());
-
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let (outcome, _telemetry) = execute_job(
-        &factory,
-        ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoReuseKey,
-        },
-        &config,
-        &default_params(),
-        cancel,
-    )
-    .await;
-
-    assert_ne!(outcome.exit_code(), 0);
-    let error = outcome.error().unwrap();
-    assert!(error.contains(guest_contracts::env::PI_SYSTEM_PROMPT_ENV));
-    assert!(error.contains("NUL"));
-    assert!(!error.contains(secret));
-    assert!(outcome.sandbox.is_none());
-    assert!(
-        overrides.create_configs().is_empty(),
-        "fresh sandbox must not be created after Pi prompt validation failure"
-    );
-}
-
-#[tokio::test]
 async fn execute_job_codex_ignores_claude_tool_validation() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

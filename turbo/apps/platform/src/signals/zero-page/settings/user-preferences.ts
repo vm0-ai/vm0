@@ -1,8 +1,8 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   type UpdateUserPreferencesRequest,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
@@ -27,7 +27,7 @@ const reloadUserPreferences$ = command(({ set }) => {
 export const userPreferences$ = computed(async (get) => {
   get(internalReloadPreferences$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUserPreferencesContract);
+  const client = createClient(userPreferencesContract);
   const result = await accept(client.get(), [200]);
   return result.body;
 });
@@ -43,7 +43,7 @@ export const updateUserPreference$ = command(
     _signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroUserPreferencesContract);
+    const client = createClient(userPreferencesContract);
     await accept(
       client.update({
         body: update,

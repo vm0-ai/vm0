@@ -1,5 +1,139 @@
 # Changelog
 
+## [1.447.5](https://github.com/vm0-ai/vm0/compare/api-v1.447.4...api-v1.447.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* **connectors:** isolate unavailable stored runtimes ([#27051](https://github.com/vm0-ai/vm0/issues/27051)) ([2f7b116](https://github.com/vm0-ai/vm0/commit/2f7b116b0ad45fc18721664b98569ca5731baef1))
+
+
+### Refactoring
+
+* **slack:** neutralize inbound webhook naming ([#27098](https://github.com/vm0-ai/vm0/issues/27098)) ([bfd0c00](https://github.com/vm0-ai/vm0/commit/bfd0c00f1ddce4a5b95006ffefe59a605f1bcd68))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.5
+    * @okouai/core bumped to 8.559.9
+    * @okouai/db bumped to 1.198.17
+    * @okouai/pi-agent-runtime bumped to 1.4.23
+
+## [1.447.4](https://github.com/vm0-ai/vm0/compare/api-v1.447.3...api-v1.447.4) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+* **web-search:** neutralize managed web search naming ([#27062](https://github.com/vm0-ai/vm0/issues/27062)) ([f0908a4](https://github.com/vm0-ai/vm0/commit/f0908a49b94093ab928baa816f1e9f306a3dfa40))
+
+
+### Performance Improvements
+
+* **api:** reduce tsgolint memory pressure ([#27090](https://github.com/vm0-ai/vm0/issues/27090)) ([2bb5993](https://github.com/vm0-ai/vm0/commit/2bb59939969eeaa837c3225a812b31b150517878))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.4
+    * @okouai/core bumped to 8.559.8
+    * @okouai/db bumped to 1.198.16
+    * @okouai/pi-agent-runtime bumped to 1.4.22
+
+## [1.447.3](https://github.com/vm0-ai/vm0/compare/api-v1.447.2...api-v1.447.3) (2026-08-14)
+
+
+### Refactoring
+
+* **api:** dual-write run metadata ([#27046](https://github.com/vm0-ai/vm0/issues/27046)) ([929b726](https://github.com/vm0-ai/vm0/commit/929b726ebd4faa983e0b85f8d5eac5081e011c80))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.3
+    * @okouai/core bumped to 8.559.7
+    * @okouai/db bumped to 1.198.15
+    * @okouai/pi-agent-runtime bumped to 1.4.21
+
+## [1.447.2](https://github.com/vm0-ai/vm0/compare/api-v1.447.1...api-v1.447.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** stabilize billing dialogs and pending changes ([#26959](https://github.com/vm0-ai/vm0/issues/26959)) ([4d05aff](https://github.com/vm0-ai/vm0/commit/4d05aff72171d0d72c4ca3f90b2063abd1d3d17d))
+
+
+### Refactoring
+
+* **connector-check:** neutralize connector check naming ([#27053](https://github.com/vm0-ai/vm0/issues/27053)) ([76c5a43](https://github.com/vm0-ai/vm0/commit/76c5a43aacfb9616563d4e315acaeabb4d6c5afa))
+* **queue-position:** neutralize api shell ([#27065](https://github.com/vm0-ai/vm0/issues/27065)) ([8a504ad](https://github.com/vm0-ai/vm0/commit/8a504ad7efba1fd5f3e9a6f1c423ec1780dec869))
+* **user-preferences:** neutralize the user preferences api shell ([#27075](https://github.com/vm0-ai/vm0/issues/27075)) ([a99b31b](https://github.com/vm0-ai/vm0/commit/a99b31be509880d93d1e53bae60bbb849cbca916))
+* **voice-io:** neutralize voice io naming ([#27071](https://github.com/vm0-ai/vm0/issues/27071)) ([28c0cb5](https://github.com/vm0-ai/vm0/commit/28c0cb5713c0ad7da688315236f4f48fec19cee7))
+
+
+### Performance Improvements
+
+* **api:** attribute runner notification latency ([#27074](https://github.com/vm0-ai/vm0/issues/27074)) ([60f63cc](https://github.com/vm0-ai/vm0/commit/60f63cc454372e671acca0e9e58d37137973876a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.2
+    * @okouai/core bumped to 8.559.6
+    * @okouai/db bumped to 1.198.14
+    * @okouai/pi-agent-runtime bumped to 1.4.20
+
+## [1.447.1](https://github.com/vm0-ai/vm0/compare/api-v1.447.0...api-v1.447.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models through openrouter ([#27077](https://github.com/vm0-ai/vm0/issues/27077)) ([964b19e](https://github.com/vm0-ai/vm0/commit/964b19eb456c63794c2041c1eb69cfd475a6b078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+    * @okouai/core bumped to 8.559.5
+    * @okouai/db bumped to 1.198.13
+    * @okouai/pi-agent-runtime bumped to 1.4.19
+
+## [1.447.0](https://github.com/vm0-ai/vm0/compare/api-v1.446.0...api-v1.447.0) (2026-08-14)
+
+
+### Features
+
+* **api:** resolve and record the run video model ([#26884](https://github.com/vm0-ai/vm0/issues/26884)) ([2207dae](https://github.com/vm0-ai/vm0/commit/2207dae9d82fe5db0c421b5f6f458c93e916fad8))
+
+
+### Refactoring
+
+* **onboarding:** neutralize api route shell ([#27043](https://github.com/vm0-ai/vm0/issues/27043)) ([c60f277](https://github.com/vm0-ai/vm0/commit/c60f2772c526b8b3dda924eb6930b98390440042))
+* remove the payment method capability flag ([#27040](https://github.com/vm0-ai/vm0/issues/27040)) ([872357f](https://github.com/vm0-ai/vm0/commit/872357f87d420fafd549d029d2597fb77e33e71d))
+* **scrape:** neutralize managed scrape naming ([#27038](https://github.com/vm0-ai/vm0/issues/27038)) ([39181e5](https://github.com/vm0-ai/vm0/commit/39181e59b178aec51e9927ed88040f358ffa6073))
+* **shared-threads:** neutralize api route shell ([#27048](https://github.com/vm0-ai/vm0/issues/27048)) ([54b1581](https://github.com/vm0-ai/vm0/commit/54b1581a78f8663530a0a69d532fde2673364b3e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.0
+    * @okouai/core bumped to 8.559.4
+    * @okouai/db bumped to 1.198.12
+    * @okouai/pi-agent-runtime bumped to 1.4.18
+
 ## [1.446.0](https://github.com/vm0-ai/vm0/compare/api-v1.445.5...api-v1.446.0) (2026-08-14)
 
 

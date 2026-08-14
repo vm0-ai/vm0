@@ -40,7 +40,6 @@ import {
 import {
   connectorActionResolver,
   type ConnectorActionMethodResolution,
-  type ConnectorSlugResolution,
 } from "../services/connector-action-resolver.service";
 import { isConnectorCatalogUnavailableError } from "../services/connector-catalog-reader.service";
 import type { RouteEntry } from "../route-entry";
@@ -148,20 +147,7 @@ function connectorMethodResolutionError(
       return connectorUnavailable(args.connectorSlug);
     }
     case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
-    }
-  }
-}
-
-function connectorSlugResolutionError(
-  resolution: Exclude<ConnectorSlugResolution, { readonly ok: true }>,
-) {
-  switch (resolution.reason) {
-    case "unknown_connector": {
-      return notFound("Connector not found");
-    }
-    case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
+      return connectorUnavailable(args.connectorSlug);
     }
   }
 }
@@ -177,20 +163,11 @@ const getConnectorListInner$ = computed(async (get) => {
 const getConnectorBySlugInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorsBySlugContract.get));
-  const resolver = await get(connectorActionResolver());
-  const resolved = await resolver.resolveSlug({
-    connectorSlug: params.connectorSlug,
-    requireExecutable: false,
-  });
-  if (!resolved.ok) {
-    return connectorSlugResolutionError(resolved);
-  }
   const connector = await get(
     zeroConnectorBySlug({
       orgId: auth.orgId,
       userId: auth.userId,
-      connectorSlug: resolved.connectorSlug,
-      snapshot: resolved.snapshot,
+      connectorSlug: params.connectorSlug,
     }),
   );
   if (!connector) {
@@ -204,23 +181,12 @@ const deleteConnectorBySlugInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorsBySlugContract.delete));
-    const resolver = await get(connectorActionResolver());
-    signal.throwIfAborted();
-    const resolved = await resolver.resolveSlug({
-      connectorSlug: params.connectorSlug,
-      requireExecutable: false,
-    });
-    signal.throwIfAborted();
-    if (!resolved.ok) {
-      return connectorSlugResolutionError(resolved);
-    }
     const deleted = await set(
       deleteZeroConnectorLocalState$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        connectorSlug: resolved.connectorSlug,
-        snapshot: resolved.snapshot,
+        connectorSlug: params.connectorSlug,
       },
       signal,
     );
@@ -237,20 +203,11 @@ const deleteConnectorBySlugInner$ = command(
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
-  const resolver = await get(connectorActionResolver());
-  const resolved = await resolver.resolveSlug({
-    connectorSlug: params.connectorSlug,
-    requireExecutable: false,
-  });
-  if (!resolved.ok) {
-    return connectorSlugResolutionError(resolved);
-  }
   const diff = await get(
     zeroConnectorScopeDiff({
       orgId: auth.orgId,
       userId: auth.userId,
-      connectorSlug: resolved.connectorSlug,
-      snapshot: resolved.snapshot,
+      connectorSlug: params.connectorSlug,
     }),
   );
   if (!diff) {

@@ -284,6 +284,7 @@ import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
+  creditPurchaseOrigin$,
   type CreditCheckoutSelection,
   startCheckout$,
   startCreditCheckout$,
@@ -5673,6 +5674,7 @@ function InsufficientCreditsCard() {
   const openSettings = useSet(openSettingsDialogAt$);
   const setSubPage = useSet(setBillingSubPage$);
   const pageSignal = useGet(pageSignal$);
+  const creditPurchaseOrigin = useGet(creditPurchaseOrigin$);
 
   const billingResolved = billingLoadable.state === "hasData";
   const credits = billingResolved ? billingLoadable.data.credits : null;
@@ -5686,7 +5688,9 @@ function InsufficientCreditsCard() {
   const shouldStartProCheckout = !canBuyCredits;
   const canShowBillingAction = billingResolved && canManageBilling;
   const checkoutRedirecting = checkoutLoadable.state === "loading";
-  const creditCheckoutPreparing = creditCheckoutLoadable.state === "loading";
+  const creditCheckoutPreparing =
+    creditCheckoutLoadable.state === "loading" ||
+    creditPurchaseOrigin === "chat";
 
   if (hasAvailableCredits) {
     return <CreditsAvailableMessage />;
@@ -5720,7 +5724,10 @@ function InsufficientCreditsCard() {
     event: ReactMouseEvent<HTMLButtonElement>,
   ) => {
     const newTab = event.metaKey || event.ctrlKey;
-    detach(creditCheckout(selection, newTab, pageSignal), Reason.DomCallback);
+    detach(
+      creditCheckout(selection, newTab, "chat", pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   return (

@@ -41,6 +41,7 @@ import {
   activatePendingRun$,
   type PendingRunActivation,
 } from "./agent-run-activation.service";
+import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -86,15 +87,31 @@ interface PromotedRunnerJob {
   readonly profile: string;
 }
 
-type PromoteQueuedCandidateResult =
-  | {
-      readonly status: "promoted";
-      readonly pendingActivation: PendingRunActivation;
-      readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
-    }
+type PreparedPendingRunActivation = Omit<PendingRunActivation, "timing">;
+
+type PromoteQueuedCandidateNonPromotedResult =
   | { readonly status: "full" }
   | { readonly status: "removed-stale" }
   | { readonly status: "lost" };
+
+interface PromotedQueuedCandidateTransactionResult {
+  readonly status: "promoted";
+  readonly pendingActivation: PreparedPendingRunActivation;
+  readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+}
+
+type PromotionResult =
+  | PromotedQueuedCandidateTransactionResult
+  | PromoteQueuedCandidateNonPromotedResult;
+
+type PromoteQueuedCandidateResult =
+  | {
+      readonly status: "promoted";
+      readonly pendingActivation: PreparedPendingRunActivation;
+      readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+      readonly transactionReturnedAt: number;
+    }
+  | PromoteQueuedCandidateNonPromotedResult;
 
 type PromoteQueuedCandidateSideEffectResult =
   | {
@@ -168,10 +185,10 @@ async function insertPromotedRunnerJob(
     },
   });
 
-  await tx
-    .update(zeroRuns)
-    .set({ apiStartedAt: new Date(promotedAt) })
-    .where(eq(zeroRuns.id, args.runId));
+  await writeRunMetadataInTransaction(tx, {
+    patch: { apiStartedAt: new Date(promotedAt) },
+    where: eq(zeroRuns.id, args.runId),
+  });
 
   const timestamps = runnerJobQueueTimestamps();
   const profile = args.payload.profile;
@@ -237,7 +254,7 @@ async function promoteQueuedCandidate(
     readonly payload: QueuedRunnerJobPayload | null;
   },
 ): Promise<PromoteQueuedCandidateResult> {
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<PromotionResult> => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
     );
@@ -337,6 +354,14 @@ async function promoteQueuedCandidate(
       },
     };
   });
+  const transactionReturnedAt = now();
+  if (result.status !== "promoted") {
+    return result;
+  }
+  return {
+    ...result,
+    transactionReturnedAt,
+  };
 }
 
 async function publishPromotedQueueSideEffects(args: {
@@ -376,9 +401,17 @@ async function promoteQueuedCandidateWithSideEffects(
   await publishPromotedQueueSideEffects({
     queueMarkerNotification: result.queueMarkerNotification,
   });
+  const promotionSideEffectsRegisteredAt = now();
   return {
     status: "drained",
-    pendingActivation: result.pendingActivation,
+    pendingActivation: {
+      ...result.pendingActivation,
+      timing: {
+        activationOrigin: "promotion",
+        commitReturnedAt: result.transactionReturnedAt,
+        promotionSideEffectsRegisteredAt,
+      },
+    },
   };
 }
 
@@ -434,8 +467,12 @@ export const drainOrgQueue$ = command(
       if (result.status === "skipped") {
         continue;
       }
+      const activationScheduledAt = now();
       await tapError(
-        set(activatePendingRun$, result.pendingActivation),
+        set(activatePendingRun$, {
+          activation: result.pendingActivation,
+          activationScheduledAt,
+        }),
         (error) => {
           L.error("Failed to activate promoted queued run", {
             runId: row.runId,

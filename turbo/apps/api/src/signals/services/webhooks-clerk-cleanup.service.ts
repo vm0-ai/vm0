@@ -1,4 +1,3 @@
-import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   agentComposes,
   agentComposeVersions,
@@ -38,6 +37,7 @@ import { command, computed, type Computed } from "ccstate";
 import { and, count, eq, inArray, isNotNull, like, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import {
   sharedThreadArtifactAuthorUserId,
   SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
@@ -64,8 +64,10 @@ import {
   deleteOrgUsageData,
   deleteUserUsageData,
 } from "./usage-event-cleanup.service";
-import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
-import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  deleteZeroConnectorLocalState$,
+  loadStoredConnectorRuntimeSnapshot,
+} from "./zero-connector-data.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
@@ -379,12 +381,14 @@ const revokeOrgConnectorTokens$ = command(
     orgId: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const snapshot = await loadStoredConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
       .select({
         userId: connectors.userId,
-        connectorSlug: connectors.connectorSlug,
+        connectorSlug: sql`${connectors.connectorSlug}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
       })
       .from(connectors)
       .where(
@@ -393,21 +397,12 @@ const revokeOrgConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
-      if (!parsed.success) {
-        L.warn("unknown connector slug, skipping revocation", {
-          orgId,
-          connectorSlug: row.connectorSlug,
-        });
-        continue;
-      }
-
       await set(
         deleteZeroConnectorLocalState$,
         {
           orgId,
           userId: row.userId,
-          connectorSlug: parsed.data,
+          connectorSlug: row.connectorSlug,
           snapshot,
         },
         signal,
@@ -423,12 +418,14 @@ const revokeUserConnectorTokens$ = command(
     userId: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const snapshot = await loadStoredConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
       .select({
         orgId: connectors.orgId,
-        connectorSlug: connectors.connectorSlug,
+        connectorSlug: sql`${connectors.connectorSlug}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
       })
       .from(connectors)
       .where(
@@ -437,21 +434,12 @@ const revokeUserConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
-      if (!parsed.success) {
-        L.warn("unknown connector slug, skipping revocation", {
-          userId,
-          connectorSlug: row.connectorSlug,
-        });
-        continue;
-      }
-
       await set(
         deleteZeroConnectorLocalState$,
         {
           orgId: row.orgId,
           userId,
-          connectorSlug: parsed.data,
+          connectorSlug: row.connectorSlug,
           snapshot,
         },
         signal,
