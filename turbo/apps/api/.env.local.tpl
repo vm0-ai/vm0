@@ -149,7 +149,7 @@ ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKE
 # 1Password: Development vault > APIDojo item > RAPIDAPI_KEY concealed field
 ZERO_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
 
-# Optional: Zero SEO provider (DataForSEO)
+# Optional: Okou SEO provider (DataForSEO)
 ZERO_SEO_DATAFORSEO_LOGIN=op://Development/DataForSEO/LOGIN
 ZERO_SEO_DATAFORSEO_PASSWORD=op://Development/DataForSEO/PASSWORD
 
