@@ -1369,11 +1369,17 @@ const connectors = [
           accessToken: secret("PLAYSTATION_ACCESS_TOKEN"),
           accountId: variable("PLAYSTATION_ACCOUNT_ID"),
           idToken: secret("PLAYSTATION_ID_TOKEN"),
+          npsso: secret("PLAYSTATION_NPSSO"),
           onlineId: variable("PLAYSTATION_ONLINE_ID"),
           refreshToken: secret("PLAYSTATION_REFRESH_TOKEN"),
+          webSessionToken: secret("PLAYSTATION_WEB_SESSION_TOKEN"),
         },
+        storageVersion: 2,
         envBindings: {
           PLAYSTATION_TOKEN: secret("PLAYSTATION_ACCESS_TOKEN"),
+          PLAYSTATION_WEB_SESSION_TOKEN: secret(
+            "PLAYSTATION_WEB_SESSION_TOKEN",
+          ),
           PLAYSTATION_ACCOUNT_ID: {
             valueRef: variable("PLAYSTATION_ACCOUNT_ID"),
             optional: true,
@@ -1383,7 +1389,10 @@ const connectors = [
             optional: true,
           },
         },
-        refreshableSecrets: ["PLAYSTATION_ACCESS_TOKEN"],
+        refreshableSecrets: [
+          "PLAYSTATION_ACCESS_TOKEN",
+          "PLAYSTATION_WEB_SESSION_TOKEN",
+        ],
       }),
     ],
   }),

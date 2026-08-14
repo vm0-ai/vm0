@@ -189,11 +189,13 @@ export const PLAYSTATION_PROVIDER_METHOD = {
     clientId: "09515159-7237-4370-9b40-3806e67c0891",
   },
   storage: {
-    version: 1,
+    version: 2,
     secrets: [
       "PLAYSTATION_ACCESS_TOKEN",
       "PLAYSTATION_REFRESH_TOKEN",
       "PLAYSTATION_ID_TOKEN",
+      "PLAYSTATION_NPSSO",
+      "PLAYSTATION_WEB_SESSION_TOKEN",
     ],
     variables: ["PLAYSTATION_ACCOUNT_ID", "PLAYSTATION_ONLINE_ID"],
   },
@@ -204,6 +206,8 @@ export const PLAYSTATION_PROVIDER_METHOD = {
       accessToken: "$secrets.PLAYSTATION_ACCESS_TOKEN",
       refreshToken: "$secrets.PLAYSTATION_REFRESH_TOKEN",
       idToken: "$secrets.PLAYSTATION_ID_TOKEN",
+      npsso: "$secrets.PLAYSTATION_NPSSO",
+      webSessionToken: "$secrets.PLAYSTATION_WEB_SESSION_TOKEN",
       accountId: "$vars.PLAYSTATION_ACCOUNT_ID",
       onlineId: "$vars.PLAYSTATION_ONLINE_ID",
     },
@@ -212,15 +216,21 @@ export const PLAYSTATION_PROVIDER_METHOD = {
     kind: "refresh-token",
     inputs: {
       refreshToken: "$secrets.PLAYSTATION_REFRESH_TOKEN",
+      npsso: "$secrets.PLAYSTATION_NPSSO",
     },
     outputs: {
       accessToken: "$secrets.PLAYSTATION_ACCESS_TOKEN",
       refreshToken: "$secrets.PLAYSTATION_REFRESH_TOKEN",
       idToken: "$secrets.PLAYSTATION_ID_TOKEN",
+      webSessionToken: "$secrets.PLAYSTATION_WEB_SESSION_TOKEN",
     },
-    refreshableSecrets: ["PLAYSTATION_ACCESS_TOKEN"],
+    refreshableSecrets: [
+      "PLAYSTATION_ACCESS_TOKEN",
+      "PLAYSTATION_WEB_SESSION_TOKEN",
+    ],
     envBindings: {
       PLAYSTATION_TOKEN: "$secrets.PLAYSTATION_ACCESS_TOKEN",
+      PLAYSTATION_WEB_SESSION_TOKEN: "$secrets.PLAYSTATION_WEB_SESSION_TOKEN",
       PLAYSTATION_ACCOUNT_ID: {
         valueRef: "$vars.PLAYSTATION_ACCOUNT_ID",
         optional: true,
