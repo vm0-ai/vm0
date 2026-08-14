@@ -348,9 +348,10 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 
 echo "--- Pressure: sustain CPU saturation with live process control ---"
 # Continue the prepared conversation so the pressure turn must reuse the VM
-# whose containment state and cleanup were verified above.
+# whose containment state and cleanup were verified above. Keep the provider
+# session independent so active input starts with a fresh stream.
 PRESSURE_CHAT_THREAD_ID="$CHAT_THREAD_ID"
-PRESSURE_SESSION_ID="$SESSION_ID"
+PRESSURE_SESSION_ID="e2e-process-containment-pressure"
 PRESSURE_SUBMIT_OUTPUT=$(mktemp)
 # Queue one input immediately while this script resolves the sandbox. Keep the
 # final input after the pressure command so the mock turn cannot finish first.
@@ -671,9 +672,10 @@ rm -f "$PRESSURE_SUBMIT_OUTPUT"
 PRESSURE_SUBMIT_OUTPUT=""
 
 echo "--- Pressure: exhaust workload memory without killing Guest Agent ---"
-# Reuse the pressure VM again to prove reclaim left it safe to park.
+# Reuse the pressure VM again to prove reclaim left it safe to park while
+# isolating terminal OOM from the active-input provider session.
 MEMORY_CHAT_THREAD_ID="$PRESSURE_CHAT_THREAD_ID"
-MEMORY_SESSION_ID="$PRESSURE_SESSION_ID"
+MEMORY_SESSION_ID="e2e-process-containment-memory"
 MEMORY_PROMPT=$(cat <<'PROMPT'
 test -f /tmp/vm0-process-containment/memory-reclaim-vm
 sudo -n python3 - <<'PY'
