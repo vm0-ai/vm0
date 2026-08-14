@@ -28,6 +28,7 @@ import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
+import type { Tx } from "../../lib/db-types";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -37,6 +38,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   createDeferredPromise,
   onRejection,
+  settle,
   settleIncludingAbort,
 } from "../utils";
 import {
@@ -75,6 +77,39 @@ const orgAdmissionLockStateRowSchema = z.object({
   held: z.boolean(),
   waiting: z.boolean(),
 });
+const transactionUpdateCountRowSchema = z.object({
+  updatedRows: z.int().nonnegative(),
+});
+
+async function transactionAgentRunUpdateCount(tx: Tx): Promise<number> {
+  const [row] = await executeRawRows(
+    tx,
+    sql`
+      SELECT n_tup_upd::integer AS "updatedRows"
+      FROM pg_stat_xact_user_tables
+      WHERE relname = 'agent_runs'
+    `,
+    transactionUpdateCountRowSchema,
+  );
+  return row?.updatedRows ?? 0;
+}
+
+function postgresErrorCode(error: unknown): string | null {
+  let current = error;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (typeof current !== "object" || current === null) {
+      return null;
+    }
+    if ("code" in current && typeof current.code === "string") {
+      return current.code;
+    }
+    if (!("cause" in current)) {
+      return null;
+    }
+    current = current.cause;
+  }
+  return null;
+}
 
 function createOrgAdmissionLockGate(signal: AbortSignal): OrgAdmissionLockGate {
   const released = createDeferredPromise<void>(signal);
@@ -280,11 +315,10 @@ async function clearRunApiStart(
   runId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const [cleared] = await db
-    .update(zeroRuns)
-    .set({ apiStartedAt: null })
-    .where(eq(zeroRuns.id, runId))
-    .returning({ id: zeroRuns.id });
+  const [cleared] = await writeRunMetadata(db, {
+    patch: { apiStartedAt: null },
+    where: eq(zeroRuns.id, runId),
+  });
   signal.throwIfAborted();
   if (!cleared) {
     throw new Error("Expected a Zero run timing row");
@@ -352,6 +386,97 @@ async function clearThreadSessionBinding(
   if (!thread) {
     throw new Error("Expected a chat thread session binding row");
   }
+}
+
+type RunMetadataWriterFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "measure-run-metadata-bridge-target-updates"
+      | "verify-run-metadata-target-failure-rollback";
+  }
+>;
+
+function isRunMetadataWriterFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is RunMetadataWriterFixtureAction {
+  return (
+    body.action === "measure-run-metadata-bridge-target-updates" ||
+    body.action === "verify-run-metadata-target-failure-rollback"
+  );
+}
+
+async function runMetadataWriterFixtureActionResponse(
+  db: Db,
+  body: RunMetadataWriterFixtureAction,
+  signal: AbortSignal,
+) {
+  if (body.action === "measure-run-metadata-bridge-target-updates") {
+    return await db.transaction(async (tx) => {
+      const before = await transactionAgentRunUpdateCount(tx);
+      const rows = await writeRunMetadataInTransaction(tx, {
+        patch: { autonomyBudget: body.autonomy_budget },
+        where: eq(zeroRuns.id, body.run_id),
+      });
+      signal.throwIfAborted();
+      if (rows.length === 0) {
+        throw new Error("Expected the bridge target-update run fixture");
+      }
+      const after = await transactionAgentRunUpdateCount(tx);
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          agent_run_update_count: after - before,
+        },
+      };
+    });
+  }
+
+  const outcome = await db.transaction(async (lockingTx) => {
+    await lockingTx.execute(sql`
+      SELECT ${agentRuns.id}
+      FROM ${agentRuns}
+      WHERE ${agentRuns.id} = ${body.run_id}
+      FOR UPDATE
+    `);
+    signal.throwIfAborted();
+    return await settle(
+      db.transaction(async (writerTx) => {
+        await writerTx.execute(
+          sql`SET LOCAL session_replication_role = replica`,
+        );
+        await writerTx.execute(sql`SET LOCAL lock_timeout = '100ms'`);
+        return await writeRunMetadataInTransaction(writerTx, {
+          patch: { autonomyBudget: body.autonomy_budget },
+          where: eq(zeroRuns.id, body.run_id),
+        });
+      }),
+      signal,
+    );
+  });
+  signal.throwIfAborted();
+  const [run] = await db
+    .select({
+      autonomyBudget: zeroRuns.autonomyBudget,
+      agentAutonomyBudget: agentRuns.autonomyBudget,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.id, body.run_id))
+    .limit(1);
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      target_write_failed: !outcome.ok,
+      target_write_error_code: outcome.ok
+        ? null
+        : postgresErrorCode(outcome.error),
+      autonomy_budget: run?.autonomyBudget ?? null,
+      agent_autonomy_budget: run?.agentAutonomyBudget ?? null,
+    },
+  };
 }
 
 type AutonomyBudgetFixtureAction = Extract<
@@ -1195,6 +1320,7 @@ async function setRunnerJobContextProfileAsPreviousApi(
 }
 
 type CompatibilityFixtureAction =
+  | RunMetadataWriterFixtureAction
   | AutonomyBudgetFixtureAction
   | LegacyArtifactCatalogFileAction
   | PreviousApiHostedSiteAction
@@ -1348,6 +1474,8 @@ function isCompatibilityFixtureAction(
   return [
     "set-run-autonomy-budget",
     "read-run-autonomy-budget",
+    "measure-run-metadata-bridge-target-updates",
+    "verify-run-metadata-target-failure-rollback",
     "set-workflow-automation-autonomy-budget",
     "read-workflow-automation-autonomy-state",
     "read-latest-workflow-automation-run",
@@ -1367,6 +1495,9 @@ async function compatibilityFixtureActionResponse(
   body: CompatibilityFixtureAction,
   signal: AbortSignal,
 ) {
+  if (isRunMetadataWriterFixtureAction(body)) {
+    return await runMetadataWriterFixtureActionResponse(db, body, signal);
+  }
   if (isAutonomyBudgetFixtureAction(body)) {
     return await autonomyBudgetFixtureActionResponse(db, body, signal);
   }

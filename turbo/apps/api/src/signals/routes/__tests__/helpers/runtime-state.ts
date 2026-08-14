@@ -200,6 +200,57 @@ export async function readPairedRunAutonomyBudgets(
   };
 }
 
+export async function measureRunMetadataBridgeTargetUpdates(
+  context: TestContext,
+  runId: string,
+  autonomyBudget: number,
+): Promise<number> {
+  const response = await postAction(context, {
+    action: "measure-run-metadata-bridge-target-updates",
+    run_id: runId,
+    autonomy_budget: autonomyBudget,
+  });
+  if (response.agent_run_update_count === undefined) {
+    throw new Error(
+      "measureRunMetadataBridgeTargetUpdates missing update count",
+    );
+  }
+  return response.agent_run_update_count;
+}
+
+export async function verifyRunMetadataTargetFailureRollback(
+  context: TestContext,
+  runId: string,
+  autonomyBudget: number,
+): Promise<{
+  readonly targetWriteFailed: boolean;
+  readonly errorCode: string | null;
+  readonly zeroRun: number | null;
+  readonly agentRun: number | null;
+}> {
+  const response = await postAction(context, {
+    action: "verify-run-metadata-target-failure-rollback",
+    run_id: runId,
+    autonomy_budget: autonomyBudget,
+  });
+  if (
+    response.target_write_failed === undefined ||
+    !("target_write_error_code" in response) ||
+    !("autonomy_budget" in response) ||
+    !("agent_autonomy_budget" in response)
+  ) {
+    throw new Error(
+      "verifyRunMetadataTargetFailureRollback missing rollback evidence",
+    );
+  }
+  return {
+    targetWriteFailed: response.target_write_failed,
+    errorCode: response.target_write_error_code ?? null,
+    zeroRun: response.autonomy_budget ?? null,
+    agentRun: response.agent_autonomy_budget ?? null,
+  };
+}
+
 export async function readWorkflowAutomationAutonomyFixture(
   context: TestContext,
   automationId: string,

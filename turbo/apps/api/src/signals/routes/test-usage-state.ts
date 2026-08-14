@@ -44,6 +44,7 @@ import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { normalizeRunMetadata } from "../services/agent-run-metadata-write.service";
 import {
   deleteOrgUsageData,
   deleteUserUsageData,
@@ -380,6 +381,11 @@ async function seedRun(
   if (!session) {
     throw new Error("seedRun: session insert returned no row");
   }
+  const metadata = normalizeRunMetadata({
+    triggerSource: args.triggerSource ?? "test",
+    chatThreadId: args.chatThreadId,
+    selectedModel: args.selectedModel,
+  });
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -398,6 +404,7 @@ async function seedRun(
       result: args.result ?? null,
       error: args.error ?? null,
       lastEventSequence: args.lastEventSequence ?? null,
+      ...metadata,
     })
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
@@ -406,9 +413,7 @@ async function seedRun(
   }
   await db.insert(zeroRuns).values({
     id: run.id,
-    triggerSource: args.triggerSource ?? "test",
-    chatThreadId: args.chatThreadId ?? null,
-    selectedModel: args.selectedModel ?? null,
+    ...metadata,
   });
   signal.throwIfAborted();
   return { runId: run.id };

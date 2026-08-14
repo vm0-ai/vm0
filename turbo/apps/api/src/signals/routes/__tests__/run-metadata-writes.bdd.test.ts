@@ -7,16 +7,21 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
+  measureRunMetadataBridgeTargetUpdates,
   readPairedRunAutonomyBudgets,
   setRunAutonomyBudgetFixture,
+  verifyRunMetadataTargetFailureRollback,
 } from "./helpers/runtime-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 
-test("normalizes the run autonomy default and writes it without the database bridge", async () => {
+test("normalizes metadata and preserves compatibility-writer transaction semantics", async () => {
   const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected the metadata writer actor to have an org");
+  }
   await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 20_000 });
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -48,4 +53,20 @@ test("normalizes the run autonomy default and writes it without the database bri
   await expect(
     readPairedRunAutonomyBudgets(context, run.runId),
   ).resolves.toStrictEqual({ zeroRun: 4, agentRun: 4 });
+
+  await expect(
+    measureRunMetadataBridgeTargetUpdates(context, run.runId, 5),
+  ).resolves.toBe(1);
+  await expect(
+    readPairedRunAutonomyBudgets(context, run.runId),
+  ).resolves.toStrictEqual({ zeroRun: 5, agentRun: 5 });
+
+  await expect(
+    verifyRunMetadataTargetFailureRollback(context, run.runId, 6),
+  ).resolves.toStrictEqual({
+    targetWriteFailed: true,
+    errorCode: "55P03",
+    zeroRun: 5,
+    agentRun: 5,
+  });
 });

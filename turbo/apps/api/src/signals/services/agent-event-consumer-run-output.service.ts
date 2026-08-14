@@ -20,6 +20,7 @@ import {
   recordFirstAssistantEventAcknowledgementMetric,
 } from "./zero-chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
+import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
@@ -339,19 +340,20 @@ async function materializeRunOutputEvents(
     }
 
     const acknowledgedAt = nowDate();
+    const firstAssistantClaimWhere = and(
+      eq(zeroRuns.id, payload.runId),
+      isNotNull(zeroRuns.apiStartedAt),
+      isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
+    );
+    if (!firstAssistantClaimWhere) {
+      throw new Error("First assistant acknowledgement predicate is empty");
+    }
     const [firstAssistantClaim] =
       insertedRowCount > 0 && shouldAttemptFirstAssistantEventClaim
-        ? await tx
-            .update(zeroRuns)
-            .set({ firstAssistantEventAcknowledgedAt: acknowledgedAt })
-            .where(
-              and(
-                eq(zeroRuns.id, payload.runId),
-                isNotNull(zeroRuns.apiStartedAt),
-                isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
-              ),
-            )
-            .returning({ apiStartedAt: zeroRuns.apiStartedAt })
+        ? await writeRunMetadataInTransaction(tx, {
+            patch: { firstAssistantEventAcknowledgedAt: acknowledgedAt },
+            where: firstAssistantClaimWhere,
+          })
         : [];
     signal.throwIfAborted();
 

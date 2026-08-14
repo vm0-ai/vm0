@@ -39,6 +39,16 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("measure-run-metadata-bridge-target-updates"),
+    run_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("verify-run-metadata-target-failure-rollback"),
+    run_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
     action: z.literal("set-workflow-automation-autonomy-budget"),
     automation_id: z.uuid(),
     autonomy_budget: z.int().min(0).max(10),
@@ -190,6 +200,9 @@ export const testRuntimeStateActionResponseSchema = z.object({
   usage_pack_invitation_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   agent_autonomy_budget: z.int().min(0).max(10).nullable().optional(),
+  agent_run_update_count: z.int().nonnegative().optional(),
+  target_write_failed: z.boolean().optional(),
+  target_write_error_code: z.string().nullable().optional(),
   workflow_automation_state: z
     .object({
       autonomy_budget: z.int().min(0).max(10),
