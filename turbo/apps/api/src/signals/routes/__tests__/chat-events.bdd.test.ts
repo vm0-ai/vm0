@@ -7584,6 +7584,50 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     await cancelChatRun(actor, videoWithOptions.runId);
 
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.VideoModelSelection]: true },
+    );
+    const videoWithSelectionEnabled = await sendChatRun(actor, {
+      agentId,
+      prompt: "make another vertical product video",
+      template: {
+        type: "video",
+        selection: {
+          stylePresetId: videoTemplate.id,
+          videoOptions: {
+            // The run-owned prompt path ignores this historical template
+            // model. MiniMax accepts neither 720p nor silence.
+            model: "MiniMax-H3",
+            aspectRatio: "21:9",
+            duration: "5s",
+            resolution: "720p",
+            generateAudio: false,
+          },
+        },
+      },
+    });
+    const videoWithSelectionEnabledRun = await api.readRun(
+      actor,
+      videoWithSelectionEnabled.runId,
+    );
+    const videoWithSelectionEnabledPrompt =
+      videoWithSelectionEnabledRun.appendSystemPrompt ?? "";
+    expect(videoWithSelectionEnabledPrompt).not.toContain("- Model:");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Aspect ratio: 21:9");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Duration: 5s");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Resolution: 720p");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Audio: off");
+    expect(videoWithSelectionEnabledPrompt).toContain(
+      "`--aspect-ratio 21:9 --duration 5s --resolution 720p --no-audio` verbatim",
+    );
+    expect(videoWithSelectionEnabledPrompt).not.toContain("--model");
+    await cancelChatRun(actor, videoWithSelectionEnabled.runId);
+
     const avatarId = 81;
     const avatarVoiceId = "en-US-ChristopherNeural";
     const avatar = await sendChatRun(actor, {
@@ -7643,9 +7687,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
 
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },

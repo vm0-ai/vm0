@@ -196,22 +196,25 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("Parameters the user set explicitly");
   });
 
-  it("pins the video parameters the user chose", () => {
+  it("keeps the template video model when video model selection is disabled", () => {
     const item = VIDEO_TEMPLATE_ITEMS[0]!;
 
-    const result = buildGenerationTemplatePrompt({
-      type: "video",
-      selection: {
-        stylePresetId: item.id,
-        videoOptions: {
-          model: "seedance-1-5-pro-251215",
-          aspectRatio: "9:16",
-          duration: "6s",
-          resolution: "1080p",
-          generateAudio: false,
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "video",
+        selection: {
+          stylePresetId: item.id,
+          videoOptions: {
+            model: "seedance-1-5-pro-251215",
+            aspectRatio: "9:16",
+            duration: "6s",
+            resolution: "1080p",
+            generateAudio: false,
+          },
         },
       },
-    });
+      { videoModelSelectionEnabled: false },
+    );
 
     expect(result.status).toBe("resolved");
     if (result.status !== "resolved") {
@@ -226,6 +229,44 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "--model seedance-1.5-pro --aspect-ratio 9:16 --duration 6s --resolution 1080p --no-audio",
     );
+  });
+
+  it("drops only the template model when video model selection is enabled", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "video",
+        selection: {
+          stylePresetId: item.id,
+          videoOptions: {
+            // The run-owned path must not use this stored model to filter the
+            // remaining options. MiniMax accepts neither 720p nor silence.
+            model: "MiniMax-H3",
+            aspectRatio: "21:9",
+            duration: "5s",
+            resolution: "720p",
+            generateAudio: false,
+          },
+        },
+      },
+      { videoModelSelectionEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("Parameters the user set explicitly");
+    expect(result.prompt).not.toContain("- Model:");
+    expect(result.prompt).toContain("- Aspect ratio: 21:9");
+    expect(result.prompt).toContain("- Duration: 5s");
+    expect(result.prompt).toContain("- Resolution: 720p");
+    expect(result.prompt).toContain("- Audio: off");
+    expect(result.prompt).toContain(
+      "--aspect-ratio 21:9 --duration 5s --resolution 720p --no-audio",
+    );
+    expect(result.prompt).not.toContain("--model");
   });
 
   it("omits a silent MiniMax request the generation service would reject", () => {
@@ -251,6 +292,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("- Model: minimax-h3");
     expect(result.prompt).not.toContain("Audio:");
     expect(result.prompt).not.toContain("--no-audio");
+    expect(result.prompt).toContain("--model minimax-h3");
   });
 
   it("omits video parameters the chosen model cannot honour", () => {
