@@ -83,6 +83,12 @@ pub const MSG_MEMORY_SNAPSHOT: u8 = 0x14;
 /// Guest-to-host fixed-width aggregate memory snapshot response.
 pub const MSG_MEMORY_SNAPSHOT_RESULT: u8 = 0x15;
 
+/// Host-to-guest request for the fixed guest DNS readiness operation.
+pub const MSG_GUEST_DNS_READINESS: u8 = 0x16;
+
+/// Guest-to-host result of the fixed guest DNS readiness operation.
+pub const MSG_GUEST_DNS_READINESS_RESULT: u8 = 0x17;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -141,6 +147,12 @@ mod tests {
                 "MSG_MEMORY_SNAPSHOT_RESULT",
                 MSG_MEMORY_SNAPSHOT_RESULT,
                 0x15,
+            ),
+            ("MSG_GUEST_DNS_READINESS", MSG_GUEST_DNS_READINESS, 0x16),
+            (
+                "MSG_GUEST_DNS_READINESS_RESULT",
+                MSG_GUEST_DNS_READINESS_RESULT,
+                0x17,
             ),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];
