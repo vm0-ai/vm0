@@ -219,7 +219,9 @@ suites before committing the upgrade.
 | `test_response_stream_state_release.py`                 | Direct response-stream state release, idempotency, and callback ownership                                            |
 | `test_model_provider_json_fallback.py`                  | Model provider buffered JSON fallback usage pipeline                                                                 |
 | `test_model_provider_json_streaming.py`                 | Model provider streaming JSON response usage pipeline                                                                |
-| `test_model_provider_sse_usage.py`                      | Model provider SSE usage pipeline                                                                                    |
+| `model_provider_sse_usage_helpers.py`                   | Shared model-provider SSE flow, hook-driving, compression, and warning test mechanics                               |
+| `test_model_provider_sse_usage_openai_responses.py`     | OpenAI Responses-shaped model-provider SSE usage pipeline                                                            |
+| `test_model_provider_sse_usage_anthropic.py`            | Anthropic Messages SSE recovery, usage, accounting, retention, and diagnostics pipeline                              |
 | `test_model_provider_websocket_usage.py`                | Model provider WebSocket usage reporting and source reconciliation                                                   |
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
 | `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
