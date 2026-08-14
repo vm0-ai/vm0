@@ -77,12 +77,12 @@ export type UpdateUserPreferencesRequest = z.infer<
 >;
 
 /**
- * Zero user preferences contract for /api/okou/user-preferences
+ * User preferences contract for /api/okou/user-preferences
  *
  * GET: Get current user's preferences
  * POST: Update user preferences
  */
-export const zeroUserPreferencesContract = c.router({
+export const userPreferencesContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/user-preferences",
@@ -109,4 +109,4 @@ export const zeroUserPreferencesContract = c.router({
   },
 });
 
-export type ZeroUserPreferencesContract = typeof zeroUserPreferencesContract;
+export type UserPreferencesContract = typeof userPreferencesContract;

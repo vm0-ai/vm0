@@ -1,7 +1,7 @@
 import {
   type UserPreferencesResponse,
-  zeroUserPreferencesContract,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+  userPreferencesContract,
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { mockApi } from "../msw-contract.ts";
 
 let mockPreferences: UserPreferencesResponse = {
@@ -61,10 +61,10 @@ export function setMockUserPreferences(
 }
 
 export const apiUserPreferencesHandlers = [
-  mockApi(zeroUserPreferencesContract.get, ({ respond }) => {
+  mockApi(userPreferencesContract.get, ({ respond }) => {
     return respond(200, mockPreferences);
   }),
-  mockApi(zeroUserPreferencesContract.update, ({ body, respond }) => {
+  mockApi(userPreferencesContract.update, ({ body, respond }) => {
     Object.assign(mockPreferences, {
       ...body,
       ...(body.pinnedAgentIds !== undefined && {

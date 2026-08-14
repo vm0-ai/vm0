@@ -27,7 +27,7 @@ import {
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
-const L = logger("ZeroVoiceIoPost");
+const L = logger("VoiceIoPost");
 
 export const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 const BYTEPLUS_ASR_FLASH_URL =

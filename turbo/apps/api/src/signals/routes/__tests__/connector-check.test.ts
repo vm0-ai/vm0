@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   type ConnectorCheckRequest,
-  zeroConnectorCheckContract,
-} from "@okouai/api-contracts/contracts/zero-connector-check";
+  connectorCheckContract,
+} from "@okouai/api-contracts/contracts/connector-check";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -30,9 +30,9 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { zeroConnectorCheckRoutes } from "../zero-connector-check";
+import { connectorCheckRoutes } from "../connector-check";
 
-const TEST_APP_ROUTES = Object.freeze([...zeroConnectorCheckRoutes]);
+const TEST_APP_ROUTES = Object.freeze([...connectorCheckRoutes]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -62,8 +62,8 @@ const trackOrgMembershipFixture = createFixtureTracker<OrgMembershipFixture>(
 );
 
 function client() {
-  return setupApp({ context, routes: zeroConnectorCheckRoutes })(
-    zeroConnectorCheckContract,
+  return setupApp({ context, routes: connectorCheckRoutes })(
+    connectorCheckContract,
   );
 }
 

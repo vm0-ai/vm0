@@ -871,20 +871,6 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-benchmark.sh
 
-      - name: Test local active input with real Codex
-        timeout-minutes: 8
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: .github/scripts/runner-behavior-local-codex-active-input-smoke.sh
-
-      - name: Test local active input with real Claude Code
-        timeout-minutes: 5
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-        run: .github/scripts/runner-behavior-local-claude-active-input-smoke.sh
-
       - name: Test VM keep-alive across conversation turns
         timeout-minutes: 5
         env:

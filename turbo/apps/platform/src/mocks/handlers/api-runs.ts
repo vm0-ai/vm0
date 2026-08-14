@@ -7,7 +7,7 @@ import {
   zeroRunNetworkLogsContract,
 } from "@okouai/api-contracts/contracts/zero-runs";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiRunsHandlers = [
@@ -93,7 +93,7 @@ export const apiRunsHandlers = [
   ),
 
   // GET /api/okou/queue-position
-  mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
+  mockApi(queuePositionContract.getPosition, ({ respond }) =>
     respond(200, { position: 0, total: 0 }),
   ),
 ];

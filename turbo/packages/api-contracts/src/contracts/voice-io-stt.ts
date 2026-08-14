@@ -4,18 +4,18 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroVoiceIoSttSegmentSchema = z.object({
+export const voiceIoSttSegmentSchema = z.object({
   start: z.number(),
   end: z.number(),
   text: z.string(),
 });
 
-export const zeroVoiceIoSttResponseSchema = z.object({
+export const voiceIoSttResponseSchema = z.object({
   text: z.string(),
-  segments: z.array(zeroVoiceIoSttSegmentSchema).optional(),
+  segments: z.array(voiceIoSttSegmentSchema).optional(),
 });
 
-export const zeroVoiceIoSttQuotaErrorSchema = apiErrorSchema.extend({
+export const voiceIoSttQuotaErrorSchema = apiErrorSchema.extend({
   quota: z
     .object({
       count: z.number(),
@@ -24,12 +24,10 @@ export const zeroVoiceIoSttQuotaErrorSchema = apiErrorSchema.extend({
     .optional(),
 });
 
-export type ZeroVoiceIoSttSegment = z.infer<typeof zeroVoiceIoSttSegmentSchema>;
-export type ZeroVoiceIoSttResponse = z.infer<
-  typeof zeroVoiceIoSttResponseSchema
->;
+export type VoiceIoSttSegment = z.infer<typeof voiceIoSttSegmentSchema>;
+export type VoiceIoSttResponse = z.infer<typeof voiceIoSttResponseSchema>;
 
-export const zeroVoiceIoSttContract = c.router({
+export const voiceIoSttContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/voice-io/stt",
@@ -40,12 +38,12 @@ export const zeroVoiceIoSttContract = c.router({
       verbose: z.coerce.boolean().optional().default(false),
     }),
     responses: {
-      200: zeroVoiceIoSttResponseSchema,
+      200: voiceIoSttResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
-      402: zeroVoiceIoSttQuotaErrorSchema,
+      402: voiceIoSttQuotaErrorSchema,
       403: apiErrorSchema,
-      429: zeroVoiceIoSttQuotaErrorSchema,
+      429: voiceIoSttQuotaErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
@@ -53,4 +51,4 @@ export const zeroVoiceIoSttContract = c.router({
   },
 });
 
-export type ZeroVoiceIoSttContract = typeof zeroVoiceIoSttContract;
+export type VoiceIoSttContract = typeof voiceIoSttContract;

@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
-import type { ConnectorCheckPolicy } from "@okouai/api-contracts/contracts/zero-connector-check";
+import type { ConnectorCheckPolicy } from "@okouai/api-contracts/contracts/connector-check";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
@@ -14,7 +14,7 @@ import {
 import { ApiRequestError } from "../../../lib/api/core/client-factory";
 import { createBrowserAuthorizationRequest } from "../../../lib/api/domains/zero-browser";
 import { createComputerUseAuthorizationRequest } from "../../../lib/api/domains/zero-computer-use";
-import { diagnoseZeroConnectorCheck } from "../../../lib/api/domains/zero-connectors";
+import { diagnoseConnectorCheck } from "../../../lib/api/domains/zero-connectors";
 import { getOkouAgentId, getOkouToken } from "../../../lib/okou-env";
 import {
   addRequestedCallbackSearchParams,
@@ -395,7 +395,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           method: opts.method,
           connectorSlug,
         });
-        const diagnostic = await diagnoseZeroConnectorCheck(diagnosticRequest);
+        const diagnostic = await diagnoseConnectorCheck(diagnosticRequest);
         const result = resolveConnectorCheckDiagnostic(
           diagnosticRequest,
           diagnostic,

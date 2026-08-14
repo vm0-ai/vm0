@@ -16,10 +16,10 @@ import {
   type PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
-  zeroConnectorCheckContract,
+  connectorCheckContract,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckRequest,
-} from "@okouai/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/connector-check";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
@@ -49,7 +49,6 @@ type ZeroConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
 type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
 export type ZeroConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
-export type ZeroConnectorCheckDiagnosticResult = ConnectorCheckDiagnosticResult;
 
 /**
  * List all connectors for the authenticated user (zero proxy)
@@ -123,11 +122,11 @@ export async function getZeroConnectorCatalogPermissions(
   );
 }
 
-export async function diagnoseZeroConnectorCheck(
+export async function diagnoseConnectorCheck(
   request: ConnectorCheckRequest,
-): Promise<ZeroConnectorCheckDiagnosticResult> {
+): Promise<ConnectorCheckDiagnosticResult> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorCheckContract, {
+  const client = initClient(connectorCheckContract, {
     ...config,
     validateResponse: true,
   });

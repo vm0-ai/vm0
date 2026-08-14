@@ -239,7 +239,7 @@ export type ConnectorCheckDiagnosticResult = z.infer<
   typeof connectorCheckDiagnosticResultSchema
 >;
 
-export const zeroConnectorCheckContract = c.router({
+export const connectorCheckContract = c.router({
   check: {
     method: "POST",
     path: "/api/okou/connectors/diagnostics/check",
@@ -257,4 +257,4 @@ export const zeroConnectorCheckContract = c.router({
   },
 });
 
-export type ZeroConnectorCheckContract = typeof zeroConnectorCheckContract;
+export type ConnectorCheckContract = typeof connectorCheckContract;

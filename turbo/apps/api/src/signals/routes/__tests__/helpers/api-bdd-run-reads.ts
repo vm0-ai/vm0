@@ -3,7 +3,7 @@ import {
   logsByIdContract,
   logsListContract,
 } from "@okouai/api-contracts/contracts/logs";
-import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import {
   zeroRunAgentEventsContract,
   zeroRunNetworkLogsContract,
@@ -20,12 +20,12 @@ import {
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { logsRoutes } from "../../logs";
-import { zeroQueuePositionRoutes } from "../../zero-queue-position";
+import { queuePositionRoutes } from "../../queue-position";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...logsRoutes,
-  ...zeroQueuePositionRoutes,
+  ...queuePositionRoutes,
   ...zeroRunDetailRoutes,
 ]);
 
@@ -198,8 +198,8 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroQueuePositionRoutes })(
-          zeroQueuePositionContract,
+        setupApp({ context, routes: queuePositionRoutes })(
+          queuePositionContract,
         ).getPosition({
           headers: authenticate(context, actor),
           query: { runId },

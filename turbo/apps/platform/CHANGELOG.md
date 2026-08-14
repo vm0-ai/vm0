@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.748.2](https://github.com/vm0-ai/vm0/compare/app-v0.748.1...app-v0.748.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** stabilize billing dialogs and pending changes ([#26959](https://github.com/vm0-ai/vm0/issues/26959)) ([4d05aff](https://github.com/vm0-ai/vm0/commit/4d05aff72171d0d72c4ca3f90b2063abd1d3d17d))
+
+
+### Refactoring
+
+* **queue-position:** neutralize api shell ([#27065](https://github.com/vm0-ai/vm0/issues/27065)) ([8a504ad](https://github.com/vm0-ai/vm0/commit/8a504ad7efba1fd5f3e9a6f1c423ec1780dec869))
+* **user-preferences:** neutralize the user preferences api shell ([#27075](https://github.com/vm0-ai/vm0/issues/27075)) ([a99b31b](https://github.com/vm0-ai/vm0/commit/a99b31be509880d93d1e53bae60bbb849cbca916))
+* **voice-io:** neutralize voice io naming ([#27071](https://github.com/vm0-ai/vm0/issues/27071)) ([28c0cb5](https://github.com/vm0-ai/vm0/commit/28c0cb5713c0ad7da688315236f4f48fec19cee7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.2
+    * @okouai/core bumped to 8.559.6
+
+## [0.748.1](https://github.com/vm0-ai/vm0/compare/app-v0.748.0...app-v0.748.1) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+    * @okouai/core bumped to 8.559.5
+
 ## [0.748.0](https://github.com/vm0-ai/vm0/compare/app-v0.747.3...app-v0.748.0) (2026-08-14)
 
 

@@ -818,10 +818,14 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    click(buttonByText("Confirm", orderSummary));
-    await expect(
-      screen.findByRole("dialog", { name: "Review package change" }),
-    ).resolves.toBeInTheDocument();
+    const confirmButton = buttonByText("Confirm", orderSummary);
+    click(confirmButton);
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    expect(reviewDialog).toBeInTheDocument();
+    expect(confirmButton).toHaveTextContent("Updating...");
+    expect(confirmButton).toBeDisabled();
   });
 
   it("does not probe legacy migrations while usage packs are disabled", async () => {
@@ -1347,10 +1351,16 @@ describe("organization billing settings", () => {
       within(orderSummary).getByText("Scheduled for Sep 1, 2026"),
     ).toBeInTheDocument();
 
-    click(buttonByText("Review conversion", orderSummary));
+    const reviewConversionButton = buttonByText(
+      "Review conversion",
+      orderSummary,
+    );
+    click(reviewConversionButton);
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review plan conversion",
     });
+    expect(reviewConversionButton).toHaveTextContent("Review conversion");
+    expect(reviewConversionButton).toBeDisabled();
     expect(
       within(reviewDialog).queryByRole("table", {
         name: "Current and new subscription comparison",
@@ -1400,10 +1410,13 @@ describe("organization billing settings", () => {
     await screen.findByRole("heading", {
       name: "Configure member packages",
     });
-    click(buttonByText("Review conversion"));
+    const reviewRevisionButton = buttonByText("Review conversion");
+    click(reviewRevisionButton);
     const revisionDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
+    expect(reviewRevisionButton).toHaveTextContent("Review conversion");
+    expect(reviewRevisionButton).toBeDisabled();
     click(buttonByText("Confirm", revisionDialog));
     await waitFor(() => {
       expect(buttonByText("Current plan")).toBeDisabled();
@@ -2767,6 +2780,38 @@ describe("organization billing settings", () => {
     });
   });
 
+  it("keeps the concurrency trigger stable while opening the change dialog", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Team Concurrency Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencySubscriptions: [
+          {
+            id: "sub_concurrency_12345678",
+            quantity: 2,
+            currentPeriodEnd: "2026-06-01T00:00:00Z",
+            cancelAtPeriodEnd: false,
+            canReduce: true,
+            canChangeInApp: true,
+          },
+        ],
+      });
+    });
+
+    await openBillingTab();
+
+    const changeButton = buttonByText("Change");
+    click(changeButton);
+    await screen.findByRole("dialog", { name: "Change concurrency" });
+
+    expect(changeButton).toHaveTextContent("Change");
+    expect(changeButton).toBeEnabled();
+  });
+
   it("manages an active concurrency subscription through Change", async () => {
     let previewedQuantity: number | null = null;
     let confirmedQuantity: number | null = null;
@@ -3393,7 +3438,8 @@ describe("organization billing settings", () => {
       [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     const locationBeforePurchase = window.location.href;
-    click(screen.getByText("Quick buy $20.00"));
+    const quickBuyButton = buttonByText("Quick buy $20.00");
+    click(quickBuyButton);
 
     await waitFor(() => {
       expect(buttonByText("Preparing...")).toBeDisabled();
@@ -3404,6 +3450,8 @@ describe("organization billing settings", () => {
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review credit purchase",
     });
+    expect(quickBuyButton).toHaveTextContent("Preparing...");
+    expect(quickBuyButton).toBeDisabled();
     expect(
       within(reviewDialog).getByText(
         "Confirm this one-time charge with your saved payment method.",

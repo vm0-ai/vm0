@@ -48,6 +48,7 @@ import {
   type UsagePackChangeInvoiceInput,
 } from "./usage-pack-allocation-change.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
+import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
 import {
   activeUsagePackPlanPriceId,
   activeUsagePackPriceId,
@@ -128,6 +129,7 @@ interface PreparedSubscriptionChange {
   readonly hasImmediateChanges: boolean;
   readonly hasScheduledChanges: boolean;
   readonly existingScheduleId: string | null;
+  readonly hasAttachedSchedule: boolean;
 }
 
 interface PersistSubscriptionChangePreviewArgs {
@@ -719,6 +721,20 @@ type ExistingSchedulePreparation =
   | { readonly status: "ready"; readonly scheduleId: string | null }
   | { readonly status: "same_configuration" | "conflict" };
 
+type SubscriptionChangePreparation =
+  | { readonly status: "ready"; readonly prepared: PreparedSubscriptionChange }
+  | {
+      readonly status: "resumed";
+      readonly preview: UsagePackSubscriptionChangePreviewResponse;
+    }
+  | {
+      readonly status:
+        | "not_found"
+        | "same_configuration"
+        | "invalid_members"
+        | "conflict";
+    };
+
 function prepareExistingSchedule(args: {
   readonly allocationChanges: readonly PreparedAllocationChange[];
   readonly hasImmediateChanges: boolean;
@@ -748,6 +764,36 @@ function prepareExistingSchedule(args: {
     : { status: "conflict" };
 }
 
+async function resumeOpenSubscriptionChange(
+  db: Db,
+  context: UsagePackSubscriptionChangeContext,
+  args: {
+    readonly targetTier: UsagePackTier;
+    readonly memberUsagePacks: readonly MemberUsagePack[];
+  },
+  signal: AbortSignal,
+): Promise<SubscriptionChangePreparation | null> {
+  const resumableChange = context.openSubscriptionChanges.find((change) => {
+    return change.status !== "previewed";
+  });
+  if (!resumableChange) {
+    return null;
+  }
+  const stored = await loadStoredSubscriptionChange(db, resumableChange.id);
+  signal.throwIfAborted();
+  if (!stored) {
+    throw new Error(
+      `Open usage pack subscription change ${resumableChange.id} disappeared`,
+    );
+  }
+  return storedSubscriptionChangeMatchesRequest(stored, args)
+    ? {
+        status: "resumed",
+        preview: storedSubscriptionChangePreview(stored.root),
+      }
+    : { status: "conflict" };
+}
+
 async function prepareSubscriptionChange(
   args: {
     readonly db: Db;
@@ -756,16 +802,7 @@ async function prepareSubscriptionChange(
     readonly memberUsagePacks: readonly MemberUsagePack[];
   },
   signal: AbortSignal,
-): Promise<
-  | { readonly status: "ready"; readonly prepared: PreparedSubscriptionChange }
-  | {
-      readonly status:
-        | "not_found"
-        | "same_configuration"
-        | "invalid_members"
-        | "conflict";
-    }
-> {
+): Promise<SubscriptionChangePreparation> {
   const context = await loadUsagePackSubscriptionChangeContext(
     args.db,
     args.orgId,
@@ -773,12 +810,16 @@ async function prepareSubscriptionChange(
   if (!context || !context.subscription.stripeSubscriptionId) {
     return { status: "not_found" };
   }
-  if (
-    context.subscription.cancelAtPeriodEnd ||
-    context.openSubscriptionChanges.some((change) => {
-      return change.status !== "previewed";
-    })
-  ) {
+  const resumed = await resumeOpenSubscriptionChange(
+    args.db,
+    context,
+    args,
+    signal,
+  );
+  if (resumed) {
+    return resumed;
+  }
+  if (context.subscription.cancelAtPeriodEnd) {
     return { status: "conflict" };
   }
   const allocationChanges = prepareAllocationChanges(
@@ -815,19 +856,27 @@ async function prepareSubscriptionChange(
       `${args.targetTier} usage pack plan Price is not configured`,
     );
   }
-  const subscription = await getStripeClient().subscriptions.retrieve(
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(
     context.subscription.stripeSubscriptionId,
     { expand: ["latest_invoice"] },
   );
   signal.throwIfAborted();
   const stripeScheduleId = stripeObjectId(subscription.schedule);
-  if (
-    subscription.pending_update ||
-    (existingScheduleId
-      ? stripeScheduleId !== existingScheduleId
-      : stripeScheduleId !== null)
-  ) {
+  if (subscription.pending_update) {
     return { status: "conflict" };
+  }
+  if (existingScheduleId) {
+    if (stripeScheduleId !== existingScheduleId) {
+      return { status: "conflict" };
+    }
+  } else if (stripeScheduleId) {
+    const schedule =
+      await stripe.subscriptionSchedules.retrieve(stripeScheduleId);
+    signal.throwIfAborted();
+    if (!subscriptionScheduleHasNoFutureChanges(subscription, schedule)) {
+      return { status: "conflict" };
+    }
   }
   const planItem = validateStripeSubscription(context, subscription);
   const period = usagePackPeriod(subscription);
@@ -853,6 +902,7 @@ async function prepareSubscriptionChange(
           return change.kind === "downgrade";
         }),
       existingScheduleId,
+      hasAttachedSchedule: stripeScheduleId !== null,
     },
   };
 }
@@ -1195,6 +1245,18 @@ async function immediateUsagePackUpgradeCreditGrant(
   };
 }
 
+function subscriptionChangeEffectiveAt(
+  prepared: PreparedSubscriptionChange,
+  targetTier: UsagePackTier,
+): Date {
+  const timestamp =
+    planIsDowngrade(prepared.context.subscription.tier, targetTier) ||
+    (!prepared.hasImmediateChanges && prepared.hasScheduledChanges)
+      ? prepared.period.end
+      : prepared.prorationTimestamp;
+  return new Date(timestamp * 1000);
+}
+
 export async function previewUsagePackSubscriptionChange(
   db: Db,
   args: {
@@ -1205,6 +1267,9 @@ export async function previewUsagePackSubscriptionChange(
   signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangePreviewResult> {
   const result = await prepareSubscriptionChange({ db, ...args }, signal);
+  if (result.status === "resumed") {
+    return { status: "ready", preview: result.preview };
+  }
   if (result.status !== "ready") {
     return result;
   }
@@ -1245,7 +1310,7 @@ export async function previewUsagePackSubscriptionChange(
   const [recurringPreview, immediatePreview, immediateCreditGrant] =
     await Promise.all([
       stripe.invoices.createPreview(
-        prepared.existingScheduleId
+        prepared.hasAttachedSchedule
           ? scheduledSubscriptionRecurringPreviewParams(
               prepared.subscription,
               finalScheduleItems(
@@ -1284,12 +1349,7 @@ export async function previewUsagePackSubscriptionChange(
   }
   const createdAt = nowDate();
   const expiresAt = new Date(createdAt.getTime() + PREVIEW_TTL_MS);
-  const effectiveAt = new Date(
-    (planIsDowngrade(prepared.context.subscription.tier, args.targetTier) ||
-    (!prepared.hasImmediateChanges && prepared.hasScheduledChanges)
-      ? prepared.period.end
-      : prepared.prorationTimestamp) * 1000,
-  );
+  const effectiveAt = subscriptionChangeEffectiveAt(prepared, args.targetTier);
   const immediateAmountCents = immediatePreview
     ? immediateProrationAmount(immediatePreview, prepared.prorationTimestamp)
     : 0;
@@ -1466,6 +1526,63 @@ async function loadStoredSubscriptionChange(
     throw new Error(`Subscription change ${root.id} lost its subscription`);
   }
   return { root, allocationChanges, subscription, allocations };
+}
+
+function storedSubscriptionChangeMatchesRequest(
+  stored: NonNullable<Awaited<ReturnType<typeof loadStoredSubscriptionChange>>>,
+  args: {
+    readonly targetTier: UsagePackTier;
+    readonly memberUsagePacks: readonly MemberUsagePack[];
+  },
+): boolean {
+  if (stored.root.targetTier !== args.targetTier) {
+    return false;
+  }
+  const targetUsagePackByMember = new Map(
+    activeMemberAllocations(stored.allocations).map((allocation) => {
+      if (!allocation.userId) {
+        throw new Error("Active usage pack allocation has no member");
+      }
+      return [allocation.userId, allocation.usagePackUsd] as const;
+    }),
+  );
+  for (const change of stored.allocationChanges) {
+    if (change.kind === "removal") {
+      targetUsagePackByMember.delete(change.userId);
+      continue;
+    }
+    if (change.targetUsagePackUsd === null) {
+      throw new Error(`Subscription change ${change.id} has no target package`);
+    }
+    targetUsagePackByMember.set(change.userId, change.targetUsagePackUsd);
+  }
+  return (
+    targetUsagePackByMember.size === args.memberUsagePacks.length &&
+    args.memberUsagePacks.every((selection) => {
+      return (
+        targetUsagePackByMember.get(selection.memberId) ===
+        selection.usagePackUsd
+      );
+    })
+  );
+}
+
+function storedSubscriptionChangePreview(
+  root: UsagePackSubscriptionChangeRow,
+): UsagePackSubscriptionChangePreviewResponse {
+  return {
+    changeId: root.id,
+    sourceTier: root.sourceTier,
+    targetTier: root.targetTier,
+    immediateAmountCents: root.immediateAmountCents,
+    nextRecurringAmountCents: root.nextRecurringAmountCents,
+    currency: root.currency,
+    effectiveAt: root.effectiveAt.toISOString(),
+    prorationDate: new Date(root.prorationTimestamp * 1000).toISOString(),
+    expiresAt: (
+      root.stripePendingUpdateExpiresAt ?? root.previewExpiresAt
+    ).toISOString(),
+  };
 }
 
 async function persistDeferredSubscriptionChangeSchedule(
@@ -2094,6 +2211,46 @@ async function restoreScheduledSubscriptionChange(
   };
 }
 
+async function prepareApplicableSubscription(
+  args: {
+    readonly db: Db;
+    readonly stored: StoredSubscriptionChange;
+    readonly subscription: StripeSubscription;
+    readonly supersededScheduleId: string | null;
+    readonly hasImmediateChanges: boolean;
+  },
+  signal: AbortSignal,
+): Promise<
+  | { readonly status: "ready"; readonly subscription: StripeSubscription }
+  | { readonly status: "conflict" }
+> {
+  const attachedScheduleId = stripeObjectId(args.subscription.schedule);
+  if (args.supersededScheduleId || !attachedScheduleId) {
+    return { status: "ready", subscription: args.subscription };
+  }
+  const stripe = getStripeClient();
+  const schedule =
+    await stripe.subscriptionSchedules.retrieve(attachedScheduleId);
+  signal.throwIfAborted();
+  if (!subscriptionScheduleHasNoFutureChanges(args.subscription, schedule)) {
+    await failApplyingSubscriptionChange(
+      args.db,
+      args.stored.root,
+      "unexpected_schedule_conflict",
+    );
+    return { status: "conflict" };
+  }
+  if (!args.hasImmediateChanges) {
+    return { status: "ready", subscription: args.subscription };
+  }
+  await stripe.subscriptionSchedules.release(attachedScheduleId);
+  signal.throwIfAborted();
+  return {
+    status: "ready",
+    subscription: { ...args.subscription, schedule: null },
+  };
+}
+
 async function applyStoredSubscriptionChange(
   db: Db,
   stored: StoredSubscriptionChange,
@@ -2103,10 +2260,10 @@ async function applyStoredSubscriptionChange(
   if (!subscriptionId) {
     throw new Error("Usage pack subscription has no Stripe subscription ID");
   }
-  const subscription = await getStripeClient().subscriptions.retrieve(
-    subscriptionId,
-    { expand: ["latest_invoice"] },
-  );
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["latest_invoice"],
+  });
   signal.throwIfAborted();
   if (subscription.pending_update) {
     await failApplyingSubscriptionChange(
@@ -2172,6 +2329,20 @@ async function applyStoredSubscriptionChange(
     stored.allocationChanges.some((change) => {
       return change.kind === "downgrade";
     });
+  const applicable = await prepareApplicableSubscription(
+    {
+      db,
+      stored,
+      subscription,
+      supersededScheduleId,
+      hasImmediateChanges,
+    },
+    signal,
+  );
+  if (applicable.status === "conflict") {
+    return applicable;
+  }
+  const applicableSubscription = applicable.subscription;
   if (!hasImmediateChanges) {
     if (!hasScheduledChanges) {
       throw new Error("Stored usage pack subscription change has no changes");
@@ -2179,7 +2350,7 @@ async function applyStoredSubscriptionChange(
     const effectiveAt = await scheduleDeferredSubscriptionChange(
       db,
       stored,
-      subscription,
+      applicableSubscription,
       signal,
     );
     return {
@@ -2195,7 +2366,7 @@ async function applyStoredSubscriptionChange(
     db,
     {
       stored,
-      subscription,
+      subscription: applicableSubscription,
       planItem,
       hasPlanUpgrade,
       immediatePackageChanges,
