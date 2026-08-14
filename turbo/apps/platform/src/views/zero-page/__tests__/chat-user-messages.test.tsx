@@ -211,7 +211,7 @@ describe("user messages", () => {
     });
   });
 
-  it("omits historical template models when the run picker owns the model", async () => {
+  it("hides historical template model labels when the run picker owns the model", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000751";
     const templateItem = VIDEO_TEMPLATE_ITEMS[0]!;
@@ -259,9 +259,9 @@ describe("user messages", () => {
     });
 
     const reference = await screen.findByTitle(
-      `Video \u00b7 ${templateItem.title} \u00b7 9:16 \u00b7 8s \u00b7 720p`,
+      `Video \u00b7 ${templateItem.title} \u00b7 9:16 \u00b7 8s \u00b7 2k`,
     );
-    expect(reference).toHaveTextContent("9:16 \u00b7 8s \u00b7 720p");
+    expect(reference).toHaveTextContent("9:16 \u00b7 8s \u00b7 2k");
     expect(reference).not.toHaveTextContent("MiniMax H3");
 
     const chipButton = queryAllByRoleFast("button").find((element) => {
@@ -275,7 +275,7 @@ describe("user messages", () => {
     const rows = [
       ["Ratio", "9:16"],
       ["Duration", "8s"],
-      ["Resolution", "720p"],
+      ["Resolution", "2k"],
       ["Generate audio", "Audio"],
     ] as const;
     for (const [label, value] of rows) {

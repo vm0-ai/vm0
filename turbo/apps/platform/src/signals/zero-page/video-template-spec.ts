@@ -1,7 +1,6 @@
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import { parseAvatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import {
-  DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
   resolveVideoGenerationOptions,
 } from "@okouai/core/video-model-catalog";
@@ -47,18 +46,14 @@ function regularVideoTemplate(
  */
 export function videoTemplateSpec(
   template: GenerationTemplateRequest,
-  includeLegacyModel: boolean,
 ): VideoTemplateSpec | null {
   const videoTemplate = regularVideoTemplate(template);
   if (videoTemplate === null) {
     return null;
   }
-  const resolved = resolveVideoGenerationOptions({
-    ...videoTemplate.selection.videoOptions,
-    // Persisted model values remain for compatibility, but the run-owned path
-    // deliberately resolves the remaining fields without reading that value.
-    ...(includeLegacyModel ? {} : { model: DEFAULT_VIDEO_MODEL }),
-  });
+  const resolved = resolveVideoGenerationOptions(
+    videoTemplate.selection.videoOptions,
+  );
   return {
     core: [resolved.aspectRatio, resolved.duration],
     rest: [resolved.resolution],

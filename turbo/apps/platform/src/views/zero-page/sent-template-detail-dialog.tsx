@@ -9,7 +9,6 @@ import {
 } from "@okouai/ui/components/ui/dialog";
 import { findVideoTemplateItem, r2ImageTransformUrl } from "@okouai/core";
 import {
-  DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
   resolveVideoGenerationOptions,
 } from "@okouai/core/video-model-catalog";
@@ -30,10 +29,9 @@ function SentVideoTemplateDetail({
   const { t } = useTranslation();
   const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
   const item = findVideoTemplateItem(template.selection.stylePresetId);
-  const resolved = resolveVideoGenerationOptions({
-    ...template.selection.videoOptions,
-    ...(videoModelSelectionEnabled ? { model: DEFAULT_VIDEO_MODEL } : {}),
-  });
+  const resolved = resolveVideoGenerationOptions(
+    template.selection.videoOptions,
+  );
   const config = VIDEO_MODEL_CONFIGS[resolved.model];
   const audio = resolved.generateAudio
     ? t(($) => {

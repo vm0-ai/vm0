@@ -81,10 +81,7 @@ import {
 import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
-import {
-  videoModelSelectionEnabled$,
-  videoTemplateOptionsEnabled$,
-} from "../external/feature-switch.ts";
+import { videoTemplateOptionsEnabled$ } from "../external/feature-switch.ts";
 import {
   videoTemplateSettingsText,
   videoTemplateSpec,
@@ -937,17 +934,11 @@ interface InlineTemplateNodeActions {
   readonly openOptions: (anchor: DOMRect) => void;
   /** Read per render so a chip picks the switch up on its next update. */
   readonly optionsEnabled: () => boolean;
-  readonly runOwnsVideoModel: () => boolean;
 }
 
-function inlineTemplateSpec(
-  node: ProseMirrorNode,
-  runOwnsVideoModel: boolean,
-): VideoTemplateSpec | null {
+function inlineTemplateSpec(node: ProseMirrorNode): VideoTemplateSpec | null {
   const parsed = generationTemplateRequestSchema.safeParse(node.attrs.template);
-  return parsed.success
-    ? videoTemplateSpec(parsed.data, !runOwnsVideoModel)
-    : null;
+  return parsed.success ? videoTemplateSpec(parsed.data) : null;
 }
 
 function createInlineTemplateSpecZone(): {
@@ -1028,7 +1019,7 @@ function createInlineTemplateNodeView(
       templateAttachmentPreviewLabel(attachment),
     );
     const nextSpec = actions.optionsEnabled()
-      ? inlineTemplateSpec(nextNode, actions.runOwnsVideoModel())
+      ? inlineTemplateSpec(nextNode)
       : null;
     if (nextSpec) {
       spec.render(nextSpec);
@@ -1581,7 +1572,6 @@ interface WorkflowComposerRuntime {
   openTemplate(category: string): void;
   /** Resolved when the lifecycle bridge mounts; false until then. */
   videoOptionsEnabled: boolean;
-  videoModelSelectionEnabled: boolean;
   openTemplateOptions(anchor: DOMRect, position: number): void;
   removeTemplate(): void;
   templateRemoved(): void;
@@ -1720,9 +1710,6 @@ function createInlineTemplateNode(
             },
             optionsEnabled: () => {
               return runtime.videoOptionsEnabled;
-            },
-            runOwnsVideoModel: () => {
-              return runtime.videoModelSelectionEnabled;
             },
           },
           runtime.localizedUi,
@@ -2571,7 +2558,6 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
     videoOptionsEnabled: false,
-    videoModelSelectionEnabled: false,
     openTemplateOptions(_anchor: DOMRect, _position: number): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
@@ -2606,7 +2592,6 @@ function createTemplateAttachmentControls(
         element.click();
       };
       runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
-      runtime.videoModelSelectionEnabled = get(videoModelSelectionEnabled$);
       runtime.openTemplateOptions = (anchor, position) => {
         element.dataset.templateAction = "options";
         element.dataset.templateAnchor = [

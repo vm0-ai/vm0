@@ -879,17 +879,12 @@ function isSelectedVideoTemplate(
 function toVideoGenerationTemplate(
   item: VideoTemplateItem,
   model: VideoModel,
-  includeLegacyModel: boolean,
 ): GenerationTemplateRequest {
   return {
     type: "video",
     selection: {
       stylePresetId: item.id,
-      // The disabled switch keeps the old sparse template model exactly. Once
-      // the run owns the model, a new template does not write one at all.
-      ...(includeLegacyModel && model !== DEFAULT_VIDEO_MODEL
-        ? { videoOptions: { model } }
-        : {}),
+      ...(model !== DEFAULT_VIDEO_MODEL ? { videoOptions: { model } } : {}),
     },
   };
 }
@@ -4989,9 +4984,7 @@ function TemplatePickerDialog({
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
-    onChange(
-      toVideoGenerationTemplate(item, videoModel, !videoModelSelectionEnabled),
-    );
+    onChange(toVideoGenerationTemplate(item, videoModel));
     closeTemplatePicker();
   };
 

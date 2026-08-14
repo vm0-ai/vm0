@@ -6894,9 +6894,7 @@ function UserMessageTemplateReference({
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
   const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
   const openDetail = useSet(openSentTemplateDetail$);
-  const spec = videoOptionsEnabled
-    ? videoTemplateSpec(part.template, !videoModelSelectionEnabled)
-    : null;
+  const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
   const label = `${typeLabel ?? part.template.type} · ${part.titleSnapshot}`;
   if (spec === null) {
     return (
