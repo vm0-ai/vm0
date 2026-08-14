@@ -20,7 +20,7 @@ const SETTINGS_ICON_ASSET_PATHS = {
   "local-browser":
     "views/zero-page/components/settings/icons/local-browser-9a71e5c6fee7.svg",
   minimax: "views/zero-page/components/settings/icons/minimax-ec3b12fc26ff.svg",
-  openai: "views/zero-page/components/settings/icons/openai-a03145d84fb3.svg",
+  openai: "views/zero-page/components/settings/icons/openai-df8a3d9c4274.svg",
   openrouter:
     "views/zero-page/components/settings/icons/openrouter-82e9dead836b.svg",
   slack:

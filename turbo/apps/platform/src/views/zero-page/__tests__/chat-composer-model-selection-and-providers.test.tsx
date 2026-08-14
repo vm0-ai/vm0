@@ -150,6 +150,23 @@ function mockBuiltInFastModel(): void {
 }
 
 describe("chat composer models", () => {
+  it("keeps the compact mobile model icon fully visible", async () => {
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const modelPicker = await findComposerModel("Claude Fable 5");
+    expect(
+      modelPicker.querySelector(':scope > [data-slot="select-icon"]'),
+    ).toBeInTheDocument();
+    expect(modelPicker).toHaveClass(
+      "[&>[data-slot=select-icon]]:hidden",
+      "sm:[&>[data-slot=select-icon]]:block",
+    );
+    expect(modelPicker).not.toHaveClass("[&>svg]:hidden");
+  });
+
   it("keeps model resources cached across Clerk profile events", async () => {
     const policy = buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000205",
