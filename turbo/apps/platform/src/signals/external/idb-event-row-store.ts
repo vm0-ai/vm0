@@ -37,6 +37,12 @@ interface ChatEventRowWriteStore {
     cursor: ChatEventCursor,
     signal?: AbortSignal,
   ): Promise<void>;
+  replaceRowsAndCursor(
+    threadId: string,
+    rows: readonly ChatEventRow[],
+    cursor: ChatEventCursor,
+    signal?: AbortSignal,
+  ): Promise<void>;
   clearThread(threadId: string, signal?: AbortSignal): Promise<void>;
 }
 
@@ -136,6 +142,38 @@ function createRowWriteStore(
       );
       await Promise.all([...requests, tx.done]);
       L.debug("upsertRows:done", { count: rows.length });
+    },
+    async replaceRowsAndCursor(threadId, rows, cursor, signal) {
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction([storeName, cursorStoreName], "readwrite");
+      const rowStore = tx.objectStore(storeName);
+      const index = rowStore.index(CHAT_EVENT_ROWS_ORDER_INDEX);
+      const keys = await index.getAllKeys(threadRowRange(threadId, null));
+      signal?.throwIfAborted();
+      const deleteRequests = keys.map((key) => {
+        return rowStore.delete(key);
+      });
+      const putRequests = rows.map((row) => {
+        signal?.throwIfAborted();
+        return rowStore.put(row);
+      });
+      await Promise.all([
+        ...deleteRequests,
+        ...putRequests,
+        tx.objectStore(cursorStoreName).put({
+          threadId,
+          schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          lastEventId: cursor.lastEventId,
+          lastSeqId: cursor.lastSeqId,
+        }),
+        tx.done,
+      ]);
+      L.debug("replaceRows:done", {
+        threadId,
+        deletedCount: keys.length,
+        count: rows.length,
+      });
     },
     async clearThread(threadId, signal) {
       const db = await getDb();

@@ -409,7 +409,13 @@ function createChatEventSetup({
 
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(registerActiveChatEventSignals$, threadId, receive$, signal);
+      set(
+        registerActiveChatEventSignals$,
+        threadId,
+        receive$,
+        syncRemoteEvents$,
+        signal,
+      );
       await set(initializeIndexedDbEvents$, signal);
       signal.throwIfAborted();
     },

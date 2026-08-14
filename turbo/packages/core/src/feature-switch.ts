@@ -365,6 +365,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SharedChatDatabase]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -29,6 +29,7 @@ import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch-sta
 import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
+import { SharedWorkerTestBootstrap } from "../shared-database/test-bridge.ts";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -139,13 +140,20 @@ export async function setupPage(options: {
   const cachedFeatureSwitchOverrides = {
     ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
   };
+  const cachedFeatureSwitches = getAllFeatureStates({
+    orgId: activeOrgId,
+    overrides: cachedFeatureSwitchOverrides,
+  });
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
-    getAllFeatureStates({
-      orgId: activeOrgId,
-      overrides: cachedFeatureSwitchOverrides,
-    }),
+    cachedFeatureSwitches,
   );
+  if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase]) {
+    new SharedWorkerTestBootstrap(
+      options.context.store,
+      options.context.signal,
+    );
+  }
 
   mockUser(
     options.user !== undefined

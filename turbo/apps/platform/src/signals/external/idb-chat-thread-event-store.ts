@@ -87,27 +87,20 @@ async function readEventBoundary(
   getDb: GetDb,
   signal?: AbortSignal,
 ): Promise<ChatThreadEventReadBoundary | null> {
-  return await chatIdbReadOr(
-    "threadEvents:readBoundary",
-    async () => {
-      const db = await getDb();
-      signal?.throwIfAborted();
-      const latestCursor = await db
-        .transaction(CHAT_THREAD_EVENTS_STORE, "readonly")
-        .store.index(CHAT_THREAD_EVENTS_ORDER_INDEX)
-        .openKeyCursor(undefined, "prev");
-      signal?.throwIfAborted();
-      if (!latestCursor) {
-        return null;
-      }
-      return {
-        latestEventId: validateEventId(latestCursor.primaryKey),
-        latestSeqId: validateSeqId(latestCursor.key),
-      };
-    },
-    null,
-    signal,
-  );
+  const db = await getDb();
+  signal?.throwIfAborted();
+  const latestCursor = await db
+    .transaction(CHAT_THREAD_EVENTS_STORE, "readonly")
+    .store.index(CHAT_THREAD_EVENTS_ORDER_INDEX)
+    .openKeyCursor(undefined, "prev");
+  signal?.throwIfAborted();
+  if (!latestCursor) {
+    return null;
+  }
+  return {
+    latestEventId: validateEventId(latestCursor.primaryKey),
+    latestSeqId: validateSeqId(latestCursor.key),
+  };
 }
 
 async function readEventPage(
@@ -116,41 +109,27 @@ async function readEventPage(
   through: number,
   signal?: AbortSignal,
 ): Promise<readonly ChatThreadEvent[] | null> {
-  return await chatIdbReadOr(
-    "threadEvents:readPage",
-    async () => {
-      const db = await getDb();
-      signal?.throwIfAborted();
-      const tx = db.transaction(CHAT_THREAD_EVENTS_STORE, "readonly");
-      const index = tx.store.index(CHAT_THREAD_EVENTS_ORDER_INDEX);
-      const range = after
-        ? IDBKeyRange.bound(after, through, true)
-        : IDBKeyRange.upperBound(through);
-      const storedEvents = await index.getAll(range, EVENT_READ_PAGE_SIZE);
-      signal?.throwIfAborted();
-      return storedEvents.map(validateEvent);
-    },
-    null,
-    signal,
-  );
+  const db = await getDb();
+  signal?.throwIfAborted();
+  const tx = db.transaction(CHAT_THREAD_EVENTS_STORE, "readonly");
+  const index = tx.store.index(CHAT_THREAD_EVENTS_ORDER_INDEX);
+  const range = after
+    ? IDBKeyRange.bound(after, through, true)
+    : IDBKeyRange.upperBound(through);
+  const storedEvents = await index.getAll(range, EVENT_READ_PAGE_SIZE);
+  signal?.throwIfAborted();
+  return storedEvents.map(validateEvent);
 }
 
-function createReadStore(getDb: GetDb) {
+function createStrictReadStore(getDb: GetDb) {
   return {
     async readSnapshot(signal?: AbortSignal) {
-      return await chatIdbReadOr(
-        "threadEvents:readSnapshot",
-        async () => {
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const raw = await db
-            .transaction(CHAT_THREAD_SNAPSHOT_STORE, "readonly")
-            .store.get(SINGLETON_ID);
-          return validateSnapshot(raw);
-        },
-        null,
-        signal,
-      );
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const raw = await db
+        .transaction(CHAT_THREAD_SNAPSHOT_STORE, "readonly")
+        .store.get(SINGLETON_ID);
+      return validateSnapshot(raw);
     },
 
     async readEventLog(signal?: AbortSignal) {
@@ -188,41 +167,61 @@ function createReadStore(getDb: GetDb) {
   };
 }
 
-function createWriteStore(getDb: GetDb) {
+function createReadStore(getDb: GetDb) {
+  const strict = createStrictReadStore(getDb);
+  return {
+    async readSnapshot(signal?: AbortSignal) {
+      return await chatIdbReadOr(
+        "threadEvents:readSnapshot",
+        () => {
+          return strict.readSnapshot(signal);
+        },
+        null,
+        signal,
+      );
+    },
+    async readEventLog(signal?: AbortSignal) {
+      return await chatIdbReadOr(
+        "threadEvents:readEventLog",
+        () => {
+          return strict.readEventLog(signal);
+        },
+        emptyEventLog(),
+        signal,
+      );
+    },
+  };
+}
+
+function createStrictWriteStore(getDb: GetDb) {
   return {
     async replaceFromSnapshot(
       snapshot: ChatThreadSnapshotRecord,
       events: readonly ChatThreadEvent[],
       signal?: AbortSignal,
     ) {
-      await chatIdbWriteBestEffort(
-        "threadEvents:replaceFromSnapshot",
-        async () => {
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const tx = db.transaction(
-            [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
-            "readwrite",
-          );
-          await tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear();
-          const eventStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
-          const requests = events.map((event) => {
-            signal?.throwIfAborted();
-            return eventStore.put(event);
-          });
-          await Promise.all([
-            tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
-              id: SINGLETON_ID,
-              chatThreads: [...snapshot.chatThreads],
-              latestEventId: snapshot.latestEventId,
-              latestSeqId: snapshot.latestSeqId,
-            } satisfies StoredChatThreadSnapshot),
-            ...requests,
-            tx.done,
-          ]);
-        },
-        signal,
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction(
+        [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
+        "readwrite",
       );
+      await tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear();
+      const eventStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
+      const requests = events.map((event) => {
+        signal?.throwIfAborted();
+        return eventStore.put(event);
+      });
+      await Promise.all([
+        tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
+          id: SINGLETON_ID,
+          chatThreads: [...snapshot.chatThreads],
+          latestEventId: snapshot.latestEventId,
+          latestSeqId: snapshot.latestSeqId,
+        } satisfies StoredChatThreadSnapshot),
+        ...requests,
+        tx.done,
+      ]);
     },
 
     async upsertEvents(
@@ -232,43 +231,71 @@ function createWriteStore(getDb: GetDb) {
       if (events.length === 0) {
         return;
       }
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction(CHAT_THREAD_EVENTS_STORE, "readwrite");
+      const eventStore = tx.store;
+      const requests = events.map((event) => {
+        signal?.throwIfAborted();
+        return eventStore.put(event);
+      });
+      await Promise.all([...requests, tx.done]);
+    },
+
+    async clear(signal?: AbortSignal) {
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction(
+        [
+          CHAT_THREAD_SNAPSHOT_STORE,
+          CHAT_THREAD_EVENTS_STORE,
+          CHAT_THREAD_EVENT_SYNC_STORE,
+        ],
+        "readwrite",
+      );
+      await Promise.all([
+        tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).clear(),
+        tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear(),
+        tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE).clear(),
+      ]);
+      await tx.done;
+    },
+  };
+}
+
+function createWriteStore(getDb: GetDb) {
+  const strict = createStrictWriteStore(getDb);
+  return {
+    async replaceFromSnapshot(
+      snapshot: ChatThreadSnapshotRecord,
+      events: readonly ChatThreadEvent[],
+      signal?: AbortSignal,
+    ) {
       await chatIdbWriteBestEffort(
-        "threadEvents:upsertEvents",
-        async () => {
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const tx = db.transaction(CHAT_THREAD_EVENTS_STORE, "readwrite");
-          const eventStore = tx.store;
-          const requests = events.map((event) => {
-            signal?.throwIfAborted();
-            return eventStore.put(event);
-          });
-          await Promise.all([...requests, tx.done]);
+        "threadEvents:replaceFromSnapshot",
+        () => {
+          return strict.replaceFromSnapshot(snapshot, events, signal);
         },
         signal,
       );
     },
-
+    async upsertEvents(
+      events: readonly ChatThreadEvent[],
+      signal?: AbortSignal,
+    ) {
+      await chatIdbWriteBestEffort(
+        "threadEvents:upsertEvents",
+        () => {
+          return strict.upsertEvents(events, signal);
+        },
+        signal,
+      );
+    },
     async clear(signal?: AbortSignal) {
       await chatIdbWriteBestEffort(
         "threadEvents:clear",
-        async () => {
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const tx = db.transaction(
-            [
-              CHAT_THREAD_SNAPSHOT_STORE,
-              CHAT_THREAD_EVENTS_STORE,
-              CHAT_THREAD_EVENT_SYNC_STORE,
-            ],
-            "readwrite",
-          );
-          await Promise.all([
-            tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).clear(),
-            tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear(),
-            tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE).clear(),
-          ]);
-          await tx.done;
+        () => {
+          return strict.clear(signal);
         },
         signal,
       );
@@ -280,5 +307,12 @@ export function createIdbChatThreadEventStores(getDb: GetDb) {
   return Object.freeze({
     readStore: createReadStore(getDb),
     writeStore: createWriteStore(getDb),
+  });
+}
+
+export function createStrictIdbChatThreadEventStores(getDb: GetDb) {
+  return Object.freeze({
+    readStore: createStrictReadStore(getDb),
+    writeStore: createStrictWriteStore(getDb),
   });
 }

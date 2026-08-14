@@ -80,4 +80,5 @@ export enum FeatureSwitchKey {
   PresentationArtifactViewport = "presentationArtifactViewport",
   LatestWebsiteTemplates = "latestWebsiteTemplates",
   ChatConversationLocator = "chatConversationLocator",
+  SharedChatDatabase = "sharedChatDatabase",
 }

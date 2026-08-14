@@ -5,10 +5,12 @@ type ReceiveChatEventsCommand = Command<
   Promise<void>,
   [readonly ChatEvent[], AbortSignal]
 >;
+type SyncChatEventsCommand = Command<Promise<void>, [AbortSignal]>;
 
 interface ActiveChatEventSignals {
   readonly id: string;
   readonly receive$: ReceiveChatEventsCommand;
+  readonly sync$: SyncChatEventsCommand;
 }
 
 const activeChatEventSignals$ = state(
@@ -40,13 +42,17 @@ export const registerActiveChatEventSignals$ = command(
     { get, set },
     threadId: string,
     receive$: ReceiveChatEventsCommand,
+    sync$: SyncChatEventsCommand,
     signal: AbortSignal,
   ): void => {
     signal.throwIfAborted();
     const id = crypto.randomUUID();
     const current = get(activeChatEventSignals$);
     const next = new Map(current);
-    next.set(threadId, [...(current.get(threadId) ?? []), { id, receive$ }]);
+    next.set(threadId, [
+      ...(current.get(threadId) ?? []),
+      { id, receive$, sync$ },
+    ]);
     set(activeChatEventSignals$, next);
     signal.addEventListener(
       "abort",
@@ -68,6 +74,21 @@ export const receiveActiveChatEvents$ = command(
     await Promise.all(
       (get(activeChatEventSignals$).get(threadId) ?? []).map((registration) => {
         return set(registration.receive$, events, signal);
+      }),
+    );
+    signal.throwIfAborted();
+  },
+);
+
+export const syncActiveChatEvents$ = command(
+  async (
+    { get, set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await Promise.all(
+      (get(activeChatEventSignals$).get(threadId) ?? []).map((registration) => {
+        return set(registration.sync$, signal);
       }),
     );
     signal.throwIfAborted();
