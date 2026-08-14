@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import type {
   AgentEvent,
@@ -341,9 +341,9 @@ async function materializeRunOutputEvents(
 
     const acknowledgedAt = nowDate();
     const firstAssistantClaimWhere = and(
-      eq(zeroRuns.id, payload.runId),
-      isNotNull(zeroRuns.apiStartedAt),
-      isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
+      eq(agentRuns.id, payload.runId),
+      isNotNull(agentRuns.apiStartedAt),
+      isNull(agentRuns.firstAssistantEventAcknowledgedAt),
     );
     if (!firstAssistantClaimWhere) {
       throw new Error("First assistant acknowledgement predicate is empty");

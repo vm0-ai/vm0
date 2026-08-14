@@ -50,7 +50,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("set-run-autonomy-budget"),
     run_id: z.uuid(),
     autonomy_budget: z.int().min(0).max(10),
-    disable_bridge: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("read-run-autonomy-budget"),
@@ -66,16 +65,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     trigger_source: z.string(),
     prompt: z.string(),
     result_text: z.string(),
-  }),
-  z.object({
-    action: z.literal("measure-run-metadata-bridge-target-updates"),
-    run_id: z.uuid(),
-    autonomy_budget: z.int().min(0).max(10),
-  }),
-  z.object({
-    action: z.literal("verify-run-metadata-target-failure-rollback"),
-    run_id: z.uuid(),
-    autonomy_budget: z.int().min(0).max(10),
   }),
   z.object({
     action: z.literal("set-workflow-automation-autonomy-budget"),
@@ -228,10 +217,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
-  agent_autonomy_budget: z.int().min(0).max(10).nullable().optional(),
-  agent_run_update_count: z.int().nonnegative().optional(),
-  target_write_failed: z.boolean().optional(),
-  target_write_error_code: z.string().nullable().optional(),
   run_metadata_pair: z
     .object({
       agent_run: testRunMetadataSchema.nullable(),
