@@ -225,6 +225,7 @@ jobs:
         run: |
           shopt -s nullglob
           script_files=(
+            .github/actions/report-memory-peak/*.sh
             .github/scripts/*.sh
             .github/scripts/tests/*.sh
           )
@@ -246,6 +247,7 @@ jobs:
             .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
+            .github/actions/report-memory-peak/report.sh \
             .github/scripts/resolve-desktop-version-change.sh \
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
@@ -277,7 +279,9 @@ jobs:
             .github/scripts/tests/resolve-desktop-version-change-test.sh \
             .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/reconcile-runner-binary-groups-test.sh \
+            .github/scripts/tests/report-cgroup-memory-peak-test.sh \
             .github/scripts/tests/runner-lifecycle-lock-test.sh \
+            .github/scripts/tests/rust-ci-memory-workflow-test.sh \
             .github/scripts/tests/runner-lifecycle-ownership-workflow-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \

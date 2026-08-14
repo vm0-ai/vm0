@@ -1,0 +1,17 @@
+name: "Report Peak Memory"
+description: "Report the current job cgroup peak memory to the log and job summary"
+
+inputs:
+  job-label:
+    description: "Label shown in the memory report; defaults to the GitHub job ID"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Read cgroup peak memory
+      shell: bash
+      env:
+        VM0_MEMORY_REPORT_LABEL: ${{ inputs.job-label }}
+      run: bash "$GITHUB_ACTION_PATH/report.sh"
