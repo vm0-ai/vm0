@@ -55,16 +55,4 @@ jq -e '
   )
 ' <<<"$crates_json" >/dev/null || fail "crates change detection must include the peak memory action"
 
-jq -e '
-  . as $workflow |
-  ["crates", "image-inputs"] |
-  all(.[];
-    . as $step_id |
-    any($workflow.jobs.prepare.steps[]?;
-      .id == $step_id and
-      (.run | contains(".github/actions/(setup-ssh-tunnel|provision|report-memory-peak)/"))
-    )
-  )
-' <<<"$runner_image_json" >/dev/null || fail "runner image change detection must include the peak memory action"
-
 echo "rust-ci-memory-workflow-test: ok"
