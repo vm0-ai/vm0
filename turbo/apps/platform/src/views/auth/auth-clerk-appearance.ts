@@ -1,5 +1,6 @@
 import type { SignIn } from "@clerk/react";
 import type { ComponentProps } from "react";
+import type { BrandName } from "../../signals/branding.ts";
 import {
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
@@ -7,13 +8,19 @@ import {
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 
-export function getClerkAppearance(theme: "light" | "dark"): ClerkAppearance {
+export function getClerkAppearance(
+  theme: "light" | "dark",
+  brandName: BrandName,
+): ClerkAppearance {
   return {
-    options: {
-      logoImageUrl:
-        theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg,
-      logoPlacement: "inside",
-    },
+    options:
+      brandName === "Okou"
+        ? { logoPlacement: "none" }
+        : {
+            logoImageUrl:
+              theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg,
+            logoPlacement: "inside",
+          },
     variables: {
       colorBackground: "hsl(var(--card))",
       colorForeground: "hsl(var(--card-foreground))",

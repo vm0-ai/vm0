@@ -327,7 +327,10 @@ export const setConcurrencySubscriptionQuantity$ = command(
   },
 );
 export const openConcurrencyPurchaseDialog$ = command(({ set }) => {
-  set(internalConcurrencySubscriptionQuantity$, null);
+  set(
+    internalConcurrencySubscriptionQuantity$,
+    CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN,
+  );
   set(internalConcurrencyPurchaseDialogOpen$, true);
 });
 export const closeConcurrencyPurchaseDialog$ = command(({ set }) => {

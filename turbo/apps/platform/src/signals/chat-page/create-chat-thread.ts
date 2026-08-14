@@ -3928,10 +3928,13 @@ function createChatPanelSignalsWithDraft(
     ...artifact,
   };
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
-  const locator = createChatConversationLocatorSignals({
-    threadId,
-    scrollContainer$: messages.scroll.scrollContainer$,
-  });
+  const locator = createChatConversationLocatorSignals(
+    {
+      threadId,
+      scrollContainer$: messages.scroll.scrollContainer$,
+    },
+    signal,
+  );
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,

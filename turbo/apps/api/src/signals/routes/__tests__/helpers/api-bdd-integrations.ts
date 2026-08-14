@@ -73,7 +73,7 @@ import { zeroIntegrationsSlackMessageRoutes } from "../../zero-integrations-slac
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "../../zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "../../zero-integrations-slack-upload-init";
 import { zeroIntegrationsTelegramRoutes } from "../../zero-integrations-telegram";
-import { zeroIntegrationsTelegramMessageRoutes } from "../../zero-integrations-telegram-message";
+import { integrationsTelegramMessageRoutes } from "../../integrations-telegram-message";
 import { zeroIntegrationsTelegramUploadCompleteRoutes } from "../../zero-integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
@@ -102,7 +102,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
   ...zeroIntegrationsSlackRoutes,
-  ...zeroIntegrationsTelegramMessageRoutes,
+  ...integrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
   ...zeroIntegrationsTelegramRoutes,
@@ -1579,7 +1579,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramMessageRoutes,
+        routes: integrationsTelegramMessageRoutes,
       })(integrationsTelegramMessageContract);
       return await accept(
         client.sendMessage({
@@ -1597,7 +1597,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramMessageRoutes,
+        routes: integrationsTelegramMessageRoutes,
       })(integrationsTelegramMessageContract);
       return await accept(
         client.sendMessage({

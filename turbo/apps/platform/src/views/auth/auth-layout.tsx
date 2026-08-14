@@ -6,6 +6,7 @@ import {
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../lib/static-assets.ts";
+import type { AuthBrandContext } from "../../signals/auth.ts";
 import { setTheme$, theme$ } from "../../signals/theme.ts";
 
 const CLERK_CSS = `
@@ -343,10 +344,11 @@ a[class*="resendCode"] {
 `;
 
 interface AuthLayoutProps {
+  authBrand: AuthBrandContext;
   children: ReactNode;
 }
 
-export function AuthLayout({ children }: AuthLayoutProps) {
+export function AuthLayout({ authBrand, children }: AuthLayoutProps) {
   const { t } = useTranslation();
   const theme = useGet(theme$);
   const setTheme = useSet(setTheme$);
@@ -387,16 +389,27 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         </button>
 
         {/* Logo Header */}
-        <a href="/" className="absolute left-6 top-6 flex items-center gap-2">
-          <img
-            src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}
-            alt={t(($) => {
-              return $.appShell.logoAlt;
-            })}
-            crossOrigin="anonymous"
-            width={82}
-            height={20}
-          />
+        <a
+          href={authBrand.homeUrl}
+          className="absolute left-6 top-6 flex items-center gap-2"
+        >
+          {authBrand.brandName === "Okou" ? (
+            <span className="text-xl font-semibold tracking-tight">
+              {authBrand.brandName}
+            </span>
+          ) : (
+            <img
+              src={
+                theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg
+              }
+              alt={t(($) => {
+                return $.appShell.logoAlt;
+              })}
+              crossOrigin="anonymous"
+              width={82}
+              height={20}
+            />
+          )}
         </a>
 
         <div className="relative z-10 m-auto flex w-full min-w-0 justify-center">

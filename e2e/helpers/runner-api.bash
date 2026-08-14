@@ -473,6 +473,7 @@ runner_e2e_wait_for_firewall_log() {
                     .firewall_name == $firewallName and
                     .host == $host and
                     .action == "ALLOW" and
+                    (.firewall_error // null) == null and
                     (((.auth_resolved_secrets // []) | sort) == ($expectedSecrets | sort)) and
                     ($expectedUrlRewrite == "ignore" or
                         .auth_url_rewrite == ($expectedUrlRewrite == "true")))' \
