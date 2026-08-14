@@ -3445,6 +3445,7 @@ describe("chat event action cards", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(
@@ -3844,6 +3845,7 @@ describe("chat event action cards", () => {
           modelProviderId: null,
           selectedModel: null,
           preferPersonalProvider: false,
+          visibility: "public",
         });
       },
     );

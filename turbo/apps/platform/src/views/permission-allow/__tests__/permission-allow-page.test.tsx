@@ -87,6 +87,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(
@@ -211,6 +212,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(
@@ -265,6 +267,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -341,6 +344,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -393,6 +397,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -443,6 +448,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -493,6 +499,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(
@@ -562,6 +569,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -615,6 +623,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -692,6 +701,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -741,6 +751,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -784,6 +795,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {

@@ -2817,6 +2817,7 @@ describe("chat composer models", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {

@@ -193,6 +193,7 @@ export const apiAgentsHandlers = [
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public",
     });
   }),
 

@@ -55,7 +55,7 @@ function mockAgentsPage(team: TeamComposeItem[]): void {
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
-      visibility: agent.visibility,
+      visibility: agent.visibility ?? "public",
     });
   });
 }
@@ -239,7 +239,7 @@ describe("zero jobs page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
-        visibility: agent.visibility,
+        visibility: agent.visibility ?? "public",
       });
     });
     context.mocks.api(
@@ -427,7 +427,7 @@ describe("zero jobs page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
-        visibility: agent.visibility,
+        visibility: agent.visibility ?? "public",
       });
     });
     context.mocks.api(

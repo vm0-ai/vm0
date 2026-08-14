@@ -504,6 +504,7 @@ function mockTeamAPIs({
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public",
     });
   });
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
@@ -1127,6 +1128,7 @@ describe("team page navigation", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
 
@@ -1209,6 +1211,7 @@ describe("team page navigation", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
 

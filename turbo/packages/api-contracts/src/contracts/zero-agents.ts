@@ -20,7 +20,7 @@ export const zeroAgentResponseSchema = z.object({
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),
   preferPersonalProvider: z.boolean().default(false),
-  visibility: zeroAgentVisibilitySchema.optional(),
+  visibility: zeroAgentVisibilitySchema,
 });
 
 /**
