@@ -9,7 +9,7 @@ import {
   orgUsageAllowanceWindows,
 } from "@okouai/db/schema/org-usage-allowance";
 import { command } from "ccstate";
-import { and, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -251,9 +251,7 @@ interface AtomUsagePackCreditGrantInvoiceDetails {
   readonly kind: "usagePackCredits";
   readonly orgId: string;
   readonly userId: string;
-  readonly atomPlanInvoiceId: string;
-  readonly currentPeriodStart: Date;
-  readonly currentPeriodEnd: Date;
+  readonly creditsExpiresAt: Date;
   readonly customerId: string;
   readonly credits: number;
 }
@@ -694,36 +692,25 @@ function atomGrantCreditExpiresAt(grantExpiresAt: Date | null): Date {
   return autoRechargeNeverExpiresAt();
 }
 
-function atomUsagePackGrantPeriod(
+function atomUsagePackGrantExpiresAt(
   metadata: Readonly<Record<string, string>>,
   line: InvoiceLineInput,
-): {
-  readonly currentPeriodStart: Date;
-  readonly currentPeriodEnd: Date;
-} | null {
-  const currentPeriodStart = metadata.currentPeriodStart
-    ? parseMetadataDate(metadata.currentPeriodStart)
-    : null;
-  const currentPeriodEnd = metadata.currentPeriodEnd
-    ? parseMetadataDate(metadata.currentPeriodEnd)
-    : null;
+): Date | null {
   const creditsExpiresAt = metadata.creditsExpiresAt
     ? parseMetadataDate(metadata.creditsExpiresAt)
     : null;
   if (
-    !currentPeriodStart ||
-    !currentPeriodEnd ||
     !creditsExpiresAt ||
-    currentPeriodEnd <= currentPeriodStart ||
-    creditsExpiresAt.getTime() !== currentPeriodEnd.getTime() ||
+    creditsExpiresAt.getTime() <= now() ||
     typeof line.period.start !== "number" ||
-    line.period.start * 1000 !== currentPeriodStart.getTime() ||
-    line.period.end * 1000 !== currentPeriodEnd.getTime()
+    typeof line.period.end !== "number" ||
+    line.period.end <= line.period.start ||
+    line.period.end * 1000 !== creditsExpiresAt.getTime()
   ) {
     return null;
   }
 
-  return { currentPeriodStart, currentPeriodEnd };
+  return creditsExpiresAt;
 }
 
 function atomUsagePackCreditGrantInvoiceDetails(
@@ -734,24 +721,22 @@ function atomUsagePackCreditGrantInvoiceDetails(
   const orgId = metadata.orgId;
   const customerId = customerIdFromInvoice(invoice);
   const credits = Number(metadata.creditsAmount);
-  const atomPlanInvoiceId = metadata.atomPlanInvoiceId;
-  const period = atomUsagePackGrantPeriod(metadata, line);
+  const creditsExpiresAt = atomUsagePackGrantExpiresAt(metadata, line);
   if (
     metadata.source !== "atom_usage_pack_credits" ||
     !orgId ||
     !metadata.userId ||
-    !atomPlanInvoiceId ||
     !customerId ||
     !Number.isSafeInteger(credits) ||
     credits <= 0 ||
-    !period
+    !creditsExpiresAt
   ) {
     L.warn("atom usage pack credit grant invoice has invalid metadata", {
       invoiceId: invoice.id,
       hasOrgId: Boolean(orgId),
       hasUserId: Boolean(metadata.userId),
       creditsAmount: metadata.creditsAmount ?? null,
-      atomPlanInvoiceId: atomPlanInvoiceId ?? null,
+      creditsExpiresAt: metadata.creditsExpiresAt ?? null,
     });
     return null;
   }
@@ -760,9 +745,7 @@ function atomUsagePackCreditGrantInvoiceDetails(
     kind: "usagePackCredits",
     orgId,
     userId: metadata.userId,
-    atomPlanInvoiceId,
-    currentPeriodStart: period.currentPeriodStart,
-    currentPeriodEnd: period.currentPeriodEnd,
+    creditsExpiresAt,
     customerId,
     credits,
   };
@@ -1521,14 +1504,8 @@ async function processAtomUsagePackCreditGrantInvoicePaid(
   details: AtomUsagePackCreditGrantInvoiceDetails,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const [planGrant] = await tx
+    const [activePlan] = await tx
       .select({
-        currentPeriodStart: orgPlanEntitlements.currentPeriodStart,
-        currentPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
-        expiresAt: orgPlanEntitlements.expiresAt,
-        sourceMetadata: orgPlanEntitlements.sourceMetadata,
-        memberInviteUsagePackRequired:
-          orgPlanEntitlements.memberInviteUsagePackRequired,
         stripeCustomerId: orgMetadata.stripeCustomerId,
       })
       .from(orgPlanEntitlements)
@@ -1536,36 +1513,19 @@ async function processAtomUsagePackCreditGrantInvoicePaid(
       .where(
         and(
           eq(orgPlanEntitlements.orgId, details.orgId),
-          eq(orgPlanEntitlements.source, "stripe_atom_grant"),
           inArray(orgPlanEntitlements.planKey, ["pro", "team"]),
           eq(orgPlanEntitlements.status, "active"),
-          eq(
-            orgPlanEntitlements.currentPeriodStart,
-            details.currentPeriodStart,
+          or(
+            isNull(orgPlanEntitlements.expiresAt),
+            gt(orgPlanEntitlements.expiresAt, nowDate()),
           ),
-          eq(orgPlanEntitlements.currentPeriodEnd, details.currentPeriodEnd),
-          eq(orgPlanEntitlements.expiresAt, details.currentPeriodEnd),
-          gt(orgPlanEntitlements.expiresAt, nowDate()),
         ),
       )
       .for("update")
       .limit(1);
-    if (
-      !planGrant?.currentPeriodStart ||
-      !planGrant.currentPeriodEnd ||
-      !planGrant.expiresAt ||
-      planGrant.currentPeriodStart.getTime() !==
-        details.currentPeriodStart.getTime() ||
-      planGrant.currentPeriodEnd.getTime() !==
-        details.currentPeriodEnd.getTime() ||
-      planGrant.expiresAt.getTime() !== details.currentPeriodEnd.getTime() ||
-      planGrant.stripeCustomerId !== details.customerId ||
-      !planGrant.memberInviteUsagePackRequired ||
-      planGrant.sourceMetadata.planVersion !== "usagePack" ||
-      planGrant.sourceMetadata.atomPlanInvoiceId !== details.atomPlanInvoiceId
-    ) {
+    if (!activePlan || activePlan.stripeCustomerId !== details.customerId) {
       throw new Error(
-        `Atom usage pack grant ${invoice.id} does not match an active one-time Pro or Team usage-pack plan grant`,
+        `Atom usage pack grant ${invoice.id} requires an active Pro or Team plan`,
       );
     }
 
@@ -1575,7 +1535,7 @@ async function processAtomUsagePackCreditGrantInvoicePaid(
       grantType: "bonus",
       idempotencyKey: `atom-usage-pack:${invoice.id}:${details.userId}`,
       amount: details.credits,
-      expiresAt: details.currentPeriodEnd,
+      expiresAt: details.creditsExpiresAt,
     });
   });
 }
@@ -1790,8 +1750,7 @@ async function handleAtomGrantInvoicePaid(
       orgId: details.orgId,
       userId: details.userId,
       credits: details.credits,
-      atomPlanInvoiceId: details.atomPlanInvoiceId,
-      currentPeriodEnd: details.currentPeriodEnd.toISOString(),
+      creditsExpiresAt: details.creditsExpiresAt.toISOString(),
     });
     return { handled: true, drainOrgId: details.orgId };
   }

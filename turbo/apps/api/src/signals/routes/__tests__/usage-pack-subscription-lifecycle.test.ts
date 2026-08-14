@@ -551,7 +551,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
     ]);
   });
 
-  it("grants a one-time Atom usage-pack plan and member credits without a subscription", async () => {
+  it("grants independent one-time Atom member credits for Atom and subscribed plans", async () => {
     const orgId = `org_atom_usage_pack_${randomUUID()}`;
     const customerId = `cus_${randomUUID()}`;
     const subscriptionId = `unused_sub_${randomUUID()}`;
@@ -562,6 +562,10 @@ describe("usage pack subscription Stripe lifecycle", () => {
     const grantPeriod = {
       start: paidPeriod.start,
       end: paidPeriod.start + 7 * 86_400,
+    };
+    const creditPeriod = {
+      start: paidPeriod.start,
+      end: paidPeriod.start + 3 * 86_400,
     };
     const fixture: UsagePackLifecycleFixture = {
       orgId,
@@ -618,6 +622,38 @@ describe("usage pack subscription Stripe lifecycle", () => {
         ],
       },
     };
+    const grantInvoiceId = `in_atom_member_pack_${randomUUID()}`;
+    const grantInvoice = {
+      id: grantInvoiceId,
+      customer: customerId,
+      subtotal: 0,
+      metadata: {
+        type: "atom_grant",
+        purpose: "atom_grant",
+        source: "atom_usage_pack_credits",
+        grantType: "usage_pack_credits",
+        orgId,
+        userId: grantedUserId,
+        creditsAmount: "6000",
+        creditsExpiresAt: new Date(creditPeriod.end * 1000).toISOString(),
+      },
+      parent: null,
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: `il_${randomUUID()}`,
+            quantity: 1,
+            price: { id: TEST_PRICE_ATOM_GRANT },
+            period: creditPeriod,
+            parent: { type: "invoice_item_details" },
+          },
+        ],
+      },
+    };
+    await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 500);
+    await expect(grantRows(fixture)).resolves.toStrictEqual([]);
+
     await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 200);
     await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 200);
 
@@ -644,38 +680,6 @@ describe("usage pack subscription Stripe lifecycle", () => {
     });
     expect(atomBillingStatus.canRestorePlan).toBeFalsy();
 
-    const grantInvoiceId = `in_atom_member_pack_${randomUUID()}`;
-    const grantInvoice = {
-      id: grantInvoiceId,
-      customer: customerId,
-      subtotal: 0,
-      metadata: {
-        type: "atom_grant",
-        purpose: "atom_grant",
-        source: "atom_usage_pack_credits",
-        grantType: "usage_pack_credits",
-        orgId,
-        userId: grantedUserId,
-        creditsAmount: "6000",
-        atomPlanInvoiceId: planInvoiceId,
-        currentPeriodStart: new Date(paidPeriod.start * 1000).toISOString(),
-        currentPeriodEnd: new Date(grantPeriod.end * 1000).toISOString(),
-        creditsExpiresAt: new Date(grantPeriod.end * 1000).toISOString(),
-      },
-      parent: null,
-      lines: {
-        has_more: false,
-        data: [
-          {
-            id: `il_${randomUUID()}`,
-            quantity: 1,
-            price: { id: TEST_PRICE_ATOM_GRANT },
-            period: grantPeriod,
-            parent: { type: "invoice_item_details" },
-          },
-        ],
-      },
-    };
     await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 200);
     await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 200);
 
@@ -686,25 +690,12 @@ describe("usage pack subscription Stripe lifecycle", () => {
         userId: grantedUserId,
         grantType: "bonus",
         originalAmount: 6000,
-        expiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+        expiresAt: new Date(creditPeriod.end * 1000).toISOString(),
       },
     ]);
     expect(grantedState.org?.credits).toBe(0);
     expect(grantedState.legacyCredits).toStrictEqual([]);
     expect(grantedState.fulfillmentInvoiceIds).toStrictEqual([]);
-
-    await postStripeEvent(
-      stripeEvent("invoice.paid", {
-        ...grantInvoice,
-        id: `in_atom_wrong_plan_${randomUUID()}`,
-        metadata: {
-          ...grantInvoice.metadata,
-          atomPlanInvoiceId: `in_other_${randomUUID()}`,
-        },
-      }),
-      500,
-    );
-    await expect(grantRows(fixture)).resolves.toHaveLength(1);
 
     const checkoutSessionId = `cs_${randomUUID()}`;
     const seededSubscription = await usagePackStateAction({
@@ -774,6 +765,45 @@ describe("usage pack subscription Stripe lifecycle", () => {
     expect(subscriptionBillingStatus.hasSubscription).toBeTruthy();
     expect(subscriptionBillingStatus.scheduledChange).toBeNull();
     expect(subscriptionBillingStatus.canRestorePlan).toBeFalsy();
+
+    const subscribedCreditPeriod = {
+      start: subscriptionPeriod.start,
+      end: subscriptionPeriod.start + 15 * 86_400,
+    };
+    await postStripeEvent(
+      stripeEvent("invoice.paid", {
+        ...grantInvoice,
+        id: `in_atom_subscribed_member_pack_${randomUUID()}`,
+        metadata: {
+          ...grantInvoice.metadata,
+          creditsAmount: "7000",
+          creditsExpiresAt: new Date(
+            subscribedCreditPeriod.end * 1000,
+          ).toISOString(),
+        },
+        lines: {
+          has_more: false,
+          data: [
+            {
+              ...grantInvoice.lines.data[0],
+              id: `il_${randomUUID()}`,
+              period: subscribedCreditPeriod,
+            },
+          ],
+        },
+      }),
+      200,
+    );
+    await expect(grantRows(subscribedFixture)).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: grantedUserId,
+          grantType: "bonus",
+          originalAmount: 7000,
+          expiresAt: new Date(subscribedCreditPeriod.end * 1000).toISOString(),
+        }),
+      ]),
+    );
   });
 
   it("retries a one-time Atom usage-pack grant after the old Team subscription is deleted", async () => {
