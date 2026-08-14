@@ -8,6 +8,10 @@ import {
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import {
+  readConnectorCredentialStorageState,
+  seedConnectorStorageRow,
+} from "./helpers/connector-credential-storage-state";
+import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
@@ -21,11 +25,12 @@ interface AuthenticatedFixture {
   readonly userId: string;
 }
 
-type ConnectorSlugToCleanUp = "openai" | "gitlab";
+type ConnectorSlugToCleanUp = "openai" | "gitlab" | "removed-connector";
 
 const CONNECTOR_SLUGS_TO_CLEAN_UP: readonly ConnectorSlugToCleanUp[] = [
   "openai",
   "gitlab",
+  "removed-connector",
 ];
 
 function authHeaders() {
@@ -200,6 +205,27 @@ describe("DELETE /api/zero/connectors/:connectorSlug", () => {
     expect(response.body).toBeUndefined();
     const readAfterDelete = await readMissingConnector(fixture, "gitlab");
     expect(readAfterDelete.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("deletes local state when the connector runtime method is unavailable", async () => {
+    const fixture = await track(seedFixture());
+    await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "removed-connector",
+      authMethod: "unavailable-method",
+      storageVersion: 1,
+    });
+
+    const response = await deleteConnector(fixture, "removed-connector", [204]);
+
+    expect(response.body).toBeUndefined();
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "removed-connector",
+    });
+    expect(storageState.connector).toBeNull();
   });
 
   it("deletes only the requested connector slug", async () => {

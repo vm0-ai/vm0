@@ -9,6 +9,7 @@ import type {
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
 
+import { logger } from "../../lib/log";
 import { db$ } from "../external/db";
 import {
   getConnectorRuntimeConnector,
@@ -19,10 +20,12 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 
+const log = logger("api:connector-action-resolver");
+
 type ConnectorCatalogGrantKind =
   PublicConnectorCatalogAuthMethodDetail["grantKind"];
 
-export type ConnectorSlugResolutionFailure =
+type ConnectorSlugResolutionFailure =
   | { readonly ok: false; readonly reason: "unknown_connector" }
   | {
       readonly ok: false;
@@ -120,6 +123,9 @@ function resolvedSlug(args: {
       return method.executable;
     })
   ) {
+    log.warn("Connector runtime capability is unavailable", {
+      connectorSlug: args.connectorSlug,
+    });
     return { ok: false, reason: "missing_executable_capability" };
   }
   return {
@@ -146,6 +152,10 @@ function executableMethod(args: {
     runtimeMethod === undefined ||
     runtimeMethod.method.grant.kind !== args.catalogMethod.grantKind
   ) {
+    log.warn("Connector auth method runtime capability is unavailable", {
+      connectorSlug: args.resolvedSlug.connectorSlug,
+      authMethodId: args.authMethodId,
+    });
     return { ok: false, reason: "missing_executable_capability" };
   }
   return {

@@ -64,8 +64,10 @@ import {
   deleteOrgUsageData,
   deleteUserUsageData,
 } from "./usage-event-cleanup.service";
-import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
-import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  deleteZeroConnectorLocalState$,
+  loadStoredConnectorRuntimeSnapshot,
+} from "./zero-connector-data.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
@@ -379,7 +381,7 @@ const revokeOrgConnectorTokens$ = command(
     orgId: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const snapshot = await loadStoredConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
       .select({
@@ -423,7 +425,7 @@ const revokeUserConnectorTokens$ = command(
     userId: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const snapshot = await loadStoredConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
       .select({

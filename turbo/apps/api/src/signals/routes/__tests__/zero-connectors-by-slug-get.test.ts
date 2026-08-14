@@ -11,6 +11,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroConnectorsRoutes } from "../zero-connectors";
@@ -162,6 +163,32 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
       authMethod: "api-token",
       connectionStatus: "connected",
     });
+  });
+
+  it("returns 404 when the stored connector runtime method is unavailable", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "openai",
+      authMethod: "unavailable-method",
+      storageVersion: 1,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
+    const response = await accept(
+      client.get({
+        params: { connectorSlug: "openai" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("allows access with a sandbox JWT carrying connector:read capability", async () => {
