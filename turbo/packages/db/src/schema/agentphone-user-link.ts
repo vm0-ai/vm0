@@ -7,6 +7,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 /**
  * Official shared AgentPhone user links.
@@ -26,6 +27,10 @@ export const agentphoneUserLinks = pgTable(
     // version has drained, and every transition invariant remains valid.
     legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

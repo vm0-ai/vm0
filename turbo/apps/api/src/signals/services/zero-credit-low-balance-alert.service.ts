@@ -5,6 +5,8 @@ import { orgCache } from "@okouai/db/schema/org-cache";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { users } from "@okouai/db/schema/user";
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -17,6 +19,7 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import {
   buildOneClickUnsubscribeUrl,
+  buildTeamFromAddress,
   buildUnsubscribeHeaders,
   buildUnsubscribeUrl,
   CREDIT_LOW_BALANCE_EMAIL_SUBJECT,
@@ -30,16 +33,15 @@ export const LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS = 5000;
 
 const L = logger("CreditLowBalanceAlert");
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
-const LOW_CREDIT_EMAIL_FROM_ADDRESS = "VM0 Team <support@vm0.ai>";
-
-function billingCreditsUrl(): string {
-  return `${env("APP_URL").replace(/\/$/, "")}/?settings=billing&billingView=credits`;
+function billingCreditsUrl(publicBrand: PublicBrand): string {
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/?settings=billing&billingView=credits`;
 }
 
 export interface CreditLowBalanceAlertArgs {
   readonly orgId: string;
   readonly remainingCredits: number;
   readonly thresholdCredits: number;
+  readonly publicBrand?: PublicBrand;
 }
 
 interface Recipient {
@@ -289,11 +291,15 @@ export const enqueueCreditLowBalanceAlert$ = command(
 
     const orgName = await orgDisplayName(db, args.orgId);
     signal.throwIfAborted();
-    const billingUrl = billingCreditsUrl();
+    const publicBrand = args.publicBrand ?? "vm0";
+    const billingUrl = billingCreditsUrl(publicBrand);
 
     await db.insert(emailOutbox).values(
       deliverableRecipients.map((recipient) => {
-        const unsubscribeUrl = buildUnsubscribeUrl(recipient.userId);
+        const unsubscribeUrl = buildUnsubscribeUrl(
+          recipient.userId,
+          publicBrand,
+        );
         const template = {
           template: "credit-low-balance",
           props: {
@@ -305,13 +311,14 @@ export const enqueueCreditLowBalanceAlert$ = command(
           },
         } satisfies EmailTemplate;
         return {
-          fromAddress: LOW_CREDIT_EMAIL_FROM_ADDRESS,
+          fromAddress: buildTeamFromAddress("support", publicBrand),
           toAddresses: recipient.email,
           ccAddresses: null,
           subject: CREDIT_LOW_BALANCE_EMAIL_SUBJECT,
+          publicBrand,
           replyTo: null,
           headers: buildUnsubscribeHeaders(
-            buildOneClickUnsubscribeUrl(recipient.userId),
+            buildOneClickUnsubscribeUrl(recipient.userId, publicBrand),
           ),
           template,
           status: "pending",

@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { setResHeader$ } from "../context/hono";
+import { publicBrand$, setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
   createSharedThread$,
@@ -38,6 +38,7 @@ const sharedThreadTooLarge = Object.freeze({
 const createSharedThreadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const body = await get(createBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -52,6 +53,7 @@ const createSharedThreadInner$ = command(
         userId: auth.userId,
         threadId: params.threadId,
         eventIds: body.data.eventIds,
+        publicBrand,
       },
       signal,
     );

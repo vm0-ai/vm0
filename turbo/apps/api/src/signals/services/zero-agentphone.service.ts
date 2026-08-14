@@ -1,5 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { command } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
   getCanonicalModelDisplayName,
@@ -277,6 +279,7 @@ export function buildAgentPhoneConnectUrl(params: {
   readonly agentphoneAgentId: string;
   readonly channel: AgentPhoneChannel;
   readonly secret: string;
+  readonly publicBrand?: PublicBrand;
 }): string {
   const timestamp = Math.floor(now() / 1000);
   const phoneHandle = normalizeAgentPhoneHandle(
@@ -296,7 +299,7 @@ export function buildAgentPhoneConnectUrl(params: {
     }),
     channel: params.channel,
   });
-  return `${env("APP_URL").replace(/\/$/u, "")}/agentphone/connect?${query.toString()}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), params.publicBrand ?? "vm0")}/agentphone/connect?${query.toString()}`;
 }
 
 export async function linkAgentPhoneUser(
@@ -306,6 +309,7 @@ export async function linkAgentPhoneUser(
     readonly channel: AgentPhoneChannel;
     readonly userId: string;
     readonly orgId: string;
+    readonly publicBrand?: PublicBrand;
   },
 ): Promise<LinkAgentPhoneUserResult> {
   const phoneHandle = normalizeAgentPhoneHandle(
@@ -330,6 +334,7 @@ export async function linkAgentPhoneUser(
           existingPhoneLink,
           phoneHandle,
           params.channel,
+          params.publicBrand,
         ),
       };
     }
@@ -361,6 +366,7 @@ export async function linkAgentPhoneUser(
           existingUserOrgLink,
           phoneHandle,
           params.channel,
+          params.publicBrand,
         ),
       };
     }
@@ -379,6 +385,7 @@ export async function linkAgentPhoneUser(
       userId: params.userId,
       legacyUserId: params.userId,
       orgId: params.orgId,
+      publicBrand: params.publicBrand ?? "vm0",
     })
     .onConflictDoNothing()
     .returning();

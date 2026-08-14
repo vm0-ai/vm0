@@ -69,15 +69,15 @@ const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
-  "Please connect your account to use Okou in this Teams workspace.";
+  "Please connect your account to use Zero in this Teams workspace.";
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "Please connect your account to use Okou in this Teams workspace.";
+  "Please connect your account to use Zero in this Teams workspace.";
 const TEAMS_WELCOME_TEXT = [
-  "Hi, I'm Okou. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+  "Hi, I'm Zero. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
   "",
-  "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
+  "To get started, use `connect` to link this Teams workspace to VM0. An org admin may need to complete workspace setup first.",
   "",
-  "Commands: `help`, `connect`, `disconnect`, `switch`, `model`. Mention `@Okou` with a task or send a DM to work privately.",
+  "Commands: `help`, `connect`, `disconnect`, `switch`, `model`. Mention `@Zero` with a task or send a DM to work privately.",
 ].join("\n");
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
@@ -1258,7 +1258,7 @@ describe("POST /api/zero/teams/bot", () => {
       body: {
         type: "message",
         text: expect.stringContaining(
-          "<at>Ada Lovelace</at> added Okou to this Teams workspace.",
+          "<at>Ada Lovelace</at> added Zero to this Teams workspace.",
         ),
         textFormat: "markdown",
         entities: [
@@ -1422,10 +1422,10 @@ describe("POST /api/zero/teams/bot", () => {
       greetingActivityId,
     ]);
     expect(outboundRequests[0]?.body).toMatchObject({
-      text: expect.stringContaining("Okou Teams Bot Help"),
+      text: expect.stringContaining("Zero Teams Bot Help"),
     });
     expect(outboundRequests[2]?.body).toMatchObject({
-      text: expect.stringContaining("Okou Teams Bot Help"),
+      text: expect.stringContaining("Zero Teams Bot Help"),
     });
     expect(outboundRequests[3]?.body).toMatchObject({
       text: TEAMS_WELCOME_TEXT,
@@ -2046,7 +2046,7 @@ describe("POST /api/zero/teams/bot", () => {
     ]);
     expect(outboundRequests[0]?.body).toMatchObject({
       type: "message",
-      text: expect.stringContaining("Okou Teams Bot Help"),
+      text: expect.stringContaining("Zero Teams Bot Help"),
     });
     expect(outboundRequests[1]?.body).toMatchObject({
       type: "message",

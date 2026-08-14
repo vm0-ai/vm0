@@ -4624,10 +4624,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "Diese geteilte Unterhaltung existiert nicht.",
     "notFoundTitle": "Geteilte Unterhaltung nicht gefunden",
-    "tryOkou": "Okou ausprobieren"
+    "tryOkou": "{{assistantName}} ausprobieren"
   },
   "usage": {
     "displayNames": {

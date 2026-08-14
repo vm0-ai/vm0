@@ -6,6 +6,8 @@ import {
 } from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -79,7 +81,10 @@ function isAllowedSourceHost(hostname: string): boolean {
 }
 
 /** Only https links into Gmail, Calendar, GitHub, or the vm0 app survive. */
-function sanitizeSourceUrl(url: string | undefined): string | undefined {
+function sanitizeSourceUrl(
+  url: string | undefined,
+  publicBrand: PublicBrand,
+): string | undefined {
   if (!url) {
     return undefined;
   }
@@ -87,7 +92,7 @@ function sanitizeSourceUrl(url: string | undefined): string | undefined {
   if (!parsed || parsed.protocol !== "https:") {
     return undefined;
   }
-  const app = safeUrlParse(appUrl());
+  const app = safeUrlParse(appUrl(publicBrand));
   if (app && parsed.origin === app.origin) {
     return url;
   }
@@ -107,8 +112,8 @@ function morningBriefDateLabel(briefDate: string): string {
   }).format(new Date(`${briefDate}T00:00:00Z`));
 }
 
-function appUrl(): string {
-  return env("APP_URL");
+function appUrl(publicBrand: PublicBrand): string {
+  return appUrlForPublicBrand(env("APP_URL"), publicBrand);
 }
 
 async function markDelivery(
@@ -171,7 +176,10 @@ async function enqueueMorningBriefEmail(
   userEmail: string,
 ): Promise<void> {
   const [schedule] = await db
-    .select({ chatThreadId: morningBriefSchedules.chatThreadId })
+    .select({
+      chatThreadId: morningBriefSchedules.chatThreadId,
+      publicBrand: morningBriefSchedules.publicBrand,
+    })
     .from(morningBriefSchedules)
     .where(
       and(
@@ -182,20 +190,30 @@ async function enqueueMorningBriefEmail(
     .limit(1);
 
   const dateLabel = morningBriefDateLabel(delivery.briefDate);
+  const publicBrand = schedule?.publicBrand ?? "vm0";
   const manageUrl = buildMorningBriefUnsubscribePageUrl(
     delivery.orgId,
     delivery.userId,
+    publicBrand,
   );
   const continueUrl = schedule?.chatThreadId
-    ? `${appUrl()}/chats/${schedule.chatThreadId}`
-    : appUrl();
+    ? `${appUrl(publicBrand)}/chats/${schedule.chatThreadId}`
+    : appUrl(publicBrand);
 
   await db.insert(emailOutbox).values({
-    fromAddress: buildFromAddress("zero"),
+    fromAddress: buildFromAddress(
+      publicBrand === "okou" ? "okou" : "zero",
+      publicBrand,
+    ),
     toAddresses: userEmail,
     subject: `Morning Briefing - ${dateLabel}`,
+    publicBrand,
     headers: buildUnsubscribeHeaders(
-      buildMorningBriefUnsubscribeUrl(delivery.orgId, delivery.userId),
+      buildMorningBriefUnsubscribeUrl(
+        delivery.orgId,
+        delivery.userId,
+        publicBrand,
+      ),
     ),
     template: {
       template: "morning-brief",
@@ -207,7 +225,7 @@ async function enqueueMorningBriefEmail(
           return {
             title: section.title,
             items: section.items.map((item) => {
-              const url = sanitizeSourceUrl(item.url);
+              const url = sanitizeSourceUrl(item.url, publicBrand);
               return {
                 title: item.title,
                 ...(item.detail ? { detail: item.detail } : {}),

@@ -1,6 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
@@ -353,6 +358,7 @@ function buildOrgConnectUrl(
   slackUserId: string,
   channelId: string,
   threadTs?: string,
+  publicBrand: PublicBrand = "vm0",
 ): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
   if (channelId) {
@@ -361,10 +367,14 @@ function buildOrgConnectUrl(
   if (threadTs) {
     params.set("t", threadTs);
   }
-  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/settings/slack?${params.toString()}`;
 }
 
-function buildNotInstalledMessage(detail?: string): unknown[] {
+function buildNotInstalledMessage(
+  publicBrand: PublicBrand,
+  detail?: string,
+): unknown[] {
+  const { assistantName } = publicBrandPresentation(publicBrand);
   return [
     {
       type: "section",
@@ -372,7 +382,7 @@ function buildNotInstalledMessage(detail?: string): unknown[] {
         type: "mrkdwn",
         text:
           detail ??
-          "The Zero Slack app hasn't been set up for this workspace yet.",
+          `The ${assistantName} Slack app hasn't been set up for this workspace yet.`,
       },
     },
     {
@@ -381,7 +391,7 @@ function buildNotInstalledMessage(detail?: string): unknown[] {
         {
           type: "button",
           text: { type: "plain_text", text: "Set up on Platform" },
-          url: `${env("APP_URL")}/works`,
+          url: `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/works`,
           action_id: "open_platform_setup",
         },
       ],
@@ -668,6 +678,7 @@ const postSlackAgentAdmissionNotice$ = command(
         args.slackUserId,
         args.channelId,
         args.channelType === "dm" ? threadTs : undefined,
+        args.installation.publicBrand,
       );
       await postSlackUserNotice({
         client,
@@ -676,7 +687,10 @@ const postSlackAgentAdmissionNotice$ = command(
         slackUserId: args.slackUserId,
         threadTs,
         text: "Please connect your account first",
-        blocks: buildLoginPromptMessage(connectUrl),
+        blocks: buildLoginPromptMessage(
+          connectUrl,
+          args.installation.publicBrand,
+        ),
       });
       return;
     }
@@ -1038,8 +1052,15 @@ const refreshOrgAppHome$ = command(
       await client.publishAppHome(
         slackUserId,
         buildAppHomeView({
+          publicBrand: installation.publicBrand,
           isLinked: false,
-          loginUrl: buildOrgConnectUrl(workspaceId, slackUserId, ""),
+          loginUrl: buildOrgConnectUrl(
+            workspaceId,
+            slackUserId,
+            "",
+            undefined,
+            installation.publicBrand,
+          ),
         }),
       );
       return;
@@ -1097,6 +1118,7 @@ const refreshOrgAppHome$ = command(
     await client.publishAppHome(
       slackUserId,
       buildAppHomeView({
+        publicBrand: installation.publicBrand,
         isLinked: true,
         userId: connection.userId,
         userEmail: metadata?.email ?? undefined,
@@ -1301,7 +1323,7 @@ export const handleSlackCommands$ = command(
 
     if (subCommand === "help" || subCommand === "") {
       return ephemeral(
-        buildHelpMessage({
+        buildHelpMessage(installation?.publicBrand ?? "vm0", {
           canSwitch: canSwitchAgents,
           canModel: await canModel(),
         }),
@@ -1312,14 +1334,18 @@ export const handleSlackCommands$ = command(
       if (!installation) {
         return ephemeral(
           buildNotInstalledMessage(
+            "vm0",
             "The Zero Slack app hasn't been set up for this workspace yet. An org admin can complete the setup from the platform.",
           ),
         );
       }
       if (connection) {
+        const { assistantName } = publicBrandPresentation(
+          installation.publicBrand,
+        );
         return ephemeral(
           buildSuccessMessage(
-            "You are already connected.\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
+            `You are already connected to ${assistantName}.\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
           ),
         );
       }
@@ -1329,13 +1355,16 @@ export const handleSlackCommands$ = command(
             payload.team_id,
             payload.user_id,
             payload.channel_id,
+            undefined,
+            installation.publicBrand,
           ),
+          installation.publicBrand,
         ),
       );
     }
 
     if (!installation) {
-      return ephemeral(buildNotInstalledMessage());
+      return ephemeral(buildNotInstalledMessage("vm0"));
     }
 
     if (subCommand === "disconnect") {
@@ -1366,7 +1395,10 @@ export const handleSlackCommands$ = command(
             payload.team_id,
             payload.user_id,
             payload.channel_id,
+            undefined,
+            installation.publicBrand,
           ),
+          installation.publicBrand,
         ),
       );
     }
@@ -1384,7 +1416,7 @@ export const handleSlackCommands$ = command(
     }
 
     return ephemeral(
-      buildHelpMessage({
+      buildHelpMessage(installation.publicBrand, {
         canSwitch: canSwitchAgents,
         canModel: await canModel(),
       }),
@@ -1485,6 +1517,7 @@ const handleMessagesTabOpened$ = command(
         : undefined;
       agentName = agent?.displayName ?? agent?.name;
     }
+    const { assistantName } = publicBrandPresentation(installation.publicBrand);
     await createSlackClient(
       await get(
         decryptSlackBotToken({
@@ -1494,8 +1527,10 @@ const handleMessagesTabOpened$ = command(
       ),
     ).postMessage(
       channelId,
-      "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
-      { blocks: buildWelcomeMessage(agentName) },
+      `Hi! I'm ${assistantName}. I can connect you to AI agents to help with your tasks.`,
+      {
+        blocks: buildWelcomeMessage(installation.publicBrand, agentName),
+      },
     );
   },
 );

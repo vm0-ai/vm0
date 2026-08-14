@@ -1,5 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 import {
   slackOrgStatusSchema,
@@ -9,6 +10,10 @@ import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/c
 import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
 import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 import { extractAndGroupVariables } from "@okouai/core/variable-expander";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 import {
   agentComposes,
   agentComposeVersions,
@@ -21,6 +26,7 @@ import { and, eq } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
 import {
   zeroSlackOrgInstallation,
   zeroSlackOrgStatus,
@@ -170,11 +176,13 @@ const getSlackEnvironment$ = computed(
 
 const getSlackStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   const status = await get(
     zeroSlackOrgStatus({
       orgId: auth.orgId,
       userId: auth.userId,
       orgRole: auth.orgRole,
+      publicBrand,
     }),
   );
 
@@ -213,21 +221,30 @@ function contractErrorResponse(
   };
 }
 
-function buildConnectUrl(workspaceId: string, slackUserId: string): string {
+function buildConnectUrl(
+  workspaceId: string,
+  slackUserId: string,
+  publicBrand: PublicBrand,
+): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
-  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/settings/slack?${params.toString()}`;
 }
 
 function buildDisconnectedAppHomeView(args: {
   readonly workspaceId: string;
   readonly slackUserId: string;
+  readonly publicBrand: PublicBrand;
 }): SlackView {
+  const { assistantName } = publicBrandPresentation(args.publicBrand);
   return {
     type: "home",
     blocks: [
       {
         type: "header",
-        text: { type: "plain_text", text: "Welcome to Zero! :wave:" },
+        text: {
+          type: "plain_text",
+          text: `Welcome to ${assistantName}! :wave:`,
+        },
       },
       {
         type: "section",
@@ -247,7 +264,11 @@ function buildDisconnectedAppHomeView(args: {
           {
             type: "button",
             text: { type: "plain_text", text: "Connect" },
-            url: buildConnectUrl(args.workspaceId, args.slackUserId),
+            url: buildConnectUrl(
+              args.workspaceId,
+              args.slackUserId,
+              args.publicBrand,
+            ),
             action_id: "home_login_prompt",
             style: "primary",
           },
@@ -257,13 +278,17 @@ function buildDisconnectedAppHomeView(args: {
   };
 }
 
-function buildUninstalledAppHomeView(): SlackView {
+function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
+  const { assistantName, brandName } = publicBrandPresentation(publicBrand);
   return {
     type: "home",
     blocks: [
       {
         type: "header",
-        text: { type: "plain_text", text: "Welcome to Zero! :wave:" },
+        text: {
+          type: "plain_text",
+          text: `Welcome to ${assistantName}! :wave:`,
+        },
       },
       {
         type: "section",
@@ -277,7 +302,7 @@ function buildUninstalledAppHomeView(): SlackView {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: ":warning: *Zero is not installed for this workspace*\nAsk a workspace admin to install Zero from the platform.",
+          text: `:warning: *${assistantName} is not installed for this workspace*\nAsk a workspace admin to install ${assistantName} from the platform.`,
         },
       },
       {
@@ -285,8 +310,8 @@ function buildUninstalledAppHomeView(): SlackView {
         elements: [
           {
             type: "button",
-            text: { type: "plain_text", text: "Open Zero Settings" },
-            url: `${env("APP_URL")}/works`,
+            text: { type: "plain_text", text: `Open ${brandName} Settings` },
+            url: `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/works`,
             action_id: "home_open_settings",
             style: "primary",
           },
@@ -359,7 +384,7 @@ const uninstallSlackIntegration$ = command(
           }),
         ),
       );
-      const view = buildUninstalledAppHomeView();
+      const view = buildUninstalledAppHomeView(installation.publicBrand);
       await Promise.allSettled(
         connections.map((connection) => {
           return client.publishAppHome(connection.slackUserId, view);
@@ -480,6 +505,7 @@ const disconnectSlackIntegration$ = command(
         buildDisconnectedAppHomeView({
           workspaceId: installation.slackWorkspaceId,
           slackUserId: connection.slackUserId,
+          publicBrand: installation.publicBrand,
         }),
       ),
     );

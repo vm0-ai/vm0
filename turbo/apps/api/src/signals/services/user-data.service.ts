@@ -13,6 +13,7 @@ import type {
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type {
   SecretResponse,
   SecretType,
@@ -194,6 +195,7 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
+  readonly publicBrand?: PublicBrand;
 }
 
 type UpdateUserPreferencesResult =
@@ -305,6 +307,7 @@ export const updateUserPreferences$ = command(
         timezone: merged.timezone,
         enabled: merged.morningBriefEnabled,
         currentTime: updatedAt,
+        publicBrand: args.publicBrand,
       });
       signal.throwIfAborted();
     }

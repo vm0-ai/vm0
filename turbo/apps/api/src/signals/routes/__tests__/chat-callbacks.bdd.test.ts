@@ -1191,7 +1191,7 @@ describe("CHAT-02: completed chat callback", () => {
             return (
               payload.title === prompt.slice(0, 60) &&
               payload.body === "Generated summary" &&
-              payload.url === `/chats/${first.threadId}`
+              payload.url === `http://localhost:3002/chats/${first.threadId}`
             );
           },
         );
@@ -4162,7 +4162,7 @@ describe("CHAT-02: failed chat callbacks", () => {
     ).toMatchObject({
       title: "round two",
       body: "Task failed: Oops, something went wrong. Please try again later.",
-      url: `/chats/${threadId}`,
+      url: `http://localhost:3002/chats/${threadId}`,
     });
   }, 90_000);
 
@@ -5303,7 +5303,7 @@ describe("CHAT-02: push notification gating", () => {
     ).toMatchObject({
       title: "now with vapid",
       body: "Your task is complete",
-      url: `/chats/${first.threadId}`,
+      url: `http://localhost:3002/chats/${first.threadId}`,
     });
     await flushWaitUntilForTest();
 

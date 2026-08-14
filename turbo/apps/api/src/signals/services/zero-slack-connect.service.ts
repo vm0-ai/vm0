@@ -1,4 +1,9 @@
 import { command, computed, type Computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -167,9 +172,10 @@ async function getPrimaryUserEmail(
 function buildSlackConnectUrl(
   workspaceId: string,
   slackUserId: string,
+  publicBrand: PublicBrand,
 ): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
-  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/settings/slack?${params.toString()}`;
 }
 
 async function refreshSlackAppHome(args: {
@@ -197,11 +203,16 @@ async function refreshSlackAppHome(args: {
     await args.client.publishAppHome(
       args.slackUserId,
       buildAppHomeView({
-        appUrl: env("APP_URL"),
+        publicBrand: args.installation.publicBrand,
+        appUrl: appUrlForPublicBrand(
+          env("APP_URL"),
+          args.installation.publicBrand,
+        ),
         isLinked: false,
         loginUrl: buildSlackConnectUrl(
           args.installation.slackWorkspaceId,
           args.slackUserId,
+          args.installation.publicBrand,
         ),
       }),
     );
@@ -239,7 +250,11 @@ async function refreshSlackAppHome(args: {
   await args.client.publishAppHome(
     args.slackUserId,
     buildAppHomeView({
-      appUrl: env("APP_URL"),
+      publicBrand: args.installation.publicBrand,
+      appUrl: appUrlForPublicBrand(
+        env("APP_URL"),
+        args.installation.publicBrand,
+      ),
       isLinked: true,
       userId: connection.userId,
       userEmail: await getPrimaryUserEmail(args.clerkClient, connection.userId),
@@ -480,9 +495,12 @@ export const notifySlackConnect$ = command(
       ? await getWorkspaceAgentName(writeDb, defaultComposeId)
       : undefined;
     signal.throwIfAborted();
+    const { assistantName } = publicBrandPresentation(
+      args.installation.publicBrand,
+    );
 
     const blocks = buildSuccessMessage(
-      "You're connected! :tada:\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
+      `You're connected to ${assistantName}! :tada:\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
     );
 
     let sentEphemeral = false;
@@ -506,10 +524,17 @@ export const notifySlackConnect$ = command(
       );
       signal.throwIfAborted();
       if (connectMessage.kind === "ok") {
-        await client.postMessage(args.slackUserId, "Hi! I'm Zero.", {
-          threadTs: connectMessage.ts,
-          blocks: buildWelcomeMessage(agentName),
-        });
+        await client.postMessage(
+          args.slackUserId,
+          `Hi! I'm ${assistantName}.`,
+          {
+            threadTs: connectMessage.ts,
+            blocks: buildWelcomeMessage(
+              args.installation.publicBrand,
+              agentName,
+            ),
+          },
+        );
         signal.throwIfAborted();
 
         if (args.pendingPrompt) {

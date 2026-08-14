@@ -4624,10 +4624,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "यह साझा बातचीत मौजूद नहीं है।",
     "notFoundTitle": "साझा बातचीत नहीं मिली",
-    "tryOkou": "Okou आज़माएँ"
+    "tryOkou": "{{assistantName}} आज़माएँ"
   },
   "usage": {
     "displayNames": {

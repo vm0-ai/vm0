@@ -2,7 +2,10 @@ import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-th
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -15,6 +18,7 @@ describe("shared thread page", () => {
       return respond(200, {
         id: SHARED_THREAD_ID,
         title: "Public launch plan",
+        publicBrand: "okou",
         messages: [
           {
             messageIndex: 0,
@@ -49,6 +53,11 @@ describe("shared thread page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("link").find((link) => {
+        return link.textContent === "Try Okou";
+      }),
+    ).toBeInTheDocument();
   });
 
   it("owns its scrolling because the app shell clips overflow", async () => {
@@ -56,6 +65,7 @@ describe("shared thread page", () => {
       return respond(200, {
         id: SHARED_THREAD_ID,
         title: "Long thread",
+        publicBrand: "vm0",
         messages: [
           {
             messageIndex: 0,
@@ -82,6 +92,7 @@ describe("shared thread page", () => {
       return respond(200, {
         id: SHARED_THREAD_ID,
         title: "VM0",
+        publicBrand: "vm0",
         messages: [],
       });
     });

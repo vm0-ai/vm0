@@ -4676,10 +4676,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "Esta conversa compartilhada não existe.",
     "notFoundTitle": "Conversa compartilhada não encontrada",
-    "tryOkou": "Experimentar o Okou"
+    "tryOkou": "Experimentar o {{assistantName}}"
   },
   "usage": {
     "displayNames": {

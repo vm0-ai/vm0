@@ -4623,10 +4623,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "이 공유된 대화는 존재하지 않습니다.",
     "notFoundTitle": "공유된 대화를 찾을 수 없습니다",
-    "tryOkou": "Okou 사용해 보기"
+    "tryOkou": "{{assistantName}} 사용해 보기"
   },
   "usage": {
     "displayNames": {

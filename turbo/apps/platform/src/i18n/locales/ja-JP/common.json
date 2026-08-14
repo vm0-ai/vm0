@@ -4623,10 +4623,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "この共有された会話は存在しません。",
     "notFoundTitle": "共有された会話が見つかりません",
-    "tryOkou": "Okouを試す"
+    "tryOkou": "{{assistantName}}を試す"
   },
   "usage": {
     "displayNames": {

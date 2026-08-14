@@ -1,6 +1,12 @@
 import { command, computed, type Computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
 import { extractAndGroupVariables } from "@okouai/core/variable-expander";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 import {
   agentComposes,
   agentComposeVersions,
@@ -99,6 +105,7 @@ function setOptionalParam(
 }
 
 function buildTeamsBrowserConnectUrl(args: {
+  readonly publicBrand: PublicBrand;
   readonly tenantId: string;
   readonly tenantName?: string | null;
   readonly teamsUserId?: string | null;
@@ -136,14 +143,18 @@ function buildTeamsBrowserConnectUrl(args: {
   setOptionalParam(params, "channelId", args.channelId);
   setOptionalParam(params, "threadId", args.threadId);
   setOptionalParam(params, "orgId", args.orgId);
-  return `${env("APP_URL")}/settings/teams?${params.toString()}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/settings/teams?${params.toString()}`;
 }
 
 function buildTeamsOauthConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
 }): string {
-  const url = new URL("/api/okou/teams/oauth/connect", internalApiBaseUrl());
+  const url = new URL(
+    "/api/okou/teams/oauth/connect",
+    apiUrlForPublicBrand(internalApiBaseUrl(), args.publicBrand),
+  );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
   return url.toString();
@@ -185,6 +196,7 @@ export function buildTeamsConnectUrlForActivity(args: {
   }
 
   return buildTeamsBrowserConnectUrl({
+    publicBrand: args.installation?.publicBrand ?? "vm0",
     tenantId: args.activity.tenantId,
     tenantName: args.activity.tenantName,
     teamsUserId: args.activity.sender.id,
@@ -549,6 +561,7 @@ function inactiveTeamsStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly isAdmin: boolean;
+  readonly publicBrand: PublicBrand;
 }): TeamsConnectStatus {
   return {
     isInstalled: false,
@@ -559,6 +572,7 @@ function inactiveTeamsStatus(args: {
       ? buildTeamsOauthConnectUrl({
           orgId: args.orgId,
           userId: args.userId,
+          publicBrand: args.publicBrand,
         })
       : null,
   };
@@ -598,6 +612,7 @@ function activeTeamsStatus(args: {
   readonly userId: string;
   readonly isAdmin: boolean;
   readonly connectedFields: ConnectedTeamsStatusFields | null;
+  readonly publicBrand: PublicBrand;
 }): TeamsConnectStatus {
   const status: TeamsConnectStatus = {
     isInstalled: true,
@@ -609,6 +624,7 @@ function activeTeamsStatus(args: {
       : buildTeamsOauthConnectUrl({
           orgId: args.orgId,
           userId: args.userId,
+          publicBrand: args.publicBrand,
         }),
     tenantId: args.installation.teamsTenantId,
     tenantName: args.installation.teamsTenantName,
@@ -633,6 +649,7 @@ export function zeroTeamsConnectStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly isAdmin: boolean;
+  readonly publicBrand: PublicBrand;
 }): Computed<Promise<TeamsConnectStatus>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -698,6 +715,7 @@ function installationMetadataPatch(args: {
   readonly botId?: string | null;
   readonly botName?: string | null;
   readonly serviceUrl?: string | null;
+  readonly publicBrand?: PublicBrand;
 }): Partial<typeof teamsOrgInstallations.$inferInsert> {
   return {
     ...(nonEmpty(args.tenantName) ? { teamsTenantName: args.tenantName } : {}),
@@ -707,6 +725,7 @@ function installationMetadataPatch(args: {
     ...(nonEmpty(args.botId) ? { botId: args.botId } : {}),
     ...(nonEmpty(args.botName) ? { botName: args.botName } : {}),
     ...(nonEmpty(args.serviceUrl) ? { serviceUrl: args.serviceUrl } : {}),
+    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     updatedAt: nowDate(),
   };
 }
@@ -728,6 +747,7 @@ type ConnectTeamsInstallationArgs = {
   readonly orgId: string;
   readonly orgRole: "admin" | "member";
   readonly tenantId: string;
+  readonly publicBrand: PublicBrand;
   readonly tenantName?: string;
   readonly teamsUserId?: string;
   readonly teamsAadObjectId?: string;
@@ -748,14 +768,18 @@ type BindTeamsInstallationResult =
   | { readonly kind: "not_found"; readonly message: string }
   | { readonly kind: "forbidden"; readonly message: string };
 
-function buildTeamsWelcomeCard(): TeamsAdaptiveCard {
+function buildTeamsWelcomeCard(
+  installation: TeamsInstallation,
+): TeamsAdaptiveCard {
+  const { assistantName } = publicBrandPresentation(installation.publicBrand);
+  const mentionName = installation.botName ?? assistantName;
   return {
     type: "AdaptiveCard",
     version: "1.4",
     body: [
       {
         type: "TextBlock",
-        text: "You're connected! 🎉\nMention `@Okou` in any channel or send a DM to start chatting with your agent.",
+        text: `You're connected to ${assistantName}! 🎉\nMention \`@${mentionName}\` in any channel or send a DM to start chatting with your agent.`,
         wrap: true,
       },
     ],
@@ -851,8 +875,10 @@ async function notifyTeamsConnect(
       serviceUrl: args.serviceUrl,
       conversationId,
       tenantId: args.tenantId,
-      text: "You're connected!",
-      card: buildTeamsWelcomeCard(),
+      text: `You're connected to ${
+        publicBrandPresentation(args.installation.publicBrand).assistantName
+      }!`,
+      card: buildTeamsWelcomeCard(args.installation),
     },
     signal,
   );
@@ -887,6 +913,7 @@ async function bindUnclaimedTeamsInstallation(
     .set({
       orgId: args.connectArgs.orgId,
       installedByUserId: args.connectArgs.userId,
+      publicBrand: args.connectArgs.publicBrand,
       updatedAt: nowDate(),
     })
     .where(
@@ -1003,6 +1030,7 @@ export const prepareTeamsInstallation$ = command(
         teamsTenantName: args.tenantName,
         orgId: args.orgId,
         installedByUserId: args.userId,
+        publicBrand: args.publicBrand,
       })
       .onConflictDoUpdate({
         target: teamsOrgInstallations.teamsTenantId,
@@ -1010,6 +1038,7 @@ export const prepareTeamsInstallation$ = command(
           orgId: args.orgId,
           teamsTenantName: sql`coalesce(excluded.teams_tenant_name, ${teamsOrgInstallations.teamsTenantName})`,
           installedByUserId: args.userId,
+          publicBrand: args.publicBrand,
           updatedAt: nowDate(),
         },
       })
@@ -1062,6 +1091,7 @@ export const connectTeamsInstallation$ = command(
         teamId: args.teamId,
         teamName: args.teamName,
         serviceUrl: args.serviceUrl,
+        publicBrand: args.publicBrand,
       });
       signal.throwIfAborted();
 
@@ -1096,6 +1126,7 @@ export const connectTeamsInstallation$ = command(
       teamId: args.teamId,
       teamName: args.teamName,
       serviceUrl: args.serviceUrl,
+      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
 
@@ -1103,7 +1134,7 @@ export const connectTeamsInstallation$ = command(
       {
         db: writeDb,
         connectArgs: args,
-        installation,
+        installation: { ...installation, publicBrand: args.publicBrand },
         role: args.orgRole,
       },
       signal,
@@ -1274,9 +1305,13 @@ function activityRecipient(activity: TeamsInboundActivity): {
 export const recordTeamsInstallationActivity$ = command(
   async (
     { set },
-    activity: TeamsInboundActivity,
+    args: {
+      readonly activity: TeamsInboundActivity;
+      readonly publicBrand: PublicBrand;
+    },
     signal: AbortSignal,
   ): Promise<TeamsInstallationActivityResult> => {
+    const { activity } = args;
     if (activity.kind === "unsupported") {
       return { kind: "ignored" };
     }
@@ -1339,6 +1374,7 @@ export const recordTeamsInstallationActivity$ = command(
         botId: recipient.id,
         botName: recipient.name,
         serviceUrl: activity.serviceUrl,
+        publicBrand: args.publicBrand,
       })
       .onConflictDoUpdate({
         target: teamsOrgInstallations.teamsTenantId,

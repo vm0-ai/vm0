@@ -4,6 +4,10 @@ import {
   type TeamsInboundActivity,
 } from "@okouai/api-contracts/contracts/zero-teams-bot";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 
 import {
   normalizeTeamsActivity,
@@ -13,7 +17,7 @@ import {
 import { env } from "../../lib/env";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
 import { logger } from "../../lib/log";
-import { authorization$, request$ } from "../context/hono";
+import { authorization$, publicBrand$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
   sendTeamsMessage,
@@ -30,14 +34,12 @@ import {
 } from "../services/zero-teams-connect.service";
 import {
   dispatchTeamsMessageToAgent$,
-  TEAMS_WELCOME_TEXT,
+  teamsWelcomeText,
 } from "../services/zero-teams-dispatch.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
 import { safeJsonParse, tapError } from "../utils";
 
 const L = logger("TeamsBot");
-const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_SUPPORTED_COMMANDS_TEXT =
   "`help`, `connect`, `disconnect`, `switch`, `model`";
 
@@ -66,6 +68,7 @@ function authErrorCode(status: 401 | 403 | 503): string {
 
 function buildTeamsLoginPromptCard(args: {
   readonly connectUrl: string;
+  readonly text: string;
 }): TeamsAdaptiveCard {
   return {
     type: "AdaptiveCard",
@@ -73,7 +76,7 @@ function buildTeamsLoginPromptCard(args: {
     body: [
       {
         type: "TextBlock",
-        text: TEAMS_LOGIN_PROMPT_CARD_TEXT,
+        text: args.text,
         wrap: true,
       },
     ],
@@ -87,8 +90,11 @@ function buildTeamsLoginPromptCard(args: {
   };
 }
 
-function queueUrl(): string {
-  return `${env("APP_URL")}/?queue=1`;
+function queueUrl(installation: TeamsInstallation | null): string {
+  return `${appUrlForPublicBrand(
+    env("APP_URL"),
+    installation?.publicBrand ?? "vm0",
+  )}/?queue=1`;
 }
 
 function buildTeamsQueueText(url: string): string {
@@ -140,7 +146,10 @@ type TeamsInstallWelcomeActivity = Extract<
 >;
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 
-function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
+function dispatchReplyContent(
+  dispatch: TeamsDispatchReplySource,
+  installation: TeamsInstallation | null,
+): {
   readonly replyText: string | null;
   readonly card?: TeamsAdaptiveCard;
 } {
@@ -153,13 +162,14 @@ function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
           ? {
               card: buildTeamsLoginPromptCard({
                 connectUrl: dispatch.connectUrl,
+                text: dispatch.replyText,
               }),
             }
           : {}),
     };
   }
   if (dispatch.kind === "queued") {
-    const url = queueUrl();
+    const url = queueUrl(installation);
     return {
       replyText: buildTeamsQueueText(url),
       card: buildTeamsQueueCard({ url }),
@@ -178,12 +188,13 @@ function teamsInstallWelcomeActivity(
 
 function buildTeamsInstallWelcomeMention(
   activity: TeamsInstallWelcomeActivity,
+  assistantName: string,
 ): TeamsMentionEntity | null {
   if (activity.conversationType === "personal" || activity.sender.id === "") {
     return null;
   }
 
-  const name = activity.sender.name ?? "the person who added Okou";
+  const name = activity.sender.name ?? `the person who added ${assistantName}`;
   return {
     type: "mention",
     text: `<at>${name}</at>`,
@@ -196,24 +207,29 @@ function buildTeamsInstallWelcomeMention(
 
 function buildTeamsInstallWelcomeContent(
   activity: TeamsInstallWelcomeActivity,
+  installation: TeamsInstallation,
 ): {
   readonly text: string;
   readonly entities?: readonly TeamsMentionEntity[];
 } {
-  const mention = buildTeamsInstallWelcomeMention(activity);
+  const { assistantName, brandName } = publicBrandPresentation(
+    installation.publicBrand,
+  );
+  const mentionName = installation.botName ?? assistantName;
+  const mention = buildTeamsInstallWelcomeMention(activity, assistantName);
   if (!mention) {
-    return { text: TEAMS_WELCOME_TEXT };
+    return { text: teamsWelcomeText(installation) };
   }
 
   return {
     text: [
-      `${mention.text} added Okou to this Teams workspace.`,
+      `${mention.text} added ${assistantName} to this Teams workspace.`,
       "",
-      "Okou connects Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+      `${assistantName} connects Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.`,
       "",
-      "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
+      `To get started, use \`connect\` to link this Teams workspace to ${brandName}. An org admin may need to complete workspace setup first.`,
       "",
-      `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@Okou\` with a task or send a DM to work privately.`,
+      `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@${mentionName}\` with a task or send a DM to work privately.`,
     ].join("\n"),
     entities: [mention],
   };
@@ -222,15 +238,21 @@ function buildTeamsInstallWelcomeContent(
 const sendTeamsInstallWelcome$ = command(
   async (
     _,
-    activity: TeamsInboundActivity,
+    args: {
+      readonly activity: TeamsInboundActivity;
+      readonly installation: TeamsInstallation;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
-    const welcomeActivity = teamsInstallWelcomeActivity(activity);
+    const welcomeActivity = teamsInstallWelcomeActivity(args.activity);
     if (!welcomeActivity) {
       return;
     }
 
-    const welcome = buildTeamsInstallWelcomeContent(welcomeActivity);
+    const welcome = buildTeamsInstallWelcomeContent(
+      welcomeActivity,
+      args.installation,
+    );
     const reply = await sendTeamsMessage(
       {
         serviceUrl: welcomeActivity.serviceUrl,
@@ -277,7 +299,10 @@ const dispatchTeamsMessageAndReply$ = command(
     );
     signal.throwIfAborted();
 
-    const { replyText, card } = dispatchReplyContent(dispatch);
+    const { replyText, card } = dispatchReplyContent(
+      dispatch,
+      args.installation,
+    );
     if (!replyText) {
       return;
     }
@@ -310,6 +335,7 @@ const dispatchTeamsMessageAndReply$ = command(
 const handleZeroTeamsBot$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$);
+    const publicBrand = get(publicBrand$);
     const apiStartTime = now();
     const bodyText = await request.text();
     signal.throwIfAborted();
@@ -352,7 +378,7 @@ const handleZeroTeamsBot$ = command(
 
     const activityResult = await set(
       recordTeamsInstallationActivity$,
-      normalized.activity,
+      { activity: normalized.activity, publicBrand },
       signal,
     );
     signal.throwIfAborted();
@@ -405,10 +431,20 @@ const handleZeroTeamsBot$ = command(
       );
     }
 
-    if (teamsInstallWelcomeActivity(normalized.activity)) {
+    if (
+      teamsInstallWelcomeActivity(normalized.activity) &&
+      activityResult.kind === "upserted"
+    ) {
       waitUntil(
         tapError(
-          set(sendTeamsInstallWelcome$, normalized.activity, signal),
+          set(
+            sendTeamsInstallWelcome$,
+            {
+              activity: normalized.activity,
+              installation: activityResult.installation,
+            },
+            signal,
+          ),
           (error) => {
             L.error("Error sending Teams install welcome", { error });
           },

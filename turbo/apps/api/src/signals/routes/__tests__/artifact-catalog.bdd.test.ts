@@ -211,6 +211,7 @@ async function createSharedThreadSnapshot(
   actor: ApiTestUser,
   threadId: string,
   eventIds: readonly string[],
+  origin?: string,
 ): Promise<CreatedSharedThreadResult> {
   const response = await sharedThreadTestApp().request(
     `/api/zero/chat-threads/${threadId}/shared-threads`,
@@ -219,6 +220,7 @@ async function createSharedThreadSnapshot(
       headers: {
         ...authenticateSharedThread(actor),
         "content-type": "application/json",
+        ...(origin ? { origin } : {}),
       },
       body: JSON.stringify({ eventIds }),
     },
@@ -1171,6 +1173,7 @@ describe("shared thread routes", () => {
       owner.actor,
       run.threadId,
       eventIds,
+      "https://app.okou.ai",
     );
     const second = await createSharedThreadSnapshot(
       owner.actor,
@@ -1190,6 +1193,7 @@ describe("shared thread routes", () => {
     expect(publicSnapshot.body).toStrictEqual({
       id: first.id,
       title: "Private launch plan",
+      publicBrand: "okou",
       messages: [
         {
           messageIndex: 0,
@@ -1207,10 +1211,16 @@ describe("shared thread routes", () => {
     });
 
     const metadata = await readSharedThreadMeta(first.id);
-    expect(metadata.body).toStrictEqual({ title: "Private launch plan" });
+    expect(metadata.body).toStrictEqual({
+      title: "Private launch plan",
+      publicBrand: "okou",
+    });
     expect(metadata.headers.get("cache-control")).toBe(
       "public, max-age=31536000, s-maxage=31536000, immutable",
     );
+
+    const vm0Snapshot = await readSharedThreadSnapshot(second.id);
+    expect(vm0Snapshot.body).toMatchObject({ publicBrand: "vm0" });
 
     const catalog = await chat.listArtifactCatalog(owner.actor, {
       kind: "shared-thread",

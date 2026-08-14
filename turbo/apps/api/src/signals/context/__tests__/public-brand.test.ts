@@ -13,7 +13,9 @@ import { z } from "zod";
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
-import { publicBrand$, type PublicBrand } from "../hono";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+
+import { publicBrand$ } from "../hono";
 
 const context = testContext();
 const c = initContract();

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import {
   morningBriefDeliveries,
@@ -608,7 +609,11 @@ async function admitManualMorningBriefDelivery(
 
 async function admitManualMorningBrief(
   db: Db,
-  args: { readonly orgId: string; readonly userId: string },
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly publicBrand: PublicBrand;
+  },
   currentTime: Date,
   signal: AbortSignal,
 ): Promise<ManualMorningBriefAdmission> {
@@ -650,10 +655,14 @@ async function admitManualMorningBrief(
     .values({
       orgId: args.orgId,
       userId: args.userId,
+      publicBrand: args.publicBrand,
       createdAt: currentTime,
       updatedAt: currentTime,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: [morningBriefSchedules.orgId, morningBriefSchedules.userId],
+      set: { publicBrand: args.publicBrand, updatedAt: currentTime },
+    });
   signal.throwIfAborted();
 
   const [schedule] = await db
@@ -729,6 +738,7 @@ export const triggerMorningBriefNow$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<TriggerMorningBriefResult> => {

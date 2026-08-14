@@ -1,3 +1,6 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
+
 import type { FeishuOutboundMessage } from "../signals/external/feishu-client";
 
 const MARKDOWN_ELEMENT_MAX_LENGTH = 12_000;
@@ -69,18 +72,22 @@ export function buildFeishuLoginMessage(
 
 export function buildFeishuWelcomeMessage(args: {
   readonly agentName: string | null;
+  readonly publicBrand: PublicBrand;
 }): FeishuOutboundMessage {
+  const { assistantName, brandName } = publicBrandPresentation(
+    args.publicBrand,
+  );
   const agentLine = args.agentName
     ? `\n\nYour current agent is **${args.agentName}**.`
     : "";
   return cardMessage({
     title: "You're connected! 🎉",
     template: "green",
-    summary: "Your Feishu account is connected to VM0.",
+    summary: `Your Feishu account is connected to ${brandName}.`,
     elements: [
       {
         tag: "markdown",
-        content: `👋 **Hi! I'm Zero.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
+        content: `👋 **Hi! I'm ${assistantName}.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
       },
       {
         tag: "hr",

@@ -1,5 +1,6 @@
 import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { artifacts } from "@okouai/db/schema/artifact";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -38,6 +39,7 @@ interface CreateSharedThreadArgs {
   readonly userId: string;
   readonly threadId: string;
   readonly eventIds: readonly string[];
+  readonly publicBrand: PublicBrand;
 }
 
 type CreateSharedThreadResult =
@@ -278,6 +280,7 @@ export const createSharedThread$ = command(
           sourceChatThreadId: args.threadId,
           title,
           messages,
+          publicBrand: args.publicBrand,
           createdAt,
         })
         .returning({ id: sharedThreads.id });
@@ -317,6 +320,7 @@ export const readSharedThread$ = command(
         id: sharedThreads.id,
         title: sharedThreads.title,
         messages: sharedThreads.messages,
+        publicBrand: sharedThreads.publicBrand,
       })
       .from(sharedThreads)
       .where(eq(sharedThreads.id, id))
@@ -329,7 +333,10 @@ export const readSharedThread$ = command(
 export const readSharedThreadMeta$ = command(
   async ({ get }, id: string, signal: AbortSignal) => {
     const [row] = await get(db$)
-      .select({ title: sharedThreads.title })
+      .select({
+        title: sharedThreads.title,
+        publicBrand: sharedThreads.publicBrand,
+      })
       .from(sharedThreads)
       .where(eq(sharedThreads.id, id))
       .limit(1);

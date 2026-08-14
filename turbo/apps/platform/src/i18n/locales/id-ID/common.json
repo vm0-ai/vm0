@@ -4623,10 +4623,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
     "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
-    "tryOkou": "Coba Okou"
+    "tryOkou": "Coba {{assistantName}}"
   },
   "usage": {
     "displayNames": {

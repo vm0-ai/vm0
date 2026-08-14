@@ -178,9 +178,14 @@ describe("Teams OAuth API routes", () => {
     );
     const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
       readonly orgId: string;
+      readonly publicBrand: string;
       readonly userId: string;
     };
-    expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+    expect(state).toStrictEqual({
+      orgId: "org_1",
+      publicBrand: "vm0",
+      userId: "user_1",
+    });
   });
 
   it("accepts the legacy query key but writes only canonical state", async () => {
@@ -194,7 +199,11 @@ describe("Teams OAuth API routes", () => {
       string,
       unknown
     >;
-    expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+    expect(state).toStrictEqual({
+      orgId: "org_1",
+      publicBrand: "vm0",
+      userId: "user_1",
+    });
     expect(state).not.toHaveProperty("vm0UserId");
   });
 

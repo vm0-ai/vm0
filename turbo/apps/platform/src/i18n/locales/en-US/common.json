@@ -4624,10 +4624,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "This shared conversation does not exist.",
     "notFoundTitle": "Shared conversation not found",
-    "tryOkou": "Try Okou"
+    "tryOkou": "Try {{assistantName}}"
   },
   "usage": {
     "displayNames": {

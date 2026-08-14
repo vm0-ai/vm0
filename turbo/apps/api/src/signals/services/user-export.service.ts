@@ -7,6 +7,7 @@ import {
   isChatEventContentTextType,
   isChatEventUserMessageTextType,
 } from "@okouai/api-contracts/contracts/chat-events";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import type {
@@ -93,6 +94,7 @@ type ActiveExportJobStatus = Extract<ExportJobStatus, "pending" | "running">;
 interface StartUserExportArgs {
   readonly userId: string;
   readonly orgId: string;
+  readonly publicBrand: PublicBrand;
 }
 
 type StartUserExportResult =
@@ -101,6 +103,7 @@ type StartUserExportResult =
       readonly jobId: string;
       readonly status: ActiveExportJobStatus;
       readonly shouldExecute: boolean;
+      readonly publicBrand: PublicBrand;
     }
   | { readonly kind: "rate_limited" };
 
@@ -108,6 +111,7 @@ interface ExecuteUserExportJobArgs {
   readonly jobId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly publicBrand: PublicBrand;
 }
 
 interface ZipEntry {
@@ -302,7 +306,11 @@ export const startUserExport$ = command(
     const db = set(writeDb$);
 
     const [activeJob] = await db
-      .select({ id: exportJobs.id, status: exportJobs.status })
+      .select({
+        id: exportJobs.id,
+        status: exportJobs.status,
+        publicBrand: exportJobs.publicBrand,
+      })
       .from(exportJobs)
       .where(
         and(
@@ -319,6 +327,7 @@ export const startUserExport$ = command(
         jobId: activeJob.id,
         status: activeExportJobStatus(activeJob.status),
         shouldExecute: false,
+        publicBrand: activeJob.publicBrand,
       };
     }
 
@@ -346,6 +355,7 @@ export const startUserExport$ = command(
         userId: args.userId,
         orgId: args.orgId,
         status: "pending",
+        publicBrand: args.publicBrand,
         createdAt: nowDate(),
       })
       .returning({ id: exportJobs.id });
@@ -360,6 +370,7 @@ export const startUserExport$ = command(
       jobId: job.id,
       status: "pending",
       shouldExecute: true,
+      publicBrand: args.publicBrand,
     };
   },
 );
@@ -1034,6 +1045,7 @@ async function enqueueExportReadyEmail(
     readonly downloadUrl: string;
     readonly expiresAt: Date;
     readonly artifactCount: number;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -1046,8 +1058,11 @@ async function enqueueExportReadyEmail(
   signal.throwIfAborted();
 
   const email = await getCachedUserEmail(runtime, args.userId, signal);
-  const unsubscribeUrl = buildUnsubscribeUrl(args.userId);
-  const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(args.userId);
+  const unsubscribeUrl = buildUnsubscribeUrl(args.userId, args.publicBrand);
+  const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(
+    args.userId,
+    args.publicBrand,
+  );
   const formattedExpiry = args.expiresAt.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -1055,9 +1070,13 @@ async function enqueueExportReadyEmail(
   });
 
   await runtime.db.insert(emailOutbox).values({
-    fromAddress: buildFromAddress("vm0"),
+    fromAddress: buildFromAddress(
+      args.publicBrand === "okou" ? "okou" : "vm0",
+      args.publicBrand,
+    ),
     toAddresses: email,
     subject: DATA_EXPORT_READY_SUBJECT,
+    publicBrand: args.publicBrand,
     headers: buildUnsubscribeHeaders(oneClickUnsubscribeUrl),
     template: {
       template: "data-export-ready",
@@ -1147,6 +1166,7 @@ async function runExportJob(
       downloadUrl,
       expiresAt,
       artifactCount: 0,
+      publicBrand: args.publicBrand,
     },
     signal,
   );

@@ -9,6 +9,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
@@ -25,6 +26,10 @@ export const morningBriefSchedules = pgTable(
   {
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     // Fixed chat thread that receives every Morning Brief run.
     chatThreadId: uuid("chat_thread_id").references(
       () => {

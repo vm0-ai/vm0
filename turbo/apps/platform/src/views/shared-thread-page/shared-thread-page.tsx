@@ -5,6 +5,7 @@ import type {
 import type { Root } from "hast";
 import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 
 import { MarkdownEventBody } from "../components/markdown.tsx";
 
@@ -133,6 +134,9 @@ export function SharedThreadPage({
 }) {
   const { t } = useTranslation();
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
+  const presentation = sharedThread
+    ? publicBrandPresentation(sharedThread.publicBrand)
+    : null;
   return (
     <main
       className="flex h-full flex-col overflow-y-auto bg-background text-foreground"
@@ -149,7 +153,7 @@ export function SharedThreadPage({
             </span>
             {t(($) => {
               return $.sharedThread.brand;
-            })}
+            }, presentation ?? undefined)}
           </a>
           <a
             href="/"
@@ -157,7 +161,7 @@ export function SharedThreadPage({
           >
             {t(($) => {
               return $.sharedThread.tryOkou;
-            })}
+            }, presentation ?? undefined)}
           </a>
         </div>
       </header>

@@ -10,7 +10,6 @@ const PRODUCTION_API_ORIGINS = new Map([
   ["app.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
-const SHARED_DESCRIPTION = "A conversation shared from Okou";
 const APP_IMAGE = "https://static.vm0.io/web/og-image.png";
 const SHARED_IMAGE = APP_IMAGE;
 
@@ -179,25 +178,29 @@ async function rewriteManifest(response, metadata) {
   });
 }
 
-function rewriteFound(response, title, canonicalUrl) {
+function rewriteFound(response, title, canonicalUrl, metadata) {
+  const sharedDescription = `A conversation shared from ${metadata.brandName}`;
   return new HTMLRewriter()
-    .on("html", setBrandContext("Okou"))
-    .on('meta[name="application-name"]', setMetaContent("Okou"))
-    .on('meta[name="apple-mobile-web-app-title"]', setMetaContent("Okou"))
+    .on("html", setBrandContext(metadata.brandName))
+    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on(
+      'meta[name="apple-mobile-web-app-title"]',
+      setMetaContent(metadata.brandName),
+    )
     .on("title", {
       element(element) {
-        element.setInnerContent(`${title} | Okou`);
+        element.setInnerContent(`${title} | ${metadata.brandName}`);
       },
     })
-    .on('meta[name="description"]', setMetaContent(SHARED_DESCRIPTION))
+    .on('meta[name="description"]', setMetaContent(sharedDescription))
     .on('meta[property="og:type"]', setMetaContent("website"))
-    .on('meta[property="og:site_name"]', setMetaContent("Okou"))
+    .on('meta[property="og:site_name"]', setMetaContent(metadata.brandName))
     .on('meta[property="og:title"]', setMetaContent(title))
-    .on('meta[property="og:description"]', setMetaContent(SHARED_DESCRIPTION))
+    .on('meta[property="og:description"]', setMetaContent(sharedDescription))
     .on('meta[property="og:image"]', setMetaContent(SHARED_IMAGE))
     .on('meta[property="og:image:alt"]', setMetaContent(title))
     .on('meta[name="twitter:title"]', setMetaContent(title))
-    .on('meta[name="twitter:description"]', setMetaContent(SHARED_DESCRIPTION))
+    .on('meta[name="twitter:description"]', setMetaContent(sharedDescription))
     .on('meta[name="twitter:image"]', setMetaContent(SHARED_IMAGE))
     .on("head", {
       element(element) {
@@ -212,14 +215,19 @@ function rewriteFound(response, title, canonicalUrl) {
     .transform(response);
 }
 
-function rewriteNotFound(response) {
+function rewriteNotFound(response, metadata) {
   return new HTMLRewriter()
-    .on("html", setBrandContext("Okou"))
-    .on('meta[name="application-name"]', setMetaContent("Okou"))
-    .on('meta[name="apple-mobile-web-app-title"]', setMetaContent("Okou"))
+    .on("html", setBrandContext(metadata.brandName))
+    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on(
+      'meta[name="apple-mobile-web-app-title"]',
+      setMetaContent(metadata.brandName),
+    )
     .on("title", {
       element(element) {
-        element.setInnerContent("Shared conversation not found | Okou");
+        element.setInnerContent(
+          `Shared conversation not found | ${metadata.brandName}`,
+        );
       },
     })
     .on('meta[property^="og:"]', removeElement())
@@ -294,6 +302,7 @@ export default {
             404,
             "public, max-age=60, s-maxage=60",
           ),
+          appMetadata(requestUrl.hostname),
         );
       }
       if (!metaResponse.ok) {
@@ -305,10 +314,19 @@ export default {
       } catch {
         return gatewayResponse(502);
       }
-      if (typeof metadata.title !== "string" || metadata.title.length === 0) {
+      if (
+        typeof metadata.title !== "string" ||
+        metadata.title.length === 0 ||
+        (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
+      ) {
         return gatewayResponse(502);
       }
-      const canonicalUrl = `${requestUrl.origin}${requestUrl.pathname}`;
+      const sharedAppMetadata =
+        metadata.publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
+      const canonicalUrl = new URL(
+        requestUrl.pathname,
+        sharedAppMetadata.canonicalUrl,
+      ).toString();
       return rewriteFound(
         htmlResponse(
           indexHtml,
@@ -318,6 +336,7 @@ export default {
         ),
         metadata.title,
         canonicalUrl,
+        sharedAppMetadata,
       );
     }
 
