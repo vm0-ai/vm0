@@ -461,7 +461,19 @@ async fn run_codex_app_server(
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
     // Complete the final event-log write after the child is stopped and
     // before callers observe the finished app-server execution.
-    let _ = log_file.flush().await;
+    let log_flush_error = log_file.flush().await.err();
+    let has_primary_failure = active_input_delivery_ids.is_err()
+        || shutdown_result.is_err()
+        || !matches!(
+            &run_outcome,
+            AppServerRunOutcome::Completed(result) if result.is_ok()
+        );
+    if has_primary_failure && let Some(error) = &log_flush_error {
+        log_warn!(
+            LOG_TAG,
+            "Agent log flush failed after an earlier app-server failure: {error}"
+        );
+    }
     let active_input_delivery_ids = match active_input_delivery_ids {
         Ok(delivery_ids) => delivery_ids,
         Err(active_input_error) => {
@@ -478,6 +490,9 @@ async fn run_codex_app_server(
     match run_outcome {
         AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
             (Ok(mut result), Ok(())) => {
+                if let Some(error) = log_flush_error {
+                    return Err(AgentError::Io(error));
+                }
                 result.stderr_lines = stderr_lines;
                 result.active_input_delivery_ids = active_input_delivery_ids;
                 Ok(result)

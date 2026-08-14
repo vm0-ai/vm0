@@ -625,9 +625,13 @@ impl<'a> CliEventIngestor<'a> {
         timing::record_e2e_from_api_start_at(op_name, &self.api_start_time, observed_at_ms);
     }
 
-    async fn write_raw_line(log_file: &mut tokio::fs::File, raw_line: impl AsRef<[u8]>) {
-        let _ = log_file.write_all(raw_line.as_ref()).await;
-        let _ = log_file.write_all(b"\n").await;
+    async fn write_raw_line(
+        log_file: &mut tokio::fs::File,
+        raw_line: impl AsRef<[u8]>,
+    ) -> Result<(), AgentError> {
+        log_file.write_all(raw_line.as_ref()).await?;
+        log_file.write_all(b"\n").await?;
+        Ok(())
     }
 
     async fn begin_event(
@@ -647,7 +651,7 @@ impl<'a> CliEventIngestor<'a> {
         {
             codex_startup.record_success_at(Instant::now());
         }
-        Self::write_raw_line(log_file, raw_line).await;
+        Self::write_raw_line(log_file, raw_line).await?;
 
         if is_stream_event {
             return Ok(ParsedEventAction::Skip);
@@ -1188,46 +1192,56 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            if replay_user_messages {
+                            let replay_marker: Option<&[u8]> = if replay_user_messages {
                                 match active_input_controller.replay_user_event_action(&event) {
-                                    ReplayUserEventAction::External => {}
-                                    ReplayUserEventAction::InternalInitialPrompt => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
-                                        continue;
-                                    }
-                                    ReplayUserEventAction::InternalActiveInput => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
-                                        continue;
-                                    }
+                                    ReplayUserEventAction::External => None,
+                                    ReplayUserEventAction::InternalInitialPrompt => Some(
+                                        br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
+                                    ),
+                                    ReplayUserEventAction::InternalActiveInput => Some(
+                                        br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
+                                    ),
                                     ReplayUserEventAction::UnknownPromptUser => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
                                         log_warn!(
                                             LOG_TAG,
                                             "Filtered unknown top-level Claude user replay event"
                                         );
-                                        continue;
+                                        Some(
+                                            br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
+                                        )
                                     }
                                 }
+                            } else {
+                                None
+                            };
+                            if let Some(replay_marker) = replay_marker {
+                                if let Err(error) = CliEventIngestor::write_raw_line(
+                                    &mut log_file,
+                                    replay_marker,
+                                )
+                                .await
+                                {
+                                    stdout_closed = true;
+                                    let context = StdoutIngestionFailureContext {
+                                        child: &mut child,
+                                        cli_status: &mut cli_status,
+                                        cli_exit_at: &mut cli_exit_at,
+                                        active_input_controller: &active_input_controller,
+                                        termination_runtime: &mut termination_runtime,
+                                        drain_deadline: drain_deadline.as_mut(),
+                                        termination_deadline: termination_deadline.as_mut(),
+                                    };
+                                    match begin_stdout_ingestion_failure(error, context) {
+                                        Ok(()) => continue,
+                                        Err(error) => break Err(error),
+                                    }
+                                }
+                                continue;
                             }
 
                             let post_result_cleanup_was_armed =
                                 termination_runtime.has_post_result_cleanup();
-                            match event_ingestor
+                            let event_action = match event_ingestor
                                 .begin_event(
                                     &mut log_file,
                                     line.as_bytes(),
@@ -1235,8 +1249,27 @@ async fn execute_cli_inner(
                                     masker,
                                     runtime.framework,
                                 )
-                                .await?
+                                .await
                             {
+                                Ok(action) => action,
+                                Err(error) => {
+                                    stdout_closed = true;
+                                    let context = StdoutIngestionFailureContext {
+                                        child: &mut child,
+                                        cli_status: &mut cli_status,
+                                        cli_exit_at: &mut cli_exit_at,
+                                        active_input_controller: &active_input_controller,
+                                        termination_runtime: &mut termination_runtime,
+                                        drain_deadline: drain_deadline.as_mut(),
+                                        termination_deadline: termination_deadline.as_mut(),
+                                    };
+                                    match begin_stdout_ingestion_failure(error, context) {
+                                        Ok(()) => continue,
+                                        Err(error) => break Err(error),
+                                    }
+                                }
+                            };
+                            match event_action {
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
@@ -1327,7 +1360,25 @@ async fn execute_cli_inner(
                                 );
                             }
                         } else {
-                            CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes()).await;
+                            if let Err(error) =
+                                CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes())
+                                    .await
+                            {
+                                stdout_closed = true;
+                                let context = StdoutIngestionFailureContext {
+                                    child: &mut child,
+                                    cli_status: &mut cli_status,
+                                    cli_exit_at: &mut cli_exit_at,
+                                    active_input_controller: &active_input_controller,
+                                    termination_runtime: &mut termination_runtime,
+                                    drain_deadline: drain_deadline.as_mut(),
+                                    termination_deadline: termination_deadline.as_mut(),
+                                };
+                                match begin_stdout_ingestion_failure(error, context) {
+                                    Ok(()) => {}
+                                    Err(error) => break Err(error),
+                                }
+                            }
                         }
                     }
                     Ok(None) => {
@@ -1366,31 +1417,18 @@ async fn execute_cli_inner(
                             }
                         };
 
-                        if cli_status.is_some() {
-                            break Err(error);
-                        }
-                        match try_observe_cli_exit(
-                            &mut child,
-                            &mut cli_status,
-                            &mut cli_exit_at,
-                            &active_input_controller,
-                            &mut termination_runtime,
-                            stdout_closed,
-                            drain_deadline.as_mut(),
-                        )? {
-                            CliExitObservation::NoNewExit => {
-                                let error_log = error.to_string();
-                                termination_runtime.begin_control_failure(
-                                    TerminationReason::StdoutIngestion,
-                                    error,
-                                    ControlTerminationLog::StdoutIngestionFailed {
-                                        error: error_log,
-                                    },
-                                    termination_deadline.as_mut(),
-                                );
-                            }
-                            CliExitObservation::ExitedDrainingStdout
-                            | CliExitObservation::ExitedAndStdoutClosed => break Err(error),
+                        let context = StdoutIngestionFailureContext {
+                            child: &mut child,
+                            cli_status: &mut cli_status,
+                            cli_exit_at: &mut cli_exit_at,
+                            active_input_controller: &active_input_controller,
+                            termination_runtime: &mut termination_runtime,
+                            drain_deadline: drain_deadline.as_mut(),
+                            termination_deadline: termination_deadline.as_mut(),
+                        };
+                        match begin_stdout_ingestion_failure(error, context) {
+                            Ok(()) => {}
+                            Err(error) => break Err(error),
                         }
                     }
                 }
@@ -1540,7 +1578,7 @@ async fn execute_cli_inner(
     // `tokio::fs::File` may still own an in-flight blocking write after
     // `write_all` returns. Wait for it before callers observe the completed
     // execution and read the run log.
-    let _ = log_file.flush().await;
+    let mut log_flush_error = log_file.flush().await.err();
 
     active_input_controller.close_terminal();
     let mut active_input_error = None;
@@ -1615,8 +1653,16 @@ async fn execute_cli_inner(
     } else if has_control_error {
         None
     } else {
-        event_result.err()
+        event_result
+            .err()
+            .or_else(|| log_flush_error.take().map(AgentError::Io))
     };
+    if let Some(error) = &log_flush_error {
+        log_warn!(
+            LOG_TAG,
+            "Agent log flush failed after an earlier execution failure: {error}"
+        );
+    }
 
     // On success, boundedly drain accepted events. On any execution or
     // control error, abort unsent delivery rather than stalling on retries.
@@ -1716,6 +1762,59 @@ enum CliExitObservation {
     NoNewExit,
     ExitedDrainingStdout,
     ExitedAndStdoutClosed,
+}
+
+struct StdoutIngestionFailureContext<'a> {
+    child: &'a mut tokio::process::Child,
+    cli_status: &'a mut Option<ExitStatus>,
+    cli_exit_at: &'a mut Option<Instant>,
+    active_input_controller: &'a ActiveInputController,
+    termination_runtime: &'a mut CliTerminationRuntime,
+    drain_deadline: Pin<&'a mut Sleep>,
+    termination_deadline: Pin<&'a mut Sleep>,
+}
+
+fn begin_stdout_ingestion_failure(
+    error: AgentError,
+    context: StdoutIngestionFailureContext<'_>,
+) -> Result<(), AgentError> {
+    let StdoutIngestionFailureContext {
+        child,
+        cli_status,
+        cli_exit_at,
+        active_input_controller,
+        termination_runtime,
+        drain_deadline,
+        termination_deadline,
+    } = context;
+    active_input_controller.close_terminal();
+    if cli_status.is_some() {
+        return Err(error);
+    }
+
+    match try_observe_cli_exit(
+        child,
+        cli_status,
+        cli_exit_at,
+        active_input_controller,
+        termination_runtime,
+        true,
+        drain_deadline,
+    )? {
+        CliExitObservation::NoNewExit => {
+            let error_log = error.to_string();
+            termination_runtime.begin_control_failure(
+                TerminationReason::StdoutIngestion,
+                error,
+                ControlTerminationLog::StdoutIngestionFailed { error: error_log },
+                termination_deadline,
+            );
+            Ok(())
+        }
+        CliExitObservation::ExitedDrainingStdout | CliExitObservation::ExitedAndStdoutClosed => {
+            Err(error)
+        }
+    }
 }
 
 fn try_observe_cli_exit(
