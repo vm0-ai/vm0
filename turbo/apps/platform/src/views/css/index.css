@@ -558,6 +558,41 @@ body {
   border: 0.5px solid hsl(var(--gray-400));
 }
 
+.zero-realtime-status-reconnecting {
+  opacity: 0;
+  animation: zero-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
+    300ms forwards;
+}
+
+.zero-realtime-cloud-flow {
+  stroke-dasharray: 3 6;
+  animation: zero-realtime-cloud-flow 1.05s linear infinite;
+}
+
+@keyframes zero-realtime-status-reveal {
+  to {
+    opacity: 0.8;
+  }
+}
+
+@keyframes zero-realtime-cloud-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zero-realtime-status-reconnecting {
+    opacity: 0.8;
+    animation: none;
+  }
+
+  .zero-realtime-cloud-flow {
+    stroke-dasharray: none;
+    animation: none;
+  }
+}
+
 /* Role / status badge: pill with 0.7px border on neutral background */
 .zero-badge {
   border: 0.7px solid hsl(var(--gray-400));

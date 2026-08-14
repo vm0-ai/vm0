@@ -2601,7 +2601,9 @@
       "requestFailed": "Falha na solicitação"
     },
     "realtime": {
-      "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página."
+      "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página.",
+      "disconnected": "Conexão em tempo real desconectada",
+      "reconnecting": "Reconectando a conexão em tempo real"
     }
   },
   "invitationRedirect": {
