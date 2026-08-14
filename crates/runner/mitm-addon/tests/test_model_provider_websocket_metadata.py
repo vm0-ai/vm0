@@ -6,12 +6,18 @@ import pytest
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
+import usage
+from tests.model_provider_flow_helpers import (
+    make_openai_responses_websocket_flow,
+    model_provider_usage_sources,
+)
 from tests.model_provider_websocket_helpers import (
     ScheduledWebSocketTrim,
     capture_deferred_websocket_trims,
     feed_websocket_server_message,
+    openai_websocket_usage_frame,
 )
+from tests.usage_helpers import assert_usage_event_rows
 
 
 @pytest.fixture(autouse=True)
@@ -66,3 +72,38 @@ class TestModelProviderWebSocketUsageMetadata:
         feed_websocket_server_message(flow, b'{"type":"response.completed"')
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == "invalid"
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] == "invalid"
+
+
+class TestModelProviderWebSocketUsageMetadataRecovery:
+    """Tests for valid-frame recovery from malformed usage metadata."""
+
+    @pytest.fixture(autouse=True)
+    def _sync_usage_delivery(self, sync_usage_executor, usage_webhook_api):
+        self._usage_webhook_api = usage_webhook_api
+
+    def test_model_websocket_valid_frame_replaces_invalid_usage_sources_metadata(
+        self, tmp_path, real_flow
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_ws_invalid_sources",
+                    input_tokens=10,
+                    output_tokens=4,
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        assert model_provider_usage_sources(flow) == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 10),
+            ("gpt-5.5", "tokens.output", 4),
+        ]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)

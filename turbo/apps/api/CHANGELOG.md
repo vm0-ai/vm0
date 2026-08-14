@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.447.8](https://github.com/vm0-ai/vm0/compare/api-v1.447.7...api-v1.447.8) (2026-08-14)
+
+
+### Refactoring
+
+* **telegram:** neutralize outbound message route naming ([#27175](https://github.com/vm0-ai/vm0/issues/27175)) ([3ebd04c](https://github.com/vm0-ai/vm0/commit/3ebd04cd3c57916b9bf25edd695db2ce71367f0c))
+* **user-model-preference:** neutralize the api shell ([#27165](https://github.com/vm0-ai/vm0/issues/27165)) ([ae1a719](https://github.com/vm0-ai/vm0/commit/ae1a7197d8538d5da7032d1990e49ca0699641b0))
+
+
+### Performance Improvements
+
+* **api:** reduce usage event retention to four days ([#27153](https://github.com/vm0-ai/vm0/issues/27153)) ([6d78288](https://github.com/vm0-ai/vm0/commit/6d782887f6cb9343101d17b23e0cb57689333a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.8
+    * @okouai/core bumped to 8.559.12
+    * @okouai/db bumped to 1.198.20
+    * @okouai/pi-agent-runtime bumped to 1.4.26
+
 ## [1.447.7](https://github.com/vm0-ai/vm0/compare/api-v1.447.6...api-v1.447.7) (2026-08-14)
 
 

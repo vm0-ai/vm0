@@ -710,16 +710,18 @@ class TestXConnectorErrorPipeline:
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert flow.response.stream is False
 
-    def test_full_pipeline_stream_error_midflight(
+    def test_full_pipeline_stream_error_without_network_log_reports_verified_rows(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
-        """End-to-end: responseheaders -> partial chunks -> error() logs observed counts.
+        """End-to-end: responseheaders -> partial chunks -> error() reports observed counts.
 
         Simulates a real scenario: stream opens successfully, a few tweets
         arrive, then the connection resets.  No pre-populated state: the
         incremental parser must have accumulated counts from the chunks.
         """
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata.pop(metadata_keys.NETWORK_LOG_TARGET)
 
         # 1. Register parser
         mitm_addon.responseheaders(flow)
@@ -744,6 +746,7 @@ class TestXConnectorErrorPipeline:
         assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 2, "user.read": 1}
         assert "connector_response_report_on_interruption" not in flow.metadata
+        assert not (tmp_path / "network.jsonl").exists()
 
     def test_full_pipeline_stream_error_counts_complete_final_line_without_newline(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api

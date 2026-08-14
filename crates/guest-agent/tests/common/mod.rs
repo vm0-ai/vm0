@@ -1194,11 +1194,12 @@ fn read_codex_session_history_events_for_path(
 /// - Mutates the process-wide environment (`set_var`).
 /// - Mutates the process-wide working directory (`set_current_dir`).
 ///
-/// Call AT MOST ONCE per test binary; calling from multiple `#[test]`s
-/// in the same binary races on CWD and runtime capture order.
+/// Call AT MOST ONCE per process, and only when that process executes no other
+/// test concurrently. Supported callers use either a one-test integration
+/// binary or one exact-filtered isolated child-test process.
 ///
-/// SAFETY: callers run in a single-test test binary, so no other thread
-/// is reading the process env concurrently.
+/// SAFETY: no other thread can read the process environment while this setup
+/// mutates environment and CWD state.
 pub unsafe fn setup_env(
     mock_path: &Path,
     workdir: &Path,
