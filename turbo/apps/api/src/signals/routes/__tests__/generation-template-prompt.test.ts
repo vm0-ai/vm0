@@ -240,10 +240,12 @@ describe("buildGenerationTemplatePrompt", () => {
         selection: {
           stylePresetId: item.id,
           videoOptions: {
-            model: "seedance-1-5-pro-251215",
-            aspectRatio: "9:16",
-            duration: "6s",
-            resolution: "1080p",
+            // The run-owned path must not use this stored model to filter the
+            // remaining options. MiniMax accepts neither 720p nor silence.
+            model: "MiniMax-H3",
+            aspectRatio: "21:9",
+            duration: "5s",
+            resolution: "720p",
             generateAudio: false,
           },
         },
@@ -257,12 +259,12 @@ describe("buildGenerationTemplatePrompt", () => {
     }
     expect(result.prompt).toContain("Parameters the user set explicitly");
     expect(result.prompt).not.toContain("- Model:");
-    expect(result.prompt).toContain("- Aspect ratio: 9:16");
-    expect(result.prompt).toContain("- Duration: 6s");
-    expect(result.prompt).toContain("- Resolution: 1080p");
+    expect(result.prompt).toContain("- Aspect ratio: 21:9");
+    expect(result.prompt).toContain("- Duration: 5s");
+    expect(result.prompt).toContain("- Resolution: 720p");
     expect(result.prompt).toContain("- Audio: off");
     expect(result.prompt).toContain(
-      "--aspect-ratio 9:16 --duration 6s --resolution 1080p --no-audio",
+      "--aspect-ratio 21:9 --duration 5s --resolution 720p --no-audio",
     );
     expect(result.prompt).not.toContain("--model");
   });
