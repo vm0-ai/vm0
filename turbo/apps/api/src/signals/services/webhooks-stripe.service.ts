@@ -1579,6 +1579,42 @@ async function processAtomUsagePackCreditGrantInvoicePaid(
   });
 }
 
+function rejectAtomGrantTierReplacement(args: {
+  readonly invoice: InvoiceInput;
+  readonly details: AtomPlanGrantInvoiceDetails;
+  readonly lockedOrg: LockedInvoicePaidOrg;
+}): void {
+  if (
+    args.invoice.metadata?.planVersion === "usagePack" &&
+    args.lockedOrg.stripeSubscriptionId !== null
+  ) {
+    L.warn(
+      "atom usage-pack grant is waiting for the existing subscription deletion",
+      {
+        invoiceId: args.invoice.id,
+        orgId: args.details.orgId,
+        currentTier: args.lockedOrg.tier,
+        targetTier: args.details.tier,
+        stripeSubscriptionId: args.lockedOrg.stripeSubscriptionId,
+      },
+    );
+    throw new Error(
+      `Cannot apply Atom ${args.details.tier} usage-pack grant while subscription ${args.lockedOrg.stripeSubscriptionId} still owns tier ${args.lockedOrg.tier}; retry after customer.subscription.deleted`,
+    );
+  }
+
+  L.warn("atom grant invoice rejected tier replacement", {
+    invoiceId: args.invoice.id,
+    orgId: args.details.orgId,
+    currentTier: args.lockedOrg.tier,
+    targetTier: args.details.tier,
+    reason: atomGrantTierConflictMessage({
+      currentTier: args.lockedOrg.tier,
+      targetTier: args.details.tier,
+    }),
+  });
+}
+
 async function processAtomPlanGrantInvoicePaid(
   db: Db,
   invoice: InvoiceInput,
@@ -1623,16 +1659,7 @@ async function processAtomPlanGrantInvoicePaid(
         targetTier: details.tier,
       })
     ) {
-      L.warn("atom grant invoice rejected tier replacement", {
-        invoiceId: invoice.id,
-        orgId: details.orgId,
-        currentTier: lockedOrg.tier,
-        targetTier: details.tier,
-        reason: atomGrantTierConflictMessage({
-          currentTier: lockedOrg.tier,
-          targetTier: details.tier,
-        }),
-      });
+      rejectAtomGrantTierReplacement({ invoice, details, lockedOrg });
       return false;
     }
 

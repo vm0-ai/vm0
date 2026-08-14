@@ -36,6 +36,7 @@ type UsagePackUsd = 20 | 50 | 100 | 200;
 
 interface UsagePackLifecycleFixture {
   readonly orgId: string;
+  readonly tier: "pro" | "team";
   readonly customerId: string;
   readonly subscriptionId: string;
   readonly usagePackSubscriptionId: string;
@@ -105,10 +106,12 @@ function configureUsagePackEnvironment(): void {
 }
 
 function usagePackMetadata(fixture: UsagePackLifecycleFixture) {
+  const priceId =
+    fixture.tier === "team" ? TEST_PRICE_PLAN_TEAM : TEST_PRICE_PLAN_PRO;
   return {
     orgId: fixture.orgId,
-    tier: "pro",
-    priceId: TEST_PRICE_PLAN_PRO,
+    tier: fixture.tier,
+    priceId,
     purpose: "usage_pack_subscription",
     usagePackSubscriptionId: fixture.usagePackSubscriptionId,
   };
@@ -144,7 +147,12 @@ function stripeSubscription(
     items: {
       data: [
         {
-          price: { id: TEST_PRICE_PLAN_PRO },
+          price: {
+            id:
+              fixture.tier === "team"
+                ? TEST_PRICE_PLAN_TEAM
+                : TEST_PRICE_PLAN_PRO,
+          },
           quantity: 1,
           current_period_start: paidPeriod.start,
           current_period_end: paidPeriod.end,
@@ -278,6 +286,7 @@ async function readUsagePackState(fixture: UsagePackLifecycleFixture) {
 
 async function seedUsagePackLifecycle(
   selections: readonly UsagePackSelection[],
+  tier: "pro" | "team" = "pro",
 ): Promise<UsagePackLifecycleFixture> {
   const orgId = `org_usage_pack_${randomUUID()}`;
   const customerId = `cus_${randomUUID()}`;
@@ -296,8 +305,9 @@ async function seedUsagePackLifecycle(
   const seeded = await usagePackStateAction({
     action: "seed",
     orgId,
-    tier: "pro",
-    stripePlanPriceId: TEST_PRICE_PLAN_PRO,
+    tier,
+    stripePlanPriceId:
+      tier === "team" ? TEST_PRICE_PLAN_TEAM : TEST_PRICE_PLAN_PRO,
     stripeCustomerId: customerId,
     stripeCheckoutSessionId: checkoutSessionId,
     allocations: selections.map((selection) => {
@@ -324,6 +334,7 @@ async function seedUsagePackLifecycle(
   });
   return {
     orgId,
+    tier,
     customerId,
     subscriptionId,
     usagePackSubscriptionId,
@@ -538,6 +549,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
     };
     const fixture: UsagePackLifecycleFixture = {
       orgId,
+      tier: "pro",
       customerId,
       subscriptionId,
       usagePackSubscriptionId,
@@ -666,6 +678,127 @@ describe("usage pack subscription Stripe lifecycle", () => {
       500,
     );
     await expect(grantRows(fixture)).resolves.toHaveLength(1);
+  });
+
+  it("retries a one-time Atom usage-pack grant after the old Team subscription is deleted", async () => {
+    const grantedUserId = `user_${randomUUID()}`;
+    const fixture = await seedUsagePackLifecycle(
+      [{ userId: grantedUserId, usagePackUsd: 20 }],
+      "team",
+    );
+    const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+    const paidPeriod = period(0);
+    const currentSubscription = stripeSubscription(
+      fixture,
+      paidPeriod,
+      quantities,
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+
+    await postStripeEvent(
+      stripeEvent("checkout.session.completed", {
+        id: fixture.checkoutSessionId,
+        customer: fixture.customerId,
+        subscription: fixture.subscriptionId,
+        metadata: usagePackMetadata(fixture),
+      }),
+      200,
+    );
+    await postStripeEvent(
+      stripeEvent("customer.subscription.created", currentSubscription),
+      200,
+    );
+    await postStripeEvent(
+      stripeEvent(
+        "invoice.paid",
+        paidInvoice(fixture, {
+          invoiceId: `in_team_${randomUUID()}`,
+          paidPeriod,
+          quantities,
+        }),
+      ),
+      200,
+    );
+
+    const grantPeriod = {
+      start: paidPeriod.start,
+      end: paidPeriod.start + 7 * 86_400,
+    };
+    const planInvoiceId = `in_atom_usage_pack_plan_${randomUUID()}`;
+    const metadata = {
+      type: "atom_grant",
+      purpose: "atom_grant",
+      source: "atom_entitlement",
+      planVersion: "usagePack",
+      operationId: `sub_${randomUUID()}`,
+      orgId: fixture.orgId,
+      tier: "pro",
+      planId: "pro",
+      duration: "7d",
+      atomGrantExpiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+    };
+    const planInvoice = {
+      id: planInvoiceId,
+      customer: fixture.customerId,
+      metadata,
+      status: "paid",
+      paid: true,
+      parent: null,
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: `il_${randomUUID()}`,
+            amount: 0,
+            subtotal: 0,
+            quantity: 1,
+            price: { id: TEST_PRICE_ATOM_GRANT },
+            period: grantPeriod,
+            parent: { type: "invoice_item_details" },
+          },
+        ],
+      },
+    };
+
+    await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 500);
+    expect((await readUsagePackState(fixture)).org).toStrictEqual(
+      expect.objectContaining({
+        tier: "team",
+        stripeSubscriptionId: fixture.subscriptionId,
+        memberInviteUsagePackRequired: true,
+      }),
+    );
+
+    await postStripeEvent(
+      stripeEvent("customer.subscription.deleted", {
+        id: fixture.subscriptionId,
+        metadata: usagePackMetadata(fixture),
+      }),
+      200,
+    );
+    expect((await readUsagePackState(fixture)).org).toStrictEqual(
+      expect.objectContaining({
+        tier: "limited-free-1",
+        stripeSubscriptionId: null,
+      }),
+    );
+
+    await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 200);
+    const retriedState = await readUsagePackState(fixture);
+    expect(retriedState.org).toStrictEqual(
+      expect.objectContaining({
+        tier: "pro",
+        stripeSubscriptionId: null,
+        subscriptionStatus: "atom_grant",
+        currentPeriodEnd: new Date(grantPeriod.end * 1000).toISOString(),
+        memberInviteUsagePackRequired: true,
+      }),
+    );
+    expect(retriedState.subscription).toStrictEqual(
+      expect.objectContaining({ subscriptionStatus: "canceled" }),
+    );
   });
 
   it("rejects an invoice line that extends beyond the current Stripe period", async () => {
