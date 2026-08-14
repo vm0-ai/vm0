@@ -8,6 +8,9 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+use guest_contracts::process_containment::{
+    CONTROL_MEMORY_MIN_BYTES, WORKLOAD_MEMORY_RESERVE_BYTES, WorkloadResourcePolicy,
+};
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INVALID_REQUEST, ReusePreparationReport, ReusePreparationRequest,
@@ -418,8 +421,7 @@ fn prepare_for_reuse_rejects_stale_workload_memory_high() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     let policy =
-        guest_contracts::process_containment::WorkloadResourcePolicy::for_current_guest_capacity()
-            .map_err(std::io::Error::other)?;
+        WorkloadResourcePolicy::for_current_guest_capacity().map_err(std::io::Error::other)?;
     let legacy_memory_high = policy
         .memory_max_bytes
         .checked_sub(256 * 1024 * 1024)
@@ -429,6 +431,33 @@ fn prepare_for_reuse_rejects_stale_workload_memory_high() -> TestResult {
     std::fs::write(
         containment.base.join("exec-current/workload/memory.high"),
         legacy_memory_high.to_string(),
+    )?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_stale_workload_memory_max() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    let policy =
+        WorkloadResourcePolicy::for_current_guest_capacity().map_err(std::io::Error::other)?;
+    let retired_reserve_delta = CONTROL_MEMORY_MIN_BYTES - WORKLOAD_MEMORY_RESERVE_BYTES;
+    let legacy_memory_max = policy
+        .memory_max_bytes
+        .checked_sub(retired_reserve_delta)
+        .ok_or_else(|| {
+            std::io::Error::other("test Guest is below the retired memory.max policy")
+        })?;
+    std::fs::write(
+        containment.base.join("exec-current/workload/memory.max"),
+        legacy_memory_max.to_string(),
     )?;
 
     let output = run_helper_with_containment(&request, &containment)?;
@@ -478,7 +507,7 @@ impl ContainmentFixture {
         }
         std::fs::write(
             base.join("memory.min"),
-            guest_contracts::process_containment::CONTROL_MEMORY_RESERVE_BYTES.to_string(),
+            CONTROL_MEMORY_MIN_BYTES.to_string(),
         )?;
         let operation = base.join("exec-current");
         std::fs::create_dir(&operation)?;
@@ -510,8 +539,8 @@ impl ContainmentFixture {
                 std::fs::write(leaf.join(filename), content)?;
             }
         }
-        let policy = guest_contracts::process_containment::WorkloadResourcePolicy::for_current_guest_capacity()
-            .map_err(std::io::Error::other)?;
+        let policy =
+            WorkloadResourcePolicy::for_current_guest_capacity().map_err(std::io::Error::other)?;
         let workload = operation.join("workload");
         for (filename, value) in [
             (
