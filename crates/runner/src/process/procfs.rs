@@ -37,7 +37,7 @@ pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
 
 fn read_cmdline_for_scan(proc_root: &Path, pid: u32, cancel: &CancellationToken) -> CmdlineRead {
     let path = proc_root.join(pid.to_string()).join("cmdline");
-    match std::fs::read(&path) {
+    let result = match std::fs::read(&path) {
         Ok(bytes) => match parse_cmdline_bytes(&bytes) {
             Some(argv) => CmdlineRead::Args(argv),
             None => {
@@ -49,6 +49,11 @@ fn read_cmdline_for_scan(proc_root: &Path, pid: u32, cancel: &CancellationToken)
             let problem = format!("cmdline read failed: {e}");
             cmdline_problem_for_scan(proc_root, pid, &problem, cancel)
         }
+    };
+    if cancel.is_cancelled() {
+        CmdlineRead::Cancelled
+    } else {
+        result
     }
 }
 
@@ -465,12 +470,7 @@ fn scan_proc_cmdlines_blocking(
         let Ok(pid) = name_str.parse::<u32>() else {
             continue;
         };
-        let cmdline = read_cmdline_for_scan(proc_root, pid, cancel);
-        if cancel.is_cancelled() {
-            complete = false;
-            break;
-        }
-        match cmdline {
+        match read_cmdline_for_scan(proc_root, pid, cancel) {
             CmdlineRead::Args(argv) => result.push((pid, argv)),
             CmdlineRead::Cancelled => {
                 complete = false;
