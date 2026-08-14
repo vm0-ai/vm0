@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.85](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.84...vsock-guest-v0.19.85) (2026-08-14)
+
+
+### Performance Improvements
+
+* **runner:** reduce guest dns readiness latency ([#27184](https://github.com/vm0-ai/vm0/issues/27184)) ([0752a72](https://github.com/vm0-ai/vm0/commit/0752a72e452aedcf40cca5bb8d177a3850592d1e))
+
 ## [0.19.84](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.83...vsock-guest-v0.19.84) (2026-08-14)
 
 

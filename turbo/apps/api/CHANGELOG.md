@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.451.0](https://github.com/vm0-ai/vm0/compare/api-v1.450.1...api-v1.451.0) (2026-08-14)
+
+
+### Features
+
+* retain 30 days of chat events ([#27278](https://github.com/vm0-ai/vm0/issues/27278)) ([d4a03d7](https://github.com/vm0-ai/vm0/commit/d4a03d7c292d9c6cd017b3e074c9ff053c005115))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.0
+    * @okouai/core bumped to 8.560.5
+    * @okouai/db bumped to 1.200.0
+    * @okouai/pi-agent-runtime bumped to 1.5.2
+
 ## [1.450.1](https://github.com/vm0-ai/vm0/compare/api-v1.450.0...api-v1.450.1) (2026-08-14)
 
 

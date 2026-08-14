@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.217](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.216...sandbox-fc-v0.37.217) (2026-08-14)
+
+
+### Performance Improvements
+
+* **runner:** reduce guest dns readiness latency ([#27184](https://github.com/vm0-ai/vm0/issues/27184)) ([0752a72](https://github.com/vm0-ai/vm0/commit/0752a72e452aedcf40cca5bb8d177a3850592d1e))
+
 ## [0.37.216](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.215...sandbox-fc-v0.37.216) (2026-08-14)
 
 ## [0.37.215](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.214...sandbox-fc-v0.37.215) (2026-08-14)
