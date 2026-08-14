@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.447.1](https://github.com/vm0-ai/vm0/compare/api-v1.447.0...api-v1.447.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models through openrouter ([#27077](https://github.com/vm0-ai/vm0/issues/27077)) ([964b19e](https://github.com/vm0-ai/vm0/commit/964b19eb456c63794c2041c1eb69cfd475a6b078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+    * @okouai/core bumped to 8.559.5
+    * @okouai/db bumped to 1.198.13
+    * @okouai/pi-agent-runtime bumped to 1.4.19
+
 ## [1.447.0](https://github.com/vm0-ai/vm0/compare/api-v1.446.0...api-v1.447.0) (2026-08-14)
 
 
