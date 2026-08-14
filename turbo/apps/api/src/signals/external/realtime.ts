@@ -7,7 +7,7 @@ import type {
   ConnectorRuntimeTarget,
   RunnerPreference,
 } from "@okouai/api-contracts/contracts/runners";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -49,7 +49,7 @@ export async function createPlatformUserRealtimeToken(
 export async function createBuiltInGenerationRealtimeSubscription(
   userId: string,
   generationId: string,
-): Promise<ZeroBuiltInGenerationRealtimeSubscription> {
+): Promise<BuiltInGenerationRealtimeSubscription> {
   return {
     channelName: getUserChannelName(userId),
     eventName: getBuiltInGenerationEventName(generationId),

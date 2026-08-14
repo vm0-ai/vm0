@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::io;
-use std::num::NonZeroU64;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
@@ -35,6 +34,7 @@ use nbd_cow::PooledNbdCowDevice;
 
 use crate::api::ApiClient;
 use crate::balloon;
+use crate::boot_config::{BootConfigInput, FirecrackerBootConfig};
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::control;
 use crate::exec_operation_result::{
@@ -196,106 +196,32 @@ struct SnapshotLoadPaths {
     memory: String,
 }
 
-fn build_fresh_boot_firecracker_config(
+pub(crate) fn build_fresh_boot_firecracker_config(
+    invariant: &InvariantConfig,
     resources: &sandbox::ResourceLimits,
     kernel_path: String,
     cow_device_path: String,
     workspace_device_path: Option<String>,
     vsock_path: String,
     device_rate_limits: Option<&FirecrackerDeviceRateLimits>,
-) -> sandbox::Result<serde_json::Value> {
-    let inv = InvariantConfig::new();
-    let mut drive = serde_json::Map::from_iter([
-        ("drive_id".to_string(), serde_json::json!("rootfs")),
-        (
-            "path_on_host".to_string(),
-            serde_json::json!(cow_device_path),
-        ),
-        ("is_root_device".to_string(), serde_json::json!(true)),
-        ("is_read_only".to_string(), serde_json::json!(false)),
-    ]);
-    let mut workspace_drive = workspace_device_path.map(|workspace_device_path| {
-        serde_json::Map::from_iter([
-            ("drive_id".to_string(), serde_json::json!("workspace")),
-            (
-                "path_on_host".to_string(),
-                serde_json::json!(workspace_device_path),
-            ),
-            ("is_root_device".to_string(), serde_json::json!(false)),
-            ("is_read_only".to_string(), serde_json::json!(false)),
-        ])
+) -> sandbox::Result<FirecrackerBootConfig> {
+    let config = FirecrackerBootConfig::new(BootConfigInput {
+        invariant,
+        vcpu_count: resources.cpu_count,
+        memory_mb: resources.memory_mb,
+        kernel_path,
+        rootfs_path: cow_device_path,
+        workspace_path: workspace_device_path,
+        vsock_path,
     });
-    let mut network_interface = serde_json::Map::from_iter([
-        ("iface_id".to_string(), serde_json::json!(inv.iface_id)),
-        ("guest_mac".to_string(), serde_json::json!(inv.guest_mac)),
-        ("host_dev_name".to_string(), serde_json::json!(inv.tap_name)),
-    ]);
-    if let Some(rate_limits) = device_rate_limits {
-        let block_drive_count = if workspace_drive.is_some() { 2 } else { 1 };
-        let drive_rate_limiter = rate_limits
-            .block_drive_limiter(nonzero_block_drive_count(block_drive_count)?)
-            .map_err(|e| SandboxError::Start {
-                message: format!("build drive rate limiter: {e}"),
-            })?;
-        drive.insert(
-            "rate_limiter".to_string(),
-            serde_json::to_value(&drive_rate_limiter).map_err(|e| SandboxError::Start {
-                message: format!("serialize drive rate limiter: {e}"),
-            })?,
-        );
-        if let Some(workspace_drive) = workspace_drive.as_mut() {
-            workspace_drive.insert(
-                "rate_limiter".to_string(),
-                serde_json::to_value(&drive_rate_limiter).map_err(|e| SandboxError::Start {
-                    message: format!("serialize workspace drive rate limiter: {e}"),
-                })?,
-            );
-        }
-        network_interface.insert(
-            "rx_rate_limiter".to_string(),
-            serde_json::to_value(&rate_limits.net_rx).map_err(|e| SandboxError::Start {
-                message: format!("serialize network rx rate limiter: {e}"),
-            })?,
-        );
-        network_interface.insert(
-            "tx_rate_limiter".to_string(),
-            serde_json::to_value(&rate_limits.net_tx).map_err(|e| SandboxError::Start {
-                message: format!("serialize network tx rate limiter: {e}"),
-            })?,
-        );
+    match device_rate_limits {
+        Some(rate_limits) => config
+            .with_device_rate_limits(rate_limits)
+            .map_err(|error| SandboxError::Start {
+                message: format!("build drive rate limiter: {error}"),
+            }),
+        None => Ok(config),
     }
-    let mut drives = vec![serde_json::Value::Object(drive)];
-    if let Some(workspace_drive) = workspace_drive {
-        drives.push(serde_json::Value::Object(workspace_drive));
-    }
-
-    Ok(serde_json::json!({
-        "boot-source": {
-            "kernel_image_path": kernel_path,
-            "boot_args": inv.boot_args,
-        },
-        "drives": drives,
-        "machine-config": {
-            "vcpu_count": resources.cpu_count,
-            "mem_size_mib": resources.memory_mb,
-        },
-        "network-interfaces": [serde_json::Value::Object(network_interface)],
-        "vsock": {
-            "guest_cid": inv.guest_cid,
-            "uds_path": vsock_path,
-        },
-        "balloon": {
-            "amount_mib": inv.balloon.amount_mib,
-            "deflate_on_oom": inv.balloon.deflate_on_oom,
-            "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
-        },
-    }))
-}
-
-fn nonzero_block_drive_count(count: u64) -> sandbox::Result<NonZeroU64> {
-    NonZeroU64::new(count).ok_or_else(|| SandboxError::Start {
-        message: "block drive count must be non-zero".into(),
-    })
 }
 
 struct ProcessMonitorHandle {
@@ -1085,7 +1011,8 @@ impl FirecrackerSandbox {
     }
 
     /// Build the Firecracker JSON configuration for fresh boot.
-    fn build_config(&self) -> sandbox::Result<serde_json::Value> {
+    fn build_config(&self) -> sandbox::Result<FirecrackerBootConfig> {
+        let invariant = InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let cow_device_path = self.cow_device()?.device_path().display().to_string();
         let workspace_device_path = self
@@ -1096,6 +1023,7 @@ impl FirecrackerSandbox {
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
         build_fresh_boot_firecracker_config(
+            &invariant,
             &self.config.resources,
             kernel_path,
             cow_device_path,

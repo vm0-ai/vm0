@@ -4702,7 +4702,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("routes vm0 managed Claude through the OpenRouter vendor", async () => {
+  it("selects a vm0 managed key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
@@ -4720,7 +4720,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     const acquiredApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
-      vendor: "openrouter",
+      vendor: "anthropic",
       apiKey: requestedApiKey,
     });
     expect(acquiredApiKey === requestedApiKey).toBeFalsy();
@@ -4747,31 +4747,10 @@ describe("CHAT-02: model-first provider policies", () => {
       run.runId,
     );
     const environment = claimEnvironment(claim);
-    expect(claim.cliAgentType).toBe("claude-code");
-    expect(environment).toMatchObject({
-      ANTHROPIC_AUTH_TOKEN: modelProviderSecretPlaceholder(
-        "openrouter-api-key",
-        "OPENROUTER_API_KEY",
-      ),
-      ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
-      ANTHROPIC_API_KEY: "",
-      ANTHROPIC_MODEL: "anthropic/claude-opus-4.8",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "anthropic/claude-opus-4.8",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "anthropic/claude-opus-4.8",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "anthropic/claude-opus-4.8",
-      CLAUDE_CODE_SUBAGENT_MODEL: "anthropic/claude-opus-4.8",
-    });
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewall.kind === "builtin"
-          ? firewall.name
-          : firewall.firewall.name;
-      }),
-    ).toContain("model-provider:openrouter-api-key");
-    expect(claim.billableFirewalls).toContain(
-      "model-provider:openrouter-api-key",
+    expect(environment.ANTHROPIC_API_KEY).toBe(
+      modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
     );
-    expect(claim.modelUsageProvider).toBe("claude-opus-4-8");
+    expect(environment.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected vm0 claim to carry encrypted secrets");
@@ -4781,7 +4760,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         encryptedSecrets: claim.encryptedSecrets,
         authHeaders: {
-          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+          Authorization: `Bearer ${secretTemplate("ANTHROPIC_API_KEY")}`,
         },
       },
       [200],

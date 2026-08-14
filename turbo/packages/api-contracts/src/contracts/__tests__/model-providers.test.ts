@@ -506,20 +506,17 @@ describe("model-first canonical catalog", () => {
   });
 
   it.each([
-    ["claude-fable-5", "anthropic/claude-fable-5"],
-    ["claude-opus-5", "anthropic/claude-opus-5"],
-    ["claude-opus-4-8", "anthropic/claude-opus-4.8"],
-    ["claude-sonnet-5", "anthropic/claude-sonnet-5"],
-    ["claude-sonnet-4-6", "anthropic/claude-sonnet-4.6"],
-  ] as const)(
-    "routes vm0 managed %s through OpenRouter as %s",
-    (model, apiModel) => {
-      expect(getVm0ConcreteProviderType(model)).toBe("openrouter-api-key");
-      expect(getVm0Vendor(model)).toBe("openrouter");
-      expect(getVm0ApiModel(model)).toBe(apiModel);
-      expect(getProviderRuntimeModel("vm0", model)).toBe(apiModel);
-    },
-  );
+    "claude-fable-5",
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+  ] as const)("routes vm0 managed %s directly through Anthropic", (model) => {
+    expect(getVm0ConcreteProviderType(model)).toBe("anthropic-api-key");
+    expect(getVm0Vendor(model)).toBe("anthropic");
+    expect(getVm0ApiModel(model)).toBe(model);
+    expect(getProviderRuntimeModel("vm0", model)).toBe(model);
+  });
 
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([

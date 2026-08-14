@@ -182,6 +182,18 @@ const connectorOauthDeviceAuthDisabled = Object.freeze({
   }),
 });
 
+function connectorOauthDeviceAuthUnavailable(connectorSlug: ConnectorSlug) {
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: `${connectorSlug} connector is not available`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
 function deviceAuthResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
   args: {
@@ -227,7 +239,7 @@ function deviceAuthResolutionError(
       return connectorOauthDeviceAuthDisabled;
     }
     case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
+      return connectorOauthDeviceAuthUnavailable(args.connectorSlug);
     }
   }
 }
@@ -357,7 +369,7 @@ async function resolveStoredDeviceAuthMethod(args: {
     expectedGrantKind: "device-auth",
   });
   if (!resolved.ok) {
-    return internalServerError("Invalid OAuth device authorization session");
+    return connectorOauthDeviceAuthUnavailable(args.connectorSlug);
   }
   return resolved;
 }

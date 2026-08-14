@@ -8,6 +8,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import {
   chatThreadsContract,
+  chatThreadVideoModelContract,
   type ChatThreadEvent,
   type ChatThreadServiceTier,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -3299,5 +3300,138 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(updatedAuthorizationAgentId).toBe(OTHER_AGENT_ID);
     });
+  });
+});
+
+describe("chat composer video model", () => {
+  function videoPanelButton(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
+    });
+  }
+
+  function findVideoPanelButton(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = videoPanelButton(label);
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    });
+  }
+
+  function mockVideoModelThread(selectedVideoModel: string | null): {
+    readonly bodies: { model: string | null }[];
+  } {
+    const bodies: { model: string | null }[] = [];
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({ selectedModel: "claude-fable-5", selectedVideoModel });
+    context.mocks.api(
+      chatThreadVideoModelContract.update,
+      ({ body, respond }) => {
+        bodies.push({ model: body.model });
+        return respond(204);
+      },
+    );
+    return { bodies };
+  }
+
+  it("pins a video model on the thread from the model picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { bodies } = mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+
+    // Every public catalog model is offered, with no plan or provider filter.
+    expect(videoPanelButton("Seedance 2.5")).toBeInTheDocument();
+    expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
+    expect(videoPanelButton("Seedance 2.0 fast")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+
+    await waitFor(() => {
+      expect(bodies).toStrictEqual([{ model: "fal-ai/veo3.1/fast" }]);
+    });
+    // Choosing closes the popover, so the picker reopens on the model list.
+    await waitFor(() => {
+      expect(videoPanelButton("Veo 3.1 fast")).toBeUndefined();
+    });
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await expect(
+      findVideoPanelButton("Manage more models"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("pins the visible fallback model to the current thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { bodies } = mockVideoModelThread("MiniMax-H3");
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+    expect(videoPanelButton("MiniMax H3")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(await findVideoPanelButton("Seedance 2.0 fast"));
+
+    await waitFor(() => {
+      expect(bodies).toStrictEqual([
+        { model: "dreamina-seedance-2-0-fast-260128" },
+      ]);
+    });
+  });
+
+  it("checks the resolved member default when the thread has no pin", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+
+    await expect(findVideoPanelButton("Veo 3.1 fast")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("hides the video model row while the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockVideoModelThread(null);
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
+    expect(videoPanelButton("Manage more models")).toBeUndefined();
   });
 });

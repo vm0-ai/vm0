@@ -7,6 +7,7 @@ import {
   connectorCatalogCompatibilityEvaluation,
   connectorCatalogSyncState,
 } from "@okouai/db/schema/connector-catalog";
+import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@okouai/db/jsonb-contracts/connector-catalog";
 import { and, asc, eq } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../lib/env";
@@ -23,6 +24,7 @@ import {
 } from "../signals/services/connector-catalog-artifacts/relationships";
 import {
   connectorCatalogExecutableCapabilityState,
+  connectorCatalogCompatibilityEvaluationSchema,
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "../signals/services/connector-catalog-source";
@@ -417,6 +419,22 @@ export async function invalidateApiTestConnectorCatalogCompatibility(): Promise<
     .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
     .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
   requireSingleCatalogMutation(updated, "compatibility corruption");
+}
+
+export async function replaceApiTestConnectorCatalogFilteredAuthMethods(
+  filteredAuthMethods: ConnectorCatalogCompatibilityEvaluationPayload["filteredAuthMethods"],
+): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const payload = connectorCatalogCompatibilityEvaluationSchema.parse({
+    filteredAuthMethods,
+  });
+  const db = store.set(writeDb$);
+  const updated = await db
+    .update(connectorCatalogCompatibilityEvaluation)
+    .set({ filteredAuthMethods: payload })
+    .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
+    .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
+  requireSingleCatalogMutation(updated, "compatibility filter replacement");
 }
 
 export async function deleteApiTestConnectorCatalogCompatibility(): Promise<void> {

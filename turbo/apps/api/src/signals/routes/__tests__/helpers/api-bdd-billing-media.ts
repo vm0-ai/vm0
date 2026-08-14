@@ -22,7 +22,7 @@ import {
   type RedeemCodeRequest,
   type RedeemRequest,
 } from "@okouai/api-contracts/contracts/zero-billing";
-import { zeroBuiltInGenerationContract } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import { builtInGenerationContract } from "@okouai/api-contracts/contracts/built-in-generation";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
@@ -59,7 +59,7 @@ import { zeroBillingRedeemRoutes } from "../../zero-billing-redeem";
 import { zeroBillingRedeemCodeRoutes } from "../../zero-billing-redeem-code";
 import { zeroBillingRestoreRoutes } from "../../zero-billing-restore";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
-import { zeroBuiltInGenerationRoutes } from "../../zero-built-in-generation";
+import { builtInGenerationRoutes } from "../../built-in-generation";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
 import { mapsRoutes } from "../../maps";
@@ -705,8 +705,8 @@ export function createBillingMediaApi(context: TestContext) {
       generationId = randomUUID(),
       statuses: readonly (200 | 401 | 403 | 404 | 500)[] = [200],
     ) {
-      const client = setupApp({ context, routes: zeroBuiltInGenerationRoutes })(
-        zeroBuiltInGenerationContract,
+      const client = setupApp({ context, routes: builtInGenerationRoutes })(
+        builtInGenerationContract,
       );
       return await accept(
         client.get({

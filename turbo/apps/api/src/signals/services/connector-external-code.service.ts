@@ -110,6 +110,18 @@ const connectorExternalCodeDisabled = Object.freeze({
   }),
 });
 
+function connectorExternalCodeUnavailable(connectorSlug: ConnectorSlug) {
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: `${connectorSlug} connector is not available`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
 function externalCodeResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
   args: {
@@ -144,7 +156,7 @@ function externalCodeResolutionError(
       return connectorExternalCodeDisabled;
     }
     case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
+      return connectorExternalCodeUnavailable(args.connectorSlug);
     }
   }
 }
@@ -213,7 +225,7 @@ async function resolveStoredExternalCodeMethod(args: {
     expectedGrantKind: "external-code",
   });
   if (!resolved.ok) {
-    return internalServerError("Invalid external-code authorization session");
+    return connectorExternalCodeUnavailable(args.connectorSlug);
   }
   return resolved;
 }

@@ -191,9 +191,6 @@ function pendingStoredConnectorRuntimes(
   >();
 
   for (const row of rows) {
-    if (!isConnectorSlug(args.snapshot, row.connectorSlug)) {
-      continue;
-    }
     if (pending.has(row.connectorSlug)) {
       throw new Error(
         `Duplicate stored connector state for ${row.connectorSlug}`,
@@ -210,6 +207,9 @@ function pendingStoredConnectorRuntimes(
         userId: args.userId,
       },
     });
+    if (!isConnectorSlug(args.snapshot, row.connectorSlug)) {
+      continue;
+    }
     if (accessResult.kind !== "ok") {
       pending.set(row.connectorSlug, null);
       continue;

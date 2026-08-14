@@ -7,6 +7,7 @@ use sandbox::SandboxError;
 use tracing::info;
 
 use crate::api::ApiClient;
+use crate::boot_config::{ROOTFS_DRIVE_ID, WORKSPACE_DRIVE_ID, nonzero_drive_count};
 use crate::config::FirecrackerDeviceRateLimits;
 use crate::factory::InvariantConfig;
 
@@ -26,18 +27,21 @@ pub(super) async fn load_snapshot_and_apply_rate_limits(
         })?;
     if let Some(rate_limits) = rate_limits {
         let drive_rate_limiter = rate_limits
-            .block_drive_limiter(super::nonzero_block_drive_count(2)?)
+            .block_drive_limiter(
+                nonzero_drive_count([ROOTFS_DRIVE_ID, WORKSPACE_DRIVE_ID].len())
+                    .map_err(|error| SandboxError::Start { message: error })?,
+            )
             .map_err(|e| SandboxError::Start {
                 message: format!("build snapshot drive rate limiter: {e}"),
             })?;
         client
-            .patch_drive_rate_limiter("rootfs", &drive_rate_limiter)
+            .patch_drive_rate_limiter(ROOTFS_DRIVE_ID, &drive_rate_limiter)
             .await
             .map_err(|e| SandboxError::Start {
                 message: format!("snapshot drive rate limiter patch failed: {e}"),
             })?;
         client
-            .patch_drive_rate_limiter("workspace", &drive_rate_limiter)
+            .patch_drive_rate_limiter(WORKSPACE_DRIVE_ID, &drive_rate_limiter)
             .await
             .map_err(|e| SandboxError::Start {
                 message: format!("snapshot workspace drive rate limiter patch failed: {e}"),

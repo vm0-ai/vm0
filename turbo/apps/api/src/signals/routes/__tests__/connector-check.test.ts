@@ -44,7 +44,7 @@ const store = createStore();
 
 interface ConnectedFixture {
   readonly actor: ApiTestUser;
-  readonly connectorSlug: "github" | "reap";
+  readonly connectorSlug: "github" | "reap" | "removed-connector";
 }
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
@@ -368,6 +368,31 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       connector: {
         connectorSlug: "github",
       },
+    });
+  });
+
+  it("ignores stale stored connectors that are absent from the catalog", async () => {
+    const actor = bdd.user();
+    await seedConnectorStorageRow(context, {
+      authMethod: "api",
+      connectorSlug: "removed-connector",
+      orgId: requireOrgId(actor),
+      storageVersion: 1,
+      userId: actor.userId,
+    });
+    await trackConnectedFixture(
+      Promise.resolve({ actor, connectorSlug: "removed-connector" }),
+    );
+
+    const response = await checkWithSession(actor, {
+      mode: "url",
+      method: "GET",
+      url: "https://api.github.com/repos/vm0-ai/vm0",
+    });
+
+    expect(response.body).toMatchObject({
+      outcome: "resolved",
+      connector: { connectorSlug: "github" },
     });
   });
 

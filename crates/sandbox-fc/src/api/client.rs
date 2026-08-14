@@ -2,6 +2,10 @@ use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::boot_config::{
+    BalloonConfig, BootSourceConfig, DriveConfig, MachineConfig, NetworkInterfaceConfig,
+    VsockConfig,
+};
 use crate::config::RateLimiterConfig;
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use reqwest::Method;
@@ -226,16 +230,19 @@ impl ApiClient {
         vcpu_count: u32,
         mem_size_mib: u32,
     ) -> Result<(), ApiError> {
-        self.send_json(
-            Method::PUT,
-            "/machine-config",
-            &serde_json::json!({
-                "vcpu_count": vcpu_count,
-                "mem_size_mib": mem_size_mib,
-            }),
-            REQUEST_TIMEOUT,
-        )
+        self.configure_machine_payload(&MachineConfig {
+            vcpu_count,
+            mem_size_mib,
+        })
         .await
+    }
+
+    pub(crate) async fn configure_machine_payload(
+        &self,
+        config: &MachineConfig,
+    ) -> Result<(), ApiError> {
+        self.send_json(Method::PUT, "/machine-config", config, REQUEST_TIMEOUT)
+            .await
     }
 
     /// Configure the boot source via PUT /boot-source.
@@ -244,16 +251,19 @@ impl ApiClient {
         kernel_image_path: &str,
         boot_args: &str,
     ) -> Result<(), ApiError> {
-        self.send_json(
-            Method::PUT,
-            "/boot-source",
-            &serde_json::json!({
-                "kernel_image_path": kernel_image_path,
-                "boot_args": boot_args,
-            }),
-            REQUEST_TIMEOUT,
-        )
+        self.configure_boot_source_payload(&BootSourceConfig {
+            kernel_image_path: kernel_image_path.to_owned(),
+            boot_args: boot_args.to_owned(),
+        })
         .await
+    }
+
+    pub(crate) async fn configure_boot_source_payload(
+        &self,
+        config: &BootSourceConfig,
+    ) -> Result<(), ApiError> {
+        self.send_json(Method::PUT, "/boot-source", config, REQUEST_TIMEOUT)
+            .await
     }
 
     /// Configure a drive via PUT /drives/{drive_id}.
@@ -265,30 +275,23 @@ impl ApiClient {
         is_read_only: bool,
         rate_limiter: Option<&RateLimiterConfig>,
     ) -> Result<(), ApiError> {
-        let path = format!("/drives/{drive_id}");
-        let mut body = serde_json::Map::from_iter([
-            ("drive_id".to_string(), serde_json::json!(drive_id)),
-            ("path_on_host".to_string(), serde_json::json!(path_on_host)),
-            (
-                "is_root_device".to_string(),
-                serde_json::json!(is_root_device),
-            ),
-            ("is_read_only".to_string(), serde_json::json!(is_read_only)),
-        ]);
-        if let Some(rate_limiter) = rate_limiter {
-            body.insert(
-                "rate_limiter".to_string(),
-                serde_json::to_value(rate_limiter)
-                    .map_err(|e| ApiError::Other(format!("json: {e}")))?,
-            );
-        }
-        self.send_json(
-            Method::PUT,
-            &path,
-            &serde_json::Value::Object(body),
-            REQUEST_TIMEOUT,
-        )
+        self.configure_drive_payload(&DriveConfig {
+            drive_id: drive_id.to_owned(),
+            path_on_host: path_on_host.to_owned(),
+            is_root_device,
+            is_read_only,
+            rate_limiter: rate_limiter.cloned(),
+        })
         .await
+    }
+
+    pub(crate) async fn configure_drive_payload(
+        &self,
+        config: &DriveConfig,
+    ) -> Result<(), ApiError> {
+        let path = format!("/drives/{}", config.drive_id);
+        self.send_json(Method::PUT, &path, config, REQUEST_TIMEOUT)
+            .await
     }
 
     /// Update a drive rate limiter via PATCH /drives/{drive_id}.
@@ -319,36 +322,23 @@ impl ApiClient {
         rx_rate_limiter: Option<&RateLimiterConfig>,
         tx_rate_limiter: Option<&RateLimiterConfig>,
     ) -> Result<(), ApiError> {
-        let path = format!("/network-interfaces/{iface_id}");
-        let mut body = serde_json::Map::from_iter([
-            ("iface_id".to_string(), serde_json::json!(iface_id)),
-            ("guest_mac".to_string(), serde_json::json!(guest_mac)),
-            (
-                "host_dev_name".to_string(),
-                serde_json::json!(host_dev_name),
-            ),
-        ]);
-        if let Some(rx_rate_limiter) = rx_rate_limiter {
-            body.insert(
-                "rx_rate_limiter".to_string(),
-                serde_json::to_value(rx_rate_limiter)
-                    .map_err(|e| ApiError::Other(format!("json: {e}")))?,
-            );
-        }
-        if let Some(tx_rate_limiter) = tx_rate_limiter {
-            body.insert(
-                "tx_rate_limiter".to_string(),
-                serde_json::to_value(tx_rate_limiter)
-                    .map_err(|e| ApiError::Other(format!("json: {e}")))?,
-            );
-        }
-        self.send_json(
-            Method::PUT,
-            &path,
-            &serde_json::Value::Object(body),
-            REQUEST_TIMEOUT,
-        )
+        self.configure_network_interface_payload(&NetworkInterfaceConfig {
+            iface_id: iface_id.to_owned(),
+            guest_mac: guest_mac.to_owned(),
+            host_dev_name: host_dev_name.to_owned(),
+            rx_rate_limiter: rx_rate_limiter.cloned(),
+            tx_rate_limiter: tx_rate_limiter.cloned(),
+        })
         .await
+    }
+
+    pub(crate) async fn configure_network_interface_payload(
+        &self,
+        config: &NetworkInterfaceConfig,
+    ) -> Result<(), ApiError> {
+        let path = format!("/network-interfaces/{}", config.iface_id);
+        self.send_json(Method::PUT, &path, config, REQUEST_TIMEOUT)
+            .await
     }
 
     /// Update network interface rate limiters via PATCH /network-interfaces/{iface_id}.
@@ -374,16 +364,19 @@ impl ApiClient {
 
     /// Configure the vsock device via PUT /vsock.
     pub async fn configure_vsock(&self, guest_cid: u32, uds_path: &str) -> Result<(), ApiError> {
-        self.send_json(
-            Method::PUT,
-            "/vsock",
-            &serde_json::json!({
-                "guest_cid": guest_cid,
-                "uds_path": uds_path,
-            }),
-            REQUEST_TIMEOUT,
-        )
+        self.configure_vsock_payload(&VsockConfig {
+            guest_cid,
+            uds_path: uds_path.to_owned(),
+        })
         .await
+    }
+
+    pub(crate) async fn configure_vsock_payload(
+        &self,
+        config: &VsockConfig,
+    ) -> Result<(), ApiError> {
+        self.send_json(Method::PUT, "/vsock", config, REQUEST_TIMEOUT)
+            .await
     }
 
     /// Update balloon target size at runtime via PATCH /balloon.
@@ -423,17 +416,20 @@ impl ApiClient {
         deflate_on_oom: bool,
         stats_polling_interval_s: u32,
     ) -> Result<(), ApiError> {
-        self.send_json(
-            Method::PUT,
-            "/balloon",
-            &serde_json::json!({
-                "amount_mib": amount_mib,
-                "deflate_on_oom": deflate_on_oom,
-                "stats_polling_interval_s": stats_polling_interval_s,
-            }),
-            REQUEST_TIMEOUT,
-        )
+        self.configure_balloon_payload(&BalloonConfig {
+            amount_mib,
+            deflate_on_oom,
+            stats_polling_interval_s,
+        })
         .await
+    }
+
+    pub(crate) async fn configure_balloon_payload(
+        &self,
+        config: &BalloonConfig,
+    ) -> Result<(), ApiError> {
+        self.send_json(Method::PUT, "/balloon", config, REQUEST_TIMEOUT)
+            .await
     }
 
     /// Start the VM instance via PUT /actions.
@@ -483,14 +479,16 @@ impl ApiClient {
         .map_err(|_| ApiError::Other(format!("request timed out after {timeout:?}")))?
     }
 
-    async fn send_json(
+    async fn send_json<T: serde::Serialize + ?Sized>(
         &self,
         method: Method,
         path: &str,
-        value: &serde_json::Value,
+        value: &T,
         timeout: Duration,
     ) -> Result<(), ApiError> {
-        self.send_status(method, path, Some(value), timeout).await
+        let value = serde_json::to_value(value)
+            .map_err(|error| ApiError::Other(format!("json: {error}")))?;
+        self.send_status(method, path, Some(&value), timeout).await
     }
 }
 
