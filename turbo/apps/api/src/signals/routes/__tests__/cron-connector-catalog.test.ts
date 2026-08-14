@@ -15,7 +15,7 @@ import {
   zeroConnectorsSearchContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
-import { zeroConnectorCheckContract } from "@okouai/api-contracts/contracts/zero-connector-check";
+import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
@@ -93,7 +93,7 @@ import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
 import { cronConnectorCatalogRoutes } from "../cron-connector-catalog";
 import { runnersRoutes } from "../runners";
 import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
-import { zeroConnectorCheckRoutes } from "../zero-connector-check";
+import { connectorCheckRoutes } from "../connector-check";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 import { steamPlayerRoutes } from "../steam-player";
@@ -107,7 +107,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...runnersRoutes,
   ...testSystemStoragePresignedUrlCacheStateRoutes,
   ...zeroConnectorCatalogRoutes,
-  ...zeroConnectorCheckRoutes,
+  ...connectorCheckRoutes,
   ...zeroConnectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...steamPlayerRoutes,
@@ -2768,8 +2768,8 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const check = await accept(
-      setupApp({ context, routes: zeroConnectorCheckRoutes })(
-        zeroConnectorCheckContract,
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
       ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -4554,8 +4554,8 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const diagnostic = await accept(
-      setupApp({ context, routes: zeroConnectorCheckRoutes })(
-        zeroConnectorCheckContract,
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
       ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -5629,8 +5629,8 @@ describe("connector catalog executable compatibility", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
-      setupApp({ context, routes: zeroConnectorCheckRoutes })(
-        zeroConnectorCheckContract,
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
       ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -6116,8 +6116,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
-      setupApp({ context, routes: zeroConnectorCheckRoutes })(
-        zeroConnectorCheckContract,
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
       ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {

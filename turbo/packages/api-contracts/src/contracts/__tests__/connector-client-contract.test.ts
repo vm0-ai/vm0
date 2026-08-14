@@ -16,7 +16,7 @@ import { zeroConnectorCatalogContract } from "../zero-connector-catalog";
 import {
   connectorCheckDiagnosticResultSchema,
   connectorCheckRequestSchema,
-} from "../zero-connector-check";
+} from "../connector-check";
 import {
   zeroConnectorsBySlugContract,
   zeroConnectorsSearchContract,

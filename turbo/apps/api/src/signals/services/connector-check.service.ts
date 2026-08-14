@@ -2,7 +2,7 @@ import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
-} from "@okouai/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/connector-check";
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
