@@ -45,7 +45,7 @@ export type UpdateUserModelPreferenceRequest = z.infer<
   typeof updateUserModelPreferenceRequestSchema
 >;
 
-export const zeroUserModelPreferenceContract = c.router({
+export const userModelPreferenceContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/user-model-preference",
@@ -76,5 +76,4 @@ export const zeroUserModelPreferenceContract = c.router({
   },
 });
 
-export type ZeroUserModelPreferenceContract =
-  typeof zeroUserModelPreferenceContract;
+export type UserModelPreferenceContract = typeof userModelPreferenceContract;

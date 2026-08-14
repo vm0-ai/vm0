@@ -29,7 +29,7 @@ import {
   type UserMessageInputDocument,
   type ZeroIndicators,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroUserModelPreferenceContract } from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import {
   artifactCatalogContract,
   type ArtifactCatalogKind,
@@ -79,7 +79,7 @@ import { zeroHostRoutes } from "../../zero-host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
-import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
+import { userModelPreferenceRoutes } from "../../user-model-preference";
 import type { ApiTestUser } from "./api-bdd";
 import {
   projectChatEventRows,
@@ -192,7 +192,7 @@ const chatFilesRoutes = [
   ...zeroUploadsCompleteRoutes,
   ...zeroHostRoutes,
   ...zeroModelPoliciesRoutes,
-  ...zeroUserModelPreferenceRoutes,
+  ...userModelPreferenceRoutes,
 ] as const;
 
 function chatFilesApp(context: TestContext) {
@@ -315,7 +315,7 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   function userModelPreferenceClient() {
-    return chatFilesApp(context)(zeroUserModelPreferenceContract);
+    return chatFilesApp(context)(userModelPreferenceContract);
   }
 
   function threadComputerUseHostClient() {

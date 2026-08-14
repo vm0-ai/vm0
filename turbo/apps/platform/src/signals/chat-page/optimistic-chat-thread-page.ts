@@ -9,7 +9,7 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@okouai/api-contracts/contracts/model-providers";
-import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/user-model-preference";
 import { accept } from "../../lib/accept.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import { nowDate } from "../../lib/time.ts";
