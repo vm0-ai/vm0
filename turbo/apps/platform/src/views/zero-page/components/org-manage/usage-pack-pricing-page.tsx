@@ -1,4 +1,4 @@
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -1628,8 +1628,35 @@ function ManagedSubscriptionComparison({
     plan,
     totals,
   });
+  const monthlyTotal = rows.at(-1);
 
-  return <SubscriptionComparisonTable rows={rows} />;
+  /* The ledger above this already states what the workspace will pay, so the
+     row-by-row comparison opens on demand and keeps only the number that
+     decides the change on screen. The migration screens keep theirs open --
+     there the comparison is the whole point of the page. */
+  return (
+    <details className="group mt-4">
+      <summary
+        className={`flex cursor-pointer list-none items-center gap-3 py-2.5 ${REVIEW_RULE}`}
+      >
+        <ChevronRight
+          size={14}
+          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
+        <span className="min-w-0 flex-1 text-[13px] text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.comparison;
+          })}
+        </span>
+        {monthlyTotal && (
+          <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+            {monthlyTotal.current} → {monthlyTotal.next}
+          </span>
+        )}
+      </summary>
+      <SubscriptionComparisonTable rows={rows} />
+    </details>
+  );
 }
 
 function SubscriptionComparisonTable({
@@ -1679,8 +1706,10 @@ function SubscriptionComparisonTable({
                 >
                   {row.current}
                 </td>
+                {/* Weight alone marks what changed: the numerals are ink, and
+                    the brand colour stays on the action. */}
                 <td
-                  className={`px-3 py-2.5 text-right font-medium ${row.changed ? "text-primary" : "text-foreground"}`}
+                  className={`px-3 py-2.5 text-right text-foreground ${monthlyTotal || row.changed ? "font-semibold" : "font-medium"}`}
                 >
                   {row.next}
                 </td>

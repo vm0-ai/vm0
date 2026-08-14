@@ -1613,6 +1613,16 @@ describe("organization billing settings", () => {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
+    // The comparison folds away behind its own totals until it is asked for.
+    const comparisonDisclosure = within(orderSummary)
+      .getByText("Current and new subscription comparison")
+      .closest("details");
+    expect(comparisonDisclosure).not.toHaveAttribute("open");
+    expect(comparisonDisclosure).toHaveTextContent("$20/month → $50/month");
+    click(
+      within(orderSummary).getByText("Current and new subscription comparison"),
+    );
+    expect(comparisonDisclosure).toHaveAttribute("open");
     const comparison = within(orderSummary).getByRole("table", {
       name: "Current and new subscription comparison",
     });
