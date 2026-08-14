@@ -1118,7 +1118,7 @@ describe("workflow queue", () => {
     await flushWaitUntilForTest();
   });
 
-  it("labels a queued schedule tick with the time it fired, not the time it drained", async () => {
+  it("keeps a queued schedule tick's fired time when it drains later", async () => {
     mockNow(Date.UTC(2020, 0, 2));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
@@ -1161,9 +1161,9 @@ describe("workflow queue", () => {
     if (admittedTriggerBrief === undefined) {
       throw new Error("Expected the admitted schedule tick trigger brief");
     }
-    const admittedDisplayPrompt = `/${WORKFLOW_NAME}\nTrigger: schedule fired at ${new Date(
-      firedAt,
-    ).toISOString()} (cron "0 9 * * *" in UTC).`;
+    const firedAtIso = new Date(firedAt).toISOString();
+    const admittedDisplayPrompt = "This workflow started on schedule.";
+    const admittedAgentPromptSummary = `Summary: schedule fired at ${firedAtIso} (cron "0 9 * * *" in UTC).`;
     expect(chatEventDisplayText(pendingTick)).toBe(admittedDisplayPrompt);
     const pendingContext = await readChatEventContextFixture(pendingTick.id);
     expect(pendingContext).toMatchObject({
@@ -1176,11 +1176,11 @@ describe("workflow queue", () => {
       automationEventPayload: expect.objectContaining({
         automationId: created.body.id,
         trigger: "schedule",
-        firedAt: new Date(firedAt).toISOString(),
+        firedAt: firedAtIso,
       }),
     });
 
-    // A later, unrelated drain pass launches the tick. Its trigger line must
+    // A later, unrelated drain pass launches the tick. Its agent context must
     // still report the fire time, not this drain time.
     const drainedAt = firedAt + 600_000;
     mockNow(drainedAt);
@@ -1220,11 +1220,13 @@ describe("workflow queue", () => {
 
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(runIds[1]!);
-    expect(claim.prompt).toBe(admittedDisplayPrompt);
-    expect(claim.prompt).not.toContain(new Date(drainedAt).toISOString());
-    expect(claim.appendSystemPrompt).toContain(
-      `"firedAt": "${new Date(firedAt).toISOString()}"`,
+    expect(claim.prompt).toContain(
+      `/${WORKFLOW_NAME}\n\nAutomation event\nType: schedule\n${admittedAgentPromptSummary}`,
     );
+    expect(claim.prompt).toContain(`"firedAt": "${firedAtIso}"`);
+    expect(claim.prompt).not.toContain(new Date(drainedAt).toISOString());
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {
@@ -1552,13 +1554,30 @@ describe("workflow queue", () => {
     if (!scheduleEvent) {
       throw new Error("Expected the manual schedule event to remain queued");
     }
-    const schedulePrompt = chatEventDisplayText(scheduleEvent);
-    if (schedulePrompt === null) {
+    const scheduleDisplayPrompt = chatEventDisplayText(scheduleEvent);
+    if (scheduleDisplayPrompt === null) {
       throw new Error("Expected the manual schedule event display prompt");
     }
-    expect(schedulePrompt).toMatch(
-      /^\/workflow-queue-workflow\nTrigger: manual run requested at .+\.$/,
+    expect(scheduleDisplayPrompt).toBe(
+      "A manual run of this workflow was requested.",
     );
+    const scheduleContext = await readChatEventContextFixture(scheduleEvent.id);
+    if (scheduleContext === null) {
+      throw new Error("Expected the manual schedule event context");
+    }
+    expect(scheduleContext).toMatchObject({
+      workflowName: WORKFLOW_NAME,
+      automationEventType: "manual",
+      automationEventPayload: expect.objectContaining({
+        automationId: scheduleAutomation.automationId,
+        trigger: "manual",
+        requestedAt: expect.any(String),
+      }),
+    });
+    const requestedAt = scheduleContext.automationEventPayload?.requestedAt;
+    if (typeof requestedAt !== "string") {
+      throw new Error("Expected the manual schedule event request time");
+    }
 
     await accept(
       automationsClient().delete({
@@ -1602,10 +1621,24 @@ describe("workflow queue", () => {
       throw new Error("Expected the queued schedule event to be claimed");
     }
     expect(claimedScheduleEvent.runId).toBe(scheduleRunId);
-    expect(chatEventDisplayText(claimedScheduleEvent)).toBe(schedulePrompt);
-    await expect(
-      runsApi.readRun(scenario.actor, scheduleRunId),
-    ).resolves.toMatchObject({ prompt: schedulePrompt });
+    expect(chatEventDisplayText(claimedScheduleEvent)).toBe(
+      scheduleDisplayPrompt,
+    );
+    const scheduleRun = await runsApi.readRun(scenario.actor, scheduleRunId);
+    expect(scheduleRun.prompt).toContain(
+      `/${WORKFLOW_NAME}\n\nAutomation event\nType: manual\nSummary: manual run requested at ${requestedAt}.`,
+    );
+    expect(scheduleRun.prompt).toContain(
+      JSON.stringify(
+        {
+          automationId: scheduleAutomation.automationId,
+          trigger: "manual",
+          requestedAt,
+        },
+        null,
+        2,
+      ),
+    );
     await runsApi.requestCancelRun(scenario.actor, scheduleRunId, [200]);
   });
 
@@ -1648,10 +1681,8 @@ describe("workflow queue", () => {
       workflowId: scenario.workflowId,
     });
     const rejectedDisplayPrompt = chatEventDisplayText(rejectedEvent);
-    expect(rejectedDisplayPrompt).toMatch(
-      new RegExp(
-        `^/${WORKFLOW_NAME}\\nTrigger: signed workflow webhook received an HTTP POST at 2026-07-25T12:00:00.000Z \\(delivery .+\\)\\.$`,
-      ),
+    expect(rejectedDisplayPrompt).toBe(
+      "A signed webhook request was received.",
     );
     const admittedEvent = failedEvents.find((event) => {
       return event.id === rejectedEvent.revokesEventId;
@@ -1659,6 +1690,16 @@ describe("workflow queue", () => {
     if (admittedEvent?.eventType !== "input.automation") {
       throw new Error("Expected the rejected event's admitted queue input");
     }
+    await expect(
+      readChatEventContextFixture(admittedEvent.id),
+    ).resolves.toMatchObject({
+      workflowName: WORKFLOW_NAME,
+      automationEventType: "webhook-received",
+      automationEventPayload: expect.objectContaining({
+        receivedAt: "2026-07-25T12:00:00.000Z",
+        deliveryId: expect.any(String),
+      }),
+    });
     expect(rejectedEvent.userMessage).toStrictEqual(admittedEvent.userMessage);
     expect(chatEventDisplayText(admittedEvent)).toBe(rejectedDisplayPrompt);
     await runsApi.ensureOrgModelProvider(scenario.actor);
