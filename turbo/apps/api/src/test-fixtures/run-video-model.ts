@@ -2,8 +2,8 @@
  * Test fixtures for the run video-model snapshot.
  *
  * Retired member defaults cannot be written through the current endpoint, and
- * the snapshot column is write-only until endpoint enforcement lands. These
- * historical-input and snapshot-output cases therefore need direct DB access.
+ * endpoint tests need controlled legacy null and pinned run snapshots. These
+ * historical-input and snapshot cases therefore need direct DB access.
  */
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
@@ -36,6 +36,16 @@ export async function readRunVideoModelFixture(
   runId: string,
 ): Promise<string | null> {
   return (await readRunRow(runId)).selectedVideoModel;
+}
+
+export async function setRunVideoModelFixture(args: {
+  readonly runId: string;
+  readonly selectedVideoModel: string | null;
+}): Promise<void> {
+  await db()
+    .update(zeroRuns)
+    .set({ selectedVideoModel: args.selectedVideoModel })
+    .where(eq(zeroRuns.id, args.runId));
 }
 
 /** Confirms a run really is threadless before asserting how it resolved. */

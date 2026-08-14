@@ -3,13 +3,19 @@ import { randomUUID } from "node:crypto";
 import { command } from "ccstate";
 import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import {
+  isVideoModelId,
+  type VideoModelId,
+} from "@okouai/api-contracts/contracts/video-models";
+import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
-import { db$ } from "../external/db";
+import { db$, type ReadonlyDb } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import {
   bytePlusBuiltInGenerationWebhookUrl,
@@ -45,6 +51,27 @@ import {
 } from "../services/zero-run-built-in-admission.service";
 
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
+
+async function loadRunVideoModel(
+  db: ReadonlyDb,
+  runId: string,
+): Promise<VideoModelId | null> {
+  const [run] = await db
+    .select({ selectedVideoModel: zeroRuns.selectedVideoModel })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    throw new Error("Expected a Zero run row for video model enforcement");
+  }
+  if (run.selectedVideoModel === null) {
+    return null;
+  }
+  if (!isVideoModelId(run.selectedVideoModel)) {
+    throw new Error("Run has an unsupported video model snapshot");
+  }
+  return run.selectedVideoModel;
+}
 
 interface GenerationError {
   readonly message: string;
@@ -305,7 +332,17 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const options = parseVideoOptions(bodyResult.data);
+  const runId =
+    auth.tokenType === "zero" || auth.tokenType === "sandbox"
+      ? auth.runId
+      : undefined;
+  const runVideoModel = runId ? await loadRunVideoModel(db, runId) : null;
+  signal.throwIfAborted();
+  const options = parseVideoOptions(
+    runVideoModel === null
+      ? bodyResult.data
+      : { ...bodyResult.data, model: runVideoModel },
+  );
   if ("status" in options) {
     return options;
   }
@@ -354,10 +391,6 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     generationId,
   );
   signal.throwIfAborted();
-  const runId =
-    auth.tokenType === "zero" || auth.tokenType === "sandbox"
-      ? auth.runId
-      : undefined;
   const admission = await set(
     startRunBuiltInAdmission$,
     { runId, kind: "video" },

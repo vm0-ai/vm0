@@ -25,6 +25,7 @@ import {
   seedOrgMetadata,
   type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
+import { setRunVideoModelFixture } from "../../../test-fixtures/run-video-model";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -668,6 +669,171 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(response.status).toBe(202);
     readAcceptedGenerationId(await response.json(), "video", fixture.userId);
     expect(calledBytePlus).toBeTruthy();
+  });
+
+  it("enforces the run video model over the request model and reports it", async () => {
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(KLING_V3_4K_QUEUE_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json({
+          request_id: "pinned-kling-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+      http.get(KLING_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a vertical concert stage reveal",
+        model: "dreamina-seedance-2.0-fast",
+        duration: "5s",
+        resolution: "4k",
+        aspectRatio: "9:16",
+        generateAudio: true,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: KLING_VIDEO_URL,
+        content_type: "video/mp4",
+      },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      model: KLING_V3_4K_MODEL,
+      resolution: "4k",
+      requestId: "pinned-kling-request",
+    });
+  });
+
+  it("keeps the request model when the run video model snapshot is null", async () => {
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({ runId, selectedVideoModel: null });
+
+    let calledFal = false;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, () => {
+        calledFal = true;
+        return HttpResponse.json({
+          request_id: "legacy-null-pin-request",
+          status_url: FAL_STATUS_URL,
+          response_url: FAL_RESPONSE_URL,
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a city at night",
+        model: "veo3.1-fast",
+        duration: "8s",
+        resolution: "4k",
+        aspectRatio: "16:9",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledFal).toBeTruthy();
+  });
+
+  it("keeps the request model for callers without a run ID", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledMiniMax = false;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, () => {
+        calledMiniMax = true;
+        return HttpResponse.json({ task_id: "session-minimax-request" });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a city at night",
+        model: "h3",
+        duration: "5s",
+        resolution: "2k",
+        aspectRatio: "16:9",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledMiniMax).toBeTruthy();
   });
 
   it("returns 503 when video pricing is not configured", async () => {

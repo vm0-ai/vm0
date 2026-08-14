@@ -359,12 +359,6 @@ function selectedVideoParameters(
     return [];
   }
   const parameters: SelectedVideoParameter[] = [];
-  if (options.model !== undefined) {
-    parameters.push({
-      label: `Model: ${config.alias}`,
-      flag: `--model ${config.alias}`,
-    });
-  }
   if (
     options.aspectRatio !== undefined &&
     config.aspectRatios.includes(options.aspectRatio)
@@ -440,7 +434,7 @@ function buildVideoGenerationTemplatePrompt(
       ? [
           "",
           "Parameters the user set explicitly. Keep every one of them; do not",
-          "substitute a different model, framing, length, or resolution, and do",
+          "substitute different framing, length, or resolution, and do",
           "not drop a flag because the template suggests another value:",
           ...parameters.map((parameter) => {
             return `- ${parameter.label}`;
