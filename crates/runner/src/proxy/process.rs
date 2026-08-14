@@ -396,9 +396,10 @@ impl MitmProxy {
 impl MitmProxy {
     /// Create a noop proxy for testing. No real process is spawned.
     ///
-    /// `stop()` already handles `child: None` (returns immediately),
-    /// and `begin_restart()` is never triggered because the test holds
-    /// the crash channel sender and never sends on it.
+    /// `stop()` already handles `child: None` (returns immediately).
+    /// `begin_restart()` returns parameters whose spawn path fails
+    /// deterministically because there is no runtime owner, allowing tests
+    /// to exercise restart failure handling without starting a process.
     pub fn noop() -> (Self, mpsc::Receiver<()>) {
         let (crash_tx, crash_rx) = mpsc::channel(1);
         (

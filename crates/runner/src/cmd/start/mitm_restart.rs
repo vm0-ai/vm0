@@ -199,10 +199,15 @@ mod tests {
         assert!(retry.handle.is_none());
         assert!(result.is_err());
 
+        let failure_handled_at = Instant::now();
         handle_mitm_restart_result(result, &mut mitm, &mut retry);
 
         assert_eq!(retry.consecutive_failures(), 1);
-        assert!(retry.restart_at.is_some_and(|at| at > Instant::now()));
+        assert!(
+            retry
+                .restart_at
+                .is_some_and(|at| at >= failure_handled_at + MITM_BACKOFF_INITIAL)
+        );
         assert_eq!(retry.backoff(), MITM_BACKOFF_INITIAL * 2);
     }
 
