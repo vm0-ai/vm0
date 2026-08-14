@@ -495,7 +495,7 @@ fn configure_resource_policy(
     write_cgroup_value(
         workload_path,
         MEMORY_HIGH_FILE,
-        &policy.memory_high_bytes.to_string(),
+        policy.memory_high,
         "configure workload memory.high",
     )?;
     write_cgroup_value(
