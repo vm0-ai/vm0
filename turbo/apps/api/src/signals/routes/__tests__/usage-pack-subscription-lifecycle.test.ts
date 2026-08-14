@@ -622,6 +622,169 @@ describe("usage pack subscription Stripe lifecycle", () => {
     await expect(grantRows(fixture)).resolves.toHaveLength(3);
   });
 
+  it("bootstraps an Atom usage-pack plan and keeps its expiring member grant outside the subscription", async () => {
+    const orgId = `org_atom_usage_pack_${randomUUID()}`;
+    const customerId = `cus_${randomUUID()}`;
+    const subscriptionId = `sub_${randomUUID()}`;
+    const usagePackSubscriptionId = randomUUID();
+    const grantedUserId = `user_${randomUUID()}`;
+    const paidPeriod = period(0);
+    const grantPeriod = {
+      start: paidPeriod.start,
+      end: paidPeriod.start + 7 * 86_400,
+    };
+    const fixture: UsagePackLifecycleFixture = {
+      orgId,
+      customerId,
+      subscriptionId,
+      usagePackSubscriptionId,
+      checkoutSessionId: `cs_${randomUUID()}`,
+      userId: grantedUserId,
+      invitationId: null,
+    };
+    await seedOrgMetadata({ orgId, tier: "limited-free-1", credits: 0 });
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId,
+        usagePackSubscriptionId,
+        deleteGrants: true,
+        deleteOrgMetadata: true,
+      });
+    });
+    const metadata = {
+      purpose: "usage_pack_subscription",
+      source: "atom_usage_pack_plan",
+      planVersion: "usagePack",
+      operationId: `sub_${randomUUID()}`,
+      usagePackSubscriptionId,
+      orgId,
+      tier: "pro",
+      planId: "pro",
+    };
+    const subscription = {
+      id: subscriptionId,
+      customer: customerId,
+      status: "active",
+      cancel_at: grantPeriod.end,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata,
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_PLAN_PRO },
+            quantity: 1,
+            current_period_start: paidPeriod.start,
+            current_period_end: paidPeriod.end,
+          },
+        ],
+      },
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
+    const planInvoiceId = `in_atom_usage_pack_plan_${randomUUID()}`;
+    const planInvoice = {
+      id: planInvoiceId,
+      customer: customerId,
+      metadata,
+      status: "paid",
+      paid: true,
+      parent: {
+        subscription_details: { subscription: subscriptionId, metadata },
+      },
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: `il_${randomUUID()}`,
+            amount: 0,
+            subtotal: 0,
+            quantity: 1,
+            price: { id: TEST_PRICE_PLAN_PRO },
+            period: paidPeriod,
+            parent: {
+              type: "subscription_item_details",
+              subscription_item_details: { proration: false },
+            },
+          },
+        ],
+      },
+    };
+    await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 200);
+    await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 200);
+
+    const planState = await readUsagePackState(fixture);
+    expect(planState.subscription).toStrictEqual(
+      expect.objectContaining({
+        stripeSubscriptionId: subscriptionId,
+        subscriptionStatus: "active",
+        currentPeriodStart: new Date(paidPeriod.start * 1000).toISOString(),
+        currentPeriodEnd: new Date(grantPeriod.end * 1000).toISOString(),
+      }),
+    );
+    expect(planState.allocations).toStrictEqual([]);
+    expect(planState.org).toStrictEqual(
+      expect.objectContaining({
+        tier: "pro",
+        stripeSubscriptionId: subscriptionId,
+        memberInviteUsagePackRequired: true,
+      }),
+    );
+    expect(planState.fulfillmentInvoiceIds).toStrictEqual([planInvoiceId]);
+
+    const grantInvoiceId = `in_atom_member_pack_${randomUUID()}`;
+    const grantInvoice = {
+      id: grantInvoiceId,
+      customer: customerId,
+      subtotal: 0,
+      metadata: {
+        type: "atom_grant",
+        purpose: "atom_grant",
+        source: "atom_usage_pack_credits",
+        grantType: "usage_pack_credits",
+        orgId,
+        userId: grantedUserId,
+        creditsAmount: "6000",
+        stripeSubscriptionId: subscriptionId,
+        usagePackSubscriptionId,
+        currentPeriodStart: new Date(paidPeriod.start * 1000).toISOString(),
+        currentPeriodEnd: new Date(grantPeriod.end * 1000).toISOString(),
+        creditsExpiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+      },
+      parent: null,
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: `il_${randomUUID()}`,
+            quantity: 1,
+            price: { id: TEST_PRICE_ATOM_GRANT },
+            period: grantPeriod,
+            parent: { type: "invoice_item_details" },
+          },
+        ],
+      },
+    };
+    await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 200);
+    await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 200);
+
+    const grantedState = await readUsagePackState(fixture);
+    expect(grantedState.allocations).toStrictEqual([]);
+    expect(grantedState.grants).toStrictEqual([
+      {
+        userId: grantedUserId,
+        grantType: "bonus",
+        originalAmount: 6000,
+        expiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+      },
+    ]);
+    expect(grantedState.fulfillmentInvoiceIds).toStrictEqual([
+      grantInvoiceId,
+      planInvoiceId,
+    ]);
+  });
+
   it("rejects an invoice line that extends beyond the current Stripe period", async () => {
     const userId = `user_${randomUUID()}`;
     const fixture = await seedUsagePackLifecycle([
