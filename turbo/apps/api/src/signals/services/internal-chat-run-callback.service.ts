@@ -23,7 +23,6 @@ import {
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   asc,
@@ -2363,18 +2362,17 @@ async function getLatestRunsByThreadId(
   const triggerSource = queuedUserMessageTriggerSource(contextType);
   const runRows = await db
     .select({
-      runId: zeroRuns.id,
+      runId: agentRuns.id,
       status: agentRuns.status,
       prompt: agentRuns.prompt,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .where(
       and(
-        eq(zeroRuns.chatThreadId, threadId),
+        eq(agentRuns.chatThreadId, threadId),
         isWebChatContextType(contextType)
-          ? inArray(zeroRuns.triggerSource, ["web", "agent"])
-          : eq(zeroRuns.triggerSource, triggerSource),
+          ? inArray(agentRuns.triggerSource, ["web", "agent"])
+          : eq(agentRuns.triggerSource, triggerSource),
         or(
           sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
           sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
@@ -2443,16 +2441,15 @@ async function chatThreadForRunFromDb(
 ): Promise<ChatThreadForRunRow | null> {
   const [row] = await db
     .select({
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
       orgId: agentRuns.orgId,
       agentId: chatThreads.agentComposeId,
       title: chatThreads.title,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
 
   if (!row?.chatThreadId) {

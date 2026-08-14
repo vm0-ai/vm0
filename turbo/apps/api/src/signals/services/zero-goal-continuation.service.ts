@@ -1,7 +1,6 @@
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
@@ -68,11 +67,10 @@ async function loadTerminatingRun(
       status: agentRuns.status,
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(agentRuns.id, runId))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
 
   return row ?? null;

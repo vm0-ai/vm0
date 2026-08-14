@@ -1,3 +1,9 @@
+-- DB/API expand phase: the previous API replaces a Snapshot by inserting
+-- another row with the same (thread, version). Keep that statement legal for
+-- the observed 102-minute rollout/rollback window. #27174 will deduplicate the
+-- rows and make this index unique after the previous API has drained.
+CREATE INDEX "chat_event_snapshots_thread_version_idx" ON "chat_event_snapshots" USING btree ("chat_thread_id", "archive_schema_version");
+--> statement-breakpoint
 ALTER TABLE "chat_event_snapshots" ADD COLUMN "last_event_id" uuid;
 --> statement-breakpoint
 UPDATE "chat_event_snapshots" AS "snapshot"
@@ -22,10 +28,9 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
--- DB/API expand phase: the previous API does not know last_event_id. Populate
--- it for every insert during the observed 102-minute rollout/rollback window,
--- while leaving the physical column nullable. #27174 removes this trigger and
--- adds NOT NULL after the previous API has drained.
+-- The previous API does not know last_event_id. Populate it for every insert
+-- during the same DB/API window while leaving the physical column nullable.
+-- #27174 removes this trigger and adds NOT NULL after that API has drained.
 CREATE FUNCTION "set_chat_event_snapshot_last_event_id"() RETURNS trigger AS $$
 BEGIN
   IF NEW."last_event_id" IS NULL THEN

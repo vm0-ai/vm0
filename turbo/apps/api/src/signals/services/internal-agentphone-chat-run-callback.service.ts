@@ -4,7 +4,6 @@ import { agentphoneChatThreadRoutes } from "@okouai/db/schema/agentphone-chat-th
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import { sendAgentPhoneMessage } from "../external/agentphone-client";
@@ -147,16 +146,15 @@ async function loadAgentPhoneChatDeliveryContext(
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
-        eq(zeroRuns.triggerSource, "agentphone"),
+        eq(agentRuns.triggerSource, "agentphone"),
       ),
     )
     .limit(1);

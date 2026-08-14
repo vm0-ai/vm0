@@ -1,12 +1,12 @@
 import { command } from "ccstate";
 import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/zero-host";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   RUN_UPLOADED_FILE_SOURCES,
   runUploadedFiles,
   type RunUploadedFileSource,
 } from "@okouai/db/schema/run-uploaded-file";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { logger } from "../../lib/log";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
@@ -68,9 +68,9 @@ export async function sourceForRun(
   signal: AbortSignal,
 ): Promise<RunUploadedFileSource> {
   const [run] = await writeDb
-    .select({ triggerSource: zeroRuns.triggerSource })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ triggerSource: agentRuns.triggerSource })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   signal.throwIfAborted();
   return isRunUploadedFileSource(run?.triggerSource)

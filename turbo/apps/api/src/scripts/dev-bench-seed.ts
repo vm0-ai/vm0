@@ -3,7 +3,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
@@ -534,9 +534,14 @@ async function cleanupExistingBenchThreads(
   }
 
   const runRows = await database
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .where(inArray(zeroRuns.chatThreadId, threadIds));
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        inArray(agentRuns.chatThreadId, threadIds),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    );
   const runIds = runRows.map((row) => {
     return row.id;
   });

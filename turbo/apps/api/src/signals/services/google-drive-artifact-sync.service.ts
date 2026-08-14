@@ -6,6 +6,7 @@ import type {
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { hostedDeployments } from "@okouai/db/schema/hosted-site";
@@ -14,8 +15,7 @@ import {
   runUploadedFiles,
 } from "@okouai/db/schema/run-uploaded-file";
 import { userConnectors } from "@okouai/db/schema/user-connector";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, eq, exists, or } from "drizzle-orm";
+import { and, eq, exists, isNotNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { ZipArchive } from "archiver";
 
@@ -593,9 +593,10 @@ async function loadArtifactFile(
       metadata: runUploadedFiles.metadata,
     })
     .from(runUploadedFiles)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
     .where(
       and(
+        isNotNull(agentRuns.triggerSource),
         eq(runUploadedFiles.userId, args.userId),
         eq(runUploadedFiles.runId, args.runId),
         or(
@@ -608,7 +609,7 @@ async function loadArtifactFile(
           ),
         ),
         or(
-          eq(zeroRuns.chatThreadId, args.threadId),
+          eq(agentRuns.chatThreadId, args.threadId),
           exists(
             db
               .select({ one: chatEvents.id })

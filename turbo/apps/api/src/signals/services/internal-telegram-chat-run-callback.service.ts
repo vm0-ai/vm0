@@ -6,7 +6,6 @@ import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -237,16 +236,15 @@ async function loadTelegramChatDeliveryContext(
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
-        eq(zeroRuns.triggerSource, "telegram"),
+        eq(agentRuns.triggerSource, "telegram"),
       ),
     )
     .limit(1);

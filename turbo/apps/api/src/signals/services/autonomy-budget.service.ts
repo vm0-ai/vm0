@@ -1,6 +1,5 @@
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -23,10 +22,10 @@ export async function loadRunAutonomyBudget(
 ): Promise<number | null> {
   const [run] = await db
     .select({
-      autonomyBudget: zeroRuns.autonomyBudget,
+      autonomyBudget: agentRuns.autonomyBudget,
     })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return run?.autonomyBudget ?? null;
 }
@@ -41,18 +40,17 @@ export async function loadOwnedRunAutonomyBudget(
 ): Promise<number | null> {
   const [run] = await db
     .select({
-      autonomyBudget: zeroRuns.autonomyBudget,
+      autonomyBudget: agentRuns.autonomyBudget,
     })
-    .from(zeroRuns)
-    .innerJoin(
-      agentRuns,
+    .from(agentRuns)
+    .where(
       and(
-        eq(agentRuns.id, zeroRuns.id),
+        eq(agentRuns.id, args.runId),
         eq(agentRuns.orgId, args.orgId),
         eq(agentRuns.userId, args.userId),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
-    .where(eq(zeroRuns.id, args.runId))
     .limit(1);
   return run?.autonomyBudget ?? null;
 }

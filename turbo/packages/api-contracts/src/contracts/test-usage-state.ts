@@ -53,6 +53,7 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     error: z.string().nullable().optional(),
     last_event_sequence: z.number().nullable().optional(),
     selected_model: z.string().nullable().optional(),
+    lifecycle_only: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("seed-chat-thread"),

@@ -236,11 +236,10 @@ async function loadDrainCandidates(
         createdAt: agentRunQueue.createdAt,
         encryptedParams: agentRunQueue.encryptedParams,
         runStatus: agentRuns.status,
-        chatThreadId: zeroRuns.chatThreadId,
+        chatThreadId: agentRuns.chatThreadId,
       })
       .from(agentRunQueue)
       .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
-      .leftJoin(zeroRuns, eq(agentRunQueue.runId, zeroRuns.id))
       .where(eq(agentRunQueue.orgId, orgId))
       .orderBy(agentRunQueue.createdAt);
   });

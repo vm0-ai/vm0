@@ -125,7 +125,7 @@ const phoneWriteAuth = {
   requiredCapability: "phone:write",
 } as const;
 
-export const zeroIntegrationsPhoneMessageRoutes: readonly RouteEntry[] = [
+export const integrationsPhoneMessageRoutes: readonly RouteEntry[] = [
   {
     route: integrationsPhoneMessageContract.sendMessage,
     handler: authRoute(phoneWriteAuth, sendMessage$),

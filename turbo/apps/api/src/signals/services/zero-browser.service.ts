@@ -21,7 +21,6 @@ import {
 } from "@okouai/db/schema/browser-session";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import {
   and,
@@ -29,6 +28,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   lte,
   notExists,
@@ -927,10 +927,14 @@ async function latestThreadRunId(
   chatThreadId: string,
 ): Promise<string | null> {
   const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(eq(zeroRuns.chatThreadId, chatThreadId))
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.chatThreadId, chatThreadId),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
   return run?.id ?? null;
@@ -949,18 +953,18 @@ async function resolveRunContext(
   }
   const [run] = await db
     .select({
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       status: agentRuns.status,
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .from(agentRuns)
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
-        eq(zeroRuns.id, actor.runId),
+        eq(agentRuns.id, actor.runId),
         eq(agentRuns.orgId, actor.orgId),
         eq(agentRuns.userId, actor.userId),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);
@@ -1057,17 +1061,17 @@ async function browserSessionAccessError(
   }
   const [run] = await db
     .select({
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .from(agentRuns)
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
-        eq(zeroRuns.id, access.runId),
+        eq(agentRuns.id, access.runId),
         eq(agentRuns.orgId, access.orgId),
         eq(agentRuns.userId, access.userId),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);

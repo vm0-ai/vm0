@@ -1,6 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { command, computed } from "ccstate";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getVm0Vendor,
@@ -136,8 +145,8 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       id: agentRuns.id,
       status: agentRuns.status,
       createdAt: agentRuns.createdAt,
-      triggerSource: zeroRuns.triggerSource,
-      chatThreadId: zeroRuns.chatThreadId,
+      triggerSource: agentRuns.triggerSource,
+      chatThreadId: agentRuns.chatThreadId,
       userId: agentRuns.userId,
       error: agentRuns.error,
       promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
@@ -145,7 +154,6 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       ),
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .where(eq(agentRuns.orgId, orgId))
     .orderBy(desc(agentRuns.createdAt))
     .limit(50);
@@ -723,15 +731,14 @@ async function getRunForAction(
     .select({
       sessionId: agentRuns.sessionId,
       conversationId: agentSessions.conversationId,
-      selectedModel: zeroRuns.selectedModel,
-      chatThreadId: zeroRuns.chatThreadId,
+      selectedModel: agentRuns.selectedModel,
+      chatThreadId: agentRuns.chatThreadId,
       chatThreadAgentSessionId: chatThreads.agentSessionId,
       chatThreadAgentSessionRunId: chatThreads.agentSessionRunId,
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .leftJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .leftJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   signal.throwIfAborted();
@@ -1143,14 +1150,14 @@ async function getTelegramPostRunStateForAction(
   const [[zeroRun], callbacks, [job]] = await Promise.all([
     db
       .select({
-        id: zeroRuns.id,
-        triggerSource: zeroRuns.triggerSource,
-        chatThreadId: zeroRuns.chatThreadId,
-        modelProvider: zeroRuns.modelProvider,
-        selectedModel: zeroRuns.selectedModel,
+        id: agentRuns.id,
+        triggerSource: agentRuns.triggerSource,
+        chatThreadId: agentRuns.chatThreadId,
+        modelProvider: agentRuns.modelProvider,
+        selectedModel: agentRuns.selectedModel,
       })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, run.id))
+      .from(agentRuns)
+      .where(and(eq(agentRuns.id, run.id), isNotNull(agentRuns.triggerSource)))
       .limit(1),
     db
       .select({
@@ -1996,11 +2003,10 @@ const deleteTestTelegramState$ = command(
       const telegramAgentRuns = await db
         .select({ id: agentRuns.id })
         .from(agentRuns)
-        .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
         .where(
           and(
             eq(agentRuns.orgId, existing.orgId),
-            eq(zeroRuns.triggerSource, "telegram"),
+            eq(agentRuns.triggerSource, "telegram"),
           ),
         );
       signal.throwIfAborted();
