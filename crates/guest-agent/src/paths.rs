@@ -28,6 +28,7 @@ pub struct GuestPaths {
     checkpoint_error_file: String,
     final_session_history_identity_file: String,
     failure_diagnostic_file: String,
+    pi_launch_payload_file: String,
     system_log_file: String,
     agent_log_file: String,
     metrics_log_file: String,
@@ -56,6 +57,9 @@ impl GuestPaths {
             ),
             failure_diagnostic_file: path_to_string(
                 guest_contracts::runtime_paths::failure_diagnostic_file(&runtime_dir),
+            ),
+            pi_launch_payload_file: path_to_string(
+                guest_contracts::runtime_paths::pi_launch_payload_file(&runtime_dir),
             ),
             system_log_file: path_to_string(guest_contracts::runtime_paths::system_log_file(
                 &runtime_dir,
@@ -134,6 +138,10 @@ impl GuestPaths {
 
     pub fn failure_diagnostic_file(&self) -> &str {
         &self.failure_diagnostic_file
+    }
+
+    pub fn pi_launch_payload_file(&self) -> &str {
+        &self.pi_launch_payload_file
     }
 
     pub fn system_log_file(&self) -> &str {
@@ -218,6 +226,10 @@ mod tests {
         assert_eq!(
             paths.failure_diagnostic_file(),
             guest_contracts::runtime_paths::failure_diagnostic_file(&runtime_dir).to_string_lossy()
+        );
+        assert_eq!(
+            paths.pi_launch_payload_file(),
+            guest_contracts::runtime_paths::pi_launch_payload_file(&runtime_dir).to_string_lossy()
         );
         assert_eq!(
             paths.system_log_file(),

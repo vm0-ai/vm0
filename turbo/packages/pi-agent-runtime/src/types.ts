@@ -19,7 +19,7 @@ export type Result<TValue, TError> =
   | { ok: false; error: TError };
 
 /** Kind of filesystem object as addressed by an {@link ExecutionEnv}. Symlinks are not followed automatically. */
-export type FileKind = "file" | "directory" | "symlink";
+type FileKind = "file" | "directory" | "symlink";
 
 /** Stable, backend-independent error codes returned by file operations. */
 export type FileErrorCode =
@@ -345,4 +345,11 @@ export interface PiRunSkills {
   readonly diagnostics: ReadonlyArray<
     SkillDiagnostic & { readonly source: RunSkillSnapshotEntry }
   >;
+}
+
+/** Prompt inputs prepared from mounted Pi Storage resources. */
+export interface PreparedPiLaunchPrompt {
+  readonly prompt: string;
+  readonly systemPrompt: string;
+  readonly diagnostics: PiRunSkills["diagnostics"];
 }

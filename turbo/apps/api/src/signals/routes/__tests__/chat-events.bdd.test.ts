@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { gzipSync } from "node:zlib";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -228,11 +227,8 @@ const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES = [
   "api_dispatch_prepare_pi_launch_resources",
-  "api_dispatch_prepare_pi_launch_storage_resources",
   "api_dispatch_prepare_pi_launch_agent_name",
   "api_dispatch_prepare_pi_launch_resume_session",
-  "api_dispatch_prepare_pi_launch_skills",
-  "api_dispatch_prepare_pi_launch_prompts",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
@@ -3404,6 +3400,16 @@ describe("CHAT-02: Zero Mail link delivery", () => {
   });
 });
 
+/** S3 reads issued so far, used to prove the API never downloads an archive. */
+function s3GetObjectCommandCalls(): readonly unknown[] {
+  return context.mocks.s3.send.mock.calls.filter(([command]) => {
+    return (
+      (command as { readonly constructor?: { readonly name?: string } })
+        .constructor?.name === "GetObjectCommand"
+    );
+  });
+}
+
 describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -3641,14 +3647,6 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const emptyStorageArchive = gzipSync(Buffer.alloc(1024));
-      context.mocks.s3.send.mockResolvedValue({
-        Body: {
-          async *[Symbol.asyncIterator]() {
-            yield emptyStorageArchive;
-          },
-        },
-      });
       const firstPrompt = "persist this turn in the native Pi session";
       const first = await sendChatRun(actor, {
         agentId,
@@ -3660,8 +3658,18 @@ describe("CHAT-02: model-first provider policies", () => {
 
       expect(firstContext.cliAgentType).toBe("pi");
       expect(firstContext.piSessionId).toBe(first.threadId);
-      expect(firstContext.prompt).toContain(firstPrompt);
-      expect(firstContext.piSystemPrompt).toContain("# Agent Identity");
+      expect(firstContext.prompt).toBe(firstPrompt);
+      expect(firstContext.piLaunchConfig).not.toHaveProperty(
+        "appendSystemPrompt",
+      );
+      expect(firstContext.piLaunchConfig).toMatchObject({
+        schemaVersion: 1,
+        skillSnapshot: {
+          schemaVersion: 1,
+          policyVersion: 1,
+          root: "/home/user/.pi/agent/skills",
+        },
+      });
       expect(firstContext.piModelConfig).toStrictEqual({
         provider: "deepseek",
         baseUrl: "https://api.deepseek.com/",
@@ -3671,6 +3679,7 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(firstContext.resumeSession).toBeNull();
       expect(firstContext).not.toHaveProperty("piExecutionMode");
       expect(firstContext).not.toHaveProperty("runSkillSnapshot");
+      expect(s3GetObjectCommandCalls()).toHaveLength(0);
       expect(claimEnvironment(firstContext).OPENAI_API_KEY).toBe(
         modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );

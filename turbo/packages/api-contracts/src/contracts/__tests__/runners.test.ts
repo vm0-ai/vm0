@@ -155,8 +155,19 @@ describe("Pi sandbox execution contract", () => {
   };
   const piStoredContext = {
     piSessionId: "22222222-2222-4222-8222-222222222222",
-    piPrompt: "Pinned Pi user prompt",
-    piSystemPrompt: "Pinned Pi system prompt",
+    piLaunchConfig: {
+      schemaVersion: 1 as const,
+      agentName: "Okou",
+      skillSnapshot: {
+        schemaVersion: 1 as const,
+        policyVersion: 1 as const,
+        root: "/home/user/.pi/agent/skills" as const,
+        digest: `sha256:${"0".repeat(64)}`,
+        entries: [],
+      },
+      agentInstructionsPath: null,
+      memory: null,
+    },
     piModelConfig: {
       provider: "deepseek",
       baseUrl: "https://api.deepseek.com/",
@@ -166,7 +177,7 @@ describe("Pi sandbox execution contract", () => {
   };
   const piRunnerContext = {
     piSessionId: piStoredContext.piSessionId,
-    piSystemPrompt: piStoredContext.piSystemPrompt,
+    piLaunchConfig: piStoredContext.piLaunchConfig,
     piModelConfig: piStoredContext.piModelConfig,
   };
   const pollJob = {
@@ -203,7 +214,7 @@ describe("Pi sandbox execution contract", () => {
     expect(jobSchema.parse(pollJob)).not.toHaveProperty("piExecutionMode");
   });
 
-  it.each(["piSessionId", "piPrompt", "piSystemPrompt", "piModelConfig"])(
+  it.each(["piSessionId", "piLaunchConfig", "piModelConfig"])(
     "rejects a stored Pi context without %s",
     (missingField) => {
       const incompleteContext: Record<string, unknown> = { ...piStoredContext };
@@ -218,7 +229,7 @@ describe("Pi sandbox execution contract", () => {
     },
   );
 
-  it.each(["piPrompt", "piSystemPrompt", "piModelConfig"] as const)(
+  it.each(["piLaunchConfig", "piModelConfig"] as const)(
     "rejects stored %s without piSessionId",
     (field) => {
       const invalidStoredContext = {
@@ -243,7 +254,7 @@ describe("Pi sandbox execution contract", () => {
     );
     for (const field of [
       "piSessionId",
-      "piSystemPrompt",
+      "piLaunchConfig",
       "piModelConfig",
     ] as const) {
       const incomplete: Record<string, unknown> = {

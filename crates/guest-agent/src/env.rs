@@ -279,7 +279,7 @@ pub struct GuestConfig {
     pub artifacts: Vec<ArtifactEnv>,
     pub feature_flags: HashMap<String, bool>,
     pub codex_runtime_config: String,
-    pub pi_system_prompt: String,
+    pub pi_launch_config: String,
     pub pi_model_config: String,
     pub pi_session_id: String,
     pub stuck_tool_timeout_secs: u64,
@@ -365,7 +365,7 @@ impl GuestConfig {
             artifacts,
             feature_flags,
             codex_runtime_config: payload.codex_runtime_config,
-            pi_system_prompt: payload.pi_system_prompt,
+            pi_launch_config: payload.pi_launch_config,
             pi_model_config: payload.pi_model_config,
             pi_session_id: payload.pi_session_id,
             stuck_tool_timeout_secs: u64_value_or(
@@ -925,7 +925,7 @@ mod tests {
                     .to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
-            pi_system_prompt: "fixed Pi prompt".to_string(),
+            pi_launch_config: "fixed Pi prompt".to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
             pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
@@ -949,7 +949,7 @@ mod tests {
         assert_eq!(config.artifacts.len(), 1);
         assert_eq!(config.feature_flags.get("flag"), Some(&true));
         assert_eq!(config.codex_runtime_config, r#"{"providerId":"deepseek"}"#);
-        assert_eq!(config.pi_system_prompt, "fixed Pi prompt");
+        assert_eq!(config.pi_launch_config, "fixed Pi prompt");
         assert_eq!(config.pi_model_config, r#"{"provider":"deepseek"}"#);
         assert_eq!(config.pi_session_id, "22222222-2222-4222-8222-222222222222");
         assert!(!path.exists());

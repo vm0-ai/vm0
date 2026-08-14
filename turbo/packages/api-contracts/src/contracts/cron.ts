@@ -249,6 +249,7 @@ const cronRefreshStoragePresignedUrlsResponseSchema = z.object({
   success: z.literal(true),
   system: storagePresignedUrlRefreshResultSchema,
   workflowSkill: storagePresignedUrlRefreshResultSchema,
+  readOnly: storagePresignedUrlRefreshResultSchema,
 });
 
 const cronAggregateModelStatsResponseSchema = z.object({

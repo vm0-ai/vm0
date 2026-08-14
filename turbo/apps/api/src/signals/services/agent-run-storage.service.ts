@@ -22,11 +22,13 @@ import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { env } from "../../lib/env";
-import { generatePresignedGetUrl } from "../external/s3";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import { settle } from "../utils";
 import {
+  READ_ONLY_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+  readOnlyStoragePresignedUrlCacheKey,
+  resolveReadOnlyStoragePresignedUrls,
   resolveWorkflowSkillStoragePresignedUrls,
   resolveSystemStoragePresignedUrls,
   SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
@@ -35,6 +37,9 @@ import {
   workflowSkillStoragePresignedUrlCacheKey,
   type SystemStoragePresignedUrlCacheStatus,
   type SystemStoragePresignedUrlRequest,
+  type ReadOnlyStoragePresignedUrlCacheStatus,
+  type ReadOnlyStoragePresignedUrlRequest,
+  type StoragePresignedUrlResult,
   type WorkflowSkillStoragePresignedUrlCacheStatus,
   type WorkflowSkillStoragePresignedUrlRequest,
 } from "./system-storage-presigned-url-cache.service";
@@ -301,7 +306,6 @@ interface StorageManifestPhaseTimingWindow {
  */
 type StorageIndex = ReadonlyMap<string, StorageIndexEntry>;
 
-const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
 const STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS = [
   "0",
   "1",
@@ -1866,33 +1870,17 @@ function workflowSkillStoragePresignedUrlRequest(args: {
   };
 }
 
-async function generateDirectStorageArchiveUrl(
-  get: ComputedGetter,
-  args: {
-    readonly bucket: string;
-    readonly archiveKey: string;
-    readonly stats?: StorageManifestBuildStats;
-    readonly entryKind: StorageManifestEntryKind;
-    readonly source: StorageManifestSource;
-  },
-): Promise<string> {
-  args.stats?.recordPresignCandidate(args.entryKind, args.source, {
+function readOnlyStoragePresignedUrlRequest(args: {
+  readonly bucket: string;
+  readonly resolved: StorageResolution;
+}): ReadOnlyStoragePresignedUrlRequest {
+  return {
     bucket: args.bucket,
-    key: args.archiveKey,
-    expiresIn: DOWNLOAD_URL_TTL_SECONDS,
-    filename: undefined,
-    usePublicEndpoint: true,
-  });
-  args.stats?.recordNonSystemPresign(args.entryKind, args.source);
-  return await get(
-    generatePresignedGetUrl(
-      args.bucket,
-      args.archiveKey,
-      DOWNLOAD_URL_TTL_SECONDS,
-      undefined,
-      true,
-    ),
-  );
+    objectKey: storageArchiveKey(args.resolved),
+    storageVersionId: args.resolved.versionId,
+    resolvedOrgId: args.resolved.resolvedOrgId,
+    publicEndpoint: true,
+  };
 }
 
 function buildPreparedReadOnlyStorageEntry(args: {
@@ -1954,6 +1942,105 @@ function normalizeMountOverlay<T extends { readonly mountPath: string }>(
   return [...byMountPath.values()];
 }
 
+function buildWorkflowSkillStorageEntry(args: {
+  readonly bucket: string;
+  readonly plan: ResolvedManifestStoragePlan;
+  readonly urlsByCacheKey: ReadonlyMap<string, StoragePresignedUrlResult>;
+  readonly stats?: StorageManifestBuildStats;
+}): PreparedReadOnlyStorageEntry {
+  const request = workflowSkillStoragePresignedUrlRequest({
+    bucket: args.bucket,
+    plan: args.plan,
+  });
+  const result = args.urlsByCacheKey.get(
+    workflowSkillStoragePresignedUrlCacheKey(request),
+  );
+  if (!result) {
+    throw new Error(
+      "Missing workflow skill storage presigned URL cache result",
+    );
+  }
+  args.stats?.recordWorkflowSkillPresignCacheResult(result.status);
+  if (result.status === "miss" || result.status === "sync_refresh") {
+    args.stats?.recordPresignCandidate(args.plan.entryKind, args.plan.source, {
+      bucket: args.bucket,
+      key: storageArchiveKey(args.plan.resolved),
+      expiresIn: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+      filename: undefined,
+      usePublicEndpoint: true,
+    });
+    args.stats?.recordNonSystemPresign(args.plan.entryKind, args.plan.source);
+  }
+  return buildPreparedReadOnlyStorageEntry({
+    plan: args.plan,
+    archiveUrl: result.url,
+  });
+}
+
+function buildReadOnlyStorageEntry(args: {
+  readonly bucket: string;
+  readonly plan: ResolvedManifestStoragePlan;
+  readonly urlsByCacheKey: ReadonlyMap<string, StoragePresignedUrlResult>;
+  readonly stats?: StorageManifestBuildStats;
+}): PreparedReadOnlyStorageEntry {
+  const request = readOnlyStoragePresignedUrlRequest({
+    bucket: args.bucket,
+    resolved: args.plan.resolved,
+  });
+  const result = args.urlsByCacheKey.get(
+    readOnlyStoragePresignedUrlCacheKey(request),
+  );
+  if (!result) {
+    throw new Error("Missing readonly storage presigned URL cache result");
+  }
+  if (result.status === "miss" || result.status === "sync_refresh") {
+    args.stats?.recordPresignCandidate(args.plan.entryKind, args.plan.source, {
+      bucket: args.bucket,
+      key: storageArchiveKey(args.plan.resolved),
+      expiresIn: READ_ONLY_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+      filename: undefined,
+      usePublicEndpoint: true,
+    });
+    args.stats?.recordNonSystemPresign(args.plan.entryKind, args.plan.source);
+  }
+  return buildPreparedReadOnlyStorageEntry({
+    plan: args.plan,
+    archiveUrl: result.url,
+  });
+}
+
+function buildSystemStorageEntry(args: {
+  readonly bucket: string;
+  readonly plan: ResolvedManifestStoragePlan;
+  readonly urlsByCacheKey: ReadonlyMap<string, StoragePresignedUrlResult>;
+  readonly stats?: StorageManifestBuildStats;
+}): PreparedReadOnlyStorageEntry {
+  const request = systemStoragePresignedUrlRequest({
+    bucket: args.bucket,
+    plan: args.plan,
+  });
+  const result = args.urlsByCacheKey.get(
+    systemStoragePresignedUrlCacheKey(request),
+  );
+  if (!result) {
+    throw new Error("Missing system storage presigned URL cache result");
+  }
+  args.stats?.recordSystemPresignCacheResult(result.status);
+  if (result.status === "miss" || result.status === "sync_refresh") {
+    args.stats?.recordPresignCandidate(args.plan.entryKind, args.plan.source, {
+      bucket: args.bucket,
+      key: storageArchiveKey(args.plan.resolved),
+      expiresIn: SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+      filename: undefined,
+      usePublicEndpoint: true,
+    });
+  }
+  return buildPreparedReadOnlyStorageEntry({
+    plan: args.plan,
+    archiveUrl: result.url,
+  });
+}
+
 async function buildStorageEntriesFromPlans(
   get: ComputedGetter,
   args: {
@@ -1966,113 +2053,82 @@ async function buildStorageEntriesFromPlans(
   const systemPlans = args.plans.filter(isSystemOwnedStoragePlan);
   args.stats?.recordSystemResolvedStorage(systemPlans.length);
 
-  const systemRequests = systemPlans.map((plan) => {
-    return systemStoragePresignedUrlRequest({ bucket: args.bucket, plan });
-  });
   const systemUrlsByCacheKeyPromise = resolveSystemStoragePresignedUrls({
     db: args.db,
     get,
-    requests: systemRequests,
-  });
-  const workflowSkillPlans = args.plans.filter((plan) => {
-    return !isSystemOwnedStoragePlan(plan) && isWorkflowSkillStoragePlan(plan);
-  });
-  const workflowSkillRequests = workflowSkillPlans.map((plan) => {
-    return workflowSkillStoragePresignedUrlRequest({
-      bucket: args.bucket,
-      plan,
-    });
+    requests: systemPlans.map((plan) => {
+      return systemStoragePresignedUrlRequest({ bucket: args.bucket, plan });
+    }),
   });
   const workflowSkillUrlsByCacheKeyPromise =
     resolveWorkflowSkillStoragePresignedUrls({
       db: args.db,
       get,
-      requests: workflowSkillRequests,
+      requests: args.plans
+        .filter((plan) => {
+          return (
+            !isSystemOwnedStoragePlan(plan) && isWorkflowSkillStoragePlan(plan)
+          );
+        })
+        .map((plan) => {
+          return workflowSkillStoragePresignedUrlRequest({
+            bucket: args.bucket,
+            plan,
+          });
+        }),
     });
+  const readOnlyUrlsByCacheKeyPromise = resolveReadOnlyStoragePresignedUrls({
+    db: args.db,
+    get,
+    requests: args.plans
+      .filter((plan) => {
+        return (
+          !isSystemOwnedStoragePlan(plan) && !isWorkflowSkillStoragePlan(plan)
+        );
+      })
+      .map((plan) => {
+        return readOnlyStoragePresignedUrlRequest({
+          bucket: args.bucket,
+          resolved: plan.resolved,
+        });
+      }),
+  });
 
   return await Promise.all(
     args.plans.map(async (plan) => {
-      const archiveKey = storageArchiveKey(plan.resolved);
-      if (!isSystemOwnedStoragePlan(plan)) {
-        if (isWorkflowSkillStoragePlan(plan)) {
-          const workflowSkillUrlsByCacheKey =
-            await workflowSkillUrlsByCacheKeyPromise;
-          const request = workflowSkillStoragePresignedUrlRequest({
-            bucket: args.bucket,
-            plan,
-          });
-          const cacheKey = workflowSkillStoragePresignedUrlCacheKey(request);
-          const result = workflowSkillUrlsByCacheKey.get(cacheKey);
-          if (!result) {
-            throw new Error(
-              "Missing workflow skill storage presigned URL cache result",
-            );
-          }
-          args.stats?.recordWorkflowSkillPresignCacheResult(result.status);
-          if (result.status === "miss" || result.status === "sync_refresh") {
-            args.stats?.recordPresignCandidate(plan.entryKind, plan.source, {
-              bucket: args.bucket,
-              key: archiveKey,
-              expiresIn: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS,
-              filename: undefined,
-              usePublicEndpoint: true,
-            });
-            args.stats?.recordNonSystemPresign(plan.entryKind, plan.source);
-          }
-          return buildPreparedReadOnlyStorageEntry({
-            plan,
-            archiveUrl: result.url,
-          });
-        }
-
-        return buildPreparedReadOnlyStorageEntry({
+      if (isSystemOwnedStoragePlan(plan)) {
+        return buildSystemStorageEntry({
+          bucket: args.bucket,
           plan,
-          archiveUrl: await generateDirectStorageArchiveUrl(get, {
-            bucket: args.bucket,
-            archiveKey,
-            stats: args.stats,
-            entryKind: plan.entryKind,
-            source: plan.source,
-          }),
+          urlsByCacheKey: await systemUrlsByCacheKeyPromise,
+          stats: args.stats,
         });
       }
-
-      const systemUrlsByCacheKey = await systemUrlsByCacheKeyPromise;
-      const request = systemStoragePresignedUrlRequest({
+      if (isWorkflowSkillStoragePlan(plan)) {
+        return buildWorkflowSkillStorageEntry({
+          bucket: args.bucket,
+          plan,
+          urlsByCacheKey: await workflowSkillUrlsByCacheKeyPromise,
+          stats: args.stats,
+        });
+      }
+      return buildReadOnlyStorageEntry({
         bucket: args.bucket,
         plan,
-      });
-      const cacheKey = systemStoragePresignedUrlCacheKey(request);
-      const result = systemUrlsByCacheKey.get(cacheKey);
-      if (!result) {
-        throw new Error("Missing system storage presigned URL cache result");
-      }
-      args.stats?.recordSystemPresignCacheResult(result.status);
-      if (result.status === "miss" || result.status === "sync_refresh") {
-        args.stats?.recordPresignCandidate(plan.entryKind, plan.source, {
-          bucket: args.bucket,
-          key: archiveKey,
-          expiresIn: SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
-          filename: undefined,
-          usePublicEndpoint: true,
-        });
-      }
-      return buildPreparedReadOnlyStorageEntry({
-        plan,
-        archiveUrl: result.url,
+        urlsByCacheKey: await readOnlyUrlsByCacheKeyPromise,
+        stats: args.stats,
       });
     }),
   );
 }
 
-async function buildPreparedWritebackStorageEntry(
-  get: ComputedGetter,
-  args: {
-    readonly bucket: string;
-    readonly input: ResolvedManifestArtifactInput;
-    readonly stats?: StorageManifestBuildStats;
-  },
-): Promise<PreparedWritebackStorageEntry> {
+function buildPreparedWritebackStorageEntry(args: {
+  readonly bucket: string;
+  readonly input: ResolvedManifestArtifactInput;
+  readonly archiveUrl: string | undefined;
+  readonly cacheStatus: ReadOnlyStoragePresignedUrlCacheStatus | undefined;
+  readonly stats?: StorageManifestBuildStats;
+}): PreparedWritebackStorageEntry {
   const { artifact, resolved } = args.input;
   const storedMountBase = {
     orgId: resolved.resolvedOrgId,
@@ -2116,30 +2172,26 @@ async function buildPreparedWritebackStorageEntry(
   }
 
   const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
-  args.stats?.recordPresignCandidate("artifact", args.input.source, {
-    bucket: args.bucket,
-    key: archiveKey,
-    expiresIn: DOWNLOAD_URL_TTL_SECONDS,
-    filename: undefined,
-    usePublicEndpoint: true,
-  });
-  args.stats?.recordNonSystemPresign("artifact", args.input.source);
-  const archiveUrl = await get(
-    generatePresignedGetUrl(
-      args.bucket,
-      archiveKey,
-      DOWNLOAD_URL_TTL_SECONDS,
-      undefined,
-      true,
-    ),
-  );
+  if (args.archiveUrl === undefined || args.cacheStatus === undefined) {
+    throw new Error("Missing writeback storage presigned URL cache result");
+  }
+  if (args.cacheStatus === "miss" || args.cacheStatus === "sync_refresh") {
+    args.stats?.recordPresignCandidate("artifact", args.input.source, {
+      bucket: args.bucket,
+      key: archiveKey,
+      expiresIn: READ_ONLY_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+      filename: undefined,
+      usePublicEndpoint: true,
+    });
+    args.stats?.recordNonSystemPresign("artifact", args.input.source);
+  }
   const archiveSize = knownArchiveSize(resolved);
 
   return {
     ...preparedBase,
     storedMount: {
       ...storedMountBase,
-      archiveUrl,
+      archiveUrl: args.archiveUrl,
       ...(archiveSize === undefined ? {} : { archiveSize }),
     },
   };
@@ -2546,16 +2598,47 @@ async function generatePreparedStorageEntriesFromPlans(args: {
           stats: args.input.stats,
         });
       }),
-      args.phaseTimings.artifact.measureGenerate(() => {
-        return Promise.all(
-          args.resolved.artifactInputs.map((input) => {
-            return buildPreparedWritebackStorageEntry(args.get, {
+      args.phaseTimings.artifact.measureGenerate(async () => {
+        const requests = args.resolved.artifactInputs.flatMap((input) => {
+          return input.resolved.fileCount === 0
+            ? []
+            : [
+                readOnlyStoragePresignedUrlRequest({
+                  bucket: args.input.bucket,
+                  resolved: input.resolved,
+                }),
+              ];
+        });
+        const urlsByCacheKey = await resolveReadOnlyStoragePresignedUrls({
+          db: args.input.db,
+          get: args.get,
+          requests,
+        });
+        return args.resolved.artifactInputs.map((input) => {
+          if (input.resolved.fileCount === 0) {
+            return buildPreparedWritebackStorageEntry({
               bucket: args.input.bucket,
               input,
+              archiveUrl: undefined,
+              cacheStatus: undefined,
               stats: args.input.stats,
             });
-          }),
-        );
+          }
+          const request = readOnlyStoragePresignedUrlRequest({
+            bucket: args.input.bucket,
+            resolved: input.resolved,
+          });
+          const result = urlsByCacheKey.get(
+            readOnlyStoragePresignedUrlCacheKey(request),
+          );
+          return buildPreparedWritebackStorageEntry({
+            bucket: args.input.bucket,
+            input,
+            archiveUrl: result?.url,
+            cacheStatus: result?.status,
+            stats: args.input.stats,
+          });
+        });
       }),
     ]);
 

@@ -138,7 +138,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key("VM0_RUN_ID"));
     for key in [
         guest_contracts::env::PI_SESSION_ID_ENV,
-        guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
+        guest_contracts::env::PI_LAUNCH_PAYLOAD_FILE_ENV,
         guest_contracts::env::PI_MODEL_CONFIG_ENV,
     ] {
         assert!(
