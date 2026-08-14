@@ -24,6 +24,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ZeroChatAttachment } from "../../signals/zero-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
@@ -84,6 +85,7 @@ import {
 } from "./zero-zoomable-image-canvas.tsx";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -332,12 +334,14 @@ function artifactDialogSyncTarget(
 function findArtifactDialogItemForUrl(
   runs: ChatThreadArtifactRun[],
   url: string,
+  includeAliasUrl: boolean,
 ): ArtifactDialogItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
       return (
         artifactPreviewUrlsMatch(candidate.url, url) ||
-        (candidate.aliasUrl !== undefined &&
+        (includeAliasUrl &&
+          candidate.aliasUrl !== undefined &&
           artifactPreviewUrlsMatch(candidate.aliasUrl, url))
       );
     });
@@ -979,8 +983,13 @@ function ArtifactDialogHtmlBody({
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
+  const presentationArtifactViewportEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
+    false;
   const src = useResolvedAttachmentUrl(preview.url);
-  const isPresentationHtml = artifact?.artifactKind === "presentation-html";
+  const isPresentationHtml =
+    presentationArtifactViewportEnabled &&
+    artifact?.artifactKind === "presentation-html";
 
   if (src === null) {
     return (
@@ -1104,11 +1113,18 @@ function ArtifactPreviewDialogThreadResolver({
   const eventGroups = useLastResolved(thread.eventImageGroups$, {
     equalityFn: equalEventImageGroups,
   });
+  const presentationArtifactViewportEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
+    false;
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     loadable.state === "hasData"
-      ? findArtifactDialogItemForUrl(loadable.data, preview.url)
+      ? findArtifactDialogItemForUrl(
+          loadable.data,
+          preview.url,
+          presentationArtifactViewportEnabled,
+        )
       : undefined;
   const resolvedImageNavigation =
     preview.kind === "image"
