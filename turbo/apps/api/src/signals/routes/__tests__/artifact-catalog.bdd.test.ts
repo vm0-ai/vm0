@@ -10,7 +10,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { RouteEntry } from "../../route-entry";
 import { artifactCatalogRoutes } from "../artifact-catalog";
-import { zeroSharedThreadRoutes } from "../zero-shared-threads";
+import { sharedThreadRoutes } from "../shared-threads";
 import {
   createBddApi,
   expectApiError,
@@ -39,7 +39,7 @@ const webhooks = createWebhookCallbackApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const sharedThreadTestRoutes: readonly RouteEntry[] = [
   ...artifactCatalogRoutes,
-  ...zeroSharedThreadRoutes,
+  ...sharedThreadRoutes,
 ];
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 interface CatalogActor {
