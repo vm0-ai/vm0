@@ -38,7 +38,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
-import { zeroFeishuEventsRoutes } from "../zero-feishu-events";
+import { feishuEventsRoutes } from "../feishu-events";
 import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
 import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
@@ -335,7 +335,7 @@ async function postEvent(
   }
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: zeroFeishuEventsRoutes,
+    routes: feishuEventsRoutes,
   });
   return await app.request(callbackUrl, {
     method: "POST",
