@@ -13,7 +13,7 @@ import {
 import { runPiAgentPrompt } from "./agent-loop";
 import type { PiAgentModelConfig } from "./types";
 
-export type PersistedMessage = Extract<
+type PersistedMessage = Extract<
   AgentMessage,
   { role: "user" | "assistant" | "toolResult" }
 >;
