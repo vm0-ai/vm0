@@ -7,7 +7,6 @@ import {
   zeroAgentsMainContract,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -29,7 +28,6 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
@@ -413,9 +411,6 @@ describe("okou workflow automation scheduler", () => {
 
   it("fires a due cron automation: creates a run, posts to the thread, sets last run state", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
-    await updateFeatureSwitchesForUser(context, scenario, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -460,9 +455,6 @@ describe("okou workflow automation scheduler", () => {
 
   it("disables a one-time automation when it fires", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
-    await updateFeatureSwitchesForUser(context, scenario, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -520,9 +512,6 @@ describe("okou workflow automation scheduler", () => {
 
   it("fires a due loop automation with a user-facing message", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
-    await updateFeatureSwitchesForUser(context, scenario, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
     const automation = await createDueLoopAutomation(scenario, 3600);
 
     await executeDueWorkflowAutomations(automation.automationId);

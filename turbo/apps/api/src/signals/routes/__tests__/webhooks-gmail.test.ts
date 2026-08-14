@@ -10,7 +10,6 @@ import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -37,7 +36,6 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
@@ -880,10 +878,6 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -1054,10 +1048,6 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(actor),

@@ -7,7 +7,7 @@ import { admitWorkflowAutomationEvent } from "../signals/services/workflow-chat-
 import {
   persistedWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
-  workflowAutomationPrompt,
+  workflowAutomationDisplayMessage,
 } from "../signals/services/workflow-automation-context.service";
 
 interface WorkflowAutomationEventFixtureArgs {
@@ -56,7 +56,7 @@ export async function admitWorkflowAutomationEventFixture(
   const admission = await admitWorkflowAutomationEvent(db(), {
     automation: row.automation,
     workflowName: row.workflowName,
-    displayPrompt: workflowAutomationPrompt(automationContext),
+    displayPrompt: workflowAutomationDisplayMessage(automationContext),
     workflowAutomationEventType: "webhook-received",
     workflowAutomationEventPayload:
       persistedWorkflowAutomationEventPayload(eventPayload),

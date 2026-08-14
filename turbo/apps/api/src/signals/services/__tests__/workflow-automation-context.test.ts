@@ -7,9 +7,8 @@ import {
   persistedWorkflowAutomationEventPayload,
   restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationEventUsesUserFriendlyMessage,
-  workflowAutomationPrompt,
+  workflowAutomationAgentPrompt,
+  workflowAutomationDisplayMessage,
   workflowAutomationTrigger,
   type WorkflowAutomationEventPolicy,
   type WorkflowAutomationEventType,
@@ -362,7 +361,7 @@ describe("workflow automation context lookup contracts", () => {
   });
 
   it.each(cases)(
-    "reconstructs the legacy $eventType trigger and settings",
+    "reconstructs the $eventType context and settings",
     ({ eventType, payload, trigger, notes, policy }) => {
       expect(
         workflowAutomationTrigger({ eventType, eventPayload: payload }),
@@ -381,7 +380,7 @@ describe("workflow automation context lookup contracts", () => {
       if (!restoredPayload) {
         throw new Error("Expected persisted event payload key order");
       }
-      const legacyContext = {
+      const originalContext = {
         workflowName: "workflow-context-test",
         eventType,
         trigger,
@@ -389,31 +388,27 @@ describe("workflow automation context lookup contracts", () => {
         event: payload,
       };
       const restoredContext = storedWorkflowAutomationContext({
-        workflowName: legacyContext.workflowName,
+        workflowName: originalContext.workflowName,
         eventType,
         eventPayload: restoredPayload,
       });
-      expect(workflowAutomationPrompt(restoredContext)).toBe(
-        workflowAutomationPrompt(legacyContext),
+      expect(workflowAutomationAgentPrompt(restoredContext)).toBe(
+        workflowAutomationAgentPrompt(originalContext),
       );
-      expect(workflowAutomationAppendSystemPrompt(restoredContext)).toBe(
-        workflowAutomationAppendSystemPrompt(legacyContext),
+      expect(workflowAutomationDisplayMessage(restoredContext)).toBe(
+        workflowAutomationDisplayMessage(originalContext),
       );
 
-      const userFriendlyPayload = reverseObjectKeys(
-        persistedWorkflowAutomationEventPayload(payload, {
-          userFriendlyAutomationMessage: true,
-        }),
-      );
-      if (!isRecord(userFriendlyPayload)) {
-        throw new Error("Expected user-friendly event payload to be an object");
+      const rolloutPayload = reverseObjectKeys({
+        ...persistedWorkflowAutomationEventPayload(payload),
+        __vm0UserFriendlyAutomationMessageV1: true,
+      });
+      if (!isRecord(rolloutPayload)) {
+        throw new Error("Expected rollout event payload to be an object");
       }
       expect(
-        workflowAutomationEventUsesUserFriendlyMessage(userFriendlyPayload),
-      ).toBeTruthy();
-      const restoredUserFriendlyPayload =
-        restoredWorkflowAutomationEventPayload(userFriendlyPayload);
-      expect(restoredUserFriendlyPayload).toStrictEqual(payload);
+        restoredWorkflowAutomationEventPayload(rolloutPayload),
+      ).toStrictEqual(payload);
     },
   );
 

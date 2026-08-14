@@ -171,14 +171,6 @@ const STRIPE_INVOICE_BILLING_REASONS: readonly StripeInvoiceBillingReason[] = [
   "upcoming",
 ];
 
-function githubWebhookAutomationsEnabled(): boolean {
-  const payload = decodeZeroTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
-    userId: payload?.userId,
-    orgId: payload?.orgId,
-  });
-}
-
 function strapiIntegrationEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
@@ -207,7 +199,7 @@ function automationKinds(
   return [
     ...SCHEDULE_KINDS,
     ...EVENT_KINDS,
-    ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
+    ...GITHUB_WEBHOOK_EVENT_KINDS,
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
     ...(stripeInvoicePaidEnabled ? STRIPE_EVENT_KINDS : []),
   ];
@@ -256,13 +248,6 @@ async function tryLoadWorkflowAutomationThreadModel(
   }
 }
 
-function githubWebhookEventKind(
-  kind: string,
-): kind is (typeof GITHUB_WEBHOOK_EVENT_KINDS)[number] {
-  return GITHUB_WEBHOOK_EVENT_KINDS.some((eventKind) => {
-    return eventKind === kind;
-  });
-}
 const EXACTLY_ONE_FLAG_MESSAGE =
   "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --form-url, --page-url, --parent-page-url, or --database-url";
 
@@ -2311,14 +2296,6 @@ Notes:
     .action(
       withErrorHandler(
         async (workflowRef: string, kind: string, options: AddOptions) => {
-          if (
-            githubWebhookEventKind(kind) &&
-            !githubWebhookAutomationsEnabled()
-          ) {
-            throw new Error(
-              "GitHub webhook automations are not enabled for this workspace",
-            );
-          }
           if (
             kind === "strapi-entry-published" &&
             !strapiIntegrationEnabled()

@@ -240,12 +240,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
     enabled: false,
   },
-  [FeatureSwitchKey.GithubWebhookAutomations]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show creation entry points for GitHub workflow job, pull request review, deployment status, and issue comment automations.",
-    enabled: true,
-  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -370,12 +364,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.UserFriendlyAutomationMessage]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show natural trigger messages for workflow automations and provide automation context through the agent user prompt.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
