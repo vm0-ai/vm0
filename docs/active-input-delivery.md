@@ -54,6 +54,14 @@ Cancellation is visible immediately, and heartbeat timeout records an unknown
 consumer state, but neither path releases a reservation. Cooperative Guest
 completion and Runner post-exit completion are the existing quiescence signals.
 
+Codex execution timeout and cancellation first allow an in-flight `turn/steer`
+to settle within the bounded sink window. A successful response still persists
+its receipt. If the response remains pending, Guest drops the non-reusable
+JSON-RPC request, terminates and waits for the owned app-server process, and
+only then closes the local sink operation and finalizes receipts. The
+unconfirmed delivery ID remains absent from completion, so the existing
+completion transaction releases or expires it only after consumer-stop proof.
+
 An open delivery is therefore a non-expiring thread-ordering barrier. The queue
 scheduler cannot skip its source events or launch later input on the same
 thread, even after cancellation recovery becomes stale. Once completion settles
