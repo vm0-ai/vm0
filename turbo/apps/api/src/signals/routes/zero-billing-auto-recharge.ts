@@ -9,7 +9,7 @@ import {
   autoRechargeConfig,
   updateAutoRechargeConfig$,
 } from "../services/billing.service";
-import { triggerAutoRecharge$ } from "../services/zero-credit-recharge.service";
+import { triggerAutoRecharge$ } from "../services/credit-recharge.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
