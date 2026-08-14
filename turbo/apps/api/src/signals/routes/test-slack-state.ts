@@ -24,7 +24,6 @@ import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { variables } from "@okouai/db/schema/variable";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -1183,8 +1182,6 @@ async function deleteSlackRunsForOrg(
   if (runIds.length === 0) {
     return;
   }
-  await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-  signal.throwIfAborted();
   await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
   signal.throwIfAborted();
 }

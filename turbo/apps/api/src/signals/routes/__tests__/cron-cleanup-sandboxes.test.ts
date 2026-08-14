@@ -45,7 +45,6 @@ import {
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { readRunMetadataPair } from "./helpers/runtime-state";
 import { runnersRoutes } from "../runners";
 
 const context = testContext();
@@ -541,30 +540,6 @@ describe("sandbox cleanup", () => {
     });
   });
 
-  it("keeps lifecycle-only cleanup fixtures one-sided", async () => {
-    const fixture = await trackRun(insertRunFixture({ status: "pending" }));
-
-    const metadata = await readRunMetadataPair(context, fixture.runId);
-    expect(metadata.agent_run).toStrictEqual({
-      trigger_source: null,
-      autonomy_budget: null,
-      workflow_automation_id: null,
-      goal_id: null,
-      model_provider: null,
-      model_provider_id: null,
-      model_provider_credential_scope: null,
-      selected_model: null,
-      codex_service_tier: null,
-      selected_video_model: null,
-      chat_thread_id: null,
-      api_started_at: null,
-      first_assistant_event_acknowledged_at: null,
-      summary: null,
-      trigger_brief: null,
-    });
-    expect(metadata.zero_run).toBeNull();
-  });
-
   it("leaves the audited pre-forward threadless cohort discoverable", async () => {
     mockNow(THREADLESS_TEST_NOW_MS);
     const fixture = await trackRun(
@@ -577,9 +552,6 @@ describe("sandbox cleanup", () => {
         threadless: true,
       }),
     );
-    const metadata = await readRunMetadataPair(context, fixture.runId);
-    expect(metadata.agent_run).toStrictEqual(metadata.zero_run);
-
     const response = await cleanupRegisteredFixtures();
 
     expect(response.body.threadlessRuns.discovered).toBe(0);

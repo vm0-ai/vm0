@@ -46,9 +46,7 @@ function countWhere<T>(
   return rows.filter(predicate).length;
 }
 
-type ProfileRunMetadataRow =
-  | BuiltProfileRows["runRows"][number]
-  | BuiltProfileRows["zeroRunRows"][number];
+type ProfileRunMetadataRow = BuiltProfileRows["runRows"][number];
 
 function runMetadata(row: ProfileRunMetadataRow) {
   return {
@@ -90,16 +88,13 @@ describe("dev bench seed profile rows", () => {
       });
 
       expect(rows.runRows).toHaveLength(expected.runs);
-      expect(rows.zeroRunRows).toHaveLength(expected.runs);
-      const runRowsById = new Map(
-        rows.runRows.map((row) => {
-          return [row.id, row] as const;
-        }),
-      );
-      for (const zeroRunRow of rows.zeroRunRows) {
-        const runRow = runRowsById.get(zeroRunRow.id);
-        expect(runRow).toBeDefined();
-        expect(runMetadata(runRow!)).toStrictEqual(runMetadata(zeroRunRow));
+      for (const runRow of rows.runRows) {
+        expect(runMetadata(runRow)).toStrictEqual(
+          expect.objectContaining({
+            triggerSource: expect.any(String),
+            autonomyBudget: 10,
+          }),
+        );
       }
       expect(rows.eventRows).toHaveLength(expected.events);
       expect(
@@ -154,12 +149,12 @@ describe("dev bench seed profile rows", () => {
         }),
       ).toBe(expected.usageEvents);
       expect(
-        countWhere(rows.zeroRunRows, (row) => {
+        countWhere(rows.runRows, (row) => {
           return row.triggerSource === "automation-schedule";
         }),
       ).toBe(expected.workflowScheduleRuns);
       expect(
-        countWhere(rows.zeroRunRows, (row) => {
+        countWhere(rows.runRows, (row) => {
           return row.triggerBrief !== null && row.triggerBrief !== undefined;
         }),
       ).toBe(expected.triggerBriefRuns);

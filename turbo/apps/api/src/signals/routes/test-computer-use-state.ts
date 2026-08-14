@@ -6,7 +6,6 @@ import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
@@ -127,12 +126,6 @@ async function seedBaseComputerUseRun(args: {
   });
   args.signal.throwIfAborted();
 
-  await args.db.insert(zeroRuns).values({
-    id: runId,
-    ...metadata,
-  });
-  args.signal.throwIfAborted();
-
   return { composeId, sessionId, runId, threadId };
 }
 
@@ -246,8 +239,6 @@ const deleteComputerUseState$ = command(
       return { status: 200 as const, body: { ok: true as const } };
     }
 
-    await db.delete(zeroRuns).where(eq(zeroRuns.id, run.id));
-    signal.throwIfAborted();
     await db.delete(agentRuns).where(eq(agentRuns.id, run.id));
     signal.throwIfAborted();
     await db.delete(agentSessions).where(eq(agentSessions.id, run.sessionId));

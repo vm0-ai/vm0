@@ -89,7 +89,6 @@ import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as agentDraftSchema from "./schema/agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
-import * as zeroRunSchema from "./schema/zero-run";
 import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
@@ -219,7 +218,6 @@ export const schema = {
   ...zeroAgentSchema,
   ...agentDraftSchema,
   ...userPermissionGrantSchema,
-  ...zeroRunSchema,
   ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,

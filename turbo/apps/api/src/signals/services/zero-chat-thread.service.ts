@@ -724,8 +724,7 @@ interface ThreadRunToCancel {
  * Lock the thread row while deleting it and collecting active runs. Inserts into
  * `agent_runs.chatThreadId` take a FK lock on the same parent row, so this closes
  * the race where a new run attaches after the active-run scan but before the
- * thread delete. Older binaries may also write the retained `zero_runs` rollback
- * row during a rolling deployment; its foreign key takes the same parent lock.
+ * thread delete. All run-side thread ownership now lives in `agent_runs`.
  * Cancellation still happens after the delete transaction because it has runner
  * notifications and queue-drain side effects.
  *
