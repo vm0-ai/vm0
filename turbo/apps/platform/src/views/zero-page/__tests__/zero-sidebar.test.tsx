@@ -142,6 +142,7 @@ function prepareAgentTeam(): TeamComposeItem[] {
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public",
     });
   });
   return team;

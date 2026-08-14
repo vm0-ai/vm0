@@ -314,6 +314,7 @@ export function mockAgent(options?: {
       modelProviderId: isOtherAgent ? null : (options?.modelProviderId ?? null),
       selectedModel: isOtherAgent ? null : (options?.selectedModel ?? null),
       preferPersonalProvider: false,
+      visibility: "public",
     });
   });
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
