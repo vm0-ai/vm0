@@ -9,6 +9,12 @@ import { afterEach } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
+import {
+  deleteApiTestConnectorCatalogCompatibility,
+  installApiTestConnectorCatalog,
+} from "../../../test-fixtures/connector-catalog";
+import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 
@@ -53,13 +59,16 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
   );
 }
 
-async function deleteGitlab(fixture: AuthenticatedFixture): Promise<void> {
+async function deleteConnector(
+  fixture: AuthenticatedFixture,
+  connectorSlug: "gitlab" | "openai",
+): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context, routes: zeroConnectorsRoutes })(
       zeroConnectorsBySlugContract,
     ).delete({
-      params: { connectorSlug: "gitlab" },
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     [204, 404],
@@ -73,7 +82,8 @@ describe("GET /api/zero/connectors", () => {
     while (seededFixtures.length > 0) {
       const fixture = seededFixtures.pop();
       if (fixture) {
-        await deleteGitlab(fixture);
+        await deleteConnector(fixture, "gitlab");
+        await deleteConnector(fixture, "openai");
       }
     }
   });
@@ -122,6 +132,57 @@ describe("GET /api/zero/connectors", () => {
         name: "GITLAB_TOKEN",
       }),
     );
+  });
+
+  it("skips stored connectors whose runtime method is unavailable", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectGitlab(fixture);
+    await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "openai",
+      authMethod: "unavailable-method",
+      storageVersion: 1,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
+    const response = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.connectors).toHaveLength(1);
+    expect(response.body.connectors[0]).toMatchObject({ slug: "gitlab" });
+    expect(response.body.connectorProvidedBindings).not.toContainEqual(
+      expect.objectContaining({ connectorSlug: "openai" }),
+    );
+  });
+
+  it("skips stored connectors when the external catalog is unavailable", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectGitlab(fixture);
+    mockOptionalEnv("BOX_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog();
+    await deleteApiTestConnectorCatalogCompatibility();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
+    const response = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      connectors: [],
+      connectorProvidedBindings: [],
+    });
   });
 
   it("returns 401 when not authenticated", async () => {

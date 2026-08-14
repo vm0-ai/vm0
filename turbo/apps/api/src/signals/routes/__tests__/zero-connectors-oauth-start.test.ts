@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow } from "../../../lib/time";
+import { clearMockNow } from "../../../lib/time";
 import {
   API_TEST_CONNECTOR_CATALOG,
   installApiTestConnectorCatalog,
@@ -476,7 +476,7 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     });
   });
 
-  it("returns 500 when the auth method lacks executable platform configuration", async () => {
+  it("returns 403 when the auth method lacks executable platform configuration", async () => {
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog();
     mockAuthenticatedSession();
@@ -485,11 +485,11 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
       headers: authHeaders(),
     });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "Connector execution is not configured",
-        code: "INTERNAL_SERVER_ERROR",
+        message: "github connector is not available",
+        code: "FORBIDDEN",
       },
     });
   });
