@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.450.1](https://github.com/vm0-ai/vm0/compare/api-v1.450.0...api-v1.450.1) (2026-08-14)
+
+
+### Refactoring
+
+* **db:** drop zero_runs ([#27277](https://github.com/vm0-ai/vm0/issues/27277)) ([1aef53c](https://github.com/vm0-ai/vm0/commit/1aef53cd02c39ac3f8e923cd0c1a2c923067bc1c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.1
+    * @okouai/core bumped to 8.560.4
+    * @okouai/db bumped to 1.199.1
+    * @okouai/pi-agent-runtime bumped to 1.5.1
+
 ## [1.450.0](https://github.com/vm0-ai/vm0/compare/api-v1.449.1...api-v1.450.0) (2026-08-14)
 
 
