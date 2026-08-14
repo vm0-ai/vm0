@@ -115,7 +115,7 @@ import { zeroOrgMembersRoutes } from "./routes/zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "./routes/zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { pushSubscriptionsRoutes } from "./routes/push-subscriptions";
-import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
+import { queuePositionRoutes } from "./routes/queue-position";
 import { realtimeTokenRoutes } from "./routes/realtime-token";
 import { imageRecognitionRoutes } from "./routes/image-recognition";
 import { translationRoutes } from "./routes/translation";
@@ -314,7 +314,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVoiceIoSttRoutes,
   ...webDownloadRoutes,
   ...webFileUrlRoutes,
-  ...zeroQueuePositionRoutes,
+  ...queuePositionRoutes,
   ...realtimeTokenRoutes,
   ...imageRecognitionRoutes,
   ...translationRoutes,
