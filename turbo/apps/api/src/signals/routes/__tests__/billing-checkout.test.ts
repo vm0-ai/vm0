@@ -10823,7 +10823,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     );
   });
 
-  it("cancels and restores a shared concurrency item without canceling the Plan", async () => {
+  it("cancels and restores a shared concurrency item without blocking later changes", async () => {
     const periodStartUnix = 4_075_660_800;
     const periodEndUnix = 4_078_252_800;
     const scheduleId = `sub_sched_${randomUUID()}`;
@@ -10867,19 +10867,6 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       context,
       routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
-    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
-      id: scheduleId,
-      end_behavior: "release",
-      phases: [
-        { start_date: periodStartUnix, end_date: periodEndUnix },
-        {
-          start_date: periodEndUnix,
-          end_date: periodEndUnix + 2_592_000,
-          items: [{ price: TEST_PRICE_TEAM, quantity: 1 }],
-        },
-      ],
-    });
-
     await accept(
       client.cancel({
         params: { subscriptionId: fixture.subscriptionId },
@@ -10999,16 +10986,8 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         ],
       },
     });
-    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+    context.mocks.stripe.subscriptionSchedules.release.mockResolvedValueOnce({
       id: scheduleId,
-      phases: [
-        { start_date: periodStartUnix, end_date: periodEndUnix },
-        {
-          start_date: periodEndUnix,
-          end_date: periodEndUnix + 2_592_000,
-          items: [{ price: TEST_PRICE_TEAM, quantity: 1 }],
-        },
-      ],
     });
     await accept(
       client.restore({
@@ -11020,39 +10999,58 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     );
 
     expect(
+      context.mocks.stripe.subscriptionSchedules.release,
+    ).toHaveBeenCalledWith(scheduleId);
+    expect(
       context.mocks.stripe.subscriptionSchedules.update,
-    ).toHaveBeenLastCalledWith(
-      scheduleId,
-      {
-        end_behavior: "release",
-        proration_behavior: "none",
-        phases: [
-          {
-            start_date: periodStartUnix,
-            end_date: periodEndUnix,
-            items: [
-              { price: TEST_PRICE_TEAM, quantity: 1 },
-              { price: TEST_PRICE_CONCURRENCY, quantity: 2 },
-            ],
-            proration_behavior: "none",
-          },
-          {
-            start_date: periodEndUnix,
-            duration: { interval: "month", interval_count: 1 },
-            items: [
-              { price: TEST_PRICE_TEAM, quantity: 1 },
-              { price: TEST_PRICE_CONCURRENCY, quantity: 2 },
-            ],
-            proration_behavior: "none",
-          },
-        ],
-      },
-      { idempotencyKey: expect.any(String) },
-    );
+    ).toHaveBeenCalledOnce();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.retrieve,
+    ).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     status = await readBillingStatus(fixture);
     expect(status.cancelAtPeriodEnd).toBeFalsy();
     expect(status.concurrencySubscriptions[0]?.cancelAtPeriodEnd).toBeFalsy();
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: fixture.subscriptionId,
+      pending_update: null,
+      schedule: null,
+      items: {
+        data: [
+          {
+            id: fixture.concurrencyItemId,
+            price: {
+              id: TEST_PRICE_CONCURRENCY,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+            quantity: 2,
+            current_period_start: periodStartUnix,
+            current_period_end: periodEndUnix,
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValueOnce(
+      recurringConcurrencyPreviewInvoice(1),
+    );
+
+    const nextChange = await accept(
+      client.previewChange({
+        params: { subscriptionId: fixture.subscriptionId },
+        body: { quantity: 1 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(nextChange.body).toStrictEqual({
+      currentQuantity: 2,
+      targetQuantity: 1,
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 10_000,
+      currency: "usd",
+      effectiveAt: new Date(periodEndUnix * 1000).toISOString(),
+    });
   });
 
   it("cancels Custom concurrency without canceling its usage allowance", async () => {

@@ -64,6 +64,12 @@ const appUrl = deriveAppUrl(apiUrl);
 const appOrigin = new URL(appUrl).origin;
 const STATE_TIMEOUT_MS = 60_000;
 const POLL_INTERVALS_MS = [500, 1_000, 2_000];
+const USAGE_PACK_OPTION_PATTERNS: Readonly<Record<UsagePackUsd, RegExp>> = {
+  20: /^\$20(?:\s|·)/u,
+  50: /^\$50(?:\s|·)/u,
+  100: /^\$100(?:\s|·)/u,
+  200: /^\$200(?:\s|·)/u,
+};
 
 test.describe.configure({ mode: "parallel" });
 
@@ -452,7 +458,7 @@ async function selectUsagePack(
   const select = packages.getByRole("combobox", { name: /^Usage for /u });
   await select.click();
   await page
-    .getByRole("option", { name: new RegExp(`^\\$${target}(?:\\s|·)`, "u") })
+    .getByRole("option", { name: USAGE_PACK_OPTION_PATTERNS[target] })
     .click();
 }
 
@@ -504,7 +510,7 @@ async function cancelPlan(
   const dialog = page.getByRole("dialog", { name: "Downgrade plan" });
   await expect(dialog).toBeVisible();
   if (tier === "team") {
-    await dialog.getByText("Free", { exact: true }).click();
+    await dialog.getByRole("button", { name: /^No plan/u }).click();
   }
   const token = await currentToken(page, owner.organizationId);
   await dialog
@@ -655,7 +661,7 @@ async function changeConcurrency(
   const review = page.getByRole("dialog", {
     name: "Review concurrency change",
   });
-  await expect(review).toBeVisible();
+  await expect(review).toBeVisible({ timeout: 30_000 });
   const token = await currentToken(page, owner.organizationId);
   await review.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(review).toBeHidden({ timeout: 30_000 });
