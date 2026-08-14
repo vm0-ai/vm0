@@ -7494,7 +7494,8 @@ function ComposerModelPickerSlotBase({
         })}
         triggerClassName={cn(
           "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-          "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
+          "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center sm:[&>[data-slot=select-value]]:justify-start",
+          "[&>[data-slot=select-icon]]:hidden sm:[&>[data-slot=select-icon]]:block",
           "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
           COMPOSER_CONTROL_FOCUS_CLASS,
         )}
