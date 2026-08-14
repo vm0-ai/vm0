@@ -44,6 +44,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { readRunMetadataPair } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   generateDataKeyOutput,
@@ -1197,6 +1198,16 @@ describe("CHAT-02: completed chat callback", () => {
         );
       })
       .toBe(true);
+    const completedMetadata = await readRunMetadataPair(context, first.runId);
+    expect(completedMetadata.agent_run).toStrictEqual(
+      completedMetadata.zero_run,
+    );
+    expect(completedMetadata.zero_run).toStrictEqual(
+      expect.objectContaining({
+        first_assistant_event_acknowledged_at: expect.any(String),
+        summary: "Generated summary",
+      }),
+    );
 
     const afterAutoSend = await waitForThreadMessages(
       actor,

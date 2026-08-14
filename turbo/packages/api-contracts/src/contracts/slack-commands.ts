@@ -4,7 +4,7 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const zeroSlackCommandsContract = c.router({
+export const slackCommandsContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/slack/commands",
@@ -19,4 +19,4 @@ export const zeroSlackCommandsContract = c.router({
   },
 });
 
-export type ZeroSlackCommandsContract = typeof zeroSlackCommandsContract;
+export type SlackCommandsContract = typeof slackCommandsContract;

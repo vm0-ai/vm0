@@ -27,7 +27,7 @@ import {
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { zeroIntegrationsPhoneUploadCompleteRoutes } from "../../zero-integrations-phone-upload-complete";
-import { zeroIntegrationsPhoneUploadInitRoutes } from "../../zero-integrations-phone-upload-init";
+import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
 import { logsRoutes } from "../../logs";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
@@ -36,7 +36,7 @@ import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 const TEST_APP_ROUTES = Object.freeze([
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneUploadCompleteRoutes,
-  ...zeroIntegrationsPhoneUploadInitRoutes,
+  ...integrationsPhoneUploadInitRoutes,
   ...logsRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
@@ -300,7 +300,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsPhoneUploadInitRoutes,
+        routes: integrationsPhoneUploadInitRoutes,
       })(integrationsPhoneUploadInitContract);
       return await accept(
         client.init({

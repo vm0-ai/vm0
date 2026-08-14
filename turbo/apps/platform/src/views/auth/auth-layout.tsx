@@ -3,7 +3,6 @@ import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  platformCheckmarkPrimaryImg,
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../lib/static-assets.ts";
@@ -315,7 +314,7 @@ a[class*="resendCode"] {
   color: hsl(var(--primary)) !important;
 }
 
-/* Legal consent checkbox - clear visual distinction between checked/unchecked states */
+/* Legal consent checkbox - preserve Clerk's checkmark on the platform checked surface */
 .cl-card input[type="checkbox"],
 .cl-formFieldCheckboxInput input[type="checkbox"] {
   -webkit-appearance: none;
@@ -333,12 +332,8 @@ a[class*="resendCode"] {
 
 .cl-card input[type="checkbox"]:checked,
 .cl-formFieldCheckboxInput input[type="checkbox"]:checked {
-  background-color: transparent !important;
+  background-color: hsl(var(--primary)) !important;
   border-color: hsl(var(--primary)) !important;
-  background-image: url("${platformCheckmarkPrimaryImg}") !important;
-  background-repeat: no-repeat !important;
-  background-position: center !important;
-  background-size: 70% !important;
 }
 
 .cl-card input[type="checkbox"]:hover,

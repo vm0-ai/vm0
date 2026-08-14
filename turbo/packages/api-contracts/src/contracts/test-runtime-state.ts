@@ -3,6 +3,24 @@ import { initContract } from "./base";
 
 const c = initContract();
 
+const testRunMetadataSchema = z.object({
+  trigger_source: z.string().nullable(),
+  autonomy_budget: z.int().min(0).max(10).nullable(),
+  workflow_automation_id: z.string().nullable(),
+  goal_id: z.string().nullable(),
+  model_provider: z.string().nullable(),
+  model_provider_id: z.string().nullable(),
+  model_provider_credential_scope: z.string().nullable(),
+  selected_model: z.string().nullable(),
+  codex_service_tier: z.string().nullable(),
+  selected_video_model: z.string().nullable(),
+  chat_thread_id: z.string().nullable(),
+  api_started_at: z.string().nullable(),
+  first_assistant_event_acknowledged_at: z.string().nullable(),
+  summary: z.string().nullable(),
+  trigger_brief: z.string().nullable(),
+});
+
 // Test-only support actions for infrastructure fixtures used by API suites.
 export const testRuntimeStateErrorSchema = z.object({
   error: z.string(),
@@ -32,10 +50,32 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("set-run-autonomy-budget"),
     run_id: z.uuid(),
     autonomy_budget: z.int().min(0).max(10),
+    disable_bridge: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("read-run-autonomy-budget"),
     run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-run-metadata-pair"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("save-run-summary"),
+    run_id: z.uuid(),
+    trigger_source: z.string(),
+    prompt: z.string(),
+    result_text: z.string(),
+  }),
+  z.object({
+    action: z.literal("measure-run-metadata-bridge-target-updates"),
+    run_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("verify-run-metadata-target-failure-rollback"),
+    run_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
   }),
   z.object({
     action: z.literal("set-workflow-automation-autonomy-budget"),
@@ -188,6 +228,16 @@ export const testRuntimeStateActionResponseSchema = z.object({
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
+  agent_autonomy_budget: z.int().min(0).max(10).nullable().optional(),
+  agent_run_update_count: z.int().nonnegative().optional(),
+  target_write_failed: z.boolean().optional(),
+  target_write_error_code: z.string().nullable().optional(),
+  run_metadata_pair: z
+    .object({
+      agent_run: testRunMetadataSchema.nullable(),
+      zero_run: testRunMetadataSchema.nullable(),
+    })
+    .optional(),
   workflow_automation_state: z
     .object({
       autonomy_budget: z.int().min(0).max(10),

@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 
 import {
   PI_SKILLS_ROOT,
+  type PiLaunchConfig,
   type RunSkillSnapshot,
 } from "@okouai/api-contracts/contracts/runners";
 import type {
@@ -16,6 +17,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import {
   formatPiUserPrompt,
   loadPiRunSkills,
+  preparePiLaunchPrompt,
   renderPiSystemPrompt,
 } from "./runtime";
 import { createPiReadTool } from "./tools";
@@ -111,6 +113,71 @@ describe("Pi run Skill runtime", () => {
     expect(systemPrompt).toContain(
       "As Okou, you are an excellent communicator",
     );
+  });
+
+  it("builds instructions, memory, skills, and the user prompt from mounted files", async () => {
+    const mountedRoot = await mkdtemp(join(tmpdir(), "vm0-pi-launch-test-"));
+    const skillDirectory = join(mountedRoot, "skills", "mounted-skill");
+    const instructionsPath = join(mountedRoot, "agent", "AGENTS.md");
+    const memoryDirectory = join(mountedRoot, "memory");
+    const memoryPath = join(memoryDirectory, "MEMORY.md");
+    const env = new NodeExecutionEnv({ cwd: mountedRoot });
+
+    try {
+      await writeSkill(
+        skillDirectory,
+        "mounted-skill",
+        "Use for mounted launch tests.",
+        "Mounted Skill body.",
+      );
+      await mkdir(join(mountedRoot, "agent"), { recursive: true });
+      await mkdir(memoryDirectory, { recursive: true });
+      await writeFile(instructionsPath, "Mounted agent instructions");
+      await writeFile(memoryPath, "Mounted memory prefix\nMore memory\n");
+      const config: PiLaunchConfig = {
+        schemaVersion: 1,
+        agentName: "Mounted Agent",
+        skillSnapshot: {
+          schemaVersion: 1,
+          policyVersion: 1,
+          root: PI_SKILLS_ROOT,
+          digest: SHA256_ZERO,
+          entries: [
+            {
+              logicalDir: skillDirectory,
+              skillFile: join(skillDirectory, "SKILL.md"),
+              orgId: "org_test",
+              userId: "user_test",
+              storageName: "mounted-skill",
+              storageId: "storage_test",
+              versionId: "version_test",
+            },
+          ],
+        },
+        agentInstructionsPath: instructionsPath,
+        memory: { directory: memoryDirectory, primaryFile: memoryPath },
+      };
+
+      const launch = await preparePiLaunchPrompt(env, {
+        launchConfig: config,
+        appendSystemPrompt: "Mounted append prompt",
+        prompt: "/skill:mounted-skill do the work",
+      });
+
+      expect(launch.diagnostics).toEqual([]);
+      expect(launch.systemPrompt).toContain(
+        "You are Mounted Agent, an AI agent.",
+      );
+      expect(launch.systemPrompt).toContain("Mounted append prompt");
+      expect(launch.systemPrompt).toContain("Mounted agent instructions");
+      expect(launch.systemPrompt).toContain("Mounted memory prefix");
+      expect(launch.systemPrompt).toContain("<name>mounted-skill</name>");
+      expect(launch.prompt).toContain("Mounted Skill body.");
+      expect(launch.prompt).toContain("do the work");
+    } finally {
+      await env.cleanup();
+      await rm(mountedRoot, { recursive: true, force: true });
+    }
   });
 
   it("loads only snapshot Skills and preserves prompt and read semantics", async () => {

@@ -4,10 +4,10 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const zeroSlackEventsContract = c.router({
+export const slackInteractiveContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/slack/events",
+    path: "/api/okou/slack/interactive",
     body: c.type<string>(),
     responses: {
       200: z.unknown(),
@@ -15,8 +15,8 @@ export const zeroSlackEventsContract = c.router({
       401: z.object({ error: z.string() }),
       503: z.object({ error: z.string() }),
     },
-    summary: "Handle Zero Slack Events API callbacks",
+    summary: "Handle Zero Slack interactive component callbacks",
   },
 });
 
-export type ZeroSlackEventsContract = typeof zeroSlackEventsContract;
+export type SlackInteractiveContract = typeof slackInteractiveContract;

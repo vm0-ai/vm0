@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.447.4](https://github.com/vm0-ai/vm0/compare/api-v1.447.3...api-v1.447.4) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+* **web-search:** neutralize managed web search naming ([#27062](https://github.com/vm0-ai/vm0/issues/27062)) ([f0908a4](https://github.com/vm0-ai/vm0/commit/f0908a49b94093ab928baa816f1e9f306a3dfa40))
+
+
+### Performance Improvements
+
+* **api:** reduce tsgolint memory pressure ([#27090](https://github.com/vm0-ai/vm0/issues/27090)) ([2bb5993](https://github.com/vm0-ai/vm0/commit/2bb59939969eeaa837c3225a812b31b150517878))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.4
+    * @okouai/core bumped to 8.559.8
+    * @okouai/db bumped to 1.198.16
+    * @okouai/pi-agent-runtime bumped to 1.4.22
+
+## [1.447.3](https://github.com/vm0-ai/vm0/compare/api-v1.447.2...api-v1.447.3) (2026-08-14)
+
+
+### Refactoring
+
+* **api:** dual-write run metadata ([#27046](https://github.com/vm0-ai/vm0/issues/27046)) ([929b726](https://github.com/vm0-ai/vm0/commit/929b726ebd4faa983e0b85f8d5eac5081e011c80))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.3
+    * @okouai/core bumped to 8.559.7
+    * @okouai/db bumped to 1.198.15
+    * @okouai/pi-agent-runtime bumped to 1.4.21
+
 ## [1.447.2](https://github.com/vm0-ai/vm0/compare/api-v1.447.1...api-v1.447.2) (2026-08-14)
 
 

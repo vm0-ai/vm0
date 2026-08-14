@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.168.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.7...runner-rs-v0.168.8) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+
+
+### Performance Improvements
+
+* **runner:** skip idempotent connector registry writes ([#27073](https://github.com/vm0-ai/vm0/issues/27073)) ([6d110bc](https://github.com/vm0-ai/vm0/commit/6d110bc15e33d46288292d1b8e54aea03900c479))
+
 ## [0.168.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.6...runner-rs-v0.168.7) (2026-08-14)
 
 ## [0.168.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.5...runner-rs-v0.168.6) (2026-08-13)

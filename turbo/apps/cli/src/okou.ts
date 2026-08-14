@@ -319,7 +319,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "web-search",
     description: "Search the public web through managed Okou web search",
     load: async () => {
-      return (await import("./commands/zero/web-search")).zeroWebSearchCommand;
+      return (await import("./commands/web-search")).webSearchCommand;
     },
   },
   {

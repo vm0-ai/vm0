@@ -167,6 +167,14 @@ pub fn failure_diagnostic_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "failure-diagnostic.json")
 }
 
+/// Return the private Pi launch payload file written for the Pi CLI child.
+pub fn pi_launch_payload_file(run_dir: impl AsRef<Path>) -> PathBuf {
+    run_dir
+        .as_ref()
+        .join(crate::env::PI_LAUNCH_PAYLOAD_PRIVATE_DIR_NAME)
+        .join(crate::env::PI_LAUNCH_PAYLOAD_FILENAME)
+}
+
 /// Return the run-root `active-input-receipts.json` file.
 pub fn active_input_receipt_journal_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "active-input-receipts.json")

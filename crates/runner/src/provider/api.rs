@@ -3699,7 +3699,10 @@ mod tests {
                 "sandboxToken": "claim-sandbox-token",
                 "cliAgentType": "pi",
                 "connectorRuntimeTargets": [],
-                "piSystemPrompt": "system prompt",
+                "piLaunchConfig": {
+                    "schemaVersion": 1,
+                    "agentName": "Okou"
+                },
                 "piSessionId": "00000000-0000-0000-0000-000000000001",
                 "piModelConfig": {
                     "provider": "openai",

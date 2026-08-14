@@ -110,6 +110,7 @@ import {
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
+  readRunMetadataPair,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
@@ -5750,6 +5751,16 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     const stored = await api.readRun(actor, failed.runId);
     expect(stored.status).toBe("failed");
+    const failedMetadata = await readRunMetadataPair(context, failed.runId);
+    expect(failedMetadata.agent_run).toStrictEqual(failedMetadata.zero_run);
+    expect(failedMetadata.zero_run).toStrictEqual(
+      expect.objectContaining({
+        autonomy_budget: 10,
+        api_started_at: expect.any(String),
+        first_assistant_event_acknowledged_at: null,
+        summary: null,
+      }),
+    );
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: failed.runId }),
@@ -12849,6 +12860,16 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(queued.status).toBe("queued");
+    const queuedMetadata = await readRunMetadataPair(context, queued.runId);
+    expect(queuedMetadata.agent_run).toStrictEqual(queuedMetadata.zero_run);
+    expect(queuedMetadata.zero_run).toStrictEqual(
+      expect.objectContaining({
+        autonomy_budget: 10,
+        api_started_at: null,
+        first_assistant_event_acknowledged_at: null,
+        summary: null,
+      }),
+    );
     const queueState = await api.readRunQueue(actor);
     expect(queueState.body.queue[0]?.runId).toBe(queued.runId);
 
@@ -12864,6 +12885,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "pending",
     );
     expect(promoted.status).toBe("pending");
+    const promotedMetadata = await readRunMetadataPair(context, queued.runId);
+    expect(promotedMetadata.agent_run).toStrictEqual(promotedMetadata.zero_run);
+    expect(promotedMetadata.zero_run?.api_started_at).toBe(
+      new Date(promotedAt).toISOString(),
+    );
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
@@ -14532,6 +14558,14 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         run_id: runId,
       }),
     ]);
+    const acknowledgedMetadata = await readRunMetadataPair(context, runId);
+    expect(acknowledgedMetadata.agent_run).toStrictEqual(
+      acknowledgedMetadata.zero_run,
+    );
+    expect(
+      acknowledgedMetadata.zero_run?.first_assistant_event_acknowledged_at,
+    ).toBe(new Date(acknowledgedAt).toISOString());
+    expect(acknowledgedMetadata.zero_run?.api_started_at).toBe(apiStartedAtIso);
 
     await api.requestCancelRun(actor, runId, [200]);
   });

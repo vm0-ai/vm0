@@ -757,11 +757,49 @@ export const piModelConfigSchema = z
   })
   .readonly();
 
+/**
+ * Non-secret inputs used by the Pi runtime after the runner has mounted the
+ * exact Storage versions for this run inside the Sandbox.
+ *
+ * This carries filesystem references only. The run's prompt and
+ * `appendSystemPrompt` stay on the ordinary run fields shared with Claude Code
+ * and Codex, so no prompt text is duplicated into a Pi-specific wire field.
+ */
+export const piLaunchConfigSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    agentName: z.string().min(1),
+    skillSnapshot: runSkillSnapshotSchema,
+    agentInstructionsPath: z.string().min(1).nullable(),
+    memory: z
+      .object({
+        directory: z.string().min(1),
+        primaryFile: z.string().min(1),
+      })
+      .readonly()
+      .nullable(),
+  })
+  .readonly();
+
+/**
+ * Private launch payload the guest-agent writes for its Pi CLI child.
+ *
+ * Prompt-sized inputs travel through this file instead of the child's argv or
+ * environment. See `crates/guest-contracts/src/env.rs`
+ * (`PI_LAUNCH_PAYLOAD_FILE_ENV`) for the writer side of this contract.
+ */
+export const piLaunchPayloadSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    appendSystemPrompt: z.string().nullable(),
+    launchConfig: piLaunchConfigSchema,
+  })
+  .readonly();
+
 function requireCompletePiFields(
   context: {
     readonly piSessionId?: unknown;
-    readonly piPrompt?: unknown;
-    readonly piSystemPrompt?: unknown;
+    readonly piLaunchConfig?: unknown;
     readonly piModelConfig?: unknown;
   },
   refinement: z.RefinementCtx,
@@ -769,8 +807,7 @@ function requireCompletePiFields(
   const piEnabled = context.piSessionId !== undefined;
   for (const field of [
     "piSessionId",
-    "piPrompt",
-    "piSystemPrompt",
+    "piLaunchConfig",
     "piModelConfig",
   ] as const) {
     const fieldPresent = context[field] !== undefined;
@@ -863,11 +900,10 @@ const storedExecutionContextObjectSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
-  // Pi runs execute only in the Sandbox. The API stores the rendered prompt
-  // until claim, where it becomes the ordinary runner prompt.
+  // Pi runs execute only in the Sandbox. The API stores filesystem references
+  // that the Pi runtime resolves after the runner has mounted Storage.
   piSessionId: z.uuid().optional(),
-  piPrompt: z.string().min(1).optional(),
-  piSystemPrompt: z.string().min(1).optional(),
+  piLaunchConfig: piLaunchConfigSchema.optional(),
   piModelConfig: piModelConfigSchema.optional(),
 });
 
@@ -961,7 +997,7 @@ const executionContextObjectSchema = z.object({
     .nullable()
     .optional(),
   piSessionId: z.uuid().optional(),
-  piSystemPrompt: z.string().min(1).optional(),
+  piLaunchConfig: piLaunchConfigSchema.optional(),
   piModelConfig: piModelConfigSchema.optional(),
 });
 
@@ -969,7 +1005,7 @@ export const executionContextSchema = executionContextObjectSchema.superRefine(
   (context, refinement) => {
     const piFields = [
       context.piSessionId,
-      context.piSystemPrompt,
+      context.piLaunchConfig,
       context.piModelConfig,
     ];
     const expectsPi = context.cliAgentType === "pi";
@@ -984,7 +1020,7 @@ export const executionContextSchema = executionContextObjectSchema.superRefine(
         code: "custom",
         path: ["piSessionId"],
         message:
-          "Pi execution requires session, system prompt, and model config",
+          "Pi execution requires session, launch config, and model config",
       });
     } else if (!expectsPi && hasPiField) {
       refinement.addIssue({
@@ -1222,6 +1258,8 @@ export type StoredExecutionContext = z.infer<
 export type RunSkillSnapshot = z.infer<typeof runSkillSnapshotSchema>;
 export type RunSkillSnapshotEntry = z.infer<typeof runSkillSnapshotEntrySchema>;
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
+export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
+export type PiLaunchPayload = z.infer<typeof piLaunchPayloadSchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema
 >;

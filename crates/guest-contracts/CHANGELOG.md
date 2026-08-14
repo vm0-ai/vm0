@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.2...guest-contracts-v0.11.3) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+
 ## [0.11.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.1...guest-contracts-v0.11.2) (2026-08-13)
 
 

@@ -71,7 +71,7 @@ async function fetchAgentEventPage(
     readonly cursor?: string;
   },
   signal: AbortSignal,
-): Promise<AgentEventsResponse | null> {
+): Promise<AgentEventsResponse> {
   const result = await accept(
     client.getAgentEvents({
       params: { id: runId },
@@ -85,14 +85,10 @@ async function fetchAgentEventPage(
       },
       fetchOptions: { signal },
     }),
-    // A newly promoted app can briefly reach an API version from before this
-    // additive Activity route existed. Surface: app/API rollout and rollback,
-    // ~2 days. Remove after that API is outside the production rollback
-    // window; tracked by #27010.
-    [200, 404],
+    [200],
     signal,
   );
-  return result.status === 200 ? result.body : null;
+  return result.body;
 }
 
 async function fetchAgentEventBatch(
@@ -103,17 +99,13 @@ async function fetchAgentEventBatch(
     readonly expectedSequence?: number;
   },
   signal: AbortSignal,
-): Promise<Omit<ZeroActivityEvents, "runId"> | null> {
+): Promise<Omit<ZeroActivityEvents, "runId">> {
   const firstPage = await fetchAgentEventPage(
     client,
     runId,
     request.since === undefined ? {} : { since: request.since },
     signal,
   );
-  if (!firstPage) {
-    return null;
-  }
-
   const events = [...firstPage.events];
   let page = firstPage;
 
@@ -147,9 +139,6 @@ async function fetchAgentEventBatch(
       { cursor: nextCursor },
       signal,
     );
-    if (!nextPage) {
-      return null;
-    }
     events.push(...nextPage.events);
     page = nextPage;
   }
@@ -260,10 +249,6 @@ export const setupActivityEvents$ = command(
       },
     );
     signal.throwIfAborted();
-    if (!initial) {
-      set(internalActivityEventsState$, { phase: "unavailable", runId });
-      return;
-    }
 
     let current = {
       runId,
@@ -302,9 +287,6 @@ export const setupActivityEvents$ = command(
           loopSignal,
         );
         loopSignal.throwIfAborted();
-        if (!batch) {
-          return true;
-        }
 
         const previous = current;
         current = {

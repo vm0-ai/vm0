@@ -1375,27 +1375,27 @@ export {
   type PeopleSearchSource,
 } from "./people-search";
 export {
-  ZERO_WEB_SEARCH_DEFAULT_LIMIT,
-  ZERO_WEB_SEARCH_MAX_DATE_CHARS,
-  ZERO_WEB_SEARCH_MAX_DOMAIN_CHARS,
-  ZERO_WEB_SEARCH_MAX_DOMAINS,
-  ZERO_WEB_SEARCH_MAX_LIMIT,
-  ZERO_WEB_SEARCH_MAX_QUERY_CHARS,
-  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
-  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
-  ZERO_WEB_SEARCH_MAX_URL_CHARS,
-  zeroWebSearchContract,
-  zeroWebSearchDomainSchema,
-  zeroWebSearchRecencySchema,
-  zeroWebSearchRequestSchema,
-  zeroWebSearchResponseSchema,
-  zeroWebSearchResultSchema,
-  type ZeroWebSearchContract,
-  type ZeroWebSearchRecency,
-  type ZeroWebSearchRequest,
-  type ZeroWebSearchResponse,
-  type ZeroWebSearchResult,
-} from "./zero-web-search";
+  WEB_SEARCH_DEFAULT_LIMIT,
+  WEB_SEARCH_MAX_DATE_CHARS,
+  WEB_SEARCH_MAX_DOMAIN_CHARS,
+  WEB_SEARCH_MAX_DOMAINS,
+  WEB_SEARCH_MAX_LIMIT,
+  WEB_SEARCH_MAX_QUERY_CHARS,
+  WEB_SEARCH_MAX_SNIPPET_CHARS,
+  WEB_SEARCH_MAX_TITLE_CHARS,
+  WEB_SEARCH_MAX_URL_CHARS,
+  webSearchContract,
+  webSearchDomainSchema,
+  webSearchRecencySchema,
+  webSearchRequestSchema,
+  webSearchResponseSchema,
+  webSearchResultSchema,
+  type WebSearchContract,
+  type WebSearchRecency,
+  type WebSearchRequest,
+  type WebSearchResponse,
+  type WebSearchResult,
+} from "./web-search";
 export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
@@ -1434,13 +1434,10 @@ export {
   type ZeroSlackConnectContract,
 } from "./zero-slack-connect";
 export {
-  zeroSlackCommandsContract,
-  type ZeroSlackCommandsContract,
-} from "./zero-slack-commands";
-export {
-  zeroSlackEventsContract,
-  type ZeroSlackEventsContract,
-} from "./zero-slack-events";
+  slackCommandsContract,
+  type SlackCommandsContract,
+} from "./slack-commands";
+export { slackEventsContract, type SlackEventsContract } from "./slack-events";
 export {
   zeroTeamsBotContract,
   teamsInboundActivitySchema,
@@ -1472,9 +1469,9 @@ export {
   type ZeroTeamsOauthContract,
 } from "./zero-teams-oauth";
 export {
-  zeroSlackInteractiveContract,
-  type ZeroSlackInteractiveContract,
-} from "./zero-slack-interactive";
+  slackInteractiveContract,
+  type SlackInteractiveContract,
+} from "./slack-interactive";
 export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,

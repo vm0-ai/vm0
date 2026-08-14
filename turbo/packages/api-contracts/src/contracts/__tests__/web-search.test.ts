@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ZERO_WEB_SEARCH_MAX_QUERY_CHARS,
-  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
-  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
-  zeroWebSearchRequestSchema,
-  zeroWebSearchResponseSchema,
-} from "../zero-web-search";
+  WEB_SEARCH_MAX_QUERY_CHARS,
+  WEB_SEARCH_MAX_SNIPPET_CHARS,
+  WEB_SEARCH_MAX_TITLE_CHARS,
+  webSearchRequestSchema,
+  webSearchResponseSchema,
+} from "../web-search";
 
 const baseResponse = {
   query: "latest AI regulation",
@@ -26,10 +26,10 @@ const baseResponse = {
   ],
 } as const;
 
-describe("zeroWebSearchRequestSchema", () => {
+describe("webSearchRequestSchema", () => {
   it("applies defaults and normalizes queries and domains", () => {
     expect(
-      zeroWebSearchRequestSchema.parse({
+      webSearchRequestSchema.parse({
         query: "  latest AI regulation  ",
         domains: ["EXAMPLE.com", "example.com", "docs.example.com"],
       }),
@@ -42,7 +42,7 @@ describe("zeroWebSearchRequestSchema", () => {
 
   it("accepts bounded result, recency, and domain controls", () => {
     expect(
-      zeroWebSearchRequestSchema.safeParse({
+      webSearchRequestSchema.safeParse({
         query: "space launches",
         limit: 10,
         recency: "week",
@@ -53,7 +53,7 @@ describe("zeroWebSearchRequestSchema", () => {
 
   it.each([
     { query: "", limit: 5 },
-    { query: "x".repeat(ZERO_WEB_SEARCH_MAX_QUERY_CHARS + 1), limit: 5 },
+    { query: "x".repeat(WEB_SEARCH_MAX_QUERY_CHARS + 1), limit: 5 },
     { query: "valid", limit: 0 },
     { query: "valid", limit: 11 },
     { query: "valid", limit: 1.5 },
@@ -63,20 +63,18 @@ describe("zeroWebSearchRequestSchema", () => {
     { query: "valid", domains: ["-example.com"] },
     { query: "valid", domains: ["localhost"] },
   ])("rejects invalid requests: $query", (request) => {
-    expect(zeroWebSearchRequestSchema.safeParse(request).success).toBe(false);
+    expect(webSearchRequestSchema.safeParse(request).success).toBe(false);
   });
 });
 
-describe("zeroWebSearchResponseSchema", () => {
-  it("accepts a bounded Zero-owned response", () => {
-    expect(zeroWebSearchResponseSchema.safeParse(baseResponse).success).toBe(
-      true,
-    );
+describe("webSearchResponseSchema", () => {
+  it("accepts a bounded web-search response", () => {
+    expect(webSearchResponseSchema.safeParse(baseResponse).success).toBe(true);
   });
 
   it("rejects non-HTTP result URLs", () => {
     expect(
-      zeroWebSearchResponseSchema.safeParse({
+      webSearchResponseSchema.safeParse({
         ...baseResponse,
         results: [{ ...baseResponse.results[0], url: "ftp://example.com" }],
       }).success,
@@ -87,15 +85,15 @@ describe("zeroWebSearchResponseSchema", () => {
     for (const result of [
       {
         ...baseResponse.results[0],
-        title: "x".repeat(ZERO_WEB_SEARCH_MAX_TITLE_CHARS + 1),
+        title: "x".repeat(WEB_SEARCH_MAX_TITLE_CHARS + 1),
       },
       {
         ...baseResponse.results[0],
-        snippet: "x".repeat(ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS + 1),
+        snippet: "x".repeat(WEB_SEARCH_MAX_SNIPPET_CHARS + 1),
       },
     ]) {
       expect(
-        zeroWebSearchResponseSchema.safeParse({
+        webSearchResponseSchema.safeParse({
           ...baseResponse,
           results: [result],
         }).success,
@@ -105,7 +103,7 @@ describe("zeroWebSearchResponseSchema", () => {
 
   it("rejects more than ten ranked results", () => {
     expect(
-      zeroWebSearchResponseSchema.safeParse({
+      webSearchResponseSchema.safeParse({
         ...baseResponse,
         limit: 10,
         results: Array.from({ length: 11 }, (_, index) => {

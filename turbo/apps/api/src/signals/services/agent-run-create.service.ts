@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { posix } from "node:path";
 import { command, computed, type Computed } from "ccstate";
 import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type PiLaunchConfig,
   type PiModelConfig,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
@@ -129,11 +131,6 @@ import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
 import type { PersistedStorageMount } from "@okouai/db/types";
 import {
-  formatPiUserPrompt,
-  loadPiRunSkills,
-  renderPiSystemPrompt,
-} from "@okouai/pi-agent-runtime";
-import {
   and,
   count,
   desc,
@@ -220,7 +217,6 @@ import {
 } from "@okouai/core/resource-registry";
 import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
-import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 import {
   activePersonalModelProviderAccount,
   ensurePersonalModelProviderAccount,
@@ -303,6 +299,10 @@ import {
   activatePendingRun$,
   type PendingRunActivation,
 } from "./agent-run-activation.service";
+import {
+  normalizeRunMetadata,
+  type RunMetadataValues,
+} from "./agent-run-metadata-write.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -5606,19 +5606,24 @@ function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
 ): Pick<
-  typeof zeroRuns.$inferInsert,
-  "modelProvider" | "modelProviderId" | "selectedModel"
+  RunMetadataValues,
+  | "modelProvider"
+  | "modelProviderId"
+  | "modelProviderCredentialScope"
+  | "selectedModel"
 > {
   if (!modelProvider) {
     return {
       modelProvider: null,
       modelProviderId: null,
+      modelProviderCredentialScope: null,
       selectedModel: null,
     };
   }
   return {
     modelProvider: modelProvider.type,
     modelProviderId: modelProvider.id,
+    modelProviderCredentialScope: null,
     selectedModel: modelProvider.selectedModel,
   };
 }
@@ -5736,6 +5741,7 @@ function launchSessionValues(
 function launchRunValues(
   args: LaunchRunRowsArgs,
   createdAt: Date,
+  metadata: RunMetadataValues,
 ): typeof agentRuns.$inferInsert {
   return {
     id: args.identity.runId,
@@ -5755,30 +5761,31 @@ function launchRunValues(
     runnerGroup: args.runnerGroup ?? null,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
+    ...metadata,
   };
 }
 
-function launchZeroRunValues(
-  args: LaunchRunRowsArgs,
-): typeof zeroRuns.$inferInsert {
+function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
-  return {
-    id: args.identity.runId,
+  const modelPin =
+    args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider);
+  return normalizeRunMetadata({
     triggerSource: args.body.triggerSource,
+    autonomyBudget: metadata.autonomyBudget,
     workflowAutomationId: metadata.workflowAutomationId ?? null,
-    triggerBrief: metadata.triggerBrief ?? null,
     goalId: metadata.goalId ?? null,
-    ...(metadata.autonomyBudget === undefined
-      ? {}
-      : { autonomyBudget: metadata.autonomyBudget }),
-    ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
-    ...(metadata.codexServiceTier === undefined
-      ? {}
-      : { codexServiceTier: metadata.codexServiceTier }),
+    modelProvider: modelPin.modelProvider,
+    modelProviderId: modelPin.modelProviderId,
+    modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+    selectedModel: modelPin.selectedModel,
+    codexServiceTier: metadata.codexServiceTier ?? null,
     selectedVideoModel: args.selectedVideoModel,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
-  };
+    firstAssistantEventAcknowledgedAt: null,
+    summary: null,
+    triggerBrief: metadata.triggerBrief ?? null,
+  });
 }
 
 async function insertLaunchRunRows(
@@ -5790,8 +5797,9 @@ async function insertLaunchRunRows(
   }
 
   const createdAt = nowDate();
-  await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
+  const metadata = launchRunMetadataValues(args);
+  await tx.insert(agentRuns).values(launchRunValues(args, createdAt, metadata));
+  await tx.insert(zeroRuns).values({ id: args.identity.runId, ...metadata });
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -6314,8 +6322,7 @@ interface BuildRunnerJobPayloadInput {
 
 interface PreparedPiLaunchResources {
   readonly modelConfig: PiModelConfig;
-  readonly prompt: string;
-  readonly systemPrompt: string;
+  readonly launchConfig: PiLaunchConfig;
   readonly resumeSession: StoredExecutionContext["resumeSession"] | undefined;
 }
 
@@ -6335,8 +6342,7 @@ function storedExecutionContextWithPiResources(
     resumeSession: resources.resumeSession ?? null,
     cliAgentType: "pi",
     piSessionId: chatThreadId,
-    piPrompt: resources.prompt,
-    piSystemPrompt: resources.systemPrompt,
+    piLaunchConfig: resources.launchConfig,
     piModelConfig: resources.modelConfig,
   };
 }
@@ -6361,10 +6367,7 @@ async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
 }
 
 async function preparePiLaunchResources(args: {
-  readonly get: <T>(computedValue: Computed<T>) => T;
   readonly db: Db;
-  readonly runId: string;
-  readonly body: CreateRunBody;
   readonly composeId: string;
   readonly piSandbox: PiModelConfig | undefined;
   readonly chatThreadId: string | undefined;
@@ -6391,18 +6394,7 @@ async function preparePiLaunchResources(args: {
         additionalVolumeSources: args.additionalVolumeSources,
         persistedStorageMounts: args.persistedStorageMounts,
       });
-      const [resources, agentName, resumeSession] = await Promise.all([
-        measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_prepare_pi_launch_storage_resources",
-          "nested",
-          async () => {
-            return await loadPiLaunchStorageResources(args.get, args.db, {
-              snapshot,
-              persistedStorageMounts: args.persistedStorageMounts,
-            });
-          },
-        ),
+      const [agentName, resumeSession] = await Promise.all([
         measureApiDispatchTiming(
           args.timing,
           "api_dispatch_prepare_pi_launch_agent_name",
@@ -6420,40 +6412,35 @@ async function preparePiLaunchResources(args: {
           },
         ),
       ]);
-      const skills = await measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_prepare_pi_launch_skills",
-        "nested",
-        async () => {
-          return await loadPiRunSkills(resources.env, snapshot);
-        },
-      );
-      if (skills.diagnostics.length > 0) {
-        L.warn("Pi run Skill catalog contains diagnostics", {
-          runId: args.runId,
-          diagnostics: skills.diagnostics,
-        });
-      }
-      const renderPrompts = () => {
-        return {
-          prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
-          systemPrompt: renderPiSystemPrompt({
-            agentName,
-            appendSystemPrompt: args.body.appendSystemPrompt,
-            agentInstructions: resources.agentInstructions,
-            memory: resources.memory,
-            skills: skills.skills,
-          }),
-        };
-      };
-      const prompts = args.timing.measureSync(
-        "api_dispatch_prepare_pi_launch_prompts",
-        "nested",
-        renderPrompts,
-      );
+      const instructionsMount = args.persistedStorageMounts.find((mount) => {
+        return (
+          mount.version !== undefined &&
+          mount.instructionsTargetFilename !== undefined
+        );
+      });
+      const memoryMount = args.persistedStorageMounts.find((mount) => {
+        return mount.name === MEMORY_ARTIFACT_NAME;
+      });
       return {
         modelConfig: piSandbox,
-        ...prompts,
+        launchConfig: {
+          schemaVersion: 1,
+          agentName,
+          skillSnapshot: snapshot,
+          agentInstructionsPath:
+            instructionsMount?.instructionsTargetFilename === undefined
+              ? null
+              : posix.join(
+                  instructionsMount.mountPath,
+                  instructionsMount.instructionsTargetFilename,
+                ),
+          memory: memoryMount
+            ? {
+                directory: memoryMount.mountPath,
+                primaryFile: posix.join(memoryMount.mountPath, "MEMORY.md"),
+              }
+            : null,
+        },
         resumeSession,
       };
     },
@@ -6559,10 +6546,7 @@ function buildRunnerJobPayload(
       builtContextDraftPromise,
     );
     const piResources = await preparePiLaunchResources({
-      get,
       db,
-      runId: args.run.id,
-      body,
       composeId: args.resolved.composeId,
       piSandbox: args.piSandbox,
       chatThreadId: args.chatThreadId,
@@ -6716,11 +6700,12 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     ctes.push(insertedSession);
   }
 
+  const metadata = launchRunMetadataValues(rowsArgs);
   const insertedRun = args.tx.$with("inserted_launch_run").as(
     args.tx
       .insert(agentRuns)
       .values({
-        ...launchRunValues(rowsArgs, createdAt),
+        ...launchRunValues(rowsArgs, createdAt, metadata),
         sessionId: insertedSession
           ? returnedCteId(insertedSession)
           : rowsArgs.identity.sessionId,
@@ -6730,7 +6715,7 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
   ctes.push(insertedRun);
 
   const zeroRunValues = {
-    ...launchZeroRunValues(rowsArgs),
+    ...metadata,
     id: returnedCteId(insertedRun),
   };
   const insertedZeroRun = args.tx

@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.748.4](https://github.com/vm0-ai/vm0/compare/app-v0.748.3...app-v0.748.4) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** restore legal consent checkbox checkmark ([#27079](https://github.com/vm0-ai/vm0/issues/27079)) ([842687b](https://github.com/vm0-ai/vm0/commit/842687b59b279618c589d701657c1a8f37f3c49b))
+
+
+### Refactoring
+
+* **platform:** remove activity event route rollout fallback ([#27070](https://github.com/vm0-ai/vm0/issues/27070)) ([a2a40bd](https://github.com/vm0-ai/vm0/commit/a2a40bd33a9c6857317a5bec1c702573a99c4acc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.4
+    * @okouai/core bumped to 8.559.8
+
+## [0.748.3](https://github.com/vm0-ai/vm0/compare/app-v0.748.2...app-v0.748.3) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.3
+    * @okouai/core bumped to 8.559.7
+
 ## [0.748.2](https://github.com/vm0-ai/vm0/compare/app-v0.748.1...app-v0.748.2) (2026-08-14)
 
 

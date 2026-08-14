@@ -41,6 +41,7 @@ import {
   activatePendingRun$,
   type PendingRunActivation,
 } from "./agent-run-activation.service";
+import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -184,10 +185,10 @@ async function insertPromotedRunnerJob(
     },
   });
 
-  await tx
-    .update(zeroRuns)
-    .set({ apiStartedAt: new Date(promotedAt) })
-    .where(eq(zeroRuns.id, args.runId));
+  await writeRunMetadataInTransaction(tx, {
+    patch: { apiStartedAt: new Date(promotedAt) },
+    where: eq(zeroRuns.id, args.runId),
+  });
 
   const timestamps = runnerJobQueueTimestamps();
   const profile = args.payload.profile;
