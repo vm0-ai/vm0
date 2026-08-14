@@ -132,7 +132,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UserFriendlyAutomationMessage]).toBe(
-      false,
+      true,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(
@@ -146,7 +146,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
-      false,
+      true,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
