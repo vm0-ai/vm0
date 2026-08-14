@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.73.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.4...guest-agent-v0.73.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* **guest:** terminate stuck codex steers after timeout ([#27044](https://github.com/vm0-ai/vm0/issues/27044)) ([9e713bb](https://github.com/vm0-ai/vm0/commit/9e713bb9e1c18fc53a351a29b4397bb2e6e25bb4))
+
 ## [0.73.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.3...guest-agent-v0.73.4) (2026-08-13)
 
 ## [0.73.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.2...guest-agent-v0.73.3) (2026-08-13)
