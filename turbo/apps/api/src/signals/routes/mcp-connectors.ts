@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroMcpConnectorsContract } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -21,9 +21,9 @@ const listRunMcpConnectorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { connectors: [...connectors] } };
 });
 
-export const zeroMcpConnectorsRoutes: readonly RouteEntry[] = [
+export const mcpConnectorsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroMcpConnectorsContract.list,
+    route: mcpConnectorsContract.list,
     handler: authRoute(
       {
         accept: ["zero"],

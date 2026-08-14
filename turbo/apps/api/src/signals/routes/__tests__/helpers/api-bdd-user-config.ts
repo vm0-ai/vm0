@@ -6,10 +6,10 @@ import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroUserModelPreferenceContract,
+  userModelPreferenceContract,
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
-} from "@okouai/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/user-model-preference";
 import {
   userPreferencesContract,
   type UpdateUserPreferencesRequest,
@@ -26,7 +26,7 @@ import {
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
-import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
+import { userModelPreferenceRoutes } from "../../user-model-preference";
 import { userPreferencesRoutes } from "../../user-preferences";
 import {
   healthAuthProbeContract,
@@ -81,7 +81,7 @@ const c = initContract();
  * Permissive mirror of the user-model-preference update route used to send
  * contract-invalid bodies through the app (the real contract types reject
  * them at compile time). Mirrors the raw `app.request` cases in the legacy
- * zero-user-model-preference test.
+ * user-model-preference test.
  */
 const rawModelPreferenceContract = c.router({
   update: {
@@ -105,7 +105,7 @@ const userConfigRoutes = [
   ...healthAuthProbeRoutes,
   ...authMeRoutes,
   ...zeroAgentsRoutes,
-  ...zeroUserModelPreferenceRoutes,
+  ...userModelPreferenceRoutes,
   ...pushSubscriptionsRoutes,
   ...userPreferencesRoutes,
 ] as const;
@@ -335,7 +335,7 @@ export function createUserConfigBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<UserModelPreferenceResponse> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -349,7 +349,7 @@ export function createUserConfigBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor) }),
@@ -362,7 +362,7 @@ export function createUserConfigBddApi(context: TestContext) {
       body: UpdateUserModelPreferenceRequest,
     ): Promise<UserModelPreferenceResponse> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
@@ -377,7 +377,7 @@ export function createUserConfigBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       return await accept(
         client.update({ headers: authenticate(actor), body }),

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  zeroAttributionContract,
+  acquisitionAttributionContract,
   type AdAttributionMetadata,
-} from "@okouai/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/acquisition-attribution";
 
 import {
   clearMockedAuthOnAbort,
@@ -101,7 +101,7 @@ describe("signup attribution Google Ads conversion", () => {
     storePaidSignupAttribution();
     setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
     context.mocks.api(
-      zeroAttributionContract.recordSignup,
+      acquisitionAttributionContract.recordSignup,
       ({ body, respond }) => {
         recordedAttribution = body.attribution;
         return respond(200, { recorded: true });
@@ -141,7 +141,7 @@ describe("signup attribution Google Ads conversion", () => {
     mockSignedInUser();
     setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
     context.mocks.api(
-      zeroAttributionContract.recordSignup,
+      acquisitionAttributionContract.recordSignup,
       ({ body, respond }) => {
         recordedAttribution = body.attribution;
         return respond(200, { recorded: true });
@@ -179,10 +179,13 @@ describe("signup attribution Google Ads conversion", () => {
     let attributionRequests = 0;
     mockSignedInUser({ createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)) });
     setGoogleAnalyticsCookie("not-a-ga-cookie");
-    context.mocks.api(zeroAttributionContract.recordSignup, ({ respond }) => {
-      attributionRequests += 1;
-      return respond(200, { recorded: true });
-    });
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ respond }) => {
+        attributionRequests += 1;
+        return respond(200, { recorded: true });
+      },
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
@@ -194,9 +197,12 @@ describe("signup attribution Google Ads conversion", () => {
     const gtag = installGtagMock();
     mockSignedInUser();
     storePaidSignupAttribution();
-    context.mocks.api(zeroAttributionContract.recordSignup, ({ respond }) => {
-      return respond(200, { recorded: false });
-    });
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ respond }) => {
+        return respond(200, { recorded: false });
+      },
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 

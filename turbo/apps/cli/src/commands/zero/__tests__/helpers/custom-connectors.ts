@@ -3,7 +3,7 @@ import type {
   CustomConnectorHttpResponse,
   CustomConnectorResponse,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 
 export function customConnector(
@@ -51,8 +51,8 @@ export function stubCustomConnectors(
 }
 
 export function runMcpConnector(
-  overrides: Partial<ZeroMcpConnector> = {},
-): ZeroMcpConnector {
+  overrides: Partial<McpConnector> = {},
+): McpConnector {
   return {
     id: "44444444-4444-4444-8444-444444444444",
     slug: "_acme-mcp",
@@ -65,7 +65,7 @@ export function runMcpConnector(
 }
 
 export function stubRunMcpConnectors(
-  connectors: readonly ZeroMcpConnector[],
+  connectors: readonly McpConnector[],
   origin = "http://localhost:3000",
 ) {
   return http.get(`${origin}/api/okou/mcp-connectors`, () => {

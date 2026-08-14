@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { adAttributionMetadataSchema } from "./zero-attribution";
+import { adAttributionMetadataSchema } from "./acquisition-attribution";
 
 const c = initContract();
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import { zeroMcpConnectorsContract } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -14,7 +14,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroMcpConnectorsRoutes } from "../zero-mcp-connectors";
+import { mcpConnectorsRoutes } from "../mcp-connectors";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -58,8 +58,8 @@ function manualMcpConnectorBody(args: {
 }
 
 function client() {
-  return setupApp({ context, routes: zeroMcpConnectorsRoutes })(
-    zeroMcpConnectorsContract,
+  return setupApp({ context, routes: mcpConnectorsRoutes })(
+    mcpConnectorsContract,
   );
 }
 

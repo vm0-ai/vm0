@@ -5,7 +5,7 @@ import { customConnectorMcpResponseSchema } from "./zero-custom-connectors";
 
 const c = initContract();
 
-export const zeroMcpConnectorSchema = customConnectorMcpResponseSchema.pick({
+export const mcpConnectorSchema = customConnectorMcpResponseSchema.pick({
   id: true,
   slug: true,
   displayName: true,
@@ -13,19 +13,19 @@ export const zeroMcpConnectorSchema = customConnectorMcpResponseSchema.pick({
   endpoint: true,
   connected: true,
 });
-export type ZeroMcpConnector = z.infer<typeof zeroMcpConnectorSchema>;
+export type McpConnector = z.infer<typeof mcpConnectorSchema>;
 
-export const zeroMcpConnectorListResponseSchema = z.object({
-  connectors: z.array(zeroMcpConnectorSchema),
+export const mcpConnectorListResponseSchema = z.object({
+  connectors: z.array(mcpConnectorSchema),
 });
 
-export const zeroMcpConnectorsContract = c.router({
+export const mcpConnectorsContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/mcp-connectors",
     headers: authHeadersSchema,
     responses: {
-      200: zeroMcpConnectorListResponseSchema,
+      200: mcpConnectorListResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       500: apiErrorSchema,
@@ -34,4 +34,4 @@ export const zeroMcpConnectorsContract = c.router({
   },
 });
 
-export type ZeroMcpConnectorsContract = typeof zeroMcpConnectorsContract;
+export type McpConnectorsContract = typeof mcpConnectorsContract;
