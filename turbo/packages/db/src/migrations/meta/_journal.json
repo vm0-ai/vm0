@@ -911,6 +911,13 @@
       "when": 1786972360577,
       "tag": "0937_contract_integration_identity_runtime_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 938,
+      "version": "7",
+      "when": 1787025559024,
+      "tag": "0938_optimal_franklin_storm",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "presentation_templates" ADD COLUMN "source_size_bytes" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "presentation_templates" ADD COLUMN "page_sizes_bytes" integer[] DEFAULT '{}'::integer[] NOT NULL;
