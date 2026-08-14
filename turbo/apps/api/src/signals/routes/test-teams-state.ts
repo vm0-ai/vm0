@@ -22,7 +22,6 @@ import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation"
 import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
 import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   desc,
@@ -1016,8 +1015,6 @@ async function deleteTeamsRunsForOrg(
   if (runIds.length === 0) {
     return;
   }
-  await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-  signal.throwIfAborted();
   await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
   signal.throwIfAborted();
 }

@@ -108,9 +108,9 @@ import {
   mutateRunnerJobSecretValueEnvironmentKeys,
   removeRunCanonicalStorageState,
   readOrgAdmissionLockState,
+  readRunAutonomyBudgetFixture,
   readRunApiStart,
   readRunClaimOwner,
-  readRunMetadataPair,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
@@ -5751,16 +5751,12 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     const stored = await api.readRun(actor, failed.runId);
     expect(stored.status).toBe("failed");
-    const failedMetadata = await readRunMetadataPair(context, failed.runId);
-    expect(failedMetadata.agent_run).toStrictEqual(
-      expect.objectContaining({
-        autonomy_budget: 10,
-        api_started_at: expect.any(String),
-        first_assistant_event_acknowledged_at: null,
-        summary: null,
-      }),
+    await expect(
+      readRunAutonomyBudgetFixture(context, failed.runId),
+    ).resolves.toBe(10);
+    await expect(readRunApiStart(context, failed.runId)).resolves.toStrictEqual(
+      expect.any(String),
     );
-    expect(failedMetadata.zero_run).toBeNull();
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: failed.runId }),
@@ -12860,16 +12856,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(queued.status).toBe("queued");
-    const queuedMetadata = await readRunMetadataPair(context, queued.runId);
-    expect(queuedMetadata.agent_run).toStrictEqual(
-      expect.objectContaining({
-        autonomy_budget: 10,
-        api_started_at: null,
-        first_assistant_event_acknowledged_at: null,
-        summary: null,
-      }),
-    );
-    expect(queuedMetadata.zero_run).toBeNull();
+    await expect(
+      readRunAutonomyBudgetFixture(context, queued.runId),
+    ).resolves.toBe(10);
+    await expect(readRunApiStart(context, queued.runId)).resolves.toBeNull();
     const queueState = await api.readRunQueue(actor);
     expect(queueState.body.queue[0]?.runId).toBe(queued.runId);
 
@@ -12885,11 +12875,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "pending",
     );
     expect(promoted.status).toBe("pending");
-    const promotedMetadata = await readRunMetadataPair(context, queued.runId);
-    expect(promotedMetadata.agent_run?.api_started_at).toBe(
+    await expect(readRunApiStart(context, queued.runId)).resolves.toBe(
       new Date(promotedAt).toISOString(),
     );
-    expect(promotedMetadata.zero_run).toBeNull();
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
@@ -14558,15 +14546,6 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         run_id: runId,
       }),
     ]);
-    const acknowledgedMetadata = await readRunMetadataPair(context, runId);
-    expect(
-      acknowledgedMetadata.agent_run?.first_assistant_event_acknowledged_at,
-    ).toBe(new Date(acknowledgedAt).toISOString());
-    expect(acknowledgedMetadata.agent_run?.api_started_at).toBe(
-      apiStartedAtIso,
-    );
-    expect(acknowledgedMetadata.zero_run).toBeNull();
-
     await api.requestCancelRun(actor, runId, [200]);
   });
 

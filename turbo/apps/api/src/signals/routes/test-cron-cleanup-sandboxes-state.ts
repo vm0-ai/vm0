@@ -24,7 +24,6 @@ import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { usageEvent } from "@okouai/db/schema/usage-event";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import { and, eq, inArray, notExists } from "drizzle-orm";
 
@@ -211,11 +210,6 @@ async function seedRunForAction(
   signal.throwIfAborted();
   if (!run) {
     return actionBadRequest("failed to seed run");
-  }
-
-  if (threadless && runMetadata) {
-    await db.insert(zeroRuns).values({ id: run.id, ...runMetadata });
-    signal.throwIfAborted();
   }
 
   return actionOk({
