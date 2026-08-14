@@ -22,11 +22,14 @@ mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use serde_json::Value;
+use shell_quote::quote_shell_arg;
 use std::collections::HashMap;
-use std::ffi::OsStr;
+use std::ffi::{CString, OsStr};
 use std::future::Future;
 use std::io;
-use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
@@ -679,6 +682,163 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
 /// current test profile.
 pub fn build_and_locate_mock_codex() -> Result<PathBuf, String> {
     build_and_locate_mock_package("guest-mock-codex", "guest-mock-codex")
+}
+
+pub struct PostOpenMockGate {
+    writer: std::fs::File,
+    ready_file: PathBuf,
+}
+
+impl PostOpenMockGate {
+    pub fn create(dir: &Path, mock: &Path) -> Result<(Self, PathBuf), String> {
+        let fifo = dir.join("agent-log-mock-start.fifo");
+        let fifo_c = CString::new(fifo.as_os_str().as_bytes())
+            .map_err(|error| format!("encode mock gate path: {error}"))?;
+        // SAFETY: fifo_c is a valid NUL-terminated path and the mode is a
+        // normal POSIX permission mask for this test-only FIFO.
+        if unsafe { libc::mkfifo(fifo_c.as_ptr(), 0o600) } != 0 {
+            return Err(format!(
+                "create mock gate {}: {}",
+                fifo.display(),
+                io::Error::last_os_error()
+            ));
+        }
+
+        // Keep both FIFO ends open so release can happen immediately after
+        // readiness even if the wrapper has not entered its read yet.
+        // SAFETY: fifo_c remains valid for the call and ownership of the
+        // returned descriptor transfers to File below.
+        let fd = unsafe {
+            libc::open(
+                fifo_c.as_ptr(),
+                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(format!(
+                "open mock gate {}: {}",
+                fifo.display(),
+                io::Error::last_os_error()
+            ));
+        }
+        // SAFETY: fd is a fresh descriptor owned by this function.
+        let writer = unsafe { std::fs::File::from_raw_fd(fd) };
+
+        let ready_file = dir.join("agent-log-mock-ready");
+        let wrapper = dir.join("gated-agent-log-mock.sh");
+        let script = format!(
+            "#!/bin/sh\nprintf 'ready\\n' > {}\nIFS= read -r _ < {}\nexec {} \"$@\"\n",
+            quote_shell_arg(&ready_file.to_string_lossy()),
+            quote_shell_arg(&fifo.to_string_lossy()),
+            quote_shell_arg(&mock.to_string_lossy()),
+        );
+        std::fs::write(&wrapper, script)
+            .map_err(|error| format!("write mock gate wrapper: {error}"))?;
+        let mut permissions = std::fs::metadata(&wrapper)
+            .map_err(|error| format!("read mock gate wrapper metadata: {error}"))?
+            .permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&wrapper, permissions)
+            .map_err(|error| format!("set mock gate wrapper permissions: {error}"))?;
+
+        Ok((Self { writer, ready_file }, wrapper))
+    }
+
+    pub async fn wait_until_ready(&self, timeout: Duration) -> io::Result<()> {
+        wait_for_file_contains(&self.ready_file, "ready\n", timeout).await
+    }
+
+    pub fn release(&mut self) -> io::Result<()> {
+        std::io::Write::write_all(&mut self.writer, b"start\n")
+    }
+}
+
+pub struct SoftFileSizeLimitGuard {
+    original_limit: Option<libc::rlimit>,
+    original_sigxfsz: libc::sighandler_t,
+}
+
+impl SoftFileSizeLimitGuard {
+    pub fn restore(mut self) -> Result<(), String> {
+        self.restore_inner()
+    }
+
+    fn restore_inner(&mut self) -> Result<(), String> {
+        let Some(original_limit) = self.original_limit else {
+            return Ok(());
+        };
+        // SAFETY: original_limit was returned by getrlimit for this process.
+        if unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &original_limit) } != 0 {
+            return Err(format!(
+                "restore RLIMIT_FSIZE: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        // SAFETY: original_sigxfsz was returned by signal for SIGXFSZ.
+        if unsafe { libc::signal(libc::SIGXFSZ, self.original_sigxfsz) } == libc::SIG_ERR {
+            return Err(format!(
+                "restore SIGXFSZ disposition: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        self.original_limit = None;
+        Ok(())
+    }
+}
+
+impl Drop for SoftFileSizeLimitGuard {
+    fn drop(&mut self) {
+        if let Err(error) = self.restore_inner() {
+            eprintln!("{error}");
+        }
+    }
+}
+
+pub fn set_soft_file_size_limit(limit: u64) -> Result<SoftFileSizeLimitGuard, String> {
+    let mut current = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+    // SAFETY: current points to writable storage for one rlimit value.
+    if unsafe { libc::getrlimit(libc::RLIMIT_FSIZE, current.as_mut_ptr()) } != 0 {
+        return Err(format!("read RLIMIT_FSIZE: {}", io::Error::last_os_error()));
+    }
+    // SAFETY: successful getrlimit initialized current.
+    let current = unsafe { current.assume_init() };
+    let target: libc::rlim_t = limit;
+    if target > current.rlim_max {
+        return Err(format!(
+            "requested RLIMIT_FSIZE {target} exceeds hard limit {}",
+            current.rlim_max
+        ));
+    }
+
+    // SAFETY: installing SIG_IGN for SIGXFSZ is process-local and restored by
+    // SoftFileSizeLimitGuard after the isolated integration execution.
+    let original_sigxfsz = unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
+    if original_sigxfsz == libc::SIG_ERR {
+        return Err(format!("ignore SIGXFSZ: {}", io::Error::last_os_error()));
+    }
+
+    let next = libc::rlimit {
+        rlim_cur: target,
+        rlim_max: current.rlim_max,
+    };
+    // SAFETY: next preserves the current hard limit and uses a checked soft limit.
+    if unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &next) } != 0 {
+        let limit_error = io::Error::last_os_error();
+        // SAFETY: original_sigxfsz came from the successful signal call above.
+        let restore_result = unsafe { libc::signal(libc::SIGXFSZ, original_sigxfsz) };
+        if restore_result == libc::SIG_ERR {
+            return Err(format!(
+                "set RLIMIT_FSIZE: {limit_error}; restore SIGXFSZ disposition: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        return Err(format!("set RLIMIT_FSIZE: {limit_error}"));
+    }
+
+    Ok(SoftFileSizeLimitGuard {
+        original_limit: Some(current),
+        original_sigxfsz,
+    })
 }
 
 fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf, String> {
