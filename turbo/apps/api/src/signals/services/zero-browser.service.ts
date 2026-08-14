@@ -72,7 +72,7 @@ import {
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import type { Tx } from "../../lib/db-types";
 
 const RECONCILE_BATCH_SIZE = 20;

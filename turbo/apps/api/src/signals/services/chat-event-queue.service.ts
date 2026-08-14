@@ -19,7 +19,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 type ChatQueueReadDb = Pick<Db, "select">;
 type ChatQueueDistinctReadDb = Pick<Db, "select" | "selectDistinct">;

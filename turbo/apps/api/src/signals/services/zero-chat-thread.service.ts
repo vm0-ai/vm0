@@ -58,7 +58,7 @@ import {
   chatThreadServiceTierFromCodex,
 } from "./zero-chat-thread-event.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
-import { runOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
+import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 type ChatThreadRow = {

@@ -37,7 +37,7 @@ import {
   persistTelegramReplyChainRoute,
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { storeTelegramBotMessage } from "./zero-telegram-callback-persistence.service";
 import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";

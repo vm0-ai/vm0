@@ -126,7 +126,7 @@ import {
   type InsertAssistantEventsInput,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
@@ -134,7 +134,7 @@ import {
   type ChatAgentRunSourceAnnotation,
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import { buildWebChatAppendSystemPrompt } from "./zero-web-chat-session-prompt.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
@@ -173,7 +173,7 @@ import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   chatEventTextCondition,
   chatEventTypeIn,
-} from "./zero-chat-event-type.service";
+} from "./chat-event-type.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,

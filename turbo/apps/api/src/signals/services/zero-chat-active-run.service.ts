@@ -21,7 +21,7 @@ import {
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { pendingChatQueueEventCondition } from "./chat-event-queue.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
 

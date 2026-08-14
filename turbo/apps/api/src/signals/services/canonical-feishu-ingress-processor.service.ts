@@ -31,10 +31,10 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
-import { chatInputPromptDispatchCondition } from "./zero-chat-event-type.service";
+import { insertChatEvent } from "./chat-event.service";
+import { chatInputPromptDispatchCondition } from "./chat-event-type.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
 import {
   addFeishuThinkingReaction,
   dispatchConnectedFeishuCommand$,

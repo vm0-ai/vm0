@@ -23,13 +23,13 @@ import {
   lockChatQueueThread,
   staleChatEventQueueThreadIds,
 } from "./chat-event-queue.service";
-import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { insertChatEvent, replaceChatEvent } from "./chat-event.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import {
   createUserMessageDocument,
   withAgentRunSourceAnnotation,
   type ChatAgentRunSourceAnnotation,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import type {
   WorkflowAutomationEventPayload,
   WorkflowAutomationEventType,

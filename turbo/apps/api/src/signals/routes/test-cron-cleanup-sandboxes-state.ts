@@ -42,7 +42,7 @@ import {
   writeRunMetadata,
 } from "../services/agent-run-metadata-write.service";
 import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
-import { insertChatEvent } from "../services/zero-chat-event.service";
+import { insertChatEvent } from "../services/chat-event.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,

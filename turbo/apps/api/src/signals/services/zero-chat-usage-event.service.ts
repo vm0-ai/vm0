@@ -19,8 +19,8 @@ import {
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
+import { insertChatEvent } from "./chat-event.service";
 import {
   buildFinalizedUsageRelation,
   type FinalizedUsageRelation,

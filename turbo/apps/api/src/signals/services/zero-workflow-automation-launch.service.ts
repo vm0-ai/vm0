@@ -25,7 +25,7 @@ import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
-import type { ChatAgentRunSourceAnnotation } from "./zero-chat-user-message.service";
+import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
 
 export type AutomationRow = typeof workflowAutomations.$inferSelect;
 

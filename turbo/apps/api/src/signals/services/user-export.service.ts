@@ -67,8 +67,8 @@ import {
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
-import { chatEventTextCondition } from "./zero-chat-event-type.service";
+} from "./chat-user-message.service";
+import { chatEventTextCondition } from "./chat-event-type.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,

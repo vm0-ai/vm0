@@ -28,7 +28,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
-import { chatEventTextCondition } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
@@ -39,7 +39,7 @@ import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,

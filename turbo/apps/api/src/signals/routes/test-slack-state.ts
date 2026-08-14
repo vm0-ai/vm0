@@ -40,7 +40,7 @@ import {
   acquireVm0ManagedModelKeyFixture,
   releaseVm0ManagedModelKeyFixture,
 } from "../services/test-vm0-managed-model-key-fixture.service";
-import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
+import { chatEventTypeIn } from "../services/chat-event-type.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,

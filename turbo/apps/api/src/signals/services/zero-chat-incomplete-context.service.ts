@@ -28,7 +28,7 @@ import {
   chatEventTextCondition,
   chatEventTypeIn,
   runOwnedChatEventCondition,
-} from "./zero-chat-event-type.service";
+} from "./chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 

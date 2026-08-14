@@ -22,9 +22,9 @@ import type { RouteEntry } from "../route-entry";
 import {
   insertChatEvent,
   replaceChatEvent,
-} from "../services/zero-chat-event.service";
+} from "../services/chat-event.service";
 import { normalizeRunMetadata } from "../services/agent-run-metadata-write.service";
-import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
+import { createUserMessageDocument } from "../services/chat-user-message.service";
 import { monitorChatEventQueueForEvents$ } from "../services/cron-monitor-chat-event-queue.service";
 import {
   isTestEndpointAllowed,

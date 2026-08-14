@@ -24,13 +24,13 @@ import {
   goalIdForRun,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { insertChatEvent } from "./chat-event.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventError,

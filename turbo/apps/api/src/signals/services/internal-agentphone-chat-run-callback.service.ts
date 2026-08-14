@@ -23,7 +23,7 @@ import {
   storeOutboundAgentPhoneMessage,
 } from "./agentphone-shared.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 
 const L = logger("InternalCallbacksAgentPhoneChat");

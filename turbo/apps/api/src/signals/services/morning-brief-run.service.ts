@@ -34,9 +34,9 @@ import {
   nextMorningBriefRunAt,
 } from "./morning-brief-schedule.service";
 import { buildMorningBriefChatMessage } from "./morning-brief-run-prompt";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
 

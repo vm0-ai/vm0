@@ -23,7 +23,7 @@ import {
   type PendingActiveInputRow,
 } from "./active-input-prompt.service";
 import { lockChatQueueThread } from "./chat-event-queue.service";
-import { replaceLoadedChatEvent } from "./zero-chat-event.service";
+import { replaceLoadedChatEvent } from "./chat-event.service";
 
 interface ActiveInputDeliveryScope {
   readonly runId: string;
