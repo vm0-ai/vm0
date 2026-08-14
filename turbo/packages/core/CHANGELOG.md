@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.560.0](https://github.com/vm0-ai/vm0/compare/core-v8.559.13...core-v8.560.0) (2026-08-14)
+
+
+### Features
+
+* roll out automation feature switches ([#27142](https://github.com/vm0-ai/vm0/issues/27142)) ([c24a2fb](https://github.com/vm0-ai/vm0/commit/c24a2fb503dbdc725c7dfc2a75257e39c5140195))
+
 ## [8.559.13](https://github.com/vm0-ai/vm0/compare/core-v8.559.12...core-v8.559.13) (2026-08-14)
 
 
