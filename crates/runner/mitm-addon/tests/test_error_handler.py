@@ -151,6 +151,40 @@ class TestErrorHandler:
         assert proxy_entries[0]["upstream_status"] == 0
         assert proxy_entries[1]["type"] == "connection_error"
 
+    async def test_connector_candidate_error_gets_diagnostic_without_network_log(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+            flow.metadata.pop(metadata_keys.NETWORK_LOG_TARGET)
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 424
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        assert body["connector"] == "fal"
+        assert not (tmp_path / "net.jsonl").exists()
+
+        [connector_entry, connection_entry] = read_jsonl_entries_after_flush(
+            tmp_path / "proxy.jsonl"
+        )
+        assert connector_entry["type"] == "connector_diagnostic"
+        assert connection_entry["type"] == "connection_error"
+
     async def test_head_connector_candidate_error_gets_bodyless_diagnostic(
         self, tmp_path, real_flow, mitm_ctx
     ):
@@ -702,20 +736,13 @@ class TestErrorHandler:
         assert entry["firewall_rule_match"] == "POST /chat.postMessage"
         assert entry["error"] == "timed out"
 
-    def test_error_logs_warning_to_proxy_log(self, tmp_path, real_flow):
+    def test_error_logs_warning_to_proxy_log_without_network_log(self, tmp_path, real_flow):
         flow = real_flow(with_response=False, host="slack.com")
-        log_path = str(tmp_path / "network.jsonl")
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://slack.com/api/test?api_key=secret#frag"
-        http_network_log.set_target(
-            flow,
-            url="https://slack.com/api/test?api_key=secret#frag",
-            host="slack.com",
-            port=443,
-        )
         flow.error = Error("connection reset by peer")
 
         mitm_addon.error(flow)
@@ -762,7 +789,7 @@ class TestErrorHandler:
         assert secret_userinfo not in serialized_proxy_entry
         assert len(serialized_proxy_entry.encode()) < 1_000
 
-    def test_full_path_error_to_webhook(
+    def test_error_without_network_log_reports_model_usage(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, usage_webhook_api
     ):
         """Integration: error() -> _maybe_report -> _enqueue -> _retry -> webhook.
@@ -770,16 +797,9 @@ class TestErrorHandler:
         Verifies that error() hook delivers partial usage through loopback HTTP.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-002"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
-        http_network_log.set_target(
-            flow,
-            url="https://api.anthropic.com/v1/messages",
-            host="api.anthropic.com",
-            port=443,
-        )
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
@@ -835,3 +855,4 @@ class TestErrorHandler:
         observation_key = observation_body["events"][0]["idempotencyKey"]
         uuid.UUID(observation_key)
         assert observation_key != billing_key
+        assert not (tmp_path / "network.jsonl").exists()
