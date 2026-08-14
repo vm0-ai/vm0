@@ -14,7 +14,6 @@ const RUNNER_TEST_ROLES = [
   "runner",
   "runner-real-codex",
   "runner-real-claude",
-  "runner-real-pi",
   "runner-mock-claude",
 ] as const satisfies readonly ClerkTestRole[];
 
@@ -63,12 +62,6 @@ async function prepareRunnerAccounts(
       claudeUserId,
       "runner-real-claude",
     );
-    const piUserId = await createUser(runnerAccounts.pi);
-    const piOrganizationId = await createOrganization(
-      `e2e-runner-real-pi-${jobRef}`,
-      piUserId,
-      "runner-real-pi",
-    );
     const mockClaudeUserId = await createUser(runnerAccounts.mockClaude);
     const mockClaudeOrganizationId = await createOrganization(
       `e2e-runner-mock-claude-${jobRef}`,
@@ -82,12 +75,10 @@ async function prepareRunnerAccounts(
         `runner-organization-id=${runnerOrganizationId}`,
         `codex-organization-id=${codexOrganizationId}`,
         `claude-organization-id=${claudeOrganizationId}`,
-        `pi-organization-id=${piOrganizationId}`,
         `mock-claude-organization-id=${mockClaudeOrganizationId}`,
         `runner-email=${runnerAccounts.runner}`,
         `codex-email=${runnerAccounts.codex}`,
         `claude-email=${runnerAccounts.claude}`,
-        `pi-email=${runnerAccounts.pi}`,
         `mock-claude-email=${runnerAccounts.mockClaude}`,
         "",
       ].join("\n"),
@@ -98,7 +89,6 @@ async function prepareRunnerAccounts(
       runnerOrganizationId,
       codexOrganizationId,
       claudeOrganizationId,
-      piOrganizationId,
       mockClaudeOrganizationId,
       ...runnerAccounts,
     });

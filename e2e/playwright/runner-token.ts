@@ -63,14 +63,6 @@ async function main(): Promise<void> {
       upgradeToPro: true,
     },
     {
-      email: accounts.pi,
-      fileName: "e2e-api-credentials-runner-real-pi.json",
-      organizationId: requiredEnvironmentVariable(
-        "E2E_RUNNER_PI_ORGANIZATION_ID",
-      ),
-      upgradeToPro: false,
-    },
-    {
       email: accounts.mockClaude,
       fileName: "e2e-api-credentials-runner-mock-claude.json",
       organizationId: requiredEnvironmentVariable(

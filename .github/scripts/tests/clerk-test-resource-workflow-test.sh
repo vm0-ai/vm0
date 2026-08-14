@@ -194,7 +194,6 @@ legacy_output_environment = %w[
   E2E_RUNNER_ORGANIZATION_ID
   E2E_RUNNER_CODEX_ORGANIZATION_ID
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
-  E2E_RUNNER_PI_ORGANIZATION_ID
 ]
 runner_account_cleanup_steps = [runner_generation_cleanup, runner_run_cleanup]
 if runner_account_cleanup_steps.any? do |step|
@@ -254,7 +253,7 @@ unless stale_non_runner_step.fetch("run").include?(
   raise "non-runner Clerk resources must retain the six-hour stale policy"
 end
 unless stale_runner_step.fetch("run").include?(
-    "cleanup-stale runner,runner-real-codex,runner-real-claude,runner-real-pi,runner-mock-claude --older-than-hours 30",
+    "cleanup-stale runner,runner-real-codex,runner-real-claude,runner-mock-claude --older-than-hours 30",
   ) && stale_runner_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
   raise "runner resources must outlive the one-day token artifact"
 end

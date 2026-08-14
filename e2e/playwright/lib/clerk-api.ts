@@ -17,7 +17,6 @@ export const CLERK_TEST_ROLES = [
   "runner",
   "runner-real-codex",
   "runner-real-claude",
-  "runner-real-pi",
   "runner-mock-claude",
 ] as const;
 
@@ -33,7 +32,6 @@ export interface RunnerTestAccounts {
   readonly runner: string;
   readonly codex: string;
   readonly claude: string;
-  readonly pi: string;
   readonly mockClaude: string;
 }
 
@@ -170,7 +168,6 @@ export function runnerTestAccounts(): RunnerTestAccounts {
     runner: generateTestEmail("runner"),
     codex: generateTestEmail("runner-real-codex"),
     claude: generateTestEmail("runner-real-claude"),
-    pi: generateTestEmail("runner-real-pi"),
     mockClaude: generateTestEmail("runner-mock-claude"),
   };
 }
