@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/zero-built-in-generation";
+import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -28,7 +28,7 @@ import {
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
   mergeBuiltInGenerationJobInternal$,
-} from "../services/zero-built-in-generation.service";
+} from "../services/built-in-generation.service";
 import { falBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
 import {
   completeRunBuiltInAdmission$,
@@ -109,7 +109,7 @@ function imageRequestRecord(options: ImageOptions): Record<string, unknown> {
 
 function acceptedImageResponse(
   generationId: string,
-  realtime: ZeroBuiltInGenerationRealtimeSubscription,
+  realtime: BuiltInGenerationRealtimeSubscription,
 ) {
   return {
     status: 202 as const,

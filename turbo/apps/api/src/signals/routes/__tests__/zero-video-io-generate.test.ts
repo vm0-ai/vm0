@@ -18,7 +18,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
+import { builtInGenerationRoutes } from "../built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
 import {
   createUsagePricingFixture,
@@ -225,7 +225,7 @@ function createVideoIoTestApp(
   return createAppWithRoutes({
     signal: context.signal,
     routes: [
-      ...zeroBuiltInGenerationRoutes,
+      ...builtInGenerationRoutes,
       ...zeroVideoIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
