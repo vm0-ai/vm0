@@ -1726,12 +1726,15 @@ export {
   type UploadPrepareResponse,
 } from "./zero-uploads";
 export {
+  MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES,
   MAX_PRESENTATION_TEMPLATE_PAGE_BYTES,
   MAX_PRESENTATION_TEMPLATE_PAGES,
   MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
   MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES,
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+  presentationTemplateImportErrorCodeSchema,
+  presentationTemplatePreflightErrorCodeSchema,
   presentationTemplateStatusSchema,
   zeroPresentationTemplatesContract,
   type PreparePresentationTemplateBody,

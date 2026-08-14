@@ -841,6 +841,8 @@ export type DispatchFailedRunCallbacks = (
 export interface CreateAgentRunArgs {
   readonly userId: string;
   readonly orgId: string;
+  /** Stable identity for an internal idempotent launch. */
+  readonly runId?: string;
   readonly body: CreateRunBody;
   readonly apiStartTime: number;
   readonly modelProviderId?: string;
@@ -5630,9 +5632,10 @@ function zeroRunModelProviderValues(
 
 function prepareLaunchRunIdentity(args: {
   readonly resolved: ResolvedCompose;
+  readonly runId: string | undefined;
 }): LaunchRunIdentity {
   return {
-    runId: randomUUID(),
+    runId: args.runId ?? randomUUID(),
     sessionId: args.resolved.agentSessionId ?? randomUUID(),
     shouldCreateSession: !args.resolved.agentSessionId,
   };
@@ -8901,6 +8904,7 @@ function createAtomicLaunchRun(
   return computed(async (get): Promise<QueueFirstAgentRunResult> => {
     const identity = prepareLaunchRunIdentity({
       resolved: input.context.resolved,
+      runId: input.args.runId,
     });
     if (!input.args.queueOnConcurrencyLimit) {
       const preflightConcurrency = await checkRunConcurrencyPreflight({
