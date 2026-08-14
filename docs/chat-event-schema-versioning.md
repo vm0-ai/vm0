@@ -48,9 +48,9 @@ back to a stored older pointer when the current pointer is unavailable.
 
 ## Snapshot upgrade invariant
 
-Only the first Snapshot for a thread may bootstrap from Raw Events, and only
-when those rows start at sequence 1. Once any Snapshot exists, every refresh or
-schema upgrade must:
+Only the first Snapshot for a thread may bootstrap from the currently available
+Raw Event prefix. Sequence positions may start above 1 and contain gaps. Once
+any Snapshot exists, every refresh or schema upgrade must:
 
 1. Download and validate the stored Snapshot object.
 2. Run the adjacent Snapshot migration chain on that historical prefix.

@@ -1016,12 +1016,13 @@ async function collectR2SnapshotGarbage(
 
 /**
  * Archives Chat Events into immutable, content-addressed R2 Snapshots. The
- * first Snapshot may bootstrap from Raw Events beginning at seq 1. Every
- * later refresh or schema upgrade must reuse a stored Snapshot prefix and
- * append only the Raw Event tail after its paired cursor. Missing objects and
- * missing migrations fail closed because older Raw Events may be reclaimed.
- * Publication uses an exact pointer CAS, so a lost race can only leave a
- * collectable orphan object.
+ * first Snapshot may bootstrap from the currently available Raw Event prefix,
+ * whose sequence positions may start above 1 and contain gaps. Every later
+ * refresh or schema upgrade must reuse a stored Snapshot prefix and append only
+ * the Raw Event tail after its paired cursor. Missing objects and missing
+ * migrations fail closed because older Raw Events may be reclaimed. Publication
+ * uses an exact pointer CAS, so a lost race can only leave a collectable orphan
+ * object.
  */
 export const snapshotChatEvents$ = command(
   async (
