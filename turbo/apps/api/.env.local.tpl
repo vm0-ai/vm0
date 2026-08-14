@@ -142,7 +142,7 @@ ZERO_WEATHER_GOOGLE_WEATHER_TOKEN=op://Development/google/ZERO_WEATHER_GOOGLE_WE
 # Optional: Okou Scrape provider (Firecrawl)
 ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 
-# Optional: Zero Web Search provider (Perplexity)
+# Optional: Okou Web Search provider (Perplexity)
 ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
 
 # Optional: Okou Finance provider (APIDojo via RapidAPI)

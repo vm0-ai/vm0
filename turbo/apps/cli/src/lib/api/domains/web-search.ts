@@ -1,17 +1,17 @@
 import {
-  zeroWebSearchContract,
-  type ZeroWebSearchRequest,
-  type ZeroWebSearchResponse,
-} from "@okouai/api-contracts/contracts/zero-web-search";
+  webSearchContract,
+  type WebSearchRequest,
+  type WebSearchResponse,
+} from "@okouai/api-contracts/contracts/web-search";
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function callZeroWebSearch(
-  body: ZeroWebSearchRequest,
-): Promise<ZeroWebSearchResponse> {
+export async function callWebSearch(
+  body: WebSearchRequest,
+): Promise<WebSearchResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroWebSearchContract, config);
+  const client = initClient(webSearchContract, config);
 
   const result = await client.search({ headers: {}, body });
   if (result.status === 200) {

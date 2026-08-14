@@ -6,7 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/people-search";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
-import { zeroWebSearchContract } from "@okouai/api-contracts/contracts/zero-web-search";
+import { webSearchContract } from "@okouai/api-contracts/contracts/web-search";
 import { HttpResponse, http, type JsonBodyType } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -27,7 +27,7 @@ import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { peopleSearchRoutes } from "../people-search";
-import { zeroWebSearchRoutes } from "../zero-web-search";
+import { webSearchRoutes } from "../web-search";
 import {
   createBddApi,
   expectApiError,
@@ -83,7 +83,7 @@ function webSearchClient(
 ) {
   return setupAppWithRoutes({
     context,
-    routes: zeroWebSearchRoutes,
+    routes: webSearchRoutes,
     usagePricingResolution,
   });
 }
@@ -827,7 +827,7 @@ describe("okou people-search route", () => {
       [200],
     );
     await accept(
-      webSearchClient(pricing.resolution)(zeroWebSearchContract).search({
+      webSearchClient(pricing.resolution)(webSearchContract).search({
         headers: { authorization: `Bearer ${token}` },
         body: { query: "latest AI regulation", limit: 5 },
       }),
