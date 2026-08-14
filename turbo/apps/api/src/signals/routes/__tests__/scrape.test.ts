@@ -2,9 +2,9 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
-  zeroScrapeContract,
-  type ZeroScrapeRequest,
-} from "@okouai/api-contracts/contracts/zero-scrape";
+  scrapeContract,
+  type ScrapeRequest,
+} from "@okouai/api-contracts/contracts/scrape";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { mockEnv } from "../../../lib/env";
@@ -22,7 +22,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroScrapeRoutes } from "../zero-scrape";
+import { scrapeRoutes } from "../scrape";
 import {
   createBddApi,
   expectApiError,
@@ -33,9 +33,9 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 
-const scrapeRoutes: readonly RouteEntry[] = [
+const scrapeTestRoutes: readonly RouteEntry[] = [
   ...zeroBillingStatusRoutes,
-  ...zeroScrapeRoutes,
+  ...scrapeRoutes,
 ];
 
 interface AuthHeaders {
@@ -71,19 +71,19 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
 function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
   return setupAppWithRoutes({
     context,
-    routes: scrapeRoutes,
+    routes: scrapeTestRoutes,
     usagePricingResolution,
   });
 }
 
 async function rawScrapeRequest(
   actor: ApiTestUser | null,
-  body: ZeroScrapeRequest,
+  body: ScrapeRequest,
   options: RawScrapeRequestOptions = {},
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: options.instanceSignal ?? context.signal,
-    routes: scrapeRoutes,
+    routes: scrapeTestRoutes,
     usagePricingResolution: options.usagePricingResolution,
   });
   const request = new Request("http://api.test/api/zero/scrape", {
@@ -108,7 +108,7 @@ async function setActorCredits(
   credits: number,
 ): Promise<void> {
   if (!actor.orgId) {
-    throw new Error("Zero Scrape test actor must belong to an organization");
+    throw new Error("Scrape test actor must belong to an organization");
   }
   await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits });
 }
@@ -181,7 +181,7 @@ describe("okou scrape route", () => {
   it("rejects zero tokens without scrape:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
-      throw new Error("Zero Scrape test actor must belong to an organization");
+      throw new Error("Scrape test actor must belong to an organization");
     }
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
@@ -189,14 +189,14 @@ describe("okou scrape route", () => {
       scope: "zero",
       userId: actor.userId,
       orgId: actor.orgId,
-      runId: "run_zero_scrape_missing_capability",
+      runId: "run_scrape_missing_capability",
       capabilities: [],
       iat: seconds,
       exp: seconds + 60,
     });
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client()(scrapeContract).scrape({
         headers: { authorization: `Bearer ${token}` },
         body: {
           url: "https://example.com/page",
@@ -220,7 +220,7 @@ describe("okou scrape route", () => {
     mockEnv("ZERO_SCRAPE_FIRECRAWL_TOKEN", undefined);
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client()(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -255,7 +255,7 @@ describe("okou scrape route", () => {
       "https://private.example.test/admin",
     ]) {
       const response = await accept(
-        client()(zeroScrapeContract).scrape({
+        client()(scrapeContract).scrape({
           headers: authenticate(actor),
           body: {
             url,
@@ -291,7 +291,7 @@ describe("okou scrape route", () => {
       "http://240.0.0.1/page",
     ]) {
       const response = await accept(
-        client()(zeroScrapeContract).scrape({
+        client()(scrapeContract).scrape({
           headers: authenticate(actor),
           body: {
             url,
@@ -330,7 +330,7 @@ describe("okou scrape route", () => {
       "http://[4000::1]/admin",
     ]) {
       const response = await accept(
-        client()(zeroScrapeContract).scrape({
+        client()(scrapeContract).scrape({
           headers: authenticate(actor),
           body: {
             url,
@@ -360,7 +360,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client()(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://user:password@example.com/page",
@@ -395,7 +395,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -436,7 +436,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -697,7 +697,7 @@ describe("okou scrape route", () => {
     const scrapeClient = client(pricing.resolution);
     const [first, second] = await Promise.all([
       accept(
-        scrapeClient(zeroScrapeContract).scrape({
+        scrapeClient(scrapeContract).scrape({
           headers: authenticate(actor),
           body: {
             url: "https://example.com/one",
@@ -708,7 +708,7 @@ describe("okou scrape route", () => {
         [200],
       ),
       accept(
-        scrapeClient(zeroScrapeContract).scrape({
+        scrapeClient(scrapeContract).scrape({
           headers: authenticate(actor),
           body: {
             url: "https://example.com/two",
@@ -789,7 +789,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://[2606:4700:4700::1111]/page",
@@ -840,7 +840,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -906,7 +906,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -940,7 +940,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -975,7 +975,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -1019,7 +1019,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -1053,7 +1053,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroScrapeContract).scrape({
+      client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
