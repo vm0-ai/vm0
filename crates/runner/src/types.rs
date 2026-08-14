@@ -185,7 +185,7 @@ pub struct SecretConnectorMetadata {
 }
 
 /// Execution firewall entry supplied by the API.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum FirewallEntry {
     /// Built-in firewall resolved by the Python addon from the runner-written catalog cache.
@@ -1279,7 +1279,7 @@ impl FirewallAwsSigv4Auth {
 /// Per-firewall grant configuration: which permissions are authorized and
 /// what policy applies to unknown endpoints (not matching any rule).
 /// Firewall names absent from the map are fully permissive (all granted + allow unknown).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicy {
     /// Permission names granted by the user.

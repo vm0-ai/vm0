@@ -623,7 +623,9 @@ impl ProxyRegistryHandle {
 
     /// Publish validated Builtin and Custom candidate updates in one registry
     /// transaction. `None` means the VM disappeared or now belongs to another
-    /// run; otherwise each boolean corresponds to the same-index update.
+    /// run; otherwise each boolean reports whether the same-index update was
+    /// accepted. Accepted batches persist only when the resulting VM state
+    /// changes.
     pub(crate) async fn apply_connector_runtime_updates_if_run_matches(
         &self,
         source_ip: &str,
@@ -639,15 +641,28 @@ impl ProxyRegistryHandle {
             return Ok(None);
         }
 
-        let outcomes = updates
+        // Keep this snapshot aligned with every VM field mutated by
+        // `apply_connector_runtime_update`.
+        let previous_firewalls = vm.firewalls.clone();
+        let previous_network_policies = vm.network_policies.clone();
+        let previous_omitted_custom_connector_ids = vm.omitted_custom_connector_ids.clone();
+        let previous_connector_routing_variables = vm.connector_routing_variables.clone();
+        let accepted = updates
             .iter()
             .map(|update| apply_connector_runtime_update(vm, update))
             .collect::<RunnerResult<Vec<_>>>()?;
-        if !outcomes.iter().any(|applied| *applied) {
-            return Ok(Some(outcomes));
+        if !accepted.iter().any(|accepted| *accepted) {
+            return Ok(Some(accepted));
         }
 
         validate_custom_connector_resource_ownership(vm.firewalls.as_deref().unwrap_or_default())?;
+        if previous_firewalls == vm.firewalls
+            && previous_network_policies == vm.network_policies
+            && previous_omitted_custom_connector_ids == vm.omitted_custom_connector_ids
+            && previous_connector_routing_variables == vm.connector_routing_variables
+        {
+            return Ok(Some(accepted));
+        }
         registry.updated_at = chrono::Utc::now().timestamp_millis();
         write_registry(&self.registry_path, &registry).await?;
         info!(
@@ -656,7 +671,7 @@ impl ProxyRegistryHandle {
             update_count = updates.len(),
             "applied connector runtime updates to proxy registry"
         );
-        Ok(Some(outcomes))
+        Ok(Some(accepted))
     }
 
     #[cfg(test)]
@@ -855,12 +870,18 @@ pub(super) async fn write_empty_registry(path: &Path) -> RunnerResult<()> {
 mod tests {
     use super::*;
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission};
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     struct RegistryHarness {
         _dir: tempfile::TempDir,
         registry_path: PathBuf,
         handle: ProxyRegistryHandle,
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct RegistryFileState {
+        inode: u64,
+        updated_at: i64,
     }
 
     impl RegistryHarness {
@@ -880,6 +901,13 @@ mod tests {
 
         fn registry_path(&self) -> &Path {
             &self.registry_path
+        }
+    }
+
+    async fn registry_file_state(path: &Path) -> RegistryFileState {
+        RegistryFileState {
+            inode: tokio::fs::metadata(path).await.unwrap().ino(),
+            updated_at: read_registry(path).await.unwrap().updated_at,
         }
     }
 
@@ -1365,6 +1393,209 @@ mod tests {
                 .vms
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn idempotent_connector_runtime_updates_preserve_registry_file() {
+        let harness = RegistryHarness::new().await;
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let original_custom_name = "custom_connector_original";
+        let current_custom_name = "custom_connector_current";
+        let firewalls = vec![
+            FirewallEntry::Builtin {
+                name: "slack".to_string(),
+                base_url_vars: None,
+            },
+            custom_runtime_firewall(custom_connector_id, original_custom_name),
+        ];
+        let network_policies = HashMap::from([
+            (
+                "slack".to_string(),
+                policy(&["chat:write"], &[], &[], "allow"),
+            ),
+            (
+                original_custom_name.to_string(),
+                policy(&["custom.read"], &[], &[], "allow"),
+            ),
+        ]);
+        let routing_variables = HashMap::from([("subdomain".to_string(), "pinned".to_string())]);
+        let runtime_targets = vec![
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug: "slack".to_string(),
+                base_url_vars: None,
+            },
+            ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                base_url_vars: routing_variables.clone(),
+            },
+        ];
+        harness
+            .handle
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    firewalls: Some(&firewalls),
+                    network_policies: Some(&network_policies),
+                    connector_runtime_targets: Some(&runtime_targets),
+                    ..base_registration()
+                },
+            )
+            .await
+            .unwrap();
+
+        let available_updates = vec![
+            ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                connector_slug: "slack".to_string(),
+                network_policy: policy(&[], &["chat:write"], &[], "deny"),
+            },
+            ConnectorRuntimeRegistryUpdate::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                state: CustomConnectorRuntimeRegistryState::Available {
+                    firewall: custom_runtime_firewall(custom_connector_id, current_custom_name),
+                    network_policy: Box::new(policy(&["custom.write"], &[], &[], "ask")),
+                    routing_variables: routing_variables.clone(),
+                },
+            },
+        ];
+        assert_eq!(
+            harness
+                .handle
+                .apply_connector_runtime_updates_if_run_matches(
+                    "10.200.0.2",
+                    "run-test",
+                    &available_updates,
+                )
+                .await
+                .unwrap(),
+            Some(vec![true, true])
+        );
+        let available_file_state = registry_file_state(harness.registry_path()).await;
+
+        assert_eq!(
+            harness
+                .handle
+                .apply_connector_runtime_updates_if_run_matches(
+                    "10.200.0.2",
+                    "run-test",
+                    &available_updates,
+                )
+                .await
+                .unwrap(),
+            Some(vec![true, true])
+        );
+        assert_eq!(
+            registry_file_state(harness.registry_path()).await,
+            available_file_state,
+            "an accepted unchanged Available batch must not replace the registry"
+        );
+
+        let absent_updates = [ConnectorRuntimeRegistryUpdate::Custom {
+            custom_connector_id: custom_connector_id.to_string(),
+            state: CustomConnectorRuntimeRegistryState::Absent,
+        }];
+        assert_eq!(
+            harness
+                .handle
+                .apply_connector_runtime_updates_if_run_matches(
+                    "10.200.0.2",
+                    "run-test",
+                    &absent_updates,
+                )
+                .await
+                .unwrap(),
+            Some(vec![true])
+        );
+        let absent_file_state = registry_file_state(harness.registry_path()).await;
+
+        assert_eq!(
+            harness
+                .handle
+                .apply_connector_runtime_updates_if_run_matches(
+                    "10.200.0.2",
+                    "run-test",
+                    &absent_updates,
+                )
+                .await
+                .unwrap(),
+            Some(vec![true])
+        );
+        assert_eq!(
+            registry_file_state(harness.registry_path()).await,
+            absent_file_state,
+            "an accepted unchanged Absent batch must not replace the registry"
+        );
+    }
+
+    #[tokio::test]
+    async fn mixed_connector_runtime_batch_persists_genuine_changes() {
+        let harness = RegistryHarness::new().await;
+        let firewalls = vec![
+            FirewallEntry::Builtin {
+                name: "github".to_string(),
+                base_url_vars: None,
+            },
+            FirewallEntry::Builtin {
+                name: "slack".to_string(),
+                base_url_vars: None,
+            },
+        ];
+        let github_policy = policy(&["repos.read"], &[], &[], "ask");
+        let network_policies = HashMap::from([
+            ("github".to_string(), github_policy.clone()),
+            (
+                "slack".to_string(),
+                policy(&["chat:write"], &[], &[], "allow"),
+            ),
+        ]);
+        let runtime_targets = builtin_runtime_targets(&["github", "slack"]);
+        harness
+            .handle
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    firewalls: Some(&firewalls),
+                    network_policies: Some(&network_policies),
+                    connector_runtime_targets: Some(&runtime_targets),
+                    ..base_registration()
+                },
+            )
+            .await
+            .unwrap();
+        let before = registry_file_state(harness.registry_path()).await;
+
+        assert_eq!(
+            harness
+                .handle
+                .apply_connector_runtime_updates_if_run_matches(
+                    "10.200.0.2",
+                    "run-test",
+                    &[
+                        ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                            connector_slug: "github".to_string(),
+                            network_policy: github_policy,
+                        },
+                        ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                            connector_slug: "slack".to_string(),
+                            network_policy: policy(&[], &["chat:write"], &[], "deny"),
+                        },
+                    ],
+                )
+                .await
+                .unwrap(),
+            Some(vec![true, true])
+        );
+
+        let after = registry_file_state(harness.registry_path()).await;
+        assert_ne!(after.inode, before.inode);
+        let registry = read_registry(harness.registry_path()).await.unwrap();
+        let policies = registry.vms["10.200.0.2"]
+            .network_policies
+            .as_ref()
+            .unwrap();
+        assert_eq!(policies["github"], network_policies["github"]);
+        assert!(policies["slack"].allow.is_empty());
+        assert_eq!(policies["slack"].deny, ["chat:write"]);
+        assert_eq!(policies["slack"].unknown_policy, "deny");
     }
 
     #[tokio::test]

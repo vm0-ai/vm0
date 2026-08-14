@@ -5115,8 +5115,8 @@ mod tests {
                         "target": { "kind": "builtin", "connectorSlug": "slack" },
                         "state": "available",
                         "networkPolicy": {
-                            "allow": ["chat:write"],
-                            "deny": ["files:write"],
+                            "allow": ["chat:write", "files:write"],
+                            "deny": [],
                             "ask": ["channels:read"],
                             "unknownPolicy": "allow",
                         },
@@ -5141,6 +5141,15 @@ mod tests {
             captured_event(&events, "synced connector runtime target"),
             "target",
             "builtin:slack",
+        );
+        assert_eq!(
+            harness.slack_policy().await,
+            json!({
+                "allow": ["chat:write", "files:write"],
+                "deny": [],
+                "ask": ["channels:read"],
+                "unknownPolicy": "allow",
+            })
         );
         harness.shutdown().await;
     }
