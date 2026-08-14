@@ -193,13 +193,8 @@ function CatalogFiltersPopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 gap-2 rounded-full bg-background px-3 shadow-none"
-        >
-          <SlidersHorizontal size={15} />
+        <Button type="button" variant="outline">
+          <SlidersHorizontal />
           {t(($) => {
             return $.artifacts.templates.filters.title;
           })}
@@ -245,12 +240,7 @@ function AvatarAspectRatioPicker({
     return $.artifacts.templates.filters.aspectRatio;
   });
   return (
-    <SegmentControl
-      aria-label={label}
-      size="sm"
-      value={value}
-      onValueChange={onChange}
-    >
+    <SegmentControl aria-label={label} value={value} onValueChange={onChange}>
       <SegmentControlItem value="portrait" aria-label={`${label}: 9:16`}>
         <span className="h-4 w-2.5 rounded-[2px] border-2 border-current" />
         9:16
