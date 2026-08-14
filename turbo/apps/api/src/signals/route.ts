@@ -160,7 +160,7 @@ import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-teleg
 import { integrationsTelegramMessageRoutes } from "./routes/integrations-telegram-message";
 import { integrationsTelegramUploadCompleteRoutes } from "./routes/integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "./routes/integrations-telegram-upload-init";
-import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
+import { slackChannelsRoutes } from "./routes/slack-channels";
 import { slackCommandsRoutes } from "./routes/slack-commands";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { slackEventsRoutes } from "./routes/slack-events";
@@ -369,7 +369,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTeamsMessageRoutes,
   ...zeroIntegrationsTeamsUploadCompleteRoutes,
   ...integrationsTeamsUploadInitRoutes,
-  ...zeroSlackChannelsRoutes,
+  ...slackChannelsRoutes,
   ...steamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...integrationsTelegramMessageRoutes,
