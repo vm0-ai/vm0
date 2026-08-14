@@ -2,7 +2,7 @@ import type { IDBPDatabase } from "idb";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 /** Local cache shape changes bump this base; Chat Event requests add their version. */
-export const CHAT_IDB_CACHE_SCHEMA_VERSION_BASE = 31_000;
+const CHAT_IDB_CACHE_SCHEMA_VERSION_BASE = 31_000;
 
 export const CHAT_IDB_VERSION =
   CHAT_IDB_CACHE_SCHEMA_VERSION_BASE + CURRENT_CHAT_EVENT_SCHEMA_VERSION;

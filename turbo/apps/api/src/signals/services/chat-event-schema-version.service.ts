@@ -35,6 +35,9 @@ export function resolveChatEventSchemaVersion(
   headerValue: string | undefined,
 ): ChatEventSchemaVersionResolution {
   if (headerValue === undefined) {
+    // Previous app clients can omit this header for about 2 days, and existing
+    // runner/sandbox CLI contexts can remain old for up to 2 hours. Remove the
+    // fixed default with #27194 after both rollout windows have drained.
     return { kind: "ok", version: LEGACY_CHAT_EVENT_SCHEMA_VERSION };
   }
   if (!/^[1-9]\d*$/.test(headerValue)) {

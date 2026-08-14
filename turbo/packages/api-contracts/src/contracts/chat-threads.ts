@@ -1533,6 +1533,8 @@ export const chatThreadEventsContract = c.router({
       200: z.object({
         url: z.string().url(),
         expiresInSeconds: z.number().int().positive(),
+        // Optional only while a new app/CLI may reach the previous API during
+        // its rollback window. Require this through #27194 afterward.
         lastEventId: z.string().uuid().optional(),
         lastSeqId: z.number().int().positive(),
       }),
@@ -1558,6 +1560,9 @@ export const chatThreadEventsContract = c.router({
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
       sinceSeqId: z.coerce.number().int().nonnegative(),
+      // Previous app clients can remain sequence-only for about 2 days, and
+      // existing runner/sandbox CLI contexts for up to 2 hours. Require this
+      // paired cursor through #27194 after both windows have drained.
       sinceEventId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),

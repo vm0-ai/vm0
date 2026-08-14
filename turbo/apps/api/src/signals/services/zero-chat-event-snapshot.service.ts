@@ -184,6 +184,9 @@ async function validSnapshotCursor(
     return false;
   }
   if (args.sinceEventId === undefined) {
+    // Previous app clients send sequence-only cursors for about 2 days, while
+    // existing runner/sandbox CLI contexts can remain old for up to 2 hours.
+    // Require the paired event ID through #27194 after both windows drain.
     return true;
   }
   const matchingSnapshotEventId =
@@ -261,13 +264,6 @@ export function zeroChatThreadEventSnapshot(args: {
         }
       }
 
-      if (
-        pointer === null &&
-        args.schemaVersion < CURRENT_CHAT_EVENT_SCHEMA_VERSION
-      ) {
-        pointer = await snapshotPointer(db, args.threadId, args.schemaVersion);
-        signal.throwIfAborted();
-      }
       if (pointer === null) {
         return { kind: "snapshot-not-found" };
       }

@@ -44,7 +44,13 @@ function downgradeV5RowToV4(row: ChatEventRow): ChatEventRow {
   };
 }
 
-/** Apply every adjacent row downgrade until the requested version is reached. */
+/**
+ * Apply every adjacent row downgrade until the requested version is reached.
+ * Version-aware V4 app clients can remain open for about 2 days, and existing
+ * runner/sandbox CLI contexts can remain old for up to 2 hours. Retire V4 and
+ * this downgrade chain through #27194 after both windows have drained and
+ * production no longer observes explicit V4 reads.
+ */
 export function downgradeChatEventRow(
   row: ChatEventRow,
   sourceVersion: number,
