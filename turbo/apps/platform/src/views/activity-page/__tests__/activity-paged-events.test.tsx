@@ -362,36 +362,6 @@ describe("activity paged events", () => {
     ).toBeTruthy();
   });
 
-  it("keeps activity details visible while the event route rolls out", async () => {
-    context.mocks.data.composesList([]);
-    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(200, makeLogDetail({ status: "completed" }));
-    });
-    context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
-        return respond(404, {
-          error: { code: "NOT_FOUND", message: "Route not found" },
-        });
-      },
-    );
-
-    await setupPage({
-      context,
-      path: "/activities/a0000000-0000-4000-a000-000000000099",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
-    });
-
-    expect(
-      screen.getByRole("heading", { name: "Test Agent" }),
-    ).toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("tab").map((tab) => {
-        return tab.textContent?.trim();
-      }),
-    ).toStrictEqual(["Steps", "Context", "Runner", "Network"]);
-  });
-
   it("keeps activity details visible when event loading fails", async () => {
     context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
