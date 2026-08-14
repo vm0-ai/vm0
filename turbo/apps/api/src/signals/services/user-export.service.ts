@@ -73,7 +73,7 @@ import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
-import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
+import { loadWorkflowVolumeFiles } from "./workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
 const DOWNLOAD_URL_EXPIRY_SECONDS = 3600;

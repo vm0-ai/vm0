@@ -52,7 +52,7 @@ import { zodEnumDriverValueDecoder } from "../../lib/db-structured-result";
 import { now } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import { inferMimetype } from "./zero-chat-event-shared.service";
-import { latestRunFinishEventSubquery } from "./zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "./chat-thread-read-state-query";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,

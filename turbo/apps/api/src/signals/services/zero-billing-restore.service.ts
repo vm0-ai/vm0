@@ -10,7 +10,7 @@ import {
   BILLING_RESTORE_PURPOSE,
   billingDefaultPaymentMethodStatus,
   createBillingSetupCheckout,
-} from "./zero-billing-payment-method.service";
+} from "./billing-payment-method.service";
 
 const L = logger("BillingRestore");
 

@@ -41,9 +41,9 @@ import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   BILLING_RESTORE_PURPOSE,
-} from "./zero-billing-payment-method.service";
+} from "./billing-payment-method.service";
 import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
-import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
+import { publishBillingChangedForOrg } from "./billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
