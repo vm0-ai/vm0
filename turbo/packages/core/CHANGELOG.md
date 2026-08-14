@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.559.10](https://github.com/vm0-ai/vm0/compare/core-v8.559.9...core-v8.559.10) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models directly through anthropic ([#27116](https://github.com/vm0-ai/vm0/issues/27116)) ([52f19f9](https://github.com/vm0-ai/vm0/commit/52f19f9fa74a375dfcb19a4bf2ed4ccb4245d395))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.6
+
 ## [8.559.9](https://github.com/vm0-ai/vm0/compare/core-v8.559.8...core-v8.559.9) (2026-08-14)
 
 
