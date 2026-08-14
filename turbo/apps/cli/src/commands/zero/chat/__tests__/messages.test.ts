@@ -241,6 +241,46 @@ describe("okou chat messages command", () => {
     ]);
   });
 
+  it("rejects event rows that do not strictly increase", async () => {
+    const outputDirectory = await createOutputDirectory();
+    const threadDirectory = join(outputDirectory, THREAD_ID);
+    await mkdir(threadDirectory, { recursive: true });
+    await writeFile(
+      join(threadDirectory, "event-SEQ_ID_4.json"),
+      `${JSON.stringify(rawEventRow(4))}\n`,
+      "utf8",
+    );
+    server.use(
+      http.get(SNAPSHOT_URL, () => {
+        throw new Error("Snapshot endpoint must not be called");
+      }),
+      http.get(ROWS_URL, () => {
+        return HttpResponse.json({
+          rows: [rawEventRow(7), rawEventRow(6)],
+        });
+      }),
+    );
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "messages",
+        "--output-dir",
+        outputDirectory,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain(
+      "Chat event rows must have strictly increasing sequence IDs",
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(await readdir(threadDirectory)).toStrictEqual([
+      "event-SEQ_ID_4.json",
+    ]);
+  });
+
   it("rebuilds an expired local generation and preserves unmanaged files", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
