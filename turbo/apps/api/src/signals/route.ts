@@ -185,9 +185,9 @@ import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
 import { zeroAvatarVideoRoutes } from "./routes/zero-avatar-video";
-import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
-import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
-import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
+import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
+import { voiceIoSpeechRoutes } from "./routes/voice-io-speech";
+import { voiceIoSttRoutes } from "./routes/voice-io-stt";
 import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
@@ -309,9 +309,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMeModelProvidersListRoutes,
   ...zeroMeModelProvidersResetSubscriptionRoutes,
   ...zeroMeModelProvidersUpsertRoutes,
-  ...zeroVoiceIoQuotaRoutes,
-  ...zeroVoiceIoSpeechRoutes,
-  ...zeroVoiceIoSttRoutes,
+  ...voiceIoQuotaRoutes,
+  ...voiceIoSpeechRoutes,
+  ...voiceIoSttRoutes,
   ...webDownloadRoutes,
   ...webFileUrlRoutes,
   ...zeroQueuePositionRoutes,

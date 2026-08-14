@@ -14,13 +14,13 @@ export type AudioInputQuotaResponse = z.infer<
 >;
 
 /**
- * Zero contract for GET /api/okou/voice-io/quota
+ * Contract for GET /api/okou/voice-io/quota
  *
  * Returns the current audio input quota state for the authenticated org/user.
  * Used by the platform to drive mic-button gating without firing a doomed STT
  * request when a free-tier user has exhausted their quota.
  */
-export const zeroVoiceIoQuotaContract = c.router({
+export const voiceIoQuotaContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/voice-io/quota",
@@ -34,4 +34,4 @@ export const zeroVoiceIoQuotaContract = c.router({
   },
 });
 
-export type ZeroVoiceIoQuotaContract = typeof zeroVoiceIoQuotaContract;
+export type VoiceIoQuotaContract = typeof voiceIoQuotaContract;
