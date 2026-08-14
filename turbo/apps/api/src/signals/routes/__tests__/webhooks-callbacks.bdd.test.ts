@@ -2509,16 +2509,16 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     await runs.reconcileBillingOrganizations([orgId]);
 
     const downgraded = await billing.readBillingStatus(actor);
-    expect(downgraded.tier).toBe("pro-suspend");
+    expect(downgraded.tier).toBe("limited-free-1");
     expect(downgraded.credits).toBe(0);
     expect(downgraded.hasSubscription).toBeFalsy();
     expect(downgraded.creditGrants).toHaveLength(0);
     await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
       orgId,
-      planKey: "pro-suspend",
+      planKey: "limited-free-1",
       planRank: 0,
       source: "stripe_atom_grant",
-      status: "suspended",
+      status: "active",
       stripeSubscriptionId: null,
       stripePriceId: null,
       currentPeriodEnd: null,
@@ -3042,7 +3042,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     await runs.reconcileBillingOrganizations([orgId]);
 
     const downgraded = await billing.readBillingStatus(actor);
-    expect(downgraded.tier).toBe("pro-suspend");
+    expect(downgraded.tier).toBe("limited-free-1");
     expect(downgraded.hasSubscription).toBeFalsy();
   });
 

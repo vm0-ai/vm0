@@ -59,7 +59,6 @@ const TERMINAL_USAGE_ALLOWANCE_STATUSES = [
   "incomplete_expired",
 ] as const;
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
-const ATOM_GRANT_EXPIRATION_TARGET_TIER = "pro-suspend";
 
 interface SubscriptionInput {
   readonly id: string;
@@ -686,7 +685,7 @@ async function reconcileAtomGrantCandidate(
         return await writeTx
           .update(orgMetadata)
           .set({
-            tier: ATOM_GRANT_EXPIRATION_TARGET_TIER,
+            tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
             subscriptionStatus: "expired",
             cancelAtPeriodEnd: false,
             currentPeriodEnd: null,
@@ -717,7 +716,7 @@ async function reconcileAtomGrantCandidate(
       writePlanEntitlement: async (writeTx, row) => {
         await upsertOrgPlanEntitlement(writeTx, {
           orgId: row.orgId,
-          tier: ATOM_GRANT_EXPIRATION_TARGET_TIER,
+          tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
           source: "stripe_atom_grant",
         });
       },

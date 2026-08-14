@@ -83,7 +83,6 @@ type BillingDowngradeCheckoutTargetTier =
   | "pro-suspend"
   | "pro";
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
-const ATOM_GRANT_EXPIRATION_TARGET_TIER = "pro-suspend";
 
 type WriteTx = Tx;
 type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
@@ -1713,7 +1712,7 @@ async function processAtomPlanGrantInvoicePaid(
             currentPeriodEnd: details.grantExpiresAt,
             pendingSubscriptionScheduleId: null,
             pendingSubscriptionTargetTier: details.grantExpiresAt
-              ? ATOM_GRANT_EXPIRATION_TARGET_TIER
+              ? CANCELED_SUBSCRIPTION_TARGET_TIER
               : null,
             pendingSubscriptionChangeAt: details.grantExpiresAt,
             updatedAt: nowDate(),
