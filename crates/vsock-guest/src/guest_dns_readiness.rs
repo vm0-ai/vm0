@@ -339,7 +339,9 @@ fn run_probe(
         child,
         timeout_ms,
         connection_cancel,
-        || false,
+        // Reap the group before the exited leader can release its process-group
+        // identity, so an NSS helper cannot outlive the readiness operation.
+        || true,
     );
     if !matches!(outcome, WaitOutcome::Exited(_)) {
         drain_cancel.store(true, Ordering::Release);

@@ -123,6 +123,29 @@ fn guest_dns_readiness_timeout_kills_and_reaps_process_group() {
 }
 
 #[test]
+fn guest_dns_readiness_natural_exit_cleans_remaining_process_group() {
+    let pid_path = unique_pid_path("dns-readiness-natural-exit");
+    let mut process_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let (_directory, program) = create_program(&format!(
+        "sleep 60 & printf '%s' \"$!\" > '{}'; printf '192.0.2.1 STREAM success.invalid\\n'",
+        pid_path.as_str()
+    ));
+    let (handle, mut host_stream) = start_guest_connection_with_dns_readiness_program(program);
+
+    send_request(&mut host_stream, 311, 1_100, "success.invalid");
+    let pid = process_guard.read_pid();
+    let result = read_result(&mut host_stream, 311);
+
+    assert_eq!(
+        result.termination,
+        GuestDnsReadinessTermination::Exited { exit_code: 0 }
+    );
+    wait_for_pid_exit(pid, "guest DNS readiness natural exit");
+    process_guard.disarm();
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn guest_dns_readiness_connection_close_kills_and_reaps_process_group() {
     let pid_path = unique_pid_path("dns-readiness-disconnect");
     let mut process_guard = ProcessGroupFileGuard::new(pid_path.as_str());
