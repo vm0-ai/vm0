@@ -17,6 +17,7 @@ import {
   setAblyLoop$,
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
+  subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
 import { authRecovery$, setupClerk$ } from "../auth.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
@@ -362,6 +363,125 @@ describe("realtime signals", () => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
       expect(runs).toBe(2);
     });
+  });
+
+  it("keeps a foreground opt-out loop live and initially primed", async () => {
+    mockSignedInUser();
+    const topic = "test:foreground-opt-out";
+    const subscriber = testSubscriber();
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+        options: {
+          runOnForegroundCatchUp: false,
+          runOnSubscribe: true,
+        },
+      },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(runs).toBe(1);
+    });
+
+    mockedClerk.sessionTouch.mockClear();
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+    const foregroundReady = await context.store.get(foregroundReady$);
+    await foregroundReady.promise;
+    expect(runs).toBe(1);
+
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(2);
+    });
+  });
+
+  it("awaits resource catch-up after rebuilding the realtime client", async () => {
+    mockSignedInUser();
+    const topic = "test:ordered-resource-catch-up";
+    const subscriber = testSubscriber();
+    const catchUpCanFinish = context.mocks.deferred<void>();
+    let catchUps = 0;
+    let subscribedDuringCatchUp = false;
+    const resourceCatchUp$ = command(
+      async (_ctx, signal: AbortSignal): Promise<void> => {
+        catchUps += 1;
+        subscribedDuringCatchUp = context.mocks.ably.hasSubscription(topic);
+        await catchUpCanFinish.promise;
+        signal.throwIfAborted();
+      },
+    );
+
+    await setupAuthAndRealtime();
+    context.store.set(
+      subscribeRealtimeReadyCatchUp$,
+      resourceCatchUp$,
+      subscriber.signal,
+    );
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: keepAliveLoop$ },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+
+    context.mocks.ably.triggerFailure("terminal connection failure");
+    mockedClerk.sessionTouch.mockClear();
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+      expect(catchUps).toBe(1);
+    });
+    expect(subscribedDuringCatchUp).toBeTruthy();
+    const foregroundReady = context.store.get(foregroundReady$);
+    expect(foregroundReady.pending).toBeTruthy();
+
+    catchUpCanFinish.resolve();
+    await foregroundReady.promise;
+    expect(context.store.get(foregroundReady$).pending).toBeFalsy();
+  });
+
+  it("removes aborted realtime-ready catch-up subscribers", async () => {
+    mockSignedInUser();
+    const subscriber = testSubscriber();
+    let catchUps = 0;
+    const resourceCatchUp$ = command((_ctx, _signal: AbortSignal) => {
+      catchUps += 1;
+    });
+
+    await setupAuthAndRealtime();
+    context.store.set(
+      subscribeRealtimeReadyCatchUp$,
+      resourceCatchUp$,
+      subscriber.signal,
+    );
+    subscriber.abort();
+
+    mockedClerk.sessionTouch.mockClear();
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+    const foregroundReady = context.store.get(foregroundReady$);
+    await foregroundReady.promise;
+    expect(catchUps).toBe(0);
   });
 
   it("rebuilds a failed realtime client after foreground auth and pokes once", async () => {

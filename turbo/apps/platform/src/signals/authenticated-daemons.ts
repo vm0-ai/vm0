@@ -3,6 +3,7 @@ import { clerk$ } from "./auth.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
+  setupChatIndicatorForegroundCatchUp$,
 } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { setupChatEventBackgroundSync$ } from "./chat-page/chat-event-background-sync.ts";
@@ -25,6 +26,7 @@ export const setupAuthenticatedDaemons$ = command(
       set(setupRealtime$, signal),
       set(subscribeThreadListChanged$, signal),
       set(subscribeChatThreadReadCursorUpdated$, signal),
+      set(setupChatIndicatorForegroundCatchUp$, signal),
       set(subscribeEventDrivenChatThreads$, signal),
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
