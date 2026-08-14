@@ -129,6 +129,7 @@ interface PreparedSubscriptionChange {
   readonly hasImmediateChanges: boolean;
   readonly hasScheduledChanges: boolean;
   readonly existingScheduleId: string | null;
+  readonly hasAttachedSchedule: boolean;
 }
 
 interface PersistSubscriptionChangePreviewArgs {
@@ -901,6 +902,7 @@ async function prepareSubscriptionChange(
           return change.kind === "downgrade";
         }),
       existingScheduleId,
+      hasAttachedSchedule: stripeScheduleId !== null,
     },
   };
 }
@@ -1308,7 +1310,7 @@ export async function previewUsagePackSubscriptionChange(
   const [recurringPreview, immediatePreview, immediateCreditGrant] =
     await Promise.all([
       stripe.invoices.createPreview(
-        prepared.existingScheduleId
+        prepared.hasAttachedSchedule
           ? scheduledSubscriptionRecurringPreviewParams(
               prepared.subscription,
               finalScheduleItems(

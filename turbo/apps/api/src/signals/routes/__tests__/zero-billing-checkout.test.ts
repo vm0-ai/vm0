@@ -4349,6 +4349,16 @@ describe("usage pack allocation management", () => {
       }),
       [200],
     );
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
+      customer: fixture.customerId,
+      preview_mode: "recurring",
+      subscription_details: {
+        items: [
+          { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+          { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+        ],
+      },
+    });
     const prorationTimestamp = Math.floor(
       new Date(preview.body.prorationDate).getTime() / 1000,
     );
