@@ -30,13 +30,13 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
 import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
 import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
-import { zeroIntegrationsFeishuMessageRoutes } from "../zero-integrations-feishu-message";
+import { integrationsFeishuMessageRoutes } from "../integrations-feishu-message";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...zeroFeishuConnectRoutes,
   ...zeroFeishuOauthRoutes,
   ...zeroIntegrationsFeishuFileRoutes,
-  ...zeroIntegrationsFeishuMessageRoutes,
+  ...integrationsFeishuMessageRoutes,
 ]);
 
 const context = testContext();
@@ -61,7 +61,7 @@ interface FeishuRequestBody {
   readonly reply_in_thread?: boolean;
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId?: string;
@@ -195,7 +195,7 @@ async function connectCurrentFeishuUser(actor: FeishuTestActor): Promise<void> {
   await flushWaitUntilForTest();
 }
 
-describe("POST /api/zero/integrations/feishu/message", () => {
+describe("POST /api/okou/integrations/feishu/message", () => {
   let captured: CapturedRequest[];
 
   beforeEach(() => {
@@ -300,7 +300,7 @@ describe("POST /api/zero/integrations/feishu/message", () => {
   it("requires authentication and the feishu:write capability", async () => {
     const client = setupApp({
       context,
-      routes: zeroIntegrationsFeishuMessageRoutes,
+      routes: integrationsFeishuMessageRoutes,
     })(integrationsFeishuMessageContract);
     const unauthenticated = await accept(
       client.sendMessage({
@@ -330,10 +330,10 @@ describe("POST /api/zero/integrations/feishu/message", () => {
     const { actor, installationId } = await setupFeishuInstallation();
     await connectCurrentFeishuUser(actor);
     captured = [];
-    const token = zeroToken(actor);
+    const token = okouToken(actor);
     const client = setupApp({
       context,
-      routes: zeroIntegrationsFeishuMessageRoutes,
+      routes: integrationsFeishuMessageRoutes,
     })(integrationsFeishuMessageContract);
 
     const chat = await accept(
@@ -424,10 +424,10 @@ describe("POST /api/zero/integrations/feishu/message", () => {
     );
     const client = setupApp({
       context,
-      routes: zeroIntegrationsFeishuMessageRoutes,
+      routes: integrationsFeishuMessageRoutes,
     })(integrationsFeishuMessageContract);
     const headers = {
-      authorization: `Bearer ${zeroToken(actor)}`,
+      authorization: `Bearer ${okouToken(actor)}`,
     };
     const body = {
       installationId,
@@ -487,7 +487,7 @@ describe("POST /api/zero/integrations/feishu/message", () => {
       `/api/zero/integrations/feishu/download-file?${query.toString()}`,
       {
         headers: {
-          authorization: `Bearer ${zeroToken(actor)}`,
+          authorization: `Bearer ${okouToken(actor)}`,
         },
       },
     );
@@ -518,7 +518,7 @@ describe("POST /api/zero/integrations/feishu/message", () => {
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected chat send to create a run for Feishu upload");
     }
-    const token = zeroToken({ ...actor, runId: sent.body.runId });
+    const token = okouToken({ ...actor, runId: sent.body.runId });
     const content = Buffer.from("feishu upload bytes");
     context.mocks.s3.getSignedUrl.mockResolvedValue(
       "https://storage.test/feishu-upload",

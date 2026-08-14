@@ -140,7 +140,7 @@ import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "./routes/integrations-phone-message";
-import { zeroIntegrationsPhoneUploadCompleteRoutes } from "./routes/zero-integrations-phone-upload-complete";
+import { integrationsPhoneUploadCompleteRoutes } from "./routes/integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "./routes/integrations-phone-upload-init";
 import { zeroIntegrationsGithubDownloadFileRoutes } from "./routes/zero-integrations-github-download-file";
 import { zeroIntegrationsGithubUploadCompleteRoutes } from "./routes/zero-integrations-github-upload-complete";
@@ -148,7 +148,7 @@ import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github
 import { zeroIntegrationsFeishuFileRoutes } from "./routes/zero-integrations-feishu-files";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
-import { zeroIntegrationsFeishuMessageRoutes } from "./routes/zero-integrations-feishu-message";
+import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
 import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-integrations-slack-upload-materialize";
@@ -353,7 +353,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
-  ...zeroIntegrationsPhoneUploadCompleteRoutes,
+  ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
   ...zeroIntegrationsGithubDownloadFileRoutes,
   ...zeroIntegrationsGithubUploadCompleteRoutes,
@@ -361,7 +361,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsFeishuFileRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
-  ...zeroIntegrationsFeishuMessageRoutes,
+  ...integrationsFeishuMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
   ...zeroIntegrationsSlackUploadMaterializeRoutes,

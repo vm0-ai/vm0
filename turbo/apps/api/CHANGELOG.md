@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.448.0](https://github.com/vm0-ai/vm0/compare/api-v1.447.9...api-v1.448.0) (2026-08-14)
+
+
+### Features
+
+* roll out automation feature switches ([#27142](https://github.com/vm0-ai/vm0/issues/27142)) ([c24a2fb](https://github.com/vm0-ai/vm0/commit/c24a2fb503dbdc725c7dfc2a75257e39c5140195))
+
+
+### Refactoring
+
+* **agentphone:** neutralize upload-complete route naming ([#27198](https://github.com/vm0-ai/vm0/issues/27198)) ([975d9f1](https://github.com/vm0-ai/vm0/commit/975d9f108808d5fd0592d88934b125e6c3ab36c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.560.0
+    * @okouai/db bumped to 1.198.22
+
+## [1.447.9](https://github.com/vm0-ai/vm0/compare/api-v1.447.8...api-v1.447.9) (2026-08-14)
+
+
+### Bug Fixes
+
+* **connectors:** move playstation web sessions to runtime ([#27160](https://github.com/vm0-ai/vm0/issues/27160)) ([dc2c0b2](https://github.com/vm0-ai/vm0/commit/dc2c0b2cb7e2031ef15b659ec42229ea1eba2cd2))
+
+
+### Refactoring
+
+* **agentphone:** neutralize outbound message route naming ([#27191](https://github.com/vm0-ai/vm0/issues/27191)) ([e29d302](https://github.com/vm0-ai/vm0/commit/e29d302e2944fffaa5d43ab2c9944351f9b90090))
+* **db:** cut run reads over to agent_runs ([#27182](https://github.com/vm0-ai/vm0/issues/27182)) ([5fcc680](https://github.com/vm0-ai/vm0/commit/5fcc680051f3578a3d4ea2ddbf233039ce936dfe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.9
+    * @okouai/connectors bumped to 1.206.1
+    * @okouai/core bumped to 8.559.13
+    * @okouai/db bumped to 1.198.21
+    * @okouai/pi-agent-runtime bumped to 1.4.27
+
 ## [1.447.8](https://github.com/vm0-ai/vm0/compare/api-v1.447.7...api-v1.447.8) (2026-08-14)
 
 

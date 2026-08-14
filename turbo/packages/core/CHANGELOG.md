@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.560.0](https://github.com/vm0-ai/vm0/compare/core-v8.559.13...core-v8.560.0) (2026-08-14)
+
+
+### Features
+
+* roll out automation feature switches ([#27142](https://github.com/vm0-ai/vm0/issues/27142)) ([c24a2fb](https://github.com/vm0-ai/vm0/commit/c24a2fb503dbdc725c7dfc2a75257e39c5140195))
+
+## [8.559.13](https://github.com/vm0-ai/vm0/compare/core-v8.559.12...core-v8.559.13) (2026-08-14)
+
+
+### Bug Fixes
+
+* **core:** disable video model selection by default ([#27190](https://github.com/vm0-ai/vm0/issues/27190)) ([a6dcb19](https://github.com/vm0-ai/vm0/commit/a6dcb193d5cf0904b9c2769860a0a8726df731c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.9
+
 ## [8.559.12](https://github.com/vm0-ai/vm0/compare/core-v8.559.11...core-v8.559.12) (2026-08-14)
 
 

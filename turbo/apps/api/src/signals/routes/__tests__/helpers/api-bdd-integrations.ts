@@ -66,7 +66,7 @@ import { zeroIntegrationsGithubUploadCompleteRoutes } from "../../zero-integrati
 import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "../../integrations-phone-message";
-import { zeroIntegrationsPhoneUploadCompleteRoutes } from "../../zero-integrations-phone-upload-complete";
+import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { zeroIntegrationsSlackRoutes } from "../../zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "../../zero-integrations-slack-message";
@@ -96,7 +96,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsGithubUploadInitRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
-  ...zeroIntegrationsPhoneUploadCompleteRoutes,
+  ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
@@ -1781,7 +1781,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsPhoneUploadCompleteRoutes,
+        routes: integrationsPhoneUploadCompleteRoutes,
       })(integrationsPhoneUploadCompleteContract);
       return await accept(
         client.complete({
