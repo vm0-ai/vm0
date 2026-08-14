@@ -116,8 +116,10 @@ pub(super) async fn finish_mitm_restart_before_shutdown(
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::time::Instant;
 
     use super::*;
+    use crate::retry::recv_retry;
 
     /// Create a MitmProxy for testing (does not start mitmdump).
     async fn test_mitm() -> (
@@ -144,6 +146,64 @@ mod tests {
         .await
         .unwrap();
         (mitm, rx, dir)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn maybe_spawn_mitm_restart_drives_single_flight_failure_retry() {
+        let (mut mitm, _mitm_crash_rx) = proxy::MitmProxy::noop();
+        let (crash_tx, mut crash_rx) = tokio::sync::mpsc::channel(1);
+        let mut retry: RetryState<MitmRestartHandle> = RetryState::new(
+            MITM_BACKOFF_INITIAL,
+            MITM_BACKOFF_MAX,
+            Some(MITM_MAX_CONSECUTIVE_FAILURES),
+        );
+
+        crash_tx.try_send(()).unwrap();
+        let future_deadline = Instant::now() + Duration::from_secs(60);
+        retry.restart_at = Some(future_deadline);
+
+        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry).await;
+
+        assert_eq!(retry.restart_at, Some(future_deadline));
+        assert!(retry.handle.is_none());
+        assert_eq!(crash_rx.try_recv(), Ok(()));
+
+        crash_tx.try_send(()).unwrap();
+        retry.restart_at = Some(Instant::now() - Duration::from_secs(1));
+
+        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry).await;
+
+        assert!(retry.restart_at.is_none());
+        assert_eq!(
+            crash_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        );
+        let restart_handle = retry.handle.as_ref().expect("restart handle");
+        assert!(!restart_handle.is_finished());
+        let restart_id = restart_handle.id();
+
+        crash_tx.try_send(()).unwrap();
+        let in_flight_deadline = Instant::now() - Duration::from_secs(1);
+        retry.restart_at = Some(in_flight_deadline);
+
+        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry).await;
+
+        assert_eq!(retry.restart_at, Some(in_flight_deadline));
+        assert_eq!(
+            retry.handle.as_ref().map(tokio::task::JoinHandle::id),
+            Some(restart_id)
+        );
+        assert_eq!(crash_rx.try_recv(), Ok(()));
+
+        let result = recv_retry(&mut retry.handle).await;
+        assert!(retry.handle.is_none());
+        assert!(result.is_err());
+
+        handle_mitm_restart_result(result, &mut mitm, &mut retry);
+
+        assert_eq!(retry.consecutive_failures(), 1);
+        assert!(retry.restart_at.is_some_and(|at| at > Instant::now()));
+        assert_eq!(retry.backoff(), MITM_BACKOFF_INITIAL * 2);
     }
 
     #[tokio::test]
