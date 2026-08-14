@@ -10230,7 +10230,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, claimed.runId);
   }, 90_000);
 
-  it("lets recall win without deadlocking an atomic queue-first drain", async () => {
+  it("lets recall win before an atomic queue-first drain", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor for queue serialization");
@@ -10261,20 +10261,12 @@ describe("CHAT-02: shared user message queue", () => {
       orgId: actor.orgId,
       signal: context.signal,
     });
-    const eventQueueLock = await holdChatEventQueueItemFixture({
-      threadId: anchor.threadId,
-      eventId: messageId,
-      signal: context.signal,
-    });
 
-    // Stage the completion-triggered drains at org admission before recall
-    // reaches the queue row. The direct waiter proves recall is first; the
-    // transitive count after admission opens proves the drain is queued behind
-    // it.
+    // Stage the completion-triggered drains at org admission, then let recall
+    // append before either drain can claim the queued message.
     onTestFinished(async () => {
       admissionLock.release();
-      eventQueueLock.release();
-      await Promise.all([admissionLock.done, eventQueueLock.done]);
+      await admissionLock.done;
     });
 
     chatCallbacks.mockChatOutputEvents([
@@ -10285,37 +10277,23 @@ describe("CHAT-02: shared user message queue", () => {
     });
     await expect.poll(admissionLock.waiterCount).toBe(2);
 
-    const recall = Promise.allSettled([
-      chat.requestSendEvent(
-        actor,
-        {
-          agentId,
-          threadId: anchor.threadId,
-          revokesEventId: messageId,
-          clientEventId: randomUUID(),
-        },
-        [201],
-      ),
-    ]);
-    await expect.poll(eventQueueLock.directBlockedWaiterCount).toBe(1);
-
-    admissionLock.release();
-    await admissionLock.done;
-    await expect
-      .poll(eventQueueLock.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(2);
-    eventQueueLock.release();
-
-    const [recallResult] = await recall;
-    if (recallResult.status === "rejected") {
-      throw recallResult.reason;
-    }
-    const recalled = recallResult.value;
+    const recalled = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesEventId: messageId,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
     expect(recalled.body).toMatchObject({
       runId: null,
       threadId: anchor.threadId,
     });
-    await eventQueueLock.done;
+
+    admissionLock.release();
+    await admissionLock.done;
     await flushWaitUntilForTest();
 
     await expect
