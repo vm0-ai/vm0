@@ -16,6 +16,7 @@ import {
   resolvePlatformEnvironment,
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
+import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { createAuthRecovery, setupAuthCatchUp$ } from "./auth-retry.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
@@ -38,6 +39,11 @@ interface ClerkSatelliteConfig {
   readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
   readonly isSatellite: true;
   readonly satelliteAutoSync: true;
+}
+
+export interface AuthBrandContext {
+  readonly brandName: BrandName;
+  readonly homeUrl: string;
 }
 
 const AD_ATTRIBUTION_PARAMS = [
@@ -260,7 +266,7 @@ function isAllowedRedirectOrigin(
 function readAllowedRedirectUrl(
   params: URLSearchParams,
   allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[],
-): string | null {
+): URL | null {
   const rawRedirectUrl = params.get("redirect_url");
   if (!rawRedirectUrl) {
     return null;
@@ -271,19 +277,59 @@ function readAllowedRedirectUrl(
     return null;
   }
   return isAllowedRedirectOrigin(redirectUrl, allowedRedirectOrigins)
-    ? redirectUrl.toString()
+    ? redirectUrl
     : null;
+}
+
+function readAuthRedirectParams(
+  authSearch: string,
+  authHash: string,
+): URLSearchParams {
+  const searchParams = new URLSearchParams(authSearch);
+  if (searchParams.has("redirect_url")) {
+    return searchParams;
+  }
+
+  const hashQueryIndex = authHash.indexOf("?");
+  return hashQueryIndex === -1
+    ? searchParams
+    : new URLSearchParams(authHash.slice(hashQueryIndex + 1));
+}
+
+export function resolveAuthBrandContext(
+  authSearch: string = location.search,
+  authHash: string = location.hash,
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+): AuthBrandContext {
+  const currentBrandName = resolveBrandNameForHostname(location.hostname);
+  if (currentBrandName === "Okou") {
+    return { brandName: currentBrandName, homeUrl: "/" };
+  }
+
+  const redirectUrl = readAllowedRedirectUrl(
+    readAuthRedirectParams(authSearch, authHash),
+    allowedRedirectOrigins,
+  );
+  if (
+    redirectUrl &&
+    resolveBrandNameForHostname(redirectUrl.hostname) === "Okou"
+  ) {
+    return { brandName: "Okou", homeUrl: redirectUrl.origin };
+  }
+
+  return { brandName: currentBrandName, homeUrl: "/" };
 }
 
 export function buildSignupRedirectUrl(
   signUpSearch: string,
   allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  signUpHash = "",
 ): string {
   const appUrl = resolveAppUrl();
-  const params = new URLSearchParams(signUpSearch);
+  const params = readAuthRedirectParams(signUpSearch, signUpHash);
   const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
   if (redirectUrl) {
-    return redirectUrl;
+    return redirectUrl.toString();
   }
 
   if (!hasAdTraffic(params)) {
@@ -291,18 +337,19 @@ export function buildSignupRedirectUrl(
   }
 
   const redirectParams = new URLSearchParams();
-  appendHomepageAttributionParams(redirectParams, signUpSearch);
+  appendHomepageAttributionParams(redirectParams, params.toString());
   return buildVm0OnboardingEntryUrl(redirectParams);
 }
 
 export function buildSignInRedirectUrl(
   signInSearch: string,
   allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  signInHash = "",
 ): string {
-  const params = new URLSearchParams(signInSearch);
+  const params = readAuthRedirectParams(signInSearch, signInHash);
   const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
 
-  return redirectUrl ?? resolveAppUrl();
+  return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
 export const clerkUi$ = computed(() => {

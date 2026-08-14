@@ -1,7 +1,10 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import type { SupportedLocale } from "../../../i18n/resources.ts";
@@ -9,12 +12,23 @@ import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { i18n } from "../../../i18n/index.ts";
+import { getClerkAppearance } from "../auth-clerk-appearance.ts";
 import { getClerkLocalization } from "../clerk-localization.ts";
 
 const context = testContext();
 
 function setBrowserUrl(url: string): void {
   context.mocks.browser.url(url);
+}
+
+function okouBrandLink(): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === "Okou";
+  });
+  if (!link) {
+    throw new Error("Okou brand link not found");
+  }
+  return link;
 }
 
 function disableUrlCanParse(): void {
@@ -366,7 +380,7 @@ describe("app auth pages", () => {
   });
 
   it("allows sign-in redirects to okou.ai subdomains", async () => {
-    const redirectUrl = "https://console.okou.ai/_/skeleton";
+    const redirectUrl = "https://app.okou.ai/_/skeleton";
     const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
@@ -380,6 +394,68 @@ describe("app auth pages", () => {
       "data-clerk-force-redirect-url",
       redirectUrl,
     );
+    expect(document.title).toBe("Sign in | Okou");
+    expect(screen.queryByAltText("VM0")).not.toBeInTheDocument();
+    expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-in-force-redirect-url",
+      redirectUrl,
+    );
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-up-force-redirect-url",
+      redirectUrl,
+    );
+
+    const appearance = getClerkAppearance("light", "Okou");
+    expect(appearance.options).toStrictEqual({ logoPlacement: "none" });
+
+    const localization = getClerkLocalization("Okou", "en-US", i18n.t);
+    expect(localization.signIn?.start?.title).toBe("Sign in to Okou");
+    expect(localization.signIn?.emailCode?.subtitle).toBe(
+      "to continue to Okou",
+    );
+  });
+
+  it("preserves Okou auth intent when Clerk moves the redirect into the hash", async () => {
+    const redirectUrl = "https://app.okou.ai/onboarding?source=auth-switch";
+    const hash = `#/?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai/sign-up${hash}`);
+
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("clerk-sign-up")).toHaveAttribute(
+      "data-clerk-force-redirect-url",
+      redirectUrl,
+    );
+    expect(document.title).toBe("Sign up | Okou");
+    expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+  });
+
+  it("does not let an untrusted redirect URL control the auth brand", async () => {
+    const redirectUrl = "https://app.okou.ai.evil.example/sign-in";
+    const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-force-redirect-url",
+      "https://app.vm0.ai",
+    );
+    expect(document.title).toBe("Sign in | VM0");
+    expect(screen.getByAltText("VM0")).toHaveAttribute(
+      "src",
+      platformVm0LogoDarkImg,
+    );
+    expect(screen.queryByText("Okou")).not.toBeInTheDocument();
   });
 
   it("renders the app-hosted sign-in route when URL.canParse is unavailable", async () => {
