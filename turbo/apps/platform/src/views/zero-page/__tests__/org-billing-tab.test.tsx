@@ -1635,6 +1635,14 @@ describe("organization billing settings", () => {
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
+    // The review is the flow's last step, not a dialog stacked on the packages
+    // it reviews, so the configuration step is gone while it is open.
+    expect(
+      within(confirmationDialog).getByText("Step 3 of 3"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Order summary" }),
+    ).not.toBeInTheDocument();
     expect(within(confirmationDialog).getByText("Today")).toBeInTheDocument();
     expect(
       within(confirmationDialog).getByText("Every month"),
@@ -1667,12 +1675,14 @@ describe("organization billing settings", () => {
       within(confirmationDialog).queryByText(/Renews /u),
     ).not.toBeInTheDocument();
     expect(window.location.href).toBe(locationBeforeConfirmation);
-    click(buttonByText("Cancel", confirmationDialog));
+    // Stepping back discards the preview and returns to the packages.
+    click(within(confirmationDialog).getByLabelText("Back"));
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", { name: "Review package change" }),
       ).not.toBeInTheDocument();
     });
+    await screen.findByRole("heading", { name: "Configure member packages" });
     expect(confirmationRequests).toBe(0);
     expect(window.location.href).toBe(locationBeforeConfirmation);
     await waitFor(() => {
@@ -2236,7 +2246,8 @@ describe("organization billing settings", () => {
     expect(
       screen.queryByRole("heading", { name: "Compare plans" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
+    // A managed subscription still has its review step ahead of it.
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
     const packageSelect = await screen.findByRole("combobox", {
       name: "Usage for Alex Chen",
     });
