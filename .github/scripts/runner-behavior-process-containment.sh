@@ -113,12 +113,15 @@ for controller in cpu memory pids; do
   grep -qw "$controller" "$parent/cgroup.subtree_control"
 done
 expected_control_memory_min=$((384 * 1024 * 1024))
+expected_workload_memory_reserve=$((128 * 1024 * 1024))
+guest_memory_bytes=$(( $(getconf _PHYS_PAGES) * $(getconf PAGE_SIZE) ))
+expected_workload_memory_max=$((guest_memory_bytes - expected_workload_memory_reserve))
 test "$(cat "$base/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/control/memory.min")" = "$expected_control_memory_min"
 grep -Eq '^[0-9]+ [0-9]+$' "$parent/workload/cpu.max"
 test "$(cat "$parent/workload/memory.high")" = max
-grep -Eq '^[0-9]+$' "$parent/workload/memory.max"
+test "$(cat "$parent/workload/memory.max")" = "$expected_workload_memory_max"
 test "$(cat "$parent/workload/pids.max")" = max
 test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT:-}"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")
@@ -344,22 +347,29 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   || fail "Turn 3 failed; healthy cleanup did not re-enter reuse"
 
 echo "--- Pressure: sustain CPU saturation with live process control ---"
-PRESSURE_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
+# Continue the prepared conversation so the pressure turn must reuse the VM
+# whose containment state and cleanup were verified above. Keep the provider
+# session independent so active input starts with a fresh stream.
+PRESSURE_CHAT_THREAD_ID="$CHAT_THREAD_ID"
 PRESSURE_SESSION_ID="e2e-process-containment-pressure"
 PRESSURE_SUBMIT_OUTPUT=$(mktemp)
-# Queue one input immediately while this script resolves the sandbox. Keep the
-# final input after the pressure command so the mock turn cannot finish first.
+# Prime the local input queue before a reused VM can emit its first result.
+# Keep the final input after the pressure command so the mock turn cannot
+# finish first.
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --timeout 45 \
+  --timeout 80 \
   --chat-thread-id "$PRESSURE_CHAT_THREAD_ID" \
   --session-id "$PRESSURE_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt '@active-input-smoke:5' \
-  --active-input 'after=100ms,text=cpu-pressure-ready' \
+  --prompt '@active-input-smoke:8' \
+  --active-input 'after=1ms,text=cpu-pressure-ready' \
   --active-input 'after=2s,text=cpu-pressure-one' \
   --active-input 'after=4s,text=cpu-pressure-two' \
   --active-input 'after=6s,text=cpu-pressure-three' \
-  --active-input 'after=9s,text=cpu-pressure-finish' \
+  --active-input 'after=15s,text=memory-reclaim-one' \
+  --active-input 'after=30s,text=memory-reclaim-two' \
+  --active-input 'after=45s,text=memory-reclaim-three' \
+  --active-input 'after=65s,text=pressure-finish' \
   >"$PRESSURE_SUBMIT_OUTPUT" 2>&1 &
 PRESSURE_SUBMIT_PID=$!
 
@@ -441,6 +451,177 @@ grep -E -q '^cpu-pressure-complete throttled_periods=[1-9][0-9]*$' \
   <<<"$CPU_PRESSURE_RESULT" \
   || fail "CPU pressure did not report throttling"
 
+echo "--- Pressure: cross the retired workload memory boundary through Guest reclaim ---"
+PRESSURE_API_SOCK="/run/vm0/sock/$PRESSURE_SANDBOX_ID/api.sock"
+BALLOON_BEFORE=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
+  http://localhost/balloon/statistics \
+  | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
+  || fail "failed to sample balloon before memory reclaim pressure"
+MEMORY_RECLAIM_COMMAND=$(cat <<'PYTHON'
+import gc
+import json
+import os
+import pathlib
+import time
+
+MIB = 1024 * 1024
+PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
+CHUNK_SIZE = 32 * MIB
+CONTROL_MEMORY_MIN = 384 * MIB
+WORKLOAD_MEMORY_RESERVE = 128 * MIB
+RETIRED_BOUNDARY_MARGIN = 64 * MIB
+
+
+def read_int(path):
+    return int(path.read_text().strip())
+
+
+def read_key_values(path):
+    values = {}
+    for line in path.read_text().splitlines():
+        fields = line.split()
+        if len(fields) >= 2:
+            values[fields[0]] = int(fields[1])
+    return values
+
+
+def snapshot(workload, control):
+    meminfo = read_key_values(pathlib.Path("/proc/meminfo"))
+    vmstat = read_key_values(pathlib.Path("/proc/vmstat"))
+    reclaim_keys = (
+        "pgscan_kswapd",
+        "pgscan_direct",
+        "pgsteal_kswapd",
+        "pgsteal_direct",
+    )
+    return {
+        "workload_current": read_int(workload / "memory.current"),
+        "workload_peak": read_int(workload / "memory.peak"),
+        "workload_events": read_key_values(workload / "memory.events"),
+        "control_current": read_int(control / "memory.current"),
+        "control_peak": read_int(control / "memory.peak"),
+        "mem_available_bytes": meminfo["MemAvailable:"] * 1024,
+        "vmstat": {key: vmstat.get(key, 0) for key in reclaim_keys},
+    }
+
+
+def guest_agent_control_cgroup():
+    matches = []
+    base = pathlib.Path("/sys/fs/cgroup/vm0-exec")
+    for control in base.glob("exec-*/control"):
+        for pid in control.joinpath("cgroup.procs").read_text().splitlines():
+            if pathlib.Path(f"/proc/{pid}/comm").read_text().strip() == "guest-agent":
+                matches.append(control)
+    if len(matches) != 1:
+        raise RuntimeError(f"expected one Guest Agent control cgroup, found {len(matches)}")
+    return matches[0]
+
+
+relative = next(
+    line.removeprefix("0::").strip()
+    for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
+    if line.startswith("0::")
+)
+if not relative.startswith("/vm0-exec/exec-") or not relative.endswith("/workload"):
+    raise RuntimeError(f"memory pressure is outside workload cgroup: {relative}")
+
+workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
+control = guest_agent_control_cgroup()
+marker_dir = pathlib.Path("/tmp/vm0-process-containment")
+if not marker_dir.is_dir():
+    raise RuntimeError("memory pressure did not reuse the prepared VM")
+guest_memory_bytes = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+legacy_memory_max = guest_memory_bytes - CONTROL_MEMORY_MIN
+configured_memory_max = read_int(workload / "memory.max")
+expected_memory_max = guest_memory_bytes - WORKLOAD_MEMORY_RESERVE
+if configured_memory_max != expected_memory_max:
+    raise RuntimeError(
+        "unexpected workload memory.max: "
+        f"actual={configured_memory_max} expected={expected_memory_max}"
+    )
+
+target = legacy_memory_max + RETIRED_BOUNDARY_MARGIN
+if target >= configured_memory_max:
+    raise RuntimeError(
+        f"memory pressure target reaches current memory.max: target={target} "
+        f"memory_max={configured_memory_max}"
+    )
+
+before = snapshot(workload, control)
+deadline = time.monotonic() + 45
+chunks = []
+while read_int(workload / "memory.current") < target:
+    if time.monotonic() >= deadline:
+        current = read_int(workload / "memory.current")
+        raise RuntimeError(
+            "memory pressure did not reach the retired boundary in 45s: "
+            f"current={current} target={target}"
+        )
+    chunk = bytearray(CHUNK_SIZE)
+    chunk[::PAGE_SIZE] = b"\x01" * (CHUNK_SIZE // PAGE_SIZE)
+    chunks.append(chunk)
+    time.sleep(0.01)
+
+peak = snapshot(workload, control)
+if peak["workload_current"] <= legacy_memory_max:
+    raise RuntimeError(
+        "memory pressure did not cross the retired workload boundary: "
+        f"current={peak['workload_current']} legacy_max={legacy_memory_max}"
+    )
+
+time.sleep(6)
+chunks.clear()
+gc.collect()
+time.sleep(1)
+after = snapshot(workload, control)
+for event in ("max", "oom", "oom_kill", "oom_group_kill"):
+    if after["workload_events"].get(event, 0) != before["workload_events"].get(event, 0):
+        raise RuntimeError(f"memory pressure triggered workload-local {event}")
+marker_dir.joinpath("memory-reclaim-vm").write_text("ready\n")
+print(
+    json.dumps(
+        {
+            "guest_memory_bytes": guest_memory_bytes,
+            "legacy_memory_max": legacy_memory_max,
+            "configured_memory_max": configured_memory_max,
+            "target": target,
+            "before": before,
+            "peak": peak,
+            "after": after,
+        },
+        separators=(",", ":"),
+    )
+)
+PYTHON
+)
+MEMORY_RECLAIM_RESULT=$(sudo "$BIN_DIR/runner" exec \
+  --timeout 60 \
+  --sandbox "$PRESSURE_SANDBOX_ID" \
+  -- python3 -c "$MEMORY_RECLAIM_COMMAND") \
+  || fail "workload could not cross the retired memory boundary"
+printf '%s\n' "$MEMORY_RECLAIM_RESULT"
+MEMORY_RECLAIM_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_RECLAIM_RESULT")
+[ -n "$MEMORY_RECLAIM_JSON" ] \
+  || fail "memory reclaim pressure did not emit a usage snapshot"
+jq -e '
+  .peak.workload_current > .legacy_memory_max
+  and .peak.workload_current < .configured_memory_max
+  and .peak.workload_events.max == .before.workload_events.max
+  and .peak.workload_events.oom == .before.workload_events.oom
+  and .peak.workload_events.oom_kill == .before.workload_events.oom_kill
+  and .peak.workload_events.oom_group_kill == .before.workload_events.oom_group_kill
+  and .after.workload_events.max == .before.workload_events.max
+  and .after.workload_events.oom == .before.workload_events.oom
+  and .after.workload_events.oom_kill == .before.workload_events.oom_kill
+  and .after.workload_events.oom_group_kill == .before.workload_events.oom_group_kill
+' >/dev/null <<<"$MEMORY_RECLAIM_JSON" \
+  || fail "memory reclaim pressure crossed a workload-local resource boundary"
+BALLOON_AFTER=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
+  http://localhost/balloon/statistics \
+  | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
+  || fail "failed to sample balloon after memory reclaim pressure"
+echo "memory-reclaim-balloon before=$BALLOON_BEFORE after=$BALLOON_AFTER"
+
 if wait "$PRESSURE_SUBMIT_PID"; then
   PRESSURE_SUBMIT_STATUS=0
 else
@@ -449,7 +630,7 @@ fi
 PRESSURE_SUBMIT_PID=""
 cat "$PRESSURE_SUBMIT_OUTPUT"
 [ "$PRESSURE_SUBMIT_STATUS" -eq 0 ] \
-  || fail "process control did not remain live during CPU pressure"
+  || fail "process control did not remain live during CPU and memory pressure"
 PRESSURE_SUBMIT_JSON=$(awk '/^\{/{line=$0} END{print line}' "$PRESSURE_SUBMIT_OUTPUT")
 [ -n "$PRESSURE_SUBMIT_JSON" ] \
   || fail "CPU-pressure submit did not return a JSON result"
@@ -459,7 +640,7 @@ SUBMITTED_PRESSURE_RUN_ID=$(jq -r '.run_id // empty' <<<"$PRESSURE_SUBMIT_JSON")
 PRESSURE_STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${PRESSURE_RUN_ID}.log"
 PRESSURE_METRICS_LOG="/var/lib/vm0-runner/logs/metrics-${PRESSURE_RUN_ID}.jsonl"
 sudo grep -F -q \
-  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+cpu-pressure-finish' \
+  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+memory-reclaim-one+memory-reclaim-two+memory-reclaim-three+pressure-finish' \
   "$PRESSURE_STREAM_LOG" \
   || fail "CPU-pressure active inputs were not all consumed in order"
 
@@ -484,17 +665,20 @@ METRICS_SUMMARY=$(sudo jq -sr '
 ' "$PRESSURE_METRICS_LOG") \
   || fail "failed to summarize CPU-pressure Guest metrics"
 read -r METRICS_COUNT METRICS_SPAN_SECS METRICS_MAX_GAP_SECS <<<"$METRICS_SUMMARY"
-[ "$METRICS_SPAN_SECS" -ge 4 ] \
-  || fail "Guest control metrics did not remain live during CPU pressure: ${METRICS_SPAN_SECS}s"
+[ "$METRICS_SPAN_SECS" -ge 50 ] \
+  || fail "Guest control metrics did not span CPU and memory pressure: ${METRICS_SPAN_SECS}s"
 [ "$METRICS_MAX_GAP_SECS" -le 15 ] \
   || fail "Guest control metric cadence exceeded 15s: ${METRICS_MAX_GAP_SECS}s"
 rm -f "$PRESSURE_SUBMIT_OUTPUT"
 PRESSURE_SUBMIT_OUTPUT=""
 
 echo "--- Pressure: exhaust workload memory without killing Guest Agent ---"
-MEMORY_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
+# Reuse the pressure VM again to prove reclaim left it safe to park while
+# isolating terminal OOM from the active-input provider session.
+MEMORY_CHAT_THREAD_ID="$PRESSURE_CHAT_THREAD_ID"
 MEMORY_SESSION_ID="e2e-process-containment-memory"
 MEMORY_PROMPT=$(cat <<'PROMPT'
+test -f /tmp/vm0-process-containment/memory-reclaim-vm
 sudo -n python3 - <<'PY'
 import pathlib
 import time

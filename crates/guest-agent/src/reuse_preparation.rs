@@ -35,7 +35,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, CONTROL_MEMORY_RESERVE_BYTES, EXEC_CGROUP_BASE_PATH,
+    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, CONTROL_MEMORY_MIN_BYTES, EXEC_CGROUP_BASE_PATH,
     EXEC_CGROUP_NAME_PREFIX, REQUIRED_CGROUP_CONTROLLERS, WORKLOAD_CGROUP_NAME,
     WorkloadResourcePolicy,
 };
@@ -290,7 +290,7 @@ fn verify_process_containment() -> io::Result<()> {
         "exec cgroup base",
     )?;
     if std::fs::read_to_string(paths.base.join(MEMORY_MIN_FILE))?.trim()
-        != CONTROL_MEMORY_RESERVE_BYTES.to_string()
+        != CONTROL_MEMORY_MIN_BYTES.to_string()
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
