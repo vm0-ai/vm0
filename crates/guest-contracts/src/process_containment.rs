@@ -60,8 +60,8 @@ pub const MATERIAL_CPU_THROTTLED_USEC: u64 = 1_000_000;
 /// this value so concurrent operation siblings cannot reclaim the reservation.
 pub const CONTROL_MEMORY_RESERVE_BYTES: u64 = 384 * 1024 * 1024;
 
-/// Additional distance between workload `memory.high` and `memory.max`.
-pub const WORKLOAD_MEMORY_HIGH_HEADROOM_BYTES: u64 = 256 * 1024 * 1024;
+/// Value written to workload `memory.high` to avoid unmonitored soft-limit reclaim.
+pub const WORKLOAD_MEMORY_HIGH: &str = "max";
 
 /// Value written to workload `pids.max` while no production ceiling is calibrated.
 ///
@@ -81,8 +81,8 @@ pub struct WorkloadResourcePolicy {
     pub cpu_quota_us: u64,
     /// Workload CPU bandwidth period in microseconds.
     pub cpu_period_us: u64,
-    /// Workload memory throttling threshold in bytes.
-    pub memory_high_bytes: u64,
+    /// Value written to the workload `memory.high` cgroup file.
+    pub memory_high: &'static str,
     /// Workload hard memory limit in bytes.
     pub memory_max_bytes: u64,
     /// Protected Guest Agent memory in bytes.
@@ -119,7 +119,7 @@ impl WorkloadResourcePolicy {
     ///
     /// `vcpu` is the number of online processors and `memory_bytes` is physical
     /// memory visible to the Guest. The calculation fails when the Guest cannot
-    /// preserve the fixed control reserve and workload high-limit headroom.
+    /// preserve the fixed control reserve.
     pub fn for_guest_capacity(vcpu: u32, memory_bytes: u64) -> Result<Self, &'static str> {
         let total_cpu_us = u64::from(vcpu)
             .checked_mul(WORKLOAD_CPU_PERIOD_US)
@@ -133,15 +133,10 @@ impl WorkloadResourcePolicy {
             .checked_sub(CONTROL_MEMORY_RESERVE_BYTES)
             .filter(|limit| *limit > 0)
             .ok_or("guest memory capacity cannot preserve control headroom")?;
-        let memory_high_bytes = memory_max_bytes
-            .checked_sub(WORKLOAD_MEMORY_HIGH_HEADROOM_BYTES)
-            .filter(|limit| *limit > 0)
-            .ok_or("guest memory capacity cannot provide a workload high threshold")?;
-
         Ok(Self {
             cpu_quota_us,
             cpu_period_us: WORKLOAD_CPU_PERIOD_US,
-            memory_high_bytes,
+            memory_high: WORKLOAD_MEMORY_HIGH,
             memory_max_bytes,
             control_memory_min_bytes: CONTROL_MEMORY_RESERVE_BYTES,
             pids_max: WORKLOAD_PIDS_MAX,
@@ -161,8 +156,8 @@ mod tests {
 
         assert_eq!(policy.cpu_quota_us, 190_000);
         assert_eq!(policy.cpu_period_us, 100_000);
+        assert_eq!(policy.memory_high, "max");
         assert_eq!(policy.memory_max_bytes, 3712 * 1024 * 1024);
-        assert_eq!(policy.memory_high_bytes, 3456 * 1024 * 1024);
         assert_eq!(policy.control_memory_min_bytes, 384 * 1024 * 1024);
         assert_eq!(policy.pids_max, "max");
     }
@@ -185,8 +180,8 @@ mod tests {
                 .unwrap();
 
         assert_eq!(policy.cpu_quota_us, 90_000);
+        assert_eq!(policy.memory_high, "max");
         assert_eq!(policy.memory_max_bytes, 640 * 1024 * 1024);
-        assert_eq!(policy.memory_high_bytes, 384 * 1024 * 1024);
     }
 
     #[test]
@@ -196,7 +191,7 @@ mod tests {
         let policy = WorkloadResourcePolicy::for_guest_capacity(1, 1_033_928_704).unwrap();
 
         assert_eq!(policy.cpu_quota_us, 90_000);
+        assert_eq!(policy.memory_high, "max");
         assert_eq!(policy.memory_max_bytes, 631_275_520);
-        assert_eq!(policy.memory_high_bytes, 362_840_064);
     }
 }

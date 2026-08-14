@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import {
-  zeroAttributionContract,
+  acquisitionAttributionContract,
   type AdAttributionMetadata,
-} from "@okouai/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/acquisition-attribution";
 
 import { accept } from "../../lib/accept.ts";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
@@ -76,7 +76,7 @@ export const recordSignupAttribution$ = command(
 
     if (!recorded) {
       const createClient = get(zeroClient$);
-      const client = createClient(zeroAttributionContract);
+      const client = createClient(acquisitionAttributionContract);
       const result = await accept(
         client.recordSignup({
           body: { attribution },

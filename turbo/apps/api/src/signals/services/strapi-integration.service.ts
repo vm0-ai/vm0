@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type {
   StrapiIntegration,
   StrapiIntegrationSecret,
-} from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+} from "@okouai/api-contracts/contracts/strapi-integrations";
 import {
   strapiIntegrations,
   strapiWorkflowAutomations,

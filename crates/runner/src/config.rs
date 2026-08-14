@@ -279,7 +279,7 @@ pub(crate) fn validate_concurrency_factor(value: f64) -> RunnerResult<()> {
 /// The URL is later copied into guest-visible config and log-adjacent paths,
 /// so reject components that can carry credentials or other sensitive values.
 pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
-    let parsed = url::Url::parse(value)
+    let mut parsed = url::Url::parse(value)
         .map_err(|_| RunnerError::Config("server.url must be an absolute http(s) URL".into()))?;
 
     if !matches!(parsed.scheme(), "http" | "https") {
@@ -304,6 +304,24 @@ pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
         return Err(RunnerError::Config(
             "server.url must not include a fragment".into(),
         ));
+    }
+
+    let raw_authority = crate::firewall_hostname_policy::raw_url_authority(value)
+        .ok_or_else(|| RunnerError::Config("server.url must include a host".into()))?;
+    crate::firewall_hostname_policy::validate_raw_url_host(
+        crate::firewall_hostname_policy::raw_host_from_authority(raw_authority),
+        "server.url",
+    )
+    .map_err(RunnerError::Config)?;
+
+    let host_without_trailing_dot = parsed
+        .host_str()
+        .and_then(|host| host.strip_suffix('.'))
+        .map(str::to_owned);
+    if let Some(host) = host_without_trailing_dot {
+        parsed
+            .set_host(Some(&host))
+            .map_err(|_| RunnerError::Config("server.url has an invalid host".into()))?;
     }
 
     Ok(parsed.as_str().trim_end_matches('/').to_string())

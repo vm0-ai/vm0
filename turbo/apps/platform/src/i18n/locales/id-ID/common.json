@@ -2556,7 +2556,9 @@
       "requestFailed": "Permintaan gagal"
     },
     "realtime": {
-      "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman."
+      "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman.",
+      "disconnected": "Koneksi realtime terputus",
+      "reconnecting": "Menyambungkan kembali koneksi realtime"
     }
   },
   "invitationRedirect": {

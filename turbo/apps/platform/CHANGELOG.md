@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.749.0](https://github.com/vm0-ai/vm0/compare/app-v0.748.6...app-v0.749.0) (2026-08-14)
+
+
+### Features
+
+* **app:** show realtime status in debug sidebar ([#27117](https://github.com/vm0-ai/vm0/issues/27117)) ([6c489f4](https://github.com/vm0-ai/vm0/commit/6c489f476dc224b5580969035e13477fe600c457))
+
+
+### Refactoring
+
+* **attribution:** neutralize acquisition attribution api naming ([#27137](https://github.com/vm0-ai/vm0/issues/27137)) ([3fb152c](https://github.com/vm0-ai/vm0/commit/3fb152c18d8434a59d819cb4abaa008781eb7a7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.7
+    * @okouai/core bumped to 8.559.11
+
 ## [0.748.6](https://github.com/vm0-ai/vm0/compare/app-v0.748.5...app-v0.748.6) (2026-08-14)
 
 

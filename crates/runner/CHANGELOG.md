@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.168.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.8...runner-rs-v0.168.9) (2026-08-14)
+
+
+### Bug Fixes
+
+* **python:** require platform api scheme match ([#27134](https://github.com/vm0-ai/vm0/issues/27134)) ([2e1bd6f](https://github.com/vm0-ai/vm0/commit/2e1bd6fc6d7c476af46bbab85fc51136af811efd))
+
+
+### Refactoring
+
+* **mitm-addon:** split sse usage tests by provider lifecycle ([#27123](https://github.com/vm0-ai/vm0/issues/27123)) ([080ee37](https://github.com/vm0-ai/vm0/commit/080ee3729eea2d5aea2403689da99f1fd1bc003b))
+
 ## [0.168.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.7...runner-rs-v0.168.8) (2026-08-14)
 
 

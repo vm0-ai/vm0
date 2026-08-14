@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.3...guest-contracts-v0.11.4) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** disable workload memory.high reclaim ([#27126](https://github.com/vm0-ai/vm0/issues/27126)) ([24743ab](https://github.com/vm0-ai/vm0/commit/24743ab1a9901f769ee07a40cffea63c2a516e37))
+
 ## [0.11.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.2...guest-contracts-v0.11.3) (2026-08-14)
 
 

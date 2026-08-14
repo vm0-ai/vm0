@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAttributionContract } from "@okouai/api-contracts/contracts/zero-attribution";
+import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockNow } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroAttributionRoutes } from "../zero-attribution";
+import { acquisitionAttributionRoutes } from "../acquisition-attribution";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -15,8 +15,8 @@ const mocks = createZeroRouteMocks(context);
 const RECORDED_AT_ISO = "2026-05-30T12:00:00.000Z";
 
 function client() {
-  return setupApp({ context, routes: zeroAttributionRoutes })(
-    zeroAttributionContract,
+  return setupApp({ context, routes: acquisitionAttributionRoutes })(
+    acquisitionAttributionContract,
   );
 }
 

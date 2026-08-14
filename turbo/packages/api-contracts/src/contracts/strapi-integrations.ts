@@ -27,7 +27,7 @@ export type StrapiIntegrationSecret = z.infer<
 
 const integrationIdParams = z.object({ integrationId: z.string().uuid() });
 
-export const zeroStrapiIntegrationsContract = c.router({
+export const strapiIntegrationsContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/integrations/strapi",
@@ -106,7 +106,7 @@ export const zeroStrapiIntegrationsContract = c.router({
   },
 });
 
-export const zeroStrapiEventsContract = c.router({
+export const strapiEventsContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/strapi/events/:integrationId",
@@ -132,6 +132,5 @@ export const zeroStrapiEventsContract = c.router({
   },
 });
 
-export type ZeroStrapiIntegrationsContract =
-  typeof zeroStrapiIntegrationsContract;
-export type ZeroStrapiEventsContract = typeof zeroStrapiEventsContract;
+export type StrapiIntegrationsContract = typeof strapiIntegrationsContract;
+export type StrapiEventsContract = typeof strapiEventsContract;
