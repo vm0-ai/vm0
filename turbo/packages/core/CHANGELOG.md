@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.560.3](https://github.com/vm0-ai/vm0/compare/core-v8.560.2...core-v8.560.3) (2026-08-14)
+
+
+### Refactoring
+
+* remove rolled-out automation feature switches ([#27256](https://github.com/vm0-ai/vm0/issues/27256)) ([91119e4](https://github.com/vm0-ai/vm0/commit/91119e4ff88250028c24e79d8b8045cc2c90f896))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.0
+
 ## [8.560.2](https://github.com/vm0-ai/vm0/compare/core-v8.560.1...core-v8.560.2) (2026-08-14)
 
 

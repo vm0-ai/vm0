@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.84](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.83...vsock-guest-v0.19.84) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** preserve runs after tool process oom ([#27272](https://github.com/vm0-ai/vm0/issues/27272)) ([bdba0d6](https://github.com/vm0-ai/vm0/commit/bdba0d6cfb57fec9f7193a02ab93dbf7b7074ea9))
+
 ## [0.19.83](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.82...vsock-guest-v0.19.83) (2026-08-14)
 
 ## [0.19.82](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.81...vsock-guest-v0.19.82) (2026-08-14)

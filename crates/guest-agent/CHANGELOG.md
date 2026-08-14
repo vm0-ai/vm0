@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.74.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.9...guest-agent-v0.74.0) (2026-08-14)
+
+
+### Features
+
+* use official pi rpc lifecycle ([#27252](https://github.com/vm0-ai/vm0/issues/27252)) ([38051ff](https://github.com/vm0-ai/vm0/commit/38051ff9d3c2505c4ac133d196eeb881817249fe))
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve descendant cleanup without pidfd ([#27185](https://github.com/vm0-ai/vm0/issues/27185)) ([097a91f](https://github.com/vm0-ai/vm0/commit/097a91f380ccff0e2033d52a800e3d2094467b3c))
+* **runner:** preserve runs after tool process oom ([#27272](https://github.com/vm0-ai/vm0/issues/27272)) ([bdba0d6](https://github.com/vm0-ai/vm0/commit/bdba0d6cfb57fec9f7193a02ab93dbf7b7074ea9))
+
 ## [0.73.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.8...guest-agent-v0.73.9) (2026-08-14)
 
 
