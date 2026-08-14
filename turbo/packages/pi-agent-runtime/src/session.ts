@@ -18,7 +18,7 @@ type PersistedMessage = Extract<
   { role: "user" | "assistant" | "toolResult" }
 >;
 
-function isPersistedMessage(
+export function isPersistedMessage(
   message: AgentMessage,
 ): message is PersistedMessage {
   return (
@@ -28,7 +28,9 @@ function isPersistedMessage(
   );
 }
 
-function canonicalDurableMessage(message: PersistedMessage): PersistedMessage {
+export function canonicalDurableMessage(
+  message: PersistedMessage,
+): PersistedMessage {
   const serialized = JSON.stringify(message);
   if (serialized === undefined) {
     throw new Error("Pi produced a message that cannot be persisted");
@@ -36,7 +38,7 @@ function canonicalDurableMessage(message: PersistedMessage): PersistedMessage {
   return JSON.parse(serialized) as PersistedMessage;
 }
 
-function checkpointingSqliteFactory(): SqliteDatabaseFactory {
+export function checkpointingSqliteFactory(): SqliteDatabaseFactory {
   const factory = createNodeSqliteFactory();
   return {
     async open(path: string): Promise<SqliteDatabase> {

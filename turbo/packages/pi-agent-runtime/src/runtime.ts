@@ -292,3 +292,39 @@ export async function preparePiLaunchPrompt(
     diagnostics: skills.diagnostics,
   };
 }
+
+/** Load the exact mounted resources consumed by the official Pi session host. */
+export async function preparePiLaunchResources(
+  env: ExecutionEnv,
+  args: {
+    readonly launchConfig: PiLaunchConfig;
+    readonly appendSystemPrompt: string | null;
+  },
+  signal?: AbortSignal,
+): Promise<{
+  readonly systemPrompt: string;
+  readonly skills: readonly Skill[];
+  readonly diagnostics: readonly SkillDiagnostic[];
+}> {
+  const config = args.launchConfig;
+  const [skills, agentInstructions, memoryPrefix] = await Promise.all([
+    loadPiRunSkills(env, config.skillSnapshot),
+    readOptionalTextFile(env, config.agentInstructionsPath, signal),
+    config.memory
+      ? readMemoryPrefix(env, config.memory.primaryFile, signal)
+      : Promise.resolve(null),
+  ]);
+  return {
+    systemPrompt: renderPiSystemPrompt({
+      agentName: config.agentName,
+      appendSystemPrompt: args.appendSystemPrompt,
+      agentInstructions,
+      memory: config.memory ? { ...config.memory, prefix: memoryPrefix } : null,
+      // The official AgentSession resource loader appends this catalog and
+      // owns explicit /skill expansion, so keep it out of the custom base.
+      skills: [],
+    }),
+    skills: skills.skills,
+    diagnostics: skills.diagnostics,
+  };
+}

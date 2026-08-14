@@ -18,6 +18,7 @@ import {
   formatPiUserPrompt,
   loadPiRunSkills,
   preparePiLaunchPrompt,
+  preparePiLaunchResources,
   renderPiSystemPrompt,
 } from "./runtime";
 import { createPiReadTool } from "./tools";
@@ -163,6 +164,10 @@ describe("Pi run Skill runtime", () => {
         appendSystemPrompt: "Mounted append prompt",
         prompt: "/skill:mounted-skill do the work",
       });
+      const resources = await preparePiLaunchResources(env, {
+        launchConfig: config,
+        appendSystemPrompt: "Mounted append prompt",
+      });
 
       expect(launch.diagnostics).toEqual([]);
       expect(launch.systemPrompt).toContain(
@@ -174,6 +179,18 @@ describe("Pi run Skill runtime", () => {
       expect(launch.systemPrompt).toContain("<name>mounted-skill</name>");
       expect(launch.prompt).toContain("Mounted Skill body.");
       expect(launch.prompt).toContain("do the work");
+      expect(resources.diagnostics).toEqual([]);
+      expect(resources.systemPrompt).toContain("Mounted append prompt");
+      expect(resources.systemPrompt).toContain("Mounted agent instructions");
+      expect(resources.systemPrompt).toContain("Mounted memory prefix");
+      expect(resources.systemPrompt).not.toContain(
+        "<name>mounted-skill</name>",
+      );
+      expect(
+        resources.skills.map(({ name }) => {
+          return name;
+        }),
+      ).toEqual(["mounted-skill"]);
     } finally {
       await env.cleanup();
       await rm(mountedRoot, { recursive: true, force: true });

@@ -33,6 +33,7 @@ mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
 mod line_reader;
+mod pi_rpc;
 mod process_group;
 mod termination;
 
@@ -159,18 +160,6 @@ async fn write_claude_stream_json_to_stdin(
         active_input.mark_backend_accepted_with_replay(&frame)?;
     }
 
-    active_input.close_terminal();
-    Ok(())
-}
-
-async fn write_pi_prompt_to_stdin(
-    mut stdin: tokio::process::ChildStdin,
-    run_id: &str,
-    prompt: &str,
-    active_input: ActiveInputWriter,
-) -> Result<(), AgentError> {
-    let initial_uuid = crate::active_input::claude_initial_prompt_uuid(run_id);
-    write_claude_user_frame_to_stdin(&mut stdin, &initial_uuid, prompt).await?;
     active_input.close_terminal();
     Ok(())
 }
@@ -1010,13 +999,28 @@ async fn execute_cli_inner(
 
     let active_input_controller = active_input.controller();
     let pi_execution = matches!(runtime.framework, env::Framework::Pi);
+    let (pi_rpc_response_tx, pi_rpc_response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let pi_rpc_cancellation = CancellationToken::new();
+    let mut pi_rpc_projection = pi_execution.then(|| {
+        pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
+    });
     let mut claude_stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
+        let pi_rpc_cancellation = pi_rpc_cancellation.clone();
         tokio::spawn(async move {
             if pi_execution {
-                write_pi_prompt_to_stdin(claude_stdin, &run_id, &prompt, active_input).await
+                pi_rpc::write_commands(
+                    claude_stdin,
+                    &run_id,
+                    &prompt,
+                    active_input,
+                    pi_rpc_response_rx,
+                    pi_rpc_cancellation,
+                )
+                .await
             } else {
+                drop(pi_rpc_response_rx);
                 write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input)
                     .await
             }
@@ -1096,6 +1100,7 @@ async fn execute_cli_inner(
 
     let mut heartbeat_done = false;
     let mut user_cancellation_handled = false;
+    let mut pi_user_cancelled = false;
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
@@ -1120,6 +1125,12 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 user_cancellation_handled = true;
+                if pi_execution {
+                    pi_user_cancelled = true;
+                    active_input_controller.close_terminal();
+                    pi_rpc_cancellation.cancel();
+                    continue;
+                }
                 active_input_controller.close_terminal();
                 termination_runtime.begin_control_failure(
                     TerminationReason::UserCancellation,
@@ -1236,7 +1247,33 @@ async fn execute_cli_inner(
                             continue;
                         }
 
-                        if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                        if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            if let Some(projection) = pi_rpc_projection.as_mut() {
+                                match projection.project(event, &pi_rpc_response_tx) {
+                                    Ok(Some(projected)) => event = projected,
+                                    Ok(None) => {
+                                        agent_log.write_raw_line(line.as_bytes()).await;
+                                        continue;
+                                    }
+                                    Err(error) => {
+                                        agent_log.write_raw_line(line.as_bytes()).await;
+                                        active_input_controller.close_terminal();
+                                        if cli_status.is_some() {
+                                            break Err(error);
+                                        }
+                                        let error_log = error.to_string();
+                                        termination_runtime.begin_control_failure(
+                                            TerminationReason::StdoutIngestion,
+                                            error,
+                                            ControlTerminationLog::StdoutIngestionFailed {
+                                                error: error_log,
+                                            },
+                                            termination_deadline.as_mut(),
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
                             let replay_marker: Option<&[u8]> = if replay_user_messages {
                                 match active_input_controller.replay_user_event_action(&event) {
                                     ReplayUserEventAction::External => None,
@@ -1327,6 +1364,9 @@ async fn execute_cli_inner(
                                 }
                                 let active_input_idle =
                                     active_input_controller.close_for_result_if_idle();
+                                if pi_execution && active_input_idle {
+                                    active_input_controller.close_terminal();
+                                }
                                 // Arm the post-result reap deadline once per
                                 // run when no active follow-up input is still
                                 // pending.
@@ -1684,7 +1724,12 @@ async fn execute_cli_inner(
             None,
         );
     }
-    let (exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
+    let (mut exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
+    if pi_execution
+        && claude_result.is_some_and(|result| result.status == ClaudeResultStatus::Error)
+    {
+        exit_code = 1;
+    }
 
     // Apply the same drain deadline to stderr — orphaned child processes
     // may hold the stderr fd open just like stdout.
@@ -1711,7 +1756,13 @@ async fn execute_cli_inner(
     };
     let masked_stderr_lines = masker.mask_diagnostic_lines(stderr_lines);
 
-    let (control_error, cli_termination) = termination_runtime.finish(exit_code);
+    let (mut control_error, mut cli_termination) = termination_runtime.finish(exit_code);
+    if pi_user_cancelled {
+        control_error = Some(AgentError::Execution("Run cancelled by user".to_string()));
+        cli_termination = Some(CliTerminationDiagnostic::new(
+            guest_contracts::diagnostics::CliTerminationReason::UserCancellation,
+        ));
+    }
 
     if let Some(err) = event_error {
         return Err(err);

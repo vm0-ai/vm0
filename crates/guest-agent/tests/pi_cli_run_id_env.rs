@@ -1,9 +1,10 @@
-//! Pi CLI children receive the canonical Runner-owned run identity and read
-//! their prompt-sized launch inputs from a private file instead of env.
+//! Pi CLI children receive canonical launch inputs and complete the official
+//! RPC lifecycle through the guest's public event projection.
 
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
@@ -11,6 +12,7 @@ use std::time::Duration;
 #[tokio::test]
 async fn guest_exposes_canonical_run_id_to_pi_cli() -> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;
+    let server = common::RecordingServer::start(200, Duration::ZERO).await?;
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir_all(&bin_dir)?;
     let capture_path = tmp.path().join("canonical-run-id.txt");
@@ -25,8 +27,27 @@ test -z "${OKOU_PI_LAUNCH_CONFIG:-}"
 test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 printf '%s' "$OKOU_PI_LAUNCH_PAYLOAD_FILE" > "$PI_PAYLOAD_CAPTURE_PATH"
-IFS= read -r _
-printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"11111111-1111-4111-8111-111111111111","duration_ms":1}'
+IFS= read -r state_command
+case "$state_command" in
+  *'"type":"get_state"'*) ;;
+  *) exit 21 ;;
+esac
+printf '%s\n' '{"id":"00000000-0000-4000-8000-000000000123:pi:get-state","type":"response","command":"get_state","success":true,"data":{"sessionId":"11111111-1111-4111-8111-111111111111"}}'
+IFS= read -r prompt_command
+case "$prompt_command" in
+  *'"type":"prompt"'*) ;;
+  *) exit 22 ;;
+esac
+case "$prompt_command" in
+  *'"message":"verify canonical Pi run identity"'*) ;;
+  *) exit 24 ;;
+esac
+printf '%s\n' '{"id":"00000000-0000-4000-8000-000000000123:pi:initial-prompt","type":"response","command":"prompt","success":true}'
+printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"official rpc projection"}],"model":"deepseek-v4-flash","responseId":"response-1","usage":{"input":5,"output":3,"cacheRead":2,"cacheWrite":1},"stopReason":"stop","timestamp":1}}'
+printf '%s\n' '{"type":"agent_settled"}'
+if IFS= read -r unexpected; then
+  exit 23
+fi
 "#,
     )?;
     let mut permissions = std::fs::metadata(&npx)?.permissions();
@@ -39,8 +60,8 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(guest_contracts::env::CLI_AGENT_TYPE_ENV, "pi");
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, run_id);
-        std::env::set_var(guest_contracts::env::API_URL_ENV, "http://127.0.0.1:1");
-        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "");
+        std::env::set_var(guest_contracts::env::API_URL_ENV, &server.base_url);
+        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "test-token");
         std::env::set_var(
             guest_contracts::env::SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
@@ -97,6 +118,45 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
     .expect("canonical Pi CLI process should finish")?;
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
+    assert_eq!(result.last_event_sequence, Some(2));
+    assert_eq!(
+        result.claude_result.map(|summary| summary.status),
+        Some(guest_agent::cli::ClaudeResultStatus::Success)
+    );
+    let mut delivered_events = Vec::new();
+    for request in server.requests()? {
+        assert_eq!(request.path, "/api/webhooks/agent/events");
+        assert_eq!(request.authorization.as_deref(), Some("Bearer test-token"));
+        let body: Value = serde_json::from_str(&request.body)?;
+        delivered_events.extend(
+            body.get("events")
+                .and_then(Value::as_array)
+                .expect("Pi event request should contain an events array")
+                .iter()
+                .cloned(),
+        );
+    }
+    delivered_events.sort_by_key(|event| {
+        event
+            .get("sequenceNumber")
+            .and_then(Value::as_u64)
+            .unwrap_or(u64::MAX)
+    });
+    assert_eq!(delivered_events.len(), 3);
+    assert_eq!(delivered_events[0]["type"], "system");
+    assert_eq!(delivered_events[0]["subtype"], "init");
+    assert_eq!(
+        delivered_events[0]["session_id"],
+        "11111111-1111-4111-8111-111111111111"
+    );
+    assert_eq!(delivered_events[1]["type"], "assistant");
+    assert_eq!(
+        delivered_events[1].pointer("/message/content/0/text"),
+        Some(&Value::String("official rpc projection".to_string()))
+    );
+    assert_eq!(delivered_events[2]["type"], "result");
+    assert_eq!(delivered_events[2]["subtype"], "success");
+    assert_eq!(delivered_events[2]["result"], "official rpc projection");
     assert_eq!(std::fs::read_to_string(capture_path)?, run_id);
 
     let payload_path = std::fs::read_to_string(payload_capture_path)?;

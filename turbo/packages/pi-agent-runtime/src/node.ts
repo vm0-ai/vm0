@@ -1,5 +1,6 @@
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
+import { runPiOfficialRpcMode as runPiOfficialRpcModeImpl } from "./rpc";
 import { runPiAgentSession as runPiAgentSessionImpl } from "./session";
 import type {
   ExecutionEnv,
@@ -37,6 +38,18 @@ export async function runPiAgentSession(
   signal: AbortSignal,
 ): Promise<PiAgentSessionResult> {
   return await runPiAgentSessionImpl(args, signal);
+}
+
+/** Run the official Pi AgentSession RPC host until stdin closes. */
+export async function runPiOfficialRpcMode(args: {
+  readonly sessionId: string;
+  readonly databasePath: string;
+  readonly model: PiAgentModelConfig;
+  readonly launchConfig: import("@okouai/api-contracts/contracts/runners").PiLaunchConfig;
+  readonly appendSystemPrompt: string | null;
+  readonly executionEnv: ExecutionEnv;
+}): Promise<never> {
+  return await runPiOfficialRpcModeImpl(args);
 }
 
 export * from "./index";
