@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use serde_json::{Map, Value, json};
-use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
@@ -25,9 +24,9 @@ use super::codex_app_server_events::{
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    AgentExecutionDeadline, CliEventIngestor, CliExecutionControls, CliExecutionResult,
-    CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction,
-    codex_runtime_config,
+    AgentExecutionDeadline, BestEffortAgentLog, CliEventIngestor, CliExecutionControls,
+    CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG,
+    ParsedEventAction, codex_runtime_config,
 };
 use crate::active_input::{ActiveInputController, ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
@@ -62,7 +61,7 @@ struct ThreadIdentity {
 struct EventIngestSink<'a, 'startup> {
     ingestor: &'a mut CliEventIngestor<'startup>,
     output_timing: &'a mut CodexOutputTiming,
-    log_file: &'a mut tokio::fs::File,
+    agent_log: &'a mut BestEffortAgentLog,
     masker: &'a SecretMasker,
     should_send_events: bool,
     event_tx: &'a EventDeliverySender,
@@ -243,8 +242,7 @@ async fn run_codex_app_server(
         codex_startup,
         workload_containment,
     } = controls;
-    let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
-    let mut log_file = tokio::fs::File::from_std(log_file);
+    let mut agent_log = BestEffortAgentLog::open(runtime.agent_log_file.as_ref());
     let mut ingestor = CliEventIngestor::new(runtime, codex_startup);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
@@ -280,7 +278,7 @@ async fn run_codex_app_server(
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
                 output_timing: &mut output_timing,
-                log_file: &mut log_file,
+                agent_log: &mut agent_log,
                 masker,
                 should_send_events,
                 event_tx,
@@ -302,7 +300,7 @@ async fn run_codex_app_server(
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
                 output_timing: &mut output_timing,
-                log_file: &mut log_file,
+                agent_log: &mut agent_log,
                 masker,
                 should_send_events,
                 event_tx,
@@ -345,7 +343,7 @@ async fn run_codex_app_server(
                     let mut sink = EventIngestSink {
                         ingestor: &mut ingestor,
                         output_timing: &mut output_timing,
-                        log_file: &mut log_file,
+                        agent_log: &mut agent_log,
                         masker,
                         should_send_events,
                         event_tx,
@@ -388,7 +386,7 @@ async fn run_codex_app_server(
                     let mut sink = EventIngestSink {
                         ingestor: &mut ingestor,
                         output_timing: &mut output_timing,
-                        log_file: &mut log_file,
+                        agent_log: &mut agent_log,
                         masker,
                         should_send_events,
                         event_tx,
@@ -461,19 +459,7 @@ async fn run_codex_app_server(
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
     // Complete the final event-log write after the child is stopped and
     // before callers observe the finished app-server execution.
-    let log_flush_error = log_file.flush().await.err();
-    let has_primary_failure = active_input_delivery_ids.is_err()
-        || shutdown_result.is_err()
-        || !matches!(
-            &run_outcome,
-            AppServerRunOutcome::Completed(result) if result.is_ok()
-        );
-    if has_primary_failure && let Some(error) = &log_flush_error {
-        log_warn!(
-            LOG_TAG,
-            "Agent log flush failed after an earlier app-server failure: {error}"
-        );
-    }
+    agent_log.flush().await;
     let active_input_delivery_ids = match active_input_delivery_ids {
         Ok(delivery_ids) => delivery_ids,
         Err(active_input_error) => {
@@ -490,9 +476,6 @@ async fn run_codex_app_server(
     match run_outcome {
         AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
             (Ok(mut result), Ok(())) => {
-                if let Some(error) = log_flush_error {
-                    return Err(AgentError::Io(error));
-                }
                 result.stderr_lines = stderr_lines;
                 result.active_input_delivery_ids = active_input_delivery_ids;
                 Ok(result)
@@ -1105,13 +1088,13 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_, '_>) -> Resul
     match sink
         .ingestor
         .begin_event(
-            sink.log_file,
+            sink.agent_log,
             raw_line,
             &event,
             sink.masker,
             Framework::Codex,
         )
-        .await?
+        .await
     {
         ParsedEventAction::Forward => {
             if let Some(text) = codex_agent_message_text(&event) {

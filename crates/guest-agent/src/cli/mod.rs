@@ -593,6 +593,61 @@ enum ParsedEventAction {
     Skip,
 }
 
+struct BestEffortAgentLog {
+    file: Option<tokio::fs::File>,
+}
+
+impl BestEffortAgentLog {
+    fn open(path: &str) -> Self {
+        match guest_contracts::runtime_paths::create_private(path) {
+            Ok(file) => Self {
+                file: Some(tokio::fs::File::from_std(file)),
+            },
+            Err(error) => {
+                Self::warn_failure("open", &error);
+                Self { file: None }
+            }
+        }
+    }
+
+    async fn write_raw_line(&mut self, raw_line: impl AsRef<[u8]>) {
+        let result = {
+            let Some(file) = self.file.as_mut() else {
+                return;
+            };
+            match file.write_all(raw_line.as_ref()).await {
+                Ok(()) => file.write_all(b"\n").await,
+                Err(error) => Err(error),
+            }
+        };
+        if let Err(error) = result {
+            self.disable("write", error);
+        }
+    }
+
+    async fn flush(&mut self) {
+        let result = match self.file.as_mut() {
+            Some(file) => file.flush().await,
+            None => return,
+        };
+        if let Err(error) = result {
+            self.disable("flush", error);
+        }
+    }
+
+    fn disable(&mut self, operation: &str, error: std::io::Error) {
+        self.file = None;
+        Self::warn_failure(operation, &error);
+    }
+
+    fn warn_failure(operation: &str, error: &std::io::Error) {
+        log_warn!(
+            LOG_TAG,
+            "Agent log {operation} failed; continuing without local transcript: {error}"
+        );
+    }
+}
+
 struct CliEventIngestor<'a> {
     framework: env::Framework,
     seq: u32,
@@ -625,23 +680,14 @@ impl<'a> CliEventIngestor<'a> {
         timing::record_e2e_from_api_start_at(op_name, &self.api_start_time, observed_at_ms);
     }
 
-    async fn write_raw_line(
-        log_file: &mut tokio::fs::File,
-        raw_line: impl AsRef<[u8]>,
-    ) -> Result<(), AgentError> {
-        log_file.write_all(raw_line.as_ref()).await?;
-        log_file.write_all(b"\n").await?;
-        Ok(())
-    }
-
     async fn begin_event(
         &mut self,
-        log_file: &mut tokio::fs::File,
+        agent_log: &mut BestEffortAgentLog,
         raw_line: impl AsRef<[u8]>,
         event: &serde_json::Value,
         masker: &SecretMasker,
         framework: env::Framework,
-    ) -> Result<ParsedEventAction, AgentError> {
+    ) -> ParsedEventAction {
         let is_stream_event =
             event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event");
         if !is_stream_event
@@ -651,10 +697,10 @@ impl<'a> CliEventIngestor<'a> {
         {
             codex_startup.record_success_at(Instant::now());
         }
-        Self::write_raw_line(log_file, raw_line).await?;
+        agent_log.write_raw_line(raw_line).await;
 
         if is_stream_event {
-            return Ok(ParsedEventAction::Skip);
+            return ParsedEventAction::Skip;
         }
         self.last_read_event_at = Some(Instant::now());
         if self.seq == 0 {
@@ -684,7 +730,7 @@ impl<'a> CliEventIngestor<'a> {
             }
         }
 
-        Ok(ParsedEventAction::Forward)
+        ParsedEventAction::Forward
     }
 
     fn replace_failure_diagnostic(&mut self, diagnostic: CliFailureDiagnostic) {
@@ -938,10 +984,9 @@ async fn execute_cli_inner(
         workload_containment.configure_command(&mut cmd)?;
     }
 
-    // Open the run log before spawning the CLI. If the run-id-scoped path is
-    // invalid or unavailable, fail without starting a child process.
-    let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
-    let mut log_file = tokio::fs::File::from_std(log_file);
+    // The local transcript is best-effort observability. A backend must not
+    // fail an otherwise healthy run because this sink is unavailable.
+    let mut agent_log = BestEffortAgentLog::open(runtime.agent_log_file.as_ref());
 
     let mut child = cmd.spawn()?;
 
@@ -1215,60 +1260,21 @@ async fn execute_cli_inner(
                                 None
                             };
                             if let Some(replay_marker) = replay_marker {
-                                if let Err(error) = CliEventIngestor::write_raw_line(
-                                    &mut log_file,
-                                    replay_marker,
-                                )
-                                .await
-                                {
-                                    stdout_closed = true;
-                                    let context = StdoutIngestionFailureContext {
-                                        child: &mut child,
-                                        cli_status: &mut cli_status,
-                                        cli_exit_at: &mut cli_exit_at,
-                                        active_input_controller: &active_input_controller,
-                                        termination_runtime: &mut termination_runtime,
-                                        drain_deadline: drain_deadline.as_mut(),
-                                        termination_deadline: termination_deadline.as_mut(),
-                                    };
-                                    match begin_stdout_ingestion_failure(error, context) {
-                                        Ok(()) => continue,
-                                        Err(error) => break Err(error),
-                                    }
-                                }
+                                agent_log.write_raw_line(replay_marker).await;
                                 continue;
                             }
 
                             let post_result_cleanup_was_armed =
                                 termination_runtime.has_post_result_cleanup();
-                            let event_action = match event_ingestor
+                            let event_action = event_ingestor
                                 .begin_event(
-                                    &mut log_file,
+                                    &mut agent_log,
                                     line.as_bytes(),
                                     &event,
                                     masker,
                                     runtime.framework,
                                 )
-                                .await
-                            {
-                                Ok(action) => action,
-                                Err(error) => {
-                                    stdout_closed = true;
-                                    let context = StdoutIngestionFailureContext {
-                                        child: &mut child,
-                                        cli_status: &mut cli_status,
-                                        cli_exit_at: &mut cli_exit_at,
-                                        active_input_controller: &active_input_controller,
-                                        termination_runtime: &mut termination_runtime,
-                                        drain_deadline: drain_deadline.as_mut(),
-                                        termination_deadline: termination_deadline.as_mut(),
-                                    };
-                                    match begin_stdout_ingestion_failure(error, context) {
-                                        Ok(()) => continue,
-                                        Err(error) => break Err(error),
-                                    }
-                                }
-                            };
+                                .await;
                             match event_action {
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
@@ -1360,25 +1366,7 @@ async fn execute_cli_inner(
                                 );
                             }
                         } else {
-                            if let Err(error) =
-                                CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes())
-                                    .await
-                            {
-                                stdout_closed = true;
-                                let context = StdoutIngestionFailureContext {
-                                    child: &mut child,
-                                    cli_status: &mut cli_status,
-                                    cli_exit_at: &mut cli_exit_at,
-                                    active_input_controller: &active_input_controller,
-                                    termination_runtime: &mut termination_runtime,
-                                    drain_deadline: drain_deadline.as_mut(),
-                                    termination_deadline: termination_deadline.as_mut(),
-                                };
-                                match begin_stdout_ingestion_failure(error, context) {
-                                    Ok(()) => {}
-                                    Err(error) => break Err(error),
-                                }
-                            }
+                            agent_log.write_raw_line(line.as_bytes()).await;
                         }
                     }
                     Ok(None) => {
@@ -1417,18 +1405,31 @@ async fn execute_cli_inner(
                             }
                         };
 
-                        let context = StdoutIngestionFailureContext {
-                            child: &mut child,
-                            cli_status: &mut cli_status,
-                            cli_exit_at: &mut cli_exit_at,
-                            active_input_controller: &active_input_controller,
-                            termination_runtime: &mut termination_runtime,
-                            drain_deadline: drain_deadline.as_mut(),
-                            termination_deadline: termination_deadline.as_mut(),
-                        };
-                        match begin_stdout_ingestion_failure(error, context) {
-                            Ok(()) => {}
-                            Err(error) => break Err(error),
+                        if cli_status.is_some() {
+                            break Err(error);
+                        }
+                        match try_observe_cli_exit(
+                            &mut child,
+                            &mut cli_status,
+                            &mut cli_exit_at,
+                            &active_input_controller,
+                            &mut termination_runtime,
+                            stdout_closed,
+                            drain_deadline.as_mut(),
+                        )? {
+                            CliExitObservation::NoNewExit => {
+                                let error_log = error.to_string();
+                                termination_runtime.begin_control_failure(
+                                    TerminationReason::StdoutIngestion,
+                                    error,
+                                    ControlTerminationLog::StdoutIngestionFailed {
+                                        error: error_log,
+                                    },
+                                    termination_deadline.as_mut(),
+                                );
+                            }
+                            CliExitObservation::ExitedDrainingStdout
+                            | CliExitObservation::ExitedAndStdoutClosed => break Err(error),
                         }
                     }
                 }
@@ -1578,7 +1579,7 @@ async fn execute_cli_inner(
     // `tokio::fs::File` may still own an in-flight blocking write after
     // `write_all` returns. Wait for it before callers observe the completed
     // execution and read the run log.
-    let mut log_flush_error = log_file.flush().await.err();
+    agent_log.flush().await;
 
     active_input_controller.close_terminal();
     let mut active_input_error = None;
@@ -1653,16 +1654,8 @@ async fn execute_cli_inner(
     } else if has_control_error {
         None
     } else {
-        event_result
-            .err()
-            .or_else(|| log_flush_error.take().map(AgentError::Io))
+        event_result.err()
     };
-    if let Some(error) = &log_flush_error {
-        log_warn!(
-            LOG_TAG,
-            "Agent log flush failed after an earlier execution failure: {error}"
-        );
-    }
 
     // On success, boundedly drain accepted events. On any execution or
     // control error, abort unsent delivery rather than stalling on retries.
@@ -1762,59 +1755,6 @@ enum CliExitObservation {
     NoNewExit,
     ExitedDrainingStdout,
     ExitedAndStdoutClosed,
-}
-
-struct StdoutIngestionFailureContext<'a> {
-    child: &'a mut tokio::process::Child,
-    cli_status: &'a mut Option<ExitStatus>,
-    cli_exit_at: &'a mut Option<Instant>,
-    active_input_controller: &'a ActiveInputController,
-    termination_runtime: &'a mut CliTerminationRuntime,
-    drain_deadline: Pin<&'a mut Sleep>,
-    termination_deadline: Pin<&'a mut Sleep>,
-}
-
-fn begin_stdout_ingestion_failure(
-    error: AgentError,
-    context: StdoutIngestionFailureContext<'_>,
-) -> Result<(), AgentError> {
-    let StdoutIngestionFailureContext {
-        child,
-        cli_status,
-        cli_exit_at,
-        active_input_controller,
-        termination_runtime,
-        drain_deadline,
-        termination_deadline,
-    } = context;
-    active_input_controller.close_terminal();
-    if cli_status.is_some() {
-        return Err(error);
-    }
-
-    match try_observe_cli_exit(
-        child,
-        cli_status,
-        cli_exit_at,
-        active_input_controller,
-        termination_runtime,
-        true,
-        drain_deadline,
-    )? {
-        CliExitObservation::NoNewExit => {
-            let error_log = error.to_string();
-            termination_runtime.begin_control_failure(
-                TerminationReason::StdoutIngestion,
-                error,
-                ControlTerminationLog::StdoutIngestionFailed { error: error_log },
-                termination_deadline,
-            );
-            Ok(())
-        }
-        CliExitObservation::ExitedDrainingStdout | CliExitObservation::ExitedAndStdoutClosed => {
-            Err(error)
-        }
-    }
 }
 
 fn try_observe_cli_exit(

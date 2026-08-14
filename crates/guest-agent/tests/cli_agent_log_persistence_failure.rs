@@ -1,22 +1,21 @@
-//! Post-open Claude agent-log failures must terminate and reap the live child.
+//! Post-open Claude agent-log failures must not fail an otherwise healthy run.
 
 mod common;
 
-use guest_agent::error::AgentError;
-use guest_contracts::diagnostics::{CliTerminationReason, CliTerminationSignal};
+use guest_agent::cli::ClaudeResultStatus;
 use std::time::Duration;
 
-const RAW_RECORD: &str = r#"{"type":"test"}"#;
+const RESULT_RECORD: &str = r#"{"type":"result","subtype":"success","session_id":"00000000-0000-4000-8000-000000000001","is_error":false,"duration_ms":1,"num_turns":1,"result":"Done.","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}"#;
 
 #[tokio::test]
-async fn agent_log_delimiter_failure_terminates_live_claude_process()
+async fn agent_log_flush_failure_keeps_claude_run_successful()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let (mut gate, gated_mock) = common::PostOpenMockGate::create(tmp.path(), &mock)?;
-    // Tokio may accept the delimiter into its blocking-write buffer. The next
-    // record forces that pending write to complete and surface EFBIG.
-    let prompt = format!("@ECHO-HANG@\n{RAW_RECORD}\n{RAW_RECORD}");
+    // The raw record reaches the file while Tokio buffers the delimiter. The
+    // final flush surfaces EFBIG after the result has already been processed.
+    let prompt = format!("@ECHO@\n{RESULT_RECORD}");
     unsafe {
         common::setup_env(&gated_mock, tmp.path(), &prompt, 3, 1)?;
     }
@@ -35,7 +34,7 @@ async fn agent_log_delimiter_failure_terminates_live_claude_process()
         ready = gate.wait_until_ready(Duration::from_secs(5)) => ready?,
     }
 
-    let limit = u64::try_from(RAW_RECORD.len())?;
+    let limit = u64::try_from(RESULT_RECORD.len())?;
     let limit_guard = common::set_soft_file_size_limit(limit)?;
     gate.release()?;
     let outcome = match tokio::time::timeout(Duration::from_secs(5), &mut execution).await {
@@ -43,7 +42,7 @@ async fn agent_log_delimiter_failure_terminates_live_claude_process()
         Err(_) => {
             let log = std::fs::read(runtime.paths.agent_log_file())?;
             return Err(format!(
-                "agent-log persistence failure did not terminate promptly; log_len={} log={:?}",
+                "Claude run did not complete promptly after agent-log failure; log_len={} log={:?}",
                 log.len(),
                 String::from_utf8_lossy(&log)
             )
@@ -53,24 +52,17 @@ async fn agent_log_delimiter_failure_terminates_live_claude_process()
     limit_guard.restore()?;
     let execution = outcome?;
 
-    match execution.control_error.as_ref() {
-        Some(AgentError::Io(error)) => {
-            assert_eq!(error.raw_os_error(), Some(libc::EFBIG));
-        }
-        other => return Err(format!("expected controlled EFBIG error, got {other:?}").into()),
-    }
-    let termination = execution
-        .cli_termination
-        .as_ref()
-        .ok_or("agent-log failure omitted termination diagnostics")?;
-    assert_eq!(termination.reason, CliTerminationReason::StdoutIngestion);
-    assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigterm));
-    assert!(!termination.escalated);
-    assert_eq!(termination.observed_exit_code, Some(common::SIGTERM_EXIT));
+    assert_eq!(execution.exit_code, common::CLEAN_EXIT);
+    assert!(execution.control_error.is_none());
+    assert!(execution.cli_termination.is_none());
+    assert_eq!(
+        execution.claude_result.map(|result| result.status),
+        Some(ClaudeResultStatus::Success)
+    );
     assert_eq!(execution.last_event_sequence, None);
     assert_eq!(
         std::fs::read(runtime.paths.agent_log_file())?,
-        RAW_RECORD.as_bytes()
+        RESULT_RECORD.as_bytes()
     );
 
     Ok(())

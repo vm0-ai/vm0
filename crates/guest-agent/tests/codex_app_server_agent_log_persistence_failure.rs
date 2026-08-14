@@ -1,13 +1,12 @@
-//! Post-open Codex agent-log failures must terminate the app-server child.
+//! Post-open Codex agent-log failures must not fail an otherwise healthy run.
 
 mod common;
 
-use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
 #[tokio::test]
-async fn first_agent_log_write_failure_fails_codex_execution_promptly()
+async fn first_agent_log_write_failure_keeps_codex_run_successful()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
@@ -43,16 +42,13 @@ async fn first_agent_log_write_failure_fails_codex_execution_promptly()
     gate.release()?;
     let outcome = tokio::time::timeout(Duration::from_secs(5), &mut execution)
         .await
-        .expect("agent-log persistence failure should terminate Codex promptly");
+        .expect("Codex run should complete promptly after agent-log failure");
     limit_guard.restore()?;
-    let error = outcome.expect_err("Codex execution must not succeed without its local event log");
+    let execution = outcome?;
 
-    match error {
-        AgentError::Io(error) => assert_eq!(error.raw_os_error(), Some(libc::EFBIG)),
-        other => {
-            return Err(format!("expected EFBIG from Codex agent-log write, got {other}").into());
-        }
-    }
+    assert_eq!(execution.exit_code, common::CLEAN_EXIT);
+    assert!(execution.control_error.is_none());
+    assert!(execution.cli_termination.is_none());
     assert_eq!(std::fs::metadata(runtime.paths.agent_log_file())?.len(), 0);
 
     Ok(())
