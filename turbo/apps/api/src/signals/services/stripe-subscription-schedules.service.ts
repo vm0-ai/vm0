@@ -196,6 +196,8 @@ export function subscriptionScheduleHasNoFutureChanges(
     })
     .every((phase) => {
       return (
+        (phase.start_date === currentPhase.start_date ||
+          (phase.add_invoice_items?.length ?? 0) === 0) &&
         isDeepStrictEqual(normalizedScheduleItems(phase.items), currentItems) &&
         isDeepStrictEqual(
           normalizedScheduleItemConfigurations(phase.items),

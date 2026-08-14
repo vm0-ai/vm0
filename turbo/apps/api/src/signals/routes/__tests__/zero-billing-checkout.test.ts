@@ -9458,6 +9458,93 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     );
   });
 
+  it("rejects a schedule that repeats invoice items in a future phase", async () => {
+    const subscriptionId = `sub_${randomUUID()}`;
+    const subscriptionItemId = `si_${randomUUID()}`;
+    const scheduleId = `sub_sched_${randomUUID()}`;
+    const periodStartUnix = 4_075_660_800;
+    const periodEndUnix = 4_078_252_800;
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
+      slots: 5,
+      periodEnd: new Date(periodEndUnix * 1000),
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const subscription = {
+      id: subscriptionId,
+      customer: `cus_${randomUUID()}`,
+      status: "active",
+      cancel_at_period_end: false,
+      latest_invoice: null,
+      pending_update: null,
+      schedule: scheduleId,
+      items: {
+        data: [
+          {
+            id: subscriptionItemId,
+            price: {
+              id: TEST_PRICE_CONCURRENCY,
+              recurring: { interval: "month" as const, interval_count: 1 },
+            },
+            quantity: 5,
+            current_period_start: periodStartUnix,
+            current_period_end: periodEndUnix,
+          },
+        ],
+      },
+    };
+    const repeatedInvoiceItems = [
+      { price: `price_${randomUUID()}`, quantity: 1 },
+    ];
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: {
+        start_date: periodStartUnix,
+        end_date: periodEndUnix,
+      },
+      phases: [
+        {
+          start_date: periodStartUnix,
+          end_date: periodEndUnix,
+          add_invoice_items: repeatedInvoiceItems,
+          items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 5 }],
+        },
+        {
+          start_date: periodEndUnix,
+          end_date: periodEndUnix + 30 * 86_400,
+          add_invoice_items: repeatedInvoiceItems,
+          items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 5 }],
+        },
+      ],
+    });
+
+    const response = await accept(
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencySubscriptionRoutes,
+      })(zeroBillingConcurrencySubscriptionContract).previewChange({
+        params: { subscriptionId },
+        body: { quantity: 3 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Complete the pending concurrency update before changing slots",
+    );
+    expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.release,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).not.toHaveBeenCalled();
+  });
+
   it("rejects concurrency changes owned by another Plan schedule", async () => {
     const periodEnd = new Date("2099-05-20T00:00:00Z");
     const fixture = await createMergedConcurrencySubscriptionOrg({
