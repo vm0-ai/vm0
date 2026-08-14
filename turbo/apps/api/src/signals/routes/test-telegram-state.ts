@@ -873,8 +873,8 @@ async function seedTelegramPostModelKeys(
         label: seed.composeId,
       },
       {
-        vendor: "anthropic",
-        apiKey: `vm0-key-anthropic-${seed.composeId}`,
+        vendor: getVm0Vendor("claude-opus-4-8"),
+        apiKey: `vm0-key-claude-${seed.composeId}`,
         label: seed.composeId,
       },
       {
@@ -1439,8 +1439,8 @@ async function seedModelPoliciesForAction(
   await db
     .insert(vm0ApiKeys)
     .values({
-      vendor: "anthropic",
-      apiKey: "vm0-key-anthropic",
+      vendor: getVm0Vendor("claude-opus-4-8"),
+      apiKey: "vm0-key-claude",
       label: required.compose_id!,
     })
     .onConflictDoNothing({ target: vm0ApiKeys.vendor });

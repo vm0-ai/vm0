@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.447.1](https://github.com/vm0-ai/vm0/compare/api-v1.447.0...api-v1.447.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models through openrouter ([#27077](https://github.com/vm0-ai/vm0/issues/27077)) ([964b19e](https://github.com/vm0-ai/vm0/commit/964b19eb456c63794c2041c1eb69cfd475a6b078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+    * @okouai/core bumped to 8.559.5
+    * @okouai/db bumped to 1.198.13
+    * @okouai/pi-agent-runtime bumped to 1.4.19
+
+## [1.447.0](https://github.com/vm0-ai/vm0/compare/api-v1.446.0...api-v1.447.0) (2026-08-14)
+
+
+### Features
+
+* **api:** resolve and record the run video model ([#26884](https://github.com/vm0-ai/vm0/issues/26884)) ([2207dae](https://github.com/vm0-ai/vm0/commit/2207dae9d82fe5db0c421b5f6f458c93e916fad8))
+
+
+### Refactoring
+
+* **onboarding:** neutralize api route shell ([#27043](https://github.com/vm0-ai/vm0/issues/27043)) ([c60f277](https://github.com/vm0-ai/vm0/commit/c60f2772c526b8b3dda924eb6930b98390440042))
+* remove the payment method capability flag ([#27040](https://github.com/vm0-ai/vm0/issues/27040)) ([872357f](https://github.com/vm0-ai/vm0/commit/872357f87d420fafd549d029d2597fb77e33e71d))
+* **scrape:** neutralize managed scrape naming ([#27038](https://github.com/vm0-ai/vm0/issues/27038)) ([39181e5](https://github.com/vm0-ai/vm0/commit/39181e59b178aec51e9927ed88040f358ffa6073))
+* **shared-threads:** neutralize api route shell ([#27048](https://github.com/vm0-ai/vm0/issues/27048)) ([54b1581](https://github.com/vm0-ai/vm0/commit/54b1581a78f8663530a0a69d532fde2673364b3e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.0
+    * @okouai/core bumped to 8.559.4
+    * @okouai/db bumped to 1.198.12
+    * @okouai/pi-agent-runtime bumped to 1.4.18
+
 ## [1.446.0](https://github.com/vm0-ai/vm0/compare/api-v1.445.5...api-v1.446.0) (2026-08-14)
 
 

@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.748.1](https://github.com/vm0-ai/vm0/compare/app-v0.748.0...app-v0.748.1) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+    * @okouai/core bumped to 8.559.5
+
+## [0.748.0](https://github.com/vm0-ai/vm0/compare/app-v0.747.3...app-v0.748.0) (2026-08-14)
+
+
+### Features
+
+* **billing:** move usage pack plan steps into a dialog ([#27011](https://github.com/vm0-ai/vm0/issues/27011)) ([fc23c4e](https://github.com/vm0-ai/vm0/commit/fc23c4e36d58cec92f1cb00a151c0b79117cbff2))
+
+
+### Refactoring
+
+* remove the payment method capability flag ([#27040](https://github.com/vm0-ai/vm0/issues/27040)) ([872357f](https://github.com/vm0-ai/vm0/commit/872357f87d420fafd549d029d2597fb77e33e71d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.0
+    * @okouai/core bumped to 8.559.4
+
 ## [0.747.3](https://github.com/vm0-ai/vm0/compare/app-v0.747.2...app-v0.747.3) (2026-08-14)
 
 
