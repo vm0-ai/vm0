@@ -1027,15 +1027,15 @@ export {
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export {
+  connectorCheckContract,
   connectorCheckDiagnosticResultSchema,
   connectorCheckPolicySchema,
   connectorCheckRequestSchema,
-  zeroConnectorCheckContract,
+  type ConnectorCheckContract,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckPolicy,
   type ConnectorCheckRequest,
-  type ZeroConnectorCheckContract,
-} from "./zero-connector-check";
+} from "./connector-check";
 export {
   connectorAuthMethodIdSchema,
   connectorSlugSchema,
