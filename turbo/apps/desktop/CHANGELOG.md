@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.38.20](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.19...desktop-v0.38.20) (2026-08-14)
+
+
+### Refactoring
+
+* **computer-use:** neutralize plugin contract filename ([#27268](https://github.com/vm0-ai/vm0/issues/27268)) ([6bb2b94](https://github.com/vm0-ai/vm0/commit/6bb2b947e0a2bb27359386bf4d17074f87c67828))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.0
+
 ## [0.38.19](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.18...desktop-v0.38.19) (2026-08-14)
 
 
