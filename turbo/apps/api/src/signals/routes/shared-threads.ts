@@ -98,7 +98,7 @@ const getSharedThreadMeta$ = command(
   },
 );
 
-export const zeroSharedThreadRoutes: readonly RouteEntry[] = [
+export const sharedThreadRoutes: readonly RouteEntry[] = [
   {
     route: sharedThreadsContract.create,
     handler: authRoute(
