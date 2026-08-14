@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import { HttpResponse, http } from "msw";
 import { expect, test } from "vitest";
 
@@ -59,7 +60,7 @@ test("normalizes metadata and preserves compatibility-writer transaction semanti
     model_provider_credential_scope: null,
     selected_model: null,
     codex_service_tier: null,
-    selected_video_model: null,
+    selected_video_model: DEFAULT_VIDEO_MODEL,
     chat_thread_id: null,
     api_started_at: expect.any(String),
     first_assistant_event_acknowledged_at: null,
