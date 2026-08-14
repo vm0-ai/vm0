@@ -56,10 +56,12 @@ import {
   TEMPLATE_TILE_WRAPPER,
 } from "./template-tile.ts";
 
-// Mirrors TEMPLATE_TILE_USE's reveal rules on the opposite corner, styled as a
-// neutral overlay so the primary Use pill keeps the visual lead.
+// Overlay placement and TEMPLATE_TILE_USE's reveal rules for the voice entry;
+// the button chrome itself comes from the Button primitive. The solid hover
+// keeps the control readable over photos, where the quiet variant's
+// translucent state layer would let the artwork bleed through.
 const AVATAR_TILE_VOICE =
-  "absolute bottom-2 left-2 z-20 flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-lg bg-background/85 text-foreground backdrop-blur-sm transition-opacity duration-150 hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
+  "absolute bottom-2 left-2 z-20 border border-border/60 bg-background/85 text-foreground backdrop-blur-sm transition-opacity duration-150 hover:bg-background [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
 const ALL_FILTER_VALUE = "__all__";
 const CATALOG_AUTO_LOAD_THRESHOLD_PX = 320;
 
@@ -441,8 +443,10 @@ function AvatarTemplateCard({
             <Check size={14} />
           </span>
         ) : null}
-        <button
+        <Button
           type="button"
+          variant="quiet"
+          size="icon-sm"
           aria-label={t(
             ($) => {
               return $.artifacts.templates.chooseVoice;
@@ -455,8 +459,8 @@ function AvatarTemplateCard({
           }}
           className={AVATAR_TILE_VOICE}
         >
-          <AudioLines size={15} />
-        </button>
+          <AudioLines />
+        </Button>
         {/* The wrapper owns the click and the accessible name; the pill is a
             visual affordance only, so the card exposes a single button. */}
         <span
@@ -1112,7 +1116,9 @@ function AvatarVoiceCatalog({
     <section className="flex min-h-0 min-w-0 flex-col">
       <div
         data-avatar-voice-list-scroll=""
-        className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // Same ring allowance as the avatar grid, for the voice cards' focus
+        // ring at the container edges.
+        className="-m-1 min-h-0 flex-1 overflow-y-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onScroll={handleVoiceScroll}
       >
         {catalog.state === "hasError" ? (
@@ -1231,7 +1237,10 @@ function AvatarCatalogPickerContent({
   return (
     <div
       data-avatar-template-grid-scroll=""
-      className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      // The selection ring draws 2px outside each card (ring + offset), so the
+      // scroll container pads by the same allowance and pulls it back with a
+      // negative margin — otherwise edge rows clip the ring.
+      className="-m-1 min-h-0 flex-1 overflow-y-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       onScroll={handleAvatarScroll}
     >
       {catalog.state === "hasError" ? (
