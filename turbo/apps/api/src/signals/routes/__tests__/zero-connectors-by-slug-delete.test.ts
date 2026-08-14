@@ -7,6 +7,11 @@ import {
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
+import {
+  deleteApiTestConnectorCatalogCompatibility,
+  installApiTestConnectorCatalog,
+} from "../../../test-fixtures/connector-catalog";
 import {
   readConnectorCredentialStorageState,
   seedConnectorStorageRow,
@@ -224,6 +229,24 @@ describe("DELETE /api/zero/connectors/:connectorSlug", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       connectorSlug: "removed-connector",
+    });
+    expect(storageState.connector).toBeNull();
+  });
+
+  it("deletes local state when the external catalog is unavailable", async () => {
+    const fixture = await track(seedFixture());
+    await connectOpenai(fixture);
+    mockOptionalEnv("CLOSE_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog();
+    await deleteApiTestConnectorCatalogCompatibility();
+
+    const response = await deleteConnector(fixture, "openai", [204]);
+
+    expect(response.body).toBeUndefined();
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "openai",
     });
     expect(storageState.connector).toBeNull();
   });

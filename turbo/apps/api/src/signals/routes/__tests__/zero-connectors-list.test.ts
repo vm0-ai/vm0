@@ -9,6 +9,11 @@ import { afterEach } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
+import {
+  deleteApiTestConnectorCatalogCompatibility,
+  installApiTestConnectorCatalog,
+} from "../../../test-fixtures/connector-catalog";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroConnectorsRoutes } from "../zero-connectors";
@@ -155,6 +160,29 @@ describe("GET /api/zero/connectors", () => {
     expect(response.body.connectorProvidedBindings).not.toContainEqual(
       expect.objectContaining({ connectorSlug: "openai" }),
     );
+  });
+
+  it("skips stored connectors when the external catalog is unavailable", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectGitlab(fixture);
+    mockOptionalEnv("BOX_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog();
+    await deleteApiTestConnectorCatalogCompatibility();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
+    const response = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      connectors: [],
+      connectorProvidedBindings: [],
+    });
   });
 
   it("returns 401 when not authenticated", async () => {

@@ -21,9 +21,13 @@ import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { extractFileFromTarGz } from "../../../lib/tar";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
+import {
+  installApiTestConnectorCatalog,
+  replaceApiTestConnectorCatalogFilteredAuthMethods,
+} from "../../../test-fixtures/connector-catalog";
 import { generateSandboxToken, generateZeroToken } from "../../auth/tokens";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -65,6 +69,19 @@ const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const storagesApi = createStoragesBddApi(context);
+
+async function installCatalogWithUnavailableMethods(args: {
+  readonly capabilityIdentityEnvName: string;
+  readonly filteredAuthMethods: Parameters<
+    typeof replaceApiTestConnectorCatalogFilteredAuthMethods
+  >[0];
+}): Promise<void> {
+  mockOptionalEnv(args.capabilityIdentityEnvName, undefined);
+  await installApiTestConnectorCatalog();
+  await replaceApiTestConnectorCatalogFilteredAuthMethods(
+    args.filteredAuthMethods,
+  );
+}
 
 function mockAuthoritativeOrganizationMembers(
   actors: readonly ApiTestUser[],
@@ -646,6 +663,34 @@ describe("CONN-02: OAuth start and callback", () => {
 });
 
 describe("CONN-02: OAuth device authorization", () => {
+  it("returns 403 when the selected device-auth runtime method is unavailable", async () => {
+    await installCatalogWithUnavailableMethods({
+      capabilityIdentityEnvName: "CALCOM_OAUTH_CLIENT_ID",
+      filteredAuthMethods: [
+        {
+          connectorSlug: "test-oauth-device",
+          authMethodId: "oauth",
+          reasons: ["missing-grant-provider"],
+        },
+      ],
+    });
+    const actor = createBddApi(context).user();
+
+    const response = await connectorsApi.requestDeviceAuthStart(
+      actor,
+      "test-oauth-device",
+      "oauth",
+      undefined,
+      [403],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error).toStrictEqual({
+      message: "test-oauth-device connector is not available",
+      code: "FORBIDDEN",
+    });
+  });
+
   it("starts and completes a device authorization session, with state visible through connector APIs", async () => {
     mockTestOAuthDeviceConnectorProvider();
 
@@ -1531,6 +1576,33 @@ describe("CONN-02: OAuth device authorization", () => {
 });
 
 describe("CONN-02: external-code authorization", () => {
+  it("returns 403 when the external-code runtime method is unavailable", async () => {
+    await installCatalogWithUnavailableMethods({
+      capabilityIdentityEnvName: "CANVA_OAUTH_CLIENT_ID",
+      filteredAuthMethods: [
+        {
+          connectorSlug: "aws",
+          authMethodId: "cli",
+          reasons: ["missing-grant-provider"],
+        },
+      ],
+    });
+    const actor = createBddApi(context).user();
+
+    const response = await connectorsApi.requestExternalCodeStart(
+      actor,
+      "aws",
+      "cli",
+      [403],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error).toStrictEqual({
+      message: "aws connector is not available",
+      code: "FORBIDDEN",
+    });
+  });
+
   it("validates external-code auth, grant, and session boundaries without using rollout as authorization", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
