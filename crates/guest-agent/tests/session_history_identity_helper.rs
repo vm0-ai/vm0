@@ -88,12 +88,33 @@ impl SourceOpenWatch {
     fn assert_opened_once(self) -> TestResult {
         #[cfg(target_os = "linux")]
         {
-            let events = self.inotify.read_events()?;
+            let events = match self.inotify.read_events() {
+                Ok(events) => events,
+                Err(nix::errno::Errno::EAGAIN) => Vec::new(),
+                Err(error) => return Err(error.into()),
+            };
             let open_count = events
                 .iter()
                 .filter(|event| event.mask.contains(AddWatchFlags::IN_OPEN))
                 .count();
             assert_eq!(open_count, 1, "source events: {events:?}");
+        }
+        Ok(())
+    }
+
+    fn assert_not_opened(self) -> TestResult {
+        #[cfg(target_os = "linux")]
+        {
+            let events = match self.inotify.read_events() {
+                Ok(events) => events,
+                Err(nix::errno::Errno::EAGAIN) => Vec::new(),
+                Err(error) => return Err(error.into()),
+            };
+            let open_count = events
+                .iter()
+                .filter(|event| event.mask.contains(AddWatchFlags::IN_OPEN))
+                .count();
+            assert_eq!(open_count, 0, "source events: {events:?}");
         }
         Ok(())
     }
@@ -121,15 +142,15 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
         write_metadata(dir.path(), "matching-identity.json", &matching_identity)?;
 
     let invalid_metadata_path = dir.path().join("invalid-identity.json");
-    std::fs::write(&invalid_metadata_path, b"not-json")?;
+    guest_contracts::runtime_paths::write_private(&invalid_metadata_path, b"not-json")?;
 
-    let framework_mismatch_identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::Codex,
+    let framework_mismatch_identity = FinalSessionHistoryIdentity::new_legacy(
+        FinalSessionHistoryFramework::ClaudeCode,
         session_id_hash(matching_session_id),
         FinalSessionHistoryRefKind::Blob,
         matching_history_hash,
         matching_history.len() as u64,
-        matching_source.clone(),
+        "/proc/self/environ",
     )?;
     let framework_mismatch_metadata_path = write_metadata(
         dir.path(),
@@ -565,13 +586,52 @@ async fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn export_session_history_sidecar_rejects_symlinked_metadata_without_opening_target()
+-> TestResult {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir()?;
+    let history = b"parent-only sentinel";
+    let session_id = "symlinked-metadata";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
+    std::fs::write(&history_path, history)?;
+    let identity = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        session_id_hash(session_id),
+        FinalSessionHistoryRefKind::Blob,
+        sha256_hex(history),
+        history.len() as u64,
+        history_source,
+    )?;
+    let target_path = write_metadata(dir.path(), "target-identity.json", &identity)?;
+    let target_watch = SourceOpenWatch::new(&target_path)?;
+    let metadata_path = dir.path().join("symlinked-identity.json");
+    symlink(&target_path, &metadata_path)?;
+    let export_path = dir.path().join("symlinked-metadata-sidecar");
+
+    let output = run_export_helper(&metadata_path, &export_path).await?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!export_path.exists());
+    target_watch.assert_not_opened()?;
+    Ok(())
+}
+
 fn write_metadata(
     dir: &Path,
     name: &str,
     identity: &FinalSessionHistoryIdentity,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = dir.join(name);
-    std::fs::write(&path, identity.to_json_vec()?)?;
+    guest_contracts::runtime_paths::write_private(&path, identity.to_json_vec()?)?;
     Ok(path)
 }
 

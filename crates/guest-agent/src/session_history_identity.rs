@@ -23,7 +23,7 @@ use guest_contracts::session_history_identity::{
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::io::{self, Read};
+use std::io;
 use std::path::Path;
 
 /// Build final session-history identity metadata for a successful checkpoint.
@@ -154,13 +154,24 @@ pub fn export_final_session_history_sidecar_file(
 fn read_final_session_history_identity(
     metadata_path: impl AsRef<Path>,
 ) -> Result<FinalSessionHistoryIdentity, FinalSessionHistoryIdentityVerifyError> {
-    let mut file = std::fs::File::open(metadata_path)
-        .map_err(|_| FinalSessionHistoryIdentityVerifyError::MetadataRead)?;
-    let mut bytes = Vec::new();
-    file.by_ref()
-        .take(FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| FinalSessionHistoryIdentityVerifyError::MetadataRead)?;
+    let metadata_path = metadata_path.as_ref();
+    let read_limit =
+        usize::try_from(FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1).map_err(|_| {
+            FinalSessionHistoryIdentityVerifyError::InvalidMetadata(
+                FinalSessionHistoryIdentityError::MetadataTooLarge,
+            )
+        })?;
+    let bytes =
+        match guest_contracts::runtime_paths::read_private_bounded(metadata_path, read_limit) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => return Err(FinalSessionHistoryIdentityVerifyError::MetadataRead),
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                return Err(FinalSessionHistoryIdentityVerifyError::InvalidMetadata(
+                    FinalSessionHistoryIdentityError::MetadataTooLarge,
+                ));
+            }
+            Err(_) => return Err(FinalSessionHistoryIdentityVerifyError::MetadataRead),
+        };
     if bytes.len() as u64 > FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES {
         return Err(FinalSessionHistoryIdentityVerifyError::InvalidMetadata(
             FinalSessionHistoryIdentityError::MetadataTooLarge,
@@ -480,7 +491,6 @@ impl std::error::Error for FinalSessionHistoryIdentityVerifyError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
     const PREVIOUS_GUEST_VERIFY_CAP_BYTES: u64 = 32 * 1024 * 1024;
@@ -491,7 +501,7 @@ mod tests {
         identity: &FinalSessionHistoryIdentity,
     ) -> std::path::PathBuf {
         let path = dir.path().join("identity.json");
-        std::fs::write(&path, identity.to_json_vec().unwrap()).unwrap();
+        crate::paths::write_private(&path, identity.to_json_vec().unwrap()).unwrap();
         path
     }
 
@@ -627,7 +637,7 @@ mod tests {
                 marker,
             );
             let metadata_path = dir.path().join(format!("{name}-identity.json"));
-            std::fs::write(&metadata_path, identity.to_json_vec().unwrap()).unwrap();
+            crate::paths::write_private(&metadata_path, identity.to_json_vec().unwrap()).unwrap();
 
             let error = verify_final_session_history_identity_file(metadata_path, None)
                 .expect_err("untrusted legacy marker must be rejected");
@@ -856,11 +866,10 @@ mod tests {
     fn rejects_oversized_metadata_file() {
         let dir = tempfile::tempdir().unwrap();
         let metadata_path = dir.path().join("identity.json");
-        let mut file = std::fs::File::create(&metadata_path).unwrap();
-        file.write_all(&vec![
-            b'x';
-            FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES as usize + 1
-        ])
+        crate::paths::write_private(
+            &metadata_path,
+            vec![b'x'; FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES as usize + 1],
+        )
         .unwrap();
 
         let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
