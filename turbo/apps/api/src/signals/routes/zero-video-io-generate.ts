@@ -50,7 +50,7 @@ import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
-} from "../services/zero-run-built-in-admission.service";
+} from "../services/run-built-in-admission.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);

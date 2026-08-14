@@ -32,7 +32,7 @@ import {
 import {
   completeRunBuiltInAdmission$,
   type RunBuiltInAdmission,
-} from "../services/zero-run-built-in-admission.service";
+} from "../services/run-built-in-admission.service";
 import {
   verifyBuiltInGenerationProviderWebhookToken,
   verifyJoggAiWebhookSignature,

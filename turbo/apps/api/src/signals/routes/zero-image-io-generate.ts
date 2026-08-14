@@ -35,7 +35,7 @@ import {
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
   type RunBuiltInAdmission,
-} from "../services/zero-run-built-in-admission.service";
+} from "../services/run-built-in-admission.service";
 
 const L = logger("ZeroImageIoGenerate");
 const imageBody$ = bodyResultOf(zeroImageIoGenerateContract.post);

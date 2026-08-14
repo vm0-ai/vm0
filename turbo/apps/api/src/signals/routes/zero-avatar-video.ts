@@ -40,7 +40,7 @@ import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
-} from "../services/zero-run-built-in-admission.service";
+} from "../services/run-built-in-admission.service";
 
 const generateBody$ = bodyResultOf(zeroAvatarVideoContract.generate);
 const avatarsQuery$ = queryOf(zeroAvatarVideoContract.avatars);
