@@ -21,7 +21,7 @@ import {
 } from "./zero-chat-goal-marker.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
-import { lockGoalThread } from "./zero-goal-lock.service";
+import { lockGoalThread } from "./goal-lock.service";
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,

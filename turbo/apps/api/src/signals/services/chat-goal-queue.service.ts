@@ -22,7 +22,7 @@ import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { appendGoalCloseMarker } from "./zero-chat-goal-marker.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { lockGoalThread } from "./zero-goal-lock.service";
+import { lockGoalThread } from "./goal-lock.service";
 import {
   canonicalChatEventGoalId,
   canonicalChatEventUserMessage,
