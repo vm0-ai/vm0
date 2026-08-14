@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
+import { cleanupPresentationTemplatePackage$ } from "./presentation-template-package.service";
 
 export const deletePresentationTemplate$ = command(
   async (
@@ -51,6 +52,11 @@ export const deletePresentationTemplate$ = command(
 
     // Source and page objects are normal user uploads. Deleting a template must
     // not delete independently owned attachments that may be reused elsewhere.
+    await set(
+      cleanupPresentationTemplatePackage$,
+      { orgId: args.orgId, templateId: template.id, force: true },
+      signal,
+    );
     const [deleted] = await db
       .delete(presentationTemplates)
       .where(

@@ -1,26 +1,35 @@
 import { command, computed } from "ccstate";
-import { zeroPresentationTemplatesContract } from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import {
+  PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+  PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+  zeroPresentationTemplatesContract,
+} from "@okouai/api-contracts/contracts/zero-presentation-templates";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, eq } from "drizzle-orm";
 
-import { notFound } from "../../lib/error";
+import { conflict, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
+import type { AuthContext } from "../../types/auth";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { commitPresentationTemplate$ } from "../services/presentation-template-commit.service";
 import {
   listOwnedPresentationTemplates,
   loadOwnedPresentationTemplate,
+  loadRunOwnedPresentationTemplate,
   presentationTemplateSummary,
   type PresentationTemplateRow,
 } from "../services/presentation-template-data.service";
 import { deletePresentationTemplate$ } from "../services/presentation-template-delete.service";
+import { failPresentationTemplateImport$ } from "../services/presentation-template-failure.service";
+import { publishPresentationTemplatePackage$ } from "../services/presentation-template-package.service";
 import type { RouteEntry } from "../route-entry";
 
 const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
@@ -35,6 +44,13 @@ const templateWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "agent:write",
+} as const;
+
+const templateRunAuth = {
+  accept: ["zero", "sandbox"],
+  acceptAnySandboxCapability: true,
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
 } as const;
 
 const presentationTemplatesDisabled = Object.freeze({
@@ -65,6 +81,28 @@ function templateNotFound(templateId: string) {
 
 function presentationTemplatePageFilename(index: number): string {
   return `page-${(index + 1).toString().padStart(3, "0")}.png`;
+}
+
+function runIdFromAuth(auth: AuthContext): string | null {
+  return auth.tokenType === "zero" || auth.tokenType === "sandbox"
+    ? auth.runId
+    : null;
+}
+
+async function loadTemplateForRun(
+  db: ReadonlyDb,
+  auth: AuthContext & { readonly orgId: string },
+  templateId: string,
+): Promise<PresentationTemplateRow | null> {
+  const runId = runIdFromAuth(auth);
+  return runId
+    ? await loadRunOwnedPresentationTemplate(db, {
+        orgId: auth.orgId,
+        ownerUserId: auth.userId,
+        runId,
+        templateId,
+      })
+    : null;
 }
 
 async function signedPageUrls(
@@ -110,6 +148,28 @@ const listInner$ = computed(async (get) => {
     }),
   );
   return { status: 200 as const, body: summaries };
+});
+
+const commitBody$ = bodyResultOf(zeroPresentationTemplatesContract.commit);
+const commitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await get(presentationTemplatesEnabled$))) {
+    return presentationTemplatesDisabled;
+  }
+  const bodyResult = await get(commitBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  return await set(
+    commitPresentationTemplate$,
+    {
+      orgId: auth.orgId,
+      ownerUserId: auth.userId,
+      body: bodyResult.data,
+    },
+    signal,
+  );
 });
 
 const getParams$ = pathParamsOf(zeroPresentationTemplatesContract.get);
@@ -220,10 +280,155 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     : templateNotFound(params.templateId);
 });
 
+const sourceParams$ = pathParamsOf(zeroPresentationTemplatesContract.source);
+const sourceInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(sourceParams$);
+  const row = await loadTemplateForRun(get(db$), auth, params.templateId);
+  if (!row) {
+    return templateNotFound(params.templateId);
+  }
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+  const url = await get(
+    generatePresignedGetUrl(
+      bucket,
+      row.sourceStorageKey,
+      PRESIGNED_URL_TTL_SECONDS,
+      row.sourceFilename,
+      true,
+    ),
+  );
+  return {
+    status: 200 as const,
+    body: {
+      url,
+      filename: row.sourceFilename,
+      contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+    },
+  };
+});
+
+const pagesParams$ = pathParamsOf(zeroPresentationTemplatesContract.pages);
+const pagesInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pagesParams$);
+  const row = await loadTemplateForRun(get(db$), auth, params.templateId);
+  if (!row || row.pageKeys.length === 0) {
+    return templateNotFound(params.templateId);
+  }
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+  const pages = await Promise.all(
+    row.pageKeys.map(async (key, index) => {
+      const filename = presentationTemplatePageFilename(index);
+      return {
+        index,
+        filename,
+        url: await get(
+          generatePresignedGetUrl(
+            bucket,
+            key,
+            PRESIGNED_URL_TTL_SECONDS,
+            filename,
+            true,
+          ),
+        ),
+        contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+      };
+    }),
+  );
+  return {
+    status: 200 as const,
+    body: { pages },
+  };
+});
+
+const packageParams$ = pathParamsOf(
+  zeroPresentationTemplatesContract.publishPackage,
+);
+const packageBody$ = bodyResultOf(
+  zeroPresentationTemplatesContract.publishPackage,
+);
+const packageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(packageParams$);
+  const bodyResult = await get(packageBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  const row = await loadTemplateForRun(get(db$), auth, params.templateId);
+  signal.throwIfAborted();
+  if (!row) {
+    return templateNotFound(params.templateId);
+  }
+  if (row.status !== "processing" || row.pageKeys.length === 0) {
+    return conflict(
+      "The complete source and page set must be committed before publishing a package",
+    );
+  }
+  const published = await set(
+    publishPresentationTemplatePackage$,
+    {
+      orgId: auth.orgId,
+      ownerUserId: auth.userId,
+      templateId: row.id,
+      files: bodyResult.data.files,
+    },
+    signal,
+  );
+  return published
+    ? {
+        status: 200 as const,
+        body: { id: row.id, status: "ready" as const },
+      }
+    : conflict("Presentation template is no longer processing");
+});
+
+const failParams$ = pathParamsOf(zeroPresentationTemplatesContract.fail);
+const failBody$ = bodyResultOf(zeroPresentationTemplatesContract.fail);
+const failInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(failParams$);
+  const bodyResult = await get(failBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  const row = await loadTemplateForRun(get(db$), auth, params.templateId);
+  signal.throwIfAborted();
+  if (!row) {
+    return templateNotFound(params.templateId);
+  }
+  const result = await set(
+    failPresentationTemplateImport$,
+    {
+      orgId: auth.orgId,
+      ownerUserId: auth.userId,
+      templateId: row.id,
+      error: bodyResult.data,
+    },
+    signal,
+  );
+  if (result.kind === "not-found") {
+    return templateNotFound(params.templateId);
+  }
+  if (result.kind === "conflict") {
+    return conflict(`Presentation template import is already ${result.status}`);
+  }
+  return {
+    status: 200 as const,
+    body: { id: result.id, status: "failed" as const },
+  };
+});
+
 export const zeroPresentationTemplatesRoutes: readonly RouteEntry[] = [
   {
     route: zeroPresentationTemplatesContract.list,
     handler: authRoute(templateReadAuth, listInner$),
+  },
+  {
+    route: zeroPresentationTemplatesContract.commit,
+    handler: authRoute(templateWriteAuth, commitInner$),
   },
   {
     route: zeroPresentationTemplatesContract.get,
@@ -236,5 +441,21 @@ export const zeroPresentationTemplatesRoutes: readonly RouteEntry[] = [
   {
     route: zeroPresentationTemplatesContract.delete,
     handler: authRoute(templateWriteAuth, deleteInner$),
+  },
+  {
+    route: zeroPresentationTemplatesContract.source,
+    handler: authRoute(templateRunAuth, sourceInner$),
+  },
+  {
+    route: zeroPresentationTemplatesContract.pages,
+    handler: authRoute(templateRunAuth, pagesInner$),
+  },
+  {
+    route: zeroPresentationTemplatesContract.publishPackage,
+    handler: authRoute(templateRunAuth, packageInner$),
+  },
+  {
+    route: zeroPresentationTemplatesContract.fail,
+    handler: authRoute(templateRunAuth, failInner$),
   },
 ];
