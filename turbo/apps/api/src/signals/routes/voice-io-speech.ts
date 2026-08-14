@@ -29,7 +29,7 @@ import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
-} from "../services/zero-run-built-in-admission.service";
+} from "../services/run-built-in-admission.service";
 import { onRejection } from "../utils";
 
 const L = logger("VoiceIoSpeech");
