@@ -586,22 +586,7 @@ async function replaceTeamCancellationWithPro(
   page: Page,
   owner: BillingOwner,
 ): Promise<string> {
-  const settings = await openBillingSettings(page);
-  await settings
-    .getByRole("button", { name: "Compare all plans", exact: true })
-    .click();
-  const choosePlan = page.getByRole("dialog", { name: "Choose a plan" });
-  const pro = choosePlan.getByRole("article", { name: "Pro plan" });
-  await pro
-    .getByRole("button", { name: "Downgrade to Pro", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Downgrade plan" });
-  const token = await currentToken(page, owner.organizationId);
-  await dialog
-    .getByRole("button", { name: "Downgrade to Pro", exact: true })
-    .click();
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
-  return token;
+  return await downgradeTeamToPro(page, owner);
 }
 
 async function buyConcurrency(
