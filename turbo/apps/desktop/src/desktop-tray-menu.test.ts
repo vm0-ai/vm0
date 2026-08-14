@@ -154,7 +154,7 @@ describe("desktop tray menu", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses Okou account copy for the Okou product", () => {
+  it("uses Okou copy for the Okou product", () => {
     const menu = buildDesktopTrayMenuItems(
       {
         brandName: "Okou",
@@ -165,6 +165,7 @@ describe("desktop tray menu", () => {
       trayActions(),
     );
 
+    expect(findItem(menu, "Open Okou")).toBeDefined();
     expect(findItem(menu, "Sign in to Okou")).toBeDefined();
     expect(
       findItem(submenu(findItem(menu, "Sign in to Okou")), "Sign in to Okou"),
@@ -182,14 +183,14 @@ describe("desktop tray menu", () => {
     );
 
     expect(menu.map((item) => item.label).filter((label) => label)).toEqual([
-      "Open Computer Use",
+      "Open Zero",
       "Workspace: Max & Zoe",
       "Computer Use: Online",
       "Keep Mac Awake",
       "No Recent Commands",
       "Quit",
     ]);
-    expect(findItem(menu, "Open Computer Use")).toBeDefined();
+    expect(findItem(menu, "Open Zero")).toBeDefined();
     expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
       label: "Keep Mac Awake",
       type: "checkbox",
