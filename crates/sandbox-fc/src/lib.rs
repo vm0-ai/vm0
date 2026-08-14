@@ -25,6 +25,7 @@
 
 mod api;
 mod balloon;
+mod boot_config;
 mod command;
 mod config;
 pub mod control;

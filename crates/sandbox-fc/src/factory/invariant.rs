@@ -1,6 +1,14 @@
 use sha2::{Digest, Sha256};
 
+use crate::boot_config::{BalloonConfig, BootConfigInput, FirecrackerBootConfig};
 use crate::network::{GUEST_NETWORK, generate_boot_args};
+
+const HASH_VCPU_COUNT: u32 = 1;
+const HASH_MEMORY_MB: u32 = 1;
+const HASH_KERNEL_PATH: &str = "/kernel";
+const HASH_ROOTFS_PATH: &str = "/rootfs";
+const HASH_WORKSPACE_PATH: &str = "/workspace";
+const HASH_VSOCK_PATH: &str = "/vsock";
 
 /// Shell command executed during snapshot creation to pre-warm guest state.
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
@@ -30,14 +38,6 @@ pub const PREWARM_SCRIPT: &str = "\
     (claude --print --verbose --output-format stream-json hi 2>/dev/null || true); \
     (codex --help >/dev/null 2>&1 || true)";
 
-/// Balloon device configuration (invariant across all sandboxes).
-#[derive(serde::Serialize)]
-pub struct BalloonConfig {
-    pub amount_mib: u32,
-    pub deflate_on_oom: bool,
-    pub stats_polling_interval_s: u32,
-}
-
 /// Invariant configuration shared by all sandboxes.
 ///
 /// These parameters affect snapshot output and are used by:
@@ -45,12 +45,9 @@ pub struct BalloonConfig {
 /// - [`crate::sandbox::FirecrackerSandbox::build_config`] — fresh boot JSON configuration
 /// - Snapshot creation API calls in `snapshot.rs`
 ///
-/// Adding a field here automatically changes the config hash (via `Serialize`)
-/// and makes it available to all consumers.
-///
-/// **Important:** `serde_json` serializes struct fields in declaration order.
-/// Reordering fields changes the hash and invalidates all cached snapshots.
-#[derive(serde::Serialize)]
+/// Topology-owned values are serialized through the shared boot configuration
+/// in [`config_hash`]. The remaining snapshot-affecting values are included
+/// alongside that topology.
 pub struct InvariantConfig {
     pub boot_args: String,
     pub guest_mac: &'static str,
@@ -62,10 +59,13 @@ pub struct InvariantConfig {
     pub guest_cid: u32,
     pub balloon: BalloonConfig,
     pub prewarm_script: &'static str,
-    /// Drive layout identifier. Changing the number or type of drives
-    /// requires a new snapshot — bump this constant to invalidate the
-    /// config hash and force re-creation.
-    pub drive_layout: &'static str,
+}
+
+#[derive(serde::Serialize)]
+struct ConfigHashInput<'a> {
+    boot_config: &'a FirecrackerBootConfig,
+    tap_mac: &'a str,
+    prewarm_script: &'a str,
 }
 
 impl InvariantConfig {
@@ -83,7 +83,6 @@ impl InvariantConfig {
                 stats_polling_interval_s: 5,
             },
             prewarm_script: PREWARM_SCRIPT,
-            drive_layout: "nbd-cow-workspace-v1",
         }
     }
 }
@@ -91,19 +90,47 @@ impl InvariantConfig {
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output.
 ///
-/// Derived from `InvariantConfig` serialization — adding a field to that
-/// struct automatically changes this hash.
+/// Derived from a canonical snapshot boot topology plus snapshot-affecting
+/// invariants that are not part of the Firecracker configuration document.
 ///
 /// This is the backing implementation for [`sandbox::SandboxFactory::config_hash`].
 /// It is also available as a free function so callers that don't have a
 /// factory instance (e.g. the snapshot subcommand) can compute the hash.
 /// # Panics
-/// Cannot panic — `InvariantConfig` contains only primitives and `String`.
+/// Cannot panic — the hash input contains only serializable primitives,
+/// strings, vectors, and structs.
 #[allow(clippy::expect_used)]
 pub fn config_hash() -> String {
-    let config = InvariantConfig::new();
-    let json = serde_json::to_string(&config).expect("serialize invariant config");
-    hex::encode(Sha256::digest(json.as_bytes()))
+    let invariant = InvariantConfig::new();
+    let boot_config = canonical_snapshot_boot_config(&invariant);
+    config_hash_for(&boot_config, invariant.tap_mac, invariant.prewarm_script)
+        .expect("serialize Firecracker config hash input")
+}
+
+fn canonical_snapshot_boot_config(invariant: &InvariantConfig) -> FirecrackerBootConfig {
+    FirecrackerBootConfig::new(BootConfigInput {
+        invariant,
+        vcpu_count: HASH_VCPU_COUNT,
+        memory_mb: HASH_MEMORY_MB,
+        kernel_path: HASH_KERNEL_PATH.to_owned(),
+        rootfs_path: HASH_ROOTFS_PATH.to_owned(),
+        workspace_path: Some(HASH_WORKSPACE_PATH.to_owned()),
+        vsock_path: HASH_VSOCK_PATH.to_owned(),
+    })
+}
+
+fn config_hash_for(
+    boot_config: &FirecrackerBootConfig,
+    tap_mac: &str,
+    prewarm_script: &str,
+) -> Result<String, serde_json::Error> {
+    let input = ConfigHashInput {
+        boot_config,
+        tap_mac,
+        prewarm_script,
+    };
+    let json = serde_json::to_string(&input)?;
+    Ok(hex::encode(Sha256::digest(json.as_bytes())))
 }
 
 #[cfg(test)]
@@ -131,23 +158,27 @@ mod tests {
     }
 
     #[test]
-    fn invariant_config_has_all_expected_fields() {
-        let config = InvariantConfig::new();
-        let json = serde_json::to_value(&config).unwrap();
-        let obj = json.as_object().unwrap();
+    fn canonical_snapshot_topology_has_all_shared_sections_and_ordered_drives() {
+        let invariant = InvariantConfig::new();
+        let config = canonical_snapshot_boot_config(&invariant);
+        assert_eq!(
+            config
+                .drives
+                .iter()
+                .map(|drive| drive.drive_id.as_str())
+                .collect::<Vec<_>>(),
+            ["rootfs", "workspace"]
+        );
 
-        // Guard against accidental field additions/removals that would
-        // silently change the config hash and invalidate all snapshots.
+        let json = serde_json::to_value(config).unwrap();
+        let obj = json.as_object().unwrap();
         let expected_fields = [
-            "boot_args",
-            "guest_mac",
-            "tap_name",
-            "tap_mac",
-            "iface_id",
-            "guest_cid",
+            "boot-source",
+            "drives",
+            "machine-config",
+            "network-interfaces",
+            "vsock",
             "balloon",
-            "prewarm_script",
-            "drive_layout",
         ];
         for field in &expected_fields {
             assert!(obj.contains_key(*field), "missing field: {field}");
@@ -155,8 +186,22 @@ mod tests {
         assert_eq!(
             obj.len(),
             expected_fields.len(),
-            "unexpected field count — adding/removing fields changes the config hash"
+            "unexpected Firecracker boot config section"
         );
+    }
+
+    #[test]
+    fn topology_change_changes_config_hash() {
+        let invariant = InvariantConfig::new();
+        let config = canonical_snapshot_boot_config(&invariant);
+        let original =
+            config_hash_for(&config, invariant.tap_mac, invariant.prewarm_script).unwrap();
+        let mut reordered = config.clone();
+        reordered.drives.reverse();
+        let changed =
+            config_hash_for(&reordered, invariant.tap_mac, invariant.prewarm_script).unwrap();
+
+        assert_ne!(original, changed);
     }
 
     #[test]
