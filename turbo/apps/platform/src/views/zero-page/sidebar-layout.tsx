@@ -45,6 +45,7 @@ import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConcurrencyConfirmDialog } from "./components/org-manage/org-billing-tab.tsx";
+import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -337,6 +338,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
       <ConcurrencyConfirmDialog />
+      <CreditPurchaseConfirmDialog />
       <QueueDrawer />
       <ZeroSidebar />
       <div

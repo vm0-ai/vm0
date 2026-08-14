@@ -347,7 +347,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Importación de plantilla",
       "test": "Prueba",
       "web": "Web",
       "webhook": "Webhook"
@@ -809,6 +808,7 @@
       "confirm": "Confirmar",
       "credits": "Créditos",
       "manage": "Gestionar",
+      "preparing": "Preparando...",
       "redirecting": "Redirigiendo...",
       "restore": "Restaurar",
       "retry": "Reintentar",
@@ -867,6 +867,9 @@
       "exchangeRate": "Los créditos nunca caducan. 1 USD = {{credits}} créditos.",
       "quickBuy": "Compra rápida",
       "quickBuyAmount": "Compra rápida {{amount}}",
+      "reviewDescription": "Confirma este cargo único con tu método de pago guardado.",
+      "reviewError": "No se pudo completar esta compra de créditos. Revisa tus datos de facturación e inténtalo de nuevo.",
+      "reviewTitle": "Revisar compra de créditos",
       "title": "Comprar créditos"
     },
     "downgrade": {
@@ -967,15 +970,14 @@
       "upgradeTo": "Actualizar a {{plan}}",
       "usagePacks": {
         "bonusCredits": "Créditos de bonificación",
-        "changePlan": "Cambiar plan",
+        "bonusIncluded": "{{credits}} de bonificación incluidos",
         "choosePlan": "Elige un plan",
-        "choosePlanDescription": "Elige primero el plan del espacio de trabajo. Los paquetes de miembros se configuran después.",
         "concurrentSlots": "Espacios simultáneos",
         "configurePackages": "Configurar paquetes de miembros",
-        "configurePackagesDescription": "Elige un paquete obligatorio para cada miembro y revisa el total mensual combinado.",
+        "credits": "Créditos",
+        "creditsPerMember": "{{credits}} créditos por miembro",
         "currentMember": "Miembro actual",
-        "description": "Elige un paquete de uso mensual para cada miembro.",
-        "discountBonusCredits": "Créditos extra por descuento",
+        "everythingOnPlus": "Todo lo de {{plan}}, y además:",
         "existingPackagesUnchanged": "Los paquetes actuales de los miembros no cambian.",
         "management": {
           "comparison": "Comparación de la suscripción actual y la nueva",
@@ -983,13 +985,16 @@
           "downgradeDescription": "El paquete inferior comienza en la próxima fecha de facturación. Los créditos existentes seguirán disponibles hasta que caduquen.",
           "downgradesToDate": "Baja a {{package}} el {{date}}.",
           "downgradesToPeriod": "Baja a {{package}} en la próxima fecha de facturación.",
+          "everyMonth": "Cada mes",
           "immediateAmount": "Importe a pagar ahora",
+          "immediateAmountNote": "Por el resto de este periodo de facturación",
           "immediateCredits": "Créditos añadidos tras el pago",
           "new": "Nuevo",
           "processing": "Cambio en curso",
-          "reviewDescription": "Revisa el precio de la suscripción a continuación. Al confirmar, se cobrará el importe pendiente con tu método de pago guardado.",
+          "reviewDescription": "Al confirmar, se cobrará tu método de pago guardado.",
           "reviewTitle": "Revisar cambio de paquete",
-          "scheduledFor": "Programado para el {{date}}"
+          "scheduledFor": "Programado para el {{date}}",
+          "today": "Hoy"
         },
         "memberExclusive": "Cada paquete pertenece a un miembro y no se puede compartir. Cuando se agota, el uso vuelve a los créditos de pago por uso. Puedes actualizar a un paquete nuevo más adelante.",
         "memberPackages": "Paquetes de miembros",
@@ -1010,20 +1015,18 @@
           "switchesOn": "Cambia al plan {{plan}} el {{date}}",
           "title": "Convertir plan heredado"
         },
-        "minimumPackageBreakdown": "Plan de {{base}} + paquete obligatorio de {{package}} para un miembro",
         "monthlyTotal": "Total mensual",
         "orderSummary": "Resumen del pedido",
-        "packagesStep": "Paquetes",
+        "packCredits": "{{credits}} créditos",
+        "packCreditsDiscount": "{{credits}} créditos · {{discount}} % de descuento",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",
         "planChangeError": "No se pudo preparar el cambio de suscripción. Inténtalo de nuevo.",
         "planStep": "Plan",
         "purchasedCredits": "Créditos comprados",
-        "purchaseSteps": "Pasos de compra",
-        "selectedPlan": "Plan seleccionado",
         "selectPlan": "Empezar con {{plan}}",
         "selectUsage": "Uso de {{name}}",
-        "startingAt": "Desde",
-        "totalCredits": "Créditos totales"
+        "stepOfTotal": "Paso {{current}} de {{total}}",
+        "totalCreditsWithBonus": "{{credits}} créditos · {{bonus}} de bonificación"
       }
     },
     "restore": {
@@ -1048,6 +1051,7 @@
       "concurrencyChanged": "Cambio de concurrencia confirmado. La cantidad de cupos se actualizará cuando Stripe procese el cambio.",
       "concurrencyReduced": "La reducción de concurrencia está programada para la próxima fecha de facturación.",
       "concurrencyRestored": "Se ha restaurado la suscripción de concurrencia.",
+      "creditPurchaseConfirmed": "Pago confirmado. Los créditos aparecerán cuando Stripe procese la factura.",
       "creditsAdded": "Créditos añadidos. Puedes seguir chateando con Zero.",
       "downgradeScheduledDate": "Cambio de plan programado. Tu plan actual permanecerá activo hasta {{date}}.",
       "downgradeScheduledPeriod": "Cambio de plan programado. Tu plan actual permanecerá activo hasta que termine el periodo de facturación.",
@@ -1439,8 +1443,7 @@
       "search": "Buscar agentes y conversaciones...",
       "sent": "Reenviado correctamente",
       "threads": "Conversaciones",
-      "title": "Reenviar a",
-      "to": "Reenviar a"
+      "title": "Reenviar a"
     },
     "mail": {
       "bcc": "BCC",
@@ -1709,6 +1712,9 @@
       "frequentlyUsed": "Usados con frecuencia",
       "icon": "Icono del hilo de chat",
       "loadingEarlier": "Cargando mensajes anteriores",
+      "locator": {
+        "you": "Tú"
+      },
       "noEmojiFound": "No se ha encontrado ningún emoji",
       "notFound": "Hilo de chat no encontrado",
       "openArtifacts": "Abrir artefactos",
@@ -4386,6 +4392,24 @@
           "enabled_other": "Activado para las próximas {{count}} ejecuciones",
           "title": "Capturar cuerpos de red"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Esperas activas",
+          "blurred": "sin foco",
+          "channel": "canal",
+          "clear": "Borrar",
+          "connection": "conexión",
+          "copyJson": "Copiar JSON",
+          "description": "Inspecciona el ciclo de vida del navegador, la recuperación de autenticación y las señales de conexión de Ably.",
+          "empty": "No se registraron eventos de diagnóstico.",
+          "events": "eventos",
+          "focused": "con foco",
+          "log": "Registro de eventos",
+          "offline": "sin conexión",
+          "online": "en línea",
+          "recovery": "recuperación",
+          "title": "Diagnóstico de conexión en tiempo real",
+          "unavailable": "no disponible"
+        },
         "tab": "Depuración"
       },
       "documentTitle": "Preferencias",
@@ -4640,6 +4664,7 @@
       "imageRecognize": "Reconocimiento de imágenes",
       "maps": "Mapas",
       "peopleSearch": "Búsqueda de personas",
+      "seo": "SEO",
       "translation": "Traducción",
       "usage": "Uso",
       "weather": "Tiempo",

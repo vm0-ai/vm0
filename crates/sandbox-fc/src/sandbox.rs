@@ -90,6 +90,75 @@ const GUEST_PARK_LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Independent deadline for terminal diagnostics on an already-severe park.
 const GUEST_MEMORY_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// Elevated-latency signal below the production-equivalent 750 ms bound.
+const PROCESS_CONTROL_LATENCY_INFO_THRESHOLD: Duration = Duration::from_millis(250);
+/// Firecracker-calibrated upper bound for process-control delivery under load.
+const PROCESS_CONTROL_LATENCY_WARN_THRESHOLD: Duration = Duration::from_millis(750);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProcessControlLatencyLevel {
+    Info,
+    Warn,
+}
+
+fn process_control_latency_level(elapsed: Duration) -> Option<ProcessControlLatencyLevel> {
+    if elapsed >= PROCESS_CONTROL_LATENCY_WARN_THRESHOLD {
+        Some(ProcessControlLatencyLevel::Warn)
+    } else if elapsed >= PROCESS_CONTROL_LATENCY_INFO_THRESHOLD {
+        Some(ProcessControlLatencyLevel::Info)
+    } else {
+        None
+    }
+}
+
+fn process_control_outcome_label(outcome: &ProcessControlOutcome) -> &'static str {
+    match outcome {
+        ProcessControlOutcome::Delivered(_) => "delivered",
+        ProcessControlOutcome::GuestStatus { status, .. } => match status {
+            ProcessControlGuestStatus::Inactive => "guest_inactive",
+            ProcessControlGuestStatus::NonceMismatch => "guest_nonce_mismatch",
+            ProcessControlGuestStatus::Unsupported => "guest_unsupported",
+            ProcessControlGuestStatus::Rejected => "guest_rejected",
+            ProcessControlGuestStatus::SinkUnavailable => "guest_sink_unavailable",
+            ProcessControlGuestStatus::SinkTimeout => "guest_sink_timeout",
+            ProcessControlGuestStatus::QueueFull => "guest_queue_full",
+            ProcessControlGuestStatus::SinkError => "guest_sink_error",
+        },
+        ProcessControlOutcome::GuestError(_) => "guest_error",
+        ProcessControlOutcome::Failed {
+            kind: ProcessControlFailureKind::Operation,
+            ..
+        } => "operation_failed",
+        ProcessControlOutcome::Failed {
+            kind: ProcessControlFailureKind::BackendCrashed,
+            ..
+        } => "backend_crashed",
+    }
+}
+
+fn log_process_control_latency(
+    elapsed: Duration,
+    timeout: Duration,
+    outcome: &ProcessControlOutcome,
+) {
+    let Some(level) = process_control_latency_level(elapsed) else {
+        return;
+    };
+    let elapsed_ms = duration_ms(elapsed);
+    let timeout_ms = duration_ms(timeout);
+    let outcome = process_control_outcome_label(outcome);
+    match level {
+        ProcessControlLatencyLevel::Info => info!(
+            elapsed_ms,
+            timeout_ms, outcome, "process control latency elevated"
+        ),
+        ProcessControlLatencyLevel::Warn => warn!(
+            elapsed_ms,
+            timeout_ms, outcome, "process control latency exceeded calibrated bound"
+        ),
+    }
+}
+
 struct SandboxStartTiming<'a> {
     observer: Option<&'a mut dyn SandboxStartObserver>,
 }
@@ -918,6 +987,7 @@ impl FirecrackerSandbox {
             BackendCrashed,
         }
 
+        let started = Instant::now();
         let operation = SandboxOperation::ProcessControl;
         let write_started = Arc::new(AtomicBool::new(false));
         if let Err(error) =
@@ -928,11 +998,13 @@ impl FirecrackerSandbox {
             } else {
                 ProcessControlFailureKind::Operation
             };
-            return Self::process_control_failure(
+            let outcome = Self::process_control_failure(
                 kind,
                 &write_started,
                 Self::operation_start_io_error(operation, error, Self::current_state_from(&state)),
             );
+            log_process_control_latency(started.elapsed(), timeout, &outcome);
+            return outcome;
         }
 
         let write_observer = FrameWriteObserver::new({
@@ -953,7 +1025,7 @@ impl FirecrackerSandbox {
             () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
         };
 
-        match outcome {
+        let outcome = match outcome {
             ControlOutcome::Returned(Ok(vsock_host::ExecControlOutcome::Delivered(ack))) => {
                 ProcessControlOutcome::Delivered(ProcessControlAck {
                     message_id: ack.message_id,
@@ -977,24 +1049,27 @@ impl FirecrackerSandbox {
             }
             ControlOutcome::Returned(Err(error)) => {
                 if Self::current_state_from(&state) == SandboxState::Crashed {
-                    return Self::process_control_failure(
+                    Self::process_control_failure(
                         ProcessControlFailureKind::BackendCrashed,
                         &write_started,
                         io::Error::other(Self::backend_crashed_error(operation)),
-                    );
+                    )
+                } else {
+                    Self::process_control_failure(
+                        ProcessControlFailureKind::Operation,
+                        &write_started,
+                        error,
+                    )
                 }
-                Self::process_control_failure(
-                    ProcessControlFailureKind::Operation,
-                    &write_started,
-                    error,
-                )
             }
             ControlOutcome::BackendCrashed => Self::process_control_failure(
                 ProcessControlFailureKind::BackendCrashed,
                 &write_started,
                 io::Error::other(Self::backend_crashed_error(operation)),
             ),
-        }
+        };
+        log_process_control_latency(started.elapsed(), timeout, &outcome);
+        outcome
     }
 
     /// Atomically transition between states using CAS. Returns `true` if the

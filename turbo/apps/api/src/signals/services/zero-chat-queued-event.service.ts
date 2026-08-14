@@ -10,7 +10,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import {
   and,
   asc,
@@ -408,7 +408,7 @@ async function resolveAutomationEventQueueFirstClaimSnapshot(
     .select({
       ...queueFirstReplacementTargetFields,
       automationId: chatAutomationContext.automationId,
-      automationKind: zeroWorkflowAutomations.kind,
+      automationKind: workflowAutomations.kind,
       userMessage: canonicalChatEventUserMessage(),
     })
     .from(chatEvents)
@@ -420,8 +420,8 @@ async function resolveAutomationEventQueueFirstClaimSnapshot(
       ),
     )
     .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+      workflowAutomations,
+      eq(workflowAutomations.id, chatAutomationContext.automationId),
     )
     .where(
       and(

@@ -57,7 +57,7 @@ where
             };
 
             match result {
-                NbdOrphanDisconnect::Disconnected => {
+                NbdOrphanDisconnect::Disconnected(_) => {
                     info!(
                         "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
                     );
@@ -66,7 +66,7 @@ where
                 NbdOrphanDisconnect::Locked => {
                     info!("nbd{device_index}: skipping disconnect, NBD device lock is held");
                 }
-                NbdOrphanDisconnect::Changed => {
+                NbdOrphanDisconnect::Changed | NbdOrphanDisconnect::Live => {
                     info!(
                         "nbd{device_index}: skipping disconnect, device state changed since scan"
                     );
@@ -93,6 +93,15 @@ mod tests {
     };
 
     use super::*;
+
+    fn disconnected(device_index: u32, owner_tid: u32) -> NbdOrphanDisconnect {
+        NbdOrphanDisconnect::Disconnected(
+            nbd_cow::orphan::NbdOrphanCandidate::from_dead_owner_observation(
+                device_index,
+                owner_tid,
+            ),
+        )
+    }
 
     #[tokio::test]
     async fn gc_nbd_orphans_returns_empty_report_without_candidates() {
@@ -125,11 +134,16 @@ mod tests {
         let report = gc_nbd_orphans_with(
             false,
             || (8, vec![(0, 100), (1, 101), (2, 102), (3, 103), (4, 104)]),
-            |device_index, _| match device_index {
-                0 | 4 => NbdOrphanDisconnect::Disconnected,
+            |device_index, owner_tid| match device_index {
+                0 | 4 => disconnected(device_index, owner_tid),
                 1 => NbdOrphanDisconnect::Locked,
                 2 => NbdOrphanDisconnect::Changed,
-                3 => NbdOrphanDisconnect::Failed("netlink failed".to_string()),
+                3 => NbdOrphanDisconnect::Failed(nbd_cow::orphan::NbdOrphanError::Disconnect {
+                    device_index,
+                    source: nbd_cow::error::NbdCowError::Io(std::io::Error::other(
+                        "netlink failed",
+                    )),
+                }),
                 other => panic!("unexpected device index {other}"),
             },
         )
@@ -164,12 +178,12 @@ mod tests {
         let report = gc_nbd_orphans_with(
             false,
             || (8, vec![(0, 100), (1, 101)]),
-            move |device_index, _| {
+            move |device_index, owner_tid| {
                 attempts_for_disconnect.fetch_add(1, Ordering::Relaxed);
                 if device_index == 0 {
                     panic!("disconnect task failed");
                 }
-                NbdOrphanDisconnect::Disconnected
+                disconnected(device_index, owner_tid)
             },
         )
         .await

@@ -49,6 +49,13 @@ pub(super) struct WorkspaceCacheMetadata {
     pub(super) state: WorkspaceCacheState,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WorkspaceCacheScopeClassification {
+    Unclassified,
+    Relevant,
+    Foreign,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct WorkspaceImageFileIdentity {
@@ -68,6 +75,32 @@ impl WorkspaceImageFileIdentity {
 }
 
 impl WorkspaceImageCache {
+    /// Classify bounded metadata for advisory routing only.
+    ///
+    /// A matching cache key proves that the scope belongs to the committed
+    /// metadata rather than an unrelated path name. Authoritative cache use
+    /// still validates all fields and the current image while holding the
+    /// entry lock.
+    pub(super) async fn classify_metadata_scope(
+        &self,
+        cache_key: &str,
+    ) -> WorkspaceCacheScopeClassification {
+        let Ok(metadata) = self
+            .read_metadata_file(&self.workspace_image_cache_metadata(cache_key))
+            .await
+        else {
+            return WorkspaceCacheScopeClassification::Unclassified;
+        };
+        if !self.metadata_matches_cache_key(cache_key, &metadata) {
+            return WorkspaceCacheScopeClassification::Unclassified;
+        }
+        if metadata.cache_scope == self.inner.cache_scope {
+            WorkspaceCacheScopeClassification::Relevant
+        } else {
+            WorkspaceCacheScopeClassification::Foreign
+        }
+    }
+
     pub(super) async fn read_valid_metadata(
         &self,
         metadata_path: &Path,

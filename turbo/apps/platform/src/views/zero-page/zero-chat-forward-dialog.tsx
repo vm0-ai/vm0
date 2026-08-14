@@ -67,7 +67,7 @@ function ForwardTargetContent({
         alt=""
         className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
       />
-      <span className="truncate text-sm text-foreground">{target.title}</span>
+      <span className="truncate text-foreground">{target.title}</span>
     </span>
   );
 }
@@ -192,8 +192,8 @@ function ForwardComposerSurface({
   readonly composer: ComposerSignals;
 }) {
   return (
-    <div className="px-5 pb-5 pt-4" data-chat-composer>
-      <ZeroChatComposer signals={composer} />
+    <div className="w-full min-w-0 p-5" data-chat-composer>
+      <ZeroChatComposer signals={composer} showPendingItems={false} />
     </div>
   );
 }
@@ -206,7 +206,7 @@ function ForwardComposer({
   const ready = useGet(state.ready$);
   const setLifecycleRef = useSet(state.setLifecycleRef$);
   return (
-    <div ref={setLifecycleRef}>
+    <div ref={setLifecycleRef} className="min-w-0">
       {ready ? (
         <ForwardComposerSurface composer={state.composer} />
       ) : (
@@ -265,9 +265,9 @@ export function ChatForwardDialog({
         }
       }}
     >
-      <DialogContent className="zero-app w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <DialogHeader className="px-5 pb-3 pt-5">
-          <div className="flex items-center gap-2">
+      <DialogContent className="zero-app w-[calc(100vw-2rem)] grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogHeader className="min-w-0 px-5 pb-3 pt-5">
+          <div className="flex min-w-0 items-center gap-2 pr-8">
             {target ? (
               <button
                 type="button"
@@ -282,10 +282,14 @@ export function ChatForwardDialog({
                 <ArrowLeft size={16} />
               </button>
             ) : null}
-            <DialogTitle className="text-base font-semibold">
-              {t(($) => {
-                return $.chat.forward.title;
-              })}
+            <DialogTitle className="min-w-0 flex-1 overflow-hidden text-base font-semibold">
+              {target ? (
+                <ForwardTargetContent target={target} />
+              ) : (
+                t(($) => {
+                  return $.chat.forward.title;
+                })
+              )}
             </DialogTitle>
           </div>
           <DialogDescription className="sr-only">
@@ -296,17 +300,7 @@ export function ChatForwardDialog({
         </DialogHeader>
         {target ? null : <ForwardContent text={selection.quote} />}
         {target && composerState ? (
-          <>
-            <div className="flex items-center gap-2 px-5 pt-4 text-sm text-muted-foreground">
-              <span>
-                {t(($) => {
-                  return $.chat.forward.to;
-                })}
-              </span>
-              <ForwardTargetContent target={target} />
-            </div>
-            <ForwardComposer state={composerState} />
-          </>
+          <ForwardComposer state={composerState} />
         ) : (
           <ForwardTargetPicker onSelect={handleTargetSelect} />
         )}

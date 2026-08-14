@@ -3,7 +3,7 @@ use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection, SandboxReu
 use guest_contracts::diagnostics::{
     EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
     EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
-    EventDeliveryFailedBatchDiagnostic,
+    EventDeliveryFailedBatchDiagnostic, WorkloadResourceLimitDiagnostic,
 };
 
 #[tokio::test]
@@ -235,6 +235,60 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
     let mut expected = b"partial stdout\n".to_vec();
     expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
     assert_eq!(system_stream_log, expected);
+}
+
+#[tokio::test]
+async fn execute_inner_preserves_workload_oom_diagnostic_before_dmesg_rewrite() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, EXIT_SIGKILL, Vec::new(), Vec::new()));
+    let workload_resource_limit = WorkloadResourceLimitDiagnostic {
+        memory_max_events: 3,
+        memory_oom_events: 2,
+        memory_oom_kill_events: 1,
+        memory_oom_group_kill_events: 0,
+        pids_max_events: 0,
+    };
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("consume memory"),
+    )
+    .with_cli_exit_code(EXIT_SIGKILL)
+    .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
+    .with_failure_detail_source(FailureDetailSource::FallbackExitCode)
+    .with_workload_resource_limit(workload_resource_limit);
+    overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+    let guest_error = "Process killed by signal 9; workload resource limit reached";
+    overrides.push_read_file_result(Ok(Some(guest_error.as_bytes().to_vec())));
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "dmesg".to_string(),
+        exit_code: 0,
+        stdout: b"Out of memory: Killed process 1234".to_vec(),
+        stderr: Vec::new(),
+    });
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let outcome = run_new_sandbox_outcome(&factory, &minimal_context(), &config, &default_params())
+        .await
+        .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected workload failure");
+    assert_eq!(failure.exit_code, EXIT_SIGKILL);
+    assert_eq!(failure.error, guest_error);
+    assert_eq!(failure.diagnostic, Some(diagnostic));
+    assert!(failure.resource_diagnostics.is_none());
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit),
+    );
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("dmesg") && !call.cmd.contains("guest-agent-binary"))
+    );
 }
 
 #[tokio::test]

@@ -44,10 +44,7 @@ function observeEmptyThreadMessage(): {
 } {
   let wasShown = false;
   const record = () => {
-    if (
-      document.querySelector("[data-chat-skeleton]") === null &&
-      document.body.textContent?.includes(EMPTY_THREAD_MESSAGE)
-    ) {
+    if (document.body.textContent?.includes(EMPTY_THREAD_MESSAGE)) {
       wasShown = true;
     }
   };

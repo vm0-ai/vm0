@@ -106,11 +106,11 @@ function expectCallback(callback: (() => void) | null): () => void {
 
 describe("chat thread event sourcing local-first list", () => {
   it("does not start remote event sync on signed-out pages", async () => {
-    let activeIdsRequests = 0;
+    let indicatorRequests = 0;
     let eventsRequests = 0;
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      activeIdsRequests += 1;
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, { agents: {}, threads: {} });
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       eventsRequests += 1;
@@ -126,7 +126,7 @@ describe("chat thread event sourcing local-first list", () => {
       org: { activeOrg: null, memberships: [] },
     });
 
-    expect(activeIdsRequests).toBe(0);
+    expect(indicatorRequests).toBe(0);
     expect(eventsRequests).toBe(0);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
@@ -356,8 +356,8 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
       unreadsRequests += 1;
@@ -425,8 +425,8 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
@@ -482,8 +482,8 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
@@ -564,8 +564,8 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
@@ -615,8 +615,8 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
@@ -743,8 +743,8 @@ describe("chat thread event sourcing local-first list", () => {
         hasMore: false,
       });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,

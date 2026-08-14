@@ -28,7 +28,7 @@ import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
-import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
+import { morningBriefRoutes } from "./routes/morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
@@ -56,10 +56,10 @@ import { webhooksNotionRoutes } from "./routes/webhooks-notion";
 import { webhooksWorkflowAutomationsRoutes } from "./routes/webhooks-workflow-automations";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { webhooksStripeAutomationEventsRoutes } from "./routes/webhooks-stripe-automation-events";
-import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
+import { agentDraftRoutes } from "./routes/agent-draft";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
-import { zeroArtifactCatalogRoutes } from "./routes/zero-artifact-catalog";
+import { artifactCatalogRoutes } from "./routes/artifact-catalog";
 import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
@@ -77,12 +77,12 @@ import { zeroBillingUsagePackCreditsRoutes } from "./routes/zero-billing-usage-p
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
-import { zeroSharedThreadRoutes } from "./routes/zero-shared-threads";
-import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device-auth";
+import { sharedThreadRoutes } from "./routes/shared-threads";
+import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
-import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
+import { codexDeviceAuthRoutes } from "./routes/codex-device-auth";
 import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
 import { zeroConnectorCheckRoutes } from "./routes/zero-connector-check";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
@@ -91,34 +91,34 @@ import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
-import { zeroFinanceRoutes } from "./routes/zero-finance";
+import { financeRoutes } from "./routes/finance";
 import { zeroSeoRoutes } from "./routes/zero-seo";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
-import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
-import { zeroLogsRoutes } from "./routes/zero-logs";
+import { imageShareXRoutes } from "./routes/image-share-x";
+import { logsRoutes } from "./routes/logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
-import { zeroMapsRoutes } from "./routes/zero-maps";
+import { mapsRoutes } from "./routes/maps";
 import { zeroMcpConnectorsRoutes } from "./routes/zero-mcp-connectors";
-import { zeroWeatherRoutes } from "./routes/zero-weather";
+import { weatherRoutes } from "./routes/weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
-import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
+import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
+import { onboardingStatusRoutes } from "./routes/onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
 import { zeroOrgDeleteRoutes } from "./routes/zero-org-delete";
-import { zeroOrgLogoRoutes } from "./routes/zero-org-logo";
+import { orgLogoRoutes } from "./routes/org-logo";
 import { zeroOrgMembersRoutes } from "./routes/zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "./routes/zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "./routes/zero-org-read";
-import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
+import { pushSubscriptionsRoutes } from "./routes/push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
-import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
-import { zeroRecognitionRoutes } from "./routes/zero-recognition";
-import { zeroTranslationRoutes } from "./routes/zero-translation";
+import { realtimeTokenRoutes } from "./routes/realtime-token";
+import { imageRecognitionRoutes } from "./routes/image-recognition";
+import { translationRoutes } from "./routes/translation";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
@@ -127,8 +127,8 @@ import { zeroMeModelProviderAccountRoutes } from "./routes/zero-me-model-provide
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
-import { zeroScrapeRoutes } from "./routes/zero-scrape";
-import { zeroPeopleSearchRoutes } from "./routes/zero-people-search";
+import { scrapeRoutes } from "./routes/scrape";
+import { peopleSearchRoutes } from "./routes/people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
@@ -170,7 +170,7 @@ import { zeroFeishuBrowserConnectRoutes } from "./routes/zero-feishu-browser-con
 import { zeroFeishuConnectRoutes } from "./routes/zero-feishu-connect";
 import { zeroFeishuEventsRoutes } from "./routes/zero-feishu-events";
 import { zeroFeishuOauthRoutes } from "./routes/zero-feishu-oauth";
-import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
+import { steamPlayerRoutes } from "./routes/steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
@@ -179,7 +179,6 @@ import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
-import { zeroPresentationTemplatesRoutes } from "./routes/zero-presentation-templates";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
@@ -190,8 +189,8 @@ import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
 import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
-import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
-import { zeroWebFileUrlRoutes } from "./routes/zero-web-file-url";
+import { webDownloadRoutes } from "./routes/web-download";
+import { webFileUrlRoutes } from "./routes/web-file-url";
 
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
@@ -246,12 +245,12 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
-  ...zeroMorningBriefRoutes,
+  ...morningBriefRoutes,
   ...emailUnsubscribeRoutes,
-  ...zeroAgentDraftRoutes,
+  ...agentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
-  ...zeroArtifactCatalogRoutes,
+  ...artifactCatalogRoutes,
   ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,
@@ -269,12 +268,12 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBankingRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatEventsRoutes,
-  ...zeroSharedThreadRoutes,
-  ...zeroClaudeCodeDeviceAuthRoutes,
+  ...sharedThreadRoutes,
+  ...claudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
-  ...zeroCodexDeviceAuthRoutes,
+  ...codexDeviceAuthRoutes,
   ...zeroConnectorCatalogRoutes,
   ...zeroConnectorCheckRoutes,
   ...zeroConnectorsExternalCodeRoutes,
@@ -283,22 +282,22 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroCustomConnectorsRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
-  ...zeroFinanceRoutes,
+  ...financeRoutes,
   ...zeroSeoRoutes,
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroImageIoGenerateRoutes,
-  ...zeroImageShareXRoutes,
+  ...imageShareXRoutes,
   ...zeroAvatarVideoRoutes,
   ...zeroVideoIoGenerateRoutes,
-  ...zeroLogsRoutes,
+  ...logsRoutes,
   ...zeroMailRoutes,
-  ...zeroMapsRoutes,
+  ...mapsRoutes,
   ...zeroMcpConnectorsRoutes,
-  ...zeroWeatherRoutes,
-  ...zeroScrapeRoutes,
-  ...zeroPeopleSearchRoutes,
+  ...weatherRoutes,
+  ...scrapeRoutes,
+  ...peopleSearchRoutes,
   ...zeroWebSearchRoutes,
   ...zeroBrowserRoutes,
   ...zeroBrowserAuthorizationRoutes,
@@ -313,24 +312,24 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVoiceIoQuotaRoutes,
   ...zeroVoiceIoSpeechRoutes,
   ...zeroVoiceIoSttRoutes,
-  ...zeroWebDownloadRoutes,
-  ...zeroWebFileUrlRoutes,
+  ...webDownloadRoutes,
+  ...webFileUrlRoutes,
   ...zeroQueuePositionRoutes,
-  ...zeroRealtimeTokenRoutes,
-  ...zeroRecognitionRoutes,
-  ...zeroTranslationRoutes,
+  ...realtimeTokenRoutes,
+  ...imageRecognitionRoutes,
+  ...translationRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
-  ...zeroOnboardingCompleteRoutes,
-  ...zeroOnboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
+  ...onboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgDeleteRoutes,
-  ...zeroOrgLogoRoutes,
+  ...orgLogoRoutes,
   ...zeroOrgMembersRoutes,
   ...zeroOrgMembershipRequestsRoutes,
   ...zeroOrgReadRoutes,
-  ...zeroPushSubscriptionsRoutes,
+  ...pushSubscriptionsRoutes,
   ...zeroUserPermissionGrantsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,
@@ -371,7 +370,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsTeamsUploadCompleteRoutes,
   ...zeroIntegrationsTeamsUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
-  ...zeroSteamPlayerRoutes,
+  ...steamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,
@@ -380,7 +379,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
-  ...zeroPresentationTemplatesRoutes,
   ...registryResourceDownloadRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,

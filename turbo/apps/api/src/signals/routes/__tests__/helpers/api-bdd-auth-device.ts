@@ -24,12 +24,12 @@ import {
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import {
   type ClaudeCodeDeviceAuthScope,
-  zeroClaudeCodeDeviceAuthContract,
-} from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
+  claudeCodeDeviceAuthContract,
+} from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import {
   type CodexDeviceAuthScope,
-  zeroCodexDeviceAuthContract,
-} from "@okouai/api-contracts/contracts/zero-codex-device-auth";
+  codexDeviceAuthContract,
+} from "@okouai/api-contracts/contracts/codex-device-auth";
 import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { http, HttpResponse } from "msw";
 
@@ -46,10 +46,10 @@ import { cliAuthTestRoutes } from "../../cli-auth-test";
 import { desktopAuthRoutes } from "../../desktop-auth";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
-import { zeroClaudeCodeDeviceAuthRoutes } from "../../zero-claude-code-device-auth";
-import { zeroCodexDeviceAuthRoutes } from "../../zero-codex-device-auth";
+import { claudeCodeDeviceAuthRoutes } from "../../claude-code-device-auth";
+import { codexDeviceAuthRoutes } from "../../codex-device-auth";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroRealtimeTokenRoutes } from "../../zero-realtime-token";
+import { realtimeTokenRoutes } from "../../realtime-token";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -84,10 +84,10 @@ const authDeviceRoutes: readonly RouteEntry[] = [
   ...desktopAuthRoutes,
   ...zeroAgentsRoutes,
   ...zeroBillingStatusRoutes,
-  ...zeroClaudeCodeDeviceAuthRoutes,
-  ...zeroCodexDeviceAuthRoutes,
+  ...claudeCodeDeviceAuthRoutes,
+  ...codexDeviceAuthRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroRealtimeTokenRoutes,
+  ...realtimeTokenRoutes,
 ];
 
 function authDeviceApp(context: TestContext) {
@@ -693,7 +693,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
         readonly modelProviderId?: string;
       },
     ) {
-      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(codexDeviceAuthContract);
       return await accept(
         client.start({
           headers: authenticate(actor),
@@ -708,7 +708,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
     ) {
-      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(codexDeviceAuthContract);
       return await accept(
         client.complete({
           headers: authenticate(actor),
@@ -723,7 +723,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(codexDeviceAuthContract);
       return await accept(
         client.cancel({
           headers: authenticate(actor),
@@ -742,7 +742,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
         readonly modelProviderId?: string;
       },
     ) {
-      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(claudeCodeDeviceAuthContract);
       return await accept(
         client.start({
           headers: authenticate(actor),
@@ -758,7 +758,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       authorizationCode: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
     ) {
-      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(claudeCodeDeviceAuthContract);
       return await accept(
         client.complete({
           headers: authenticate(actor),
@@ -773,7 +773,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(claudeCodeDeviceAuthContract);
       return await accept(
         client.cancel({
           headers: authenticate(actor),

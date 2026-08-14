@@ -10,7 +10,6 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { modelProviderCredentialScopeSchema } from "@okouai/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -153,7 +152,7 @@ import {
   type QueuedUserMessage,
 } from "./zero-chat-queued-event.service";
 import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brief-run-callback.service";
-import { sendUserPushNotifications } from "./zero-push-notifications.service";
+import { sendUserPushNotifications } from "./push-notifications.service";
 import {
   type ChatCompletionContextMessage,
   generateChatThreadRecommendedFollowupsFromContext,
@@ -171,10 +170,7 @@ import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
-import {
-  resolveModelFirstProviderAdmission,
-  type ModelFirstPin,
-} from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   chatEventTextCondition,
   chatEventTypeIn,
@@ -619,6 +615,10 @@ interface ChatCallbackDependencies {
     chatThreadId: string,
     signal: AbortSignal,
     timing?: ChatCallbackPreCreateTimingCollector,
+  ) => Promise<void>;
+  readonly handleTerminalGoal?: (
+    runId: string,
+    signal: AbortSignal,
   ) => Promise<void>;
 }
 
@@ -2537,85 +2537,6 @@ type QueuedMessageModelRouteResolution =
   | { readonly route: QueuedMessageModelRoute }
   | { readonly error: QueuedMessageModelRouteError };
 
-function persistedModelProviderCredentialScope(
-  value: string | null,
-): ModelFirstPin["modelProviderCredentialScope"] {
-  if (value === null) {
-    return null;
-  }
-  const parsed = modelProviderCredentialScopeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-}): Promise<QueuedMessageModelRouteResolution | null> {
-  const [thread] = await args.db
-    .select({ selectedModel: chatThreads.selectedModel })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, args.threadId))
-    .limit(1);
-  if (!thread || thread.selectedModel !== null) {
-    return null;
-  }
-
-  const [firstRun] = await args.db
-    .select({
-      modelProviderId: zeroRuns.modelProviderId,
-      modelProviderType: zeroRuns.modelProvider,
-      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-      selectedModel: zeroRuns.selectedModel,
-    })
-    .from(chatEvents)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatEvents.runId))
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, args.threadId),
-        chatEventTypeIn(["input.prompt"]),
-        isNotNull(chatEvents.runId),
-        eq(zeroRuns.triggerSource, "slack"),
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId))
-    .limit(1);
-  const modelPin: ModelFirstPin = firstRun
-    ? {
-        modelProviderId: firstRun.modelProviderId,
-        modelProviderType: firstRun.modelProviderType,
-        modelProviderCredentialScope: persistedModelProviderCredentialScope(
-          firstRun.modelProviderCredentialScope,
-        ),
-        selectedModel: firstRun.selectedModel,
-      }
-    : {
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
-        selectedModel: null,
-      };
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    modelPin,
-    requestedModelProvider: undefined,
-  });
-  if (providerAdmission.error) {
-    return { error: providerAdmission.error.body.error };
-  }
-  return {
-    route: {
-      modelPin,
-      effectiveModelProvider: providerAdmission.effectiveModelProvider,
-      cliAgentType: providerAdmission.cliAgentType,
-      codexServiceTier: undefined,
-    },
-  };
-}
-
 async function resolveQueuedMessageModelRoute(args: {
   readonly db: Db;
   readonly threadId: string;
@@ -2638,13 +2559,6 @@ async function resolveQueuedMessageModelRoute(args: {
     },
   );
   if ("status" in modelContext) {
-    if (args.contextType === "slack") {
-      const unpinnedRoute =
-        await resolveUnpinnedSlackQueuedMessageModelRoute(args);
-      if (unpinnedRoute) {
-        return unpinnedRoute;
-      }
-    }
     return { error: modelContext.body.error };
   }
   if (modelContext.providerAdmission.error) {
@@ -4948,23 +4862,25 @@ async function handleChatInternalCallback(
     return { success: true };
   }
 
-  // Goal continuation runs after this callback is acknowledged and may pause a
-  // failed goal before the background notification step starts. Snapshot the
-  // goal state here so the Push decision reflects the moment the run ended.
+  // Terminal goal handling below may pause a failed goal before background
+  // notifications start. Snapshot first so the Push decision reflects the
+  // moment the run ended.
   const suppressWebPushForActiveGoal = await runHasActiveGoal(
     args.db,
     args.callback.runId,
   );
   signal.throwIfAborted();
+  await args.dependencies.handleTerminalGoal?.(args.callback.runId, signal);
+  signal.throwIfAborted();
 
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
-  // this HTTP response. So acknowledge immediately and run the heavy terminal
-  // processing (message persistence, LLM generation, and push delivery) in the
-  // background, mirroring webhooks-agent-complete. Use a
-  // detached signal so request cancellation cannot interrupt the idempotency
-  // marker -> queued auto-send sequence after the callback is acknowledged.
+  // this HTTP response. After the durable goal action above, acknowledge before
+  // running heavy terminal processing (message persistence, LLM generation,
+  // and push delivery) in the background, mirroring webhooks-agent-complete.
+  // Use a detached signal so request cancellation cannot interrupt the
+  // idempotency marker -> queued auto-send sequence after acknowledgement.
   const backgroundSignal = new AbortController().signal;
   waitUntil(
     tapError(
@@ -5186,6 +5102,7 @@ const buildChatCallbackDependencies$ = command(
     input: {
       readonly db: Db;
       readonly drainThreadQueue?: ChatCallbackDependencies["drainThreadQueue"];
+      readonly handleTerminalGoal?: ChatCallbackDependencies["handleTerminalGoal"];
     },
   ): ChatCallbackDependencies => {
     const { db } = input;
@@ -5240,6 +5157,7 @@ const buildChatCallbackDependencies$ = command(
       ...agentPhoneChatDeliveryDependencies(db),
       ...githubChatDeliveryDependencies(db),
       drainThreadQueue: input.drainThreadQueue,
+      handleTerminalGoal: input.handleTerminalGoal,
     };
     const dependencies: ChatCallbackDependencies = {
       ...baseDependencies,
@@ -5407,6 +5325,7 @@ export const handleChatInternalCallback$ = command(
     input: {
       readonly callback: InternalRunCallbackEnvelope;
       readonly drainThreadQueue?: ChatCallbackDependencies["drainThreadQueue"];
+      readonly handleTerminalGoal?: ChatCallbackDependencies["handleTerminalGoal"];
     },
     signal: AbortSignal,
   ): Promise<
@@ -5417,6 +5336,7 @@ export const handleChatInternalCallback$ = command(
     const dependencies = set(buildChatCallbackDependencies$, {
       db,
       drainThreadQueue: input.drainThreadQueue,
+      handleTerminalGoal: input.handleTerminalGoal,
     });
     return await handleChatInternalCallback(
       {

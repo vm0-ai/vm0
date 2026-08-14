@@ -96,12 +96,14 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.UserFriendlyAutomationMessage]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.UnifiedIndicatorApi]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
@@ -120,12 +122,18 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.UserFriendlyAutomationMessage]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
@@ -149,6 +157,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
+      true,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {

@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
+RUNNER_START_HELPER="${REPO_ROOT}/.github/scripts/reconcile-and-start-runner-groups.sh"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
 RUNNER_HELPERS=(
   "${REPO_ROOT}/e2e/helpers/runner-api.bash"
@@ -17,13 +18,15 @@ fail() {
   exit 1
 }
 
-grep -Fq "local RUNNER_DIRNAME=\"\${RUNNER_DIR##*/}\"" "$WORKFLOW" ||
+grep -Fq ".github/scripts/reconcile-and-start-runner-groups.sh" "$WORKFLOW" ||
+  fail "runner deployment must invoke the lifecycle-locked start helper"
+grep -Fq "local RUNNER_DIRNAME=\"\${RUNNER_DIR##*/}\"" "$RUNNER_START_HELPER" ||
   fail "runner config dirname must come from the manifest runner directory"
-grep -Fq -- "--runner-dirname \${RUNNER_DIRNAME}" "$WORKFLOW" ||
+grep -Fq -- "--runner-dirname \${RUNNER_DIRNAME}" "$RUNNER_START_HELPER" ||
   fail "runner config must be written beneath the manifest runner directory"
-grep -Fq -- "--config \${RUNNER_DIR}/runner.yaml" "$WORKFLOW" ||
+grep -Fq -- "--config \${RUNNER_DIR}/runner.yaml" "$RUNNER_START_HELPER" ||
   fail "runner service must read the config from the manifest runner directory"
-if grep -Fq -- "--runner-dirname \${RUNNER_SERVICE_REF}" "$WORKFLOW"; then
+if grep -Fq -- "--runner-dirname \${RUNNER_SERVICE_REF}" "$RUNNER_START_HELPER"; then
   fail "runner service identity must not select the manifest config directory"
 fi
 grep -Fq "RUNNER_SERVICE_REF: \${{ needs.prepare.outputs.job-ref }}" "$WORKFLOW" ||
@@ -52,10 +55,21 @@ workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
 stripe_listener = jobs.fetch("deploy-stripe-listener")
+playwright = jobs.fetch("cli-e2e-02-playwright")
 account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
+
+playwright_step_names = playwright.fetch("steps").map { |step| step["name"] }
+browser_install_index = playwright_step_names.index("Install Playwright browsers")
+fixture_test_index = playwright_step_names.index(
+  "Run Playwright fixture integration tests",
+)
+unless browser_install_index && fixture_test_index &&
+    browser_install_index < fixture_test_index
+  raise "Playwright browsers must be installed before browser fixture tests"
+end
 
 unless prepare.dig("outputs", "turbo-runner-consumer-needed") ==
     "${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}"
@@ -94,13 +108,18 @@ end
 required_needs = %w[
   prepare
   deploy-api
+  deploy-cli
   deploy-runner-prepare
   deploy-runner-start
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
 ]
 unless required_needs.all? { |job_name| Array(runner["needs"]).include?(job_name) }
-  raise "runner E2E shards must wait for accounts, API, and runner deployment"
+  raise "runner E2E shards must wait for accounts, API, CLI, and runner deployment"
+end
+
+unless runner.fetch("if").include?("needs.deploy-cli.result == 'success'")
+  raise "runner E2E shards must require a published CLI artifact"
 end
 
 unless account_prepare.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
@@ -180,6 +199,20 @@ end
 unless token_step.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID") ==
     "${{ steps.account.outputs.mock-claude-organization-id }}"
   raise "runner E2E token generation must receive the mock Claude organization"
+end
+
+diagnostic_upload_step = account_prepare.fetch("steps").find do |step|
+  step["name"] == "Upload runner E2E Checkout diagnostics"
+end
+raise "missing runner E2E Checkout diagnostic upload" unless diagnostic_upload_step
+unless diagnostic_upload_step.fetch("if") == "failure()" &&
+    diagnostic_upload_step.dig("with", "name") ==
+      "runner-e2e-checkout-diagnostics" &&
+    diagnostic_upload_step.dig("with", "path") ==
+      "/tmp/e2e-runner-checkout-diagnostics" &&
+    diagnostic_upload_step.dig("with", "if-no-files-found") == "ignore" &&
+    diagnostic_upload_step.dig("with", "retention-days") == 1
+  raise "runner E2E Checkout diagnostics must be failure-only and short-lived"
 end
 
 upload_step = account_prepare.fetch("steps").find do |step|

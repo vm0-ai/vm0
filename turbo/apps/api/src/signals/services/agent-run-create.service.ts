@@ -91,7 +91,7 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/zero-seed-skills";
+import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -269,6 +269,7 @@ import {
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
+import { resolveVideoModelForRun } from "./zero-video-model.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -5704,6 +5705,7 @@ interface LaunchRunRowsArgs {
   readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly zeroRunModelPin: ZeroRunModelPin | undefined;
+  readonly selectedVideoModel: string;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly chatThreadId: string | undefined;
   readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -5769,6 +5771,7 @@ function launchZeroRunValues(
     ...(metadata.codexServiceTier === undefined
       ? {}
       : { codexServiceTier: metadata.codexServiceTier }),
+    selectedVideoModel: args.selectedVideoModel,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   };
@@ -6302,7 +6305,7 @@ interface BuildRunnerJobPayloadInput {
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly timing?: ApiDispatchTimingCollector;
+  readonly timing: ApiDispatchTimingCollector;
 }
 
 interface PreparedPiLaunchResources {
@@ -6364,6 +6367,7 @@ async function preparePiLaunchResources(args: {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly persistedStorageMounts: readonly PersistedStorageMount[];
+  readonly timing: ApiDispatchTimingCollector;
 }): Promise<PreparedPiLaunchResources | undefined> {
   if (args.piSandbox === undefined) {
     return undefined;
@@ -6371,38 +6375,85 @@ async function preparePiLaunchResources(args: {
   if (args.chatThreadId === undefined) {
     throw new Error("Pi sandbox execution requires a chat thread");
   }
-  const snapshot = buildRunSkillSnapshot({
-    additionalVolumes: args.additionalVolumes,
-    additionalVolumeSources: args.additionalVolumeSources,
-    persistedStorageMounts: args.persistedStorageMounts,
-  });
-  const [resources, agentName, resumeSession] = await Promise.all([
-    loadPiLaunchStorageResources(args.get, args.db, {
-      snapshot,
-      persistedStorageMounts: args.persistedStorageMounts,
-    }),
-    resolvePiAgentName(args.db, args.composeId),
-    resolveLatestPiResumeSession(args.db, args.chatThreadId),
-  ]);
-  const skills = await loadPiRunSkills(resources.env, snapshot);
-  if (skills.diagnostics.length > 0) {
-    L.warn("Pi run Skill catalog contains diagnostics", {
-      runId: args.runId,
-      diagnostics: skills.diagnostics,
-    });
-  }
-  return {
-    modelConfig: args.piSandbox,
-    prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
-    systemPrompt: renderPiSystemPrompt({
-      agentName,
-      appendSystemPrompt: args.body.appendSystemPrompt,
-      agentInstructions: resources.agentInstructions,
-      memory: resources.memory,
-      skills: skills.skills,
-    }),
-    resumeSession,
-  };
+  const piSandbox = args.piSandbox;
+  const chatThreadId = args.chatThreadId;
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_pi_launch_resources",
+    "nested",
+    async () => {
+      const snapshot = buildRunSkillSnapshot({
+        additionalVolumes: args.additionalVolumes,
+        additionalVolumeSources: args.additionalVolumeSources,
+        persistedStorageMounts: args.persistedStorageMounts,
+      });
+      const [resources, agentName, resumeSession] = await Promise.all([
+        measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_prepare_pi_launch_storage_resources",
+          "nested",
+          async () => {
+            return await loadPiLaunchStorageResources(args.get, args.db, {
+              snapshot,
+              persistedStorageMounts: args.persistedStorageMounts,
+            });
+          },
+        ),
+        measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_prepare_pi_launch_agent_name",
+          "nested",
+          async () => {
+            return await resolvePiAgentName(args.db, args.composeId);
+          },
+        ),
+        measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_prepare_pi_launch_resume_session",
+          "nested",
+          async () => {
+            return await resolveLatestPiResumeSession(args.db, chatThreadId);
+          },
+        ),
+      ]);
+      const skills = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_prepare_pi_launch_skills",
+        "nested",
+        async () => {
+          return await loadPiRunSkills(resources.env, snapshot);
+        },
+      );
+      if (skills.diagnostics.length > 0) {
+        L.warn("Pi run Skill catalog contains diagnostics", {
+          runId: args.runId,
+          diagnostics: skills.diagnostics,
+        });
+      }
+      const renderPrompts = () => {
+        return {
+          prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
+          systemPrompt: renderPiSystemPrompt({
+            agentName,
+            appendSystemPrompt: args.body.appendSystemPrompt,
+            agentInstructions: resources.agentInstructions,
+            memory: resources.memory,
+            skills: skills.skills,
+          }),
+        };
+      };
+      const prompts = args.timing.measureSync(
+        "api_dispatch_prepare_pi_launch_prompts",
+        "nested",
+        renderPrompts,
+      );
+      return {
+        modelConfig: piSandbox,
+        ...prompts,
+        resumeSession,
+      };
+    },
+  );
 }
 
 function preparedRunnerGroup(content: AgentComposeContent): string {
@@ -6457,9 +6508,7 @@ function buildRunnerJobPayload(
     const extraEnvironment = args.includeZeroTokenSecret
       ? { ...args.extraEnvironment, ...zeroTokenEnvironment(body) }
       : args.extraEnvironment;
-    const storageManifestStats = args.timing
-      ? new StorageManifestBuildStats()
-      : undefined;
+    const storageManifestStats = new StorageManifestBuildStats();
     const preparedStoragePromise = measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_storage_manifest",
@@ -6485,7 +6534,7 @@ function buildRunnerJobPayload(
         );
       },
       () => {
-        return storageManifestStats?.overallDimensions();
+        return storageManifestStats.overallDimensions();
       },
     );
     const builtContextDraftPromise = measureApiDispatchTiming(
@@ -6516,6 +6565,7 @@ function buildRunnerJobPayload(
       additionalVolumes: args.additionalVolumes,
       additionalVolumeSources: args.additionalVolumeSources,
       persistedStorageMounts: builtContext.persistedStorageMounts,
+      timing: args.timing,
     });
     const storedContext = storedExecutionContextWithPiResources(
       builtContext.context,
@@ -6566,6 +6616,7 @@ function preparedLaunchRowsArgs(args: {
     sessionStorageMounts: args.commit.launch.sessionStorageMounts,
     modelProvider: args.commit.context.modelProvider,
     zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
+    selectedVideoModel: args.commit.context.selectedVideoModel,
     callbackRows: args.commit.callbackRows,
     chatThreadId: args.commit.createArgs.chatThreadId,
     zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
@@ -7015,6 +7066,7 @@ async function commitFailedLaunch(args: {
         sessionStorageMounts: undefined,
         modelProvider: args.context.modelProvider,
         zeroRunModelPin: args.createArgs.zeroRunModelPin,
+        selectedVideoModel: args.context.selectedVideoModel,
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
@@ -7569,6 +7621,8 @@ interface PreparedRunContext {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly imageRecognitionAvailable: boolean;
+  /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
+  readonly selectedVideoModel: string;
 }
 
 function isPiSandboxEnabledForRun(
@@ -8565,6 +8619,14 @@ function prepareRunContext(
       const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
+      const selectedVideoModel = await resolveVideoModelForRun({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        chatThreadId: args.chatThreadId,
+      });
+      signal.throwIfAborted();
+
       const outputMetadata = await timing.measure(
         "api_dispatch_prepare_context_prepare_output_metadata",
         "nested",
@@ -8601,6 +8663,7 @@ function prepareRunContext(
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
+        selectedVideoModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({
           includeZeroTokenSecret: args.includeZeroTokenSecret,
           selectedModel:
@@ -8872,6 +8935,10 @@ function createAtomicLaunchRun(
               timing: input.timing,
             }),
           );
+        },
+        {
+          pi_launch_resources:
+            input.context.piSandbox === undefined ? "not_required" : "required",
         },
       ),
     );

@@ -128,6 +128,10 @@ function inspectFile(
       firewall_permission: "read-repos",
       browser_user_agent: true,
       connector_diagnostic_slug: "github-connector",
+      request_headers: { "Content-Type": "application/json" },
+      request_headers_truncated: true,
+      response_headers: {},
+      response_headers_truncated: true,
     },
     {
       timestamp: "2026-03-10T14:56:04.000Z",
@@ -506,6 +510,9 @@ describe("activity inspect page", () => {
       expect(screen.getByText("github-connector")).toBeInTheDocument();
     });
     expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
+    expect(screen.getByText("Request Headers (1)")).toBeInTheDocument();
+    expect(screen.getByText("Response Headers (0)")).toBeInTheDocument();
+    expect(screen.getAllByText("truncated")).toHaveLength(2);
 
     await user.click(networkRow);
     await waitFor(() => {

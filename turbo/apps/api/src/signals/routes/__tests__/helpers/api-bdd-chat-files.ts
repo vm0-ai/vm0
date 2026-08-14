@@ -9,6 +9,7 @@ import {
   chatThreadEventsContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
+  chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadPinContract,
   chatThreadRenameContract,
@@ -19,6 +20,7 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type ChatThreadDraft,
+  type ChatThreadMetadata,
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
@@ -27,6 +29,7 @@ import {
   type UserMessageInputDocument,
   type ZeroIndicators,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroUserModelPreferenceContract } from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import {
   artifactCatalogContract,
   type ArtifactCatalogKind,
@@ -60,7 +63,7 @@ import {
 } from "../../../../lib/file-url";
 import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import { zeroChatEventsRoutes } from "../../zero-chat-events";
-import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
+import { artifactCatalogRoutes } from "../../artifact-catalog";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "../../zero-chat-threads-delete";
@@ -76,6 +79,7 @@ import { zeroHostRoutes } from "../../zero-host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
+import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
 import type { ApiTestUser } from "./api-bdd";
 import {
   projectChatEventRows,
@@ -171,7 +175,7 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 }
 
 const chatFilesRoutes = [
-  ...zeroArtifactCatalogRoutes,
+  ...artifactCatalogRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
@@ -188,6 +192,7 @@ const chatFilesRoutes = [
   ...zeroUploadsCompleteRoutes,
   ...zeroHostRoutes,
   ...zeroModelPoliciesRoutes,
+  ...zeroUserModelPreferenceRoutes,
 ] as const;
 
 function chatFilesApp(context: TestContext) {
@@ -265,6 +270,10 @@ export function createChatFilesBddApi(context: TestContext) {
     return chatFilesApp(context)(chatThreadByIdContract);
   }
 
+  function threadMetadataClient() {
+    return chatFilesApp(context)(chatThreadMetadataContract);
+  }
+
   function threadDraftClient() {
     return chatFilesApp(context)(chatThreadDraftContract);
   }
@@ -303,6 +312,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadModelSelectionClient() {
     return chatFilesApp(context)(chatThreadModelSelectionContract);
+  }
+
+  function userModelPreferenceClient() {
+    return chatFilesApp(context)(zeroUserModelPreferenceContract);
   }
 
   function threadComputerUseHostClient() {
@@ -511,12 +524,16 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<readonly string[]> {
       const response = await accept(
-        threadsClient().activeIds({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body.threadIds;
+      return Object.entries(response.body.threads).flatMap(
+        ([threadId, indicator]) => {
+          return indicator === "active" ? [threadId] : [];
+        },
+      );
     },
 
     async listIndicators(actor: ApiTestUser): Promise<ZeroIndicators> {
@@ -533,32 +550,24 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<readonly string[]> {
       const response = await accept(
-        threadsClient().unreadIds({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body.threadIds;
+      return Object.entries(response.body.threads).flatMap(
+        ([threadId, indicator]) => {
+          return indicator === "unread" ? [threadId] : [];
+        },
+      );
     },
 
-    async requestListUnreadChatThreadIds(
+    async requestIndicators(
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401)[],
     ) {
       return await accept(
-        threadsClient().unreadIds({
-          headers: authenticate(context, actor),
-        }),
-        statuses,
-      );
-    },
-
-    async requestListUnreadAgents(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403)[],
-    ) {
-      return await accept(
-        threadsClient().unreadAgents({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -567,12 +576,16 @@ export function createChatFilesBddApi(context: TestContext) {
 
     async listUnreadAgents(actor: ApiTestUser): Promise<readonly string[]> {
       const response = await accept(
-        threadsClient().unreadAgents({
+        threadsClient().indicators({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body.agentIds;
+      return Object.entries(response.body.agents).flatMap(
+        ([agentId, indicator]) => {
+          return indicator === "unread" ? [agentId] : [];
+        },
+      );
     },
 
     async markAgentThreadsRead(
@@ -608,6 +621,20 @@ export function createChatFilesBddApi(context: TestContext) {
     ): Promise<ChatThreadDetail> {
       const response = await accept(
         threadByIdClient().get({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async readThreadMetadata(
+      actor: ApiTestUser,
+      threadId: string,
+    ): Promise<ChatThreadMetadata> {
+      const response = await accept(
+        threadMetadataClient().get({
           headers: authenticate(context, actor),
           params: { id: threadId },
         }),
@@ -846,6 +873,19 @@ export function createChatFilesBddApi(context: TestContext) {
           },
         }),
         [204],
+      );
+    },
+
+    async updateUserModelPreference(
+      actor: ApiTestUser,
+      selectedModel: SupportedRunModel | null,
+    ): Promise<void> {
+      await accept(
+        userModelPreferenceClient().update({
+          headers: authenticate(context, actor),
+          body: { selectedModel, serviceTier: null },
+        }),
+        [200],
       );
     },
 

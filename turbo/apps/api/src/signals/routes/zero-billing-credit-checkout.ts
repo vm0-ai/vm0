@@ -5,14 +5,20 @@ import { eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
-import { badRequestMessage, providerUnavailable } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  providerUnavailable,
+} from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import {
   activeCustomCreditUnitPriceId,
+  confirmExistingBillingCreditPurchase$,
   createCreditCheckoutSession$,
+  previewExistingBillingCreditPurchase$,
 } from "../services/zero-billing-checkout.service";
 import { updateAutoRechargeConfig$ } from "../services/billing.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
@@ -43,7 +49,13 @@ const creditCheckoutAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const { credits, successUrl, cancelUrl, autoRecharge } = bodyResult.data;
+    const {
+      credits,
+      successUrl,
+      cancelUrl,
+      autoRecharge,
+      previewExistingBilling,
+    } = bodyResult.data;
 
     const capabilities = await loadOrgPlanCapabilities(get(db$), auth.orgId);
     signal.throwIfAborted();
@@ -96,6 +108,21 @@ const creditCheckoutAuthed$ = command(
       }
     }
 
+    // This shared route also serves the commit-addressed CLI, which requires
+    // hosted Checkout, while old app builds can omit this opt-in for about two
+    // days during rollout. Remove the rollout compatibility after #26842; keep
+    // an explicit hosted-checkout contract for CLI before narrowing this field.
+    if (previewExistingBilling === true) {
+      const preview = await set(
+        previewExistingBillingCreditPurchase$,
+        { orgId: auth.orgId, credits },
+        signal,
+      );
+      if (preview) {
+        return { status: 200 as const, body: preview };
+      }
+    }
+
     const url = await set(
       createCreditCheckoutSession$,
       {
@@ -126,6 +153,50 @@ const creditCheckoutAuthed$ = command(
   },
 );
 
+const creditPurchaseConfirmAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    signal.throwIfAborted();
+
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingCreditCheckoutContract.confirm),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const capabilities = await loadOrgPlanCapabilities(get(db$), auth.orgId);
+    signal.throwIfAborted();
+    if (capabilities?.canBuyCredits === false) {
+      return badRequestMessage(
+        "Credit purchases are not available for this workspace",
+      );
+    }
+    if (!activeCustomCreditUnitPriceId()) {
+      return badRequestMessage("Custom credit price not configured");
+    }
+
+    const result = await set(
+      confirmExistingBillingCreditPurchase$,
+      auth.orgId,
+      bodyResult.data.previewToken,
+      signal,
+    );
+    if (result.status === "invalid_preview") {
+      return badRequestMessage(
+        "Credit purchase preview expired or is no longer valid",
+      );
+    }
+    if (result.status === "billing_unavailable") {
+      return conflict("Saved billing is no longer available");
+    }
+    return { status: 200 as const, body: result.response };
+  },
+);
+
 const creditCheckout$ = command(async ({ set }, signal: AbortSignal) => {
   if (!optionalEnv("STRIPE_SECRET_KEY")) {
     return providerUnavailable("Billing not configured");
@@ -144,9 +215,30 @@ const creditCheckout$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
+const creditPurchaseConfirm$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+  return await set(
+    authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "billing:write",
+      },
+      creditPurchaseConfirmAuthed$,
+    ),
+    signal,
+  );
+});
+
 export const zeroBillingCreditCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingCreditCheckoutContract.create,
     handler: creditCheckout$,
+  },
+  {
+    route: zeroBillingCreditCheckoutContract.confirm,
+    handler: creditPurchaseConfirm$,
   },
 ];

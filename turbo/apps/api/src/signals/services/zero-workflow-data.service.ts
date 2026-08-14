@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroWorkflows } from "@okouai/db/schema/zero-workflow";
+import { workflows } from "@okouai/db/schema/workflow";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { and, asc, desc, eq, or, type SQL } from "drizzle-orm";
 
@@ -193,13 +193,13 @@ export function visibleWorkflowCondition(member: WorkflowMember): SQL {
   );
 
   const publicWorkflowOnVisibleAgent = and(
-    eq(zeroWorkflows.visibility, "public"),
+    eq(workflows.visibility, "public"),
     agentVisibleToMember,
   );
 
   return or(
     publicWorkflowOnVisibleAgent,
-    eq(zeroWorkflows.ownerUserId, member.userId),
+    eq(workflows.ownerUserId, member.userId),
   ) as SQL;
 }
 
@@ -213,7 +213,7 @@ export async function loadVisibleWorkflowById(
 ): Promise<{ workflow: WorkflowRow; agent: VisibleWorkflowAgentInfo } | null> {
   const [row] = await db
     .select({
-      workflow: zeroWorkflows,
+      workflow: workflows,
       agent: {
         id: zeroAgents.id,
         orgId: zeroAgents.orgId,
@@ -223,12 +223,12 @@ export async function loadVisibleWorkflowById(
         displayName: zeroAgents.displayName,
       },
     })
-    .from(zeroWorkflows)
-    .innerJoin(zeroAgents, eq(zeroWorkflows.agentId, zeroAgents.id))
+    .from(workflows)
+    .innerJoin(zeroAgents, eq(workflows.agentId, zeroAgents.id))
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.id, args.workflowId),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.id, args.workflowId),
         visibleWorkflowCondition(args.member),
       ),
     )
@@ -270,18 +270,18 @@ function workflowRunPrioritySort(userId: string): SQL[] {
   return [
     desc(
       and(
-        eq(zeroWorkflows.visibility, "private"),
-        eq(zeroWorkflows.ownerUserId, userId),
+        eq(workflows.visibility, "private"),
+        eq(workflows.ownerUserId, userId),
       ) as SQL,
     ),
-    asc(zeroWorkflows.createdAt),
+    asc(workflows.createdAt),
   ];
 }
 
 function injectableWorkflowCondition(userId: string): SQL {
   return or(
-    eq(zeroWorkflows.visibility, "public"),
-    eq(zeroWorkflows.ownerUserId, userId),
+    eq(workflows.visibility, "public"),
+    eq(workflows.ownerUserId, userId),
   ) as SQL;
 }
 
@@ -336,16 +336,16 @@ export async function loadWorkflowShadowWinner(
 ): Promise<WorkflowShadow | null> {
   const [winner] = await db
     .select({
-      id: zeroWorkflows.id,
-      name: zeroWorkflows.name,
-      displayName: zeroWorkflows.displayName,
+      id: workflows.id,
+      name: workflows.name,
+      displayName: workflows.displayName,
     })
-    .from(zeroWorkflows)
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.workflow.agentId),
-        eq(zeroWorkflows.name, args.workflow.name),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.workflow.agentId),
+        eq(workflows.name, args.workflow.name),
         injectableWorkflowCondition(args.member.userId),
       ),
     )
@@ -451,14 +451,14 @@ export function zeroWorkflowList(args: {
     const rows = await db
       .select({
         workflow: {
-          id: zeroWorkflows.id,
-          agentId: zeroWorkflows.agentId,
-          name: zeroWorkflows.name,
-          visibility: zeroWorkflows.visibility,
-          ownerUserId: zeroWorkflows.ownerUserId,
-          displayName: zeroWorkflows.displayName,
-          description: zeroWorkflows.description,
-          createdAt: zeroWorkflows.createdAt,
+          id: workflows.id,
+          agentId: workflows.agentId,
+          name: workflows.name,
+          visibility: workflows.visibility,
+          ownerUserId: workflows.ownerUserId,
+          displayName: workflows.displayName,
+          description: workflows.description,
+          createdAt: workflows.createdAt,
         },
         agent: {
           id: zeroAgents.id,
@@ -474,17 +474,17 @@ export function zeroWorkflowList(args: {
           cachedAt: userCache.cachedAt,
         },
       })
-      .from(zeroWorkflows)
-      .innerJoin(zeroAgents, eq(zeroWorkflows.agentId, zeroAgents.id))
-      .leftJoin(userCache, eq(userCache.userId, zeroWorkflows.ownerUserId))
+      .from(workflows)
+      .innerJoin(zeroAgents, eq(workflows.agentId, zeroAgents.id))
+      .leftJoin(userCache, eq(userCache.userId, workflows.ownerUserId))
       .where(
         and(
-          eq(zeroWorkflows.orgId, args.orgId),
-          args.agentId ? eq(zeroWorkflows.agentId, args.agentId) : undefined,
+          eq(workflows.orgId, args.orgId),
+          args.agentId ? eq(workflows.agentId, args.agentId) : undefined,
           visibleWorkflowCondition(args.member),
         ),
       )
-      .orderBy(asc(zeroWorkflows.name));
+      .orderBy(asc(workflows.name));
 
     const winners = shadowWinnerFromRows(rows, args.member);
     const currentTime = now();

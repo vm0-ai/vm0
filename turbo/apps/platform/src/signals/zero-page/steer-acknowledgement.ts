@@ -8,9 +8,9 @@ const STEER_ACKNOWLEDGEMENT_SWEEP_MS = 520;
 // The acknowledgement label is repainted in place rather than replaced. Both
 // wordings sit in one box so a single feathered gradient boundary sweeps across
 // both of them: the previous wording is erased and the new one drawn without
-// either moving a pixel. The box width travels with the boundary so the divider
-// rule beside the label grows or shrinks to the new wording instead of leaving
-// a gap.
+// either moving a pixel. The box width travels with the boundary so the
+// right-aligned label grows into the new wording as it is drawn, instead of
+// snapping to its width first.
 //
 // The previous wording is read back off the row rather than rendered, because
 // the label element is remounted on every change and React has no memory of
@@ -57,8 +57,9 @@ const sweepSteerAcknowledgementOnRef$ = command(
     timeout(
       () => {
         delete el.dataset.steerAcknowledgementSweeping;
-        // Drop back to the intrinsic width so later font or zoom changes keep the
-        // rule beside the label, and stop the spent wording from being selectable.
+        // Drop back to the intrinsic width so later font or zoom changes keep
+        // the box on its text, and stop the spent wording from being
+        // selectable.
         el.style.removeProperty("width");
         outgoing.textContent = "";
       },

@@ -347,7 +347,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Importation de modèle",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -809,6 +808,7 @@
       "confirm": "Confirmer",
       "credits": "crédits",
       "manage": "Gérer",
+      "preparing": "Préparation...",
       "redirecting": "Redirection...",
       "restore": "Restaurer",
       "retry": "Réessayer",
@@ -867,6 +867,9 @@
       "exchangeRate": "Les crédits n'expirent jamais. 1 USD = {{credits}} crédits.",
       "quickBuy": "Achat rapide",
       "quickBuyAmount": "Achat rapide {{amount}}",
+      "reviewDescription": "Confirmez ce paiement unique avec votre moyen de paiement enregistré.",
+      "reviewError": "Impossible de finaliser cet achat de crédits. Vérifiez vos informations de facturation et réessayez.",
+      "reviewTitle": "Vérifier l'achat de crédits",
       "title": "Acheter des crédits"
     },
     "downgrade": {
@@ -967,15 +970,14 @@
       "upgradeTo": "Passer à {{plan}}",
       "usagePacks": {
         "bonusCredits": "Crédits bonus",
-        "changePlan": "Changer de forfait",
+        "bonusIncluded": "{{credits}} en bonus inclus",
         "choosePlan": "Choisissez un forfait",
-        "choosePlanDescription": "Choisissez d’abord le forfait de l’espace de travail. Les forfaits des membres sont configurés ensuite.",
         "concurrentSlots": "Emplacements simultanés",
         "configurePackages": "Configurer les forfaits des membres",
-        "configurePackagesDescription": "Choisissez un forfait obligatoire pour chaque membre, puis vérifiez le total mensuel combiné.",
+        "credits": "Crédits",
+        "creditsPerMember": "{{credits}} crédits par membre",
         "currentMember": "Membre actuel",
-        "description": "Choisissez un forfait d’utilisation mensuel pour chaque membre.",
-        "discountBonusCredits": "Crédits bonus liés à la remise",
+        "everythingOnPlus": "Tout {{plan}}, plus :",
         "existingPackagesUnchanged": "Les forfaits actuels des membres restent inchangés.",
         "management": {
           "comparison": "Comparaison de l’abonnement actuel et du nouveau",
@@ -983,13 +985,16 @@
           "downgradeDescription": "Le forfait inférieur commence à la prochaine date de facturation. Les crédits existants restent disponibles jusqu’à leur expiration.",
           "downgradesToDate": "Passe à {{package}} le {{date}}.",
           "downgradesToPeriod": "Passe à {{package}} à la prochaine date de facturation.",
+          "everyMonth": "Chaque mois",
           "immediateAmount": "À payer maintenant",
+          "immediateAmountNote": "Pour le reste de cette période de facturation",
           "immediateCredits": "Crédits ajoutés après le paiement",
           "new": "Nouveau",
           "processing": "Modification en cours",
-          "reviewDescription": "Vérifiez le prix de l’abonnement ci-dessous. La confirmation débitera le montant dû via votre moyen de paiement enregistré.",
+          "reviewDescription": "La confirmation débite votre moyen de paiement enregistré.",
           "reviewTitle": "Vérifier la modification du forfait",
-          "scheduledFor": "Prévu pour le {{date}}"
+          "scheduledFor": "Prévu pour le {{date}}",
+          "today": "Aujourd’hui"
         },
         "memberExclusive": "Chaque forfait appartient à un membre et ne peut pas être partagé. Lorsqu’un forfait est épuisé, l’utilisation revient aux crédits à l’usage. Vous pourrez passer à un nouveau forfait ultérieurement.",
         "memberPackages": "Forfaits des membres",
@@ -1010,20 +1015,18 @@
           "switchesOn": "Passe au forfait {{plan}} le {{date}}",
           "title": "Convertir le forfait historique"
         },
-        "minimumPackageBreakdown": "Forfait de {{base}} + forfait membre obligatoire de {{package}}",
         "monthlyTotal": "Total mensuel",
         "orderSummary": "Récapitulatif de la commande",
-        "packagesStep": "Forfaits",
+        "packCredits": "{{credits}} crédits",
+        "packCreditsDiscount": "{{credits}} crédits · {{discount}} % de remise",
         "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",
         "planChangeError": "Impossible de préparer la modification de l’abonnement. Réessayez.",
         "planStep": "Forfait",
         "purchasedCredits": "Crédits achetés",
-        "purchaseSteps": "Étapes d’achat",
-        "selectedPlan": "Forfait sélectionné",
         "selectPlan": "Commencer avec {{plan}}",
         "selectUsage": "Utilisation de {{name}}",
-        "startingAt": "À partir de",
-        "totalCredits": "Crédits totaux"
+        "stepOfTotal": "Étape {{current}} sur {{total}}",
+        "totalCreditsWithBonus": "{{credits}} crédits · {{bonus}} en bonus"
       }
     },
     "restore": {
@@ -1048,6 +1051,7 @@
       "concurrencyChanged": "Modification de concurrence confirmée. Le nombre de créneaux sera mis à jour après le traitement de la modification par Stripe.",
       "concurrencyReduced": "La réduction de concurrence est prévue pour la prochaine date de facturation.",
       "concurrencyRestored": "Abonnement concurrentiel restauré.",
+      "creditPurchaseConfirmed": "Paiement confirmé. Les crédits apparaîtront une fois la facture traitée par Stripe.",
       "creditsAdded": "Crédits ajoutés. Vous pouvez continuer à discuter avec Zero.",
       "downgradeScheduledDate": "Rétrogradation programmée. Votre forfait actuel reste actif jusqu'au {{date}}.",
       "downgradeScheduledPeriod": "Rétrogradation programmée. Votre forfait actuel reste actif jusqu'à la fin de la période de facturation.",
@@ -1439,8 +1443,7 @@
       "search": "Rechercher des agents et des chats...",
       "sent": "Transfert réussi",
       "threads": "Chats",
-      "title": "Transférer vers",
-      "to": "Transférer vers"
+      "title": "Transférer vers"
     },
     "mail": {
       "bcc": "bcc",
@@ -1709,6 +1712,9 @@
       "frequentlyUsed": "Fréquemment utilisé",
       "icon": "Icône de fil de discussion",
       "loadingEarlier": "Chargement des messages précédents",
+      "locator": {
+        "you": "Vous"
+      },
       "noEmojiFound": "Aucun emoji trouvé",
       "notFound": "Fil de discussion introuvable",
       "openArtifacts": "Ouvrir les artéfacts",
@@ -4386,6 +4392,24 @@
           "enabled_other": "Activé pour les prochaines exécutions de {{count}}",
           "title": "Capturer les corps réseau"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Attentes actives",
+          "blurred": "sans focus",
+          "channel": "canal",
+          "clear": "Effacer",
+          "connection": "connexion",
+          "copyJson": "Copier le JSON",
+          "description": "Inspectez le cycle de vie du navigateur, la récupération de l'authentification et les signaux de connexion Ably.",
+          "empty": "Aucun événement de diagnostic enregistré.",
+          "events": "événements",
+          "focused": "avec focus",
+          "log": "Journal des événements",
+          "offline": "hors ligne",
+          "online": "en ligne",
+          "recovery": "récupération",
+          "title": "Diagnostic de connexion en temps réel",
+          "unavailable": "indisponible"
+        },
         "tab": "Débogage"
       },
       "documentTitle": "Préférences",
@@ -4640,6 +4664,7 @@
       "imageRecognize": "Reconnaissance d'images",
       "maps": "Cartes",
       "peopleSearch": "Recherche de personnes",
+      "seo": "SEO",
       "translation": "Traduction",
       "usage": "Utilisation",
       "weather": "Météo",

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
@@ -18,6 +19,8 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
 /**
@@ -45,7 +48,7 @@ function authHeaders() {
 }
 
 interface ChatAutomationFixture {
-  readonly actor: ApiTestUser;
+  readonly actor: ApiTestUser & { readonly orgId: string };
   readonly agentId: string;
   readonly workflowId: string;
   readonly runnerGroup: string;
@@ -53,6 +56,9 @@ interface ChatAutomationFixture {
 
 async function setupChatAutomationFixture(): Promise<ChatAutomationFixture> {
   const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped workflow actor");
+  }
   chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -71,7 +77,12 @@ async function setupChatAutomationFixture(): Promise<ChatAutomationFixture> {
     name: "chat-run-finished-workflow",
   });
   context.mocks.s3.send.mockResolvedValue({});
-  return { actor, agentId: agent.agentId, workflowId, runnerGroup };
+  return {
+    actor: { ...actor, orgId: actor.orgId },
+    agentId: agent.agentId,
+    workflowId,
+    runnerGroup,
+  };
 }
 
 /**
@@ -240,6 +251,7 @@ async function expectAutomationSourceAnnotation(
   fixture: ChatAutomationFixture,
   automationId: string,
   sourceRun: { readonly runId: string; readonly threadId: string },
+  expectedDisplayMessage?: string,
 ): Promise<void> {
   const automation = await accept(
     automationsClient().get({
@@ -270,6 +282,9 @@ async function expectAutomationSourceAnnotation(
   });
   if (!automationInput || automationInput.eventType !== "input.prompt") {
     throw new Error("Expected the triggered automation input");
+  }
+  if (expectedDisplayMessage) {
+    expect(chatEventDisplayText(automationInput)).toBe(expectedDisplayMessage);
   }
   expect(
     automationInput.userMessage.parts.filter((part) => {
@@ -386,6 +401,9 @@ describe("chat-run-finished workflow automations", () => {
     { timeout: 30_000 },
     async () => {
       const fixture = await setupChatAutomationFixture();
+      await updateFeatureSwitchesForUser(context, fixture.actor, {
+        [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+      });
       const run = await startWatchedChatRun(fixture, "watched completed run");
       await setRunAutonomyBudgetFixture(context, run.runId, 2);
 
@@ -448,7 +466,12 @@ describe("chat-run-finished workflow automations", () => {
         readLatestWorkflowAutomationRunFixture(context, patternMatch),
       ).resolves.toMatchObject({ autonomyBudget: 1 });
 
-      await expectAutomationSourceAnnotation(fixture, fireAlways, run);
+      await expectAutomationSourceAnnotation(
+        fixture,
+        fireAlways,
+        run,
+        "A run in the watched chat thread completed.",
+      );
 
       const automationRuns = await api.listAgentRuns(fixture.actor, {
         status: "pending",

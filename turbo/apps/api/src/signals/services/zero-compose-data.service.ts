@@ -7,10 +7,7 @@ import {
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { storages } from "@okouai/db/schema/storage";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import {
   getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
@@ -116,20 +113,17 @@ export const deleteComposeById$ = command(
 
       const automations = await tx
         .select({
-          orgId: zeroWorkflowAutomations.orgId,
-          ownerUserId: zeroWorkflowAutomations.ownerUserId,
-          eventType: zeroWorkflowAutomations.eventType,
-          eventConfig: zeroWorkflowAutomations.eventConfig,
+          orgId: workflowAutomations.orgId,
+          ownerUserId: workflowAutomations.ownerUserId,
+          eventType: workflowAutomations.eventType,
+          eventConfig: workflowAutomations.eventConfig,
         })
-        .from(zeroWorkflowAutomations)
-        .innerJoin(
-          zeroWorkflows,
-          eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-        )
+        .from(workflowAutomations)
+        .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
         .where(
           and(
-            eq(zeroWorkflows.orgId, args.orgId),
-            eq(zeroWorkflows.agentId, args.composeId),
+            eq(workflows.orgId, args.orgId),
+            eq(workflows.agentId, args.composeId),
           ),
         );
 

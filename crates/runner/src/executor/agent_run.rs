@@ -30,9 +30,9 @@ use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
     check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
-    drain_stdout_to_file, explicit_enospc_evidence, log_agent_abnormal_exit_env_diagnostics,
-    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
-    read_guest_error_file, read_guest_failure_diagnostic_file,
+    drain_stdout_to_file, explicit_enospc_evidence, failure_diagnostic_reports_workload_memory_oom,
+    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
+    log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
@@ -2409,10 +2409,20 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         stdout_stream_diagnostics,
     );
 
+    let failure_diagnostic = if !cancellation_observed && process_failed(&exit) {
+        read_guest_failure_diagnostic_file(sandbox, context.run_id).await
+    } else {
+        None
+    };
+
     // Check for OOM kill when process was terminated by SIGKILL. Skip only
     // after hard fallback, where the SIGKILL exit code is synthetic. A
-    // cooperative guest exit remains real process evidence.
-    if !used_hard_cancellation_fallback && process_exit_oom_candidate(&exit) {
+    // cooperative guest exit remains real process evidence. A guest-authored
+    // workload OOM diagnostic is more specific than VM-wide dmesg output.
+    if !used_hard_cancellation_fallback
+        && process_exit_oom_candidate(&exit)
+        && !failure_diagnostic_reports_workload_memory_oom(failure_diagnostic.as_ref())
+    {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
@@ -2461,7 +2471,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     } else if process_failed(&exit) {
         let failure_exit_code = process_failure_exit_code(&exit);
         let stderr = process_failure_stderr(&exit);
-        let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
         let should_read_guest_error = stderr.is_empty()
             || (failure_diagnostic.is_none()
                 && matches!(exit.termination, ExecTermination::Exited { exit_code } if exit_code != 0));

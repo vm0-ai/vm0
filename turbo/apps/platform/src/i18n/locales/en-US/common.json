@@ -333,7 +333,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Template import",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -790,6 +789,7 @@
       "confirm": "Confirm",
       "credits": "credits",
       "manage": "Manage",
+      "preparing": "Preparing...",
       "redirecting": "Redirecting...",
       "restore": "Restore",
       "retry": "Retry",
@@ -846,6 +846,9 @@
       "exchangeRate": "Credits never expire. 1 USD = {{credits}} credits.",
       "quickBuy": "Quick buy",
       "quickBuyAmount": "Quick buy {{amount}}",
+      "reviewDescription": "Confirm this one-time charge with your saved payment method.",
+      "reviewError": "Could not complete this credit purchase. Review your billing details and try again.",
+      "reviewTitle": "Review credit purchase",
       "title": "Buy credits"
     },
     "downgrade": {
@@ -946,15 +949,14 @@
       "upgradeTo": "Upgrade to {{plan}}",
       "usagePacks": {
         "bonusCredits": "Bonus credits",
-        "changePlan": "Change plan",
+        "bonusIncluded": "{{credits}} bonus included",
         "choosePlan": "Choose a plan",
-        "choosePlanDescription": "Choose the workspace plan first. Member packages are configured next.",
         "concurrentSlots": "Concurrent slots",
         "configurePackages": "Configure member packages",
-        "configurePackagesDescription": "Choose a required package for every member, then review the combined monthly total.",
+        "credits": "Credits",
+        "creditsPerMember": "{{credits}} credits per member",
         "currentMember": "Current member",
-        "description": "Choose a monthly usage pack for every member.",
-        "discountBonusCredits": "Bonus credits from discount",
+        "everythingOnPlus": "Everything on {{plan}}, plus:",
         "existingPackagesUnchanged": "Existing member packages stay unchanged.",
         "management": {
           "comparison": "Current and new subscription comparison",
@@ -962,13 +964,16 @@
           "downgradeDescription": "The lower package starts at the next billing date. Existing credits remain available until they expire.",
           "downgradesToDate": "Downgrades to {{package}} on {{date}}.",
           "downgradesToPeriod": "Downgrades to {{package}} at the next billing date.",
+          "everyMonth": "Every month",
           "immediateAmount": "Due now",
+          "immediateAmountNote": "For the rest of this billing period",
           "immediateCredits": "Credits added after payment",
           "new": "New",
           "processing": "Change is processing",
-          "reviewDescription": "Review the subscription price below. Confirming charges the amount due with your saved payment method.",
+          "reviewDescription": "Confirming charges your saved payment method.",
           "reviewTitle": "Review package change",
-          "scheduledFor": "Scheduled for {{date}}"
+          "scheduledFor": "Scheduled for {{date}}",
+          "today": "Today"
         },
         "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
         "memberPackages": "Member packages",
@@ -989,20 +994,18 @@
           "switchesOn": "Switches to {{plan}} on {{date}}",
           "title": "Convert legacy plan"
         },
-        "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
         "monthlyTotal": "Monthly total",
         "orderSummary": "Order summary",
-        "packagesStep": "Packages",
+        "packCredits": "{{credits}} credits",
+        "packCreditsDiscount": "{{credits}} credits · {{discount}}% off",
         "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
         "planChangeError": "Could not prepare the subscription change. Try again.",
         "planStep": "Plan",
         "purchasedCredits": "Purchased credits",
-        "purchaseSteps": "Purchase steps",
-        "selectedPlan": "Selected plan",
         "selectPlan": "Start with {{plan}}",
         "selectUsage": "Usage for {{name}}",
-        "startingAt": "Starting at",
-        "totalCredits": "Total credits"
+        "stepOfTotal": "Step {{current}} of {{total}}",
+        "totalCreditsWithBonus": "{{credits}} credits · {{bonus}} bonus"
       }
     },
     "restore": {
@@ -1027,6 +1030,7 @@
       "concurrencyChanged": "Concurrency change confirmed. Your slot count will update after Stripe processes the change.",
       "concurrencyReduced": "Concurrency reduction scheduled for the next billing date.",
       "concurrencyRestored": "Concurrency subscription restored.",
+      "creditPurchaseConfirmed": "Payment confirmed. Credits will appear after Stripe processes the invoice.",
       "creditsAdded": "Credits added. You can continue chatting with Zero.",
       "downgradeScheduledDate": "Downgrade scheduled. Your current plan stays active until {{date}}.",
       "downgradeScheduledPeriod": "Downgrade scheduled. Your current plan stays active until the billing period ends.",
@@ -1410,8 +1414,7 @@
       "search": "Search agents and chats...",
       "sent": "Forwarded successfully",
       "threads": "Chats",
-      "title": "Forward to",
-      "to": "Forward to"
+      "title": "Forward to"
     },
     "mail": {
       "bcc": "bcc",
@@ -1669,6 +1672,9 @@
       "frequentlyUsed": "Frequently used",
       "icon": "Chat thread icon",
       "loadingEarlier": "Loading earlier messages",
+      "locator": {
+        "you": "You"
+      },
       "noEmojiFound": "No emoji found",
       "notFound": "Chat thread not found",
       "openArtifacts": "Open artifacts",
@@ -4334,6 +4340,24 @@
           "enabled_other": "Enabled for the next {{count}} runs",
           "title": "Capture network bodies"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Active waits",
+          "blurred": "blurred",
+          "channel": "channel",
+          "clear": "Clear",
+          "connection": "connection",
+          "copyJson": "Copy JSON",
+          "description": "Inspect browser lifecycle, auth recovery, and Ably connection signals.",
+          "empty": "No diagnostic events recorded.",
+          "events": "events",
+          "focused": "focused",
+          "log": "Event log",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "recovery",
+          "title": "Realtime connection diagnostics",
+          "unavailable": "unavailable"
+        },
         "tab": "Debug"
       },
       "documentTitle": "Preferences",
@@ -4588,6 +4612,7 @@
       "imageRecognize": "Image Recognize",
       "maps": "Maps",
       "peopleSearch": "People Search",
+      "seo": "SEO",
       "translation": "Translation",
       "usage": "Usage",
       "weather": "Weather",

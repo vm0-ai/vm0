@@ -17,15 +17,15 @@ import {
   type GithubWorkflowJobCompletedEventConfig,
   type GithubWorkflowRunConclusion,
   type GithubAutomationEventConfig,
-  type ZeroAutomationEventType,
+  type WorkflowAutomationEventType,
 } from "@okouai/api-contracts/contracts/zero-workflows";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowGithubProcessedEvents,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflowGithubProcessedEvents,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -182,7 +182,7 @@ export interface GithubIssueCommentEventPayload {
 }
 
 type GithubWebhookAutomationEventType = Extract<
-  ZeroAutomationEventType,
+  WorkflowAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
   | "github-pull-request"
@@ -576,39 +576,36 @@ async function loadGithubWebhookAutomations(
   const rows = await args.db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.eventType, args.eventType),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, args.eventType),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.createdAt));
+    .orderBy(asc(workflowAutomations.createdAt));
   signal.throwIfAborted();
 
   const automations: GithubWebhookAutomationRow[] = [];
@@ -705,7 +702,7 @@ async function recordProcessedDelivery(args: {
 }): Promise<string | null> {
   const subject = eventSubject(args.event);
   const [row] = await args.db
-    .insert(zeroWorkflowGithubProcessedEvents)
+    .insert(workflowGithubProcessedEvents)
     .values({
       automationId: args.automation.automation.id,
       githubDeliveryId: args.deliveryId,
@@ -717,7 +714,7 @@ async function recordProcessedDelivery(args: {
       createdAt: nowDate(),
     })
     .onConflictDoNothing()
-    .returning({ id: zeroWorkflowGithubProcessedEvents.id });
+    .returning({ id: workflowGithubProcessedEvents.id });
   return row?.id ?? null;
 }
 
@@ -1102,8 +1099,8 @@ export const dispatchGithubWebhookAutomations$ = command(
         continue;
       }
       await db
-        .delete(zeroWorkflowGithubProcessedEvents)
-        .where(eq(zeroWorkflowGithubProcessedEvents.id, processedId));
+        .delete(workflowGithubProcessedEvents)
+        .where(eq(workflowGithubProcessedEvents.id, processedId));
       signal.throwIfAborted();
       log.warn("Failed to start GitHub webhook automation", {
         automationId: automation.automation.id,

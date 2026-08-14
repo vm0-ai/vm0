@@ -26,7 +26,11 @@ class TestGetVmInfo:
             json.dumps(
                 {
                     "vms": {
-                        "10.200.0.1": {"runId": "good-run"},
+                        "10.200.0.1": {
+                            "runId": "good-run",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
+                        },
                         "10.200.0.2": "broken",
                     },
                     "updatedAt": 0,
@@ -59,7 +63,11 @@ class TestGetVmInfo:
             json.dumps(
                 {
                     "vms": {
-                        "10.200.0.1": {"runId": "run-recovered"},
+                        "10.200.0.1": {
+                            "runId": "run-recovered",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
+                        },
                     },
                     "updatedAt": 1,
                 }
@@ -71,7 +79,11 @@ class TestGetVmInfo:
         assert not isinstance(recovered_state, registry.RegistryUnavailable)
         assert recovered_state.vms["10.200.0.1"]["runId"] == "run-recovered"
         assert recovered_state.invalid_vms == {}
-        assert registry.get_vm_info("10.200.0.1", str(path)) == {"runId": "run-recovered"}
+        assert registry.get_vm_info("10.200.0.1", str(path)) == {
+            "runId": "run-recovered",
+            "billableFirewalls": [],
+            "cliAgentType": "claude-code",
+        }
 
 
 class TestGetVmContext:
@@ -127,7 +139,11 @@ class TestGetVmContext:
             json.dumps(
                 {
                     "vms": {
-                        "10.200.0.1": {"runId": "good-run"},
+                        "10.200.0.1": {
+                            "runId": "good-run",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
+                        },
                         "10.200.0.2": "broken",
                     },
                     "updatedAt": 0,

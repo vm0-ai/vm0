@@ -18,17 +18,13 @@ import {
   googleDriveArtifactStatusLookup,
 } from "../services/google-drive-artifact-sync.service";
 import {
-  zeroChatSearch,
   zeroChatIndicators,
-  zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
-  zeroChatThreadQueuedEvents,
   zeroChatThreadDraftIds,
-  zeroChatThreadUnreadAgentIds,
-  zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
+import { zeroChatSearch } from "../services/zero-chat-search.service";
 import {
   zeroChatThreadEventRows,
   zeroChatThreadEventSnapshot,
@@ -130,18 +126,6 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
   };
 });
 
-const listChatThreadActiveIdsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const threadIds = await get(
-    zeroChatThreadActiveRunThreadIds({
-      userId: auth.userId,
-      orgId: auth.orgId,
-    }),
-  );
-
-  return { status: 200 as const, body: { threadIds: [...threadIds] } };
-});
-
 const listZeroIndicatorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const indicators = await get(
@@ -221,24 +205,6 @@ const listChatEventRowsInner$ = computed(async (get) => {
   };
 });
 
-const listQueuedChatEventsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.queued));
-  const events = await get(
-    zeroChatThreadQueuedEvents({
-      threadId: params.threadId,
-      userId: auth.userId,
-    }),
-  );
-  if (!events) {
-    return chatThreadNotFound();
-  }
-  return {
-    status: 200 as const,
-    body: { events: [...events] },
-  };
-});
-
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
 
@@ -266,30 +232,6 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
   );
 
   return { status: 200 as const, body: { unreads: [...unreads] } };
-});
-
-const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const agentIds = await get(
-    zeroChatThreadUnreadAgentIds({
-      userId: auth.userId,
-      orgId: auth.orgId,
-    }),
-  );
-
-  return { status: 200 as const, body: { agentIds: [...agentIds] } };
-});
-
-const listChatThreadUnreadIdsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const threadIds = await get(
-    zeroChatThreadUnreadThreadIds({
-      userId: auth.userId,
-      orgId: auth.orgId,
-    }),
-  );
-
-  return { status: 200 as const, body: { threadIds: [...threadIds] } };
 });
 
 const listChatThreadArtifactsInner$ = computed(async (get) => {
@@ -373,33 +315,12 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: chatThreadsContract.activeIds,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadActiveIdsInner$,
-    ),
-  },
-  {
-    route: chatThreadsContract.unreadIds,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadUnreadIdsInner$,
-    ),
-  },
-  {
     route: chatThreadsContract.drafts,
     handler: authRoute({}, listChatThreadDraftsInner$),
   },
   {
     route: chatThreadsContract.unreads,
     handler: authRoute({}, listChatThreadUnreadsInner$),
-  },
-  {
-    route: chatThreadsContract.unreadAgents,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadUnreadAgentsInner$,
-    ),
   },
   {
     route: chatThreadByIdContract.get,
@@ -421,17 +342,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requiredCapability: "chat-event:read" },
       listChatEventRowsInner$,
-    ),
-  },
-  {
-    route: chatThreadEventsContract.queued,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "chat-event:read",
-      },
-      listQueuedChatEventsInner$,
     ),
   },
   {

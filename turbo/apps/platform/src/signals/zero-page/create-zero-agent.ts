@@ -3,8 +3,8 @@ import {
   zeroAgentInstructionsContract,
   type ZeroAgentResponse,
 } from "@okouai/api-contracts/contracts/zero-agents";
+import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
 import type { ZeroClientFactory } from "../api-client.ts";
-import { SEED_INSTRUCTIONS } from "../../data/the-seed.ts";
 import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";
 import { accept } from "../../lib/accept.ts";
 

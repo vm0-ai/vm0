@@ -1367,8 +1367,8 @@ impl ConnectorRuntimeTarget {
 pub struct ConnectorRuntimeSyncResult {
     pub target: ConnectorRuntimeTarget,
     pub next_sync_at: Option<String>,
-    /// First-admission Custom routing inputs. The scheduler pins these only
-    /// after the accompanying executable state publishes successfully.
+    /// Custom routing inputs echoed by an available synchronization result. The
+    /// scheduler accepts them only when they match the run-pinned registration.
     #[serde(default)]
     pub base_url_vars: Option<HashMap<String, String>>,
     #[serde(flatten)]

@@ -203,7 +203,7 @@ open_auth_form() {
   local sign_up_state
   sign_up_state="$(wait_for_auth_next_step "sign-up")"
   if [[ "$sign_up_state" == "otp" ]]; then
-    enter_otp "$OTP" "sign-up"
+    enter_otp "$OTP"
     wait_for_auth_completion "sign-up"
   fi
   touch "$SIGN_UP_COMPLETE_FILE"
@@ -265,7 +265,8 @@ open_auth_form() {
     agent-browser find text "Email code" click
   fi
 
-  enter_otp "$OTP" "sign-in"
+  wait_for_sign_in_email_code_ready
+  enter_otp "$OTP"
   wait_for_auth_completion "sign-in"
   echo "# Sign-in successful!" >&3
 }

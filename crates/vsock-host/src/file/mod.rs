@@ -181,17 +181,6 @@ fn normalize_file_exec_stderr(mut stderr: Vec<u8>, stderr_truncated: bool) -> Ve
     stderr
 }
 
-fn file_operation_error_is_terminal(error: &io::Error) -> bool {
-    !matches!(
-        error.kind(),
-        io::ErrorKind::TimedOut
-            | io::ErrorKind::ConnectionReset
-            | io::ErrorKind::BrokenPipe
-            | io::ErrorKind::UnexpectedEof
-            | io::ErrorKind::InvalidData
-    )
-}
-
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::io;

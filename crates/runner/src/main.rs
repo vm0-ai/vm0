@@ -35,6 +35,7 @@ mod network_log_manager;
 mod network_log_process;
 mod network_logs;
 mod org_name;
+mod parent_death;
 mod paths;
 mod prefetch;
 mod private_fs;

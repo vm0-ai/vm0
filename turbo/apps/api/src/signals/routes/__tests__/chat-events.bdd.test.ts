@@ -12,6 +12,7 @@ import {
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import {
   chatEventsContract,
   chatThreadsContract,
@@ -51,6 +52,12 @@ import { server } from "../../../mocks/server";
 import { backdateRunStartedAtFixture } from "../../../test-fixtures/agent-runs";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
+import {
+  readRunChatThreadIdFixture,
+  readRunVideoModelFixture,
+  setOrgMemberVideoModelFixture,
+} from "../../../test-fixtures/run-video-model";
 import {
   createBddApi,
   expectApiError,
@@ -218,6 +225,14 @@ const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
+] as const;
+const API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES = [
+  "api_dispatch_prepare_pi_launch_resources",
+  "api_dispatch_prepare_pi_launch_storage_resources",
+  "api_dispatch_prepare_pi_launch_agent_name",
+  "api_dispatch_prepare_pi_launch_resume_session",
+  "api_dispatch_prepare_pi_launch_skills",
+  "api_dispatch_prepare_pi_launch_prompts",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
@@ -627,6 +642,35 @@ function expectApiDispatchTimingEventsNotToLeak(
       expect(serialized).not.toContain(forbiddenValue);
     }
   }
+}
+
+function expectPiLaunchResourceTiming(
+  events: readonly Record<string, unknown>[],
+  requirement: "required" | "not_required",
+): void {
+  expectApiDispatchSpanKind(
+    events,
+    ["api_dispatch_build_runner_job_payload"],
+    "top_level",
+  );
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      op_type: "api_dispatch_build_runner_job_payload",
+      pi_launch_resources: requirement,
+    }),
+  );
+  if (requirement === "required") {
+    expectApiDispatchSpanKind(
+      events,
+      API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
+      "nested",
+    );
+    return;
+  }
+  expectNoApiDispatchActions(
+    events,
+    API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
+  );
 }
 
 /** Sandbox-scoped Okou token issued to the run, exposed via the claim env. */
@@ -3364,6 +3408,8 @@ describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const prompt =
+      "generate an image in web chat using the aurora-21210 color palette";
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -3386,8 +3432,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt:
-        "generate an image in web chat using the aurora-21210 color palette",
+      prompt,
       model: "gpt-5.6-luna",
     });
     const { claim } = await claimChatRun(runnerGroup, run.runId);
@@ -3438,6 +3483,13 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(sectionIndex).toBeGreaterThan(previousSectionIndex);
       previousSectionIndex = sectionIndex;
     }
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectPiLaunchResourceTiming(timingEvents, "not_required");
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      run.threadId,
+      agentId,
+    ]);
     await cancelChatRun(actor, run.runId);
   });
 
@@ -3622,6 +3674,13 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(claimEnvironment(firstContext).OPENAI_API_KEY).toBe(
         modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );
+      const firstTimingEvents = apiDispatchTimingEventsForRun(first.runId);
+      expectPiLaunchResourceTiming(firstTimingEvents, "required");
+      expectApiDispatchTimingEventsNotToLeak(firstTimingEvents, [
+        firstPrompt,
+        first.threadId,
+        agentId,
+      ]);
 
       const historyHash = createHash("sha256")
         .update(`pi sqlite checkpoint ${first.runId}`)
@@ -3642,10 +3701,11 @@ describe("CHAT-02: model-first provider policies", () => {
         [200],
       );
 
+      const secondPrompt = "continue the same Pi session";
       const second = await sendChatRun(actor, {
         agentId,
         threadId: first.threadId,
-        prompt: "continue the same Pi session",
+        prompt: secondPrompt,
       });
       const secondClaim = await claimChatRun(runnerGroup, second.runId);
 
@@ -3655,6 +3715,14 @@ describe("CHAT-02: model-first provider policies", () => {
         sessionId: first.threadId,
         historyRef: { kind: "blob", hash: historyHash },
       });
+      const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
+      expectPiLaunchResourceTiming(secondTimingEvents, "required");
+      expectApiDispatchTimingEventsNotToLeak(secondTimingEvents, [
+        secondPrompt,
+        first.threadId,
+        agentId,
+        historyHash,
+      ]);
       await cancelChatRun(actor, second.runId);
     },
     90_000,
@@ -3964,6 +4032,128 @@ describe("CHAT-02: model-first provider policies", () => {
     ).toHaveLength(1);
 
     await cancelChatRun(actor, recovered.runId);
+  }, 90_000);
+
+  it("resolves a NULL legacy thread from current defaults without replaying its first run", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-opus-4-8",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the historical thread model",
+      model: "claude-sonnet-5",
+    });
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue after canonical default resolution",
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the legacy-thread follow-up to queue");
+    }
+    expect(queued.body.runId).toBeNull();
+
+    const historicalMessages = await chat.listThreadEvents(
+      actor,
+      first.threadId,
+    );
+    expect(userMessages(historicalMessages.events)).toContainEqual(
+      expect.objectContaining({ runId: first.runId }),
+    );
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-8",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-5",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await chat.updateUserModelPreference(actor, "claude-opus-4-8");
+    await chat.updateThreadModelSelection(actor, first.threadId, null);
+    expect(
+      (await chat.readThreadMetadata(actor, first.threadId)).selectedModel,
+    ).toBeNull();
+
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const promotedMessages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesEventId === queuedEventId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promotedRunId = userMessages(promotedMessages.events).find(
+      (message) => {
+        return message.revokesEventId === queuedEventId;
+      },
+    )?.runId;
+    if (!promotedRunId) {
+      throw new Error("Expected the queued legacy-thread message to run");
+    }
+
+    const promotedClaim = await claimChatRun(runnerGroup, promotedRunId);
+    expect(promotedClaim.claim.cliAgentType).toBe("claude-code");
+    expect(claimEnvironment(promotedClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-8",
+    );
+    expect(
+      (await chat.readThreadMetadata(actor, first.threadId)).selectedModel,
+    ).toBe("claude-opus-4-8");
+
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: first.threadId,
+        selectedModel: "claude-opus-4-8",
+      }),
+    );
+
+    await cancelChatRun(actor, promotedRunId, promotedClaim.sandboxHeaders);
   }, 90_000);
 
   it("does not overwrite a concurrent explicit thread model selection", async () => {
@@ -10283,5 +10473,182 @@ describe("CHAT-02: shared user message queue", () => {
     const followUp = await api.readRun(actor, fired.runId);
     expect(followUp.prompt).toContain("queue-first fires after cancel");
     await cancelChatRun(actor, fired.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: run video model snapshot", () => {
+  it("resolves the thread pin, then the member default, then the catalog default", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an entitled chat actor to own an org");
+    }
+
+    const unpinned = await sendChatRun(actor, {
+      agentId,
+      prompt: "video model falls back to the catalog default",
+    });
+    await expect(readRunVideoModelFixture(unpinned.runId)).resolves.toBe(
+      DEFAULT_VIDEO_MODEL,
+    );
+    await cancelChatRun(actor, unpinned.runId);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    const memberDefault = await sendChatRun(actor, {
+      agentId,
+      threadId: unpinned.threadId,
+      prompt: "video model comes from the member default",
+    });
+    await expect(readRunVideoModelFixture(memberDefault.runId)).resolves.toBe(
+      "MiniMax-H3",
+    );
+    await cancelChatRun(actor, memberDefault.runId);
+
+    await setChatThreadVideoModelFixture(
+      unpinned.threadId,
+      "fal-ai/veo3.1/fast",
+    );
+    const threadPinned = await sendChatRun(actor, {
+      agentId,
+      threadId: unpinned.threadId,
+      prompt: "video model comes from the thread pin",
+    });
+    await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
+      "fal-ai/veo3.1/fast",
+    );
+
+    // Re-pinning while that run is still in flight must not reach it. This is
+    // the whole reason the model is snapshotted onto the run instead of being
+    // read back off the thread when generation happens.
+    await setChatThreadVideoModelFixture(
+      unpinned.threadId,
+      "dreamina-seedance-2-5-260628",
+    );
+    await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
+      "fal-ai/veo3.1/fast",
+    );
+    await cancelChatRun(actor, threadPinned.runId);
+
+    // The next run does pick the re-pinned model up.
+    const rePinned = await sendChatRun(actor, {
+      agentId,
+      threadId: unpinned.threadId,
+      prompt: "the run after the re-pin uses the new thread pin",
+    });
+    await expect(readRunVideoModelFixture(rePinned.runId)).resolves.toBe(
+      "dreamina-seedance-2-5-260628",
+    );
+    await cancelChatRun(actor, rePinned.runId);
+  }, 90_000);
+
+  it("keeps falling back past video models the catalog no longer lists", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an entitled chat actor to own an org");
+    }
+    // Persisted pins are projected out of jsonb without being re-validated, so
+    // a run can start against an id that has since left the catalog.
+    const retiredVideoModel = "dreamina-seedance-1-0-retired";
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor run that creates the thread",
+    });
+    await cancelChatRun(actor, anchor.runId);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "seedance-1-5-pro-251215",
+    });
+    await setChatThreadVideoModelFixture(anchor.threadId, retiredVideoModel);
+    const retiredThreadPin = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "retired thread pin falls through to the member default",
+    });
+    await expect(
+      readRunVideoModelFixture(retiredThreadPin.runId),
+    ).resolves.toBe("seedance-1-5-pro-251215");
+    await cancelChatRun(actor, retiredThreadPin.runId);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: retiredVideoModel,
+    });
+    const retiredEverywhere = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "two retired pins fall through to the catalog default",
+    });
+    await expect(
+      readRunVideoModelFixture(retiredEverywhere.runId),
+    ).resolves.toBe(DEFAULT_VIDEO_MODEL);
+    await cancelChatRun(actor, retiredEverywhere.runId);
+
+    // `in` on a normal object also matches inherited Object.prototype keys.
+    // Persisted strings must match an own catalog id exactly.
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    await setChatThreadVideoModelFixture(anchor.threadId, "toString");
+    const inheritedObjectKey = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "an inherited object key is not a catalog model",
+    });
+    await expect(
+      readRunVideoModelFixture(inheritedObjectKey.runId),
+    ).resolves.toBe("MiniMax-H3");
+    await cancelChatRun(actor, inheritedObjectKey.runId);
+  }, 90_000);
+
+  it("snapshots a video model onto runs that own no chat thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an entitled chat actor to own an org");
+    }
+
+    // Non-chat triggers such as telegram leave chat_thread_id null. Those runs
+    // have no thread layer to read and must still resolve rather than fail.
+    const withoutPreference = await api.createRun(actor, {
+      agentId,
+      prompt: "threadless run without any video model preference",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(
+      readRunChatThreadIdFixture(withoutPreference.runId),
+    ).resolves.toBeNull();
+    await expect(
+      readRunVideoModelFixture(withoutPreference.runId),
+    ).resolves.toBe(DEFAULT_VIDEO_MODEL);
+    await cancelChatRun(actor, withoutPreference.runId);
+
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    const withMemberDefault = await api.createRun(actor, {
+      agentId,
+      prompt: "threadless run picks up the member default",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(
+      readRunChatThreadIdFixture(withMemberDefault.runId),
+    ).resolves.toBeNull();
+    await expect(
+      readRunVideoModelFixture(withMemberDefault.runId),
+    ).resolves.toBe("MiniMax-H3");
+    await cancelChatRun(actor, withMemberDefault.runId);
   }, 90_000);
 });

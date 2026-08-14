@@ -13,7 +13,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { zeroWorkflowAutomations } from "./zero-workflow";
+import { workflowAutomations } from "./workflow";
 
 export type StripeWorkflowDeliveryStatus =
   | "pending"
@@ -77,7 +77,7 @@ export const stripeWorkflowAutomationHealth = pgTable(
       .primaryKey()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

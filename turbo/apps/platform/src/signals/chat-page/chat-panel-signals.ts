@@ -24,6 +24,7 @@ import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
+import type { ChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 
 type RecommendedFollowup = ChatRecommendedFollowup;
 
@@ -66,7 +67,7 @@ export interface MessageListSignals {
   readonly readyScrollAfterRenderRequest$: Computed<
     Promise<ReadyScrollAfterRenderRequest | null>
   >;
-  readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly initialEventsReady$: Computed<boolean>;
   readonly assistantErrorRecovery$: Computed<
     Promise<AssistantErrorRecovery | null>
   >;
@@ -127,7 +128,6 @@ export interface ChatPanelSignals {
   readonly threadTitle$: Computed<string | null>;
   readonly threadTitleEmoji$: Computed<string | null>;
   readonly threadTitleText$: Computed<string>;
-  readonly threadSettledInServer$: Computed<boolean>;
   readonly assistantErrorRecovery$: Computed<
     Promise<AssistantErrorRecovery | null>
   >;
@@ -151,6 +151,8 @@ export interface ChatPanelSignals {
   readonly readyScrollAfterRenderRequest$: Computed<
     Promise<ReadyScrollAfterRenderRequest | null>
   >;
+  /** The mounted scroll viewport, for readers that measure it themselves. */
+  readonly scrollContainer$: Computed<HTMLElement | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
@@ -170,6 +172,7 @@ export interface ChatPanelSignals {
   readonly composer: ComposerSignals;
   readonly feedback: ChatThreadFeedbackSignals;
   readonly sharing: ChatThreadSharingSignals;
+  readonly locator: ChatConversationLocatorSignals;
   // -- Thread-owned automation resources -----------------------------------
   readonly headerAutomations: HeaderAutomationSignals;
   // -- Thread-owned utility sidebar -----------------------------------------
@@ -185,7 +188,7 @@ export interface ChatPanelSignals {
   // -- Paged events (sole rendering path) ----------------------------------
   readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   readonly latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly initialEventsReady$: Computed<boolean>;
   readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;

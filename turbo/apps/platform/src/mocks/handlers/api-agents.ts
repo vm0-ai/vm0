@@ -8,10 +8,10 @@ import {
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroAgentDraftContract,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import {
   chatSearchContract,
@@ -205,7 +205,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/okou/agents/:id/draft
-  mockApi(zeroAgentDraftContract.get, ({ respond }) => {
+  mockApi(agentDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftUserMessage: null,
       draftAttachments: null,
@@ -213,7 +213,7 @@ export const apiAgentsHandlers = [
   }),
 
   // PATCH /api/okou/agents/:id/draft
-  mockApi(zeroAgentDraftContract.patch, ({ respond }) => {
+  mockApi(agentDraftContract.patch, ({ respond }) => {
     return respond(204);
   }),
 
@@ -242,16 +242,6 @@ export const apiAgentsHandlers = [
   // GET /api/okou/indicators
   mockApi(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, { agents: {}, threads: {} });
-  }),
-
-  // GET /api/okou/chat-threads/active-ids
-  mockApi(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
-  }),
-
-  // GET /api/okou/chat-threads/unread-ids
-  mockApi(chatThreadsContract.unreadIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
   }),
 
   // GET /api/okou/chat-thread-drafts
@@ -324,11 +314,6 @@ export const apiAgentsHandlers = [
   // GET /api/okou/chat-thread-unreads
   mockApi(chatThreadsContract.unreads, ({ respond }) => {
     return respond(200, { unreads: [] });
-  }),
-
-  // GET /api/okou/chat-thread-unread-agents
-  mockApi(chatThreadsContract.unreadAgents, ({ respond }) => {
-    return respond(200, { agentIds: [] });
   }),
 
   // POST /api/okou/chat-thread-unreads/mark-read

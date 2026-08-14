@@ -333,7 +333,6 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
-      "templateImport": "Vorlagenimport",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -790,6 +789,7 @@
       "confirm": "Bestätigen",
       "credits": "Credits",
       "manage": "Verwalten",
+      "preparing": "Wird vorbereitet...",
       "redirecting": "Weiterleitung...",
       "restore": "Wiederherstellen",
       "retry": "Wiederholen",
@@ -846,6 +846,9 @@
       "exchangeRate": "Credits verfallen nie. 1 USD = {{credits}} Credits.",
       "quickBuy": "Schnellkauf",
       "quickBuyAmount": "Schnellkauf {{amount}}",
+      "reviewDescription": "Bestätigen Sie diese einmalige Zahlung mit Ihrer gespeicherten Zahlungsmethode.",
+      "reviewError": "Der Credit-Kauf konnte nicht abgeschlossen werden. Prüfen Sie Ihre Zahlungsdaten und versuchen Sie es erneut.",
+      "reviewTitle": "Credit-Kauf prüfen",
       "title": "Credits kaufen"
     },
     "downgrade": {
@@ -946,15 +949,14 @@
       "upgradeTo": "Upgrade auf {{plan}}",
       "usagePacks": {
         "bonusCredits": "Bonus-Credits",
-        "changePlan": "Plan ändern",
+        "bonusIncluded": "inklusive {{credits}} Bonus",
         "choosePlan": "Plan auswählen",
-        "choosePlanDescription": "Wählen Sie zuerst den Workspace-Plan. Mitgliederpakete konfigurieren Sie im nächsten Schritt.",
         "concurrentSlots": "Gleichzeitige Slots",
         "configurePackages": "Mitgliederpakete konfigurieren",
-        "configurePackagesDescription": "Wählen Sie für jedes Mitglied ein erforderliches Paket aus und prüfen Sie dann die kombinierte Monatssumme.",
+        "credits": "Credits",
+        "creditsPerMember": "{{credits}} Credits pro Mitglied",
         "currentMember": "Aktuelles Mitglied",
-        "description": "Wählen Sie für jedes Mitglied ein monatliches Nutzungspaket aus.",
-        "discountBonusCredits": "Bonus-Credits durch Rabatt",
+        "everythingOnPlus": "Alles aus {{plan}}, plus:",
         "existingPackagesUnchanged": "Bestehende Mitgliederpakete bleiben unverändert.",
         "management": {
           "comparison": "Vergleich des aktuellen und neuen Abonnements",
@@ -962,13 +964,16 @@
           "downgradeDescription": "Das kleinere Paket beginnt am nächsten Abrechnungstag. Vorhandene Credits bleiben bis zu ihrem Ablauf verfügbar.",
           "downgradesToDate": "Downgrade auf {{package}} am {{date}}.",
           "downgradesToPeriod": "Downgrade auf {{package}} zum nächsten Abrechnungsdatum.",
+          "everyMonth": "Monatlich",
           "immediateAmount": "Jetzt fällig",
+          "immediateAmountNote": "Für den Rest dieses Abrechnungszeitraums",
           "immediateCredits": "Nach Zahlung gutgeschriebene Credits",
           "new": "Neu",
           "processing": "Änderung wird verarbeitet",
-          "reviewDescription": "Prüfen Sie unten den Abonnementpreis. Mit der Bestätigung wird der fällige Betrag über Ihre gespeicherte Zahlungsmethode abgerechnet.",
+          "reviewDescription": "Mit der Bestätigung wird Ihre gespeicherte Zahlungsmethode belastet.",
           "reviewTitle": "Paketänderung prüfen",
-          "scheduledFor": "Geplant für {{date}}"
+          "scheduledFor": "Geplant für {{date}}",
+          "today": "Heute"
         },
         "memberExclusive": "Jedes Paket gehört einem Mitglied und kann nicht geteilt werden. Wenn ein Paket aufgebraucht ist, wird die Nutzung über nutzungsabhängige Credits abgerechnet. Sie können später auf ein neues Paket upgraden.",
         "memberPackages": "Mitgliederpakete",
@@ -989,20 +994,18 @@
           "switchesOn": "Wechselt am {{date}} zum {{plan}}-Plan",
           "title": "Legacy-Plan umstellen"
         },
-        "minimumPackageBreakdown": "{{base}} Plan + {{package}} erforderliches Mitgliederpaket",
         "monthlyTotal": "Monatliche Gesamtkosten",
         "orderSummary": "Bestellübersicht",
-        "packagesStep": "Pakete",
+        "packCredits": "{{credits}} Credits",
+        "packCreditsDiscount": "{{credits}} Credits · {{discount}}% Rabatt",
         "packOption": "{{price}} · {{credits}} Credits · {{discount}} % Rabatt",
         "planChangeError": "Die Abonnementänderung konnte nicht vorbereitet werden. Versuche es erneut.",
         "planStep": "Plan",
         "purchasedCredits": "Gekaufte Credits",
-        "purchaseSteps": "Kaufschritte",
-        "selectedPlan": "Ausgewählter Plan",
         "selectPlan": "Mit {{plan}} starten",
         "selectUsage": "Nutzung für {{name}}",
-        "startingAt": "Ab",
-        "totalCredits": "Credits insgesamt"
+        "stepOfTotal": "Schritt {{current}} von {{total}}",
+        "totalCreditsWithBonus": "{{credits}} Credits · {{bonus}} Bonus"
       }
     },
     "restore": {
@@ -1027,6 +1030,7 @@
       "concurrencyChanged": "Änderung der Parallelität bestätigt. Ihre Slot-Anzahl wird aktualisiert, sobald Stripe die Änderung verarbeitet hat.",
       "concurrencyReduced": "Die Reduzierung der Parallelität ist für den nächsten Abrechnungstag geplant.",
       "concurrencyRestored": "Parallelitätsabonnement wiederhergestellt.",
+      "creditPurchaseConfirmed": "Zahlung bestätigt. Die Credits werden angezeigt, sobald Stripe die Rechnung verarbeitet hat.",
       "creditsAdded": "Credits hinzugefügt. Sie können weiterhin mit Zero chatten.",
       "downgradeScheduledDate": "Downgrade geplant. Ihr aktueller Plan bleibt bis {{date}} aktiv.",
       "downgradeScheduledPeriod": "Downgrade geplant. Ihr aktueller Plan bleibt bis zum Ende des Abrechnungszeitraums aktiv.",
@@ -1410,8 +1414,7 @@
       "search": "Agenten und Chats suchen...",
       "sent": "Erfolgreich weitergeleitet",
       "threads": "Chats",
-      "title": "Weiterleiten an",
-      "to": "Weiterleiten an"
+      "title": "Weiterleiten an"
     },
     "mail": {
       "bcc": "BCC",
@@ -1669,6 +1672,9 @@
       "frequentlyUsed": "Häufig verwendet",
       "icon": "Chat-Thread-Symbol",
       "loadingEarlier": "Frühere Nachrichten werden geladen",
+      "locator": {
+        "you": "Du"
+      },
       "noEmojiFound": "Kein Emoji gefunden",
       "notFound": "Chat-Thread nicht gefunden",
       "openArtifacts": "Artefakte öffnen",
@@ -4334,6 +4340,24 @@
           "enabled_other": "Für {{count}} kommende Ausführungen aktiviert",
           "title": "Netzwerk-Bodys erfassen"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "Aktive Wartevorgänge",
+          "blurred": "nicht fokussiert",
+          "channel": "Kanal",
+          "clear": "Leeren",
+          "connection": "Verbindung",
+          "copyJson": "JSON kopieren",
+          "description": "Browser-Lebenszyklus, Authentifizierungswiederherstellung und Ably-Verbindungssignale prüfen.",
+          "empty": "Keine Diagnoseereignisse aufgezeichnet.",
+          "events": "Ereignisse",
+          "focused": "fokussiert",
+          "log": "Ereignisprotokoll",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "Wiederherstellung",
+          "title": "Echtzeit-Verbindungsdiagnose",
+          "unavailable": "nicht verfügbar"
+        },
         "tab": "Debuggen"
       },
       "documentTitle": "Präferenzen",
@@ -4588,6 +4612,7 @@
       "imageRecognize": "Bilderkennung",
       "maps": "Karten",
       "peopleSearch": "Personensuche",
+      "seo": "SEO",
       "translation": "Übersetzung",
       "usage": "Nutzung",
       "weather": "Wetter",

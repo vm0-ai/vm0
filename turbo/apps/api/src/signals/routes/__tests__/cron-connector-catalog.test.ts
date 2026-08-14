@@ -5,7 +5,7 @@ import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cr
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
 import { runnersBuiltinFirewallsResolveContract } from "@okouai/api-contracts/contracts/runners";
-import { zeroSteamPlayerContract } from "@okouai/api-contracts/contracts/zero-steam-player";
+import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
@@ -96,7 +96,7 @@ import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
 import { zeroConnectorCheckRoutes } from "../zero-connector-check";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
-import { zeroSteamPlayerRoutes } from "../zero-steam-player";
+import { steamPlayerRoutes } from "../steam-player";
 import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { zeroWorkflowsRoutes } from "../zero-workflows";
@@ -110,7 +110,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroConnectorCheckRoutes,
   ...zeroConnectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
-  ...zeroSteamPlayerRoutes,
+  ...steamPlayerRoutes,
   ...zeroUserPermissionGrantsRoutes,
   ...zeroWorkflowAutomationsRoutes,
   ...zeroWorkflowsRoutes,
@@ -132,7 +132,7 @@ const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const EXPECTED_CAPABILITY_DIGEST =
-  "sha256:1bf96aab55b264a18add3139029db3f6502883ac97b16982d1fa4d668444bae7";
+  "sha256:c15a6f10759f9eea62cffc7b48b0378615d70a519ce52a8a30cf283971a46105";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -3625,8 +3625,8 @@ describe("connector catalog valid lifecycle", () => {
     );
     mockSteamPlayerApisForCatalog();
     const player = await accept(
-      setupApp({ context, routes: zeroSteamPlayerRoutes })(
-        zeroSteamPlayerContract,
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
       ).getPlayer({ headers }),
       [200],
     );

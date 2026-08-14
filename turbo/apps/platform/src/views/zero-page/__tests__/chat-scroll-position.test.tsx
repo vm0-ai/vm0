@@ -1174,8 +1174,11 @@ describe("chat scroll position", () => {
       initialEvents,
       appendedEvents,
     });
-    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
-      return respond(200, { threadIds: [threadId] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: {},
+        threads: { [threadId]: "unread" },
+      });
     });
     installChatLayout(
       new Map([

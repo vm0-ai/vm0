@@ -1,7 +1,4 @@
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
@@ -36,15 +33,12 @@ export async function admitWorkflowAutomationEventFixture(
 ): Promise<string> {
   const [row] = await db()
     .select({
-      automation: zeroWorkflowAutomations,
-      workflowName: zeroWorkflows.name,
+      automation: workflowAutomations,
+      workflowName: workflows.name,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .where(eq(zeroWorkflowAutomations.id, args.automationId))
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
+    .where(eq(workflowAutomations.id, args.automationId))
     .limit(1);
   if (!row) {
     throw new Error("Expected the workflow automation to exist");

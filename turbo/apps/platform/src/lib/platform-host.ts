@@ -102,9 +102,14 @@ export function derivePlatformServiceOrigin(
   const url = new URL(currentOrigin);
 
   // Production frontends may be served by more than one provider-specific
-  // hostname. They all share the canonical API and web services.
+  // hostname. Okou keeps its API identity while web and auth services remain
+  // canonical on vm0.ai.
+  const productionDomain =
+    target === "api" && isOkouProductionHostname(url.hostname)
+      ? OKOU_PRODUCTION_DOMAIN
+      : PRODUCTION_DOMAIN;
   url.hostname = isProductionHostname(url.hostname)
-    ? `${target}.${PRODUCTION_DOMAIN}`
+    ? `${target}.${productionDomain}`
     : rewritePreviewServiceHostname(url.hostname, target);
 
   return url.origin;

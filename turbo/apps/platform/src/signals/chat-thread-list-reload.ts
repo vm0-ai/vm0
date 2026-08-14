@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { setAblyLoop$ } from "./realtime.ts";
+import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
 
 const internalReloadChatIndicators$ = state(0);
 
@@ -13,6 +13,18 @@ export const reloadChatIndicators$ = command(({ set }) => {
   });
 });
 
+const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
+  set(reloadChatIndicators$);
+  return false;
+});
+
+const reloadChatIndicatorsOnForeground$ = command(
+  ({ set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    set(reloadChatIndicators$);
+  },
+);
+
 /**
  * Subscribe to the user-level `threadListChanged` topic and invalidate the
  * indicator snapshot. Event-sourced thread data has its own incremental
@@ -24,13 +36,13 @@ export const reloadChatIndicators$ = command(({ set }) => {
  */
 export const subscribeThreadListChanged$ = command(
   async ({ set }, signal: AbortSignal) => {
-    const onChanged$ = command(({ set }) => {
-      set(reloadChatIndicators$);
-      return false;
-    });
     await set(
       setAblyLoop$,
-      { topic: "threadListChanged", loopCommand$: onChanged$ },
+      {
+        topic: "threadListChanged",
+        loopCommand$: reloadChatIndicatorsFromRealtime$,
+        options: { runOnForegroundCatchUp: false },
+      },
       signal,
     );
   },
@@ -38,13 +50,23 @@ export const subscribeThreadListChanged$ = command(
 
 export const subscribeChatThreadReadCursorUpdated$ = command(
   async ({ set }, signal: AbortSignal) => {
-    const onChanged$ = command(({ set }) => {
-      set(reloadChatIndicators$);
-      return false;
-    });
     await set(
       setAblyLoop$,
-      { topic: "chatThreadReadCursorUpdated", loopCommand$: onChanged$ },
+      {
+        topic: "chatThreadReadCursorUpdated",
+        loopCommand$: reloadChatIndicatorsFromRealtime$,
+        options: { runOnForegroundCatchUp: false },
+      },
+      signal,
+    );
+  },
+);
+
+export const setupChatIndicatorForegroundCatchUp$ = command(
+  ({ set }, signal: AbortSignal) => {
+    set(
+      subscribeRealtimeReadyCatchUp$,
+      reloadChatIndicatorsOnForeground$,
       signal,
     );
   },

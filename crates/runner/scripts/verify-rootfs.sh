@@ -302,12 +302,6 @@ check_bin "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf" "Noto Sans
 check_bin "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" "Noto Sans CJK"
 check_bin "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf" "Noto Color Emoji"
 
-# Document conversion: office decks reach PDF through LibreOffice, and PDF pages
-# are rasterised with Poppler.
-check_bin "/usr/lib/libreoffice/program/soffice.bin" "LibreOffice soffice.bin"
-check_required_executable "/usr/bin/pdftoppm" "pdftoppm"
-check_required_executable "/usr/bin/pdfinfo" "pdfinfo"
-
 # Browser automation relies on the native vm0 fork binary.
 check_required_executable "/usr/local/bin/agent-browser" "agent-browser CLI"
 

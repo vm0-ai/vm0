@@ -52,10 +52,12 @@ export enum FeatureSwitchKey {
   NewChatDefaultModelAction = "newChatDefaultModelAction",
   RealAgentInPreview = "realAgentInPreview",
   UsagePackPlans = "usagePackPlans",
+  SavedBillingCreditPurchase = "savedBillingCreditPurchase",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
+  UserFriendlyAutomationMessage = "userFriendlyAutomationMessage",
   ChatForward = "chatForward",
   ChatRunContinuationPresentation = "chatRunContinuationPresentation",
   ResponsiveFollowupCards = "responsiveFollowupCards",
@@ -75,8 +77,8 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   VideoTemplateOptions = "videoTemplateOptions",
   VideoModelSelection = "videoModelSelection",
-  UnifiedIndicatorApi = "unifiedIndicatorApi",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
   LatestWebsiteTemplates = "latestWebsiteTemplates",
+  ChatConversationLocator = "chatConversationLocator",
 }

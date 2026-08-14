@@ -3835,13 +3835,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("selects same-thread reuse preferences from runner heartbeats", async () => {
+  it("validates same-thread reuse heartbeat inventory shapes", async () => {
     const {
       reuseRunnerId,
       api,
       cliAgentSessionId,
-      first,
-      heartbeatHolder,
       nextReuseSnapshotSequence,
       pollFollowUp,
       reuseKey,
@@ -3924,6 +3922,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "noPreference",
       reason: "noViableHolder",
     });
+  });
+
+  it("selects workspace and reusable-sandbox preferences from runner heartbeats", async () => {
+    const {
+      reuseRunnerId,
+      api,
+      cliAgentSessionId,
+      heartbeatHolder,
+      nextReuseSnapshotSequence,
+      pollFollowUp,
+      reuseKey,
+      runnerGroup,
+    } = await setupSameThreadReuseScenario();
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reuseRunnerId,
@@ -4019,6 +4030,40 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       mode: "stopping",
     });
 
+    for (const { runId, resolution, tier } of [
+      {
+        runId: reusableOverWorkspace.run.runId,
+        resolution: "matching_reusable_sandbox",
+        tier: "reusableSandbox",
+      },
+      {
+        runId: capableWorkspaceHolder.run.runId,
+        resolution: "matching_workspace_cache",
+        tier: "workspaceCache",
+      },
+    ]) {
+      for (const actionType of [
+        "runner_notification_affinity_lookup",
+        "runner_poll_pending_job_lookup",
+      ]) {
+        const events = sandboxOperationEventsForRunByAction(runId, actionType);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toStrictEqual(
+          expect.objectContaining({
+            runner_preference_resolution: resolution,
+            runner_preference_decision_kind: "preference",
+            runner_preference_tier: tier,
+            reuse_key_kind: "thread",
+          }),
+        );
+      }
+    }
+  });
+
+  it("selects reusable-sandbox preferences by profile and history generation", async () => {
+    const { reuseRunnerId, first, heartbeatHolder, pollFollowUp } =
+      await setupSameThreadReuseScenario();
+
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [{ profile: "vm0/large", workspaceAffinityVersion: 1 }],
@@ -4070,35 +4115,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       tier: "exactSandbox",
       expiresAt: expect.any(String),
     });
-
-    for (const { runId, resolution, tier } of [
-      {
-        runId: reusableOverWorkspace.run.runId,
-        resolution: "matching_reusable_sandbox",
-        tier: "reusableSandbox",
-      },
-      {
-        runId: capableWorkspaceHolder.run.runId,
-        resolution: "matching_workspace_cache",
-        tier: "workspaceCache",
-      },
-    ]) {
-      for (const actionType of [
-        "runner_notification_affinity_lookup",
-        "runner_poll_pending_job_lookup",
-      ]) {
-        const events = sandboxOperationEventsForRunByAction(runId, actionType);
-        expect(events).toHaveLength(1);
-        expect(events[0]).toStrictEqual(
-          expect.objectContaining({
-            runner_preference_resolution: resolution,
-            runner_preference_decision_kind: "preference",
-            runner_preference_tier: tier,
-            reuse_key_kind: "thread",
-          }),
-        );
-      }
-    }
   });
 
   it("prefers the live finalizing source before generic reuse without renewing its deadline", async () => {
@@ -4900,6 +4916,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sequence: 1,
       resource: undefined,
     });
+    // An unrelated runner's heartbeat must not drop this runner's retained
+    // snapshot. Parallel test files share one database and perform incidental
+    // claim setup under their own mocked clocks, so this heartbeat is issued
+    // far ahead of `baseTime` to pin the stale-runner pruning boundary.
+    mockNow(baseTime + 9 * 60 * 60 * 1000);
+    await api.heartbeatRunner(runnerGroup);
+    mockNow(baseTime + 5000);
     await expectReusePreference("reusableSandbox");
 
     mockNow(baseTime + 20_000);
@@ -5867,7 +5890,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain("okou chat send");
     expect(appendSystemPrompt).toContain("okou chat cancel");
-    expect(appendSystemPrompt).not.toContain("okou chat queued");
     await api.requestCancelRun(actor, run.runId, [200]);
 
     await upsertOrgPlanEntitlementFixture({
@@ -10836,7 +10858,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const saved = await connectors.saveCustomConnectorProposal(actor, {
       proposal: {
         operation: "create",
-        displayName: "BDD Unpinned Recovery Runtime",
+        displayName: "BDD Full Recovery Runtime",
         prefixTemplates: [
           `https://{{variables.subdomain}}.${rand}.recovery.test/v1/`,
         ],
@@ -12497,7 +12519,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       appendSystemPrompt.indexOf("- Cross-thread chat run completion:"),
     );
     expect(appendSystemPrompt).toContain("okou upgrade pro");
-    expect(appendSystemPrompt).not.toContain("okou chat queued");
     expect(appendSystemPrompt).not.toContain(
       "`okou browser use` creates, reuses, or resumes a remote browser",
     );
@@ -15066,6 +15087,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             latency_ms: 12,
             request_size: 100,
             response_size: 256,
+            request_headers: { accept: "application/json" },
+            request_headers_truncated: true,
+            response_headers: { server: "***" },
+            response_headers_truncated: true,
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
@@ -15141,6 +15166,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         url: "[truncated]",
         url_truncated: true,
         url_original_char_count: 1_000_001,
+        request_headers: { accept: "application/json" },
+        request_headers_truncated: true,
+        response_headers: { server: "***" },
+        response_headers_truncated: true,
         model_catalog_cache_status: "model_catalog_cold_stored",
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,

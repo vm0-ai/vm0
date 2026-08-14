@@ -353,7 +353,6 @@ install_packages() {
   apt-get install -y \
     procps wget git ripgrep jq file iproute2 sudo ffmpeg \
     fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
-    libreoffice-impress poppler-utils \
     libnss3 p11-kit-modules unzip \
     nodejs \
     python3 python3-pip \

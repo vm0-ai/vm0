@@ -54,11 +54,10 @@ async fn codex_app_server_backend_fails_visible_when_no_active_turn()
         &journal_path,
         HttpClient::with_api_config(server.base_url(), "test-token", "", RUN_ID, Duration::ZERO)?,
     )?;
-    let payload = serde_json::to_vec(&json!({
-        "type": "active-input",
-        "deliveryId": DELIVERY_ID,
-        "text": "no-active-turn follow-up prompt",
-    }))?;
+    let payload = guest_contracts::active_input::encode_active_input(
+        DELIVERY_ID,
+        "no-active-turn follow-up prompt",
+    )?;
     assert_eq!(
         active_input.controller().handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted

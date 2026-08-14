@@ -21,11 +21,12 @@ import {
   sql,
 } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { chatEventSearchWatermarks } from "@okouai/db/schema/chat-event-search";
+import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env, optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -37,6 +38,13 @@ import {
   type S3Object,
 } from "../external/s3";
 import { settle } from "../utils";
+import {
+  NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+  prepareChatEventArchiveWithNormalizedIds,
+  type DuplicateEventIdNormalizationStats,
+} from "./chat-event-snapshot-duplicate-id-normalization";
+
+const log = logger("api:cron:snapshot-chat-events");
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
@@ -44,6 +52,10 @@ interface ChatEventSnapshotStats {
   readonly snapshots: number;
   readonly archivedEvents: number;
   readonly unreadableParents: number;
+  readonly duplicateEventIdConflictThreads: number;
+  readonly duplicateEventIdConflicts: number;
+  readonly duplicateEventIdsRemapped: number;
+  readonly duplicateEventReferencesRemapped: number;
   readonly retiredSnapshotReferencesDeleted: number;
   readonly r2ObjectsScanned: number;
   readonly r2ObjectsMeasured: number;
@@ -393,6 +405,7 @@ async function readParentArchive(
 interface ArchivedThread {
   readonly archivedEvents: number | null;
   readonly unreadableParent: boolean;
+  readonly normalization: DuplicateEventIdNormalizationStats;
 }
 
 async function archiveThread(
@@ -415,7 +428,11 @@ async function archiveThread(
   if (archive.count === 0) {
     if (parent.kind === "reusable") {
       // The indexed tail was already archived by a concurrent pass.
-      return { archivedEvents: null, unreadableParent };
+      return {
+        archivedEvents: null,
+        unreadableParent,
+        normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+      };
     }
     throw new Error(
       `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
@@ -429,11 +446,27 @@ async function archiveThread(
       `chat event snapshot rebuild for ${candidate.chatThreadId} started at seq ${String(archive.firstSeqId)} instead of the thread's first event`,
     );
   }
-  const compressed = await gzipAsync(
+  const prepared =
     parent.kind === "reusable"
-      ? Buffer.concat([parent.body, ...archive.lines])
-      : Buffer.concat(archive.lines),
-  );
+      ? prepareChatEventArchiveWithNormalizedIds(
+          candidate.chatThreadId,
+          parent.body,
+          archive.lines,
+        )
+      : {
+          body: Buffer.concat(archive.lines),
+          normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+        };
+  if (prepared.normalization.conflictingEventIds > 0) {
+    log.warn("Normalized duplicate chat event IDs in snapshot", {
+      type: "chat_event_snapshot_duplicate_ids_normalized",
+      chatThreadId: candidate.chatThreadId,
+      conflictingEventIdCount: prepared.normalization.conflictingEventIds,
+      remappedEventIdCount: prepared.normalization.remappedEventIds,
+      remappedReferenceCount: prepared.normalization.remappedEventReferences,
+    });
+  }
+  const compressed = await gzipAsync(prepared.body);
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
     archive.lastSeqId,
@@ -452,6 +485,7 @@ async function archiveThread(
     return {
       archivedEvents: stamped ? archive.count : null,
       unreadableParent,
+      normalization: prepared.normalization,
     };
   }
 
@@ -468,11 +502,16 @@ async function archiveThread(
     ) {
       throw published.error;
     }
-    return { archivedEvents: null, unreadableParent };
+    return {
+      archivedEvents: null,
+      unreadableParent,
+      normalization: prepared.normalization,
+    };
   }
   return {
     archivedEvents: published.value ? archive.count : null,
     unreadableParent,
+    normalization: prepared.normalization,
   };
 }
 
@@ -784,7 +823,7 @@ export const snapshotChatEvents$ = command(
     const candidates = await db
       .select({
         chatThreadId: chatThreads.id,
-        indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
+        indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
         headId: chatEventSnapshots.id,
         headLastSeqId: chatEventSnapshots.lastSeqId,
         headObjectKey: chatEventSnapshots.objectKey,
@@ -792,8 +831,8 @@ export const snapshotChatEvents$ = command(
       })
       .from(chatThreads)
       .innerJoin(
-        chatEventSearchWatermarks,
-        eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
+        chatEventSearchMessageWatermarks,
+        eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),
       )
       .leftJoin(
         chatEventSnapshots,
@@ -820,7 +859,7 @@ export const snapshotChatEvents$ = command(
           or(
             lt(chatEventSnapshots.archiveSchemaVersion, ARCHIVE_SCHEMA_VERSION),
             gt(
-              chatEventSearchWatermarks.indexedSeqId,
+              chatEventSearchMessageWatermarks.indexedSeqId,
               sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
             ),
           ),
@@ -837,6 +876,10 @@ export const snapshotChatEvents$ = command(
     let snapshots = 0;
     let archivedEvents = 0;
     let unreadableParents = 0;
+    let duplicateEventIdConflictThreads = 0;
+    let duplicateEventIdConflicts = 0;
+    let duplicateEventIdsRemapped = 0;
+    let duplicateEventReferencesRemapped = 0;
     for (const candidate of candidates) {
       const archived = await archiveThread(get, db, bucket, candidate, signal);
       signal.throwIfAborted();
@@ -847,6 +890,13 @@ export const snapshotChatEvents$ = command(
         snapshots += 1;
         archivedEvents += archived.archivedEvents;
       }
+      if (archived.normalization.conflictingEventIds > 0) {
+        duplicateEventIdConflictThreads += 1;
+      }
+      duplicateEventIdConflicts += archived.normalization.conflictingEventIds;
+      duplicateEventIdsRemapped += archived.normalization.remappedEventIds;
+      duplicateEventReferencesRemapped +=
+        archived.normalization.remappedEventReferences;
     }
     const retiredSnapshots = await set(
       deleteRetiredSnapshotVersions$,
@@ -876,6 +926,10 @@ export const snapshotChatEvents$ = command(
       snapshots,
       archivedEvents,
       unreadableParents,
+      duplicateEventIdConflictThreads,
+      duplicateEventIdConflicts,
+      duplicateEventIdsRemapped,
+      duplicateEventReferencesRemapped,
       retiredSnapshotReferencesDeleted: retiredSnapshots.referencesDeleted,
       r2ObjectsScanned: r2Gc.scanned,
       r2ObjectsMeasured: r2Gc.measured,

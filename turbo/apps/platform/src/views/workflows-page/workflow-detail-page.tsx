@@ -27,7 +27,7 @@ import type {
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
-  ZeroWorkflowScheduleType,
+  WorkflowScheduleType,
   ZeroWorkflowAutomationSummary,
   ZeroWorkflowUpdateRequest,
 } from "@okouai/api-contracts/contracts/zero-workflows";
@@ -3403,7 +3403,7 @@ function workflowScheduleTitle(
 }
 
 function buildAutomationSchedule(
-  type: ZeroWorkflowScheduleType,
+  type: WorkflowScheduleType,
   fields: {
     readonly cronFields: WorkflowCronFields;
     readonly intervalSeconds: string;
@@ -6931,7 +6931,7 @@ function ScheduleAutomationFields({
   defaultIntervalSeconds,
   defaultAtTime,
 }: {
-  readonly scheduleType: ZeroWorkflowScheduleType;
+  readonly scheduleType: WorkflowScheduleType;
   readonly cronFields: WorkflowCronFields;
   readonly setCronFields: (fields: WorkflowCronFields) => void;
   readonly displayTimezone: string;

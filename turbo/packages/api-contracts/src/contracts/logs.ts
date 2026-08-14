@@ -58,7 +58,6 @@ export const triggerSourceSchema = z.enum([
   "automation-schedule",
   "automation-event",
   "goal",
-  "template-import",
 ]);
 
 export type TriggerSource = z.infer<typeof triggerSourceSchema>;
@@ -83,7 +82,7 @@ const logEntrySchema = z.object({
 
 /**
  * Available filter values returned by the list endpoint.
- * agents contains canonical Zero agent IDs.
+ * agents contains canonical agent IDs.
  */
 const logsFiltersSchema = z.object({
   statuses: z.array(logStatusSchema),

@@ -190,6 +190,8 @@ class TestRegistryBuiltinCatalogResolution:
         custom_name = "custom_connector_550e8400e29b41d4a716446655440000"
         vm = {
             "runId": "run-overlap",
+            "billableFirewalls": [],
+            "cliAgentType": "claude-code",
             "connectorRuntimeTargets": [
                 {"kind": "builtin", "connectorSlug": builtin_name},
                 {"kind": "custom", "customConnectorId": custom_connector_id},
@@ -364,6 +366,7 @@ class TestRegistryBuiltinCatalogResolution:
             }
             vm: dict[str, object] = {
                 "runId": "run-dynamic-owner",
+                "cliAgentType": "claude-code",
                 "connectorRuntimeTargets": [
                     {"kind": "builtin", "connectorSlug": builtin_name},
                     {"kind": "custom", "customConnectorId": custom_connector_id},

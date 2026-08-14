@@ -25,7 +25,7 @@ import {
 import { zeroBuiltInGenerationContract } from "@okouai/api-contracts/contracts/zero-built-in-generation";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
-import { zeroMapsContract } from "@okouai/api-contracts/contracts/zero-maps";
+import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import {
   zeroUsageRecordContract,
@@ -62,7 +62,7 @@ import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../../zero-built-in-generation";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
-import { zeroMapsRoutes } from "../../zero-maps";
+import { mapsRoutes } from "../../maps";
 import { zeroUsageMembersRoutes } from "../../zero-usage-members";
 import { zeroUsageRecordRoutes } from "../../zero-usage-record";
 import { zeroVideoIoGenerateRoutes } from "../../zero-video-io-generate";
@@ -722,9 +722,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly address: string; readonly region?: string },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroMapsRoutes })(
-        zeroMapsContract,
-      );
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.geocode({ headers: authenticate(actor), body }),
         statuses,
@@ -736,9 +734,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly lat: number; readonly lng: number },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroMapsRoutes })(
-        zeroMapsContract,
-      );
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.reverseGeocode({ headers: authenticate(actor), body }),
         statuses,
@@ -755,9 +751,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroMapsRoutes })(
-        zeroMapsContract,
-      );
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.directions({ headers: authenticate(actor), body }),
         statuses,
@@ -776,9 +770,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroMapsRoutes })(
-        zeroMapsContract,
-      );
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.placesSearch({ headers: authenticate(actor), body }),
         statuses,
@@ -793,9 +785,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroMapsRoutes })(
-        zeroMapsContract,
-      );
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.placesDetails({ headers: authenticate(actor), body }),
         statuses,
@@ -807,9 +797,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: OsmAreaBody,
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroMapsRoutes })(
-        zeroMapsContract,
-      );
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.osmDownload({ headers: authenticate(actor), body }),
         statuses,
@@ -821,9 +809,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: OsmRenderBody,
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroMapsRoutes })(
-        zeroMapsContract,
-      );
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.osmRender({ headers: authenticate(actor), body }),
         statuses,

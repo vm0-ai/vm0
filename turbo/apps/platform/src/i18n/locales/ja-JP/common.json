@@ -333,7 +333,6 @@
       "slack": "Slack",
       "teams": "チーム",
       "telegram": "Telegram",
-      "templateImport": "テンプレートのインポート",
       "test": "テスト",
       "web": "ウェブ",
       "webhook": "Webhook"
@@ -790,6 +789,7 @@
       "confirm": "確認する",
       "credits": "クレジット",
       "manage": "管理",
+      "preparing": "準備中...",
       "redirecting": "リダイレクト中...",
       "restore": "復元",
       "retry": "再試行",
@@ -846,6 +846,9 @@
       "exchangeRate": "クレジットに有効期限はありません。 1 USD = {{credits}} クレジット。",
       "quickBuy": "すぐに購入",
       "quickBuyAmount": "クイック購入 {{amount}}",
+      "reviewDescription": "保存済みのお支払い方法で今回の請求を確定します。",
+      "reviewError": "クレジットの購入を完了できませんでした。請求情報を確認して、もう一度お試しください。",
+      "reviewTitle": "クレジット購入を確認",
       "title": "クレジットを購入する"
     },
     "downgrade": {
@@ -946,15 +949,14 @@
       "upgradeTo": "{{plan}} にアップグレードする",
       "usagePacks": {
         "bonusCredits": "ボーナスクレジット",
-        "changePlan": "プランを変更",
+        "bonusIncluded": "ボーナス {{credits}} を含む",
         "choosePlan": "プランを選択",
-        "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
         "concurrentSlots": "同時実行スロット",
         "configurePackages": "メンバーパッケージを設定",
-        "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
+        "credits": "クレジット",
+        "creditsPerMember": "メンバーごとに {{credits}} クレジット",
         "currentMember": "現在のメンバー",
-        "description": "各メンバーに月額利用パックを選択します。",
-        "discountBonusCredits": "割引によるボーナスクレジット",
+        "everythingOnPlus": "{{plan}} のすべてに加えて:",
         "existingPackagesUnchanged": "既存のメンバーパッケージは変更されません。",
         "management": {
           "comparison": "現在と新しいサブスクリプションの比較",
@@ -962,13 +964,16 @@
           "downgradeDescription": "下位パッケージは次回請求日から開始します。既存のクレジットは有効期限まで利用できます。",
           "downgradesToDate": "{{date}}に{{package}}へダウングレードします。",
           "downgradesToPeriod": "次回請求日に{{package}}へダウングレードします。",
+          "everyMonth": "毎月",
           "immediateAmount": "今回のお支払い",
+          "immediateAmountNote": "今回の請求期間の残り分",
           "immediateCredits": "支払い後に追加されるクレジット",
           "new": "新規",
           "processing": "変更を処理中",
-          "reviewDescription": "以下のサブスクリプション料金を確認してください。確定すると、保存済みのお支払い方法に今回のお支払い額が請求されます。",
+          "reviewDescription": "確定すると、保存済みのお支払い方法に請求されます。",
           "reviewTitle": "パッケージ変更の確認",
-          "scheduledFor": "{{date}}に変更予定"
+          "scheduledFor": "{{date}}に変更予定",
+          "today": "本日"
         },
         "memberExclusive": "各パッケージは1人のメンバー専用で共有できません。パッケージを使い切ると、従量課金クレジットに切り替わります。後から新しいパッケージにアップグレードできます。",
         "memberPackages": "メンバーパッケージ",
@@ -989,20 +994,18 @@
           "switchesOn": "{{date}} に {{plan}} プランへ切り替わります",
           "title": "旧プランを切り替える"
         },
-        "minimumPackageBreakdown": "{{base}} のプラン + {{package}} の必須メンバーパッケージ",
         "monthlyTotal": "月額合計",
         "orderSummary": "注文内容",
-        "packagesStep": "パッケージ",
+        "packCredits": "{{credits}} クレジット",
+        "packCreditsDiscount": "{{credits}} クレジット · {{discount}}% オフ",
         "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
         "planChangeError": "サブスクリプションの変更を準備できませんでした。もう一度お試しください。",
         "planStep": "プラン",
         "purchasedCredits": "購入クレジット",
-        "purchaseSteps": "購入手順",
-        "selectedPlan": "選択したプラン",
         "selectPlan": "{{plan}} で始める",
         "selectUsage": "{{name}} の利用設定",
-        "startingAt": "最低料金",
-        "totalCredits": "合計クレジット"
+        "stepOfTotal": "ステップ {{current}}/{{total}}",
+        "totalCreditsWithBonus": "{{credits}} クレジット · ボーナス {{bonus}}"
       }
     },
     "restore": {
@@ -1027,6 +1030,7 @@
       "concurrencyChanged": "同時実行数の変更を確定しました。Stripe の処理後にスロット数が更新されます。",
       "concurrencyReduced": "同時実行数の削減は次回の請求日に予定されています。",
       "concurrencyRestored": "同時実行サブスクリプションが復元されました。",
+      "creditPurchaseConfirmed": "支払いが確認されました。Stripe による請求書の処理後にクレジットが反映されます。",
       "creditsAdded": "クレジットが追加されました。 Zero とのチャットを続けることができます。",
       "downgradeScheduledDate": "ダウングレードが予定されています。現在のプランは {{date}} まで有効です。",
       "downgradeScheduledPeriod": "ダウングレードが予定されています。現在のプランは、請求期間が終了するまで有効のままです。",
@@ -1410,8 +1414,7 @@
       "search": "エージェントとチャットを検索...",
       "sent": "転送しました",
       "threads": "チャット",
-      "title": "転送先",
-      "to": "転送先"
+      "title": "転送先"
     },
     "mail": {
       "bcc": "BCC",
@@ -1668,6 +1671,9 @@
       "frequentlyUsed": "頻繁に使用される",
       "icon": "チャットスレッドアイコン",
       "loadingEarlier": "以前のメッセージを読み込んでいます",
+      "locator": {
+        "you": "あなた"
+      },
       "noEmojiFound": "絵文字が見つかりませんでした",
       "notFound": "チャットスレッドが見つかりません",
       "openArtifacts": "オープンアーティファクト",
@@ -4333,6 +4339,24 @@
           "enabled_other": "次回の {{count}} の実行に対して有効になります",
           "title": "ネットワーク本体をキャプチャする"
         },
+        "connectionDiagnostics": {
+          "activeWaits": "処理中の待機",
+          "blurred": "フォーカス外",
+          "channel": "チャネル",
+          "clear": "消去",
+          "connection": "接続",
+          "copyJson": "JSON をコピー",
+          "description": "ブラウザーのライフサイクル、認証の復旧、Ably 接続シグナルを確認します。",
+          "empty": "診断イベントは記録されていません。",
+          "events": "イベント",
+          "focused": "フォーカス中",
+          "log": "イベントログ",
+          "offline": "オフライン",
+          "online": "オンライン",
+          "recovery": "復旧",
+          "title": "リアルタイム接続診断",
+          "unavailable": "利用不可"
+        },
         "tab": "デバッグ"
       },
       "documentTitle": "設定",
@@ -4587,6 +4611,7 @@
       "imageRecognize": "画像認識",
       "maps": "地図",
       "peopleSearch": "人物検索",
+      "seo": "SEO",
       "translation": "翻訳",
       "usage": "使用量",
       "weather": "天気",

@@ -25,8 +25,8 @@ import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
-import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { onboardingCompleteRoutes } from "../../onboarding-complete";
+import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -122,14 +122,14 @@ export function createBddApi(context: TestContext) {
   function onboardingStatusClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroOnboardingStatusRoutes,
+      routes: onboardingStatusRoutes,
     })(onboardingStatusContract);
   }
 
   function onboardingCompleteClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroOnboardingCompleteRoutes,
+      routes: onboardingCompleteRoutes,
     })(onboardingCompleteContract);
   }
 

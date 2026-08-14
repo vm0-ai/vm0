@@ -1,15 +1,28 @@
 import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
+import {
+  Realtime,
+  type ChannelStateChange,
+  type ConnectionStateChange,
+  type InboundMessage,
+  type RealtimeChannel,
+} from "ably";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
+import { now } from "../lib/time.ts";
 import { zeroClient$ } from "./api-client.ts";
 import {
   requestForegroundCatchUp$,
   subscribeForegroundCatchUp$,
 } from "./auth-retry.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
+import {
+  connectionDiagnosticError,
+  createConnectionDiagnosticSpanId,
+  publishConnectionDiagnostic,
+  type ConnectionDiagnosticDetails,
+} from "./connection-diagnostics.ts";
 import {
   createDeferredPromise,
   onRejection,
@@ -26,6 +39,31 @@ const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
   1000, 2000, 5000, 10_000, 30_000,
 ] as const;
 const MAX_TRANSIENT_RETRIES = 3;
+
+function connectionStateDetails(
+  stateChange: ConnectionStateChange,
+): ConnectionDiagnosticDetails {
+  const errorDetails = connectionDiagnosticError(stateChange.reason);
+  return {
+    ...errorDetails,
+    connectionState: stateChange.current,
+    previousConnectionState: stateChange.previous,
+    retryInMs:
+      typeof stateChange.retryIn === "number"
+        ? stateChange.retryIn
+        : errorDetails.retryInMs,
+  };
+}
+
+function channelStateDetails(
+  stateChange: ChannelStateChange,
+): ConnectionDiagnosticDetails {
+  return {
+    ...connectionDiagnosticError(stateChange.reason),
+    channelState: stateChange.current,
+    previousChannelState: stateChange.previous,
+  };
+}
 
 const realtimeDegradedToastShown$ = state(false);
 
@@ -52,6 +90,7 @@ interface StableRealtimeChannel {
     topic: string | null,
     callback: ChannelCallback,
   ) => void;
+  readonly suspend: () => void;
   readonly replace: (channel: RealtimeChannel) => Promise<void>;
 }
 
@@ -65,6 +104,48 @@ const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 
 const subscriberPokeTarget$ = state(new EventTarget());
 const SUBSCRIBER_POKE_EVENT = "poke";
+type RealtimeReadyCatchUpCommand = Command<Promise<void> | void, [AbortSignal]>;
+const realtimeReadyCatchUpCommands$ = state<
+  ReadonlySet<RealtimeReadyCatchUpCommand>
+>(new Set());
+
+/**
+ * Register snapshot catch-up that runs after realtime recovery and before the
+ * shared foreground-ready barrier resolves.
+ */
+export const subscribeRealtimeReadyCatchUp$ = command(
+  (
+    { get, set },
+    callback$: RealtimeReadyCatchUpCommand,
+    signal: AbortSignal,
+  ) => {
+    set(
+      realtimeReadyCatchUpCommands$,
+      new Set([...get(realtimeReadyCatchUpCommands$), callback$]),
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        const commands = new Set(get(realtimeReadyCatchUpCommands$));
+        commands.delete(callback$);
+        set(realtimeReadyCatchUpCommands$, commands);
+      },
+      { once: true },
+    );
+  },
+);
+
+const runRealtimeReadyCatchUp$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    await Promise.all(
+      [...get(realtimeReadyCatchUpCommands$)].map(async (callback$) => {
+        await set(callback$, signal);
+        signal.throwIfAborted();
+      }),
+    );
+    signal.throwIfAborted();
+  },
+);
 
 interface PendingAblySubscription {
   topic: string;
@@ -78,6 +159,7 @@ const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
 
 interface RealtimeSubscribeOptions {
   readonly onSubscribed?: () => void;
+  readonly runOnForegroundCatchUp?: boolean;
   readonly runOnSubscribe?: boolean;
 }
 
@@ -157,6 +239,7 @@ async function waitForTransientRetry(
 
 interface SubscribeChannelArgs {
   readonly channel: StableRealtimeChannel;
+  readonly listenForForegroundCatchUp: boolean;
   readonly topic: string | null;
   readonly callback: ChannelCallback;
   readonly poke: () => void;
@@ -167,6 +250,7 @@ interface SubscribeChannelArgs {
 async function subscribeChannel(
   {
     channel,
+    listenForForegroundCatchUp,
     topic,
     callback,
     poke,
@@ -186,9 +270,11 @@ async function subscribeChannel(
     unsubscribeChannel();
   };
 
-  subscriberPokeTarget.addEventListener(SUBSCRIBER_POKE_EVENT, poke, {
-    signal,
-  });
+  if (listenForForegroundCatchUp) {
+    subscriberPokeTarget.addEventListener(SUBSCRIBER_POKE_EVENT, poke, {
+      signal,
+    });
+  }
   signal.addEventListener("abort", unsubscribeChannel, { once: true });
 
   await onRejection(channel.subscribe(topic, callback), release);
@@ -210,6 +296,7 @@ const runWithChannel$ = command(
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
     let poked = false;
+    let catchUpRequested = false;
     let transientRetryCount = 0;
 
     const pokeLoop = () => {
@@ -218,6 +305,10 @@ const runWithChannel$ = command(
       }
       poked = true;
       deferred.resolve(true);
+    };
+    const requestCatchUp = () => {
+      catchUpRequested = true;
+      pokeLoop();
     };
 
     const callback = (message: InboundMessage) => {
@@ -230,9 +321,10 @@ const runWithChannel$ = command(
     await subscribeChannel(
       {
         channel,
+        listenForForegroundCatchUp: options?.runOnForegroundCatchUp !== false,
         topic,
         callback,
-        poke: pokeLoop,
+        poke: requestCatchUp,
         subscriberPokeTarget: get(subscriberPokeTarget$),
         run: async () => {
           options?.onSubscribed?.();
@@ -247,11 +339,34 @@ const runWithChannel$ = command(
               loopSignal.throwIfAborted();
               deferred = createDeferredPromise(loopSignal);
               poked = false;
+              const isCatchUp = catchUpRequested;
+              catchUpRequested = false;
+              const catchUpSpanId = isCatchUp
+                ? createConnectionDiagnosticSpanId()
+                : null;
+              const catchUpStartedAtMs = isCatchUp ? now() : null;
+              if (catchUpSpanId !== null) {
+                publishConnectionDiagnostic({
+                  details: { subscriptionKind: "topic" },
+                  event: "realtime.subscriber-catch-up",
+                  phase: "start",
+                  spanId: catchUpSpanId,
+                });
+              }
 
               // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
               try {
                 const done = await set(loopCommand$, loopSignal);
                 loopSignal.throwIfAborted();
+                if (catchUpSpanId !== null && catchUpStartedAtMs !== null) {
+                  publishConnectionDiagnostic({
+                    details: { subscriptionKind: "topic" },
+                    durationMs: now() - catchUpStartedAtMs,
+                    event: "realtime.subscriber-catch-up",
+                    phase: "finish",
+                    spanId: catchUpSpanId,
+                  });
+                }
                 transientRetryCount = 0;
                 if (done) {
                   return true;
@@ -259,6 +374,18 @@ const runWithChannel$ = command(
               } catch (error) {
                 throwIfAbort(error);
                 loopSignal.throwIfAborted();
+                if (catchUpSpanId !== null && catchUpStartedAtMs !== null) {
+                  publishConnectionDiagnostic({
+                    details: {
+                      ...connectionDiagnosticError(error),
+                      subscriptionKind: "topic",
+                    },
+                    durationMs: now() - catchUpStartedAtMs,
+                    event: "realtime.subscriber-catch-up",
+                    phase: "error",
+                    spanId: catchUpSpanId,
+                  });
+                }
                 if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
                   L.warn(
                     `giving up on ably notification after repeated handler failures`,
@@ -272,6 +399,7 @@ const runWithChannel$ = command(
                 await waitForTransientRetry(loopSignal, transientRetryCount);
                 loopSignal.throwIfAborted();
                 transientRetryCount++;
+                catchUpRequested = isCatchUp;
                 pokeLoop();
               }
               return false;
@@ -311,6 +439,14 @@ const runPayloadLoopIteration$ = command(
     }
     if (!hasPayload && catchUpCommand$ !== undefined) {
       state.catchUpRequested = false;
+      const catchUpSpanId = createConnectionDiagnosticSpanId();
+      const catchUpStartedAtMs = now();
+      publishConnectionDiagnostic({
+        details: { subscriptionKind: "payload" },
+        event: "realtime.subscriber-catch-up",
+        phase: "start",
+        spanId: catchUpSpanId,
+      });
       const result = await settle(
         (async () => {
           return await set(catchUpCommand$, signal);
@@ -318,8 +454,26 @@ const runPayloadLoopIteration$ = command(
         signal,
       );
       if (!result.ok) {
+        publishConnectionDiagnostic({
+          details: {
+            ...connectionDiagnosticError(result.error),
+            subscriptionKind: "payload",
+          },
+          durationMs: now() - catchUpStartedAtMs,
+          event: "realtime.subscriber-catch-up",
+          phase: "error",
+          spanId: catchUpSpanId,
+        });
         L.warn(`ably catch-up failed`, result.error);
         set(notifyRealtimeDegraded$);
+      } else {
+        publishConnectionDiagnostic({
+          details: { subscriptionKind: "payload" },
+          durationMs: now() - catchUpStartedAtMs,
+          event: "realtime.subscriber-catch-up",
+          phase: "finish",
+          spanId: catchUpSpanId,
+        });
       }
       if (result.ok && result.value) {
         return true;
@@ -418,6 +572,7 @@ const runWithChannelPayload$ = command(
     await subscribeChannel(
       {
         channel,
+        listenForForegroundCatchUp: options?.runOnForegroundCatchUp !== false,
         topic,
         callback,
         poke: requestCatchUp,
@@ -479,11 +634,54 @@ function unsubscribeFromRealtimeChannel(
   channel.unsubscribe(subscription.topic, subscription.callback);
 }
 
+async function trackRealtimeSubscription(
+  operation: () => Promise<unknown>,
+  subscription: ActiveChannelSubscription,
+  subscriberCount: number,
+): Promise<void> {
+  const spanId = createConnectionDiagnosticSpanId();
+  const startedAtMs = now();
+  publishConnectionDiagnostic({
+    details: {
+      subscriberCount,
+      subscriptionKind: subscription.topic === null ? "channel" : "topic",
+    },
+    event: "realtime.subscription",
+    phase: "start",
+    spanId,
+  });
+  const result = await settle(operation());
+  if (!result.ok) {
+    publishConnectionDiagnostic({
+      details: {
+        ...connectionDiagnosticError(result.error),
+        subscriberCount,
+        subscriptionKind: subscription.topic === null ? "channel" : "topic",
+      },
+      durationMs: now() - startedAtMs,
+      event: "realtime.subscription",
+      phase: "error",
+      spanId,
+    });
+    throw result.error;
+  }
+  publishConnectionDiagnostic({
+    details: {
+      subscriberCount,
+      subscriptionKind: subscription.topic === null ? "channel" : "topic",
+    },
+    durationMs: now() - startedAtMs,
+    event: "realtime.subscription",
+    phase: "finish",
+    spanId,
+  });
+}
+
 function createStableRealtimeChannel(
   initialChannel: RealtimeChannel,
 ): StableRealtimeChannel {
   const subscriptions = new Map<ChannelCallback, ActiveChannelSubscription>();
-  let currentChannel = initialChannel;
+  let currentChannel: RealtimeChannel | null = initialChannel;
   let replacement: Promise<void> | null = null;
 
   const attach = async (
@@ -493,9 +691,18 @@ function createStableRealtimeChannel(
     if (subscription.channels.has(channel)) {
       return;
     }
-    await onRejection(subscribeToRealtimeChannel(channel, subscription), () => {
-      unsubscribeFromRealtimeChannel(channel, subscription);
-    });
+    await trackRealtimeSubscription(
+      () => {
+        return onRejection(
+          subscribeToRealtimeChannel(channel, subscription),
+          () => {
+            unsubscribeFromRealtimeChannel(channel, subscription);
+          },
+        );
+      },
+      subscription,
+      subscriptions.size,
+    );
     if (subscriptions.get(subscription.callback) !== subscription) {
       unsubscribeFromRealtimeChannel(channel, subscription);
       return;
@@ -504,7 +711,7 @@ function createStableRealtimeChannel(
   };
 
   return {
-    subscribe: (topic, callback) => {
+    subscribe: async (topic, callback) => {
       const subscription: ActiveChannelSubscription = {
         topic,
         callback,
@@ -515,17 +722,28 @@ function createStableRealtimeChannel(
       const activeReplacement = replacement;
       if (!activeReplacement) {
         const channel = currentChannel;
+        if (!channel) {
+          return Promise.resolve();
+        }
         subscription.channels.add(channel);
-        return subscribeToRealtimeChannel(channel, subscription);
+        await trackRealtimeSubscription(
+          () => {
+            return subscribeToRealtimeChannel(channel, subscription);
+          },
+          subscription,
+          subscriptions.size,
+        );
+        return;
       }
 
-      return (async () => {
-        await activeReplacement;
-        if (subscriptions.get(callback) !== subscription) {
-          return;
-        }
-        await attach(currentChannel, subscription);
-      })();
+      await activeReplacement;
+      if (subscriptions.get(callback) !== subscription) {
+        return;
+      }
+      const channel = currentChannel;
+      if (channel) {
+        await attach(channel, subscription);
+      }
     },
     unsubscribe: (_topic, callback) => {
       const subscription = subscriptions.get(callback);
@@ -537,6 +755,15 @@ function createStableRealtimeChannel(
         unsubscribeFromRealtimeChannel(channel, subscription);
       }
       subscription.channels.clear();
+    },
+    suspend: () => {
+      currentChannel = null;
+      for (const subscription of subscriptions.values()) {
+        for (const channel of subscription.channels) {
+          unsubscribeFromRealtimeChannel(channel, subscription);
+        }
+        subscription.channels.clear();
+      }
     },
     replace: async (channel) => {
       const activeReplacement = replacement;
@@ -604,16 +831,38 @@ const connectRealtimeClient$ = command(
       disconnectedRetryTimeout: 5000,
       suspendedRetryTimeout: 15_000,
     });
+    publishConnectionDiagnostic({
+      details: { connectionState: ably.connection.state },
+      event: "realtime.client",
+      phase: "instant",
+    });
+    let initialConnectionComplete = false;
+    const handleConnectionStateChange = (
+      stateChange: ConnectionStateChange,
+    ): void => {
+      publishConnectionDiagnostic({
+        details: connectionStateDetails(stateChange),
+        event: "realtime.connection",
+        phase: "instant",
+      });
+      if (initialConnectionComplete && stateChange.current === "connected") {
+        L.debug("reconnected, requesting foreground catch-up");
+        set(requestForegroundCatchUp$);
+      }
+    };
+    ably.connection.on(handleConnectionStateChange);
+
     let closed = false;
-    const close = (): void => {
+    const closeConnection = (): void => {
       if (closed) {
         return;
       }
       closed = true;
-      signal.removeEventListener("abort", close);
+      signal.removeEventListener("abort", closeConnection);
       ably.close();
+      ably.connection.off(handleConnectionStateChange);
     };
-    signal.addEventListener("abort", close, { once: true });
+    signal.addEventListener("abort", closeConnection, { once: true });
 
     const deferred = createDeferredPromise(signal);
     ably.connection.once("connected", () => {
@@ -631,51 +880,187 @@ const connectRealtimeClient$ = command(
       }
     });
 
-    await onRejection(deferred.promise, close);
-    signal.throwIfAborted();
-
-    // Register after the initial connection so only reconnects request a
-    // foreground catch-up.
-    ably.connection.on("connected", () => {
-      L.debug("reconnected, requesting foreground catch-up");
-      set(requestForegroundCatchUp$);
+    const initialConnectionSpanId = createConnectionDiagnosticSpanId();
+    const initialConnectionStartedAtMs = now();
+    publishConnectionDiagnostic({
+      details: { connectionState: ably.connection.state },
+      event: "realtime.initial-connection",
+      phase: "start",
+      spanId: initialConnectionSpanId,
     });
+    const initialConnectionResult = await settle(deferred.promise, signal);
+    if (!initialConnectionResult.ok) {
+      publishConnectionDiagnostic({
+        details: {
+          ...connectionDiagnosticError(initialConnectionResult.error),
+          connectionState: ably.connection.state,
+        },
+        durationMs: now() - initialConnectionStartedAtMs,
+        event: "realtime.initial-connection",
+        phase: "error",
+        spanId: initialConnectionSpanId,
+      });
+      closeConnection();
+      throw initialConnectionResult.error;
+    }
+    publishConnectionDiagnostic({
+      details: { connectionState: ably.connection.state },
+      durationMs: now() - initialConnectionStartedAtMs,
+      event: "realtime.initial-connection",
+      phase: "finish",
+      spanId: initialConnectionSpanId,
+    });
+    initialConnectionComplete = true;
 
     const channelName = `user:${ably.auth.clientId}`;
+    const channel = ably.channels.get(channelName);
+    const handleChannelStateChange = (
+      stateChange: ChannelStateChange,
+    ): void => {
+      publishConnectionDiagnostic({
+        details: channelStateDetails(stateChange),
+        event: "realtime.channel",
+        phase: "instant",
+      });
+    };
+    channel.on(handleChannelStateChange);
+    publishConnectionDiagnostic({
+      details: { channelState: channel.state },
+      event: "realtime.channel",
+      phase: "instant",
+    });
+    const close = (): void => {
+      signal.removeEventListener("abort", close);
+      closeConnection();
+      channel.off(handleChannelStateChange);
+    };
+    signal.removeEventListener("abort", closeConnection);
+    signal.addEventListener("abort", close, { once: true });
     return {
       ably,
-      channel: ably.channels.get(channelName),
+      channel,
       close,
     };
   },
 );
+
+const closeRealtimeWhileHidden$ = command(({ get }) => {
+  if (document.visibilityState === "visible") {
+    return;
+  }
+  const session = get(internalRealtimeSession$);
+  if (!session) {
+    return;
+  }
+  L.debug("page hidden, closing realtime connection");
+  session.channel.suspend();
+  session.close();
+});
 
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const session = get(internalRealtimeSession$);
     const subscriberPokeTarget = get(subscriberPokeTarget$);
     if (!session) {
+      publishConnectionDiagnostic({
+        details: { skipReason: "no-realtime-session" },
+        event: "foreground.skipped",
+        phase: "instant",
+      });
       return;
     }
 
-    if (session.ably.connection.state === "failed") {
-      L.debug("foreground catch-up rebuilding failed realtime connection");
-      const connected = await set(connectRealtimeClient$, signal);
-      signal.throwIfAborted();
-      await onRejection(session.channel.replace(connected.channel), () => {
-        connected.close();
+    const connectionState = session.ably.connection.state;
+    if (
+      connectionState === "failed" ||
+      connectionState === "closing" ||
+      connectionState === "closed"
+    ) {
+      L.debug("foreground catch-up rebuilding inactive realtime connection");
+      const rebuildSpanId = createConnectionDiagnosticSpanId();
+      const rebuildStartedAtMs = now();
+      publishConnectionDiagnostic({
+        details: { connectionState },
+        event: "realtime.client-rebuild",
+        phase: "start",
+        spanId: rebuildSpanId,
       });
-      signal.throwIfAborted();
+      const connectResult = await settle(
+        set(connectRealtimeClient$, signal),
+        signal,
+      );
+      if (!connectResult.ok) {
+        publishConnectionDiagnostic({
+          details: connectionDiagnosticError(connectResult.error),
+          durationMs: now() - rebuildStartedAtMs,
+          event: "realtime.client-rebuild",
+          phase: "error",
+          spanId: rebuildSpanId,
+        });
+        throw connectResult.error;
+      }
+
+      const connected = connectResult.value;
+      const replaceSpanId = createConnectionDiagnosticSpanId();
+      const replaceStartedAtMs = now();
+      publishConnectionDiagnostic({
+        event: "realtime.channel-replace",
+        phase: "start",
+        spanId: replaceSpanId,
+      });
+      const replaceResult = await settle(
+        onRejection(session.channel.replace(connected.channel), () => {
+          connected.close();
+        }),
+        signal,
+      );
+      if (!replaceResult.ok) {
+        publishConnectionDiagnostic({
+          details: connectionDiagnosticError(replaceResult.error),
+          durationMs: now() - replaceStartedAtMs,
+          event: "realtime.channel-replace",
+          phase: "error",
+          spanId: replaceSpanId,
+        });
+        publishConnectionDiagnostic({
+          details: connectionDiagnosticError(replaceResult.error),
+          durationMs: now() - rebuildStartedAtMs,
+          event: "realtime.client-rebuild",
+          phase: "error",
+          spanId: rebuildSpanId,
+        });
+        throw replaceResult.error;
+      }
+      publishConnectionDiagnostic({
+        durationMs: now() - replaceStartedAtMs,
+        event: "realtime.channel-replace",
+        phase: "finish",
+        spanId: replaceSpanId,
+      });
       set(internalRealtimeSession$, {
         ably: connected.ably,
         channel: session.channel,
         close: connected.close,
       });
       session.close();
+      publishConnectionDiagnostic({
+        details: { connectionState: connected.ably.connection.state },
+        durationMs: now() - rebuildStartedAtMs,
+        event: "realtime.client-rebuild",
+        phase: "finish",
+        spanId: rebuildSpanId,
+      });
+    }
+
+    if (document.visibilityState !== "visible") {
+      set(closeRealtimeWhileHidden$);
+      return;
     }
 
     L.debug("foreground catch-up ready, poking subscribers");
     subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+    await set(runRealtimeReadyCatchUp$, signal);
+    signal.throwIfAborted();
   },
 );
 
@@ -719,9 +1104,22 @@ export const setupRealtime$ = command(
       close: connected.close,
     });
     set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        set(closeRealtimeWhileHidden$);
+      },
+      { signal },
+    );
+    set(closeRealtimeWhileHidden$);
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {
+      publishConnectionDiagnostic({
+        details: { pendingSubscriberCount: pendingSubscriptions.length },
+        event: "realtime.pending-subscribers",
+        phase: "start",
+      });
       L.debug(
         `Realtime connected, starting ${pendingSubscriptions.length} pending subscriber(s)`,
       );
@@ -739,6 +1137,11 @@ export const setupRealtime$ = command(
         }
       }
       set(pendingAblySubscriptions$, []);
+      publishConnectionDiagnostic({
+        details: { pendingSubscriberCount: 0 },
+        event: "realtime.pending-subscribers",
+        phase: "finish",
+      });
     }
 
     L.debug(
@@ -767,6 +1170,13 @@ const userChannel$ = command(
       signal,
       channelDeferred,
     };
+    publishConnectionDiagnostic({
+      details: {
+        pendingSubscriberCount: get(pendingAblySubscriptions$).length + 1,
+      },
+      event: "realtime.pending-subscribers",
+      phase: "instant",
+    });
     set(pendingAblySubscriptions$, (prev) => {
       return [...prev, pendingSubscription];
     });

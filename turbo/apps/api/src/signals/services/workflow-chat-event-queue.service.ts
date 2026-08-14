@@ -4,10 +4,7 @@ import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -106,7 +103,7 @@ export type PersistWorkflowQueueSourceTransition = (
 ) => Promise<void>;
 
 interface WorkflowQueueAdmissionArgs {
-  readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+  readonly automation: typeof workflowAutomations.$inferSelect;
   readonly workflowName: string;
   readonly displayPrompt: string;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
@@ -188,9 +185,9 @@ export async function admitWorkflowAutomationEvent(
 export interface PendingWorkflowQueueEvent {
   readonly id: string;
   readonly userId: string;
-  readonly automationId: string;
+  readonly automationId: string | null;
   readonly chatThreadId: string;
-  readonly triggerSource: TriggerSource;
+  readonly triggerSource: TriggerSource | null;
   readonly triggerBrief: string | null;
   readonly workflowName: string | null;
   readonly workflowAutomationEventType: string | null;
@@ -198,8 +195,10 @@ export interface PendingWorkflowQueueEvent {
 }
 
 /**
- * Load the runnable automation head. Pending user events always win and any
- * active run blocks the whole thread.
+ * Load the automation queue head. Pending user events always win and any
+ * active run blocks the whole thread. Missing automation context is returned
+ * with null launch fields so the drain can reject the persisted input and
+ * continue instead of leaving the thread stuck.
  *
  * A concurrently deleted thread can remove the selected event before this
  * lookup; that canonical deletion race returns null rather than failing.
@@ -232,7 +231,7 @@ export async function loadNextWorkflowQueueEvent(
         id: chatEvents.id,
         userId: chatThreads.userId,
         automationId: chatAutomationContext.automationId,
-        automationKind: zeroWorkflowAutomations.kind,
+        automationKind: workflowAutomations.kind,
         chatThreadId: chatEvents.chatThreadId,
         triggerBrief: chatAutomationContext.triggerBrief,
         workflowName: chatAutomationContext.workflowName,
@@ -249,23 +248,20 @@ export async function loadNextWorkflowQueueEvent(
         ),
       )
       .leftJoin(
-        zeroWorkflowAutomations,
-        eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+        workflowAutomations,
+        eq(workflowAutomations.id, chatAutomationContext.automationId),
       )
       .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {
       return null;
     }
-    if (!event.automationId || !event.automationKind) {
-      throw new Error(
-        `Workflow queue event ${event.id} is missing its typed payload`,
-      );
-    }
     return {
       ...event,
-      automationId: event.automationId,
-      triggerSource: manualTriggerSource({ kind: event.automationKind }),
+      triggerSource:
+        event.automationKind === null
+          ? null
+          : manualTriggerSource({ kind: event.automationKind }),
     };
   });
 }
@@ -277,11 +273,10 @@ async function loadAutomationRejectionPayload(
   const [event] = await db
     .select({
       automationId: chatAutomationContext.automationId,
-      automationKind: zeroWorkflowAutomations.kind,
       triggerBrief: chatAutomationContext.triggerBrief,
       userMessage: canonicalChatEventUserMessage(),
-      workflowId: zeroWorkflows.id,
-      workflowName: zeroWorkflows.name,
+      workflowId: workflows.id,
+      workflowName: workflows.name,
     })
     .from(chatEvents)
     .leftJoin(
@@ -292,13 +287,10 @@ async function loadAutomationRejectionPayload(
       ),
     )
     .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+      workflowAutomations,
+      eq(workflowAutomations.id, chatAutomationContext.automationId),
     )
-    .leftJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
+    .leftJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
@@ -335,7 +327,7 @@ export async function rejectWorkflowQueueEvent(
       return false;
     }
     const payload = await loadAutomationRejectionPayload(tx, args.eventId);
-    if (!payload?.automationId || !payload.automationKind) {
+    if (!payload) {
       return false;
     }
     const userMessage =
@@ -364,7 +356,9 @@ export async function rejectWorkflowQueueEvent(
       userMessage,
       runId: null,
       error: args.reason,
-      automationId: payload.automationId,
+      ...(payload.automationId === null
+        ? {}
+        : { automationId: payload.automationId }),
       triggerBrief: payload.triggerBrief,
     });
     return rejected !== null;

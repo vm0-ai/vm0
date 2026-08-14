@@ -197,8 +197,32 @@ function mockChatThreadSnapshot(
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [...activeThreadIds()] });
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, {
+      agents: {},
+      threads: Object.fromEntries(
+        activeThreadIds().map((threadId) => {
+          return [threadId, "active" as const];
+        }),
+      ),
+    });
+  });
+}
+
+function mockUnreadAgents(
+  unreadAgentIds: () => readonly string[],
+  onRequest: () => void = () => {},
+): void {
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    onRequest();
+    return respond(200, {
+      agents: Object.fromEntries(
+        unreadAgentIds().map((agentId) => {
+          return [agentId, "unread" as const];
+        }),
+      ),
+      threads: {},
+    });
   });
 }
 
@@ -445,9 +469,9 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
-  it("renders event-sourced sidebar threads while active run ids are pending", async () => {
+  it("renders event-sourced sidebar threads while indicators are pending", async () => {
     prepareDefaultAgent();
-    let activeIdsRequests = 0;
+    let indicatorRequests = 0;
 
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       return respond(200, {
@@ -473,8 +497,8 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
-      activeIdsRequests += 1;
+    context.mocks.api(chatThreadsContract.indicators, ({ never }) => {
+      indicatorRequests += 1;
       return never();
     });
 
@@ -490,7 +514,7 @@ describe("zero sidebar", () => {
       expect(
         sidebar().querySelectorAll('[data-testid="sidebar-skeleton"]'),
       ).toHaveLength(0);
-      expect(activeIdsRequests).toBe(1);
+      expect(indicatorRequests).toBe(1);
     });
     expect(
       within(threadRowByTitle("Event-sourced conversation")).queryByLabelText(
@@ -1406,6 +1430,32 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("renders 100 chat threads before the sidebar viewport is measured", async () => {
+    prepareDefaultAgent();
+    const firstThread = createThread(EXISTING_THREAD_ID, "Fallback chat 1");
+    const threads = [
+      firstThread,
+      ...Array.from({ length: 119 }, (_, index) => {
+        return createThread(
+          `b3200000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+          `Fallback chat ${index + 2}`,
+        );
+      }),
+    ];
+    mockSidebarThreadStory(threads);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${firstThread.id}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("sidebar-chat-thread-virtual-row"),
+      ).toHaveLength(100);
+    });
+  });
+
   it("aligns the current virtualized chat row with the sidebar scroll area top on page setup", async () => {
     prepareDefaultAgent();
     const leadingThreads = Array.from({ length: 24 }, (_, index) => {
@@ -2072,8 +2122,8 @@ describe("zero sidebar", () => {
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
-      return respond(200, { agentIds: [SUPPORT_AGENT_ID] });
+    mockUnreadAgents(() => {
+      return [SUPPORT_AGENT_ID];
     });
 
     setupSidebarPage({
@@ -2344,10 +2394,14 @@ describe("zero sidebar", () => {
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
     let unreadAgentRequests = 0;
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
-      unreadAgentRequests += 1;
-      return respond(200, { agentIds: unreadAgentIds });
-    });
+    mockUnreadAgents(
+      () => {
+        return unreadAgentIds;
+      },
+      () => {
+        unreadAgentRequests += 1;
+      },
+    );
 
     setupSidebarPage({
       context,
@@ -2464,8 +2518,8 @@ describe("zero sidebar", () => {
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
     const markedAgentIds: string[] = [];
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
-      return respond(200, { agentIds: unreadAgentIds });
+    mockUnreadAgents(() => {
+      return unreadAgentIds;
     });
     context.mocks.api(
       chatThreadMarkAgentReadContract.markAgentRead,
@@ -2510,18 +2564,22 @@ describe("zero sidebar", () => {
   it("marks all default agent chats read from the default agent menu", async () => {
     prepareAgentTeam();
 
-    let unreadAgentIds = [AGENT_ID, SUPPORT_AGENT_ID];
+    let hasUnread = true;
     const markedAgentIds: string[] = [];
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
-      return respond(200, { agentIds: unreadAgentIds });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: { [AGENT_ID]: hasUnread ? "unread" : "active" },
+        threads: {
+          [INCIDENT_THREAD_ID]: "active",
+          ...(hasUnread ? { [EXISTING_THREAD_ID]: "unread" as const } : {}),
+        },
+      });
     });
     context.mocks.api(
       chatThreadMarkAgentReadContract.markAgentRead,
       ({ body, respond }) => {
         markedAgentIds.push(body.agentId);
-        unreadAgentIds = unreadAgentIds.filter((id) => {
-          return id !== body.agentId;
-        });
+        hasUnread = false;
         return respond(204);
       },
     );
@@ -2555,6 +2613,9 @@ describe("zero sidebar", () => {
       expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
       expect(
         within(defaultSidebarRow).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(defaultSidebarRow).queryByLabelText("Open agent menu"),
       ).not.toBeInTheDocument();
     });
   });

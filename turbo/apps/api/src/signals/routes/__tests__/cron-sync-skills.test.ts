@@ -15,7 +15,7 @@ import {
   DEFAULT_SKILLS_REPO,
 } from "@okouai/core/github-url";
 import { getSkillStorageName } from "@okouai/core/storage-names";
-import { SEED_SKILLS } from "@okouai/core/zero-seed-skills";
+import { SEED_SKILLS } from "@okouai/core/seed-skills";
 import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";

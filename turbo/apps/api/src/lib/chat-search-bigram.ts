@@ -128,7 +128,7 @@ export function chatSearchMatchRanges(
   return merged;
 }
 
-/** Normalized form stored in chat_event_search_docs.text_bigram. */
+/** Normalized form stored in both search projections during dual-writing. */
 export function chatSearchIndexText(text: string): string {
   return tokenGroups(text)
     .flatMap((group) => {

@@ -16,7 +16,7 @@ import {
 import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
 import { useTranslation } from "react-i18next";
-import { resolvedAppLocale } from "../../i18n/format.ts";
+import { formatChatTimestamp } from "../../i18n/format.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   runUsagePopoverOpenRunId$,
@@ -100,6 +100,7 @@ import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
+  isChatRunTerminalEventType,
   terminatedChatRunIds,
 } from "@okouai/api-contracts/contracts/chat-events";
 import {
@@ -128,6 +129,7 @@ import {
   ChatVideoPreviewButton,
 } from "./chat-body-cards.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ChatConversationLocator } from "./chat-conversation-locator.tsx";
 import {
   customConnectorMcpEnabled$,
   featureSwitch$,
@@ -1546,15 +1548,6 @@ function ChatThreadEmojiGrid({
       })}
     </div>
   );
-}
-
-function formatChatTimestamp(value: string): string {
-  return new Date(value).toLocaleString(resolvedAppLocale(), {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
@@ -3148,11 +3141,9 @@ function ChatThreadSessionError({ thread }: { thread: ChatPanelSignals }) {
 
 function ChatThreadEmptyState({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
-  const renderedGroupsReady =
-    useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
-  const threadSettledInServer = useGet(thread.threadSettledInServer$);
+  const initialEventsReady = useGet(thread.initialEventsReady$);
   const hasEvents = useLastResolved(thread.hasEvents$);
-  if (!renderedGroupsReady || !threadSettledInServer || hasEvents !== false) {
+  if (!initialEventsReady || hasEvents !== false) {
     return null;
   }
   return (
@@ -3307,12 +3298,20 @@ function chatRunPresentationForGroups(
   const runlessAssistantOwnerEventIds = new Set<string>();
   const seenUserRunIds = new Set<string>();
   const steerEventIds = new Set<string>();
+  // The run each steer was picked up by, so the acknowledgement can retire
+  // with it. The terminal event arrives after the steer, so the two are
+  // reconciled once the whole transcript has been walked.
+  const runIdBySteerEventId = new Map<string, string>();
+  const finishedRunIds = new Set<string>();
   let lastAssociatedRunId: string | undefined;
 
   for (const group of groups) {
     for (const event of group.events) {
       const role = chatEventCompatibilityRole(event.eventType);
       const runId = event.runId;
+      if (isChatRunTerminalEventType(event.eventType) && runId !== undefined) {
+        finishedRunIds.add(runId);
+      }
       if (role === "user") {
         const isSteer = isSteerPromptEvent(
           event,
@@ -3322,6 +3321,10 @@ function chatRunPresentationForGroups(
         );
         if (isSteer) {
           steerEventIds.add(event.id);
+        }
+        const steerRunId = isSteer ? (runId ?? lastAssociatedRunId) : undefined;
+        if (steerRunId !== undefined) {
+          runIdBySteerEventId.set(event.id, steerRunId);
         }
         if (runId !== undefined) {
           actionOwnerEventIdByRunId.delete(runId);
@@ -3347,6 +3350,16 @@ function chatRunPresentationForGroups(
     }
   }
 
+  // The acknowledgement answers "did my correction land in the work that is
+  // running" — a condition, true until that run ends, not a permanent
+  // transcript landmark. Once the run finishes, its answer is the work itself,
+  // so the line retires and stops accumulating down the thread.
+  for (const [steerEventId, steerRunId] of runIdBySteerEventId) {
+    if (finishedRunIds.has(steerRunId)) {
+      steerEventIds.delete(steerEventId);
+    }
+  }
+
   return {
     actionOwnerEventIds: new Set([
       ...actionOwnerEventIdByRunId.values(),
@@ -3354,6 +3367,29 @@ function chatRunPresentationForGroups(
     ]),
     steerEventIds,
   };
+}
+
+// An assistant group whose events are all bookkeeping — a run's terminal event,
+// usage — puts nothing on screen, so it must not break a stack of user
+// messages that visually sit right on top of each other.
+function groupRendersContent(
+  group: ChatEventGroup,
+  embeddedFolds: readonly RunGroupFoldControl[],
+  completedWorkFold: CompletedWorkFold | null,
+): boolean {
+  if (embeddedFolds.length > 0 || completedWorkFold !== null) {
+    return true;
+  }
+  if (group.role === "user") {
+    return group.events.some(rendersUserBubble);
+  }
+  return group.events.some(isRenderableAssistantEvent);
+}
+
+// A user group can be on screen for its fold alone, with every message in it
+// rendering as a card or as nothing, and there is no bubble to stack against.
+function groupHasUserBubble(group: ChatEventGroup): boolean {
+  return group.events.some(rendersUserBubble);
 }
 
 function ChatThreadEventGroups({
@@ -3387,6 +3423,12 @@ function ChatThreadEventGroups({
     ? chatRunPresentationForGroups(groups)
     : null;
 
+  // A run that ends re-forms the groups around it, so the messages the user
+  // sent back to back can land in separate groups with nothing rendered in
+  // between. Tracking the last group that actually put something on screen
+  // keeps the stack from springing open the moment a run finishes.
+  let previousVisibleGroup: ChatEventGroup | undefined;
+
   return (
     <>
       {groups.map((group) => {
@@ -3398,6 +3440,14 @@ function ChatThreadEventGroups({
           completedWorkFolding,
           group,
         );
+        const stackFirstOnPrevious =
+          runGroupFolds.length === 0 &&
+          previousVisibleGroup !== undefined &&
+          previousVisibleGroup.role === "user" &&
+          groupHasUserBubble(previousVisibleGroup);
+        if (groupRendersContent(group, embeddedFolds, completedWorkFold)) {
+          previousVisibleGroup = group;
+        }
         const completedWorkExpanded =
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
@@ -3424,6 +3474,7 @@ function ChatThreadEventGroups({
               steerEventIds={
                 runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
               }
+              stackFirstOnPrevious={stackFirstOnPrevious}
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -3984,6 +4035,15 @@ const RUN_SECTION_LABEL_CLASS =
 const RUN_SECTION_ROW_CLASS =
   "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
+// A steer burst reads as one thing the user said, which means an even rhythm:
+// the copy button sits the same distance from the text above it as from
+// whatever follows — the next message, or the burst's acknowledgement. The
+// button already sits `mt-1` under its own message, so this pull cancels the
+// thread's 24px gap down to that same 4px on the other side of it. It is the
+// same pull a run-section row uses, which is why the acknowledgement can go on
+// carrying `RUN_SECTION_ROW_CLASS`.
+const MESSAGE_STACK_PULL_CLASS = "-mt-5";
+
 function RunSectionDivider({
   label,
   labelPosition = "left",
@@ -4037,6 +4097,13 @@ function RunSectionDividerRow({
 // whether all three landed, so the label counts them; repeating "this one
 // arrived" under each message answers a question nobody asked and chops the
 // burst into unrelated pieces.
+//
+// The row carries no rule. A hairline is how the transcript marks a boundary
+// between two stretches of work, and drawing one under the burst cut the
+// acknowledgement away from the very messages it is about — the label ended up
+// reading as the start of something else rather than the closing line of what
+// the user just sent. It sits one stack gap under the burst for the same
+// reason: the burst and its acknowledgement are one block.
 function SteerAcknowledgementRow({ count }: { count: number }) {
   const { t } = useTranslation();
   const sweepRef = useSet(steerAcknowledgementRef$);
@@ -4047,29 +4114,36 @@ function SteerAcknowledgementRow({ count }: { count: number }) {
     { count },
   );
   return (
-    <RunSectionDividerRow
-      label={
-        // Remounting on every change is what tells the sweep to run. The
-        // outgoing layer stays empty here: the wording it erases is whatever
-        // this row said last, which only the row itself still knows.
-        <span
-          key={label}
-          ref={sweepRef}
-          data-testid="chat-steer-acknowledgement"
-          data-steer-acknowledgement-label={label}
-          className="zero-steer-ack"
-        >
+    <div className={RUN_SECTION_ROW_CLASS}>
+      <div className="hidden @[900px]:block" />
+      {/* The label keeps its own width rather than filling the column: the
+          sweep masks are sized from this box, so a full-width one would drag
+          the boundary across empty space beside the text. No min-height: the
+          row is the text, so the gap above it is the gap that was measured. */}
+      <div className="flex justify-end">
+        <p className={cn(RUN_SECTION_LABEL_CLASS, "text-right")}>
+          {/* Remounting on every change is what tells the sweep to run. The
+              outgoing layer stays empty here: the wording it erases is whatever
+              this row said last, which only the row itself still knows. */}
           <span
-            aria-hidden="true"
-            data-steer-acknowledgement-outgoing=""
-            className="zero-steer-ack-layer zero-steer-ack-outgoing"
-          />
-          <span className="zero-steer-ack-layer zero-steer-ack-incoming">
-            {label}
+            key={label}
+            ref={sweepRef}
+            data-testid="chat-steer-acknowledgement"
+            data-steer-acknowledgement-label={label}
+            className="zero-steer-ack"
+          >
+            <span
+              aria-hidden="true"
+              data-steer-acknowledgement-outgoing=""
+              className="zero-steer-ack-layer zero-steer-ack-outgoing"
+            />
+            <span className="zero-steer-ack-layer zero-steer-ack-incoming">
+              {label}
+            </span>
           </span>
-        </span>
-      }
-    />
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -4348,8 +4422,8 @@ function RunGroupFoldRow({
 }
 
 function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
-  const chatSkeletonVisible = useGet(thread.chatSkeletonVisible$);
-  if (!chatSkeletonVisible) {
+  const initialEventsReady = useGet(thread.initialEventsReady$);
+  if (initialEventsReady) {
     return null;
   }
 
@@ -4359,7 +4433,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
       className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
     >
       <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
-        <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+        <div className="zero-chat-skeleton-reveal w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
           <ChatSkeleton />
         </div>
       </main>
@@ -4398,6 +4472,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
       </div>
       <ChatThreadSkeletonOverlay thread={thread} />
       <ScrollToBottomButton thread={thread} />
+      <ChatConversationLocator thread={thread} />
     </div>
   );
 }
@@ -4910,6 +4985,11 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
     <footer
       data-chat-composer
       className="relative shrink-0 bg-[hsl(var(--background))]"
+      style={{
+        // Overlap the footer's breathing room with the root-owned safe area;
+        // --sab is zero while the software keyboard is open.
+        paddingBottom: "max(0.5rem - var(--sab), 0px)",
+      }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div
@@ -5489,10 +5569,10 @@ function insufficientCreditsCopy(params: {
 }
 
 function PaidCreditCheckoutActions({
-  redirecting,
+  preparing,
   handleCreditClick,
 }: {
-  readonly redirecting: boolean;
+  readonly preparing: boolean;
   readonly handleCreditClick: (
     selection: CreditCheckoutSelection,
     event: ReactMouseEvent<HTMLButtonElement>,
@@ -5525,7 +5605,7 @@ function PaidCreditCheckoutActions({
               onClick={(event) => {
                 handleCreditClick({ credits }, event);
               }}
-              disabled={redirecting}
+              disabled={preparing}
               variant="default"
               size="sm"
               className="disabled:opacity-60"
@@ -5564,14 +5644,14 @@ function PaidCreditCheckoutActions({
             <Button
               type="button"
               onClick={handleCustomCreditClick}
-              disabled={redirecting}
+              disabled={preparing}
               variant="default"
               size="sm"
               className="disabled:opacity-60"
             >
-              {redirecting
+              {preparing
                 ? t(($) => {
-                    return $.chat.billing.redirecting;
+                    return $.billing.common.preparing;
                   })
                 : t(($) => {
                     return $.chat.billing.buy;
@@ -5605,9 +5685,8 @@ function InsufficientCreditsCard() {
   const hasAvailableCredits = canBuyCredits && credits !== null && credits > 0;
   const shouldStartProCheckout = !canBuyCredits;
   const canShowBillingAction = billingResolved && canManageBilling;
-  const redirecting =
-    checkoutLoadable.state === "loading" ||
-    creditCheckoutLoadable.state === "loading";
+  const checkoutRedirecting = checkoutLoadable.state === "loading";
+  const creditCheckoutPreparing = creditCheckoutLoadable.state === "loading";
 
   if (hasAvailableCredits) {
     return <CreditsAvailableMessage />;
@@ -5652,12 +5731,12 @@ function InsufficientCreditsCard() {
         <Button
           type="button"
           onClick={handleUpgradeClick}
-          disabled={redirecting}
+          disabled={checkoutRedirecting}
           variant="default"
           size="sm"
           className="mt-3 disabled:opacity-60"
         >
-          {redirecting
+          {checkoutRedirecting
             ? t(($) => {
                 return $.chat.billing.redirecting;
               })
@@ -5667,7 +5746,7 @@ function InsufficientCreditsCard() {
         </Button>
       ) : (
         <PaidCreditCheckoutActions
-          redirecting={redirecting}
+          preparing={creditCheckoutPreparing}
           handleCreditClick={handleCreditClick}
         />
       )}
@@ -6024,6 +6103,7 @@ function PagedGroupRow({
   modelChanges,
   showActions,
   steerEventIds,
+  stackFirstOnPrevious = false,
   runGroupFolds,
   completedWorkFold,
 }: {
@@ -6032,6 +6112,7 @@ function PagedGroupRow({
   modelChanges: ReadonlyMap<string, RunModelChange>;
   showActions: boolean;
   steerEventIds: ReadonlySet<string>;
+  stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6047,6 +6128,7 @@ function PagedGroupRow({
         thread={thread}
         modelChanges={modelChanges}
         steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -6109,6 +6191,7 @@ function SelectablePagedGroupRow({
   modelChanges,
   showActions,
   steerEventIds,
+  stackFirstOnPrevious,
   runGroupFolds,
   completedWorkFold,
 }: Parameters<typeof PagedGroupRow>[0]) {
@@ -6128,6 +6211,7 @@ function SelectablePagedGroupRow({
         modelChanges={modelChanges}
         showActions={showActions}
         steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6173,6 +6257,7 @@ function SelectablePagedGroupRow({
         modelChanges={modelChanges}
         showActions={showActions}
         steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6199,12 +6284,14 @@ function PagedUserGroup({
   thread,
   modelChanges,
   steerEventIds,
+  stackFirstOnPrevious = false,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
   steerEventIds: ReadonlySet<string>;
+  stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   // Consecutive user events already arrive as one group, so the burst boundary
@@ -6215,14 +6302,33 @@ function PagedUserGroup({
   }).length;
   return (
     <>
-      {group.events.map((event) => {
+      {group.events.map((event, index) => {
         const modelChange = modelChanges.get(event.id);
+        const previousEvent = group.events[index - 1];
+        // Anything the user sent back to back is one thing they said, so the
+        // whole run closes up — including the message the run started from and
+        // the first correction after it, which is the seam this rule used to
+        // leave wide. Adjacency is the whole condition on purpose: a burst that
+        // carries no acknowledgement is still a burst, so the spacing does not
+        // wait on the acknowledgement's feature switch. Anything that belongs
+        // between two messages — a model change, a message that renders as its
+        // own card rather than a bubble — ends the stack.
+        const stackedOnPrevious =
+          modelChange === undefined &&
+          rendersUserBubble(event) &&
+          (previousEvent !== undefined
+            ? rendersUserBubble(previousEvent)
+            : stackFirstOnPrevious);
         return (
           <div key={event.id} className="contents">
             {modelChange === undefined ? null : (
               <ModelChangeDividerRow change={modelChange} />
             )}
-            <PagedUserMessage event={event} thread={thread} />
+            <PagedUserMessage
+              event={event}
+              thread={thread}
+              stackedOnPrevious={stackedOnPrevious}
+            />
           </div>
         );
       })}
@@ -6231,6 +6337,16 @@ function PagedUserGroup({
         return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
     </>
+  );
+}
+
+// A user event does not always render as a bubble: a workflow run, a goal, and
+// a rejected goal each render as their own card or as nothing at all.
+function rendersUserBubble(event: EnrichedChatEvent): boolean {
+  return (
+    !isRejectedGoalUserMessage(event) &&
+    !isWorkflowUserMessage(event) &&
+    !isGoalUserMessage(event)
   );
 }
 
@@ -7356,6 +7472,7 @@ function WorkflowUserMessage({
     <div
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
+      data-turn-created-at={event.createdAt}
       className="group"
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7408,6 +7525,7 @@ function GoalUserMessage({
     <div
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
+      data-turn-created-at={event.createdAt}
       className="group"
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7468,9 +7586,11 @@ function messageImageLightboxTarget(
 function PagedUserMessage({
   event,
   thread,
+  stackedOnPrevious = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  stackedOnPrevious?: boolean;
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
@@ -7537,7 +7657,8 @@ function PagedUserMessage({
       id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
-      className="group"
+      data-turn-created-at={event.createdAt}
+      className={cn("group", stackedOnPrevious && MESSAGE_STACK_PULL_CLASS)}
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
@@ -7634,6 +7755,7 @@ function PagedAssistantGroup({
       id={groupElementId}
       data-role="assistant"
       data-chat-run-id={runId}
+      data-turn-created-at={group.events[0]?.createdAt}
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">

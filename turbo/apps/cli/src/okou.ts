@@ -2,7 +2,7 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
-import { zeroTranslateCommand } from "./commands/zero/translate";
+import { translateCommand } from "./commands/translate";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeZeroTokenPayload,
@@ -33,7 +33,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: ["connector:read", "connector:write"],
   mcp: "connector:read",
-  "presentation-template": null,
   mail: "connector:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],
@@ -74,12 +73,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set([
-  "mcp",
-  "presentation-template",
-  "recognize",
-  "translate",
-]);
+const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize", "translate"]);
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
@@ -124,14 +118,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Use MCP Custom Connectors authorized for this Agent",
     load: async () => {
       return (await import("./commands/zero/mcp")).zeroMcpCommand;
-    },
-  },
-  {
-    name: "presentation-template",
-    description: "Run-scoped presentation template import I/O",
-    load: async () => {
-      return (await import("./commands/zero/presentation-template"))
-        .zeroPresentationTemplateCommand;
     },
   },
   {
@@ -305,29 +291,28 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "maps",
     description: "Use managed Okou maps services",
     load: async () => {
-      return (await import("./commands/zero/maps")).zeroMapsCommand;
+      return (await import("./commands/maps")).mapsCommand;
     },
   },
   {
     name: "weather",
     description: "Use managed Okou weather services",
     load: async () => {
-      return (await import("./commands/zero/weather")).zeroWeatherCommand;
+      return (await import("./commands/weather")).weatherCommand;
     },
   },
   {
     name: "scrape",
     description: "Scrape public web pages through managed Okou scrape",
     load: async () => {
-      return (await import("./commands/zero/scrape")).zeroScrapeCommand;
+      return (await import("./commands/scrape")).scrapeCommand;
     },
   },
   {
     name: "people-search",
     description: "Find professionals through managed Okou people search",
     load: async () => {
-      return (await import("./commands/zero/people-search"))
-        .zeroPeopleSearchCommand;
+      return (await import("./commands/people-search")).peopleSearchCommand;
     },
   },
   {
@@ -341,21 +326,21 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "recognize",
     description: "Recognize one image through a managed multimodal model",
     load: async () => {
-      return (await import("./commands/zero/recognize")).zeroRecognizeCommand;
+      return (await import("./commands/recognize")).recognizeCommand;
     },
   },
   {
     name: "translate",
     description: "Translate text through a managed translation model",
     load: async () => {
-      return zeroTranslateCommand;
+      return translateCommand;
     },
   },
   {
     name: "finance",
     description: "Query financial instruments through managed Okou finance",
     load: async () => {
-      return (await import("./commands/zero/finance")).zeroFinanceCommand;
+      return (await import("./commands/finance")).financeCommand;
     },
   },
   {

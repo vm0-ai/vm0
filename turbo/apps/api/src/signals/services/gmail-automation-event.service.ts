@@ -17,9 +17,9 @@ import {
 } from "@okouai/db/schema/gmail-event";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
@@ -595,15 +595,15 @@ export async function hasEnabledGmailConsumer(
   signal: AbortSignal,
 ): Promise<boolean> {
   const [consumer] = await args.db
-    .select({ id: zeroWorkflowAutomations.id })
-    .from(zeroWorkflowAutomations)
+    .select({ id: workflowAutomations.id })
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        inArray(zeroWorkflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        inArray(workflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
       ),
     )
     .limit(1);
@@ -1680,37 +1680,34 @@ async function loadGmailEventAutomations(
   const automationRows = await args.db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.state.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.state.userId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        inArray(zeroWorkflowAutomations.eventType, [
+        eq(workflowAutomations.orgId, args.state.orgId),
+        eq(workflowAutomations.ownerUserId, args.state.userId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        inArray(workflowAutomations.eventType, [
           "gmail-new-message",
           "gmail-label-applied",
         ]),
@@ -1955,7 +1952,7 @@ async function updateResolvedGmailLabelId(
   }
 
   await args.db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       eventConfig: {
         ...args.automation.config,
@@ -1963,7 +1960,7 @@ async function updateResolvedGmailLabelId(
       },
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflowAutomations.id, args.automation.automation.id));
+    .where(eq(workflowAutomations.id, args.automation.automation.id));
   signal.throwIfAborted();
 }
 

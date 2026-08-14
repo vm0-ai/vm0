@@ -212,6 +212,7 @@ import {
 } from "./chat-goal.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import { createChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 import type {
   ChatEventSignals,
   SendChatEventInput,
@@ -430,14 +431,6 @@ function createThreadTitleParts(threadMeta$: Computed<ThreadMeta | null>) {
     return get(threadTitleParts$).text;
   });
   return { threadTitle$, threadTitleEmoji$, threadTitleText$ };
-}
-
-function createThreadSettledInServer(threadId: string) {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  return computed((get): boolean => {
-    return !get(optimisticCreateUnsettled$);
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2287,8 +2280,8 @@ function createChatThreadMessagePipeline(
     },
     ownerSignal,
   );
-  const chatSkeletonVisible$ = computed((get): boolean => {
-    return !get(initialEventsReady$);
+  const initialEventsReadyView$ = computed((get): boolean => {
+    return get(initialEventsReady$);
   });
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
@@ -2326,7 +2319,7 @@ function createChatThreadMessagePipeline(
     scroll,
     sidebar: effects.sidebar,
     ...lifecycle,
-    chatSkeletonVisible$,
+    initialEventsReady$: initialEventsReadyView$,
     ...assistantErrorRecovery,
     ...projections,
     ...resources.publicSignals,
@@ -3646,7 +3639,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
     readyScrollAfterRenderRequest$: events.readyScrollAfterRenderRequest$,
-    chatSkeletonVisible$: events.chatSkeletonVisible$,
+    initialEventsReady$: events.initialEventsReady$,
     assistantErrorRecovery$: events.assistantErrorRecovery$,
     retryAssistantError$: events.retryAssistantError$,
     resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
@@ -3907,7 +3900,6 @@ function createChatPanelSignalsWithDraft(
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
-  const threadSettledInServer$ = createThreadSettledInServer(threadId);
   const container = createChatThreadContainerSignals();
   const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
@@ -3936,6 +3928,10 @@ function createChatPanelSignalsWithDraft(
     ...artifact,
   };
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
+  const locator = createChatConversationLocatorSignals({
+    threadId,
+    scrollContainer$: messages.scroll.scrollContainer$,
+  });
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
@@ -3952,10 +3948,10 @@ function createChatPanelSignalsWithDraft(
     threadDraft$,
     threadMeta$,
     ...threadTitle,
-    threadSettledInServer$,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
     scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,
+    scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
     awayFromBottom$: messages.scroll.awayFromBottom$,
     scrollTo$: messages.scroll.scrollTo$,
@@ -3965,6 +3961,7 @@ function createChatPanelSignalsWithDraft(
     composer,
     feedback,
     sharing,
+    locator,
     ...threadOwned,
     sidebar: messages.sidebar,
     ...publicChatThreadEventSignals(messages),

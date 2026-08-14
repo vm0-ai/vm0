@@ -2,9 +2,9 @@ import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@okouai/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq, lte } from "drizzle-orm";
 import { logger } from "../../lib/log";
@@ -142,7 +142,7 @@ async function claimAutomation(
     return null;
   }
   const [claimed] = await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       nextRunAt: null,
       lastRunAt: currentTime,
@@ -150,8 +150,8 @@ async function claimAutomation(
     })
     .where(
       and(
-        eq(zeroWorkflowAutomations.id, automation.id),
-        eq(zeroWorkflowAutomations.nextRunAt, automation.nextRunAt),
+        eq(workflowAutomations.id, automation.id),
+        eq(workflowAutomations.nextRunAt, automation.nextRunAt),
       ),
     )
     .returning(workflowAutomationColumns());
@@ -209,14 +209,14 @@ async function recordPreRunFailure(
   );
   const automationIsStillEligible =
     automation.scheduleType === "once"
-      ? eq(zeroWorkflowAutomations.id, automation.id)
+      ? eq(workflowAutomations.id, automation.id)
       : and(
-          eq(zeroWorkflowAutomations.id, automation.id),
-          eq(zeroWorkflowAutomations.enabled, true),
+          eq(workflowAutomations.id, automation.id),
+          eq(workflowAutomations.enabled, true),
         );
 
   await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       consecutiveFailures: newFailureCount,
       ...(shouldDisable ? { enabled: false } : {}),
@@ -263,46 +263,43 @@ async function dueWorkflowAutomationRows(
   const rows = await db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
       userTimezone: orgMembersMetadata.timezone,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .leftJoin(
       orgMembersMetadata,
       and(
-        eq(orgMembersMetadata.orgId, zeroWorkflowAutomations.orgId),
-        eq(orgMembersMetadata.userId, zeroWorkflowAutomations.ownerUserId),
+        eq(orgMembersMetadata.orgId, workflowAutomations.orgId),
+        eq(orgMembersMetadata.userId, workflowAutomations.ownerUserId),
       ),
     )
     .where(
       and(
         automationId === undefined
           ? undefined
-          : eq(zeroWorkflowAutomations.id, automationId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "schedule"),
-        lte(zeroWorkflowAutomations.nextRunAt, currentTime),
+          : eq(workflowAutomations.id, automationId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "schedule"),
+        lte(workflowAutomations.nextRunAt, currentTime),
       ),
     )
     .limit(DUE_BATCH_LIMIT);
@@ -347,9 +344,9 @@ async function executeDueWorkflowAutomations(
         },
       );
       await args.db
-        .update(zeroWorkflowAutomations)
+        .update(workflowAutomations)
         .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
-        .where(eq(zeroWorkflowAutomations.id, row.automation.id));
+        .where(eq(workflowAutomations.id, row.automation.id));
       signal.throwIfAborted();
       skipped++;
       continue;

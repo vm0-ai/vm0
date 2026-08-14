@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import type {
   CodexDeviceAuthMode,
   CodexDeviceAuthScope,
-} from "@okouai/api-contracts/contracts/zero-codex-device-auth";
+} from "@okouai/api-contracts/contracts/codex-device-auth";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";

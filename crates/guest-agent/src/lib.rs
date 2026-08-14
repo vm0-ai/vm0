@@ -39,6 +39,7 @@ mod session_metadata;
 pub mod telemetry;
 pub mod timing;
 mod urls;
+pub mod workload_containment;
 
 #[cfg(test)]
 static SYSTEM_LOG_TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

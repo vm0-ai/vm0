@@ -13,6 +13,7 @@ import {
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
+  type CreditCheckoutRequest,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core";
@@ -95,7 +96,6 @@ function activeProBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions: [],
-    paymentMethodManagementAvailable: true,
   };
 }
 
@@ -154,7 +154,6 @@ function noActiveBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 0,
     concurrencySubscriptions: [],
-    paymentMethodManagementAvailable: true,
   };
 }
 
@@ -193,8 +192,11 @@ function usagePackCatalogResponse() {
   };
 }
 
-function mockBillingStory(): void {
+function mockBillingStory(): {
+  readonly creditCheckoutRequest: () => CreditCheckoutRequest | null;
+} {
   let billingStatus = activeProBillingStatus();
+  let creditCheckoutRequest: CreditCheckoutRequest | null = null;
 
   context.mocks.data.org({
     id: "org_1",
@@ -218,11 +220,15 @@ function mockBillingStory(): void {
       return respond(200, billingStatus.autoRecharge);
     },
   );
-  context.mocks.api(zeroBillingCreditCheckoutContract.create, ({ respond }) => {
-    return respond(200, {
-      url: "https://billing.stripe.com/checkout/credit-purchase",
-    });
-  });
+  context.mocks.api(
+    zeroBillingCreditCheckoutContract.create,
+    ({ body, respond }) => {
+      creditCheckoutRequest = body;
+      return respond(200, {
+        url: "https://billing.stripe.com/checkout/credit-purchase",
+      });
+    },
+  );
   context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
     billingStatus = {
       ...billingStatus,
@@ -246,6 +252,11 @@ function mockBillingStory(): void {
     };
     return respond(200, { status: "restored" });
   });
+  return {
+    creditCheckoutRequest: () => {
+      return creditCheckoutRequest;
+    },
+  };
 }
 
 async function openBillingTab(
@@ -419,13 +430,17 @@ describe("organization billing settings", () => {
     expect(choosePlanHeading).toBeInTheDocument();
     const proPlan = await screen.findByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
-    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
+    expect(proPlan).toHaveTextContent("Plan$0/month");
+    expect(proPlan).toHaveTextContent("Member packages$20/month");
+    expect(proPlan).toHaveTextContent("Monthly total$20/month");
     expect(
-      within(proPlan).getByText("$0 plan + $20 required member package"),
+      within(proPlan).getByText(/credits per member$/u),
     ).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(teamPlan).toHaveTextContent("Plan$160/month");
+    expect(teamPlan).toHaveTextContent("Member packages$20/month");
+    expect(teamPlan).toHaveTextContent("Monthly total$180/month");
     expect(
-      within(teamPlan).getByText("$160 plan + $20 required member package"),
+      within(teamPlan).getByText("Everything on Pro, plus:"),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("group", { name: "Member usage" }),
@@ -492,9 +507,9 @@ describe("organization billing settings", () => {
     const pendingUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for pending@example.com",
     });
-    expect(alexUsage).toHaveTextContent("$20 · 21,234 credits · 6% off");
-    expect(samUsage).toHaveTextContent("$20 · 21,234 credits · 6% off");
-    expect(pendingUsage).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    expect(alexUsage).toHaveTextContent("21,234 credits · 6% off");
+    expect(samUsage).toHaveTextContent("21,234 credits · 6% off");
+    expect(pendingUsage).toHaveTextContent("21,234 credits · 6% off");
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
@@ -504,26 +519,18 @@ describe("organization billing settings", () => {
       ),
     ).not.toBeInTheDocument();
     expect(
-      within(memberUsage).getByText(
+      screen.getByText(
         "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
       ),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("Team plan")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$160")).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Team plan")).toBeInTheDocument();
+    expect(within(memberUsage).getByText("$160")).toBeInTheDocument();
     expect(
-      within(orderSummary).getByText("Concurrent slots").parentElement,
-    ).toHaveTextContent("Concurrent slots10");
-    expect(
-      within(orderSummary).getByText("Member packages"),
+      within(memberUsage).getByText("10 concurrent runs · Priority support"),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$60")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("Total credits")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("63,702")).toBeInTheDocument();
-    expect(
-      within(orderSummary).getByText("Bonus credits from discount"),
-    ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("3,702")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$220/month")).toBeInTheDocument();
+    expect(memberUsage).toHaveTextContent(
+      "Monthly total63,702 credits · 3,702 bonus$220/month",
+    );
     expect(buttonByText("Upgrade to Team", orderSummary)).not.toBeDisabled();
 
     click(alexUsage);
@@ -534,7 +541,7 @@ describe("organization billing settings", () => {
       name: "$50 · 54,321 credits · 8% off",
     });
     click(alexFiftyDollarPack);
-    expect(within(orderSummary).getByText("$250/month")).toBeInTheDocument();
+    expect(memberUsage).toHaveTextContent("$250/month");
 
     click(pendingUsage);
     click(
@@ -543,9 +550,9 @@ describe("organization billing settings", () => {
       }),
     );
 
-    expect(within(orderSummary).getByText("$330/month")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("185,554")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("15,554")).toBeInTheDocument();
+    expect(memberUsage).toHaveTextContent(
+      "Monthly total185,554 credits · 15,554 bonus$330/month",
+    );
     expect(
       within(memberUsage).queryByText(
         "100,000 purchased credits + 9,999 bonus credits",
@@ -555,7 +562,7 @@ describe("organization billing settings", () => {
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
 
-    click(buttonByText("Change plan"));
+    click(screen.getByLabelText("Back"));
     const returnedChoosePlanHeading = await screen.findByRole("heading", {
       name: "Choose a plan",
     });
@@ -598,18 +605,16 @@ describe("organization billing settings", () => {
       within(resetMemberUsage).getByRole("combobox", {
         name: "Usage for Alex Chen",
       }),
-    ).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    ).toHaveTextContent("21,234 credits · 6% off");
     expect(
       within(resetMemberUsage).getByRole("combobox", {
         name: "Usage for pending@example.com",
       }),
-    ).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    ).toHaveTextContent("21,234 credits · 6% off");
+    expect(resetMemberUsage).toHaveTextContent("$220/month");
     const resetOrderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    expect(
-      within(resetOrderSummary).getByText("$220/month"),
-    ).toBeInTheDocument();
 
     const resetAlexUsage = within(resetMemberUsage).getByRole("combobox", {
       name: "Usage for Alex Chen",
@@ -777,9 +782,7 @@ describe("organization billing settings", () => {
     const paidPendingUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for paid.pending@example.com",
     });
-    expect(paidPendingUsage).toHaveTextContent(
-      "$100 · 109,999 credits · 9% off",
-    );
+    expect(paidPendingUsage).toHaveTextContent("109,999 credits · 9% off");
     expect(paidPendingUsage).toBeDisabled();
     const samUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for Sam Lee",
@@ -1331,24 +1334,22 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Order summary")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Every month")).toBeInTheDocument();
+    const conversionPlanRow = within(reviewDialog)
+      .getByText("Team plan")
+      .closest("div");
+    expect(conversionPlanRow).toHaveTextContent("10 concurrent runs");
+    expect(conversionPlanRow).toHaveTextContent("$160");
     expect(
-      within(reviewDialog).getByText("Team plan").parentElement,
-    ).toHaveTextContent("$160");
-    expect(
-      within(reviewDialog).getByText("Concurrent slots").parentElement,
-    ).toHaveTextContent("10");
-    expect(
-      within(reviewDialog).getByText("Member packages").parentElement,
+      within(reviewDialog).getByText("Member packages").closest("div"),
     ).toHaveTextContent("$70");
+    const conversionCreditsRow = within(reviewDialog)
+      .getByText("Credits")
+      .closest("div");
+    expect(conversionCreditsRow).toHaveTextContent("5,555 bonus included");
+    expect(conversionCreditsRow).toHaveTextContent("75,555");
     expect(
-      within(reviewDialog).getByText("Purchased credits").parentElement,
-    ).toHaveTextContent("70,000");
-    expect(
-      within(reviewDialog).getByText("Bonus credits").parentElement,
-    ).toHaveTextContent("5,555");
-    expect(
-      within(reviewDialog).getByText("Monthly total").parentElement,
+      within(reviewDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$229.50/month");
     expect(
       within(reviewDialog).getByText("Scheduled for Sep 1, 2026"),
@@ -1534,8 +1535,8 @@ describe("organization billing settings", () => {
     const proPlan = screen.getByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
     expect(buttonByText("Manage", proPlan)).not.toBeDisabled();
-    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(proPlan).toHaveTextContent("Monthly total$20/month");
+    expect(teamPlan).toHaveTextContent("Monthly total$180/month");
     expect(
       within(teamPlan).getByText("Existing member packages stay unchanged."),
     ).toBeInTheDocument();
@@ -1555,9 +1556,11 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
+    // With nothing changed there is no comparison and no repeated summary; the
+    // ledger above already carries the current state.
     expect(
-      within(orderSummary).getByText("Concurrent slots").parentElement,
-    ).toHaveTextContent("Concurrent slots2");
+      within(orderSummary).queryByText("Concurrent slots"),
+    ).not.toBeInTheDocument();
     expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
     click(packageSelect);
     click(
@@ -1597,35 +1600,34 @@ describe("organization billing settings", () => {
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
-    expect(within(confirmationDialog).getByText("Due now")).toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("$15.00")).toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("Today")).toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText("Credits added after payment"),
+      within(confirmationDialog).getByText("Every month"),
     ).toBeInTheDocument();
-    const creditGrant = within(confirmationDialog).getByRole("group", {
-      name: "Credits added after payment",
-    });
-    expect(within(creditGrant).getByText("+16,100")).toBeInTheDocument();
-    expect(
-      within(creditGrant).getByText("Purchased credits"),
-    ).toBeInTheDocument();
-    expect(within(creditGrant).getByText("+15,000")).toBeInTheDocument();
-    expect(within(creditGrant).getByText("Bonus credits")).toBeInTheDocument();
-    expect(within(creditGrant).getByText("+1,100")).toBeInTheDocument();
-    expect(
-      within(creditGrant).getByText("Expires Apr 1, 2026"),
-    ).toBeInTheDocument();
+    const dueRow = within(confirmationDialog)
+      .getByText("Due now")
+      .closest("div");
+    expect(dueRow).toHaveTextContent("For the rest of this billing period");
+    expect(dueRow).toHaveTextContent("$15.00");
+    const grantRow = within(confirmationDialog)
+      .getByText("Credits added after payment")
+      .closest("div");
+    expect(grantRow).toHaveTextContent("Expires Apr 1, 2026");
+    expect(grantRow).toHaveTextContent("+16,100");
     expect(
       within(confirmationDialog).queryByText("Next recurring total"),
     ).not.toBeInTheDocument();
     expect(
       within(confirmationDialog).queryByText("Total credits"),
     ).not.toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("50,000")).toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("4,321")).toBeInTheDocument();
+    const monthlyCreditsRow = within(confirmationDialog)
+      .getByText("Credits")
+      .closest("div");
+    expect(monthlyCreditsRow).toHaveTextContent("4,321 bonus included");
+    expect(monthlyCreditsRow).toHaveTextContent("54,321");
     expect(
-      within(confirmationDialog).getByText("$50/month"),
-    ).toBeInTheDocument();
+      within(confirmationDialog).getByText("Monthly total").closest("div"),
+    ).toHaveTextContent("$50/month");
     expect(
       within(confirmationDialog).queryByText(/Renews /u),
     ).not.toBeInTheDocument();
@@ -1694,7 +1696,7 @@ describe("organization billing settings", () => {
 
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
-    ).resolves.toHaveTextContent("$50 · 54,321 credits · 8% off");
+    ).resolves.toHaveTextContent("54,321 credits · 8% off");
   });
 
   it("hides a retained allocation after its member leaves the workspace", async () => {
@@ -1922,7 +1924,7 @@ describe("organization billing settings", () => {
     const packageSelect = screen.getByRole("combobox", {
       name: "Usage for Alex Chen",
     });
-    expect(packageSelect).toHaveTextContent("$50 · 54,321 credits · 8% off");
+    expect(packageSelect).toHaveTextContent("54,321 credits · 8% off");
     const downgradeNotice = screen.getByText(
       "Downgrades to $50 on Apr 1, 2026.",
     );
@@ -1967,7 +1969,7 @@ describe("organization billing settings", () => {
 
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
-    ).resolves.toHaveTextContent("$100 · 109,999 credits · 9% off");
+    ).resolves.toHaveTextContent("109,999 credits · 9% off");
     expect(
       screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
     ).not.toBeInTheDocument();
@@ -2199,13 +2201,11 @@ describe("organization billing settings", () => {
     expect(
       screen.queryByRole("heading", { name: "Compare plans" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("list", { name: "Purchase steps" }),
-    ).toHaveTextContent("Packages");
+    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
     const packageSelect = await screen.findByRole("combobox", {
       name: "Usage for Alex Chen",
     });
-    expect(packageSelect).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    expect(packageSelect).toHaveTextContent("21,234 credits · 6% off");
     expect(packageSelect).not.toBeDisabled();
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
@@ -2260,8 +2260,8 @@ describe("organization billing settings", () => {
     });
     expect(within(confirmationDialog).getByText("$80.00")).toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText("$180/month"),
-    ).toBeInTheDocument();
+      within(confirmationDialog).getByText("Monthly total").closest("div"),
+    ).toHaveTextContent("$180/month");
     expect(window.location.href).toBe(locationBeforeConfirmation);
     click(buttonByText("Confirm", confirmationDialog));
     await screen.findByRole("heading", {
@@ -2381,8 +2381,8 @@ describe("organization billing settings", () => {
       within(confirmationDialog).queryByText("$0.00"),
     ).not.toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText("$20/month"),
-    ).toBeInTheDocument();
+      within(confirmationDialog).getByText("Monthly total").closest("div"),
+    ).toHaveTextContent("$20/month");
     click(buttonByText("Confirm", confirmationDialog));
     await waitFor(() => {
       expect(
@@ -2497,15 +2497,21 @@ describe("organization billing settings", () => {
 
   it("recovers from a billing load failure and starts an upgrade checkout", async () => {
     let statusCalls = 0;
+    let failNextStatusRequest = false;
+    const failedStatusRequestStarted = context.mocks.deferred<void>();
+    const releaseFailedStatusResponse = context.mocks.deferred<void>();
 
     context.mocks.data.org({
       id: "org_1",
       name: "Suspended Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(zeroBillingStatusContract.get, async ({ respond }) => {
       statusCalls++;
-      if (statusCalls === 1) {
+      if (failNextStatusRequest) {
+        failNextStatusRequest = false;
+        failedStatusRequestStarted.resolve();
+        await releaseFailedStatusResponse.promise;
         return respond(500, {
           error: {
             message: "Failed to load billing status",
@@ -2526,6 +2532,18 @@ describe("organization billing settings", () => {
 
     await openBillingTab();
 
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(statusCalls).toBeGreaterThanOrEqual(2);
+    });
+
+    failNextStatusRequest = true;
+    context.mocks.ably.trigger("billing:changed");
+    await failedStatusRequestStarted.promise;
+    releaseFailedStatusResponse.resolve();
     await expect(
       screen.findByText("Could not load billing status."),
     ).resolves.toBeInTheDocument();
@@ -3305,9 +3323,95 @@ describe("organization billing settings", () => {
     expect(successToast).toHaveBeenCalledTimes(1);
   });
 
+  it("previews and confirms a saved-billing credit purchase in the app", async () => {
+    const checkoutReady = createDeferredPromise<void>(context.signal);
+    let startRequest: CreditCheckoutRequest | null = null;
+    let confirmedPreviewToken: string | null = null;
+    let billingStatusRequests = 0;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Credit Preview Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingStatusRequests += 1;
+      return respond(200, {
+        ...activeProBillingStatus(),
+        canBuyCredits: true,
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      async ({ body, respond }) => {
+        startRequest = body;
+        await checkoutReady.promise;
+        return respond(200, {
+          status: "preview",
+          credits: 20_000,
+          amountCents: 1800,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: "credit-preview-token",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.confirm,
+      ({ body, respond }) => {
+        confirmedPreviewToken = body.previewToken;
+        return respond(200, {
+          status: "completed",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    const locationBeforePurchase = window.location.href;
+    click(screen.getByText("Quick buy $20.00"));
+
+    await waitFor(() => {
+      expect(buttonByText("Preparing...")).toBeDisabled();
+    });
+    expect(queryButtonByText("Redirecting...")).toBeUndefined();
+    checkoutReady.resolve(undefined);
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review credit purchase",
+    });
+    expect(
+      within(reviewDialog).getByText(
+        "Confirm this one-time charge with your saved payment method.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$18.00")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("+20,000")).toBeInTheDocument();
+    expect(startRequest).toMatchObject({
+      credits: 20_000,
+      previewExistingBilling: true,
+    });
+    expect(window.location.href).toBe(locationBeforePurchase);
+
+    click(buttonByText("Confirm", reviewDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Review credit purchase" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(confirmedPreviewToken).toBe("credit-preview-token");
+    expect(billingStatusRequests).toBeGreaterThan(1);
+    expect(window.location.href).toBe(locationBeforePurchase);
+  });
+
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {
-    mockBillingStory();
-    await openBillingTab();
+    const billingStory = mockBillingStory();
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: false,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
@@ -3424,6 +3528,12 @@ describe("organization billing settings", () => {
         "https://billing.stripe.com/checkout/credit-purchase",
       );
     });
+    expect(billingStory.creditCheckoutRequest()).not.toHaveProperty(
+      "previewExistingBilling",
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Review credit purchase" }),
+    ).not.toBeInTheDocument();
   });
 
   it("schedules and restores a team plan downgrade from the pricing page", async () => {

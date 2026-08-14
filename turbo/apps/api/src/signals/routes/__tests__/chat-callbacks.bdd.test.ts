@@ -26,6 +26,7 @@ import {
   holdChatEventInsertTransactionFixture,
   holdGoalThreadLockFixture,
   holdModelPolicyReadsFixture,
+  invalidateChatCallbackPayloadFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
@@ -1758,6 +1759,7 @@ ${noisySeparator}
 
 Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
     await createGoalForRun(actor, first.runId, goalObjective);
+    const kms = useSecretKmsProbe();
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "completed before goal continuation"),
     ]);
@@ -1766,7 +1768,6 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
-
     const messages = await waitForThreadMessages(
       actor,
       first.threadId,
@@ -1796,6 +1797,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       throw new Error("Expected goal continuation run id");
     }
     await flushWaitUntilForTest();
+    expect(kms.generateDataKeyCalls).toBe(1);
     await expectGoalDrainPreCreateTiming({
       runId: goalContinuation.runId,
       forbiddenValues: [
@@ -1845,6 +1847,51 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       eventType: "goal.close",
       content: null,
     });
+  }, 90_000);
+
+  it("falls back to the terminal scheduler when the chat callback fails", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the chat callback fallback",
+    });
+    const goalBrief = "Continue through the terminal fallback";
+    await createGoalForRun(actor, first.runId, goalBrief);
+    await invalidateChatCallbackPayloadFixture(first.runId);
+    const kms = useSecretKmsProbe();
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalBrief);
+        });
+      },
+    );
+    const continuation = userMessages(messages.events).find((message) => {
+      return isGoalContinuationUserMessage(message, goalBrief);
+    });
+    if (!continuation?.runId) {
+      throw new Error("Expected a fallback goal continuation run");
+    }
+    await flushWaitUntilForTest();
+    expect(kms.generateDataKeyCalls).toBe(1);
+    await expect(goalRunIds(first.threadId)).resolves.toStrictEqual([
+      continuation.runId,
+    ]);
+
+    await api.requestCancelRun(actor, continuation.runId, [200]);
+    await waitForRunStatus(actor, continuation.runId, "cancelled");
+    await flushWaitUntilForTest();
   }, 90_000);
 
   it("rebuilds a preparing goal run from the latest row despite its UI marker", async () => {
@@ -1941,9 +1988,8 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     const runPreparationStarted = createDeferredPromise<void>(context.signal);
     const releaseRunPreparation = deferredGate();
     useSecretKmsProbe((request) => {
-      // The terminal callback drain and the goal enqueue drain may both prepare
-      // this queued run. Hold every preparation so neither can win the final
-      // claim before the goal is deleted.
+      // Hold the terminal callback's single retained preparation so the goal
+      // can be deleted before its final queue-first claim.
       if (!runPreparationStarted.settled()) {
         runPreparationStarted.resolve(undefined);
       }

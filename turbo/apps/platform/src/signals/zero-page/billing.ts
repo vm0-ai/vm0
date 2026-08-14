@@ -17,7 +17,9 @@ import {
   zeroBillingRestoreContract,
   type BillingStatusResponse,
   type ConcurrencySubscriptionChangePreviewResponse,
+  type CreditPurchasePreviewResponse,
   type MemberUsagePack,
+  type UsagePackCreditsResponse,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core";
@@ -26,8 +28,10 @@ import { zeroClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
-import { setAblyLoop$ } from "../realtime.ts";
-import { tapError } from "../utils.ts";
+import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
+import { foregroundReady$ } from "../auth-retry.ts";
+import { isOrgAdmin$ } from "../org.ts";
+import { settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution$,
@@ -227,6 +231,9 @@ const maybeShowPendingRestoreToast$ = command(
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
+const accountMenuBillingStatusReload$ = state(0);
+const accountMenuUsagePackCreditsReload$ = state(0);
+const completedForegroundBillingCatchUp$ = state<Promise<void> | null>(null);
 const usagePackManagementReload$ = state(0);
 const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
@@ -261,6 +268,8 @@ export type ConcurrencyConfirmDialogState =
 
 const internalConcurrencyConfirmDialog$ =
   state<ConcurrencyConfirmDialogState | null>(null);
+const internalCreditPurchasePreview$ =
+  state<CreditPurchasePreviewResponse | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -283,6 +292,9 @@ export const concurrencyPurchaseDialogOpen$ = computed((get) => {
 });
 export const concurrencyConfirmDialog$ = computed((get) => {
   return get(internalConcurrencyConfirmDialog$);
+});
+export const creditPurchasePreview$ = computed((get) => {
+  return get(internalCreditPurchasePreview$);
 });
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
@@ -335,6 +347,9 @@ export const openConcurrencyConfirmDialog$ = command(
 export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
   set(internalConcurrencyConfirmDialog$, null);
 });
+export const closeCreditPurchasePreview$ = command(({ set }) => {
+  set(internalCreditPurchasePreview$, null);
+});
 export const setConcurrencyChangeMode$ = command(
   ({ set }, mode: ConcurrencyChangeMode) => {
     set(internalConcurrencyConfirmDialog$, (dialog) => {
@@ -355,16 +370,59 @@ export const setConcurrencyTargetQuantity$ = command(
     });
   },
 );
-/**
- * Async computed signal that fetches billing status on first access.
- * Use with useLastLoadable() in views for automatic loading.
- */
-export const billingStatusAsync$ = computed(async (get) => {
-  get(billingReload$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingStatusContract);
-  const result = await accept(client.get(), [200]);
-  return result.body;
+/** Track whether a ccstate-owned async load is still available for joining. */
+interface TrackedAsyncResource<T> {
+  readonly pending: () => boolean;
+  readonly promise: Promise<T>;
+}
+
+function trackAsyncResource<T>(promise: Promise<T>): TrackedAsyncResource<T> {
+  let pending = true;
+  const trackedPromise = withCleanup(promise, () => {
+    pending = false;
+  });
+  return {
+    pending: () => {
+      return pending;
+    },
+    promise: trackedPromise,
+  };
+}
+
+const billingStatusResource$ = computed(
+  (get): TrackedAsyncResource<BillingStatusResponse> => {
+    get(billingReload$);
+    get(accountMenuBillingStatusReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingStatusContract);
+    const load = async (): Promise<BillingStatusResponse> => {
+      const result = await accept(client.get(), [200]);
+      return result.body;
+    };
+    return trackAsyncResource(load());
+  },
+);
+
+const usagePackCreditsResource$ = computed(
+  (get): TrackedAsyncResource<UsagePackCreditsResponse> => {
+    get(billingReload$);
+    get(accountMenuUsagePackCreditsReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackCreditsContract);
+    const load = async (): Promise<UsagePackCreditsResponse> => {
+      const result = await accept(client.get(), [200]);
+      return result.body;
+    };
+    return trackAsyncResource(load());
+  },
+);
+
+export const billingStatusAsync$ = computed((get) => {
+  return get(billingStatusResource$).promise;
+});
+
+export const usagePackCreditsAsync$ = computed((get) => {
+  return get(usagePackCreditsResource$).promise;
 });
 
 export const usagePackCatalogAsync$ = computed(async (get) => {
@@ -380,14 +438,6 @@ export const usagePackManagementAsync$ = computed(async (get) => {
   const client = createClient(zeroBillingUsagePackManagementContract);
   const result = await accept(client.get(), [200, 404]);
   return result.status === 200 ? result.body : null;
-});
-
-export const usagePackCreditsAsync$ = computed(async (get) => {
-  get(billingReload$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingUsagePackCreditsContract);
-  const result = await accept(client.get(), [200]);
-  return result.body;
 });
 
 export const usagePackMigrationAsync$ = computed(
@@ -413,6 +463,125 @@ export const reloadBillingStatus$ = command(({ set }) => {
     return x + 1;
   });
 });
+
+const reloadAccountMenuBillingStatusResource$ = command(({ set }) => {
+  set(accountMenuBillingStatusReload$, (value) => {
+    return value + 1;
+  });
+});
+
+const reloadAccountMenuUsagePackCreditsResource$ = command(({ set }) => {
+  set(accountMenuUsagePackCreditsReload$, (value) => {
+    return value + 1;
+  });
+});
+
+interface AccountMenuCreditResources {
+  readonly billing: TrackedAsyncResource<BillingStatusResponse> | null;
+  readonly usagePack: TrackedAsyncResource<UsagePackCreditsResponse> | null;
+}
+
+const readAccountMenuCreditResources$ = command(
+  (
+    { get },
+    options: {
+      readonly isAdmin: boolean;
+      readonly usagePackPlansEnabled: boolean;
+    },
+  ): AccountMenuCreditResources => {
+    return {
+      billing: options.isAdmin ? get(billingStatusResource$) : null,
+      usagePack: options.usagePackPlansEnabled
+        ? get(usagePackCreditsResource$)
+        : null,
+    };
+  },
+);
+
+const reloadSettledAccountMenuCreditResources$ = command(
+  (
+    { set },
+    resources: AccountMenuCreditResources,
+  ): AccountMenuCreditResources => {
+    const billingPending = resources.billing?.pending() ?? false;
+    const usagePackPending = resources.usagePack?.pending() ?? false;
+    if (resources.billing && !billingPending) {
+      set(reloadAccountMenuBillingStatusResource$);
+    }
+    if (resources.usagePack && !usagePackPending) {
+      set(reloadAccountMenuUsagePackCreditsResource$);
+    }
+    return {
+      billing: billingPending ? resources.billing : null,
+      usagePack: usagePackPending ? resources.usagePack : null,
+    };
+  },
+);
+
+const joinAccountMenuCreditResources$ = command(
+  async (
+    { set },
+    resources: AccountMenuCreditResources,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const [billingResult, usagePackResult] = await Promise.all([
+      resources.billing
+        ? settle(resources.billing.promise, signal)
+        : Promise.resolve(null),
+      resources.usagePack
+        ? settle(resources.usagePack.promise, signal)
+        : Promise.resolve(null),
+    ]);
+    signal.throwIfAborted();
+    if (billingResult && !billingResult.ok) {
+      set(reloadAccountMenuBillingStatusResource$);
+    }
+    if (usagePackResult && !usagePackResult.ok) {
+      set(reloadAccountMenuUsagePackCreditsResource$);
+    }
+  },
+);
+
+export const reloadAccountMenuCreditBalances$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const foregroundReady = get(foregroundReady$);
+    const isAdmin = await get(isOrgAdmin$);
+    signal.throwIfAborted();
+    const usagePackPlansEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans] ?? false;
+    if (!isAdmin && !usagePackPlansEnabled) {
+      return;
+    }
+    const options = { isAdmin, usagePackPlansEnabled };
+
+    if (!foregroundReady.pending) {
+      const resources = set(readAccountMenuCreditResources$, options);
+      const pendingResources = set(
+        reloadSettledAccountMenuCreditResources$,
+        resources,
+      );
+      await set(joinAccountMenuCreditResources$, pendingResources, signal);
+      signal.throwIfAborted();
+      return;
+    }
+
+    const foregroundCatchUp = foregroundReady.promise;
+    await settle(foregroundCatchUp, signal);
+    signal.throwIfAborted();
+    if (get(completedForegroundBillingCatchUp$) !== foregroundCatchUp) {
+      if (isAdmin) {
+        set(reloadAccountMenuBillingStatusResource$);
+      }
+      if (usagePackPlansEnabled) {
+        set(reloadAccountMenuUsagePackCreditsResource$);
+      }
+    }
+    const resources = set(readAccountMenuCreditResources$, options);
+    await set(joinAccountMenuCreditResources$, resources, signal);
+    signal.throwIfAborted();
+  },
+);
 
 export const reloadUsagePackManagement$ = command(({ set }) => {
   set(usagePackManagementReload$, (value) => {
@@ -511,25 +680,50 @@ export const handleBillingRedirect$ = command(
   },
 );
 
-const reloadBillingStatusFromRealtime$ = command(
+const reloadBillingStatusFromRemoteChange$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
     set(reloadQueueData$);
     set(reloadUsagePackManagement$);
     set(reloadUsageRecords$);
     await set(reconcilePendingBillingPayment$, signal);
+  },
+);
+
+const reloadBillingStatusFromRealtime$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(reloadBillingStatusFromRemoteChange$, signal);
+    signal.throwIfAborted();
     return false;
+  },
+);
+
+const reloadBillingStatusOnForeground$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const foregroundCatchUp = get(foregroundReady$).promise;
+    const result = await settle(
+      set(reloadBillingStatusFromRemoteChange$, signal),
+      signal,
+    );
+    if (result.ok) {
+      set(completedForegroundBillingCatchUp$, foregroundCatchUp);
+    }
   },
 );
 
 export const setupBillingRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
+    set(
+      subscribeRealtimeReadyCatchUp$,
+      reloadBillingStatusOnForeground$,
+      signal,
+    );
     await set(
       setAblyLoop$,
       {
         topic: "billing:changed",
         loopCommand$: reloadBillingStatusFromRealtime$,
-        options: { runOnSubscribe: true },
+        options: { runOnForegroundCatchUp: false, runOnSubscribe: true },
       },
       signal,
     );
@@ -825,7 +1019,7 @@ export const confirmUsagePackSubscriptionChange$ = command(
 
 export const startCreditCheckout$ = command(
   async (
-    { get },
+    { get, set },
     selection: CreditCheckoutSelection,
     newTab: boolean,
     signal: AbortSignal,
@@ -847,11 +1041,16 @@ export const startCreditCheckout$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCreditCheckoutContract);
+    const savedBillingCreditPurchaseEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
       client.create({
         body: {
           credits: selection.credits,
           ...(selection.customAmount === true ? { customAmount: true } : {}),
+          ...(savedBillingCreditPurchaseEnabled
+            ? { previewExistingBilling: true }
+            : {}),
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
         },
@@ -860,11 +1059,49 @@ export const startCreditCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (!("url" in result.body)) {
+      set(internalCreditPurchasePreview$, result.body);
+      return;
+    }
+    // Hosted Checkout is the canonical response when saved billing is absent.
+    // During rollout it also lets a switched-on app tolerate an API from before
+    // preview support for the ~2-day old-client window. Remove that rollout-only
+    // responsibility after #26842; the unavailable-billing path remains.
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const confirmCreditPurchase$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const preview = get(internalCreditPurchasePreview$);
+    if (!preview) {
+      throw new Error("Credit purchase preview is not available");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCreditCheckoutContract);
+    const result = await accept(
+      client.confirm({
+        body: { previewToken: preview.previewToken },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (result.body.status === "pending_payment") {
+      window.location.href = result.body.hostedInvoiceUrl;
+      return;
+    }
+    set(internalCreditPurchasePreview$, null);
+    set(reloadBillingStatus$);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.creditPurchaseConfirmed;
+      }),
+    );
   },
 );
 

@@ -23,7 +23,7 @@ import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
@@ -411,10 +411,10 @@ async function autonomyBudgetFixtureActionResponse(
     }
     case "set-workflow-automation-autonomy-budget": {
       const [automation] = await db
-        .update(zeroWorkflowAutomations)
+        .update(workflowAutomations)
         .set({ autonomyBudget: body.autonomy_budget })
-        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
-        .returning({ id: zeroWorkflowAutomations.id });
+        .where(eq(workflowAutomations.id, body.automation_id))
+        .returning({ id: workflowAutomations.id });
       signal.throwIfAborted();
       if (!automation) {
         throw new Error("Expected the autonomy-budget automation fixture");
@@ -424,12 +424,12 @@ async function autonomyBudgetFixtureActionResponse(
     case "read-workflow-automation-autonomy-state": {
       const [automation] = await db
         .select({
-          autonomyBudget: zeroWorkflowAutomations.autonomyBudget,
-          enabled: zeroWorkflowAutomations.enabled,
-          lastRunId: zeroWorkflowAutomations.lastRunId,
+          autonomyBudget: workflowAutomations.autonomyBudget,
+          enabled: workflowAutomations.enabled,
+          lastRunId: workflowAutomations.lastRunId,
         })
-        .from(zeroWorkflowAutomations)
-        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
+        .from(workflowAutomations)
+        .where(eq(workflowAutomations.id, body.automation_id))
         .limit(1);
       signal.throwIfAborted();
       return {

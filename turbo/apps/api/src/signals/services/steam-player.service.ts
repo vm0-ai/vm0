@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import type { ZeroSteamPlayerResponse } from "@okouai/api-contracts/contracts/zero-steam-player";
+import type { SteamPlayerResponse } from "@okouai/api-contracts/contracts/steam-player";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -136,7 +136,7 @@ function steamTimestampToIso(timestamp: number | undefined): string | null {
 
 function steamGameToResponse(
   game: z.infer<typeof steamOwnedGameSchema>,
-): NonNullable<ZeroSteamPlayerResponse["ownedGames"]>["games"][number] {
+): NonNullable<SteamPlayerResponse["ownedGames"]>["games"][number] {
   return {
     appId: game.appid,
     name: game.name ?? null,
@@ -148,7 +148,7 @@ function steamGameToResponse(
 
 function steamWishlistItemToResponse(
   item: z.infer<typeof steamWishlistItemSchema>,
-): NonNullable<ZeroSteamPlayerResponse["wishlist"]>["items"][number] {
+): NonNullable<SteamPlayerResponse["wishlist"]>["items"][number] {
   return {
     appId: item.appid,
     priority: item.priority ?? null,
@@ -198,7 +198,7 @@ async function fetchSteamJson<T>(
 async function fetchSteamProfile(
   steamId: string,
   signal: AbortSignal,
-): Promise<ZeroSteamPlayerResponse["profile"]> {
+): Promise<SteamPlayerResponse["profile"]> {
   const result = await fetchSteamJson(
     "/ISteamUser/GetPlayerSummaries/v0002/",
     { steamids: steamId },
@@ -223,7 +223,7 @@ async function fetchSteamProfile(
 async function fetchSteamOwnedGames(
   steamId: string,
   signal: AbortSignal,
-): Promise<ZeroSteamPlayerResponse["ownedGames"]> {
+): Promise<SteamPlayerResponse["ownedGames"]> {
   const result = await fetchSteamJson(
     "/IPlayerService/GetOwnedGames/v0001/",
     {
@@ -250,7 +250,7 @@ async function fetchSteamOwnedGames(
 async function fetchSteamRecentlyPlayedGames(
   steamId: string,
   signal: AbortSignal,
-): Promise<ZeroSteamPlayerResponse["recentlyPlayedGames"]> {
+): Promise<SteamPlayerResponse["recentlyPlayedGames"]> {
   const result = await fetchSteamJson(
     "/IPlayerService/GetRecentlyPlayedGames/v0001/",
     { steamid: steamId },
@@ -273,7 +273,7 @@ async function fetchSteamRecentlyPlayedGames(
 async function fetchSteamLevel(
   steamId: string,
   signal: AbortSignal,
-): Promise<ZeroSteamPlayerResponse["level"]> {
+): Promise<SteamPlayerResponse["level"]> {
   const result = await fetchSteamJson(
     "/IPlayerService/GetSteamLevel/v1/",
     { steamid: steamId },
@@ -286,7 +286,7 @@ async function fetchSteamLevel(
 async function fetchSteamBadges(
   steamId: string,
   signal: AbortSignal,
-): Promise<ZeroSteamPlayerResponse["badges"]> {
+): Promise<SteamPlayerResponse["badges"]> {
   const result = await fetchSteamJson(
     "/IPlayerService/GetBadges/v1/",
     { steamid: steamId },
@@ -317,7 +317,7 @@ async function fetchSteamBadges(
 async function fetchSteamWishlist(
   steamId: string,
   signal: AbortSignal,
-): Promise<ZeroSteamPlayerResponse["wishlist"]> {
+): Promise<SteamPlayerResponse["wishlist"]> {
   const [wishlist, itemCount] = await Promise.all([
     fetchSteamJson(
       "/IWishlistService/GetWishlist/v1/",
@@ -348,7 +348,7 @@ async function fetchSteamWishlist(
 async function fetchSteamFollowedGames(
   steamId: string,
   signal: AbortSignal,
-): Promise<ZeroSteamPlayerResponse["followedGames"]> {
+): Promise<SteamPlayerResponse["followedGames"]> {
   const [followedGames, followedGameCount] = await Promise.all([
     fetchSteamJson(
       "/IStoreService/GetGamesFollowed/v1/",
@@ -381,7 +381,7 @@ export const steamPlayerData$ = command(
     { get },
     args: { readonly orgId: string; readonly userId: string },
     signal: AbortSignal,
-  ): Promise<ZeroSteamPlayerResponse | null> => {
+  ): Promise<SteamPlayerResponse | null> => {
     const db = get(db$);
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();

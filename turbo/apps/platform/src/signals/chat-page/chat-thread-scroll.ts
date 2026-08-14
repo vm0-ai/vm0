@@ -38,6 +38,8 @@ export interface ChatThreadScrollSignals {
     [HTMLElement | null]
   >;
   readonly pendingScrollAfterRenderRequest$: Computed<ScrollAfterRenderRequest | null>;
+  /** The mounted scroll viewport, for readers that measure it themselves. */
+  readonly scrollContainer$: Computed<HTMLElement | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
   readonly readRenderedThreadScrollPosition$: Command<
@@ -716,6 +718,7 @@ export function createChatThreadScrollSignals(
     scrollContentOnRef$,
     scrollCommitOnRef$: render.scrollCommitOnRef$,
     pendingScrollAfterRenderRequest$: render.pendingScrollAfterRenderRequest$,
+    scrollContainer$: scroll.scrollContainer$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
     readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,

@@ -3,7 +3,7 @@ import {
   getCustomConnectorSkillName,
   getCustomConnectorSkillStorageName,
 } from "@okouai/core/storage-names";
-import { synthesizeSkillMd } from "@okouai/core/zero-workflow-skill";
+import { synthesizeSkillMd } from "@okouai/core/skill-document";
 
 import type { Db } from "../external/db";
 import {

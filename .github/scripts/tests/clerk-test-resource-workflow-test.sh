@@ -21,6 +21,47 @@ if JOB_REF="invalid_ref" bash -c \
   echo "browser helper accepted a JOB_REF that its cleanup rejects" >&2
   exit 1
 fi
+
+first_factor_barrier="$(
+  bash -c '
+    source "$1"
+    wait_for_browser_target() {
+      printf "%s\n" "$*"
+    }
+    wait_for_sign_in_email_code_ready
+  ' _ "$browser_helper"
+)"
+for required_state in \
+  "firstFactorVerification" \
+  "strategy === 'email_code'" \
+  "status === 'unverified'"; do
+  if [[ "$first_factor_barrier" != *"$required_state"* ]]; then
+    echo "browser helper does not wait for prepared email-code first factor" >&2
+    exit 1
+  fi
+done
+
+otp_call_log="$(mktemp)"
+trap 'rm -f "$otp_call_log"' EXIT
+OTP_CALL_LOG="$otp_call_log" bash -c '
+  source "$1"
+  wait_for_browser_target() {
+    return 0
+  }
+  agent-browser() {
+    printf "%s\n" "$*" >> "$OTP_CALL_LOG"
+    if [[ "$1" == "get" && "$2" == "count" ]]; then
+      printf "1\n"
+    fi
+  }
+  enter_otp "424242"
+' _ "$browser_helper"
+expected_otp_calls=$'get count input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]\nfill input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"] 424242'
+if [[ "$(<"$otp_call_log")" != "$expected_otp_calls" ]]; then
+  echo "browser helper must leave OTP submission to Clerk" >&2
+  exit 1
+fi
+
 if [[ "$(grep -c '^[[:space:]]*delete_e2e_account_if_exists' "$browser_test")" -ne 2 ]]; then
   echo "browser E2E must clean its exact account before and after the test" >&2
   exit 1

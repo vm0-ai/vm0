@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.83](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.82...vsock-host-v0.17.83) (2026-08-13)
+
+
+### Bug Fixes
+
+* **vsock-host:** prevent sequence collisions after wrap ([#26952](https://github.com/vm0-ai/vm0/issues/26952)) ([5b5834c](https://github.com/vm0-ai/vm0/commit/5b5834cd9c12185774df955fe45cd00ddc8b7397))
+
+## [0.17.82](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.81...vsock-host-v0.17.82) (2026-08-13)
+
+
+### Refactoring
+
+* **rust:** preserve exec terminal-proof outcomes ([#26951](https://github.com/vm0-ai/vm0/issues/26951)) ([79a0204](https://github.com/vm0-ai/vm0/commit/79a0204fced40dad3a07c6e7d719eab7838e813c))
+
+## [0.17.81](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.80...vsock-host-v0.17.81) (2026-08-13)
+
 ## [0.17.80](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.79...vsock-host-v0.17.80) (2026-08-10)
 
 

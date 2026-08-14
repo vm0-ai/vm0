@@ -1,5 +1,5 @@
-import { zeroCodexDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-codex-device-auth";
-import { zeroClaudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/zero-claude-code-device-auth";
+import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
+import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import {
   zeroBillingCheckoutContract,
   zeroBillingStatusContract,
@@ -137,7 +137,7 @@ function missingOpenAiPolicy(): OrgModelPolicy {
 function mockStaleProviderStory(): void {
   mockAdminOrg();
   context.mocks.data.orgModelProviders([staleCodexProvider()]);
-  context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
     return respond(200, {
       sessionToken: "mock-codex-device-session",
       type: "codex",
@@ -149,7 +149,7 @@ function mockStaleProviderStory(): void {
       interval: 1,
     });
   });
-  context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
     return respond(200, { status: "pending", errorMessage: null });
   });
 }
@@ -1077,7 +1077,7 @@ describe("organization model providers settings", () => {
   it("reconnects a stale workspace Claude Code provider", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([staleClaudeCodeProvider()]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-workspace-claude-code-session",
         type: "claude-code",
@@ -1087,20 +1087,17 @@ describe("organization model providers settings", () => {
         expiresIn: 30,
       });
     });
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        return respond(200, {
-          status: "complete",
-          provider: {
-            ...staleClaudeCodeProvider(),
-            needsReconnect: false,
-            lastRefreshErrorCode: null,
-          },
-          created: false,
-        });
-      },
-    );
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      return respond(200, {
+        status: "complete",
+        provider: {
+          ...staleClaudeCodeProvider(),
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        },
+        created: false,
+      });
+    });
 
     await openProvidersTab();
 
@@ -1141,7 +1138,7 @@ describe("organization model providers settings", () => {
     mockStaleProviderStory();
     context.mocks.browser.open(context.mocks.browser.authWindow());
     context.mocks.browser.clipboardWriteText();
-    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
       return respond(200, {
         status: "complete",
         provider: {
@@ -1167,13 +1164,10 @@ describe("organization model providers settings", () => {
   it("cancels workspace Codex reconnect when the dialog closes", async () => {
     mockStaleProviderStory();
     let cancelledSessionToken: string | null = null;
-    context.mocks.api(
-      zeroCodexDeviceAuthContract.cancel,
-      ({ body, respond }) => {
-        cancelledSessionToken = body.sessionToken;
-        return respond(200, { status: "cancelled" });
-      },
-    );
+    context.mocks.api(codexDeviceAuthContract.cancel, ({ body, respond }) => {
+      cancelledSessionToken = body.sessionToken;
+      return respond(200, { status: "cancelled" });
+    });
     await openProvidersTab();
 
     const alert = await screen.findByRole("alert");

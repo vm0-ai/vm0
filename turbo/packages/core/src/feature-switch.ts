@@ -191,7 +191,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.Banking]: {
@@ -315,13 +315,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.UnifiedIndicatorApi]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Load global agent and chat thread indicators from the unified API.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -335,11 +328,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatConversationLocator]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
+    enabled: false,
+  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
+  },
+  [FeatureSwitchKey.SavedBillingCreditPurchase]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Preview saved-billing credit purchases and confirm them in the app.",
+    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -358,6 +363,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.UserFriendlyAutomationMessage]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show natural trigger messages for workflow automations and provide automation context through the agent user prompt.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

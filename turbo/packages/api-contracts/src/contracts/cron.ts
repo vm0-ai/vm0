@@ -81,16 +81,11 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
 
 export const cronProjectChatEventSearchResponseSchema = z.object({
   success: z.literal(true),
-  durableProjectionAvailable: z.boolean(),
   threads: z.number(),
   indexedEvents: z.number(),
   deletedDocs: z.number(),
-  durableThreads: z.number(),
-  durableIndexedMessages: z.number(),
-  durableDeletedMessages: z.number(),
   convergence: z.object({
     eligibleThreads: z.number(),
-    legacyCaughtUpThreads: z.number(),
     durableCaughtUpThreads: z.number(),
   }),
 });
@@ -112,6 +107,10 @@ const cronSnapshotChatEventsResponseSchema =
     snapshots: z.number(),
     archivedEvents: z.number(),
     unreadableParents: z.number().int().nonnegative(),
+    duplicateEventIdConflictThreads: z.number().int().nonnegative(),
+    duplicateEventIdConflicts: z.number().int().nonnegative(),
+    duplicateEventIdsRemapped: z.number().int().nonnegative(),
+    duplicateEventReferencesRemapped: z.number().int().nonnegative(),
     retiredSnapshotReferencesDeleted: z.number().int().nonnegative(),
     r2ObjectsScanned: z.number().int().nonnegative(),
     r2ObjectsMeasured: z.number().int().nonnegative(),
@@ -296,7 +295,7 @@ export const cronProjectChatEventSearchContract = c.router({
       200: cronProjectChatEventSearchResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Project chat events into the search docs table",
+    summary: "Project chat events into durable search messages",
   },
 });
 

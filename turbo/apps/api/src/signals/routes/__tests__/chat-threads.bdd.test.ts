@@ -386,8 +386,8 @@ async function allThreadEvents(actor: ApiTestUser) {
   return response.body.events;
 }
 
-/** Cheapest visible message writer: the no-credit send persists a user and an
- * assistant row without creating a run. */
+/** Cheapest visible message writer: the no-credit send persists a searchable
+ * user row plus a non-searchable output.error without creating a run. */
 async function sendNoCreditMessage(
   actor: ApiTestUser,
   body: {
@@ -1490,7 +1490,7 @@ describe("CHAT-01 chat thread read state", () => {
     });
   }, 120_000);
 
-  it("lists unread agent and thread ids", async () => {
+  it("lists unread agent and thread indicators", async () => {
     const {
       actor: owner,
       agentId: agentA,
@@ -1503,13 +1503,10 @@ describe("CHAT-01 chat thread read state", () => {
       })
     ).agentId;
 
-    const unauthenticated = await chat.requestListUnreadChatThreadIds(
-      null,
-      [401],
-    );
+    const unauthenticated = await chat.requestIndicators(null, [401]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
-    const orgless = await chat.requestListUnreadChatThreadIds(
+    const orgless = await chat.requestIndicators(
       bdd.user({ orgId: null }),
       [401],
     );
@@ -1648,7 +1645,7 @@ describe("CHAT-01 chat thread read state", () => {
     );
   }, 120_000);
 
-  it("lists active chat thread ids for the current user and org", async () => {
+  it("lists active thread ids without hiding the agent's unread state", async () => {
     const {
       actor: owner,
       agentId: ownerAgent,
@@ -1701,7 +1698,7 @@ describe("CHAT-01 chat thread read state", () => {
       new Set([runningRun.threadId, queuedRun.threadId]),
     );
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
-      agents: { [ownerAgent]: "active" },
+      agents: { [ownerAgent]: "unread" },
       threads: {
         [completedRun.threadId]: "unread",
         [runningRun.threadId]: "active",
@@ -1724,7 +1721,7 @@ describe("CHAT-01 chat thread read state", () => {
       new Set([queuedRun.threadId]),
     );
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
-      agents: { [ownerAgent]: "active" },
+      agents: { [ownerAgent]: "unread" },
       threads: {
         [completedRun.threadId]: "unread",
         [runningRun.threadId]: "unread",
@@ -1741,7 +1738,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     await withMockNowForTest(currentTime, async () => {
       mockNow(currentTime - 7 * DAY_MS - 1);
-      const expiredRun = await completeChatRunInThread(actor, runnerGroup, {
+      await completeChatRunInThread(actor, runnerGroup, {
         agentId,
         prompt: "expired unread indicator",
       });
@@ -1759,11 +1756,8 @@ describe("CHAT-01 chat thread read state", () => {
       });
 
       mockNow(currentTime);
-      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
-        new Set([expiredRun.threadId, recentRun.threadId]),
-      );
       await expect(chat.listIndicators(actor)).resolves.toStrictEqual({
-        agents: { [agentId]: "active" },
+        agents: { [agentId]: "unread" },
         threads: {
           [recentRun.threadId]: "unread",
           [activeRun.threadId]: "active",
@@ -1799,14 +1793,6 @@ describe("CHAT-01 chat thread read state", () => {
       }
 
       mockNow(firstCompletedAt + 60_000);
-      expect(new Set(await chat.listUnreadChatThreadIds(actor))).toStrictEqual(
-        new Set(
-          runs.map((run) => {
-            return run.threadId;
-          }),
-        ),
-      );
-
       const indicators = await chat.listIndicators(actor);
       expect(indicators.agents).toStrictEqual({
         [agentA]: "unread",
@@ -1862,7 +1848,7 @@ describe("CHAT-01 chat thread read state", () => {
       ),
     ).toStrictEqual(new Set([completedRun.threadId, completeGoalRun.threadId]));
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
-      agents: { [agentId]: "active" },
+      agents: { [agentId]: "unread" },
       threads: {
         [runningRun.threadId]: "active",
         [completedRun.threadId]: "unread",
@@ -2708,18 +2694,16 @@ describe("CHAT-01 chat search", () => {
       throw new Error("Expected one okapi match");
     }
     expect(match.matchedMessage.content).toBe("the okapi was here");
-    expect(match.contextBefore).toHaveLength(2);
-    expect(match.contextAfter).toHaveLength(2);
     expect(
       match.contextBefore.map((message) => {
         return message.content;
       }),
-    ).toContain("context round one");
+    ).toStrictEqual(["context round one"]);
     expect(
       match.contextAfter.map((message) => {
         return message.content;
       }),
-    ).toContain("context round three");
+    ).toStrictEqual(["context round three"]);
     const matchedAt = Date.parse(match.matchedMessage.createdAt);
     for (const message of match.contextBefore) {
       expect(Date.parse(message.createdAt)).toBeLessThan(matchedAt);
@@ -2848,9 +2832,20 @@ describe("CHAT-01 chat search", () => {
     expect(beta.chatThreadId).toBe(threadA);
     expect(gamma.chatThreadId).toBe(threadB);
 
+    const expectedContextLengths = new Map([
+      [alphaPrompt, { before: 1, after: 2 }],
+      [betaPrompt, { before: 2, after: 1 }],
+      [gammaPrompt, { before: 1, after: 1 }],
+    ]);
     for (const match of contextual.results) {
-      expect(match.contextBefore).toHaveLength(2);
-      expect(match.contextAfter).toHaveLength(2);
+      const expectedLengths = expectedContextLengths.get(
+        match.matchedMessage.content,
+      );
+      if (!expectedLengths) {
+        throw new Error("Unexpected batched chat-search match");
+      }
+      expect(match.contextBefore).toHaveLength(expectedLengths.before);
+      expect(match.contextAfter).toHaveLength(expectedLengths.after);
       expect(
         [...match.contextBefore, ...match.contextAfter].every((message) => {
           return message.chatThreadId === match.chatThreadId;

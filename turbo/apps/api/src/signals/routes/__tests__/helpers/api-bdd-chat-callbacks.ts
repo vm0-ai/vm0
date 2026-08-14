@@ -11,7 +11,7 @@ import { server } from "../../../../mocks/server";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
-import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
+import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -220,7 +220,7 @@ export function createChatCallbacksApi(context: TestContext) {
   function pushSubscriptionsClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroPushSubscriptionsRoutes,
+      routes: pushSubscriptionsRoutes,
     })(pushSubscriptionsContract);
   }
 

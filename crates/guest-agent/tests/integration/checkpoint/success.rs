@@ -1236,6 +1236,7 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
         config,
         paths,
         http: http_client!(),
+        workload_containment: None,
     };
 
     unsafe {

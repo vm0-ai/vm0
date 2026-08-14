@@ -2,7 +2,6 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -175,7 +174,6 @@ describe("agents page (redesign)", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
     });
 
     await waitFor(() => {

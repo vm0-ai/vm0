@@ -5,9 +5,14 @@ import { onRef, setLoop } from "./utils.ts";
 export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.1;
 export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
 
-const internalZoomableImageCanvasFitWidthByKey$ = state<Record<string, number>>(
-  {},
-);
+type ZoomableImageCanvasGeometry = {
+  fitWidth: number;
+  maxZoom: number;
+};
+
+const internalZoomableImageCanvasGeometryByKey$ = state<
+  Record<string, ZoomableImageCanvasGeometry>
+>({});
 const internalZoomableImageCanvasZoomByKey$ = state<Record<string, number>>({});
 const internalTypewriterDisplayedByKey$ = state<Record<string, string>>({});
 
@@ -15,41 +20,52 @@ export const zoomableImageCanvasZoomByKey$ = computed((get) => {
   return get(internalZoomableImageCanvasZoomByKey$);
 });
 
-export const zoomableImageCanvasFitWidthByKey$ = computed((get) => {
-  return get(internalZoomableImageCanvasFitWidthByKey$);
+export const zoomableImageCanvasGeometryByKey$ = computed((get) => {
+  return get(internalZoomableImageCanvasGeometryByKey$);
 });
 
 export const typewriterDisplayed$ = computed((get) => {
   return get(internalTypewriterDisplayedByKey$);
 });
 
-function clampImageZoom(zoom: number) {
-  return Math.min(
-    IMAGE_LIGHTBOX_MAX_ZOOM,
-    Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, zoom),
-  );
+function clampImageZoom(zoom: number, maxZoom: number) {
+  return Math.min(maxZoom, Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, zoom));
 }
 
-function roundImageZoom(zoom: number) {
-  return Math.round(clampImageZoom(zoom) * 10_000) / 10_000;
+function roundImageZoom(zoom: number, maxZoom: number) {
+  return Math.round(clampImageZoom(zoom, maxZoom) * 10_000) / 10_000;
 }
 
 export const setZoomableImageCanvasZoom$ = command(
-  ({ set }, key: string, zoom: number) => {
+  ({ get, set }, key: string, zoom: number) => {
+    const maxZoom =
+      get(internalZoomableImageCanvasGeometryByKey$)[key]?.maxZoom ??
+      IMAGE_LIGHTBOX_MAX_ZOOM;
     set(internalZoomableImageCanvasZoomByKey$, (current) => {
-      return { ...current, [key]: roundImageZoom(zoom) };
+      return { ...current, [key]: roundImageZoom(zoom, maxZoom) };
     });
   },
 );
 
-export const setZoomableImageCanvasFitWidth$ = command(
-  ({ set }, key: string, fitWidth: number) => {
-    if (!Number.isFinite(fitWidth) || fitWidth <= 0) {
+export const setZoomableImageCanvasGeometry$ = command(
+  ({ set }, key: string, fitWidth: number, maxZoom: number) => {
+    if (
+      !Number.isFinite(fitWidth) ||
+      fitWidth <= 0 ||
+      !Number.isFinite(maxZoom) ||
+      maxZoom < IMAGE_LIGHTBOX_MAX_ZOOM
+    ) {
       return;
     }
 
-    set(internalZoomableImageCanvasFitWidthByKey$, (current) => {
-      return { ...current, [key]: Math.round(fitWidth) };
+    set(internalZoomableImageCanvasGeometryByKey$, (current) => {
+      return {
+        ...current,
+        [key]: {
+          fitWidth: Math.round(fitWidth),
+          maxZoom: Math.round(maxZoom * 10_000) / 10_000,
+        },
+      };
     });
   },
 );

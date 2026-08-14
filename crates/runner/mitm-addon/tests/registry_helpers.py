@@ -27,7 +27,13 @@ def write_trusted_catalog_cache_text(path: Path, content: str) -> None:
 
 def write_simple_registry(path, *, run_id="run-one"):
     data = {
-        "vms": {"10.200.0.1": {"runId": run_id}},
+        "vms": {
+            "10.200.0.1": {
+                "runId": run_id,
+                "billableFirewalls": [],
+                "cliAgentType": "claude-code",
+            }
+        },
         "updatedAt": 0,
     }
     path.write_text(json.dumps(data, sort_keys=True))
@@ -42,6 +48,8 @@ def write_firewall_registry(path, *, rule="/items"):
         "vms": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
+                "billableFirewalls": [],
+                "cliAgentType": "claude-code",
                 "firewalls": [
                     {
                         "kind": "inline",
@@ -86,6 +94,8 @@ def write_builtin_firewall_registry(
                 "vms": {
                     "10.200.0.1": {
                         "runId": run_id,
+                        "billableFirewalls": [],
+                        "cliAgentType": "claude-code",
                         "firewalls": [
                             {
                                 "kind": "builtin",
@@ -109,12 +119,19 @@ def builtin_vm(run_id: str, name: str, base_url_vars: dict[str, str] | None = No
     entry: dict[str, object] = {"kind": "builtin", "name": name}
     if base_url_vars is not None:
         entry["baseUrlVars"] = base_url_vars
-    return {"runId": run_id, "firewalls": [entry]}
+    return {
+        "runId": run_id,
+        "billableFirewalls": [],
+        "cliAgentType": "claude-code",
+        "firewalls": [entry],
+    }
 
 
 def inline_vm(run_id: str) -> dict:
     return {
         "runId": run_id,
+        "billableFirewalls": [],
+        "cliAgentType": "claude-code",
         "firewalls": [
             {
                 "kind": "inline",

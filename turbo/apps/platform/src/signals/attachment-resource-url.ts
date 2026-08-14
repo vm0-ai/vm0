@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { zeroWebFilesContract } from "@okouai/api-contracts/contracts/zero-web-files";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { accept } from "../lib/accept.ts";
 import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
@@ -37,7 +37,7 @@ function createAttachmentResourceUrl$(url: string): Computed<Promise<string>> {
       throw new Error("Authenticated attachment URL is missing file_id");
     }
     const signal = get(pageSignal$);
-    const client = get(zeroClient$)(zeroWebFilesContract);
+    const client = get(zeroClient$)(webFilesContract);
     const response = await accept(
       client.fileUrl({
         query: { file_id: fileId },

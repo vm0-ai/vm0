@@ -121,7 +121,7 @@ function routePattern(route: AppRoute): string | RegExp {
   if (route.path === "/api/okou/chat-threads/:id") {
     // Keep thread detail mocks from swallowing static sibling routes while
     // still accepting the descriptive non-UUID thread ids used by UI tests.
-    return /\/api\/okou\/chat-threads\/(?!snapshot$|events$|active-ids$|unread-ids$)([^/]+)$/;
+    return /\/api\/okou\/chat-threads\/(?!snapshot$|events$)([^/]+)$/;
   }
   return `*${route.path}`;
 }

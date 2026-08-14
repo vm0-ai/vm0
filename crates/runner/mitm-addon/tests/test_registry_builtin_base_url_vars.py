@@ -1021,6 +1021,8 @@ class TestRegistryBuiltinBaseUrlVars:
                     "vms": {
                         "10.200.0.1": {
                             "runId": "run-zendesk",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                             "vars": {"ZENDESK_SUBDOMAIN": "top-level"},
                             "firewalls": [{"kind": "builtin", "name": "zendesk"}],
                         }

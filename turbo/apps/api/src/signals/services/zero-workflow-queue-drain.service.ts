@@ -1,7 +1,4 @@
-import {
-  zeroWorkflows,
-  zeroWorkflowAutomations,
-} from "@okouai/db/schema/zero-workflow";
+import { workflows, workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/log";
@@ -33,25 +30,22 @@ const log = logger("ZeroWorkflowQueueDrain");
 const MAX_DRAIN_ATTEMPTS = 5;
 
 interface DequeueTarget {
-  readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+  readonly automation: typeof workflowAutomations.$inferSelect;
   readonly agentId: string;
 }
 
 async function loadDequeueTarget(
   db: Db,
-  event: PendingWorkflowQueueEvent,
+  automationId: string,
 ): Promise<DequeueTarget | null> {
   const [row] = await db
     .select({
       automation: workflowAutomationColumns(),
-      agentId: zeroWorkflows.agentId,
+      agentId: workflows.agentId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .where(eq(zeroWorkflowAutomations.id, event.automationId))
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
+    .where(eq(workflowAutomations.id, automationId))
     .limit(1);
   return row ?? null;
 }
@@ -63,7 +57,7 @@ type WorkflowRunAutonomyBudget =
 async function resolveWorkflowRunAutonomyBudget(
   db: Db,
   event: PendingWorkflowQueueEvent,
-  automation: typeof zeroWorkflowAutomations.$inferSelect,
+  automation: typeof workflowAutomations.$inferSelect,
 ): Promise<WorkflowRunAutonomyBudget> {
   const sourceRunId =
     event.workflowAutomationEventType === "chat-run-finished"
@@ -165,6 +159,29 @@ async function consumeInvalidAutomationEvent(
   };
 }
 
+function consumeUnavailableAutomationEvent(
+  db: Db,
+  event: PendingWorkflowQueueEvent,
+  launchHint: AutomationEventLaunch | undefined,
+  signal: AbortSignal,
+): Promise<WorkflowQueueDrainStep> {
+  const conflictMessage =
+    event.automationId === null
+      ? "Workflow queue event payload is unreadable"
+      : "Workflow automation no longer exists";
+  log.debug("Consuming workflow queue event without automation", {
+    eventId: event.id,
+    automationId: event.automationId,
+  });
+  return consumeInvalidAutomationEvent(
+    db,
+    event,
+    conflictMessage,
+    launchHint,
+    signal,
+  );
+}
+
 async function handleWorkflowLaunchResult(
   args: {
     readonly db: Db;
@@ -242,17 +259,25 @@ export const drainWorkflowQueueForThread$ = command(
         return null;
       }
 
-      const target = await loadDequeueTarget(db, event);
-      signal.throwIfAborted();
-      if (!target) {
-        log.debug("Consuming workflow queue event without automation", {
-          eventId: event.id,
-          automationId: event.automationId,
-        });
-        const step = await consumeInvalidAutomationEvent(
+      if (!event.automationId || !event.triggerSource) {
+        const step = await consumeUnavailableAutomationEvent(
           db,
           event,
-          "Workflow automation no longer exists",
+          args.automationEventLaunch,
+          signal,
+        );
+        if (step !== CONTINUE_DRAIN) {
+          return step;
+        }
+        continue;
+      }
+
+      const target = await loadDequeueTarget(db, event.automationId);
+      signal.throwIfAborted();
+      if (!target) {
+        const step = await consumeUnavailableAutomationEvent(
+          db,
+          event,
           args.automationEventLaunch,
           signal,
         );

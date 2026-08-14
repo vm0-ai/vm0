@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { zeroWorkflowAutomations } from "@okouai/db/schema/zero-workflow";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
@@ -27,7 +27,7 @@ import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-ho
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./zero-chat-user-message.service";
 
-export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
+export type AutomationRow = typeof workflowAutomations.$inferSelect;
 
 export interface DueWorkflowAutomation {
   readonly automation: AutomationRow;
@@ -102,7 +102,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly prompt: string;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
-  readonly appendSystemPrompt: string;
+  readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
   readonly autonomyBudget: number;
@@ -118,7 +118,7 @@ interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArg
 
 interface WorkflowAutomationRunInput {
   readonly prompt: string;
-  readonly appendSystemPrompt: string;
+  readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
 }
@@ -227,14 +227,14 @@ export function scheduleTriggerContext(args: {
 }
 
 function appendComputerUseSystemPrompt(
-  prompt: string,
+  prompt: string | undefined,
   grant: ComputerUseHostGrant,
-): string {
+): string | undefined {
   if (!grant) {
     return prompt;
   }
   return [
-    prompt,
+    ...(prompt ? [prompt] : []),
     "# Computer Use",
     `Computer Use is enabled for this run on ${grant.displayName}.`,
   ].join("\n\n");
@@ -479,7 +479,7 @@ async function recordWorkflowAutomationRunStart(
   signal.throwIfAborted();
 
   await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       ...(args.recordLastRunId === false ? {} : { lastRunId: runId }),
       ...(args.recordLastRunAt ? { lastRunAt: nowDate() } : {}),
@@ -488,7 +488,7 @@ async function recordWorkflowAutomationRunStart(
         : {}),
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflowAutomations.id, automation.id));
+    .where(eq(workflowAutomations.id, automation.id));
   signal.throwIfAborted();
 }
 

@@ -10,8 +10,8 @@ import { supportedRunModelSchema } from "./model-providers";
 import {
   VIDEO_ASPECT_RATIOS,
   VIDEO_DURATIONS,
-  VIDEO_MODEL_IDS,
   VIDEO_RESOLUTIONS,
+  videoModelIdSchema,
 } from "./video-models";
 import {
   avatarVideoAspectRatioSchema,
@@ -120,10 +120,6 @@ const chatThreadUnreadsSchema = z.object({
       unreadAt: z.string(),
     }),
   ),
-});
-
-const chatThreadUnreadAgentsSchema = z.object({
-  agentIds: z.array(z.string()),
 });
 
 export const zeroIndicatorSchema = z.enum(["active", "unread"]);
@@ -242,7 +238,7 @@ const presentationGenerationTemplateRequestSchema = z.object({
  */
 const videoGenerationOptionsSchema = z
   .object({
-    model: z.enum(VIDEO_MODEL_IDS),
+    model: videoModelIdSchema,
     aspectRatio: z.enum(VIDEO_ASPECT_RATIOS),
     duration: z.enum(VIDEO_DURATIONS),
     resolution: z.enum(VIDEO_RESOLUTIONS),
@@ -878,16 +874,9 @@ const chatThreadCreateBodySchema = z.object({
   title: z.string().optional(),
 });
 
-/**
- * Built-in video model pinned to a chat thread. Unlike the run model this
- * carries no provider routing, no service tier, and no org policy row: every
- * catalog model is selectable by every workspace.
- */
-const videoModelRequestSchema = z.enum(VIDEO_MODEL_IDS);
-
 const chatThreadVideoModelUpdateBodySchema = z.object({
   /** Video model id, or null to fall back to the member and system defaults. */
-  model: videoModelRequestSchema.nullable(),
+  model: videoModelIdSchema.nullable(),
   eventId: chatThreadEventIdSchema.optional(),
 });
 
@@ -1006,32 +995,6 @@ export const chatThreadsContract = c.router({
     },
     summary: "List chat thread lifecycle events after an optional cursor.",
   },
-  activeIds: {
-    method: "GET",
-    path: "/api/okou/chat-threads/active-ids",
-    headers: authHeadersSchema,
-    responses: {
-      200: z.object({
-        threadIds: z.array(z.string().uuid()),
-      }),
-      401: apiErrorSchema,
-    },
-    summary:
-      "List chat thread ids that currently have queued, pending, or running runs.",
-  },
-  unreadIds: {
-    method: "GET",
-    path: "/api/okou/chat-threads/unread-ids",
-    headers: authHeadersSchema,
-    responses: {
-      200: z.object({
-        threadIds: z.array(z.string().uuid()),
-      }),
-      401: apiErrorSchema,
-    },
-    summary:
-      "List unread chat thread ids for the caller in the current organization.",
-  },
   create: {
     method: "POST",
     path: "/api/okou/chat-threads",
@@ -1087,18 +1050,6 @@ export const chatThreadsContract = c.router({
     },
     summary:
       "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread.",
-  },
-  unreadAgents: {
-    method: "GET",
-    path: "/api/okou/chat-thread-unread-agents",
-    headers: authHeadersSchema,
-    responses: {
-      200: chatThreadUnreadAgentsSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary:
-      "List agent IDs with at least one unread chat thread for the caller.",
   },
 });
 
@@ -1485,8 +1436,11 @@ export const chatEventsContract = c.router({
 
 /**
  * Single chat message in a search result.
- * `content` is guaranteed non-null because the search route filters out
- * placeholder rows where content is NULL.
+ * `(chatThreadId, seqId)` is the stable identity and `runId` carries optional
+ * run ownership. `messageId` and `sequenceNumber` bridge old Platform/App
+ * clients for the ~2-day client-skew window. #26921 migrates current clients
+ * to the stable identity and removes these fields after that deployment has
+ * aged past 2 days.
  */
 const chatSearchMessageSchema = z.object({
   messageId: z.string(),
@@ -1609,26 +1563,6 @@ export const chatThreadEventsContract = c.router({
       410: apiErrorSchema,
     },
     summary: "Get raw chat event rows after a seq cursor",
-  },
-  queued: {
-    method: "GET",
-    path: "/api/okou/chat-threads/:threadId/queued-events",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    responses: {
-      200: z.object({
-        events: z.array(
-          z.object({
-            eventId: z.string(),
-            seqId: z.number().int().positive(),
-          }),
-        ),
-      }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "List authoritative queued chat events for a thread",
   },
 });
 

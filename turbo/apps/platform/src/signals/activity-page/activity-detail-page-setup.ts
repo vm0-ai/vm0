@@ -6,10 +6,16 @@ import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { i18n } from "../../i18n/index.ts";
+import { currentRunId$, setupActivityEvents$ } from "./activity-signals.ts";
 
 export const setupActivityDetailPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroActivityDetailPage), "sidebar");
+  async ({ get, set }, signal: AbortSignal) => {
+    const runId = get(currentRunId$);
+    set(
+      updatePage$,
+      createElement(ZeroActivityDetailPage, { key: runId }),
+      "sidebar",
+    );
     set(
       updateDocumentTitle$,
       i18n.t(($) => {
@@ -21,5 +27,8 @@ export const setupActivityDetailPage$ = command(
     if (await set(onboardGuard$, signal)) {
       return;
     }
+
+    await set(setupActivityEvents$, signal);
+    signal.throwIfAborted();
   },
 );

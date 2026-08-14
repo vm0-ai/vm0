@@ -9,10 +9,8 @@ import {
   chatThreadDraftContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import {
-  zeroAgentsByIdContract,
-  zeroAgentDraftContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
 import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
@@ -196,7 +194,7 @@ describe("chat drafts", () => {
   it("restores a saved agent draft with attachments on first agent chat open", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000101";
     mockAgentChatPage(agentId);
-    context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
+    context.mocks.api(agentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
         draftUserMessage: {
           version: 1,
@@ -245,7 +243,7 @@ describe("chat drafts", () => {
     const draftResponse = createDeferredPromise<void>(context.signal);
     let draftRequested = false;
     mockAgentChatPage(agentId);
-    context.mocks.api(zeroAgentDraftContract.get, async ({ respond }) => {
+    context.mocks.api(agentDraftContract.get, async ({ respond }) => {
       draftRequested = true;
       await draftResponse.promise;
       return respond(200, {
@@ -397,7 +395,7 @@ describe("chat drafts", () => {
     const draftPatches: Record<string, unknown>[] = [];
     const toastError = vi.spyOn(toast, "error");
     mockAgentChatPage(agentId);
-    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+    context.mocks.api(agentDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftUserMessage: null,
         draftAttachments: null,

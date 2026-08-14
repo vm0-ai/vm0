@@ -6,7 +6,7 @@ import type {
 } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
 import {
   strapiIntegrations,
-  zeroWorkflowStrapiAutomations,
+  strapiWorkflowAutomations,
 } from "@okouai/db/schema/strapi-integration";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -193,11 +193,11 @@ export async function removeStrapiIntegration(args: {
   readonly integrationId: string;
 }): Promise<RemoveStrapiIntegrationResult> {
   const [linked] = await args.db
-    .select({ automationId: zeroWorkflowStrapiAutomations.automationId })
-    .from(zeroWorkflowStrapiAutomations)
+    .select({ automationId: strapiWorkflowAutomations.automationId })
+    .from(strapiWorkflowAutomations)
     .innerJoin(
       strapiIntegrations,
-      eq(strapiIntegrations.id, zeroWorkflowStrapiAutomations.integrationId),
+      eq(strapiIntegrations.id, strapiWorkflowAutomations.integrationId),
     )
     .where(
       and(

@@ -5,7 +5,10 @@
 //! This crate defines the local, blocking protocol used after `vsock-guest`
 //! exposes an operation-control endpoint and `guest-agent` connects back to it.
 //! The transport is a Linux abstract Unix stream socket. Endpoint names are
-//! abstract-socket names, not filesystem paths.
+//! abstract-socket names, not filesystem paths. A second operation-local
+//! endpoint transfers one root-owned workload-placement descriptor with
+//! `SCM_RIGHTS`; the descriptor is never inherited through the sandbox-user
+//! launch chain.
 //!
 //! The endpoint is bootstrapped through [`BOOTSTRAP_ENV`]. `vsock-guest`
 //! creates the endpoint name with [`endpoint_name`], binds it with
@@ -64,7 +67,10 @@ mod transport;
 pub use codec::{
     read_hello, read_request, read_response, write_hello, write_request, write_response,
 };
-pub use transport::{accept_with_timeout, bind_abstract_listener, connect_abstract, endpoint_name};
+pub use transport::{
+    accept_with_timeout, bind_abstract_listener, connect_abstract, endpoint_name,
+    receive_workload_placement, send_workload_placement,
+};
 
 /// Environment variable carrying the operation-control abstract socket name.
 ///

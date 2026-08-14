@@ -7,6 +7,7 @@ import type {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import { and, eq } from "drizzle-orm";
 
 import {
@@ -140,7 +141,7 @@ async function findActiveConcurrencySubscription(
   );
 }
 
-async function isPlanSubscription(
+async function isSharedBillingSubscription(
   db: ReadonlyDb,
   args: ConcurrencySubscriptionArgs,
 ): Promise<boolean> {
@@ -154,7 +155,23 @@ async function isPlanSubscription(
       ),
     )
     .limit(1);
-  return plan !== undefined;
+  if (plan) {
+    return true;
+  }
+  const [allowance] = await db
+    .select({ orgId: orgUsageAllowanceEntitlements.orgId })
+    .from(orgUsageAllowanceEntitlements)
+    .where(
+      and(
+        eq(orgUsageAllowanceEntitlements.orgId, args.orgId),
+        eq(
+          orgUsageAllowanceEntitlements.stripeSubscriptionId,
+          args.subscriptionId,
+        ),
+      ),
+    )
+    .limit(1);
+  return allowance !== undefined;
 }
 
 async function writeScheduledConcurrencyChange(
@@ -999,7 +1016,7 @@ export const cancelConcurrencySubscription$ = command(
       return { ok: false, reason: "not_found" };
     }
     const stripe = getStripeClient();
-    if (await isPlanSubscription(get(db$), args)) {
+    if (await isSharedBillingSubscription(get(db$), args)) {
       const stripeSubscription = await stripe.subscriptions.retrieve(
         args.subscriptionId,
       );
@@ -1121,7 +1138,7 @@ export const restoreConcurrencySubscription$ = command(
     }
 
     const stripe = getStripeClient();
-    if (await isPlanSubscription(get(db$), args)) {
+    if (await isSharedBillingSubscription(get(db$), args)) {
       const stripeSubscription = await stripe.subscriptions.retrieve(
         args.subscriptionId,
       );

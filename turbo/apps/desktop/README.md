@@ -169,9 +169,9 @@ packaged identity; they do not discover or switch products at runtime.
 
 `VM0_DESKTOP_PRODUCT` defaults to `zero`, preserving existing local and CI
 builds. Okou production builds package a runtime configuration containing
-`product: okou` and `https://app.okou.ai`; that app origin intentionally maps to
-the current `api.vm0.ai` and `www.vm0.ai` services until the separate
-`api.okou.ai` readiness gate passes.
+`product: okou` and `https://app.okou.ai`. That app origin routes API calls to
+`api.okou.ai`, while Clerk and OAuth web flows remain canonical on
+`www.vm0.ai`.
 
 Okou is a separate macOS application identity. It can be installed beside
 Zero, stores Electron data under its explicit `Okou` data directory, and gets a

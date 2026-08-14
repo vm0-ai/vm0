@@ -1,8 +1,15 @@
 """Tests for captured network-log header sanitization."""
 
 import pytest
+from mitmproxy import http
 
-from body_capture import _sanitize_headers_for_capture
+from body_capture import _sanitize_headers_for_capture as _sanitize_bounded_headers
+
+
+def _sanitize_headers_for_capture(headers: http.Headers) -> dict[str, str]:
+    captured, truncated = _sanitize_bounded_headers(headers)
+    assert not truncated
+    return captured
 
 
 class TestSanitizeHeadersForCapture:

@@ -87,19 +87,20 @@ import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
-import * as zeroAgentDraftSchema from "./schema/zero-agent-draft";
+import * as agentDraftSchema from "./schema/agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as zeroRunSchema from "./schema/zero-run";
 import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
-import * as zeroWorkflowSchema from "./schema/zero-workflow";
+import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as activeInputDeliverySchema from "./schema/active-input-delivery";
+import * as chatThreadSchema from "./schema/chat-thread";
 import * as chatEventSchema from "./schema/chat-event";
 import * as chatEventSearchSchema from "./schema/chat-event-search";
 import * as chatEventSnapshotSchema from "./schema/chat-event-snapshot";
@@ -216,19 +217,20 @@ export const schema = {
   ...skillSchema,
   ...usagePricingSchema,
   ...zeroAgentSchema,
-  ...zeroAgentDraftSchema,
+  ...agentDraftSchema,
   ...userPermissionGrantSchema,
   ...zeroRunSchema,
   ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
   ...vm0ApiKeySchema,
-  ...zeroWorkflowSchema,
+  ...workflowSchema,
   ...morningBriefSchema,
   ...computerUseHostSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
   ...activeInputDeliverySchema,
+  ...chatThreadSchema,
   ...chatEventSchema,
   ...chatEventSearchSchema,
   ...chatEventSnapshotSchema,

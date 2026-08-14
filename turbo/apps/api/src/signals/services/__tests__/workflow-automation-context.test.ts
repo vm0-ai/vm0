@@ -8,6 +8,7 @@ import {
   restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
   workflowAutomationAppendSystemPrompt,
+  workflowAutomationEventUsesUserFriendlyMessage,
   workflowAutomationPrompt,
   workflowAutomationTrigger,
   type WorkflowAutomationEventPolicy,
@@ -398,6 +399,21 @@ describe("workflow automation context lookup contracts", () => {
       expect(workflowAutomationAppendSystemPrompt(restoredContext)).toBe(
         workflowAutomationAppendSystemPrompt(legacyContext),
       );
+
+      const userFriendlyPayload = reverseObjectKeys(
+        persistedWorkflowAutomationEventPayload(payload, {
+          userFriendlyAutomationMessage: true,
+        }),
+      );
+      if (!isRecord(userFriendlyPayload)) {
+        throw new Error("Expected user-friendly event payload to be an object");
+      }
+      expect(
+        workflowAutomationEventUsesUserFriendlyMessage(userFriendlyPayload),
+      ).toBeTruthy();
+      const restoredUserFriendlyPayload =
+        restoredWorkflowAutomationEventPayload(userFriendlyPayload);
+      expect(restoredUserFriendlyPayload).toStrictEqual(payload);
     },
   );
 

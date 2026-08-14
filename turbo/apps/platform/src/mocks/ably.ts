@@ -14,7 +14,6 @@ import { createDeferredPromise } from "../signals/utils.ts";
  */
 
 type Callback = (message: { name: string; data: unknown }) => void;
-type ConnectionListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
 type AuthCallbackToken = unknown;
@@ -23,9 +22,52 @@ type AuthCallback = (
   cb: (error: AuthCallbackError, token: AuthCallbackToken) => void,
 ) => void;
 
-type FailedStateChange = { reason?: { message?: string } };
-type ConnectionEventListener = (stateChange?: FailedStateChange) => void;
-type MockConnectionState = "connecting" | "connected" | "failed" | "closed";
+interface MockErrorInfo {
+  readonly code?: number;
+  readonly message?: string;
+  readonly statusCode?: number;
+}
+
+export type MockConnectionState =
+  | "closed"
+  | "closing"
+  | "connected"
+  | "connecting"
+  | "disconnected"
+  | "failed"
+  | "initialized"
+  | "suspended";
+
+interface MockConnectionStateChange {
+  readonly current: MockConnectionState;
+  readonly previous: MockConnectionState;
+  readonly reason?: MockErrorInfo;
+  readonly retryIn?: number;
+}
+
+type ConnectionEventListener = (stateChange: MockConnectionStateChange) => void;
+type ConnectionOn = {
+  (callback: ConnectionEventListener): void;
+  (event: string, callback: ConnectionEventListener): void;
+};
+type ConnectionOff = {
+  (callback: ConnectionEventListener): void;
+  (event: string, callback: ConnectionEventListener): void;
+};
+type MockChannelState =
+  | "attached"
+  | "attaching"
+  | "detached"
+  | "detaching"
+  | "failed"
+  | "initialized"
+  | "suspended";
+interface MockChannelStateChange {
+  readonly current: MockChannelState;
+  readonly previous: MockChannelState;
+  readonly reason?: MockErrorInfo;
+}
+type ChannelStateListener = (stateChange: MockChannelStateChange) => void;
 
 let capturedAuthCallback: AuthCallback | null = null;
 let tokenBodies: AuthCallbackToken[] = [];
@@ -59,6 +101,8 @@ function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
 class FakeChannel {
   readonly subscriptions = new Map<string, Set<Callback>>();
   readonly channelSubscriptions = new Set<Callback>();
+  state: MockChannelState = "initialized";
+  private readonly stateListeners = new Set<ChannelStateListener>();
 
   constructor(private readonly connectionState: () => MockConnectionState) {}
 
@@ -86,6 +130,42 @@ class FakeChannel {
   clear(): void {
     this.subscriptions.clear();
     this.channelSubscriptions.clear();
+    this.transition("detached");
+  }
+
+  fail(reason: MockErrorInfo): void {
+    this.subscriptions.clear();
+    this.channelSubscriptions.clear();
+    this.transition("failed", reason);
+  }
+
+  suspend(reason: MockErrorInfo): void {
+    this.transition("suspended", reason);
+  }
+
+  reconnect(): void {
+    if (this.state !== "suspended") {
+      return;
+    }
+    this.transition("attaching");
+    this.transition("attached");
+  }
+
+  on(callback: ChannelStateListener): void {
+    this.stateListeners.add(callback);
+  }
+
+  off(callback: ChannelStateListener): void {
+    this.stateListeners.delete(callback);
+  }
+
+  private transition(state: MockChannelState, reason?: MockErrorInfo): void {
+    const previous = this.state;
+    this.state = state;
+    const stateChange = { current: state, previous, reason };
+    for (const listener of this.stateListeners) {
+      listener(stateChange);
+    }
   }
 
   // Mirror real Ably: subscribe registers the callback synchronously before
@@ -94,6 +174,9 @@ class FakeChannel {
     topicOrCallback: string | Callback,
     callback?: Callback,
   ): Promise<void> {
+    if (this.state === "initialized" || this.state === "detached") {
+      this.transition("attaching");
+    }
     if (typeof topicOrCallback === "function") {
       this.channelSubscriptions.add(topicOrCallback);
     } else if (callback) {
@@ -122,6 +205,9 @@ class FakeChannel {
       nextSubscribeError = null;
       throw error;
     }
+    if (this.state === "attaching") {
+      this.transition("attached");
+    }
   }
 
   unsubscribe(topicOrCallback: string | Callback, callback?: Callback): void {
@@ -141,21 +227,49 @@ export class Realtime {
   readonly connection: {
     state: MockConnectionState;
     once: (event: string, callback: ConnectionEventListener) => void;
-    on: (event: string, callback: ConnectionListener) => void;
+    on: ConnectionOn;
+    off: ConnectionOff;
   };
   readonly channels: { get: (_name: string) => FakeChannel };
 
   private readonly connectedOnceListeners = new Set<ConnectionEventListener>();
   private readonly failedOnceListeners = new Set<ConnectionEventListener>();
-  private readonly connectedListeners = new Set<ConnectionListener>();
+  private readonly connectedListeners = new Set<ConnectionEventListener>();
+  private readonly stateListeners = new Set<ConnectionEventListener>();
 
   constructor(config?: { authCallback?: AuthCallback }) {
+    const on = (
+      eventOrCallback: string | ConnectionEventListener,
+      callback?: ConnectionEventListener,
+    ): void => {
+      if (typeof eventOrCallback === "function") {
+        this.stateListeners.add(eventOrCallback);
+        return;
+      }
+      if (eventOrCallback === "connected" && callback) {
+        this.connectedListeners.add(callback);
+      }
+    };
+    const off = (
+      eventOrCallback: string | ConnectionEventListener,
+      callback?: ConnectionEventListener,
+    ): void => {
+      if (typeof eventOrCallback === "function") {
+        this.stateListeners.delete(eventOrCallback);
+        return;
+      }
+      if (eventOrCallback === "connected" && callback) {
+        this.connectedListeners.delete(callback);
+      }
+    };
     this.connection = {
       state: "connecting",
       once: (event, callback) => {
         if (event === "connected") {
           if (this.connection.state === "connected") {
-            queueMicrotask(callback);
+            queueMicrotask(() => {
+              callback({ current: "connected", previous: "connected" });
+            });
           } else {
             this.connectedOnceListeners.add(callback);
           }
@@ -164,18 +278,19 @@ export class Realtime {
         if (event === "failed") {
           if (this.connection.state === "failed") {
             queueMicrotask(() => {
-              callback({ reason: { message: "connection failed" } });
+              callback({
+                current: "failed",
+                previous: "failed",
+                reason: { message: "connection failed" },
+              });
             });
           } else {
             this.failedOnceListeners.add(callback);
           }
         }
       },
-      on: (event, callback) => {
-        if (event === "connected") {
-          this.connectedListeners.add(callback);
-        }
-      },
+      on,
+      off,
     };
     this.channel = new FakeChannel(() => {
       return this.connection.state;
@@ -209,11 +324,13 @@ export class Realtime {
     if (this.connection.state === "closed") {
       return;
     }
-    this.connection.state = "closed";
+    this.transition("closing");
     this.channel.clear();
+    this.transition("closed");
     this.connectedOnceListeners.clear();
     this.failedOnceListeners.clear();
     this.connectedListeners.clear();
+    this.stateListeners.clear();
     realtimeInstances.delete(this);
   }
 
@@ -221,35 +338,67 @@ export class Realtime {
     if (this.connection.state === "closed") {
       return;
     }
-    this.connection.state = "failed";
-    this.channel.clear();
-    const stateChange = { reason: { message } };
-    for (const listener of this.failedOnceListeners) {
-      listener(stateChange);
-    }
-    this.failedOnceListeners.clear();
+    const reason = { message };
+    this.channel.fail(reason);
+    this.transition("failed", reason);
   }
 
   reconnect(): void {
-    if (this.connection.state !== "connected") {
+    if (this.connection.state === "closed") {
       return;
     }
-    for (const listener of this.connectedListeners) {
-      listener();
+    this.channel.reconnect();
+    this.transition("connected");
+  }
+
+  transitionTo(
+    state: "connected" | "disconnected" | "suspended",
+    reason: MockErrorInfo = {},
+    retryIn?: number,
+  ): void {
+    if (this.connection.state === "closed") {
+      return;
     }
+    if (state === "suspended") {
+      this.channel.suspend(reason);
+    } else if (state === "connected") {
+      this.channel.reconnect();
+    }
+    this.transition(state, reason, retryIn);
   }
 
   private connect(): void {
     if (this.connection.state === "closed") {
       return;
     }
-    this.connection.state = "connected";
-    for (const listener of this.connectedOnceListeners) {
-      listener();
+    this.transition("connected");
+  }
+
+  private transition(
+    state: MockConnectionState,
+    reason?: MockErrorInfo,
+    retryIn?: number,
+  ): void {
+    const previous = this.connection.state;
+    this.connection.state = state;
+    const stateChange = { current: state, previous, reason, retryIn };
+    for (const listener of this.stateListeners) {
+      listener(stateChange);
     }
-    this.connectedOnceListeners.clear();
-    for (const listener of this.connectedListeners) {
-      listener();
+    if (state === "connected") {
+      for (const listener of this.connectedOnceListeners) {
+        listener(stateChange);
+      }
+      this.connectedOnceListeners.clear();
+      for (const listener of this.connectedListeners) {
+        listener(stateChange);
+      }
+    }
+    if (state === "failed") {
+      for (const listener of this.failedOnceListeners) {
+        listener(stateChange);
+      }
+      this.failedOnceListeners.clear();
     }
   }
 }
@@ -281,6 +430,32 @@ export function triggerAblyReconnect(): void {
   for (const realtime of realtimeInstances) {
     realtime.reconnect();
   }
+}
+
+export function triggerAblyConnectionState(
+  state: "connected" | "disconnected" | "suspended",
+  options: {
+    readonly code?: number;
+    readonly message?: string;
+    readonly retryIn?: number;
+    readonly statusCode?: number;
+  } = {},
+): void {
+  let activeRealtime: Realtime | null = null;
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state !== "closed") {
+      activeRealtime = realtime;
+    }
+  }
+  activeRealtime?.transitionTo(
+    state,
+    {
+      code: options.code,
+      message: options.message,
+      statusCode: options.statusCode,
+    },
+    options.retryIn,
+  );
 }
 
 /** Put the newest connected client into Ably's terminal failed state. */

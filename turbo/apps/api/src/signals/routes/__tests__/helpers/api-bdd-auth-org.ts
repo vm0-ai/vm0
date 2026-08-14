@@ -53,7 +53,7 @@ import {
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
 } from "@okouai/api-contracts/contracts/zero-org";
-import { zeroOrgLogoContract } from "@okouai/api-contracts/contracts/zero-org-logo";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
@@ -92,11 +92,11 @@ import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-d
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
 import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
 import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
-import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { onboardingCompleteRoutes } from "../../onboarding-complete";
+import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
-import { zeroOrgLogoRoutes } from "../../zero-org-logo";
+import { orgLogoRoutes } from "../../org-logo";
 import { zeroOrgMembersRoutes } from "../../zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -208,15 +208,15 @@ interface RawJsonResponse {
 const authOrgRoutes = [
   ...authMeRoutes,
   ...cliAuthRoutes,
-  ...zeroOnboardingStatusRoutes,
-  ...zeroOnboardingCompleteRoutes,
+  ...onboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroOrgReadRoutes,
   ...zeroOrgDeleteRoutes,
   ...zeroOrgMembersRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgMembershipRequestsRoutes,
-  ...zeroOrgLogoRoutes,
+  ...orgLogoRoutes,
   ...zeroTeamRoutes,
   ...zeroAgentsRoutes,
   ...zeroComposesRoutes,
@@ -630,7 +630,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgLogoContract,
+        orgLogoContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor) }),

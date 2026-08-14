@@ -154,15 +154,6 @@ body {
   }
 }
 
-/* The chat composer footer keeps 8px of breathing room below the card but
-   overlaps it with the root-owned bottom inset instead of stacking on top of
-   it, so the gap to the screen edge is max(0.5rem, inset) rather than
-   0.5rem + inset. While the keyboard is open --sab is 0px and the full 8px
-   returns above the keyboard. */
-[data-chat-composer] {
-  padding-bottom: max(0.5rem - var(--sab), 0px);
-}
-
 .zero-sidebar-header {
   padding-top: 0.375rem;
 }
@@ -384,6 +375,38 @@ body {
 }
 .zero-thinking-enter {
   animation: zero-thinking-in 0.3s ease-out;
+}
+
+@keyframes zero-chat-skeleton-reveal {
+  to {
+    opacity: 1;
+  }
+}
+.zero-chat-skeleton-reveal {
+  /* Avoid flashing the skeleton when cached chat events resolve immediately. */
+  opacity: 0;
+  animation: zero-chat-skeleton-reveal 0s 100ms forwards;
+}
+
+/* Conversation locator: mark where a rail jump landed, then fade back out. */
+@keyframes zero-locator-landed {
+  from {
+    background-color: hsl(var(--primary) / 0.1);
+    box-shadow: 0 0 0 0.75rem hsl(var(--primary) / 0.1);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: 0 0 0 0.75rem transparent;
+  }
+}
+[data-locator-landed] {
+  border-radius: 0.75rem;
+  animation: zero-locator-landed 1.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-locator-landed] {
+    animation-duration: 0.01ms;
+  }
 }
 
 /* Thinking indicator: 3-block loader */

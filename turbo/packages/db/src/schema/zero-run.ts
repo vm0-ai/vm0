@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
-import { zeroWorkflowAutomations } from "./zero-workflow";
+import { workflowAutomations } from "./workflow";
 import { threadGoals } from "./thread-goal";
 
 /**
@@ -37,7 +37,7 @@ export const zeroRuns = pgTable(
     // Canonical run provenance for the Automation that started this run.
     workflowAutomationId: uuid("workflow_automation_id").references(
       (): AnyPgColumn => {
-        return zeroWorkflowAutomations.id;
+        return workflowAutomations.id;
       },
       { onDelete: "set null" },
     ),

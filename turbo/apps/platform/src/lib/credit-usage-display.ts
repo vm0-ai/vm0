@@ -27,6 +27,11 @@ const USAGE_DISPLAY_NAMES = {
       return $.usage.displayNames.peopleSearch;
     });
   },
+  seo(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.seo;
+    });
+  },
   translation(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.translation;
@@ -55,6 +60,7 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
     maps: USAGE_DISPLAY_NAMES.maps,
     "web-search": USAGE_DISPLAY_NAMES.webSearch,
     "people-search": USAGE_DISPLAY_NAMES.peopleSearch,
+    seo: USAGE_DISPLAY_NAMES.seo,
     finance: USAGE_DISPLAY_NAMES.finance,
     weather: USAGE_DISPLAY_NAMES.weather,
     "image-recognition": USAGE_DISPLAY_NAMES.imageRecognize,

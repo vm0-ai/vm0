@@ -3,6 +3,7 @@
 use crate::env::{GuestConfig, GuestConfigRaw};
 use crate::http::HttpClient;
 use crate::paths::GuestPaths;
+use crate::workload_containment::WorkloadContainment;
 
 /// Production runtime services for one guest-agent run.
 #[derive(Clone)]
@@ -10,6 +11,7 @@ pub struct GuestRuntime {
     pub config: GuestConfig,
     pub paths: GuestPaths,
     pub http: HttpClient,
+    pub workload_containment: Option<WorkloadContainment>,
 }
 
 impl GuestRuntime {
@@ -30,6 +32,7 @@ impl GuestRuntime {
     /// process-wide setup and consume runner-owned inputs before returning, so
     /// callers must not retry it in the same process.
     pub fn from_process_env() -> Result<Self, String> {
+        let workload_containment = WorkloadContainment::from_process_env()?;
         let raw = GuestConfigRaw::from_process_env();
         raw.require_run_payload_file()?;
         let paths = paths_from_raw(&raw)?;
@@ -43,6 +46,7 @@ impl GuestRuntime {
             config,
             paths,
             http,
+            workload_containment,
         })
     }
 }

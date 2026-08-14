@@ -139,13 +139,13 @@ ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
 # Optional: Google Weather and Air Quality APIs
 ZERO_WEATHER_GOOGLE_WEATHER_TOKEN=op://Development/google/ZERO_WEATHER_GOOGLE_WEATHER_TOKEN
 
-# Optional: Zero Scrape provider (Firecrawl)
+# Optional: Okou Scrape provider (Firecrawl)
 ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 
 # Optional: Zero Web Search provider (Perplexity)
 ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
 
-# Optional: Zero Finance provider (APIDojo via RapidAPI)
+# Optional: Okou Finance provider (APIDojo via RapidAPI)
 # 1Password: Development vault > APIDojo item > RAPIDAPI_KEY concealed field
 ZERO_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
 
