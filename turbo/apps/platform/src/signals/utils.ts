@@ -373,42 +373,6 @@ async function waitForFibonacciRetry(
 }
 
 /**
- * Retry one async operation with fibonacci backoff while `shouldRetry`
- * classifies its rejection as transient. Resolves on the first successful
- * attempt and rejects when the signal aborts or an error is not retryable.
- */
-export async function retryWithFibonacciBackoff<T>(
-  operation: () => Promise<T>,
-  shouldRetry: (error: unknown) => boolean,
-  signal: AbortSignal,
-): Promise<T> {
-  const completion: { result?: { readonly value: T } } = {};
-  await setLoop(
-    async (loopSignal) => {
-      const result = await settle(runRetriedLoad(operation), loopSignal);
-      if (!result.ok) {
-        throw result.error;
-      }
-      completion.result = result;
-      return true;
-    },
-    0,
-    signal,
-    {
-      shouldRetryError: shouldRetry,
-      logTransientErrors: false,
-    },
-  );
-
-  const completed = completion.result;
-  if (!completed) {
-    signal.throwIfAborted();
-    throw new Error("Retry loop ended before the operation completed");
-  }
-  return completed.value;
-}
-
-/**
  * Run `loopBody` in a loop with `interval` between iterations.
  * Transient (non-abort) errors trigger fibonacci backoff retries.
  * Resolves when `loopBody` returns `true` (done) or rejects on abort.

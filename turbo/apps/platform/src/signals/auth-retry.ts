@@ -243,6 +243,10 @@ export function createAuthRecovery(
       if (forceRefreshPromise) {
         return waitForAuthRecovery(forceRefreshPromise, signal);
       }
+      const session = clerk.session;
+      if (session !== undefined) {
+        return readSettledClerkToken(session, signal);
+      }
       const rootSignal = getRootSignal();
       const tokenSignal = signal
         ? AbortSignal.any([rootSignal, signal])
@@ -488,6 +492,14 @@ async function readToken(
   signal: AbortSignal,
 ): Promise<string | null> {
   const session = await waitForSettledClerkSession(clerk, signal);
+  return await readSettledClerkToken(session, signal);
+}
+
+async function readSettledClerkToken(
+  session: SettledClerkSession,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  signal?.throwIfAborted();
   if (session === null) {
     return null;
   }
