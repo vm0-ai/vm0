@@ -148,7 +148,7 @@ import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github
 import { zeroIntegrationsFeishuFileRoutes } from "./routes/zero-integrations-feishu-files";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
-import { zeroIntegrationsFeishuMessageRoutes } from "./routes/zero-integrations-feishu-message";
+import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
 import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-integrations-slack-upload-materialize";
@@ -361,7 +361,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsFeishuFileRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
-  ...zeroIntegrationsFeishuMessageRoutes,
+  ...integrationsFeishuMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
   ...zeroIntegrationsSlackUploadMaterializeRoutes,
