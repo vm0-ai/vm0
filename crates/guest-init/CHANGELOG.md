@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.164](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.163...guest-init-v0.16.164) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** let guest reclaim memory before workload oom ([#27206](https://github.com/vm0-ai/vm0/issues/27206)) ([d8bd1c7](https://github.com/vm0-ai/vm0/commit/d8bd1c7471c220f8595edcb64dde3e70840d4467))
+
 ## [0.16.163](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.162...guest-init-v0.16.163) (2026-08-14)
 
 ## [0.16.162](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.161...guest-init-v0.16.162) (2026-08-14)

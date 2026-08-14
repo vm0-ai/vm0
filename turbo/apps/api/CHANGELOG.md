@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.449.1](https://github.com/vm0-ai/vm0/compare/api-v1.449.0...api-v1.449.1) (2026-08-14)
+
+
+### Refactoring
+
+* **api:** retire zero_runs application writes ([#27219](https://github.com/vm0-ai/vm0/issues/27219)) ([622b46e](https://github.com/vm0-ai/vm0/commit/622b46e030a12c2556a7abe24d6e9985870182c1))
+* **browser:** neutralize rollout test filename ([#27236](https://github.com/vm0-ai/vm0/issues/27236)) ([b2acfd2](https://github.com/vm0-ai/vm0/commit/b2acfd2be5d7981d7e01aeede015c8526ba87ae6))
+* **feishu:** neutralize realtime service filename ([#27245](https://github.com/vm0-ai/vm0/issues/27245)) ([795a797](https://github.com/vm0-ai/vm0/commit/795a79724ff2e45cecfa94af1f7b3af89f4c458d))
+* **goals:** neutralize goal lock service filename ([#27240](https://github.com/vm0-ai/vm0/issues/27240)) ([9c4219f](https://github.com/vm0-ai/vm0/commit/9c4219f2506a53dad261cf9bc6b5159556748509))
+* **seo:** neutralize managed seo naming ([#27237](https://github.com/vm0-ai/vm0/issues/27237)) ([69ef69f](https://github.com/vm0-ai/vm0/commit/69ef69f4ef19fc6054ec0b8017a69707777d72fc)), closes [#26873](https://github.com/vm0-ai/vm0/issues/26873)
+* **slack:** neutralize channels source shell ([#27231](https://github.com/vm0-ai/vm0/issues/27231)) ([bb501a7](https://github.com/vm0-ai/vm0/commit/bb501a7c5dbecf280e1bde08a931bd0b60726c3d))
+* **teams:** neutralize file route shell naming ([#27241](https://github.com/vm0-ai/vm0/issues/27241)) ([823f59a](https://github.com/vm0-ai/vm0/commit/823f59a7a348f98ba610c2dcb9a511433107fe6a))
+* **usage-pack:** neutralize invitation rollout test shell naming ([#27238](https://github.com/vm0-ai/vm0/issues/27238)) ([9b9ffa3](https://github.com/vm0-ai/vm0/commit/9b9ffa3ff242a069e5aa09eb597fa53f5505e164))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.1
+    * @okouai/core bumped to 8.560.2
+    * @okouai/db bumped to 1.198.24
+    * @okouai/pi-agent-runtime bumped to 1.4.29
+
 ## [1.449.0](https://github.com/vm0-ai/vm0/compare/api-v1.448.0...api-v1.449.0) (2026-08-14)
 
 

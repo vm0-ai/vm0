@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.752.0](https://github.com/vm0-ai/vm0/compare/app-v0.751.0...app-v0.752.0) (2026-08-14)
+
+
+### Features
+
+* **platform:** make the plan step comparable and fix its title bar ([#27154](https://github.com/vm0-ai/vm0/issues/27154)) ([f73e454](https://github.com/vm0-ai/vm0/commit/f73e454b9cb70f07de28eda0081c7cab6c8b2524))
+
+
+### Refactoring
+
+* **slack:** neutralize channels source shell ([#27231](https://github.com/vm0-ai/vm0/issues/27231)) ([bb501a7](https://github.com/vm0-ai/vm0/commit/bb501a7c5dbecf280e1bde08a931bd0b60726c3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.1
+    * @okouai/core bumped to 8.560.2
+
 ## [0.751.0](https://github.com/vm0-ai/vm0/compare/app-v0.750.1...app-v0.751.0) (2026-08-14)
 
 
