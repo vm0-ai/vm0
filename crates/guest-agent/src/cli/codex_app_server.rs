@@ -29,8 +29,10 @@ use tokio::task::JoinHandle;
 use crate::error::AgentError;
 
 use super::{
-    LOG_TAG, child_env, child_exit_notifier::ChildExitNotifier, diagnostics, exec_boundary,
-    line_reader, process_group::ChildProcessGroup,
+    LOG_TAG, child_env,
+    child_exit_notifier::{ChildExitNotifier, wait_for_child_exit_without_reaping},
+    diagnostics, exec_boundary, line_reader,
+    process_group::ChildProcessGroup,
 };
 
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -54,6 +56,7 @@ pub struct CodexAppServerConfig {
     config_overrides: Vec<String>,
     current_dir: Option<PathBuf>,
     opt_out_notification_methods: Vec<String>,
+    pidfd_exit_notification: bool,
     workload_containment: Option<crate::workload_containment::WorkloadContainment>,
 }
 
@@ -79,6 +82,7 @@ impl CodexAppServerConfig {
             config_overrides: Vec::new(),
             current_dir: None,
             opt_out_notification_methods: Vec::new(),
+            pidfd_exit_notification: true,
             workload_containment: None,
         }
     }
@@ -152,6 +156,16 @@ impl CodexAppServerConfig {
         S: Into<String>,
     {
         self.opt_out_notification_methods = methods.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Disable the preferred pidfd exit observer for this client.
+    ///
+    /// This is an integration-test seam for exercising the non-reaping
+    /// fallback observer. Production callers should retain the default.
+    #[doc(hidden)]
+    pub fn without_pidfd_exit_notification(mut self) -> Self {
+        self.pidfd_exit_notification = false;
         self
     }
 }
@@ -398,15 +412,19 @@ impl CodexAppServerClient {
         })?;
         let stderr_handle =
             runtime.spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
-        let exit_notifier = match ChildExitNotifier::open(&child) {
-            Ok(exit_notifier) => Some(exit_notifier),
-            Err(error) => {
-                log_warn!(
-                    LOG_TAG,
-                    "Codex app-server pidfd exit notification unavailable; natural exit cleanup will use wait-only fallback: {error}"
-                );
-                None
+        let exit_notifier = if config.pidfd_exit_notification {
+            match ChildExitNotifier::open(&child) {
+                Ok(exit_notifier) => Some(exit_notifier),
+                Err(error) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Codex app-server pidfd exit notification unavailable; natural exit cleanup will use non-reaping wait fallback: {error}"
+                    );
+                    None
+                }
             }
+        } else {
+            None
         };
 
         Ok(Self {
@@ -781,6 +799,7 @@ impl CodexAppServerClient {
     ) -> Result<IncomingMessage, CodexAppServerError> {
         loop {
             let has_exit_notifier = self.exit_notifier.is_some();
+            let fallback_child_id = self.child.as_ref().and_then(Child::id);
             tokio::select! {
                 biased;
                 line = {
@@ -817,47 +836,47 @@ impl CodexAppServerClient {
                     if let Err(error) = exit {
                         log_warn!(
                             LOG_TAG,
-                            "Codex app-server pidfd exit notification failed; natural exit cleanup will use wait-only fallback: {error}"
+                            "Codex app-server pidfd exit notification failed; natural exit cleanup will use non-reaping wait fallback: {error}"
                         );
                         self.exit_notifier = None;
                         continue;
                     }
-                    self.sigkill_process_group();
-                    let Some(child) = self.child.as_mut() else {
-                        return Err(self.poison_stream("app-server child disappeared"));
-                    };
-                    let result = child.wait().await;
-                    let status = match self.finish_child_wait(result) {
-                        Ok(status) => status,
-                        Err(error) => return Err(self.poison_error(error)),
-                    };
-                    let error = CodexAppServerError::ChildExited {
-                        method: pending_method.to_string(),
-                        status: status.to_string(),
-                    };
-                    return Err(self.poison_error(error));
+                    return Err(self.finish_observed_child_exit(pending_method).await);
                 }
-                result = async {
-                    match self.child.as_mut() {
-                        Some(child) => Some(child.wait().await),
+                exit = async {
+                    match fallback_child_id {
+                        Some(child_id) => {
+                            Some(wait_for_child_exit_without_reaping(child_id).await)
+                        }
                         None => None,
                     }
                 }, if !has_exit_notifier && self.child.is_some() => {
-                    let Some(result) = result else {
-                        return Err(self.poison_stream("app-server child disappeared"));
+                    let Some(exit) = exit else {
+                        return Err(self.poison_stream("app-server child PID disappeared"));
                     };
-                    let status = match self.finish_child_wait(result) {
-                        Ok(status) => status,
-                        Err(error) => return Err(self.poison_error(error)),
-                    };
-                    let error = CodexAppServerError::ChildExited {
-                        method: pending_method.to_string(),
-                        status: status.to_string(),
-                    };
-                    return Err(self.poison_error(error));
+                    if let Err(error) = exit {
+                        return Err(self.poison_error(CodexAppServerError::Io(error)));
+                    }
+                    return Err(self.finish_observed_child_exit(pending_method).await);
                 }
             }
         }
+    }
+
+    async fn finish_observed_child_exit(&mut self, pending_method: &str) -> CodexAppServerError {
+        self.sigkill_process_group();
+        let Some(child) = self.child.as_mut() else {
+            return self.poison_stream("app-server child disappeared");
+        };
+        let result = child.wait().await;
+        let status = match self.finish_child_wait(result) {
+            Ok(status) => status,
+            Err(error) => return self.poison_error(error),
+        };
+        self.poison_error(CodexAppServerError::ChildExited {
+            method: pending_method.to_string(),
+            status: status.to_string(),
+        })
     }
 
     async fn reject_server_request(
