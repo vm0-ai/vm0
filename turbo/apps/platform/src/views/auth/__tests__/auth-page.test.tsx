@@ -420,6 +420,9 @@ describe("app auth pages", () => {
       "data-clerk-sign-in-email-code-subtitle",
       "to continue to Okou",
     );
+    expect(screen.getByTestId("clerk-provider-config")).not.toHaveAttribute(
+      "data-clerk-touch-session",
+    );
   });
 
   it("preserves Okou auth intent when Clerk moves the redirect into the hash", async () => {

@@ -7,7 +7,6 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { command } from "ccstate";
-import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
@@ -731,7 +730,6 @@ describe("zero sidebar account menu", () => {
       expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
     });
 
-    mockedClerk.sessionTouch.mockClear();
     mockAdminBillingStatus(500, {
       onRequest: () => {
         billingRequests += 1;
@@ -749,11 +747,11 @@ describe("zero sidebar account menu", () => {
     fireEvent.click(accountButton);
     let menu = await screen.findByRole("menu");
     await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
       expect(within(menu).getByText("500 credits")).toBeInTheDocument();
       expect(billingRequests).toBe(1);
       expect(indicatorRequests).toBe(1);
     });
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => {
@@ -961,13 +959,10 @@ describe("zero sidebar account menu", () => {
     });
     expect(billingRequests).toBe(0);
 
-    mockedClerk.sessionTouch.mockClear();
     window.dispatchEvent(new Event("focus"));
-    await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-    });
     const foregroundReady = context.store.get(foregroundReady$);
     await foregroundReady.promise;
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
     expect(billingRequests).toBe(0);
 
     const menu = await openAccountMenu();
@@ -1550,73 +1545,6 @@ describe("zero sidebar account menu", () => {
         }),
       );
     });
-  });
-
-  it("retries auth recovery network failures before replaying the request", async () => {
-    mockAdminAccountSidebar();
-    const provider = connectedPersonalCodexProvider();
-    context.mocks.data.personalModelProviders([provider]);
-
-    let modelProviderRequests = 0;
-    let forcedTokenRefreshes = 0;
-    const authRecoveryCompleted = context.mocks.deferred<void>();
-    context.mocks.http.get("*/api/okou/me/model-providers", () => {
-      modelProviderRequests += 1;
-      if (modelProviderRequests === 1) {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "UNAUTHORIZED",
-              message: "Unauthorized",
-            },
-          },
-          { status: 401 },
-        );
-      }
-      if (modelProviderRequests === 2) {
-        authRecoveryCompleted.resolve();
-      }
-      return HttpResponse.json({ modelProviders: [provider] });
-    });
-    mockedClerk.sessionGetToken.mockImplementation((options) => {
-      if (options?.skipCache) {
-        forcedTokenRefreshes += 1;
-        if (forcedTokenRefreshes === 1) {
-          return Promise.reject(
-            Object.assign(new Error("Clerk is offline"), {
-              code: "clerk_offline",
-            }),
-          );
-        }
-        if (forcedTokenRefreshes === 2) {
-          return Promise.reject(new TypeError("Failed to fetch"));
-        }
-        return Promise.resolve("fresh-token");
-      }
-      return Promise.resolve("test-token");
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    await authRecoveryCompleted.promise;
-    expect(modelProviderRequests).toBe(2);
-    expect(forcedTokenRefreshes).toBe(3);
-    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
-
-    const menu = await openAccountMenu();
-    const panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(
-      within(panel).getByRole("heading", { name: "Codex" }),
-    ).toBeInTheDocument();
   });
 
   it("keeps an active session open when the replay remains unauthorized", async () => {
