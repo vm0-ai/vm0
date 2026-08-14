@@ -19,8 +19,8 @@ import { timestampWithoutTimeZone } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { tryLockChatEventRetention } from "./chat-event-retention-lock.service";
 
-export const CHAT_EVENT_RETENTION_DAYS = 30;
-export const CHAT_EVENT_RETENTION_DELETE_LIMIT = 500;
+const CHAT_EVENT_RETENTION_DAYS = 30;
+const CHAT_EVENT_RETENTION_DELETE_LIMIT = 500;
 const CHAT_EVENT_RETENTION_ROOT_SCAN_LIMIT = 1000;
 const CHAT_EVENT_RETENTION_GROUP_LIMIT = CHAT_EVENT_RETENTION_DELETE_LIMIT + 1;
 
@@ -44,7 +44,7 @@ export interface ChatEventRetentionStats {
   readonly durationMs: number;
 }
 
-export type ChatEventRetentionScope =
+type ChatEventRetentionScope =
   | { readonly kind: "global" }
   | { readonly kind: "fixtures"; readonly chatThreadIds: readonly string[] };
 
