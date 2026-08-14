@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroVoiceIoSttContract } from "@okouai/api-contracts/contracts/zero-voice-io-stt";
+import { voiceIoSttContract } from "@okouai/api-contracts/contracts/voice-io-stt";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -16,9 +16,9 @@ import {
   recordSttUsage$,
   sttDailyPolicy$,
   transcribeBytePlusVoiceInputFile,
-} from "../services/zero-voice-io-post.service";
+} from "../services/voice-io-post.service";
 
-const L = logger("ZeroVoiceIoStt");
+const L = logger("VoiceIoStt");
 const MAX_CLIENT_DIAGNOSTICS_LOG_LENGTH = 1000;
 
 function logSttUploadInspection(
@@ -147,9 +147,9 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroVoiceIoSttRoutes: readonly RouteEntry[] = [
+export const voiceIoSttRoutes: readonly RouteEntry[] = [
   {
-    route: zeroVoiceIoSttContract.post,
+    route: voiceIoSttContract.post,
     handler: authRoute(
       {
         requireOrganization: true,

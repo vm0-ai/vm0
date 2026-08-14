@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
 import {
-  zeroVoiceIoQuotaContract,
+  voiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "@okouai/api-contracts/contracts/zero-voice-io-quota";
+} from "@okouai/api-contracts/contracts/voice-io-quota";
 import { fetch$ } from "../fetch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { isOrgAdmin$ } from "../org.ts";
@@ -92,7 +92,7 @@ export const audioInputQuota$ = computed(
   async (get): Promise<AudioInputQuotaResponse> => {
     get(audioInputQuotaReload$);
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceIoQuotaContract);
+    const client = createClient(voiceIoQuotaContract);
     const result = await accept(client.get(), [200]);
     return result.body;
   },

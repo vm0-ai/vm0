@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { AudioInputQuotaResponse } from "@okouai/api-contracts/contracts/zero-voice-io-quota";
+import type { AudioInputQuotaResponse } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { userBehaviorCount } from "@okouai/db/schema/user-behavior-count";
 import { and, eq, inArray } from "drizzle-orm";
 

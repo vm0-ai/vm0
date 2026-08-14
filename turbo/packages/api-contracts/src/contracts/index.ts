@@ -1703,26 +1703,26 @@ export {
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
 export {
-  zeroVoiceIoQuotaContract,
+  voiceIoQuotaContract,
   audioInputQuotaResponseSchema,
-  type ZeroVoiceIoQuotaContract,
+  type VoiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "./zero-voice-io-quota";
+} from "./voice-io-quota";
 export {
-  zeroVoiceIoSpeechContract,
-  zeroVoiceIoSpeechRequestSchema,
-  zeroVoiceIoSpeechResponseSchema,
-  type ZeroVoiceIoSpeechContract,
-  type ZeroVoiceIoSpeechRequest,
-  type ZeroVoiceIoSpeechResponse,
-} from "./zero-voice-io-speech";
+  voiceIoSpeechContract,
+  voiceIoSpeechRequestSchema,
+  voiceIoSpeechResponseSchema,
+  type VoiceIoSpeechContract,
+  type VoiceIoSpeechRequest,
+  type VoiceIoSpeechResponse,
+} from "./voice-io-speech";
 export {
-  zeroVoiceIoSttContract,
-  zeroVoiceIoSttResponseSchema,
-  zeroVoiceIoSttQuotaErrorSchema,
-  type ZeroVoiceIoSttContract,
-  type ZeroVoiceIoSttResponse,
-} from "./zero-voice-io-stt";
+  voiceIoSttContract,
+  voiceIoSttResponseSchema,
+  voiceIoSttQuotaErrorSchema,
+  type VoiceIoSttContract,
+  type VoiceIoSttResponse,
+} from "./voice-io-stt";
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,
