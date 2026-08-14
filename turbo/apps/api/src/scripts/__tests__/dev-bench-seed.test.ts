@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 import { resolveChatEventRecommendedFollowups } from "@okouai/api-contracts/contracts/chat-threads";
 
-import { buildProfileRows, DEV_BENCH_THREAD_PROFILES } from "../dev-bench-seed";
+import {
+  buildProfileRows,
+  DEV_BENCH_THREAD_PROFILES,
+  type BuiltProfileRows,
+} from "../dev-bench-seed";
 
 const EXPECTED_PROFILE_SHAPES = {
   "feature-switch-digest": {
@@ -42,6 +46,30 @@ function countWhere<T>(
   return rows.filter(predicate).length;
 }
 
+type ProfileRunMetadataRow =
+  | BuiltProfileRows["runRows"][number]
+  | BuiltProfileRows["zeroRunRows"][number];
+
+function runMetadata(row: ProfileRunMetadataRow) {
+  return {
+    triggerSource: row.triggerSource,
+    autonomyBudget: row.autonomyBudget,
+    workflowAutomationId: row.workflowAutomationId,
+    goalId: row.goalId,
+    modelProvider: row.modelProvider,
+    modelProviderId: row.modelProviderId,
+    modelProviderCredentialScope: row.modelProviderCredentialScope,
+    selectedModel: row.selectedModel,
+    codexServiceTier: row.codexServiceTier,
+    selectedVideoModel: row.selectedVideoModel,
+    chatThreadId: row.chatThreadId,
+    apiStartedAt: row.apiStartedAt,
+    firstAssistantEventAcknowledgedAt: row.firstAssistantEventAcknowledgedAt,
+    summary: row.summary,
+    triggerBrief: row.triggerBrief,
+  };
+}
+
 describe("dev bench seed profile rows", () => {
   it("preserves the production-shaped profile invariants", () => {
     for (const profile of DEV_BENCH_THREAD_PROFILES) {
@@ -63,6 +91,16 @@ describe("dev bench seed profile rows", () => {
 
       expect(rows.runRows).toHaveLength(expected.runs);
       expect(rows.zeroRunRows).toHaveLength(expected.runs);
+      const runRowsById = new Map(
+        rows.runRows.map((row) => {
+          return [row.id, row] as const;
+        }),
+      );
+      for (const zeroRunRow of rows.zeroRunRows) {
+        const runRow = runRowsById.get(zeroRunRow.id);
+        expect(runRow).toBeDefined();
+        expect(runMetadata(runRow!)).toStrictEqual(runMetadata(zeroRunRow));
+      }
       expect(rows.eventRows).toHaveLength(expected.events);
       expect(
         rows.eventRows.some((row) => {

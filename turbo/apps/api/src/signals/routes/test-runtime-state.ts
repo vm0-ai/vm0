@@ -49,9 +49,11 @@ import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
+  type RunMetadataValues,
   writeRunMetadata,
   writeRunMetadataInTransaction,
 } from "../services/agent-run-metadata-write.service";
+import { saveRunSummary } from "../services/run-summary.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -109,6 +111,97 @@ function postgresErrorCode(error: unknown): string | null {
     current = current.cause;
   }
   return null;
+}
+
+type StoredRunMetadata = Pick<
+  typeof agentRuns.$inferSelect,
+  keyof RunMetadataValues
+>;
+
+function serializeRunMetadata(row: StoredRunMetadata) {
+  return {
+    trigger_source: row.triggerSource,
+    autonomy_budget: row.autonomyBudget,
+    workflow_automation_id: row.workflowAutomationId,
+    goal_id: row.goalId,
+    model_provider: row.modelProvider,
+    model_provider_id: row.modelProviderId,
+    model_provider_credential_scope: row.modelProviderCredentialScope,
+    selected_model: row.selectedModel,
+    codex_service_tier: row.codexServiceTier,
+    selected_video_model: row.selectedVideoModel,
+    chat_thread_id: row.chatThreadId,
+    api_started_at: row.apiStartedAt?.toISOString() ?? null,
+    first_assistant_event_acknowledged_at:
+      row.firstAssistantEventAcknowledgedAt?.toISOString() ?? null,
+    summary: row.summary,
+    trigger_brief: row.triggerBrief,
+  };
+}
+
+type RunMetadataReadFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-run-metadata-pair" }
+>;
+
+function isRunMetadataReadFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is RunMetadataReadFixtureAction {
+  return body.action === "read-run-metadata-pair";
+}
+
+async function runMetadataReadFixtureActionResponse(
+  db: Db,
+  body: RunMetadataReadFixtureAction,
+  signal: AbortSignal,
+) {
+  const [agentRows, zeroRows] = await Promise.all([
+    db.select().from(agentRuns).where(eq(agentRuns.id, body.run_id)).limit(1),
+    db.select().from(zeroRuns).where(eq(zeroRuns.id, body.run_id)).limit(1),
+  ]);
+  signal.throwIfAborted();
+  const agentRun = agentRows[0];
+  const zeroRun = zeroRows[0];
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      run_metadata_pair: {
+        agent_run: agentRun ? serializeRunMetadata(agentRun) : null,
+        zero_run: zeroRun ? serializeRunMetadata(zeroRun) : null,
+      },
+    },
+  };
+}
+
+type RunSummaryFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "save-run-summary" }
+>;
+
+function isRunSummaryFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is RunSummaryFixtureAction {
+  return body.action === "save-run-summary";
+}
+
+async function runSummaryFixtureActionResponse(
+  db: Db,
+  body: RunSummaryFixtureAction,
+  signal: AbortSignal,
+) {
+  await saveRunSummary(
+    db,
+    {
+      runId: body.run_id,
+      triggerSource: body.trigger_source,
+      prompt: body.prompt,
+      resultText: body.result_text,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
 }
 
 function createOrgAdmissionLockGate(signal: AbortSignal): OrgAdmissionLockGate {
@@ -1552,6 +1645,12 @@ const postRuntimeStateAction$ = command(
     }
     if (isChatEventFixtureAction(body)) {
       return await chatEventFixtureActionResponse(db, body, signal);
+    }
+    if (isRunMetadataReadFixtureAction(body)) {
+      return await runMetadataReadFixtureActionResponse(db, body, signal);
+    }
+    if (isRunSummaryFixtureAction(body)) {
+      return await runSummaryFixtureActionResponse(db, body, signal);
     }
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
