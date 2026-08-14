@@ -17,6 +17,8 @@ import {
   DatabaseBackup,
   FlaskConical,
   Coins,
+  Cloud,
+  CloudOff,
 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
@@ -29,6 +31,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  cn,
 } from "@okouai/ui";
 import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
 import {
@@ -69,6 +72,10 @@ import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.ts
 import { UserAvatar } from "../components/avatar.tsx";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
+import {
+  zeroDebugRealtimeIndicator$,
+  type ZeroDebugRealtimeIndicator,
+} from "../../signals/zero-page/realtime-status.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -160,7 +167,59 @@ function accountDisplayFrom(
   };
 }
 
-function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
+function RealtimeStatusIcon({
+  status,
+}: {
+  status: Exclude<ZeroDebugRealtimeIndicator, null>;
+}) {
+  const label =
+    status === "disconnected"
+      ? i18n.t(($) => {
+          return $.global.realtime.disconnected;
+        })
+      : i18n.t(($) => {
+          return $.global.realtime.reconnecting;
+        });
+
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "relative mr-1 flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground",
+        status === "reconnecting"
+          ? "zero-realtime-status-reconnecting"
+          : "opacity-80",
+      )}
+    >
+      {status === "disconnected" ? (
+        <CloudOff size={14} strokeWidth={1.75} aria-hidden="true" />
+      ) : (
+        <>
+          <Cloud
+            size={14}
+            strokeWidth={1.75}
+            className="absolute opacity-40"
+            aria-hidden="true"
+          />
+          <Cloud
+            size={14}
+            strokeWidth={1.75}
+            className="zero-realtime-cloud-flow"
+            aria-hidden="true"
+          />
+        </>
+      )}
+    </span>
+  );
+}
+
+function renderAccountTrigger(
+  display: AccountDisplay,
+  collapsed: boolean,
+  realtimeIndicator: ZeroDebugRealtimeIndicator,
+) {
   if (collapsed) {
     return (
       <Button
@@ -194,6 +253,9 @@ function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
       <span className="min-w-0 flex-1 text-left text-sm font-medium leading-tight truncate">
         {display.name}
       </span>
+      {realtimeIndicator !== null ? (
+        <RealtimeStatusIcon status={realtimeIndicator} />
+      ) : null}
     </button>
   );
 }
@@ -798,6 +860,7 @@ export function AccountDropdown({
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const usagePackPlansEnabled =
     features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
+  const realtimeIndicator = useGet(zeroDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setPendingSettingsSection = useSet(
     setPendingAccountMenuSettingsSection$,
@@ -942,7 +1005,7 @@ export function AccountDropdown({
     <>
       <DropdownMenu onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
-          {renderAccountTrigger(accountDisplay, collapsed)}
+          {renderAccountTrigger(accountDisplay, collapsed, realtimeIndicator)}
         </DropdownMenuTrigger>
 
         <DropdownMenuContent
