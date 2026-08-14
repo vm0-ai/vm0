@@ -205,10 +205,9 @@ const phoneWriteAuth = {
   requiredCapability: "phone:write",
 } as const;
 
-export const zeroIntegrationsPhoneUploadCompleteRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: integrationsPhoneUploadCompleteContract.complete,
-      handler: authRoute(phoneWriteAuth, complete$),
-    },
-  ];
+export const integrationsPhoneUploadCompleteRoutes: readonly RouteEntry[] = [
+  {
+    route: integrationsPhoneUploadCompleteContract.complete,
+    handler: authRoute(phoneWriteAuth, complete$),
+  },
+];
