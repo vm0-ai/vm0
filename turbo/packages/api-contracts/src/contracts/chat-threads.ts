@@ -871,6 +871,11 @@ const chatThreadCreateBodySchema = z.object({
    * run's chat thread, use `priority` to enable it, or null for standard.
    */
   serviceTier: chatThreadServiceTierSchema.nullable().optional(),
+  /**
+   * Video model for the new thread. Omit it to inherit the calling run's chat
+   * thread video model.
+   */
+  videoModel: videoModelIdSchema.optional(),
   title: z.string().optional(),
 });
 

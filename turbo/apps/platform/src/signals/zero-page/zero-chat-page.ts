@@ -1,4 +1,8 @@
 import { command, computed, state } from "ccstate";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import {
   codexFastModeEnabled$,
@@ -55,6 +59,10 @@ export const suggestedPrompts$ = computed(async (get) => {
 // current model-first default while "user explicitly picked inherit" stays null.
 const internalChatPageUserOverride$ = state<
   { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
+>({ kind: "unset" });
+
+const internalChatPageVideoModelOverride$ = state<
+  { kind: "unset" } | { kind: "set"; value: VideoModel | null }
 >({ kind: "unset" });
 
 export const chatPageModelSelection$ = computed(
@@ -121,8 +129,31 @@ export const setChatPageModelSelection$ = command(
   },
 );
 
+export const chatPageVideoModelSelection$ = computed(
+  async (get): Promise<VideoModel | null> => {
+    const user = get(internalChatPageVideoModelOverride$);
+    if (user.kind === "set") {
+      return user.value;
+    }
+    const userPreference = await get(userModelPreference$);
+    return userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+  },
+);
+
+export const setChatPageVideoModelSelection$ = command(
+  ({ set }, value: VideoModel | null) => {
+    set(internalChatPageVideoModelOverride$, { kind: "set", value });
+  },
+);
+
 export const resetChatPageModelSelection$ = command(({ get, set }) => {
   if (get(internalChatPageUserOverride$).kind === "set") {
     set(internalChatPageUserOverride$, { kind: "unset" });
+  }
+});
+
+export const resetChatPageVideoModelSelection$ = command(({ get, set }) => {
+  if (get(internalChatPageVideoModelOverride$).kind === "set") {
+    set(internalChatPageVideoModelOverride$, { kind: "unset" });
   }
 });

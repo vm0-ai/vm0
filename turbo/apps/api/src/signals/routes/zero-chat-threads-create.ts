@@ -34,8 +34,9 @@ function modelFirstSelection(selectedModel: string) {
 }
 
 /**
- * Model and priority a caller inherits when it omits them. The model belongs to
- * the run that owns its token; priority belongs to that run's chat thread.
+ * Model, priority, and video model a caller inherits when it omits them. The
+ * model belongs to the run that owns its token; the other settings belong to
+ * that run's chat thread.
  */
 async function inheritedRunChatSettings(
   db: Db,
@@ -43,15 +44,21 @@ async function inheritedRunChatSettings(
 ): Promise<{
   readonly selectedModel: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
+  readonly selectedVideoModel: string | null;
 }> {
   if (!runId) {
-    return { selectedModel: null, codexServiceTier: null };
+    return {
+      selectedModel: null,
+      codexServiceTier: null,
+      selectedVideoModel: null,
+    };
   }
 
   const [run] = await db
     .select({
       selectedModel: zeroRuns.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,
+      selectedVideoModel: chatThreads.selectedVideoModel,
     })
     .from(zeroRuns)
     .leftJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
@@ -60,6 +67,7 @@ async function inheritedRunChatSettings(
   return {
     selectedModel: run?.selectedModel ?? null,
     codexServiceTier: run?.codexServiceTier ?? null,
+    selectedVideoModel: run?.selectedVideoModel ?? null,
   };
 }
 
@@ -99,6 +107,8 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       : body.data.serviceTier === "priority"
         ? "fast"
         : null;
+  const selectedVideoModel =
+    body.data.videoModel ?? inherited.selectedVideoModel;
 
   const pin = await resolveModelSelectionPin({
     db: writeDb,
@@ -133,6 +143,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       eventId: body.data.eventId,
       ...chatThreadModelPinColumns(pin),
       codexServiceTier,
+      selectedVideoModel,
     },
     signal,
   );

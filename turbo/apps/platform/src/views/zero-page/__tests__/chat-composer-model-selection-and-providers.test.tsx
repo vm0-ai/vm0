@@ -3337,6 +3337,134 @@ describe("chat composer video model", () => {
     return { bodies };
   }
 
+  it("uses the live member default for an untouched new chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    const initialPreference: UserModelPreferenceResponse = {
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    };
+    let createdVideoModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference(initialPreference);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdVideoModel = body.videoModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+    await expect(findVideoPanelButton("MiniMax H3")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    context.mocks.data.userModelPreference({
+      ...initialPreference,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-08-14T00:01:00Z",
+    });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultVideoModel"],
+      });
+    });
+    await expect(findVideoPanelButton("Veo 3.1 fast")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.keyboard("{Escape}");
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use my current video default",
+    );
+
+    await waitFor(() => {
+      expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
+    });
+  });
+
+  it("writes a landing selection to the member default and new thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: {
+      selectedModel: string | null;
+      serviceTier: ChatThreadServiceTier | null;
+      selectedVideoModel?: string | null;
+    }[] = [];
+    let createdVideoModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-14T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdVideoModel = body.videoModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          selectedModel: null,
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      ]);
+    });
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Pin my selected video model",
+    );
+
+    await waitFor(() => {
+      expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
+    });
+  });
+
   it("pins a video model on the thread from the model picker", async () => {
     const user = userEvent.setup({ delay: null });
     const { bodies } = mockVideoModelThread(null);

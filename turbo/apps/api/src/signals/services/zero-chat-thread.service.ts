@@ -637,6 +637,7 @@ export const createChatThread$ = command(
       readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
       readonly selectedModel: string | null;
       readonly codexServiceTier: CodexServiceTier | null;
+      readonly selectedVideoModel: string | null;
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -657,6 +658,7 @@ export const createChatThread$ = command(
           modelProviderCredentialScope: args.modelProviderCredentialScope,
           selectedModel: args.selectedModel,
           codexServiceTier: args.codexServiceTier,
+          selectedVideoModel: args.selectedVideoModel,
         })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!createdThread) {
@@ -674,6 +676,7 @@ export const createChatThread$ = command(
         serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: args.selectedVideoModel,
         createdAt: createdThread.createdAt,
       });
       return createdThread;

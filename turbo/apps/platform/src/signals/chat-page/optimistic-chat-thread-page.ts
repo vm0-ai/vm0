@@ -1,6 +1,10 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
+import {
   chatThreadModelSelectionContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
@@ -77,6 +81,7 @@ interface SendNewThreadMessageRequest {
   editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
+  videoModel?: VideoModel;
   routeSearchParams?: URLSearchParams;
   forward?: ChatForwardContext;
   onOptimisticSend?: () => void;
@@ -320,6 +325,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly serviceTier: "priority" | null;
       readonly computerUseHostId: string | null;
       readonly cloudBrowserEnabled: boolean;
+      readonly selectedVideoModel: VideoModel | null;
     },
     signal: AbortSignal,
   ): void => {
@@ -339,7 +345,7 @@ const mintOptimisticThreadWithEvent$ = command(
       serviceTier: args.serviceTier,
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
-      selectedVideoModel: null,
+      selectedVideoModel: args.selectedVideoModel,
       createdAt,
     } satisfies OptimisticChatThreadEvent);
   },
@@ -353,6 +359,7 @@ async function createChatThread(
     readonly clientThreadId: string;
     readonly eventId: string;
     readonly modelSelection: ModelProviderSelection;
+    readonly videoModel?: VideoModel;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -366,6 +373,7 @@ async function createChatThread(
         model: args.modelSelection.selectedModel,
         serviceTier:
           args.modelSelection.codexServiceTier === "fast" ? "priority" : null,
+        ...(args.videoModel ? { videoModel: args.videoModel } : {}),
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal },
@@ -417,6 +425,7 @@ const startNewChatThreadCreate$ = command(
     if (!modelSelection) {
       throw new Error("A model selection is required");
     }
+    const videoModel = userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
     await set(
       mintOptimisticThreadWithEvent$,
       {
@@ -428,6 +437,7 @@ const startNewChatThreadCreate$ = command(
           modelSelection.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: videoModel,
       },
       signal,
     );
@@ -443,6 +453,7 @@ const startNewChatThreadCreate$ = command(
           clientThreadId: threadId,
           eventId,
           modelSelection,
+          videoModel,
         },
         signal,
       );
@@ -546,6 +557,7 @@ const sendNewThreadMessage$ = command(
             : null,
         computerUseHostId: computerUseHostId ?? null,
         cloudBrowserEnabled: cloudBrowserEnabled ?? false,
+        selectedVideoModel: request.videoModel ?? null,
       },
       signal,
     );
@@ -565,6 +577,7 @@ const sendNewThreadMessage$ = command(
           clientThreadId: threadId,
           eventId: chatThreadEventId,
           modelSelection: resolvedModelSelection,
+          videoModel: request.videoModel,
         },
         signal,
       );
