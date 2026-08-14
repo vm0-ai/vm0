@@ -10944,6 +10944,18 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         previous_attributes: {},
       },
     };
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: scheduleId,
+      end_behavior: "release",
+      phases: [
+        { start_date: periodStartUnix, end_date: periodEndUnix },
+        {
+          start_date: periodEndUnix,
+          end_date: periodEndUnix + 2_592_000,
+          items: [{ price: TEST_PRICE_TEAM, quantity: 1 }],
+        },
+      ],
+    });
     context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(
       scheduledItemEvent,
     );
@@ -11006,7 +11018,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     ).toHaveBeenCalledOnce();
     expect(
       context.mocks.stripe.subscriptionSchedules.retrieve,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledOnce();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     status = await readBillingStatus(fixture);
     expect(status.cancelAtPeriodEnd).toBeFalsy();
