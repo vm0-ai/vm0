@@ -66,6 +66,7 @@ import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { assistantName$ } from "../../signals/branding.ts";
 import { ConnectorHelpText } from "./components/settings/connector-help-text.tsx";
 import {
   routeChatActionCallback$,
@@ -619,6 +620,7 @@ function DirectedConnectCardContent({
 
 function DirectedConnectCard() {
   const connectorSlug = useDirectedConnectConnectorSlug();
+  const assistantName = useGet(assistantName$);
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
@@ -645,7 +647,7 @@ function DirectedConnectCard() {
     agentNameLoadable.data.agentId === agentId &&
     agentNameLoadable.data.displayName
       ? agentNameLoadable.data.displayName
-      : "Zero";
+      : assistantName;
   const isConnecting =
     pollingAuthCodeSlug === connectorSlug ||
     pollingDeviceAuthSlug === connectorSlug ||
@@ -760,6 +762,7 @@ function CustomDirectedConnectCard({
 }: {
   readonly connectorSlug: CustomConnectorSlug;
 }) {
+  const assistantName = useGet(assistantName$);
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const connectorsLoadable = useLastLoadable(customConnectors$);
@@ -791,7 +794,7 @@ function CustomDirectedConnectCard({
     agentNameLoadable.data.agentId === agentId &&
     agentNameLoadable.data.displayName
       ? agentNameLoadable.data.displayName
-      : "Zero";
+      : assistantName;
   const handleConnectSuccess = async () => {
     if (actionCallback.callbackPrompt && actionCallback.threadId && agentId) {
       await runCallback(

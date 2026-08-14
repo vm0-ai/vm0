@@ -61,7 +61,7 @@
       "downloadRawData": "生データをダウンロード",
       "errorGuidance": {
         "computerUseAuthorizationRequired": {
-          "guidance": "委任されたコンピューターの使用認証リンクを要求し、ユーザーにこのチャットの Zero Desktop ホストまたは Slack スレッドを選択してから、新しい実行を開始するように依頼します。既存の実行トークンをそのままアップグレードすることはできません。",
+          "guidance": "委任されたコンピューターの使用認証リンクを要求し、ユーザーにこのチャットの {{assistantName}} Desktop ホストまたは Slack スレッドを選択してから、新しい実行を開始するように依頼します。既存の実行トークンをそのままアップグレードすることはできません。",
           "title": "コンピュータの使用許可が必要です"
         },
         "concurrentRunLimitReached": {
@@ -351,27 +351,27 @@
     "browserUpgrade": {
       "browser": {
         "action": "ブラウザを更新する",
-        "description": "Zero は、現在のブラウザのバージョンをサポートしていません。続行するにはブラウザを更新してください。",
+        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するにはブラウザを更新してください。",
         "title": "続行するにはブラウザを更新してください"
       },
       "chrome": {
         "action": "Chrome を更新します",
-        "description": "Zero は、現在のブラウザのバージョンをサポートしていません。続行するには、Chrome を更新してください。",
+        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chrome を更新してください。",
         "title": "続行するには Chrome を更新してください"
       },
       "chromium": {
         "action": "Chromium を更新します",
-        "description": "Zero は、現在のブラウザのバージョンをサポートしていません。続行するには、Chromium を更新してください。",
+        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chromium を更新してください。",
         "title": "続行するには Chromium を更新してください"
       },
       "ios": {
         "action": "iOS を更新します",
-        "description": "Zero は、現在のブラウザのバージョンをサポートしていません。続行するには、iOS を更新してください。",
+        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、iOS を更新してください。",
         "title": "続行するには iOS を更新してください"
       },
       "safari": {
         "action": "Safari を更新します",
-        "description": "Zero は、現在のブラウザのバージョンをサポートしていません。続行するには、Safari を更新してください。",
+        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Safari を更新してください。",
         "title": "続行するには Safari を更新してください"
       }
     },
@@ -388,10 +388,10 @@
         "warmingNeurons": "ニューラルネットワークを準備しています..."
       }
     },
-    "logoAlt": "VM0",
+    "logoAlt": "{{brandName}}",
     "metadata": {
-      "description": "Zeroはvm0のAIコワーカーです。Zeroにメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
-      "title": "Zero — vm0のAIコワーカー"
+      "description": "{{assistantName}}は{{brandName}}のAIコワーカーです。{{assistantName}}にメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
+      "title": "{{assistantName}} — {{brandName}}のAIコワーカー"
     },
     "shortcutHelp": {
       "close": "キーボードショートカットを閉じる",
@@ -692,7 +692,7 @@
   },
   "authorization": {
     "browser": {
-      "description": "Zero は、このチャット スレッドに分離されたクラウド ブラウザ プロファイルを使用します。これを有効にすると、スレッドのコンピューターの使用が切断されます。",
+      "description": "{{assistantName}} は、このチャット スレッドに分離されたクラウド ブラウザ プロファイルを使用します。これを有効にすると、スレッドのコンピューターの使用が切断されます。",
       "enable": "このスレッドに対して有効にする",
       "enabled": "クラウドブラウザが有効になっている",
       "linkExpires": "リンクの有効期限が切れます {{date}}。",
@@ -704,7 +704,7 @@
       "authorize": "承認する",
       "authorized": "認可された",
       "checkingCompatibility": "互換性の確認",
-      "description": "{{source}} で使用する Zero のオンライン コンピューターを選択します。",
+      "description": "{{source}} で使用する {{assistantName}} のオンライン コンピューターを選択します。",
       "downloadMac": "macOS をダウンロード",
       "lastSeen": "最後に表示されたのは {{date}}",
       "linkExpires": "リンクの有効期限が切れます {{date}}。",
@@ -1055,7 +1055,7 @@
       "concurrencyReduced": "同時実行数の削減は次回の請求日に予定されています。",
       "concurrencyRestored": "同時実行サブスクリプションが復元されました。",
       "creditPurchaseConfirmed": "支払いが確認されました。Stripe による請求書の処理後にクレジットが反映されます。",
-      "creditsAdded": "クレジットが追加されました。 Zero とのチャットを続けることができます。",
+      "creditsAdded": "クレジットが追加されました。 {{assistantName}} とのチャットを続けることができます。",
       "downgradeScheduledDate": "ダウングレードが予定されています。現在のプランは {{date}} まで有効です。",
       "downgradeScheduledPeriod": "ダウングレードが予定されています。現在のプランは、請求期間が終了するまで有効のままです。",
       "planRestored": "計画が復元されました。サブスクリプションは通常どおり更新されます。",
@@ -1137,8 +1137,8 @@
       "startDescription": "開始すると、保存されているログインプロファイルとストレージが利用可能な場合に復元され、保存済みのタブも可能な場合に再度開かれます。",
       "starting": "開始中…"
     },
-    "reclaimHint_one": "Zero は、このパネルが開いている間はこのブラウザを保持し、{{formattedCount}} 分間アイドル状態が経過するとブラウザを再利用します。",
-    "reclaimHint_other": "Zero は、このパネルが開いている間はこのブラウザを保持し、{{formattedCount}} 分間アイドル状態が経過するとブラウザを再利用します。",
+    "reclaimHint_one": "{{assistantName}} は、このパネルが開いている間はこのブラウザを保持し、{{formattedCount}} 分間アイドル状態が経過するとブラウザを再利用します。",
+    "reclaimHint_other": "{{assistantName}} は、このパネルが開いている間はこのブラウザを保持し、{{formattedCount}} 分間アイドル状態が経過するとブラウザを再利用します。",
     "status": {
       "live": "ライブ",
       "starting": "開始",
@@ -1310,23 +1310,23 @@
       "weeklyOnAt": "毎週 {{days}} の {{time}}"
     },
     "billing": {
-      "addCreditsToContinue": "クレジットを追加すると、Zero とのチャットを続けることができます。",
-      "askAdminCredits": "Zero とチャットを続けることができるように、ワークスペース管理者にクレジットを追加するように依頼してください。",
-      "askAdminUpgrade": "Zero とのチャットを継続できるように、ワークスペース管理者に Pro にアップグレードするよう依頼してください。",
+      "addCreditsToContinue": "クレジットを追加すると、{{assistantName}} とのチャットを続けることができます。",
+      "askAdminCredits": "{{assistantName}} とチャットを続けることができるように、ワークスペース管理者にクレジットを追加するように依頼してください。",
+      "askAdminUpgrade": "{{assistantName}} とのチャットを継続できるように、ワークスペース管理者に Pro にアップグレードするよう依頼してください。",
       "buy": "購入する",
       "checkingPermissions": "課金権限を確認しています...",
       "comparePlans": "プランを比較する",
       "comparePlansDescription": "プランを比較して、有料ワークスペース機能と追加クレジットのロックを解除します。",
-      "creditsAdded": "クレジットが追加されました。 Zero とのチャットを続けることができます。",
+      "creditsAdded": "クレジットが追加されました。 {{assistantName}} とのチャットを続けることができます。",
       "creditsAvailable": "利用可能なクレジット",
       "custom": "カスタム",
       "customAmountError": "1 ドルから 10,000 ドルの間で入力してください",
       "customDollarAmount": "カスタムドル額",
       "outOfCredits": "クレジットが不足しています",
       "redirecting": "リダイレクト中...",
-      "upgradeToContinue": "Zero とチャットを続けるには、Pro にアップグレードしてください。",
+      "upgradeToContinue": "{{assistantName}} とチャットを続けるには、Pro にアップグレードしてください。",
       "upgradeToPro": "プロにアップグレード",
-      "upgradeToRun": "Zero を実行するには Pro にアップグレードしてください",
+      "upgradeToRun": "{{assistantName}} を実行するには Pro にアップグレードしてください",
       "upgradeWorkspace": "ワークスペースをアップグレードする"
     },
     "composer": {
@@ -2086,7 +2086,7 @@
     "providerConnect": {
       "agentphone": {
         "back": "{{brandName}} に戻る",
-        "connectDescription": "この電話番号を {{brandName}} アカウントにリンクすると、テキスト メッセージから Zero とやり取りできるようになります。",
+        "connectDescription": "この電話番号を {{brandName}} アカウントにリンクすると、テキスト メッセージから {{assistantName}} とやり取りできるようになります。",
         "connectTitle": "電話番号を接続する",
         "documentTitle": "メッセージを接続する",
         "errorFallback": "この電話番号には接続できませんでした。テキスト メッセージからもう一度お試しください。",
@@ -2096,7 +2096,7 @@
         "invalidTimestamp": "このリンクのタイムスタンプは無効です。",
         "invalidTitle": "接続リンクが無効です",
         "risk": "SMS および MMS の返信は確実に配信されない可能性があります。最も信頼性の高いエクスペリエンスを得るには、この AgentPhone 番号で iMessage を使用してください。",
-        "successDescription": "{{phone}} が接続されています。テキスト メッセージを送信して、Zero とのチャットを開始します。",
+        "successDescription": "{{phone}} が接続されています。テキスト メッセージを送信して、{{assistantName}} とのチャットを開始します。",
         "successTitle": "接続された電話番号"
       },
       "common": {
@@ -2208,7 +2208,7 @@
         "copyAria": "{{phone}} をコピーします",
         "copyError": "電話番号のコピーに失敗しました",
         "copySuccess": "電話番号をコピーしました",
-        "description": "Zero へのテキスト メッセージ アクセス",
+        "description": "{{assistantName}} へのテキスト メッセージ アクセス",
         "destination": "iMessage または SMS で",
         "normalized": "{{phone}} にテキスト メッセージを送信します。",
         "options": "電話オプション",
@@ -2422,7 +2422,7 @@
         "adminRequired": "Strapi 統合を追加または更新するように組織管理者に依頼します。",
         "authorizationHeader": "認可ヘッダー",
         "copied": "{{label}} がコピーされました",
-        "description": "Zero が公開された Strapi エントリに反応し、ダウンストリーム作業を自動化できるようにします。",
+        "description": "{{assistantName}} が公開された Strapi エントリに反応し、ダウンストリーム作業を自動化できるようにします。",
         "documentTitle": "Strapi",
         "empty": "Strapi インスタンスはまだ接続されていません。",
         "form": {
@@ -2445,7 +2445,7 @@
           "testReceived": "Strapi テスト Webhook を受信しました"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "Zero が機能する場所"
+        "whereZeroWorks": "{{assistantName}} が機能する場所"
       },
       "telegram": {
         "addBot": "ボットの追加",
@@ -2484,7 +2484,7 @@
         "moreOptions": "{{bot}} のその他のオプション",
         "newBotToken": "新しいボットトークン",
         "notConnected": "接続されていません",
-        "officialBot": "Zero 公式ボット",
+        "officialBot": "{{assistantName}} 公式ボット",
         "officialDescription": "{{brandName}} が提供する公式 bot。",
         "officialMissing": "公式ボット設定がありません。",
         "pageDescription": "このワークスペースのボット ルーティングを管理する",
@@ -2611,16 +2611,16 @@
       "managePreferences": "設定の管理"
     },
     "pwaInstall": {
-      "banner": "Zero をインストールするとエクスペリエンスが向上します",
-      "description": "Zero をホーム画面に追加すると、すぐにアクセスできるようになります。",
+      "banner": "{{assistantName}} をインストールするとエクスペリエンスが向上します",
+      "description": "{{assistantName}} をホーム画面に追加すると、すぐにアクセスできるようになります。",
       "dismiss": "インストールバナーを閉じる",
       "gotIt": "わかりました",
       "install": "インストール",
       "installApp": "アプリをインストールする",
       "stepOne": "Safari で、[共有] ボタンをタップします。",
-      "stepThree": "名前が Zero であることを確認し、[追加] をタップします。",
+      "stepThree": "名前が {{assistantName}} であることを確認し、[追加] をタップします。",
       "stepTwo": "「ホーム画面に追加」を選択します。",
-      "title": "Zero をインストールする"
+      "title": "{{assistantName}} をインストールする"
     },
     "redeemCampaign": {
       "actions": {
@@ -2752,7 +2752,7 @@
         }
       },
       "projectTypeLabel": "最初のプロジェクトの種類",
-      "promptDescription": "以下で調整するか、そのまま実行します。 Zero はここから取得します。ツールはサンドボックスに保たれ、ワークスペースから何も出なくなります。",
+      "promptDescription": "以下で調整するか、そのまま実行します。 {{assistantName}} はここから取得します。ツールはサンドボックスに保たれ、ワークスペースから何も出なくなります。",
       "promptLabel": "オンボーディングプロンプト",
       "promptTitle": "このプロンプトを試してください",
       "title": "最初に何を作りたいですか"
@@ -2866,17 +2866,17 @@
       }
     },
     "workflowDiagram": {
-      "preparedDescription": "Zero は、ツールから次のステップを準備します。",
+      "preparedDescription": "{{assistantName}} は、ツールから次のステップを準備します。",
       "preparedTitle": "ワークフローが準備されました",
-      "reviewDescription": "Zero はワークフローを完了し、結果を返します。",
+      "reviewDescription": "{{assistantName}} はワークフローを完了し、結果を返します。",
       "reviewTitle": "レビューの準備ができました",
       "source": "ソース"
     },
     "workflowPicker": {
       "categoryDescription": "すぐに実行できるセットアップなので、ツールや目標に合わせて調整できます。",
       "categoryTitle": "{{category}} ワークフロー",
-      "customDescription": "必要なものを説明すると、Zero が一緒にそれを構築します。",
-      "customTitle": "Zero と話し、自分のものを作成してください",
+      "customDescription": "必要なものを説明すると、{{assistantName}} が一緒にそれを構築します。",
+      "customTitle": "{{assistantName}} と話し、自分のものを作成してください",
       "description": "役割を選択すると、適切なワークフローが表示されます。いつでも切り替えることができます。",
       "title": "何に取り組んでいますか?",
       "workflowCardLabel": "{{title}} {{description}}"
@@ -2886,10 +2886,10 @@
       "whatItDoes": "何をするのか"
     },
     "workflowRun": {
-      "continueWithZero": "Zero に進みます",
+      "continueWithZero": "{{assistantName}} に進みます",
       "createDraft": "ドラフトの作成",
       "customNoteLabel": "ワークフローを説明する",
-      "customNotePlaceholder": "Zero で構築したいものを説明してください",
+      "customNotePlaceholder": "{{assistantName}} で構築したいものを説明してください",
       "customTitle": "ワークフローを説明する",
       "noteLabel": "他に何か追加したいことはありますか?",
       "notePlaceholder": "他に何か追加したいことはありますか?",
@@ -2898,18 +2898,18 @@
     "workflows": {
       "alert-metric-moves-slack": {
         "description": "主要なメトリクスを監視し、急激に変化した場合は Slack に警告します。",
-        "scenario": "週次レビューでメトリクスの問題が判明するまでに、それは数日経過しています。 Zero は、主要なメトリックを 1 時間ごとに監視し、通常の範囲を超えた瞬間に Slack に ping を送信します。",
+        "scenario": "週次レビューでメトリクスの問題が判明するまでに、それは数日経過しています。 {{assistantName}} は、主要なメトリックを 1 時間ごとに監視し、通常の範囲を超えた瞬間に Slack に ping を送信します。",
         "steps": {
           "one": {
-            "description": "Zero は 1 時間ごとにメトリックを読み取ります。",
-            "title": "Zero はメトリックをチェックします"
+            "description": "{{assistantName}} は 1 時間ごとにメトリックを読み取ります。",
+            "title": "{{assistantName}} はメトリックをチェックします"
           },
           "three": {
-            "description": "Zero は逸脱を含むアラートを投稿します。",
+            "description": "{{assistantName}} は逸脱を含むアラートを投稿します。",
             "title": "Slack にアラートが投稿されました"
           },
           "two": {
-            "description": "Zero は、予想される帯域外の値にフラグを立てます。",
+            "description": "{{assistantName}} は、予想される帯域外の値にフラグを立てます。",
             "title": "通常の範囲と比較して"
           }
         },
@@ -2917,37 +2917,37 @@
       },
       "auto-merge-github-prs": {
         "description": "「マージ準備完了」というラベルが付いた PR を確認し、CI を待ってからマージして Slack にポストします。",
-        "scenario": "PR をマージするということは、CI の世話をし、差分を再チェックし、それが出荷されたことを忘れずに投稿することを意味します。 Zero は、マージ準備完了のラベルを監視し、変更を確認し、チェックが緑色になるのを待ってマージし、チャネルに通知します。",
+        "scenario": "PR をマージするということは、CI の世話をし、差分を再チェックし、それが出荷されたことを忘れずに投稿することを意味します。 {{assistantName}} は、マージ準備完了のラベルを監視し、変更を確認し、チェックが緑色になるのを待ってマージし、チャネルに通知します。",
         "steps": {
           "one": {
-            "description": "Zero は、マージ ラベルが付けられるとすぐにプル リクエストを取得します。",
+            "description": "{{assistantName}} は、マージ ラベルが付けられるとすぐにプル リクエストを取得します。",
             "title": "PR には「マージ準備完了」というラベルが付けられます"
           },
           "three": {
-            "description": "Zero は PR をマージし、結果をチャンネルに投稿します。",
+            "description": "{{assistantName}} は PR をマージし、結果をチャンネルに投稿します。",
             "title": "マージされ、Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は差分を読み取り、必要なすべてのチェックに合格するまで保持します。",
-            "title": "Zero は CI をレビューして待機します"
+            "description": "{{assistantName}} は差分を読み取り、必要なすべてのチェックに合格するまで保持します。",
+            "title": "{{assistantName}} は CI をレビューして待機します"
           }
         },
         "title": "GitHub PR の自動マージ"
       },
       "blog-posts-to-x": {
-        "description": "毎日、Zero は新しく公開されたブログ投稿をソーシャル バリアントに変換し、バッファーを通じて X のキューに入れます。",
-        "scenario": "1 つのブログ投稿が 10 個のソーシャル投稿に相当する場合もありますが、それらを切り取る時間は誰にもありません。 Zero は、新しく公開された投稿を特定し、一連の X バリアントを作成し、承認のためにバッファーのキューに入れます。",
+        "description": "毎日、{{assistantName}} は新しく公開されたブログ投稿をソーシャル バリアントに変換し、バッファーを通じて X のキューに入れます。",
+        "scenario": "1 つのブログ投稿が 10 個のソーシャル投稿に相当する場合もありますが、それらを切り取る時間は誰にもありません。 {{assistantName}} は、新しく公開された投稿を特定し、一連の X バリアントを作成し、承認のためにバッファーのキューに入れます。",
         "steps": {
           "one": {
-            "description": "Zero は、Strapi で新しく公開された投稿を検出します。",
-            "title": "Zero が新しい投稿を見つけます"
+            "description": "{{assistantName}} は、Strapi で新しく公開された投稿を検出します。",
+            "title": "{{assistantName}} が新しい投稿を見つけます"
           },
           "three": {
-            "description": "Zero は、バリアントのレビューをスケジュールします。",
+            "description": "{{assistantName}} は、バリアントのレビューをスケジュールします。",
             "title": "バッファにキューに入れられました"
           },
           "two": {
-            "description": "Zero は、各記事から複数の X 投稿の下書きを作成します。",
+            "description": "{{assistantName}} は、各記事から複数の X 投稿の下書きを作成します。",
             "title": "社会のバリアントに切り込む"
           }
         },
@@ -2955,18 +2955,18 @@
       },
       "build-weekly-deck-gamma": {
         "description": "Gamma で、その週の指標をすぐに提示できるデッキに変換します。",
-        "scenario": "週次指標デッキは、毎回新しい数値が記載された同じスライドです。 Zero はデータを取得し、Gamma でデッキを構築し、Slack に投稿することで、会議の前にレビューの準備が整います。",
+        "scenario": "週次指標デッキは、毎回新しい数値が記載された同じスライドです。 {{assistantName}} はデータを取得し、Gamma でデッキを構築し、Slack に投稿することで、会議の前にレビューの準備が整います。",
         "steps": {
           "one": {
-            "description": "Zero は、スプレッドシートとアナリティクスから指標を読み取ります。",
-            "title": "Zero は数値を収集します"
+            "description": "{{assistantName}} は、スプレッドシートとアナリティクスから指標を読み取ります。",
+            "title": "{{assistantName}} は数値を収集します"
           },
           "three": {
-            "description": "Zero は完成したデッキを共有します。",
+            "description": "{{assistantName}} は完成したデッキを共有します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、定期的なメトリクス デックを組み立てます。",
+            "description": "{{assistantName}} は、定期的なメトリクス デックを組み立てます。",
             "title": "ガンマで構築されたデッキ"
           }
         },
@@ -2974,18 +2974,18 @@
       },
       "business-review-gamma": {
         "description": "Gamma で月の指標をビジネス レビュー資料に変換します。",
-        "scenario": "毎週のビジネスレビューは、誰かが手作業で再構築する繰り返しのデッキです。 Zero は収益と成長を引き出し、Gamma でデッキを構築し、会議の前に準備します。",
+        "scenario": "毎週のビジネスレビューは、誰かが手作業で再構築する繰り返しのデッキです。 {{assistantName}} は収益と成長を引き出し、Gamma でデッキを構築し、会議の前に準備します。",
         "steps": {
           "one": {
-            "description": "Zero は、Stripe および Clerk から MRR、バーン、および成長を読み取ります。",
-            "title": "Zero が数値を取得します"
+            "description": "{{assistantName}} は、Stripe および Clerk から MRR、バーン、および成長を読み取ります。",
+            "title": "{{assistantName}} が数値を取得します"
           },
           "three": {
-            "description": "Zero は完成したデッキを共有します。",
+            "description": "{{assistantName}} は完成したデッキを共有します。",
             "title": "プレゼンテーションの準備ができました"
           },
           "two": {
-            "description": "Zero は、定期的なビジネス レビューを組み立てます。",
+            "description": "{{assistantName}} は、定期的なビジネス レビューを組み立てます。",
             "title": "ガンマで構築されたデッキ"
           }
         },
@@ -2993,18 +2993,18 @@
       },
       "catch-calendar-conflicts": {
         "description": "カレンダーをスキャンしてダブルブッキングがないか確認し、早めに通知します。",
-        "scenario": "ダブルブッキングは、2 つの会議が同時に開始された場合にのみ発見されます。 Zero は、新しいイベントをカレンダーと Cal.com の空き状況と照合してチェックし、競合が発生する前に警告します。",
+        "scenario": "ダブルブッキングは、2 つの会議が同時に開始された場合にのみ発見されます。 {{assistantName}} は、新しいイベントをカレンダーと Cal.com の空き状況と照合してチェックし、競合が発生する前に警告します。",
         "steps": {
           "one": {
-            "description": "Zero は、新しいイベントがカレンダーに登録されるとトリガーされます。",
+            "description": "{{assistantName}} は、新しいイベントがカレンダーに登録されるとトリガーされます。",
             "title": "イベントが作成されました"
           },
           "three": {
-            "description": "Zero は、干渉とオプションについて警告します。",
+            "description": "{{assistantName}} は、干渉とオプションについて警告します。",
             "title": "Slack で競合のフラグが立てられました"
           },
           "two": {
-            "description": "Zero は、既存のイベントおよび可用性と比較します。",
+            "description": "{{assistantName}} は、既存のイベントおよび可用性と比較します。",
             "title": "競合がないかチェックされました"
           }
         },
@@ -3012,18 +3012,18 @@
       },
       "catch-leads-gmail": {
         "description": "新しいメール内の購入シグナルを特定し、見込み客を記録します。",
-        "scenario": "温かいリードは忙しい受信トレイに隠れて冷めてしまいます。 Zero は、購入シグナルの受信メールを読み取り、Apollo で送信者を強化し、リードをシートに記録し、Slack で次の動きを提案します。",
+        "scenario": "温かいリードは忙しい受信トレイに隠れて冷めてしまいます。 {{assistantName}} は、購入シグナルの受信メールを読み取り、Apollo で送信者を強化し、リードをシートに記録し、Slack で次の動きを提案します。",
         "steps": {
           "one": {
-            "description": "Zero は、買いシグナルの受信 Gmail を読み取ります。",
-            "title": "Zero は新しいメールをスキャンします"
+            "description": "{{assistantName}} は、買いシグナルの受信 Gmail を読み取ります。",
+            "title": "{{assistantName}} は新しいメールをスキャンします"
           },
           "three": {
-            "description": "Zero は、リードと推奨される次のステップを Slack に投稿します。",
+            "description": "{{assistantName}} は、リードと推奨される次のステップを Slack に投稿します。",
             "title": "次のステップが提案されました"
           },
           "two": {
-            "description": "Zero は Apollo で強化され、シートに行を追加します。",
+            "description": "{{assistantName}} は Apollo で強化され、シートに行を追加します。",
             "title": "鉛の濃縮と記録"
           }
         },
@@ -3031,18 +3031,18 @@
       },
       "chase-overdue-asana-tasks": {
         "description": "期限を過ぎた Asana タスクを見つけて、その所有者に Slack を指示します。",
-        "scenario": "期限を過ぎたタスクには誰かが追いかける必要があり、その誰かは常に忙しいです。 Zero は、Asana を毎日スキャンして期限を過ぎたものがないか確認し、各所有者を Slack に誘導します。",
+        "scenario": "期限を過ぎたタスクには誰かが追いかける必要があり、その誰かは常に忙しいです。 {{assistantName}} は、Asana を毎日スキャンして期限を過ぎたものがないか確認し、各所有者を Slack に誘導します。",
         "steps": {
           "one": {
-            "description": "Zero は、期日を過ぎたタスクを読み取ります。",
-            "title": "Zero は Asana をスキャンします"
+            "description": "{{assistantName}} は、期日を過ぎたタスクを読み取ります。",
+            "title": "{{assistantName}} は Asana をスキャンします"
           },
           "three": {
-            "description": "Zero 各所有者に期限を過ぎたリストを DM で送信します。",
+            "description": "{{assistantName}} 各所有者に期限を過ぎたリストを DM で送信します。",
             "title": "Slack で送信されたナッジ"
           },
           "two": {
-            "description": "Zero は、期限を過ぎた作業を担当者ごとにグループ化します。",
+            "description": "{{assistantName}} は、期限を過ぎた作業を担当者ごとにグループ化します。",
             "title": "所有者が特定されました"
           }
         },
@@ -3050,37 +3050,37 @@
       },
       "check-posthog-signup-funnel": {
         "description": "サインアップ ファネルを追跡し、最大の減少を Slack にポストします。",
-        "scenario": "ファネルは誰かが実行した場合にのみ役に立ちます。 Zero はサインアップ ファネルを毎週実行し、最も多くの人が失われているステップを見つけて Slack に投稿することで、チームはどこに集中すべきかを認識します。",
+        "scenario": "ファネルは誰かが実行した場合にのみ役に立ちます。 {{assistantName}} はサインアップ ファネルを毎週実行し、最も多くの人が失われているステップを見つけて Slack に投稿することで、チームはどこに集中すべきかを認識します。",
         "steps": {
           "one": {
-            "description": "Zero は、PostHog でその週のサインアップ ファネルを実行します。",
-            "title": "Zero はファネルを実行します"
+            "description": "{{assistantName}} は、PostHog でその週のサインアップ ファネルを実行します。",
+            "title": "{{assistantName}} はファネルを実行します"
           },
           "three": {
-            "description": "Zero はリークとトレンドを投稿します。",
+            "description": "{{assistantName}} はリークとトレンドを投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、減衰が最大のステップを見つけます。",
+            "description": "{{assistantName}} は、減衰が最大のステップを見つけます。",
             "title": "確認された最大のドロップオフ"
           }
         },
         "title": "PostHog サインアップ ファネルを確認する"
       },
       "compare-google-ads-last-month": {
-        "description": "毎日、Zero は、Google 広告とメタ広告の費用、CPA、ROAS を前の期間と比較し、Slack で異常を報告します。",
-        "scenario": "広告のペース調整の問題は、気づかれないうちに毎日コストがかかります。 Zero は、費用、CPA、ROAS を前の期間と毎日比較し、Slack で変動しているものにフラグを立てます。",
+        "description": "毎日、{{assistantName}} は、Google 広告とメタ広告の費用、CPA、ROAS を前の期間と比較し、Slack で異常を報告します。",
+        "scenario": "広告のペース調整の問題は、気づかれないうちに毎日コストがかかります。 {{assistantName}} は、費用、CPA、ROAS を前の期間と毎日比較し、Slack で変動しているものにフラグを立てます。",
         "steps": {
           "one": {
-            "description": "Zero は、Google とメタ広告から支出、CPA、コンバージョンを取得します。",
-            "title": "Zero は広告のパフォーマンスを読み取ります"
+            "description": "{{assistantName}} は、Google とメタ広告から支出、CPA、コンバージョンを取得します。",
+            "title": "{{assistantName}} は広告のパフォーマンスを読み取ります"
           },
           "three": {
-            "description": "Zero は比較を投稿し、ドリフトを強調表示します。",
+            "description": "{{assistantName}} は比較を投稿し、ドリフトを強調表示します。",
             "title": "Slack で異常のフラグが立てられた"
           },
           "two": {
-            "description": "Zero はデルタとペーシングを計算します。",
+            "description": "{{assistantName}} はデルタとペーシングを計算します。",
             "title": "前期との比較"
           }
         },
@@ -3088,18 +3088,18 @@
       },
       "daily-company-brief-slack": {
         "description": "製品、成長、収益を Slack の日次概要にまとめます。",
-        "scenario": "全体像は、誰も一緒にチェックしていない 5 つのツールにあります。 Zero は毎朝、成長、収益、製品の健全性、エンジニアリングを取得し、成功、リスク、注意が必要なものなどの 1 つの企業パルスを Slack に投稿します。",
+        "scenario": "全体像は、誰も一緒にチェックしていない 5 つのツールにあります。 {{assistantName}} は毎朝、成長、収益、製品の健全性、エンジニアリングを取得し、成功、リスク、注意が必要なものなどの 1 つの企業パルスを Slack に投稿します。",
         "steps": {
           "one": {
-            "description": "Zero は、スタック全体の成長、収益、エラー、出荷を読み取ります。",
-            "title": "Zero は信号を収集します"
+            "description": "{{assistantName}} は、スタック全体の成長、収益、エラー、出荷を読み取ります。",
+            "title": "{{assistantName}} は信号を収集します"
           },
           "three": {
-            "description": "Zero は、毎日の会社概要を投稿します。",
+            "description": "{{assistantName}} は、毎日の会社概要を投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、成功、リスク、注意が必要なものを書き込みます。",
+            "description": "{{assistantName}} は、成功、リスク、注意が必要なものを書き込みます。",
             "title": "パルスに組み立てられる"
           }
         },
@@ -3107,18 +3107,18 @@
       },
       "daily-industry-news-slack": {
         "description": "その日の関連業界ニュースを Slack 概要にまとめます。",
-        "scenario": "最新の状態を保つということは、決して開かないタブが 12 個もあるということです。 Zero は、毎日過去 24 時間の AI および競合他社のニュースをスキャンし、短い概要を Slack に投稿するので、代わりに 1 つの概要をざっと読むことができます。",
+        "scenario": "最新の状態を保つということは、決して開かないタブが 12 個もあるということです。 {{assistantName}} は、毎日過去 24 時間の AI および競合他社のニュースをスキャンし、短い概要を Slack に投稿するので、代わりに 1 つの概要をざっと読むことができます。",
         "steps": {
           "one": {
-            "description": "Zero は、Exa を使用して、前日の AI と競合他社のカバレッジを検索します。",
-            "title": "Zero がニュースをスキャンします"
+            "description": "{{assistantName}} は、Exa を使用して、前日の AI と競合他社のカバレッジを検索します。",
+            "title": "{{assistantName}} がニュースをスキャンします"
           },
           "three": {
-            "description": "Zero は毎日のニュース概要を投稿します。",
+            "description": "{{assistantName}} は毎日のニュース概要を投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、実際に重要なことを要約しています。",
+            "description": "{{assistantName}} は、実際に重要なことを要約しています。",
             "title": "簡潔にまとめたもの"
           }
         },
@@ -3126,37 +3126,37 @@
       },
       "draft-github-release-notes-notion": {
         "description": "前回のリリース以降にマージされた PR を Notion のクリーン ノートに変換します。",
-        "scenario": "リリースノートを書くということは、PR 履歴をスクロールし、コミットを平易な言葉に翻訳することを意味します。 Zero は、出荷された PR にラベルを付けるときにそれを行います。最後のタグ以降にマージされたすべてのものを収集し、Notion に読みやすいメモを下書きします。",
+        "scenario": "リリースノートを書くということは、PR 履歴をスクロールし、コミットを平易な言葉に翻訳することを意味します。 {{assistantName}} は、出荷された PR にラベルを付けるときにそれを行います。最後のタグ以降にマージされたすべてのものを収集し、Notion に読みやすいメモを下書きします。",
         "steps": {
           "one": {
-            "description": "Zero はリリース ラベルでトリガーされます。",
+            "description": "{{assistantName}} はリリース ラベルでトリガーされます。",
             "title": "PR には出荷済みのラベルが付いています"
           },
           "three": {
-            "description": "Zero は、Notion ページにクリーンでグループ化されたリリース ノートの下書きを作成します。",
+            "description": "{{assistantName}} は、Notion ページにクリーンでグループ化されたリリース ノートの下書きを作成します。",
             "title": "リリース ノートは Notion に保存されました"
           },
           "two": {
-            "description": "Zero は、最後のリリース タグ以降にマージされたすべてのものを収集します。",
-            "title": "Zero はマージされた PR を収集します"
+            "description": "{{assistantName}} は、最後のリリース タグ以降にマージされたすべてのものを収集します。",
+            "title": "{{assistantName}} はマージされた PR を収集します"
           }
         },
         "title": "Notion で GitHub リリース ノートの草案を作成する"
       },
       "draft-newsletter-mailchimp": {
-        "description": "毎月、Zero は出荷された機能からニュースレターを作成し、Mailchimp でドラフトを作成します。",
-        "scenario": "月刊ニュースレターは常に白紙のページから始まります。 Zero は、GitHub から出荷されたものを収集し、問題の下書きを作成して、Mailchimp にステージングするため、作成者ではなく編集することができます。",
+        "description": "毎月、{{assistantName}} は出荷された機能からニュースレターを作成し、Mailchimp でドラフトを作成します。",
+        "scenario": "月刊ニュースレターは常に白紙のページから始まります。 {{assistantName}} は、GitHub から出荷されたものを収集し、問題の下書きを作成して、Mailchimp にステージングするため、作成者ではなく編集することができます。",
         "steps": {
           "one": {
-            "description": "Zero は、マージされた機能を読み取り、GitHub からハイライトします。",
-            "title": "Zero は出荷されたものを収集します"
+            "description": "{{assistantName}} は、マージされた機能を読み取り、GitHub からハイライトします。",
+            "title": "{{assistantName}} は出荷されたものを収集します"
           },
           "three": {
-            "description": "Zero は、すぐに編集できるドラフト キャンペーンを作成します。",
+            "description": "{{assistantName}} は、すぐに編集できるドラフト キャンペーンを作成します。",
             "title": "Mailchimp でステージングされています"
           },
           "two": {
-            "description": "Zero があなたの声で問題を書きます。",
+            "description": "{{assistantName}} があなたの声で問題を書きます。",
             "title": "ニュースレターの下書き"
           }
         },
@@ -3164,37 +3164,37 @@
       },
       "draft-replies-notion-faq": {
         "description": "Notion FAQ に基づいたドラフト チケットの返信。",
-        "scenario": "ほとんどの質問はドキュメントですでに回答されています。 Zero は、受信した質問を読み、Notion で FAQ を検索し、エージェントが承認できるように独自のドキュメントに基づいた回答の下書きを作成します。",
+        "scenario": "ほとんどの質問はドキュメントですでに回答されています。 {{assistantName}} は、受信した質問を読み、Notion で FAQ を検索し、エージェントが承認できるように独自のドキュメントに基づいた回答の下書きを作成します。",
         "steps": {
           "one": {
-            "description": "Zero は、Intercom または Gmail の新しい会話を読み取ります。",
+            "description": "{{assistantName}} は、Intercom または Gmail の新しい会話を読み取ります。",
             "title": "質問が届く"
           },
           "three": {
-            "description": "Zero はブランドに基づいた対応を行います。",
+            "description": "{{assistantName}} はブランドに基づいた対応を行います。",
             "title": "返信の下書きがレビュー用に作成されました"
           },
           "two": {
-            "description": "Zero は、ドキュメント内で関連する回答を見つけます。",
-            "title": "Zero は Notion FAQ を確認します"
+            "description": "{{assistantName}} は、ドキュメント内で関連する回答を見つけます。",
+            "title": "{{assistantName}} は Notion FAQ を確認します"
           }
         },
         "title": "Notion FAQ からの返信の下書き"
       },
       "file-gmail-invoices-drive": {
         "description": "請求書メールをドライブにファイルし、それぞれをシートに記録します。",
-        "scenario": "請求書が受信箱に山積みになり、調整は大忙しです。 Zero は、ラベル付きの各請求書を適切なドライブ フォルダーにファイルし、到着時に経費シートに金額と期日を記録します。",
+        "scenario": "請求書が受信箱に山積みになり、調整は大忙しです。 {{assistantName}} は、ラベル付きの各請求書を適切なドライブ フォルダーにファイルし、到着時に経費シートに金額と期日を記録します。",
         "steps": {
           "one": {
-            "description": "Zero は、Gmail の請求書ラベルでトリガーされます。",
+            "description": "{{assistantName}} は、Gmail の請求書ラベルでトリガーされます。",
             "title": "請求書にはラベルが付いています"
           },
           "three": {
-            "description": "Zero は、経費シートに金額と期日を記録します。",
+            "description": "{{assistantName}} は、経費シートに金額と期日を記録します。",
             "title": "シートにログインしました"
           },
           "two": {
-            "description": "Zero は、添付ファイルを正しいフォルダーに保存します。",
+            "description": "{{assistantName}} は、添付ファイルを正しいフォルダーに保存します。",
             "title": "Google Drive にファイルされました"
           }
         },
@@ -3202,37 +3202,37 @@
       },
       "file-sentry-crashes-github": {
         "description": "新しい Sentry エラーをユーザーへの影響別にランク付けし、最悪のものを GitHub Issueとして記録します。",
-        "scenario": "新しいクラッシュは、誰かが探しに行くまで Sentry に隠れます。 Zero は 1 時間ごとにチェックし、ヒットしたユーザーの数によってエラーをランク付けし、重要なものについては GitHub Issueを開き、そのコードの所有者に ping を送信します。",
+        "scenario": "新しいクラッシュは、誰かが探しに行くまで Sentry に隠れます。 {{assistantName}} は 1 時間ごとにチェックし、ヒットしたユーザーの数によってエラーをランク付けし、重要なものについては GitHub Issueを開き、そのコードの所有者に ping を送信します。",
         "steps": {
           "one": {
-            "description": "Zero は、過去 1 時間の未解決のエラーとそのイベント数を読み取ります。",
-            "title": "Zero は新しい Sentry エラーを取得します"
+            "description": "{{assistantName}} は、過去 1 時間の未解決のエラーとそのイベント数を読み取ります。",
+            "title": "{{assistantName}} は新しい Sentry エラーを取得します"
           },
           "three": {
-            "description": "Zero は、スタック トレースに関する GitHub Issueを開き、Slack で所有者に通知します。",
+            "description": "{{assistantName}} は、スタック トレースに関する GitHub Issueを開き、Slack で所有者に通知します。",
             "title": "問題が提起され、所有者に ping が送信されました"
           },
           "two": {
-            "description": "Zero は、影響を受けるユーザーごとに並べ替え、影響の少ないノイズをフィルターで除去します。",
+            "description": "{{assistantName}} は、影響を受けるユーザーごとに並べ替え、影響の少ないノイズをフィルターで除去します。",
             "title": "ユーザーへの影響によるランキング"
           }
         },
         "title": "SentryのクラッシュをGitHub Issueとして登録"
       },
       "fixes-to-notion-help-docs": {
-        "description": "チケットが解決済みとしてマークされると、Zero は修正を Notion の再利用可能なヘルプ記事に変換します。",
-        "scenario": "修正が文書化されていないため、同じ質問が戻ってきます。 Zero は、解決された各チケットを Notion のクリーンで再利用可能なヘルプ記事に変換するため、次回は答えが存在します。",
+        "description": "チケットが解決済みとしてマークされると、{{assistantName}} は修正を Notion の再利用可能なヘルプ記事に変換します。",
+        "scenario": "修正が文書化されていないため、同じ質問が戻ってきます。 {{assistantName}} は、解決された各チケットを Notion のクリーンで再利用可能なヘルプ記事に変換するため、次回は答えが存在します。",
         "steps": {
           "one": {
-            "description": "Zero は、チケットが閉じられたときにトリガーされます。",
+            "description": "{{assistantName}} は、チケットが閉じられたときにトリガーされます。",
             "title": "チケットが解決されました"
           },
           "three": {
-            "description": "Zero は、ヘルプセンターに記事を追加します。",
+            "description": "{{assistantName}} は、ヘルプセンターに記事を追加します。",
             "title": "Notion に保存されました"
           },
           "two": {
-            "description": "Zero は、解決策から明確なハウツーを草案します。",
+            "description": "{{assistantName}} は、解決策から明確なハウツーを草案します。",
             "title": "書き込まれた修正"
           }
         },
@@ -3240,18 +3240,18 @@
       },
       "flag-figma-designs-no-task": {
         "description": "Linear タスクがまだリンクされていない Figma デザインにフラグを立てます。",
-        "scenario": "デザインはビルド チケットになることなく静かに終了します。 Zero は、リンクされた Linear タスクのない、準備完了とマークされたフレームの Figma を毎日スキャンし、スリップする前に Slack のギャップにフラグを立てます。",
+        "scenario": "デザインはビルド チケットになることなく静かに終了します。 {{assistantName}} は、リンクされた Linear タスクのない、準備完了とマークされたフレームの Figma を毎日スキャンし、スリップする前に Slack のギャップにフラグを立てます。",
         "steps": {
           "one": {
-            "description": "Zero は、フレームとそのリンクされたタスクを読み取ります。",
-            "title": "Zero は Figma フレームをスキャンします"
+            "description": "{{assistantName}} は、フレームとそのリンクされたタスクを読み取ります。",
+            "title": "{{assistantName}} は Figma フレームをスキャンします"
           },
           "three": {
-            "description": "Zero には、チャネル内のリンクされていないデザインがリストされます。",
+            "description": "{{assistantName}} には、チャネル内のリンクされていないデザインがリストされます。",
             "title": "Slack に投稿されたギャップ"
           },
           "two": {
-            "description": "Zero は、ビルド チケットが不足している準備完了デザインにフラグを立てます。",
+            "description": "{{assistantName}} は、ビルド チケットが不足している準備完了デザインにフラグを立てます。",
             "title": "タスクのないフレームを検索します"
           }
         },
@@ -3259,56 +3259,56 @@
       },
       "flagged-gmail-todoist-tasks": {
         "description": "フラグを付けたメールは自動的に Todoist タスクに変換されます。",
-        "scenario": "メールにフラグを付けると、決定が後回しになるだけです。 Zero はフラグを選択し、トピックと前のスレッドを調査し、すでにアタッチされているコンテキストを使用して Todoist タスクをファイルします。",
+        "scenario": "メールにフラグを付けると、決定が後回しになるだけです。 {{assistantName}} はフラグを選択し、トピックと前のスレッドを調査し、すでにアタッチされているコンテキストを使用して Todoist タスクをファイルします。",
         "steps": {
           "one": {
-            "description": "Zero は、Gmail の To Do ラベルでトリガーされます。",
+            "description": "{{assistantName}} は、Gmail の To Do ラベルでトリガーされます。",
             "title": "メールにフラグを立てた場合"
           },
           "three": {
-            "description": "Zero は、リンクを含むすぐに実行できるタスクを作成します。",
+            "description": "{{assistantName}} は、リンクを含むすぐに実行できるタスクを作成します。",
             "title": "Todoist に提出されたタスク"
           },
           "two": {
-            "description": "Zero は、Exa を使用して以前のスレッドのコンテキストと Web 情報を収集します。",
-            "title": "Zero が調査します"
+            "description": "{{assistantName}} は、Exa を使用して以前のスレッドのコンテキストと Web 情報を収集します。",
+            "title": "{{assistantName}} が調査します"
           }
         },
         "title": "フラグが設定された Gmail を Todoist タスクに変換する"
       },
       "github-idea-to-notion-spec": {
         "description": "ラベル付き GitHub のIssueを Notion の構造化された製品仕様に展開します。",
-        "scenario": "問題の 1 行のアイデアは仕様ではありません。 Zero は、ニーズ仕様ラベルを選択し、問題、ユーザー、要件、受け入れ基準を調整する準備ができた状態で、問題を Notion の構造化 PRD に拡張します。",
+        "scenario": "問題の 1 行のアイデアは仕様ではありません。 {{assistantName}} は、ニーズ仕様ラベルを選択し、問題、ユーザー、要件、受け入れ基準を調整する準備ができた状態で、問題を Notion の構造化 PRD に拡張します。",
         "steps": {
           "one": {
-            "description": "Zero はラベルでトリガーされ、問題を読み取ります。",
+            "description": "{{assistantName}} はラベルでトリガーされ、問題を読み取ります。",
             "title": "問題には「ニーズ仕様」というラベルが付けられています"
           },
           "three": {
-            "description": "Zero は、構造化 PRD ページを Notion に作成します。",
+            "description": "{{assistantName}} は、構造化 PRD ページを Notion に作成します。",
             "title": "Notion に保存されました"
           },
           "two": {
-            "description": "Zero は、問題、ユーザー、要件、および受け入れ基準の草案を作成します。",
-            "title": "Zero は PRD に展開します"
+            "description": "{{assistantName}} は、問題、ユーザー、要件、および受け入れ基準の草案を作成します。",
+            "title": "{{assistantName}} は PRD に展開します"
           }
         },
         "title": "GitHub のアイデアを Notion 仕様に変える"
       },
       "gmail-followups-auto": {
         "description": "返信しなかった連絡先を見つけて、次のフォローアップの下書きを作成します。",
-        "scenario": "フォローアップは、取引を獲得する場所と忘れ去られる場所です。 Zero は毎日シーケンスを進め、返信されないすべてに対して次のタッチの下書きを作成するため、何も失効することはありません。",
+        "scenario": "フォローアップは、取引を獲得する場所と忘れ去られる場所です。 {{assistantName}} は毎日シーケンスを進め、返信されないすべてに対して次のタッチの下書きを作成するため、何も失効することはありません。",
         "steps": {
           "one": {
-            "description": "Zero は、Instantly と Apollo で返信しなかった人を読み取ります。",
-            "title": "Zero はシーケンスのステータスをチェックします"
+            "description": "{{assistantName}} は、Instantly と Apollo で返信しなかった人を読み取ります。",
+            "title": "{{assistantName}} はシーケンスのステータスをチェックします"
           },
           "three": {
-            "description": "Zero は、承認を得るためにドラフトを段階的に作成します。",
+            "description": "{{assistantName}} は、承認を得るためにドラフトを段階的に作成します。",
             "title": "Gmail で準備完了"
           },
           "two": {
-            "description": "Zero は、各連絡先のフォローアップを書き込みます。",
+            "description": "{{assistantName}} は、各連絡先のフォローアップを書き込みます。",
             "title": "次のタッチのドラフト"
           }
         },
@@ -3316,18 +3316,18 @@
       },
       "gmail-reconnect-reminders": {
         "description": "しばらくメールを送っていない重要な連絡先を表示します。",
-        "scenario": "頭を下げていると、人間関係は薄れます。 Zero は、受信トレイとカレンダーを毎週確認し、沈黙を保っていた重要な連絡先を明らかにし、再接続のための自然なきっかけを提案します。",
+        "scenario": "頭を下げていると、人間関係は薄れます。 {{assistantName}} は、受信トレイとカレンダーを毎週確認し、沈黙を保っていた重要な連絡先を明らかにし、再接続のための自然なきっかけを提案します。",
         "steps": {
           "one": {
-            "description": "Zero は、最近のメールとカレンダーの履歴を読み取ります。",
-            "title": "Zero が連絡先を確認します"
+            "description": "{{assistantName}} は、最近のメールとカレンダーの履歴を読み取ります。",
+            "title": "{{assistantName}} が連絡先を確認します"
           },
           "three": {
-            "description": "Zero は、提案されたオープナーを使用して各連絡先を投稿します。",
+            "description": "{{assistantName}} は、提案されたオープナーを使用して各連絡先を投稿します。",
             "title": "提案されたオープナー"
           },
           "two": {
-            "description": "Zero は、最近触れていない重要な連絡先を見つけます。",
+            "description": "{{assistantName}} は、最近触れていない重要な連絡先を見つけます。",
             "title": "静かな関係が表面化"
           }
         },
@@ -3335,18 +3335,18 @@
       },
       "highlight-key-emails-gmail": {
         "description": "実際に注意が必要なメールをいくつか洗い出します。",
-        "scenario": "受信箱があふれて、重要な 3 通のメールが埋もれてしまいます。 Zero は毎朝メールを読み、本当に必要なメールだけを表示し、Slack に投稿します。",
+        "scenario": "受信箱があふれて、重要な 3 通のメールが埋もれてしまいます。 {{assistantName}} は毎朝メールを読み、本当に必要なメールだけを表示し、Slack に投稿します。",
         "steps": {
           "one": {
-            "description": "Zero は、Gmail で夜間メールをスキャンします。",
-            "title": "Zero は受信トレイを読み取ります"
+            "description": "{{assistantName}} は、Gmail で夜間メールをスキャンします。",
+            "title": "{{assistantName}} は受信トレイを読み取ります"
           },
           "three": {
-            "description": "Zero は、それぞれが重要である理由を含む候補リストを投稿します。",
+            "description": "{{assistantName}} は、それぞれが重要である理由を含む候補リストを投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、注意が必要な少数のものにフィルターをかけます。",
+            "description": "{{assistantName}} は、注意が必要な少数のものにフィルターをかけます。",
             "title": "特定された優先事項"
           }
         },
@@ -3354,18 +3354,18 @@
       },
       "investor-update-google-docs": {
         "description": "指標とハイライトをドキュメント内の投資家向け最新情報にまとめます。",
-        "scenario": "毎月の投資家向けアップデートはいつも遅れて最初から始まります。 Zero は KPI を収集し、更新内容を強調表示して Google ドキュメントに草稿するため、組み立てるのではなく調整することができます。",
+        "scenario": "毎月の投資家向けアップデートはいつも遅れて最初から始まります。 {{assistantName}} は KPI を収集し、更新内容を強調表示して Google ドキュメントに草稿するため、組み立てるのではなく調整することができます。",
         "steps": {
           "one": {
-            "description": "Zero は、Stripe とスプレッドシートから収益と成長を引き出します。",
-            "title": "Zero は KPI を収集します"
+            "description": "{{assistantName}} は、Stripe とスプレッドシートから収益と成長を引き出します。",
+            "title": "{{assistantName}} は KPI を収集します"
           },
           "three": {
-            "description": "Zero は、すぐに編集できるドラフトを残します。",
+            "description": "{{assistantName}} は、すぐに編集できるドラフトを残します。",
             "title": "Google ドキュメントで編集可能"
           },
           "two": {
-            "description": "Zero は、ナラティブとメトリクスを書き込みます。",
+            "description": "{{assistantName}} は、ナラティブとメトリクスを書き込みます。",
             "title": "アップデートの下書き"
           }
         },
@@ -3373,18 +3373,18 @@
       },
       "log-gong-calls-hubspot": {
         "description": "HubSpot 取引への Gong コールからメモと次のステップを引き出します。",
-        "scenario": "通話メモが新しいうちは CRM に組み込まれることはありません。 Zero は、各通話後に Gong トランスクリプトを読み取り、概要と次のステップを HubSpot 取引に自動的に書き込みます。",
+        "scenario": "通話メモが新しいうちは CRM に組み込まれることはありません。 {{assistantName}} は、各通話後に Gong トランスクリプトを読み取り、概要と次のステップを HubSpot 取引に自動的に書き込みます。",
         "steps": {
           "one": {
-            "description": "通話後、Zero は Gong から録音メモを取得します。",
-            "title": "Zero はトランスクリプトを読み取ります"
+            "description": "通話後、{{assistantName}} は Gong から録音メモを取得します。",
+            "title": "{{assistantName}} はトランスクリプトを読み取ります"
           },
           "three": {
-            "description": "Zero はメモを取引レコードに書き込みます。",
+            "description": "{{assistantName}} はメモを取引レコードに書き込みます。",
             "title": "HubSpot に記録されました"
           },
           "two": {
-            "description": "Zero は決定事項とフォローアップを抽出します。",
+            "description": "{{assistantName}} は決定事項とフォローアップを抽出します。",
             "title": "概要と次のステップの草案"
           }
         },
@@ -3392,18 +3392,18 @@
       },
       "meeting-notes-asana-tasks": {
         "description": "Asana では、会議メモを期限付きの割り当てられたタスクに変換します。",
-        "scenario": "アクションアイテムは会議メモでは無効になります。 Zero は、各会議の後にトランスクリプトを読み取り、ToDo を取り出し、割り当てられた Asana タスクを作成するため、決定が実際に仕事になります。",
+        "scenario": "アクションアイテムは会議メモでは無効になります。 {{assistantName}} は、各会議の後にトランスクリプトを読み取り、ToDo を取り出し、割り当てられた Asana タスクを作成するため、決定が実際に仕事になります。",
         "steps": {
           "one": {
-            "description": "会議の後、Zero は Fireflies からメモを取得します。",
-            "title": "Zero はトランスクリプトを読み取ります"
+            "description": "会議の後、{{assistantName}} は Fireflies からメモを取得します。",
+            "title": "{{assistantName}} はトランスクリプトを読み取ります"
           },
           "three": {
-            "description": "Zero ファイルには、期限付きのタスクが割り当てられています。",
+            "description": "{{assistantName}} ファイルには、期限付きのタスクが割り当てられています。",
             "title": "Asana で作成されたタスク"
           },
           "two": {
-            "description": "Zero は、To-Do と所有者を識別します。",
+            "description": "{{assistantName}} は、To-Do と所有者を識別します。",
             "title": "抽出されたアクションアイテム"
           }
         },
@@ -3411,37 +3411,37 @@
       },
       "meeting-recaps-slack": {
         "description": "各会議の後に、決定事項と実行項目の要約を共有します。",
-        "scenario": "会議の詳細は次の会議までに薄れてしまいます。 Zero はその後トランスクリプトを読み取り、決定事項とアクション項目の完全な要約を送信するため、何も失われることはありません。",
+        "scenario": "会議の詳細は次の会議までに薄れてしまいます。 {{assistantName}} はその後トランスクリプトを読み取り、決定事項とアクション項目の完全な要約を送信するため、何も失われることはありません。",
         "steps": {
           "one": {
-            "description": "会議の後、Zero は Fireflies からメモを取得します。",
-            "title": "Zero はトランスクリプトを読み取ります"
+            "description": "会議の後、{{assistantName}} は Fireflies からメモを取得します。",
+            "title": "{{assistantName}} はトランスクリプトを読み取ります"
           },
           "three": {
-            "description": "Zero は、要約を Gmail または Slack に提供します。",
+            "description": "{{assistantName}} は、要約を Gmail または Slack に提供します。",
             "title": "あなたに送信されました"
           },
           "two": {
-            "description": "Zero には、決定事項とアクション項目が要約されています。",
+            "description": "{{assistantName}} には、決定事項とアクション項目が要約されています。",
             "title": "要約を書きました"
           }
         },
         "title": "Slack で会議の概要を取得します"
       },
       "morning-brief-slack": {
-        "description": "Zero は毎朝、スケジュールと必要なメールを記載した概要を送信し、Slack に投稿します。",
-        "scenario": "一日の最初の10分間は、その日が何なのかを理解するために費やされます。 Zero は、スケジュールと必要なメールをまとめ、座る前に朝の概要を Slack に投稿します。",
+        "description": "{{assistantName}} は毎朝、スケジュールと必要なメールを記載した概要を送信し、Slack に投稿します。",
+        "scenario": "一日の最初の10分間は、その日が何なのかを理解するために費やされます。 {{assistantName}} は、スケジュールと必要なメールをまとめ、座る前に朝の概要を Slack に投稿します。",
         "steps": {
           "one": {
-            "description": "Zero は、今日のカレンダーと優先メールを取得します。",
-            "title": "Zero があなたの一日を読み取ります"
+            "description": "{{assistantName}} は、今日のカレンダーと優先メールを取得します。",
+            "title": "{{assistantName}} があなたの一日を読み取ります"
           },
           "three": {
-            "description": "Zero は朝の概要を送信します。",
+            "description": "{{assistantName}} は朝の概要を送信します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero には、スケジュールと注意が必要なものが書き込まれます。",
+            "description": "{{assistantName}} には、スケジュールと注意が必要なものが書き込まれます。",
             "title": "簡単に組み立てたもの"
           }
         },
@@ -3449,18 +3449,18 @@
       },
       "new-gmail-contacts-hubspot": {
         "description": "不明なメール送信者を HubSpot 連絡先として追加して強化します。",
-        "scenario": "連絡先は誰も記録しないとすり抜けてしまいます。 Zero は、HubSpot にまだ存在していないユーザーからのメールを認識し、レコードを作成し、Apollo でそれを強化するため、CRM は手動入力なしで完全な状態を維持できます。",
+        "scenario": "連絡先は誰も記録しないとすり抜けてしまいます。 {{assistantName}} は、HubSpot にまだ存在していないユーザーからのメールを認識し、レコードを作成し、Apollo でそれを強化するため、CRM は手動入力なしで完全な状態を維持できます。",
         "steps": {
           "one": {
-            "description": "Zero は、受信メールを CRM と照合してチェックします。",
-            "title": "Zero は不明な送信者を特定します"
+            "description": "{{assistantName}} は、受信メールを CRM と照合してチェックします。",
+            "title": "{{assistantName}} は不明な送信者を特定します"
           },
           "three": {
-            "description": "Zero は、連絡先とソースをタイムラインに記録します。",
+            "description": "{{assistantName}} は、連絡先とソースをタイムラインに記録します。",
             "title": "フォローアップのために記録されました"
           },
           "two": {
-            "description": "Zero は、その人を HubSpot に追加し、Apollo で強化します。",
+            "description": "{{assistantName}} は、その人を HubSpot に追加し、Apollo で強化します。",
             "title": "連絡先が作成され、充実しました"
           }
         },
@@ -3468,18 +3468,18 @@
       },
       "onboard-new-hires-asana": {
         "description": "Asana で各新入社員のオンボーディング タスク チェックリストを作成します。",
-        "scenario": "オンボーディングは毎回同じチェックリストであり、毎回手動で行われます。 Zero は新規採用者を検出し、Asana でオンボーディング プロジェクトを立ち上げ、ドライブにスターター ドキュメントを設定します。",
+        "scenario": "オンボーディングは毎回同じチェックリストであり、毎回手動で行われます。 {{assistantName}} は新規採用者を検出し、Asana でオンボーディング プロジェクトを立ち上げ、ドライブにスターター ドキュメントを設定します。",
         "steps": {
           "one": {
-            "description": "Zero は、Deel の新しいレコードを検出します。",
+            "description": "{{assistantName}} は、Deel の新しいレコードを検出します。",
             "title": "新規採用者が追加されました"
           },
           "three": {
-            "description": "Zero は、Google Drive にスターター ドキュメントを設定します。",
+            "description": "{{assistantName}} は、Google Drive にスターター ドキュメントを設定します。",
             "title": "プロビジョニングされたドキュメント"
           },
           "two": {
-            "description": "Zero は、タスクが割り当てられたオンボーディング プロジェクトを起動します。",
+            "description": "{{assistantName}} は、タスクが割り当てられたオンボーディング プロジェクトを起動します。",
             "title": "Asana で作成されたチェックリスト"
           }
         },
@@ -3487,37 +3487,37 @@
       },
       "post-daily-metrics-slack": {
         "description": "毎日の訪問者、サインアップ、アクティベーション番号を Slack に投稿します。",
-        "scenario": "コーヒーを飲む前に 3 つのダッシュボードをチェックするのは、誰もが好む習慣です。 Zero は毎朝訪問者、サインアップ、アクティベーションを取得し、その数値を Slack にポストするため、チャネルにすでに存在する KPI から 1 日が始まるようになります。",
+        "scenario": "コーヒーを飲む前に 3 つのダッシュボードをチェックするのは、誰もが好む習慣です。 {{assistantName}} は毎朝訪問者、サインアップ、アクティベーションを取得し、その数値を Slack にポストするため、チャネルにすでに存在する KPI から 1 日が始まるようになります。",
         "steps": {
           "one": {
-            "description": "Zero は、分析ツールからトラフィック、サインアップ、アクティベーションを読み取ります。",
-            "title": "Zero はメトリクスを取得します"
+            "description": "{{assistantName}} は、分析ツールからトラフィック、サインアップ、アクティベーションを読み取ります。",
+            "title": "{{assistantName}} はメトリクスを取得します"
           },
           "three": {
-            "description": "Zero は朝の KPI 更新を投稿します。",
+            "description": "{{assistantName}} は朝の KPI 更新を投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、日々のコンテキストを使用してキー数値をフォーマットします。",
+            "description": "{{assistantName}} は、日々のコンテキストを使用してキー数値をフォーマットします。",
             "title": "KPI スナップショットに組み立てられる"
           }
         },
         "title": "毎日のメトリクスを Slack に投稿します"
       },
       "post-github-updates-slack": {
-        "description": "平日の毎朝 Zero は、GitHub と Linear からのマージされた進行中の作業を Slack の進行状況更新にコンパイルします。",
-        "scenario": "スタンドアップは時間を食いますが、半分は自分がやったことを思い出すだけです。 Zero は、マージされた PR と進行中の Linear チケットを毎朝コンパイルし、きちんとした進行状況の更新を投稿するため、非同期スタンドアップはそれ自体を書き込みます。",
+        "description": "平日の毎朝 {{assistantName}} は、GitHub と Linear からのマージされた進行中の作業を Slack の進行状況更新にコンパイルします。",
+        "scenario": "スタンドアップは時間を食いますが、半分は自分がやったことを思い出すだけです。 {{assistantName}} は、マージされた PR と進行中の Linear チケットを毎朝コンパイルし、きちんとした進行状況の更新を投稿するため、非同期スタンドアップはそれ自体を書き込みます。",
         "steps": {
           "one": {
-            "description": "Zero は、マージされて開いている作業を GitHub および Linear から読み取ります。",
-            "title": "Zero はアクティビティを収集します"
+            "description": "{{assistantName}} は、マージされて開いている作業を GitHub および Linear から読み取ります。",
+            "title": "{{assistantName}} はアクティビティを収集します"
           },
           "three": {
-            "description": "Zero は、平日毎日スタンドアップ チャンネルに更新情報を投稿します。",
+            "description": "{{assistantName}} は、平日毎日スタンドアップ チャンネルに更新情報を投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、短くて読みやすい進行状況の概要を書き込みます。",
+            "description": "{{assistantName}} は、短くて読みやすい進行状況の概要を書き込みます。",
             "title": "アップデートにまとめました"
           }
         },
@@ -3525,75 +3525,75 @@
       },
       "post-release-notes-slack": {
         "description": "最近出荷された作業から変更ログを作成し、Slack に投稿します。",
-        "scenario": "ユーザーに表示される変更ログはコミット ログとは異なります。 Zero は、リリース ラベルでトリガーされ、出荷されたもののユーザー向けのわかりやすい概要を作成し、それを Slack および Notion に投稿します。",
+        "scenario": "ユーザーに表示される変更ログはコミット ログとは異なります。 {{assistantName}} は、リリース ラベルでトリガーされ、出荷されたもののユーザー向けのわかりやすい概要を作成し、それを Slack および Notion に投稿します。",
         "steps": {
           "one": {
-            "description": "Zero はリリース ラベルでトリガーされます。",
+            "description": "{{assistantName}} はリリース ラベルでトリガーされます。",
             "title": "PR にはリリースというラベルが付けられます"
           },
           "three": {
-            "description": "Zero は両方の場所で発表を共有します。",
+            "description": "{{assistantName}} は両方の場所で発表を共有します。",
             "title": "Slack および Notion に投稿されました"
           },
           "two": {
-            "description": "Zero は、変更内容のユーザー向けの概要を書き込みます。",
-            "title": "Zero が変更ログの下書きを作成します"
+            "description": "{{assistantName}} は、変更内容のユーザー向けの概要を書き込みます。",
+            "title": "{{assistantName}} が変更ログの下書きを作成します"
           }
         },
         "title": "リリース ノートを Slack に投稿します"
       },
       "prep-google-calendar-meetings": {
         "description": "外部出席者を調査し、会議の前に準備概要を送信します。",
-        "scenario": "コールドコールに応じるということは、それを終わらせることを意味します。 Zero は、新しい外部会議を通知し、出席者と Apollo の会社を調査し、Gong から以前の通話コンテキストを取得し、開始前に 1 ページの概要を DM で送信します。",
+        "scenario": "コールドコールに応じるということは、それを終わらせることを意味します。 {{assistantName}} は、新しい外部会議を通知し、出席者と Apollo の会社を調査し、Gong から以前の通話コンテキストを取得し、開始前に 1 ページの概要を DM で送信します。",
         "steps": {
           "one": {
-            "description": "Zero は、外部出席者がカレンダーに参加するとトリガーされます。",
+            "description": "{{assistantName}} は、外部出席者がカレンダーに参加するとトリガーされます。",
             "title": "会議が追加されました"
           },
           "three": {
-            "description": "Zero は、電話の前に 1 ページの資料を DM で送信します。",
+            "description": "{{assistantName}} は、電話の前に 1 ページの資料を DM で送信します。",
             "title": "準備概要を Slack に送信しました"
           },
           "two": {
-            "description": "Zero は、Apollo と Gong で個人と会社を豊かにします。",
+            "description": "{{assistantName}} は、Apollo と Gong で個人と会社を豊かにします。",
             "title": "出席者が調査しました"
           }
         },
         "title": "Google Calendar 会議の準備をする"
       },
       "publish-scheduled-posts-buffer": {
-        "description": "毎日、Zero は、今日スケジュールされたコンテンツを Notion カレンダーから Strapi に公開し、ソーシャル投稿をバッファーのキューに入れます。",
-        "scenario": "コンテンツ カレンダーは、誰かが公開をクリックした場合にのみ機能します。 Zero は、今日のスケジュールされたアイテムを Notion から読み取り、それらを Strapi に公開し、一致するソーシャル投稿をバッファーのキューに入れます。",
+        "description": "毎日、{{assistantName}} は、今日スケジュールされたコンテンツを Notion カレンダーから Strapi に公開し、ソーシャル投稿をバッファーのキューに入れます。",
+        "scenario": "コンテンツ カレンダーは、誰かが公開をクリックした場合にのみ機能します。 {{assistantName}} は、今日のスケジュールされたアイテムを Notion から読み取り、それらを Strapi に公開し、一致するソーシャル投稿をバッファーのキューに入れます。",
         "steps": {
           "one": {
-            "description": "Zero は、今日予定されているアイテムを Notion から取得します。",
-            "title": "Zero は今日のカレンダーを読み取ります"
+            "description": "{{assistantName}} は、今日予定されているアイテムを Notion から取得します。",
+            "title": "{{assistantName}} は今日のカレンダーを読み取ります"
           },
           "three": {
-            "description": "Zero は、バッファー内のプロモーション投稿をスケジュールします。",
+            "description": "{{assistantName}} は、バッファー内のプロモーション投稿をスケジュールします。",
             "title": "ソーシャルがバッファにキューに入れられました"
           },
           "two": {
-            "description": "Zero は、コンテンツを Strapi にプッシュします。",
+            "description": "{{assistantName}} は、コンテンツを Strapi にプッシュします。",
             "title": "CMSに公開"
           }
         },
         "title": "スケジュールされた投稿をバッファに公開する"
       },
       "report-ai-model-costs-slack": {
-        "description": "毎日、Zero は、Langfuse から Slack へのモデルおよびルートごとの LLM トークンの使用量と p95 レイテンシーを報告します。",
-        "scenario": "モデルの支出はルートやモデル全体で静かに増加しています。 Zero は、Langfuse を毎日読み取り、モデルおよびルートごとのトークン支出と p95 レイテンシーの内訳を投稿するため、請求書が届くまでコストが驚くことがありません。",
+        "description": "毎日、{{assistantName}} は、Langfuse から Slack へのモデルおよびルートごとの LLM トークンの使用量と p95 レイテンシーを報告します。",
+        "scenario": "モデルの支出はルートやモデル全体で静かに増加しています。 {{assistantName}} は、Langfuse を毎日読み取り、モデルおよびルートごとのトークン支出と p95 レイテンシーの内訳を投稿するため、請求書が届くまでコストが驚くことがありません。",
         "steps": {
           "one": {
-            "description": "Zero は、その日のトークンの使用量と遅延のトレースを取得します。",
-            "title": "Zero は Langfuse を読み取ります"
+            "description": "{{assistantName}} は、その日のトークンの使用量と遅延のトレースを取得します。",
+            "title": "{{assistantName}} は Langfuse を読み取ります"
           },
           "three": {
-            "description": "Zero は、日次コストと遅延レポートを投稿します。",
+            "description": "{{assistantName}} は、日次コストと遅延レポートを投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、モデルごとおよびルートごとに支出と p95 を集計します。",
+            "description": "{{assistantName}} は、モデルごとおよびルートごとに支出と p95 を集計します。",
             "title": "車種別・路線別"
           }
         },
@@ -3601,18 +3601,18 @@
       },
       "research-calendar-meetings": {
         "description": "カレンダーの各イベントの前に、会う人について調べてください。",
-        "scenario": "準備を整えて参加するということは、時間がほとんどない研究を意味します。 Zero は、新しい会議を通知し、出席者とその会社を検索し、開始前に 1 ページの関係書類を送信します。",
+        "scenario": "準備を整えて参加するということは、時間がほとんどない研究を意味します。 {{assistantName}} は、新しい会議を通知し、出席者とその会社を検索し、開始前に 1 ページの関係書類を送信します。",
         "steps": {
           "one": {
-            "description": "Zero は、新しいカレンダー イベントでトリガーされます。",
+            "description": "{{assistantName}} は、新しいカレンダー イベントでトリガーされます。",
             "title": "会議が追加されました"
           },
           "three": {
-            "description": "Zero は、呼び出しの前に Slack に 1 ページの概要を送信します。",
+            "description": "{{assistantName}} は、呼び出しの前に Slack に 1 ページの概要を送信します。",
             "title": "提出された書類"
           },
           "two": {
-            "description": "Zero は、Exa を使用して人物と会社を検索します。",
+            "description": "{{assistantName}} は、Exa を使用して人物と会社を検索します。",
             "title": "参加者が調査しました"
           }
         },
@@ -3620,18 +3620,18 @@
       },
       "research-new-signups-apollo": {
         "description": "新しいサインアップをそれぞれ調査し、簡単なスナップショットを投稿します。",
-        "scenario": "新しいサインアップは、誰かが時間内に気づいた場合にのみチャンスとなります。 Zero は、Clerk を時間ごとにチェックし、Apollo を使用して各新規ユーザーとその会社を調査し、バックグラウンド スナップショットを Slack に投稿します。",
+        "scenario": "新しいサインアップは、誰かが時間内に気づいた場合にのみチャンスとなります。 {{assistantName}} は、Clerk を時間ごとにチェックし、Apollo を使用して各新規ユーザーとその会社を調査し、バックグラウンド スナップショットを Slack に投稿します。",
         "steps": {
           "one": {
-            "description": "Zero は、1 時間ごとに Clerk から新しいユーザーをプルします。",
-            "title": "Zero は新しいサインアップを読み取ります"
+            "description": "{{assistantName}} は、1 時間ごとに Clerk から新しいユーザーをプルします。",
+            "title": "{{assistantName}} は新しいサインアップを読み取ります"
           },
           "three": {
-            "description": "Zero は、各サインアップのプロファイルをチャネルに投稿します。",
+            "description": "{{assistantName}} は、各サインアップのプロファイルをチャネルに投稿します。",
             "title": "スナップショットが Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、背景と会社のコンテキストを強化します。",
+            "description": "{{assistantName}} は、背景と会社のコンテキストを強化します。",
             "title": "アポロとともに研究"
           }
         },
@@ -3639,18 +3639,18 @@
       },
       "run-daily-query-sheets": {
         "description": "保存した SQL をスケジュールに従って実行し、結果をシートに追加します。",
-        "scenario": "毎朝再構築するレポートは、同じクエリであり、同じシートに貼り付けられたものです。 Zero は毎日クエリを実行し、フォーマットされた結果を Google Sheets に直接書き込みます。",
+        "scenario": "毎朝再構築するレポートは、同じクエリであり、同じシートに貼り付けられたものです。 {{assistantName}} は毎日クエリを実行し、フォーマットされた結果を Google Sheets に直接書き込みます。",
         "steps": {
           "one": {
-            "description": "Zero は、保存された読み取り専用クエリをウェアハウスに対して実行します。",
-            "title": "Zero はクエリを実行します"
+            "description": "{{assistantName}} は、保存された読み取り専用クエリをウェアハウスに対して実行します。",
+            "title": "{{assistantName}} はクエリを実行します"
           },
           "three": {
-            "description": "Zero は結果を追跡シートに追加します。",
+            "description": "{{assistantName}} は結果を追跡シートに追加します。",
             "title": "Google Sheets に書き込まれます"
           },
           "two": {
-            "description": "Zero は、出力をきれいな列に整形します。",
+            "description": "{{assistantName}} は、出力をきれいな列に整形します。",
             "title": "結果がフォーマットされました"
           }
         },
@@ -3658,18 +3658,18 @@
       },
       "send-bugs-github-slack": {
         "description": "バグタグを付けたレポートを GitHub Issueとしてファイルし、Slack でチームに警告します。",
-        "scenario": "バグレポートは、完全なものである場合にのみエンジニアにとって役立ちます。 Zero はバグ ラベルを取得し、再現手順と顧客への影響をまとめて、きれいにファイルして、エンジニアリング チャネルに投稿します。",
+        "scenario": "バグレポートは、完全なものである場合にのみエンジニアにとって役立ちます。 {{assistantName}} はバグ ラベルを取得し、再現手順と顧客への影響をまとめて、きれいにファイルして、エンジニアリング チャネルに投稿します。",
         "steps": {
           "one": {
-            "description": "Zero はバグ ラベルでトリガーされます。",
+            "description": "{{assistantName}} はバグ ラベルでトリガーされます。",
             "title": "問題にはバグというラベルが付けられます"
           },
           "three": {
-            "description": "Zero は、構造化レポートを Slack に投稿します。",
+            "description": "{{assistantName}} は、構造化レポートを Slack に投稿します。",
             "title": "エンジニアリング部門に送られる"
           },
           "two": {
-            "description": "Zero は、ステップ、影響、およびコンテキストを組み立てます。",
+            "description": "{{assistantName}} は、ステップ、影響、およびコンテキストを組み立てます。",
             "title": "リプロとインパクトのパッケージ化"
           }
         },
@@ -3677,37 +3677,37 @@
       },
       "sort-gmail-draft-replies": {
         "description": "受信トレイを分類し、必要なメールへの返信の下書きを作成します。",
-        "scenario": "受信トレイがいっぱいになるのはフルタイムの仕事です。 Zero は、受信メールを緊急度によって分類し、音声で返信の下書きを作成するので、最初から入力するのではなく、ざっと読んで承認することができます。",
+        "scenario": "受信トレイがいっぱいになるのはフルタイムの仕事です。 {{assistantName}} は、受信メールを緊急度によって分類し、音声で返信の下書きを作成するので、最初から入力するのではなく、ざっと読んで承認することができます。",
         "steps": {
           "one": {
-            "description": "Zero は、受信した Gmail メッセージをスキャンします。",
-            "title": "Zero は新しいメールを読み取ります"
+            "description": "{{assistantName}} は、受信した Gmail メッセージをスキャンします。",
+            "title": "{{assistantName}} は新しいメールを読み取ります"
           },
           "three": {
-            "description": "Zero は、承認を得るために応答を段階的に処理します。",
+            "description": "{{assistantName}} は、承認を得るために応答を段階的に処理します。",
             "title": "返信草案"
           },
           "two": {
-            "description": "Zero は、現在必要なものと後で必要なものをラベル付けします。",
+            "description": "{{assistantName}} は、現在必要なものと後で必要なものをラベル付けします。",
             "title": "緊急度順に並べ替え"
           }
         },
         "title": "Gmail と返信の下書きを並べ替える"
       },
       "sort-route-zendesk-tickets": {
-        "description": "サポート チケットが到着すると、Zero はその重大度を設定し、適切なチームにルーティングして、最初の返信の草案を作成します。",
-        "scenario": "すべてのチケットには、回答する前にトリアージが必要です。 Zero は、新しいチケットをそれぞれ読み取り、重大度を割り当て、適切なキューにルーティングして、最初の応答を下書きするため、エージェントは空のボックスではなく下書きから開始します。",
+        "description": "サポート チケットが到着すると、{{assistantName}} はその重大度を設定し、適切なチームにルーティングして、最初の返信の草案を作成します。",
+        "scenario": "すべてのチケットには、回答する前にトリアージが必要です。 {{assistantName}} は、新しいチケットをそれぞれ読み取り、重大度を割り当て、適切なキューにルーティングして、最初の応答を下書きするため、エージェントは空のボックスではなく下書きから開始します。",
         "steps": {
           "one": {
-            "description": "Zero は、新しい Zendesk チケットを読み取ります。",
+            "description": "{{assistantName}} は、新しい Zendesk チケットを読み取ります。",
             "title": "チケットが届く"
           },
           "three": {
-            "description": "Zero は、ブランドに関する最初の対応を段階的に行います。",
+            "description": "{{assistantName}} は、ブランドに関する最初の対応を段階的に行います。",
             "title": "最初の返信の下書き"
           },
           "two": {
-            "description": "Zero は緊急度を分類し、適切なチームに送信します。",
+            "description": "{{assistantName}} は緊急度を分類し、適切なチームに送信します。",
             "title": "重大度の設定とルーティング"
           }
         },
@@ -3715,18 +3715,18 @@
       },
       "spot-churn-risk-stripe-zendesk": {
         "description": "解約のリスクがあるアカウントにフラグを立てて、回復メールの下書きを作成します。",
-        "scenario": "チャーンは、チャーンが起こって初めて明らかになります。 Zero は、請求に関するトラブルやチケットの急増がないか Stripe と Zendesk を毎日チェックし、リスクのあるアカウントにフラグを立てて、誰かが早期に介入できるように回復メールの下書きを作成します。",
+        "scenario": "チャーンは、チャーンが起こって初めて明らかになります。 {{assistantName}} は、請求に関するトラブルやチケットの急増がないか Stripe と Zendesk を毎日チェックし、リスクのあるアカウントにフラグを立てて、誰かが早期に介入できるように回復メールの下書きを作成します。",
         "steps": {
           "one": {
-            "description": "Zero は、Stripe から請求ステータスを読み取り、Zendesk からチケット量を読み取ります。",
-            "title": "Zero がアカウントをスキャンします"
+            "description": "{{assistantName}} は、Stripe から請求ステータスを読み取り、Zendesk からチケット量を読み取ります。",
+            "title": "{{assistantName}} がアカウントをスキャンします"
           },
           "three": {
-            "description": "Zero は、レビュー用にアウトリーチ メールの下書きを作成します。",
+            "description": "{{assistantName}} は、レビュー用にアウトリーチ メールの下書きを作成します。",
             "title": "回復メールの下書き"
           },
           "two": {
-            "description": "Zero は、チャーンシグナルを示すアカウントを表示します。",
+            "description": "{{assistantName}} は、チャーンシグナルを示すアカウントを表示します。",
             "title": "リスクのあるアカウントにフラグが設定される"
           }
         },
@@ -3734,37 +3734,37 @@
       },
       "summarize-gmail-newsletters": {
         "description": "受信トレイ内のニュースレターを 1 つの短い要約に要約します。",
-        "scenario": "あなたは 20 のニュースレターを購読していますが、何も読んでいません。 Zero は、ニュースレターとしてラベル付けしたすべてのものを収集し、毎週 1 つのきちんとしたダイジェストを投稿するので、山積みせずにシグナルを受け取ることができます。",
+        "scenario": "あなたは 20 のニュースレターを購読していますが、何も読んでいません。 {{assistantName}} は、ニュースレターとしてラベル付けしたすべてのものを収集し、毎週 1 つのきちんとしたダイジェストを投稿するので、山積みせずにシグナルを受け取ることができます。",
         "steps": {
           "one": {
-            "description": "Zero は、ニュースレター ラベルの下にあるメッセージを読み取ります。",
-            "title": "Zero はニュースレターを収集します"
+            "description": "{{assistantName}} は、ニュースレター ラベルの下にあるメッセージを読み取ります。",
+            "title": "{{assistantName}} はニュースレターを収集します"
           },
           "three": {
-            "description": "Zero は毎週のダイジェストを送信します。",
+            "description": "{{assistantName}} は毎週のダイジェストを送信します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、それぞれから重要なポイントを抽出します。",
+            "description": "{{assistantName}} は、それぞれから重要なポイントを抽出します。",
             "title": "1 つの要約にまとめた"
           }
         },
         "title": "Gmail ニュースレターの要約"
       },
       "summarize-user-feedback-notion": {
-        "description": "Zero は毎週、Productlane、Typeform、Intercom、GitHub からフィードバックを収集し、それをテーマに分類して、Notion にランク付けします。",
-        "scenario": "フィードバックは 4 つのツールに分散されており、すべてを読む時間は誰もありません。 Zero は毎週各ソースから取得し、コメントをテーマにまとめて、ランク付けされた概要を Notion に書き込むため、上位の質問が明確になります。",
+        "description": "{{assistantName}} は毎週、Productlane、Typeform、Intercom、GitHub からフィードバックを収集し、それをテーマに分類して、Notion にランク付けします。",
+        "scenario": "フィードバックは 4 つのツールに分散されており、すべてを読む時間は誰もありません。 {{assistantName}} は毎週各ソースから取得し、コメントをテーマにまとめて、ランク付けされた概要を Notion に書き込むため、上位の質問が明確になります。",
         "steps": {
           "one": {
-            "description": "Zero は、Productlane、Typeform、Intercom、および GitHub からの新しいフィードバックを読み取ります。",
-            "title": "Zero はフィードバックを取得します"
+            "description": "{{assistantName}} は、Productlane、Typeform、Intercom、および GitHub からの新しいフィードバックを読み取ります。",
+            "title": "{{assistantName}} はフィードバックを取得します"
           },
           "three": {
-            "description": "Zero は、ランク付けされたダイジェストを Notion ページに書き込みます。",
+            "description": "{{assistantName}} は、ランク付けされたダイジェストを Notion ページに書き込みます。",
             "title": "概要が Notion に保存されました"
           },
           "two": {
-            "description": "Zero は、関連するフィードバックをグループ化し、頻度によってテーマをランク付けします。",
+            "description": "{{assistantName}} は、関連するフィードバックをグループ化し、頻度によってテーマをランク付けします。",
             "title": "テーマごとに分類"
           }
         },
@@ -3772,18 +3772,18 @@
       },
       "summarize-zendesk-tickets-daily": {
         "description": "Zendesk チケットの最終日を要約し、Slack に投稿します。",
-        "scenario": "サポートのバックログは、火事になるまではわかりません。 Zero は毎朝、チケットの最終日を重大度および経過時間別に要約して Slack に投稿するため、目に見えないまま腐ることはありません。",
+        "scenario": "サポートのバックログは、火事になるまではわかりません。 {{assistantName}} は毎朝、チケットの最終日を重大度および経過時間別に要約して Slack に投稿するため、目に見えないまま腐ることはありません。",
         "steps": {
           "one": {
-            "description": "Zero は、過去 24 時間の Zendesk チケットを取得します。",
-            "title": "Zero はキューを読み取ります"
+            "description": "{{assistantName}} は、過去 24 時間の Zendesk チケットを取得します。",
+            "title": "{{assistantName}} はキューを読み取ります"
           },
           "three": {
-            "description": "Zero は毎日のサポート ダイジェストを投稿します。",
+            "description": "{{assistantName}} は毎日のサポート ダイジェストを投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、開いているチケットを整理し、古いチケットにフラグを立てます。",
+            "description": "{{assistantName}} は、開いているチケットを整理し、古いチケットにフラグを立てます。",
             "title": "重症度と年齢ごとにグループ化"
           }
         },
@@ -3791,18 +3791,18 @@
       },
       "sync-asana-projects-notion": {
         "description": "Asana プロジェクトのステータスを Notion の単一ボードにロールアップします。",
-        "scenario": "ステータスは Asana にありますが、リーダーシップは Notion となります。 Zero は、タスクのステータスを毎日 1 つの Notion ボードにまとめてダイジェストを投稿するため、ステータス会議を行わずに全員が同じ画像を見ることができます。",
+        "scenario": "ステータスは Asana にありますが、リーダーシップは Notion となります。 {{assistantName}} は、タスクのステータスを毎日 1 つの Notion ボードにまとめてダイジェストを投稿するため、ステータス会議を行わずに全員が同じ画像を見ることができます。",
         "steps": {
           "one": {
-            "description": "Zero は、チーム全体のタスクとプロジェクトのステータスを取得します。",
-            "title": "Zero は Asana を読み取ります"
+            "description": "{{assistantName}} は、チーム全体のタスクとプロジェクトのステータスを取得します。",
+            "title": "{{assistantName}} は Asana を読み取ります"
           },
           "three": {
-            "description": "Zero は、概要を Slack に投稿します。",
+            "description": "{{assistantName}} は、概要を Slack に投稿します。",
             "title": "ダイジェスト掲載"
           },
           "two": {
-            "description": "Zero は、単一の Notion ステータス ボードを更新します。",
+            "description": "{{assistantName}} は、単一の Notion ステータス ボードを更新します。",
             "title": "一枚の板に丸めたもの"
           }
         },
@@ -3810,18 +3810,18 @@
       },
       "sync-linear-roadmap-notion": {
         "description": "Notion ロードマップと Linear の問題ステータスの同期を維持します。",
-        "scenario": "チケットが移動した瞬間にロードマップは古くなります。 Zero は、Linear ステータスを Notion の Now / Next / Later ボードに毎日同期するため、関係者が読むロードマップは常に現実と一致します。",
+        "scenario": "チケットが移動した瞬間にロードマップは古くなります。 {{assistantName}} は、Linear ステータスを Notion の Now / Next / Later ボードに毎日同期するため、関係者が読むロードマップは常に現実と一致します。",
         "steps": {
           "one": {
-            "description": "Zero は、現在のチケットの状態とマイルストーンを取得します。",
-            "title": "Zero は Linear ステータスを読み取ります"
+            "description": "{{assistantName}} は、現在のチケットの状態とマイルストーンを取得します。",
+            "title": "{{assistantName}} は Linear ステータスを読み取ります"
           },
           "three": {
-            "description": "Zero は、Notion ロードマップ ボードを更新します。",
+            "description": "{{assistantName}} は、Notion ロードマップ ボードを更新します。",
             "title": "Notion でボードが更新されました"
           },
           "two": {
-            "description": "Zero バケットはロードマップ列に組み込まれます。",
+            "description": "{{assistantName}} バケットはロードマップ列に組み込まれます。",
             "title": "現在 / 次 / 後でマッピング"
           }
         },
@@ -3829,37 +3829,37 @@
       },
       "track-feature-usage-posthog": {
         "description": "PostHog からの機能使用量の週ごとの最大の変化を明らかにします。",
-        "scenario": "問題が発生するまで、機能がひっそりと使用できなくなっていることに誰も気づきません。 Zero は毎週 PostHog をチェックし、どの機能が上昇または下降しているかを投稿するため、チームは導入の変化を早期に確認できます。",
+        "scenario": "問題が発生するまで、機能がひっそりと使用できなくなっていることに誰も気づきません。 {{assistantName}} は毎週 PostHog をチェックし、どの機能が上昇または下降しているかを投稿するため、チームは導入の変化を早期に確認できます。",
         "steps": {
           "one": {
-            "description": "Zero は、その週の機能の使用状況を取得します。",
-            "title": "Zero は PostHog を読み取ります"
+            "description": "{{assistantName}} は、その週の機能の使用状況を取得します。",
+            "title": "{{assistantName}} は PostHog を読み取ります"
           },
           "three": {
-            "description": "Zero は、採用の変更をチャンネルに投稿します。",
+            "description": "{{assistantName}} は、採用の変更をチャンネルに投稿します。",
             "title": "Slack に投稿されたシフト"
           },
           "two": {
-            "description": "Zero は、最大の上昇値と下降値を見つけます。",
+            "description": "{{assistantName}} は、最大の上昇値と下降値を見つけます。",
             "title": "週ごとの比較"
           }
         },
         "title": "PostHog を使用して機能の使用状況を追跡する"
       },
       "track-keyword-ranks-ahrefs": {
-        "description": "毎週 Zero は、Ahrefs でターゲット キーワードのランキングを追跡し、Notion で上位キーワードをレポートします。",
-        "scenario": "ランクの追跡は、手動でエクスポートして比較する作業です。 Zero は毎週ターゲットのキーワードを取得し、順位を比較し、最も大きな要因を Notion に書き込むため、SEO の勝敗が明らかになります。",
+        "description": "毎週 {{assistantName}} は、Ahrefs でターゲット キーワードのランキングを追跡し、Notion で上位キーワードをレポートします。",
+        "scenario": "ランクの追跡は、手動でエクスポートして比較する作業です。 {{assistantName}} は毎週ターゲットのキーワードを取得し、順位を比較し、最も大きな要因を Notion に書き込むため、SEO の勝敗が明らかになります。",
         "steps": {
           "one": {
-            "description": "Zero は、Ahrefs から現在のランキングを取得します。",
-            "title": "Zero はキーワードの位置を読み取ります"
+            "description": "{{assistantName}} は、Ahrefs から現在のランキングを取得します。",
+            "title": "{{assistantName}} はキーワードの位置を読み取ります"
           },
           "three": {
-            "description": "Zero は、ムーバーとトレンドを Notion に書き込みます。",
+            "description": "{{assistantName}} は、ムーバーとトレンドを Notion に書き込みます。",
             "title": "Notion で報告されました"
           },
           "two": {
-            "description": "Zero は先週と比較し、最も大きな変化が見られます。",
+            "description": "{{assistantName}} は先週と比較し、最も大きな変化が見られます。",
             "title": "引っ越し業者が特定されました"
           }
         },
@@ -3867,56 +3867,56 @@
       },
       "track-signup-sources-sheets": {
         "description": "追跡シート内の各新規サインアップをそのソースに帰属させます。",
-        "scenario": "サインアップがどこから来たのかを知るということは、Clerk を手動で分析に結び付けることを意味します。 Zero は、新しいサインアップを毎日そのチャネルとキャンペーンに関連付け、ピボットできる Google シートに記録します。",
+        "scenario": "サインアップがどこから来たのかを知るということは、Clerk を手動で分析に結び付けることを意味します。 {{assistantName}} は、新しいサインアップを毎日そのチャネルとキャンペーンに関連付け、ピボットできる Google シートに記録します。",
         "steps": {
           "one": {
-            "description": "Zero は、Clerk から新しいユーザーを取得します。",
-            "title": "Zero は新しいサインアップを読み取ります"
+            "description": "{{assistantName}} は、Clerk から新しいユーザーを取得します。",
+            "title": "{{assistantName}} は新しいサインアップを読み取ります"
           },
           "three": {
-            "description": "Zero は、属性付きの行をシートに追加します。",
+            "description": "{{assistantName}} は、属性付きの行をシートに追加します。",
             "title": "Google Sheets に記録されました"
           },
           "two": {
-            "description": "Zero は、Plausible を介して各サインアップをそのソースおよびキャンペーンと照合します。",
+            "description": "{{assistantName}} は、Plausible を介して各サインアップをそのソースおよびキャンペーンと照合します。",
             "title": "チャンネルに起因する"
           }
         },
         "title": "Google Sheets でサインアップ ソースを追跡する"
       },
       "watch-brand-mentions": {
-        "description": "Zero は 1 時間ごとに Web、Hacker News、X で製品に関する言及を検索し、Slack に投稿します。",
-        "scenario": "あなたの製品に関するスレッドを見つける頃には、会話はさらに進んでいます。 Zero は、Web、Reddit、および X を 1 時間ごとに検索し、新しいメンションを Slack に投稿するので、ライブ中に参加できます。",
+        "description": "{{assistantName}} は 1 時間ごとに Web、Hacker News、X で製品に関する言及を検索し、Slack に投稿します。",
+        "scenario": "あなたの製品に関するスレッドを見つける頃には、会話はさらに進んでいます。 {{assistantName}} は、Web、Reddit、および X を 1 時間ごとに検索し、新しいメンションを Slack に投稿するので、ライブ中に参加できます。",
         "steps": {
           "one": {
-            "description": "Zero は Web、Reddit、および X を Exa でスキャンします。",
-            "title": "Zero はメンションを検索します"
+            "description": "{{assistantName}} は Web、Reddit、および X を Exa でスキャンします。",
+            "title": "{{assistantName}} はメンションを検索します"
           },
           "three": {
-            "description": "Zero は、各メンションをリンクとコンテキストとともに投稿します。",
+            "description": "{{assistantName}} は、各メンションをリンクとコンテキストとともに投稿します。",
             "title": "Slack に投稿されました"
           },
           "two": {
-            "description": "Zero は、新鮮で関連性のあるヒットのみを保持します。",
+            "description": "{{assistantName}} は、新鮮で関連性のあるヒットのみを保持します。",
             "title": "新しいメンションがフィルタリングされました"
           }
         },
         "title": "HN と X でブランドの言及を確認する"
       },
       "watch-sentry-after-release": {
-        "description": "各リリース後に、Zero は新しいバージョンのクラッシュフリー率をベースラインと比較し、ロールバックの提案で回帰のフラグを立てます。",
-        "scenario": "最もリスクが高いのは、デプロイ直後です。 Zero は、新しいリリースのクラッシュフリー率とエラー率を以前のベースラインと比較して監視し、状況が悪化した場合は回帰を警告し、ロールバックを提案します。",
+        "description": "各リリース後に、{{assistantName}} は新しいバージョンのクラッシュフリー率をベースラインと比較し、ロールバックの提案で回帰のフラグを立てます。",
+        "scenario": "最もリスクが高いのは、デプロイ直後です。 {{assistantName}} は、新しいリリースのクラッシュフリー率とエラー率を以前のベースラインと比較して監視し、状況が悪化した場合は回帰を警告し、ロールバックを提案します。",
         "steps": {
           "one": {
-            "description": "デプロイ後、Zero はリリースのクラッシュフリー率とエラー率を Sentry で追跡します。",
-            "title": "Zero は新しいリリースを監視します"
+            "description": "デプロイ後、{{assistantName}} はリリースのクラッシュフリー率とエラー率を Sentry で追跡します。",
+            "title": "{{assistantName}} は新しいリリースを監視します"
           },
           "three": {
-            "description": "リリースが後退すると、Zero は Slack に警告し、ロールバックを提案します。",
+            "description": "リリースが後退すると、{{assistantName}} は Slack に警告し、ロールバックを提案します。",
             "title": "ロールバック ヒントでリグレッションのフラグが立てられる"
           },
           "two": {
-            "description": "Zero は、ライブ数値を以前のリリースのベースラインと比較します。",
+            "description": "{{assistantName}} は、ライブ数値を以前のリリースのベースラインと比較します。",
             "title": "ベースラインとの比較"
           }
         },
@@ -4065,8 +4065,8 @@
         "start": "データをエクスポートする",
         "starting": "エクスポートの開始"
       },
-      "backToZero": "Zero に戻る",
-      "description": "Zero で作成したファイルとテキスト レコードをダウンロードします。",
+      "backToZero": "{{assistantName}} に戻る",
+      "description": "{{assistantName}} で作成したファイルとテキスト レコードをダウンロードします。",
       "documentTitle": "データのエクスポート",
       "duration": {
         "soon": "すぐに"
@@ -4623,10 +4623,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "この共有された会話は存在しません。",
     "notFoundTitle": "共有された会話が見つかりません",
-    "tryOkou": "Okouを試す"
+    "tryOkou": "{{assistantName}}を試す"
   },
   "usage": {
     "displayNames": {

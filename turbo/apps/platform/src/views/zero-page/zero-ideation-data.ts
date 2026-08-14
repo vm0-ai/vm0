@@ -1,5 +1,6 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { BrandName } from "../../signals/branding.ts";
 
 interface UseCase {
   readonly id: string;
@@ -14,6 +15,7 @@ interface Category {
 }
 
 interface IdeationFilterOptions {
+  readonly brandName?: BrandName;
   readonly features?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly visibleConnectorSlugs?: ReadonlySet<string>;
 }
@@ -559,6 +561,16 @@ function isEnabled(
   return !!features?.[useCase.featureFlag];
 }
 
+function brandUseCase(useCase: UseCase, brandName: BrandName = "VM0"): UseCase {
+  if (useCase.id !== "zapier-vm0-migration") {
+    return useCase;
+  }
+  return {
+    ...useCase,
+    prompt: `Help me migrate my Zapier workflows to ${brandName}. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack`,
+  };
+}
+
 function filterUseCase(
   useCase: UseCase,
   options: IdeationFilterOptions,
@@ -573,7 +585,7 @@ function filterUseCase(
     useCase.connectorSlugs.length === 0 ||
     !visibleConnectorSlugs
   ) {
-    return useCase;
+    return brandUseCase(useCase, options.brandName);
   }
 
   const allConnectorsVisible = useCase.connectorSlugs.every((connectorSlug) => {
@@ -582,7 +594,7 @@ function filterUseCase(
   if (!allConnectorsVisible) {
     return null;
   }
-  return useCase;
+  return brandUseCase(useCase, options.brandName);
 }
 
 export function getCategories(

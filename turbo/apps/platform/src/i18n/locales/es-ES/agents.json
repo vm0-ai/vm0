@@ -122,7 +122,7 @@
       "engineering": {
         "cases": {
           "batch-create-issues": {
-            "description": "Pega una lista y Zero creará las incidencias por ti",
+            "description": "Pega una lista y {{assistantName}} creará las incidencias por ti",
             "title": "Creación de incidencias por lotes"
           },
           "browserbase-web-testing": {
@@ -134,7 +134,7 @@
             "title": "Informe de tráfico y seguridad de Cloudflare"
           },
           "codebase-investigation": {
-            "description": "Proporciona una URL y Zero rastreará el error por todo el repositorio",
+            "description": "Proporciona una URL y {{assistantName}} rastreará el error por todo el repositorio",
             "title": "Investigación del código fuente"
           },
           "daily-standup-report": {
@@ -178,8 +178,8 @@
             "title": "Resumen de despliegues de Vercel"
           },
           "zapier-vm0-migration": {
-            "description": "Recrea tus flujos de trabajo de Zapier como agentes VM0",
-            "title": "Migración de Zapier a VM0"
+            "description": "Recrea tus flujos de trabajo de Zapier como agentes {{brandName}}",
+            "title": "Migración de Zapier a {{brandName}}"
           }
         },
         "title": "Ingeniería"

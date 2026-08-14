@@ -63,7 +63,7 @@
       "downloadRawData": "Descargar datos en bruto",
       "errorGuidance": {
         "computerUseAuthorizationRequired": {
-          "guidance": "Solicita un enlace de autorización delegado para Uso del Ordenador, pide al usuario que seleccione un host de escritorio Zero para este chat o hilo Slack, y luego inicia una nueva ejecución. Los tokens de ejecución existentes no pueden actualizarse en su lugar.",
+          "guidance": "Solicita un enlace de autorización delegado para Uso del Ordenador, pide al usuario que seleccione un host de escritorio {{assistantName}} para este chat o hilo Slack, y luego inicia una nueva ejecución. Los tokens de ejecución existentes no pueden actualizarse en su lugar.",
           "title": "Se requiere autorización para el uso de ordenadores"
         },
         "concurrentRunLimitReached": {
@@ -365,27 +365,27 @@
     "browserUpgrade": {
       "browser": {
         "action": "Actualizar navegador",
-        "description": "Zero no es compatible con la versión actual de tu navegador. Actualiza el navegador para continuar.",
+        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza el navegador para continuar.",
         "title": "Actualiza tu navegador para continuar"
       },
       "chrome": {
         "action": "Actualizar Chrome",
-        "description": "Zero no es compatible con la versión actual de tu navegador. Actualiza Chrome para continuar.",
+        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chrome para continuar.",
         "title": "Actualiza Chrome para continuar"
       },
       "chromium": {
         "action": "Actualizar Chromium",
-        "description": "Zero no es compatible con la versión actual de tu navegador. Actualiza Chromium para continuar.",
+        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chromium para continuar.",
         "title": "Actualiza Chromium para continuar"
       },
       "ios": {
         "action": "Actualizar iOS",
-        "description": "Zero no es compatible con la versión actual de tu navegador. Actualiza iOS para continuar.",
+        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza iOS para continuar.",
         "title": "Actualiza iOS para continuar"
       },
       "safari": {
         "action": "Actualizar Safari",
-        "description": "Zero no es compatible con la versión actual de tu navegador. Actualiza Safari para continuar.",
+        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Safari para continuar.",
         "title": "Actualiza Safari para continuar"
       }
     },
@@ -402,10 +402,10 @@
         "warmingNeurons": "Activando las neuronas..."
       }
     },
-    "logoAlt": "VM0",
+    "logoAlt": "{{brandName}}",
     "metadata": {
-      "description": "Zero es tu compañero de IA de vm0. Escríbele a Zero o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
-      "title": "Zero — Tu compañero de IA de vm0"
+      "description": "{{assistantName}} es tu compañero de IA de {{brandName}}. Escríbele a {{assistantName}} o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
+      "title": "{{assistantName}} — Tu compañero de IA de {{brandName}}"
     },
     "shortcutHelp": {
       "close": "Cerrar atajos de teclado",
@@ -709,7 +709,7 @@
   },
   "authorization": {
     "browser": {
-      "description": "Zero usará un perfil aislado de navegador en la nube para este hilo de chat. Activarlo desconecta el uso del ordenador para el hilo.",
+      "description": "{{assistantName}} usará un perfil aislado de navegador en la nube para este hilo de chat. Activarlo desconecta el uso del ordenador para el hilo.",
       "enable": "Habilitar este hilo",
       "enabled": "Navegador en la nube habilitado",
       "linkExpires": "El enlace caduca {{date}}.",
@@ -721,7 +721,7 @@
       "authorize": "Autorizar",
       "authorized": "Autorizado",
       "checkingCompatibility": "Comprobación de compatibilidad",
-      "description": "Elige un ordenador en línea para que Zero lo use en {{source}}.",
+      "description": "Elige un ordenador en línea para que {{assistantName}} lo use en {{source}}.",
       "downloadMac": "Descargar para macOS",
       "lastSeen": "Última vez que se vio {{date}}",
       "linkExpires": "El enlace caduca {{date}}.",
@@ -1076,7 +1076,7 @@
       "concurrencyReduced": "La reducción de concurrencia está programada para la próxima fecha de facturación.",
       "concurrencyRestored": "Se ha restaurado la suscripción de concurrencia.",
       "creditPurchaseConfirmed": "Pago confirmado. Los créditos aparecerán cuando Stripe procese la factura.",
-      "creditsAdded": "Créditos añadidos. Puedes seguir chateando con Zero.",
+      "creditsAdded": "Créditos añadidos. Puedes seguir chateando con {{assistantName}}.",
       "downgradeScheduledDate": "Cambio de plan programado. Tu plan actual permanecerá activo hasta {{date}}.",
       "downgradeScheduledPeriod": "Cambio de plan programado. Tu plan actual permanecerá activo hasta que termine el periodo de facturación.",
       "planRestored": "Plan restaurado. Tu suscripción se renovará normalmente.",
@@ -1159,9 +1159,9 @@
       "startDescription": "Al iniciar, se restauran el perfil de inicio de sesión y el almacenamiento guardados cuando están disponibles, y se vuelven a abrir las pestañas guardadas cuando es posible.",
       "starting": "Iniciando…"
     },
-    "reclaimHint_one": "Zero mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minuto de reposo.",
-    "reclaimHint_many": "Zero mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minutos de reposo.",
-    "reclaimHint_other": "Zero mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minutos de reposo.",
+    "reclaimHint_one": "{{assistantName}} mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minuto de reposo.",
+    "reclaimHint_many": "{{assistantName}} mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minutos de reposo.",
+    "reclaimHint_other": "{{assistantName}} mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minutos de reposo.",
     "status": {
       "live": "En directo",
       "starting": "Iniciando",
@@ -1336,23 +1336,23 @@
       "weeklyOnAt": "Cada semana, el {{days}} a las {{time}}"
     },
     "billing": {
-      "addCreditsToContinue": "Añade créditos para seguir charlando con Zero.",
-      "askAdminCredits": "Pide a un administrador de espacio de trabajo que añada créditos para que puedas seguir hablando con Zero.",
-      "askAdminUpgrade": "Pide a un administrador de espacio de trabajo que actualice a Pro para poder seguir hablando con Zero.",
+      "addCreditsToContinue": "Añade créditos para seguir charlando con {{assistantName}}.",
+      "askAdminCredits": "Pide a un administrador de espacio de trabajo que añada créditos para que puedas seguir hablando con {{assistantName}}.",
+      "askAdminUpgrade": "Pide a un administrador de espacio de trabajo que actualice a Pro para poder seguir hablando con {{assistantName}}.",
       "buy": "Comprar",
       "checkingPermissions": "Comprobando permisos de facturación...",
       "comparePlans": "Comparar planes",
       "comparePlansDescription": "Compara planes para desbloquear funciones de espacio de trabajo de pago y créditos adicionales.",
-      "creditsAdded": "Tus créditos han sido añadidos. Puedes seguir chateando con Zero.",
+      "creditsAdded": "Tus créditos han sido añadidos. Puedes seguir chateando con {{assistantName}}.",
       "creditsAvailable": "Créditos disponibles",
       "custom": "Personalizado",
       "customAmountError": "Introduce entre $1 y $10,000",
       "customDollarAmount": "Cantidad personalizada en dólares",
       "outOfCredits": "Se te han acabado los créditos",
       "redirecting": "Redirigiendo...",
-      "upgradeToContinue": "Actualiza a Pro para seguir charlando con Zero.",
+      "upgradeToContinue": "Actualiza a Pro para seguir charlando con {{assistantName}}.",
       "upgradeToPro": "Actualizar a Pro",
-      "upgradeToRun": "Actualizar a Pro para ejecutar Zero",
+      "upgradeToRun": "Actualizar a Pro para ejecutar {{assistantName}}",
       "upgradeWorkspace": "Actualizar el espacio de trabajo"
     },
     "composer": {
@@ -2131,7 +2131,7 @@
     "providerConnect": {
       "agentphone": {
         "back": "Volviendo a {{brandName}}",
-        "connectDescription": "Vincula este número de teléfono a tu cuenta de {{brandName}} para poder interactuar con Zero a través de mensajes de texto.",
+        "connectDescription": "Vincula este número de teléfono a tu cuenta de {{brandName}} para poder interactuar con {{assistantName}} a través de mensajes de texto.",
         "connectTitle": "Conectar número de teléfono",
         "documentTitle": "Conectar mensajes",
         "errorFallback": "No pudimos conectar este número de teléfono. Inténtalo de nuevo desde tus mensajes de texto.",
@@ -2141,7 +2141,7 @@
         "invalidTimestamp": "La marca de tiempo de este enlace no es válida.",
         "invalidTitle": "El enlace de conexión es inválido",
         "risk": "Las respuestas SMS y MMS pueden no entregarse de forma fiable. Para una experiencia fiable, utiliza iMessage con este número de AgentPhone.",
-        "successDescription": "{{phone}} está conectado. Envía un mensaje de texto para empezar a chatear con Zero.",
+        "successDescription": "{{phone}} está conectado. Envía un mensaje de texto para empezar a chatear con {{assistantName}}.",
         "successTitle": "Número de teléfono conectado"
       },
       "common": {
@@ -2253,7 +2253,7 @@
         "copyAria": "Copiar {{phone}}",
         "copyError": "No se pudo copiar el número de teléfono",
         "copySuccess": "Número de teléfono copiado",
-        "description": "Acceso por mensajes de texto a Zero",
+        "description": "Acceso por mensajes de texto a {{assistantName}}",
         "destination": "iMessage o SMS a",
         "normalized": "Enviaremos un mensaje a {{phone}}.",
         "options": "Opciones de teléfono",
@@ -2467,7 +2467,7 @@
         "adminRequired": "Pide a un administrador de la organización que añada o actualice integraciones con Strapi.",
         "authorizationHeader": "Cabecera de autorización",
         "copied": "{{label}} copiado",
-        "description": "Deja Zero reaccionar a las entradas publicadas de Strapi y automatizar el trabajo posterior.",
+        "description": "Deja {{assistantName}} reaccionar a las entradas publicadas de Strapi y automatizar el trabajo posterior.",
         "documentTitle": "Strapi",
         "empty": "Todavía no hay instancias de Strapi conectadas.",
         "form": {
@@ -2490,7 +2490,7 @@
           "testReceived": "Webhook de prueba de Strapi recibido"
         },
         "webhookUrl": "URL del webhook",
-        "whereZeroWorks": "Dónde trabaja Zero"
+        "whereZeroWorks": "Dónde trabaja {{assistantName}}"
       },
       "telegram": {
         "addBot": "Añadir bot",
@@ -2529,7 +2529,7 @@
         "moreOptions": "Más opciones para {{bot}}",
         "newBotToken": "Nuevo token de bot",
         "notConnected": "No conectado",
-        "officialBot": "Zero bot oficial",
+        "officialBot": "{{assistantName}} bot oficial",
         "officialDescription": "Bot oficial proporcionado por {{brandName}}.",
         "officialMissing": "Falta la configuración oficial del bot.",
         "pageDescription": "Gestiona el enrutamiento de bots para este espacio de trabajo",
@@ -2656,16 +2656,16 @@
       "managePreferences": "Gestionar preferencias"
     },
     "pwaInstall": {
-      "banner": "Instala Zero para una mejor experiencia",
-      "description": "Añade Zero en tu pantalla de inicio para acceder rápidamente.",
+      "banner": "Instala {{assistantName}} para una mejor experiencia",
+      "description": "Añade {{assistantName}} en tu pantalla de inicio para acceder rápidamente.",
       "dismiss": "Cancelar banner de instalación",
       "gotIt": "Entendido",
       "install": "Instalar",
       "installApp": "Instalar la aplicación",
       "stepOne": "En Safari, pulsa el botón de compartir.",
-      "stepThree": "Confirma que el nombre es Zero y pulsa Añadir.",
+      "stepThree": "Confirma que el nombre es {{assistantName}} y pulsa Añadir.",
       "stepTwo": "Elige Añadir a la pantalla de inicio.",
-      "title": "Instalar Zero"
+      "title": "Instalar {{assistantName}}"
     },
     "redeemCampaign": {
       "actions": {
@@ -2797,7 +2797,7 @@
         }
       },
       "projectTypeLabel": "Primer tipo de proyecto",
-      "promptDescription": "Ajústalo a continuación o ejecútalo tal cual. Zero se encarga del resto. Tus herramientas permanecen aisladas y nada sale de tu espacio de trabajo.",
+      "promptDescription": "Ajústalo a continuación o ejecútalo tal cual. {{assistantName}} se encarga del resto. Tus herramientas permanecen aisladas y nada sale de tu espacio de trabajo.",
       "promptLabel": "Prompt de incorporación",
       "promptTitle": "Prueba este prompt",
       "title": "¿Qué quieres crear primero?"
@@ -2911,17 +2911,17 @@
       }
     },
     "workflowDiagram": {
-      "preparedDescription": "Zero prepara el siguiente paso con tus herramientas.",
+      "preparedDescription": "{{assistantName}} prepara el siguiente paso con tus herramientas.",
       "preparedTitle": "Flujo de trabajo preparado",
-      "reviewDescription": "Zero completa el flujo de trabajo y devuelve el resultado.",
+      "reviewDescription": "{{assistantName}} completa el flujo de trabajo y devuelve el resultado.",
       "reviewTitle": "Listo para la revisión",
       "source": "Fuente"
     },
     "workflowPicker": {
       "categoryDescription": "Configuraciones listas para usar que puedes adaptar a tus herramientas y objetivos.",
       "categoryTitle": "Flujos de trabajo de {{category}}",
-      "customDescription": "Describe lo que quieres y Zero lo construye contigo.",
-      "customTitle": "Habla con Zero y crea el tuyo",
+      "customDescription": "Describe lo que quieres y {{assistantName}} lo construye contigo.",
+      "customTitle": "Habla con {{assistantName}} y crea el tuyo",
       "description": "Elige un rol para ver los flujos de trabajo que mejor encajan. Puedes cambiarlo en cualquier momento.",
       "title": "¿En qué trabajas?",
       "workflowCardLabel": "{{title}} {{description}}"
@@ -2931,10 +2931,10 @@
       "whatItDoes": "Qué hace"
     },
     "workflowRun": {
-      "continueWithZero": "Continuar con Zero",
+      "continueWithZero": "Continuar con {{assistantName}}",
       "createDraft": "Crear borrador",
       "customNoteLabel": "Describe tu flujo de trabajo",
-      "customNotePlaceholder": "Describe lo que quieres que Zero cree",
+      "customNotePlaceholder": "Describe lo que quieres que {{assistantName}} cree",
       "customTitle": "Describe tu flujo de trabajo",
       "noteLabel": "¿Algo más que te gustaría añadir?",
       "notePlaceholder": "¿Algo más que te gustaría añadir?",
@@ -2943,18 +2943,18 @@
     "workflows": {
       "alert-metric-moves-slack": {
         "description": "Supervisa tus métricas clave y avisa en Slack cuando una cambie bruscamente.",
-        "scenario": "Cuando un problema aparece en la revisión semanal, ya lleva días activo. Zero comprueba una métrica clave cada hora y avisa en Slack en cuanto sale de su intervalo habitual.",
+        "scenario": "Cuando un problema aparece en la revisión semanal, ya lleva días activo. {{assistantName}} comprueba una métrica clave cada hora y avisa en Slack en cuanto sale de su intervalo habitual.",
         "steps": {
           "one": {
-            "description": "Zero lee la métrica cada hora.",
-            "title": "Zero comprueba la métrica"
+            "description": "{{assistantName}} lee la métrica cada hora.",
+            "title": "{{assistantName}} comprueba la métrica"
           },
           "three": {
-            "description": "Zero publica una alerta con la desviación.",
+            "description": "{{assistantName}} publica una alerta con la desviación.",
             "title": "Alerta publicada en Slack"
           },
           "two": {
-            "description": "Zero marca valores fuera de la banda esperada.",
+            "description": "{{assistantName}} marca valores fuera de la banda esperada.",
             "title": "Comparado con el rango normal"
           }
         },
@@ -2962,37 +2962,37 @@
       },
       "auto-merge-github-prs": {
         "description": "Revisa los PR etiquetados como listos para fusionar, espera a que pase CI, fusiónalos y publica el resultado en Slack.",
-        "scenario": "Fusionar un PR exige vigilar CI, revisar de nuevo el diff y avisar cuando se publica. Zero detecta la etiqueta de listo para fusionar, revisa el cambio, espera a que todas las comprobaciones pasen, fusiona el PR e informa al canal.",
+        "scenario": "Fusionar un PR exige vigilar CI, revisar de nuevo el diff y avisar cuando se publica. {{assistantName}} detecta la etiqueta de listo para fusionar, revisa el cambio, espera a que todas las comprobaciones pasen, fusiona el PR e informa al canal.",
         "steps": {
           "one": {
-            "description": "Zero recoge pull requests en cuanto llevan tu etiqueta de fusión.",
+            "description": "{{assistantName}} recoge pull requests en cuanto llevan tu etiqueta de fusión.",
             "title": "Una PR se etiqueta como lista para fusionarse"
           },
           "three": {
-            "description": "Zero fusiona el PR y publica el resultado en tu canal.",
+            "description": "{{assistantName}} fusiona el PR y publica el resultado en tu canal.",
             "title": "Fusionado y publicado en Slack"
           },
           "two": {
-            "description": "Zero lee el diff y espera hasta que pasen todas las comprobaciones obligatorias.",
-            "title": "Zero revisa el PR y espera a CI"
+            "description": "{{assistantName}} lee el diff y espera hasta que pasen todas las comprobaciones obligatorias.",
+            "title": "{{assistantName}} revisa el PR y espera a CI"
           }
         },
         "title": "Fusionar automáticamente PR de GitHub"
       },
       "blog-posts-to-x": {
-        "description": "Cada día, Zero convierte las nuevas entradas del blog en variantes para redes sociales y las programa en X mediante Buffer.",
-        "scenario": "Una entrada del blog puede convertirse en diez publicaciones sociales, pero nadie tiene tiempo de adaptarla. Zero detecta las entradas nuevas, redacta varias versiones para X y las deja en Buffer para su aprobación.",
+        "description": "Cada día, {{assistantName}} convierte las nuevas entradas del blog en variantes para redes sociales y las programa en X mediante Buffer.",
+        "scenario": "Una entrada del blog puede convertirse en diez publicaciones sociales, pero nadie tiene tiempo de adaptarla. {{assistantName}} detecta las entradas nuevas, redacta varias versiones para X y las deja en Buffer para su aprobación.",
         "steps": {
           "one": {
-            "description": "Zero detecta publicaciones recientes en Strapi.",
-            "title": "Zero encuentra nuevas publicaciones"
+            "description": "{{assistantName}} detecta publicaciones recientes en Strapi.",
+            "title": "{{assistantName}} encuentra nuevas publicaciones"
           },
           "three": {
-            "description": "Zero programa las variantes para su revisión.",
+            "description": "{{assistantName}} programa las variantes para su revisión.",
             "title": "En cola en Buffer"
           },
           "two": {
-            "description": "Zero redacta varias publicaciones para X a partir de cada artículo.",
+            "description": "{{assistantName}} redacta varias publicaciones para X a partir de cada artículo.",
             "title": "Convertido en variantes sociales"
           }
         },
@@ -3000,18 +3000,18 @@
       },
       "build-weekly-deck-gamma": {
         "description": "Convierte las métricas de la semana en una presentación de Gamma lista para exponer.",
-        "scenario": "La presentación semanal repite las mismas diapositivas con cifras nuevas. Zero obtiene los datos, crea la presentación en Gamma y la publica en Slack para que esté lista antes de la reunión.",
+        "scenario": "La presentación semanal repite las mismas diapositivas con cifras nuevas. {{assistantName}} obtiene los datos, crea la presentación en Gamma y la publica en Slack para que esté lista antes de la reunión.",
         "steps": {
           "one": {
-            "description": "Zero lee métricas de Sheets y analíticas.",
-            "title": "Zero recopila los números"
+            "description": "{{assistantName}} lee métricas de Sheets y analíticas.",
+            "title": "{{assistantName}} recopila los números"
           },
           "three": {
-            "description": "Zero comparte la presentación terminada.",
+            "description": "{{assistantName}} comparte la presentación terminada.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero prepara la presentación periódica de métricas.",
+            "description": "{{assistantName}} prepara la presentación periódica de métricas.",
             "title": "Presentación creada en Gamma"
           }
         },
@@ -3019,18 +3019,18 @@
       },
       "business-review-gamma": {
         "description": "Convierte las métricas del mes en una presentación de análisis empresarial en Gamma.",
-        "scenario": "La revisión semanal del negocio es una presentación recurrente que alguien reconstruye a mano. Zero obtiene los datos de ingresos y crecimiento, crea la presentación en Gamma y la deja lista antes de la reunión.",
+        "scenario": "La revisión semanal del negocio es una presentación recurrente que alguien reconstruye a mano. {{assistantName}} obtiene los datos de ingresos y crecimiento, crea la presentación en Gamma y la deja lista antes de la reunión.",
         "steps": {
           "one": {
-            "description": "Zero obtiene de Stripe y Clerk el MRR, el consumo de caja y el crecimiento.",
-            "title": "Zero recopila las cifras"
+            "description": "{{assistantName}} obtiene de Stripe y Clerk el MRR, el consumo de caja y el crecimiento.",
+            "title": "{{assistantName}} recopila las cifras"
           },
           "three": {
-            "description": "Zero comparte la presentación terminada.",
+            "description": "{{assistantName}} comparte la presentación terminada.",
             "title": "Listo para presentar"
           },
           "two": {
-            "description": "Zero elabora la revisión recurrente de negocios.",
+            "description": "{{assistantName}} elabora la revisión recurrente de negocios.",
             "title": "Presentación creada en Gamma"
           }
         },
@@ -3038,18 +3038,18 @@
       },
       "catch-calendar-conflicts": {
         "description": "Busca reservas duplicadas en tu calendario y avísate con antelación.",
-        "scenario": "Las reservas duplicadas suelen descubrirse cuando empiezan dos reuniones a la vez. Zero compara cada evento nuevo con tu calendario y tu disponibilidad en Cal.com, y te avisa antes de que se produzca el conflicto.",
+        "scenario": "Las reservas duplicadas suelen descubrirse cuando empiezan dos reuniones a la vez. {{assistantName}} compara cada evento nuevo con tu calendario y tu disponibilidad en Cal.com, y te avisa antes de que se produzca el conflicto.",
         "steps": {
           "one": {
-            "description": "Zero se activa cuando aparece un nuevo evento en tu calendario.",
+            "description": "{{assistantName}} se activa cuando aparece un nuevo evento en tu calendario.",
             "title": "Se crea un evento"
           },
           "three": {
-            "description": "Zero te avisa del conflicto y te ofrece varias opciones.",
+            "description": "{{assistantName}} te avisa del conflicto y te ofrece varias opciones.",
             "title": "Conflicto marcado en Slack"
           },
           "two": {
-            "description": "Zero compara con eventos y disponibilidad existentes.",
+            "description": "{{assistantName}} compara con eventos y disponibilidad existentes.",
             "title": "Comprobado por si hay conflictos"
           }
         },
@@ -3057,18 +3057,18 @@
       },
       "catch-leads-gmail": {
         "description": "Detecta las señales de compra en el correo nuevo y registra los leads calificados.",
-        "scenario": "Los leads interesados se pierden en una bandeja de entrada llena y acaban enfriándose. Zero busca señales de compra en el correo entrante, enriquece los datos del remitente con Apollo, registra el lead en una hoja y sugiere el siguiente paso en Slack.",
+        "scenario": "Los leads interesados se pierden en una bandeja de entrada llena y acaban enfriándose. {{assistantName}} busca señales de compra en el correo entrante, enriquece los datos del remitente con Apollo, registra el lead en una hoja y sugiere el siguiente paso en Slack.",
         "steps": {
           "one": {
-            "description": "Zero busca señales de compra en los mensajes entrantes de Gmail.",
-            "title": "Zero escanea el correo nuevo"
+            "description": "{{assistantName}} busca señales de compra en los mensajes entrantes de Gmail.",
+            "title": "{{assistantName}} escanea el correo nuevo"
           },
           "three": {
-            "description": "Zero publica el lead y un siguiente paso recomendado para Slack.",
+            "description": "{{assistantName}} publica el lead y un siguiente paso recomendado para Slack.",
             "title": "Se sugiere el siguiente paso"
           },
           "two": {
-            "description": "Zero enriquece con Apollo y añade una fila a tu hoja.",
+            "description": "{{assistantName}} enriquece con Apollo y añade una fila a tu hoja.",
             "title": "Lead enriquecido y registrado"
           }
         },
@@ -3076,18 +3076,18 @@
       },
       "chase-overdue-asana-tasks": {
         "description": "Encuentra tareas vencidas de Asana y recuerda a sus responsables que deben completarlas mediante Slack.",
-        "scenario": "Las tareas vencidas necesitan seguimiento, pero quien debe hacerlo siempre está ocupado. Zero revisa Asana cada día, encuentra lo que ha superado su fecha límite y avisa a cada responsable en Slack.",
+        "scenario": "Las tareas vencidas necesitan seguimiento, pero quien debe hacerlo siempre está ocupado. {{assistantName}} revisa Asana cada día, encuentra lo que ha superado su fecha límite y avisa a cada responsable en Slack.",
         "steps": {
           "one": {
-            "description": "Zero lee tareas que ya están fuera de plazo.",
-            "title": "Zero escanea Asana"
+            "description": "{{assistantName}} lee tareas que ya están fuera de plazo.",
+            "title": "{{assistantName}} escanea Asana"
           },
           "three": {
-            "description": "Zero envía por mensaje directo a cada responsable su lista de tareas vencidas.",
+            "description": "{{assistantName}} envía por mensaje directo a cada responsable su lista de tareas vencidas.",
             "title": "Recordatorios enviados por Slack"
           },
           "two": {
-            "description": "Zero agrupa el trabajo vencido por responsable.",
+            "description": "{{assistantName}} agrupa el trabajo vencido por responsable.",
             "title": "Propietarios identificados"
           }
         },
@@ -3095,37 +3095,37 @@
       },
       "check-posthog-signup-funnel": {
         "description": "Sigue el embudo de inscripción y publica la mayor caída en Slack.",
-        "scenario": "Los embudos solo sirven si alguien los ejecuta. Zero analiza cada semana el embudo de registro, identifica el paso en el que se pierde más gente y lo publica en Slack para que el equipo sepa dónde centrarse.",
+        "scenario": "Los embudos solo sirven si alguien los ejecuta. {{assistantName}} analiza cada semana el embudo de registro, identifica el paso en el que se pierde más gente y lo publica en Slack para que el equipo sepa dónde centrarse.",
         "steps": {
           "one": {
-            "description": "Zero ejecuta el embudo de inscripción en PostHog de la semana.",
-            "title": "Zero ejecuta el embudo"
+            "description": "{{assistantName}} ejecuta el embudo de inscripción en PostHog de la semana.",
+            "title": "{{assistantName}} ejecuta el embudo"
           },
           "three": {
-            "description": "Zero publica el punto de fuga y su tendencia.",
+            "description": "{{assistantName}} publica el punto de fuga y su tendencia.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero encuentra el escalón con la mayor caída.",
+            "description": "{{assistantName}} encuentra el escalón con la mayor caída.",
             "title": "Mayor caída identificada"
           }
         },
         "title": "Comprobar el embudo de registro de PostHog"
       },
       "compare-google-ads-last-month": {
-        "description": "Cada día, Zero compara el gasto, el CPA y el ROAS de Google Ads y Meta Ads con el periodo anterior, y señala las anomalías en Slack.",
-        "scenario": "Los problemas de ritmo publicitario cuestan dinero cada día que pasan desapercibidos. Zero compara a diario el gasto, el CPA y el ROAS con el periodo anterior y avisa en Slack de cualquier desviación.",
+        "description": "Cada día, {{assistantName}} compara el gasto, el CPA y el ROAS de Google Ads y Meta Ads con el periodo anterior, y señala las anomalías en Slack.",
+        "scenario": "Los problemas de ritmo publicitario cuestan dinero cada día que pasan desapercibidos. {{assistantName}} compara a diario el gasto, el CPA y el ROAS con el periodo anterior y avisa en Slack de cualquier desviación.",
         "steps": {
           "one": {
-            "description": "Zero extrae gastos, CPA y conversiones de Google y Meta Ads.",
-            "title": "Zero lee el rendimiento de los anuncios"
+            "description": "{{assistantName}} extrae gastos, CPA y conversiones de Google y Meta Ads.",
+            "title": "{{assistantName}} lee el rendimiento de los anuncios"
           },
           "three": {
-            "description": "Zero publica la comparación y destaca las desviaciones.",
+            "description": "{{assistantName}} publica la comparación y destaca las desviaciones.",
             "title": "Anomalías señaladas en Slack"
           },
           "two": {
-            "description": "Zero calcula los deltas y el ritmo.",
+            "description": "{{assistantName}} calcula los deltas y el ritmo.",
             "title": "Comparado con el periodo anterior"
           }
         },
@@ -3133,18 +3133,18 @@
       },
       "daily-company-brief-slack": {
         "description": "Reúne producto, crecimiento e ingresos en un informe diario para Slack.",
-        "scenario": "La visión completa está repartida entre cinco herramientas que nadie consulta juntas. Cada mañana, Zero recopila crecimiento, ingresos, estado del producto e ingeniería, y publica en Slack un único pulso de la empresa con logros, riesgos y puntos que requieren atención.",
+        "scenario": "La visión completa está repartida entre cinco herramientas que nadie consulta juntas. Cada mañana, {{assistantName}} recopila crecimiento, ingresos, estado del producto e ingeniería, y publica en Slack un único pulso de la empresa con logros, riesgos y puntos que requieren atención.",
         "steps": {
           "one": {
-            "description": "Zero recopila crecimiento, ingresos, errores y despliegues de toda tu infraestructura.",
-            "title": "Zero recoge las señales"
+            "description": "{{assistantName}} recopila crecimiento, ingresos, errores y despliegues de toda tu infraestructura.",
+            "title": "{{assistantName}} recoge las señales"
           },
           "three": {
-            "description": "Zero publica el informe diario de la empresa.",
+            "description": "{{assistantName}} publica el informe diario de la empresa.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero escribe sobre las victorias, los riesgos y lo que necesita atención.",
+            "description": "{{assistantName}} escribe sobre las victorias, los riesgos y lo que necesita atención.",
             "title": "Reunido en un único pulso"
           }
         },
@@ -3152,18 +3152,18 @@
       },
       "daily-industry-news-slack": {
         "description": "Reúne las noticias relevantes del sector en un breve resumen diario para Slack.",
-        "scenario": "Mantenerse al día suele implicar una docena de pestañas que nunca abres. Zero revisa cada día las noticias de IA y de la competencia de las últimas 24 horas, y publica un breve resumen en Slack.",
+        "scenario": "Mantenerse al día suele implicar una docena de pestañas que nunca abres. {{assistantName}} revisa cada día las noticias de IA y de la competencia de las últimas 24 horas, y publica un breve resumen en Slack.",
         "steps": {
           "one": {
-            "description": "Zero busca la cobertura de IA y de la competencia del último día con Exa.",
-            "title": "Zero escanea las noticias"
+            "description": "{{assistantName}} busca la cobertura de IA y de la competencia del último día con Exa.",
+            "title": "{{assistantName}} escanea las noticias"
           },
           "three": {
-            "description": "Zero publica el boletín informativo diario.",
+            "description": "{{assistantName}} publica el boletín informativo diario.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero resume lo que realmente importa.",
+            "description": "{{assistantName}} resume lo que realmente importa.",
             "title": "Destilado en un resumen"
           }
         },
@@ -3171,37 +3171,37 @@
       },
       "draft-github-release-notes-notion": {
         "description": "Convierte los PR fusionados desde la última versión en notas claras dentro de Notion.",
-        "scenario": "Escribir notas de la versión exige revisar el historial de PR y explicar los commits con lenguaje sencillo. Cuando etiquetas un PR como publicado, Zero reúne todo lo fusionado desde la última etiqueta y redacta notas legibles en Notion.",
+        "scenario": "Escribir notas de la versión exige revisar el historial de PR y explicar los commits con lenguaje sencillo. Cuando etiquetas un PR como publicado, {{assistantName}} reúne todo lo fusionado desde la última etiqueta y redacta notas legibles en Notion.",
         "steps": {
           "one": {
-            "description": "Zero se activa con tu etiqueta de publicación.",
+            "description": "{{assistantName}} se activa con tu etiqueta de publicación.",
             "title": "Una PR está etiquetada como enviada"
           },
           "three": {
-            "description": "Zero redacta notas de la versión claras y agrupadas en una página de Notion.",
+            "description": "{{assistantName}} redacta notas de la versión claras y agrupadas en una página de Notion.",
             "title": "Notas de lanzamiento guardadas en Notion"
           },
           "two": {
-            "description": "Zero recopila todo lo que se ha fusionado desde la última etiqueta de liberación.",
-            "title": "Zero reúne los PR fusionados"
+            "description": "{{assistantName}} recopila todo lo que se ha fusionado desde la última etiqueta de liberación.",
+            "title": "{{assistantName}} reúne los PR fusionados"
           }
         },
         "title": "Redactar notas de GitHub en Notion"
       },
       "draft-newsletter-mailchimp": {
-        "description": "Cada mes, Zero reúne las funciones publicadas en un boletín y prepara un borrador en Mailchimp.",
-        "scenario": "El boletín mensual siempre empieza con una página en blanco. Zero reúne lo publicado en GitHub, redacta la edición y la prepara en Mailchimp para que solo tengas que revisarla.",
+        "description": "Cada mes, {{assistantName}} reúne las funciones publicadas en un boletín y prepara un borrador en Mailchimp.",
+        "scenario": "El boletín mensual siempre empieza con una página en blanco. {{assistantName}} reúne lo publicado en GitHub, redacta la edición y la prepara en Mailchimp para que solo tengas que revisarla.",
         "steps": {
           "one": {
-            "description": "Zero lee en GitHub las funciones fusionadas y sus aspectos destacados.",
-            "title": "Zero recopila lo que se envió"
+            "description": "{{assistantName}} lee en GitHub las funciones fusionadas y sus aspectos destacados.",
+            "title": "{{assistantName}} recopila lo que se envió"
           },
           "three": {
-            "description": "Zero crea una campaña en borrador lista para editar.",
+            "description": "{{assistantName}} crea una campaña en borrador lista para editar.",
             "title": "Preparado en Mailchimp"
           },
           "two": {
-            "description": "Zero redacta la edición con tu estilo.",
+            "description": "{{assistantName}} redacta la edición con tu estilo.",
             "title": "Boletín redactado"
           }
         },
@@ -3209,37 +3209,37 @@
       },
       "draft-replies-notion-faq": {
         "description": "Redacta respuestas a tickets basadas en tus preguntas frecuentes de Notion.",
-        "scenario": "La mayoría de las preguntas ya están respondidas en la documentación. Zero lee la pregunta entrante, consulta las preguntas frecuentes en Notion y redacta una respuesta basada en tus propios documentos para que un agente la apruebe.",
+        "scenario": "La mayoría de las preguntas ya están respondidas en la documentación. {{assistantName}} lee la pregunta entrante, consulta las preguntas frecuentes en Notion y redacta una respuesta basada en tus propios documentos para que un agente la apruebe.",
         "steps": {
           "one": {
-            "description": "Zero lee la nueva conversación en Intercom o Gmail.",
+            "description": "{{assistantName}} lee la nueva conversación en Intercom o Gmail.",
             "title": "Llega una pregunta"
           },
           "three": {
-            "description": "Zero prepara una respuesta coherente con tu marca.",
+            "description": "{{assistantName}} prepara una respuesta coherente con tu marca.",
             "title": "Respuesta redactada para revisión"
           },
           "two": {
-            "description": "Zero encuentra la respuesta relevante en tus documentos.",
-            "title": "Zero consulta las preguntas frecuentes de Notion"
+            "description": "{{assistantName}} encuentra la respuesta relevante en tus documentos.",
+            "title": "{{assistantName}} consulta las preguntas frecuentes de Notion"
           }
         },
         "title": "Redactar respuestas desde las preguntas frecuentes de Notion"
       },
       "file-gmail-invoices-drive": {
         "description": "Archiva en Drive los correos con facturas y registra cada una en una hoja.",
-        "scenario": "Las facturas se acumulan en la bandeja de entrada y la conciliación es un caos. Zero archiva cada factura etiquetada en la carpeta correcta de Drive y registra el importe y la fecha de vencimiento en tu hoja de gastos a medida que llega.",
+        "scenario": "Las facturas se acumulan en la bandeja de entrada y la conciliación es un caos. {{assistantName}} archiva cada factura etiquetada en la carpeta correcta de Drive y registra el importe y la fecha de vencimiento en tu hoja de gastos a medida que llega.",
         "steps": {
           "one": {
-            "description": "Zero se activa con la etiqueta Facturas de Gmail.",
+            "description": "{{assistantName}} se activa con la etiqueta Facturas de Gmail.",
             "title": "Una factura está etiquetada"
           },
           "three": {
-            "description": "Zero registra el importe y la fecha de vencimiento en la hoja de gastos.",
+            "description": "{{assistantName}} registra el importe y la fecha de vencimiento en la hoja de gastos.",
             "title": "Registrado en una hoja"
           },
           "two": {
-            "description": "Zero guarda el archivo adjunto en la carpeta correcta.",
+            "description": "{{assistantName}} guarda el archivo adjunto en la carpeta correcta.",
             "title": "Archivado en Google Drive"
           }
         },
@@ -3247,37 +3247,37 @@
       },
       "file-sentry-crashes-github": {
         "description": "Ordena los nuevos errores de Sentry por su impacto y registra los más graves como incidencias de GitHub.",
-        "scenario": "Los fallos nuevos permanecen ocultos en Sentry hasta que alguien los busca. Zero revisa Sentry cada hora, ordena los errores por el número de usuarios afectados, abre incidencias de GitHub para los importantes y avisa al responsable del código.",
+        "scenario": "Los fallos nuevos permanecen ocultos en Sentry hasta que alguien los busca. {{assistantName}} revisa Sentry cada hora, ordena los errores por el número de usuarios afectados, abre incidencias de GitHub para los importantes y avisa al responsable del código.",
         "steps": {
           "one": {
-            "description": "Zero lee los errores sin resolver y su número de eventos durante la última hora.",
-            "title": "Zero obtiene los nuevos errores de Sentry"
+            "description": "{{assistantName}} lee los errores sin resolver y su número de eventos durante la última hora.",
+            "title": "{{assistantName}} obtiene los nuevos errores de Sentry"
           },
           "three": {
-            "description": "Zero abre una incidencia de GitHub con la traza y avisa al responsable en Slack.",
+            "description": "{{assistantName}} abre una incidencia de GitHub con la traza y avisa al responsable en Slack.",
             "title": "Incidencias creadas y responsable avisado"
           },
           "two": {
-            "description": "Zero clasifica por usuarios afectados y filtra el ruido de bajo impacto.",
+            "description": "{{assistantName}} clasifica por usuarios afectados y filtra el ruido de bajo impacto.",
             "title": "Clasificado por impacto en el usuario"
           }
         },
         "title": "Registrar fallos de Sentry como incidencias de GitHub"
       },
       "fixes-to-notion-help-docs": {
-        "description": "Cuando un ticket se marca como resuelto, Zero convierte la solución en un artículo de ayuda reutilizable en Notion.",
-        "scenario": "La misma pregunta vuelve porque la solución nunca se documentó. Zero convierte cada ticket resuelto en un artículo de ayuda limpio y reutilizable en Notion para que la respuesta exista la próxima vez.",
+        "description": "Cuando un ticket se marca como resuelto, {{assistantName}} convierte la solución en un artículo de ayuda reutilizable en Notion.",
+        "scenario": "La misma pregunta vuelve porque la solución nunca se documentó. {{assistantName}} convierte cada ticket resuelto en un artículo de ayuda limpio y reutilizable en Notion para que la respuesta exista la próxima vez.",
         "steps": {
           "one": {
-            "description": "Zero se activa cuando se cierra un ticket.",
+            "description": "{{assistantName}} se activa cuando se cierra un ticket.",
             "title": "Se resuelve un ticket"
           },
           "three": {
-            "description": "Zero añade el artículo a tu centro de ayuda.",
+            "description": "{{assistantName}} añade el artículo a tu centro de ayuda.",
             "title": "Guardado en Notion"
           },
           "two": {
-            "description": "Zero redacta un tutorial claro a partir de la resolución.",
+            "description": "{{assistantName}} redacta un tutorial claro a partir de la resolución.",
             "title": "Corrección redactada"
           }
         },
@@ -3285,18 +3285,18 @@
       },
       "flag-figma-designs-no-task": {
         "description": "Marca los diseños de Figma que todavía no tienen una tarea de Linear vinculada.",
-        "scenario": "Algunos diseños se terminan sin convertirse nunca en tareas de desarrollo. Zero revisa cada día los frames de Figma marcados como listos, detecta los que no tienen una tarea de Linear vinculada y avisa en Slack.",
+        "scenario": "Algunos diseños se terminan sin convertirse nunca en tareas de desarrollo. {{assistantName}} revisa cada día los frames de Figma marcados como listos, detecta los que no tienen una tarea de Linear vinculada y avisa en Slack.",
         "steps": {
           "one": {
-            "description": "Zero lee frames y sus tareas vinculadas.",
-            "title": "Zero revisa los frames de Figma"
+            "description": "{{assistantName}} lee frames y sus tareas vinculadas.",
+            "title": "{{assistantName}} revisa los frames de Figma"
           },
           "three": {
-            "description": "Zero lista los diseños no vinculados en tu canal.",
+            "description": "{{assistantName}} lista los diseños no vinculados en tu canal.",
             "title": "Diseños sin vincular publicados en Slack"
           },
           "two": {
-            "description": "Zero marca diseños listos que no tienen un ticket de construcción.",
+            "description": "{{assistantName}} marca diseños listos que no tienen un ticket de construcción.",
             "title": "Encuentra frames sin tarea"
           }
         },
@@ -3304,56 +3304,56 @@
       },
       "flagged-gmail-todoist-tasks": {
         "description": "Convierte automáticamente los correos que marcas en tareas Todoist.",
-        "scenario": "Marcar un correo solo cambia la decisión más adelante. Zero recoge la señal, investiga el tema y el hilo anterior, y archiva una tarea Todoist con el contexto ya adjunto.",
+        "scenario": "Marcar un correo solo cambia la decisión más adelante. {{assistantName}} recoge la señal, investiga el tema y el hilo anterior, y archiva una tarea Todoist con el contexto ya adjunto.",
         "steps": {
           "one": {
-            "description": "Zero se activa con tu etiqueta de tareas pendientes en Gmail.",
+            "description": "{{assistantName}} se activa con tu etiqueta de tareas pendientes en Gmail.",
             "title": "Marcas un correo electrónico"
           },
           "three": {
-            "description": "Zero crea una tarea lista para hacer con enlaces.",
+            "description": "{{assistantName}} crea una tarea lista para hacer con enlaces.",
             "title": "Tarea archivada en Todoist"
           },
           "two": {
-            "description": "Zero recopila contexto de hilos anteriores e información web con Exa.",
-            "title": "Zero investiga"
+            "description": "{{assistantName}} recopila contexto de hilos anteriores e información web con Exa.",
+            "title": "{{assistantName}} investiga"
           }
         },
         "title": "Convertir correos marcados de Gmail en tareas de Todoist"
       },
       "github-idea-to-notion-spec": {
         "description": "Amplía una incidencia etiquetada de GitHub y conviértela en una especificación de producto estructurada en Notion.",
-        "scenario": "Una idea de una línea en una incidencia no es una especificación. Zero detecta la etiqueta needs-spec y amplía la incidencia en un PRD estructurado en Notion con el problema, los usuarios, los requisitos y los criterios de aceptación.",
+        "scenario": "Una idea de una línea en una incidencia no es una especificación. {{assistantName}} detecta la etiqueta needs-spec y amplía la incidencia en un PRD estructurado en Notion con el problema, los usuarios, los requisitos y los criterios de aceptación.",
         "steps": {
           "one": {
-            "description": "Zero se activa con la etiqueta y lee la incidencia.",
+            "description": "{{assistantName}} se activa con la etiqueta y lee la incidencia.",
             "title": "Una incidencia recibe la etiqueta needs-spec"
           },
           "three": {
-            "description": "Zero crea la página estructurada de PRD en Notion.",
+            "description": "{{assistantName}} crea la página estructurada de PRD en Notion.",
             "title": "Guardado en Notion"
           },
           "two": {
-            "description": "Zero redacta el problema, los usuarios, los requisitos y los criterios de aceptación.",
-            "title": "Zero lo amplía a un PRD"
+            "description": "{{assistantName}} redacta el problema, los usuarios, los requisitos y los criterios de aceptación.",
+            "title": "{{assistantName}} lo amplía a un PRD"
           }
         },
         "title": "Convertir una idea de GitHub en una especificación de Notion"
       },
       "gmail-followups-auto": {
         "description": "Busca contactos que no respondieron y redacta el siguiente seguimiento.",
-        "scenario": "El seguimiento es donde se ganan los acuerdos y también donde se olvidan. Zero avanza tus secuencias cada día y redacta el siguiente mensaje para cada contacto que no ha respondido.",
+        "scenario": "El seguimiento es donde se ganan los acuerdos y también donde se olvidan. {{assistantName}} avanza tus secuencias cada día y redacta el siguiente mensaje para cada contacto que no ha respondido.",
         "steps": {
           "one": {
-            "description": "Zero lee quién no ha respondido en Instant y Apollo.",
-            "title": "Zero comprueba el estado de la secuencia"
+            "description": "{{assistantName}} lee quién no ha respondido en Instant y Apollo.",
+            "title": "{{assistantName}} comprueba el estado de la secuencia"
           },
           "three": {
-            "description": "Zero prepara los borradores para tu aprobación.",
+            "description": "{{assistantName}} prepara los borradores para tu aprobación.",
             "title": "Listo en Gmail"
           },
           "two": {
-            "description": "Zero escribe el seguimiento de cada contacto.",
+            "description": "{{assistantName}} escribe el seguimiento de cada contacto.",
             "title": "Siguiente mensaje redactado"
           }
         },
@@ -3361,18 +3361,18 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Destaca los contactos importantes a los que no has escrito últimamente.",
-        "scenario": "Las relaciones se enfrían cuando estás concentrado en otras tareas. Cada semana, Zero revisa tu correo y tu calendario, identifica contactos importantes con los que no has hablado y sugiere una forma natural de retomar el contacto.",
+        "scenario": "Las relaciones se enfrían cuando estás concentrado en otras tareas. Cada semana, {{assistantName}} revisa tu correo y tu calendario, identifica contactos importantes con los que no has hablado y sugiere una forma natural de retomar el contacto.",
         "steps": {
           "one": {
-            "description": "Zero lee el historial reciente de correos y calendarios.",
-            "title": "Zero revisa tus contactos"
+            "description": "{{assistantName}} lee el historial reciente de correos y calendarios.",
+            "title": "{{assistantName}} revisa tus contactos"
           },
           "three": {
-            "description": "Zero publica cada contacto con una frase sugerida para iniciar la conversación.",
+            "description": "{{assistantName}} publica cada contacto con una frase sugerida para iniciar la conversación.",
             "title": "Inicios de conversación sugeridos"
           },
           "two": {
-            "description": "Zero encuentra contactos importantes con los que no has hablado últimamente.",
+            "description": "{{assistantName}} encuentra contactos importantes con los que no has hablado últimamente.",
             "title": "Contactos inactivos identificados"
           }
         },
@@ -3380,18 +3380,18 @@
       },
       "highlight-key-emails-gmail": {
         "description": "Saca a la luz los pocos correos que realmente requieren tu atención.",
-        "scenario": "Una bandeja de entrada desbordada entierra los tres correos que importan. Zero lee tu correo cada mañana y solo muestra los que realmente te necesitan, enviados a Slack.",
+        "scenario": "Una bandeja de entrada desbordada entierra los tres correos que importan. {{assistantName}} lee tu correo cada mañana y solo muestra los que realmente te necesitan, enviados a Slack.",
         "steps": {
           "one": {
-            "description": "Zero escanea el correo nocturno en Gmail.",
-            "title": "Zero lee la bandeja de entrada"
+            "description": "{{assistantName}} escanea el correo nocturno en Gmail.",
+            "title": "{{assistantName}} lee la bandeja de entrada"
           },
           "three": {
-            "description": "Zero publica una lista breve y explica por qué importa cada mensaje.",
+            "description": "{{assistantName}} publica una lista breve y explica por qué importa cada mensaje.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero filtra los pocos mensajes que requieren tu atención.",
+            "description": "{{assistantName}} filtra los pocos mensajes que requieren tu atención.",
             "title": "Prioridades identificadas"
           }
         },
@@ -3399,18 +3399,18 @@
       },
       "investor-update-google-docs": {
         "description": "Reúne métricas y destacados en una actualización para inversores en Docs.",
-        "scenario": "La actualización mensual para inversores siempre empieza tarde y desde cero. Zero reúne los KPI y los aspectos destacados, y redacta la actualización en Google Docs para que solo tengas que perfeccionarla.",
+        "scenario": "La actualización mensual para inversores siempre empieza tarde y desde cero. {{assistantName}} reúne los KPI y los aspectos destacados, y redacta la actualización en Google Docs para que solo tengas que perfeccionarla.",
         "steps": {
           "one": {
-            "description": "Zero obtiene los datos de ingresos y crecimiento de Stripe y Sheets.",
-            "title": "Zero recopila KPIs"
+            "description": "{{assistantName}} obtiene los datos de ingresos y crecimiento de Stripe y Sheets.",
+            "title": "{{assistantName}} recopila KPIs"
           },
           "three": {
-            "description": "Zero deja un borrador listo para editar.",
+            "description": "{{assistantName}} deja un borrador listo para editar.",
             "title": "Editable en Google Docs"
           },
           "two": {
-            "description": "Zero escribe la narrativa y las métricas.",
+            "description": "{{assistantName}} escribe la narrativa y las métricas.",
             "title": "Actualización redactada"
           }
         },
@@ -3418,18 +3418,18 @@
       },
       "log-gong-calls-hubspot": {
         "description": "Añade al acuerdo de HubSpot las notas y los siguientes pasos de una llamada de Gong.",
-        "scenario": "Las notas de las llamadas rara vez llegan al CRM mientras todavía están frescas. Después de cada llamada, Zero lee la transcripción de Gong y añade automáticamente al acuerdo de HubSpot el resumen y los siguientes pasos.",
+        "scenario": "Las notas de las llamadas rara vez llegan al CRM mientras todavía están frescas. Después de cada llamada, {{assistantName}} lee la transcripción de Gong y añade automáticamente al acuerdo de HubSpot el resumen y los siguientes pasos.",
         "steps": {
           "one": {
-            "description": "Después de la llamada, Zero extrae las notas de grabación de Gong.",
-            "title": "Zero lee la transcripción"
+            "description": "Después de la llamada, {{assistantName}} extrae las notas de grabación de Gong.",
+            "title": "{{assistantName}} lee la transcripción"
           },
           "three": {
-            "description": "Zero escribe las notas en el registro del acuerdo.",
+            "description": "{{assistantName}} escribe las notas en el registro del acuerdo.",
             "title": "Registrado en HubSpot"
           },
           "two": {
-            "description": "Zero extrae decisiones y seguimientos.",
+            "description": "{{assistantName}} extrae decisiones y seguimientos.",
             "title": "Resumen y próximos pasos redactados"
           }
         },
@@ -3437,18 +3437,18 @@
       },
       "meeting-notes-asana-tasks": {
         "description": "Convierte las notas de las reuniones en tareas asignadas y con fecha de vencimiento en Asana.",
-        "scenario": "Los elementos de acción suelen perderse en las notas de las reuniones. Después de cada reunión, Zero lee la transcripción, extrae las tareas pendientes y crea tareas asignadas en Asana para convertir las decisiones en trabajo.",
+        "scenario": "Los elementos de acción suelen perderse en las notas de las reuniones. Después de cada reunión, {{assistantName}} lee la transcripción, extrae las tareas pendientes y crea tareas asignadas en Asana para convertir las decisiones en trabajo.",
         "steps": {
           "one": {
-            "description": "Después de la reunión, Zero obtiene las notas de Fireflies.",
-            "title": "Zero lee la transcripción"
+            "description": "Después de la reunión, {{assistantName}} obtiene las notas de Fireflies.",
+            "title": "{{assistantName}} lee la transcripción"
           },
           "three": {
-            "description": "Zero crea tareas asignadas con sus fechas límite.",
+            "description": "{{assistantName}} crea tareas asignadas con sus fechas límite.",
             "title": "Tareas creadas en Asana"
           },
           "two": {
-            "description": "Zero identifica las tareas pendientes y los propietarios.",
+            "description": "{{assistantName}} identifica las tareas pendientes y los propietarios.",
             "title": "Elementos de acción extraídos"
           }
         },
@@ -3456,37 +3456,37 @@
       },
       "meeting-recaps-slack": {
         "description": "Comparte un resumen con las decisiones y acciones después de cada reunión.",
-        "scenario": "Los detalles de una reunión se desvanecen para la siguiente. Zero lee la transcripción después y envía un resumen limpio de las decisiones y acciones para que no se pierda nada.",
+        "scenario": "Los detalles de una reunión se desvanecen para la siguiente. {{assistantName}} lee la transcripción después y envía un resumen limpio de las decisiones y acciones para que no se pierda nada.",
         "steps": {
           "one": {
-            "description": "Después de la reunión, Zero obtiene las notas de Fireflies.",
-            "title": "Zero lee la transcripción"
+            "description": "Después de la reunión, {{assistantName}} obtiene las notas de Fireflies.",
+            "title": "{{assistantName}} lee la transcripción"
           },
           "three": {
-            "description": "Zero entrega el resumen a Gmail o Slack.",
+            "description": "{{assistantName}} entrega el resumen a Gmail o Slack.",
             "title": "Enviado"
           },
           "two": {
-            "description": "Zero resume decisiones y acciones concretas.",
+            "description": "{{assistantName}} resume decisiones y acciones concretas.",
             "title": "Resumen escrito"
           }
         },
         "title": "Recibir resúmenes de reuniones en Slack"
       },
       "morning-brief-slack": {
-        "description": "Cada mañana, Zero reúne tu agenda y los correos que requieren atención en un resumen para Slack.",
-        "scenario": "Los primeros minutos del día suelen dedicarse a averiguar qué tienes por delante. Zero reúne tu agenda y los correos que requieren atención, y publica un resumen matutino en Slack antes de que empieces.",
+        "description": "Cada mañana, {{assistantName}} reúne tu agenda y los correos que requieren atención en un resumen para Slack.",
+        "scenario": "Los primeros minutos del día suelen dedicarse a averiguar qué tienes por delante. {{assistantName}} reúne tu agenda y los correos que requieren atención, y publica un resumen matutino en Slack antes de que empieces.",
         "steps": {
           "one": {
-            "description": "Zero obtiene el calendario de hoy y los correos prioritarios.",
-            "title": "Zero lee tu día"
+            "description": "{{assistantName}} obtiene el calendario de hoy y los correos prioritarios.",
+            "title": "{{assistantName}} lee tu día"
           },
           "three": {
-            "description": "Zero envía el informe matutino.",
+            "description": "{{assistantName}} envía el informe matutino.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero escribe tu horario y lo que necesita atención.",
+            "description": "{{assistantName}} escribe tu horario y lo que necesita atención.",
             "title": "Resumen"
           }
         },
@@ -3494,18 +3494,18 @@
       },
       "new-gmail-contacts-hubspot": {
         "description": "Añade como contactos de HubSpot a remitentes desconocidos y completa sus datos.",
-        "scenario": "Los contactos se escapan cuando nadie los registra. Zero detecta un correo de alguien que aún no está en HubSpot, crea el registro y lo enriquece con Apollo para que el CRM se mantenga completo sin necesidad de entrada manual.",
+        "scenario": "Los contactos se escapan cuando nadie los registra. {{assistantName}} detecta un correo de alguien que aún no está en HubSpot, crea el registro y lo enriquece con Apollo para que el CRM se mantenga completo sin necesidad de entrada manual.",
         "steps": {
           "one": {
-            "description": "Zero comprueba el correo entrante con el CRM.",
-            "title": "Zero detecta a un remitente desconocido"
+            "description": "{{assistantName}} comprueba el correo entrante con el CRM.",
+            "title": "{{assistantName}} detecta a un remitente desconocido"
           },
           "three": {
-            "description": "Zero registra el contacto y la fuente en la línea temporal.",
+            "description": "{{assistantName}} registra el contacto y la fuente en la línea temporal.",
             "title": "Registrado para seguimiento"
           },
           "two": {
-            "description": "Zero añade a la persona a HubSpot y enriquece con Apollo.",
+            "description": "{{assistantName}} añade a la persona a HubSpot y enriquece con Apollo.",
             "title": "Contacto creado y enriquecido"
           }
         },
@@ -3513,18 +3513,18 @@
       },
       "onboard-new-hires-asana": {
         "description": "Crea la lista de tareas de incorporación para cada nuevo empleado en Asana.",
-        "scenario": "La incorporación es la misma lista de comprobación cada vez, hecha manualmente cada vez. Zero detecta a una nueva contratación, inicia el proyecto de incorporación en Asana y configura sus documentos iniciales en Drive.",
+        "scenario": "La incorporación es la misma lista de comprobación cada vez, hecha manualmente cada vez. {{assistantName}} detecta a una nueva contratación, inicia el proyecto de incorporación en Asana y configura sus documentos iniciales en Drive.",
         "steps": {
           "one": {
-            "description": "Zero detecta el nuevo registro en Deel.",
+            "description": "{{assistantName}} detecta el nuevo registro en Deel.",
             "title": "Se añade una nueva contratación"
           },
           "three": {
-            "description": "Zero configura los documentos iniciales en Google Drive.",
+            "description": "{{assistantName}} configura los documentos iniciales en Google Drive.",
             "title": "Documentos preparados"
           },
           "two": {
-            "description": "Zero inicia el proyecto de incorporación con tareas asignadas.",
+            "description": "{{assistantName}} inicia el proyecto de incorporación con tareas asignadas.",
             "title": "Lista de verificación creada en Asana"
           }
         },
@@ -3532,37 +3532,37 @@
       },
       "post-daily-metrics-slack": {
         "description": "Publica cada día en Slack las cifras de visitantes, registros y activación.",
-        "scenario": "Revisar tres paneles antes del café no es el ritual favorito de nadie. Cada mañana, Zero obtiene las cifras de visitantes, registros y activación, y las publica en Slack para que el día empiece con los KPI en el canal.",
+        "scenario": "Revisar tres paneles antes del café no es el ritual favorito de nadie. Cada mañana, {{assistantName}} obtiene las cifras de visitantes, registros y activación, y las publica en Slack para que el día empiece con los KPI en el canal.",
         "steps": {
           "one": {
-            "description": "Zero lee el tráfico, las inscripciones y la activación de tus herramientas de analítica.",
-            "title": "Zero extrae las métricas"
+            "description": "{{assistantName}} lee el tráfico, las inscripciones y la activación de tus herramientas de analítica.",
+            "title": "{{assistantName}} extrae las métricas"
           },
           "three": {
-            "description": "Zero publica la actualización matutina del KPI.",
+            "description": "{{assistantName}} publica la actualización matutina del KPI.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero da formato a las cifras clave y las compara con el día anterior.",
+            "description": "{{assistantName}} da formato a las cifras clave y las compara con el día anterior.",
             "title": "Ensamblado en una instantánea de KPI"
           }
         },
         "title": "Publicar métricas diarias en Slack"
       },
       "post-github-updates-slack": {
-        "description": "Cada mañana laborable, Zero reúne el trabajo fusionado y en curso de GitHub y Linear en una actualización de progreso para Slack.",
-        "scenario": "Los standups consumen tiempo y la mitad es solo recordar lo que hiciste. Zero compila tus PRs fusionados y tickets de Linear en curso cada mañana y publica una actualización ordenada para que el standup asíncrono se escriba solo.",
+        "description": "Cada mañana laborable, {{assistantName}} reúne el trabajo fusionado y en curso de GitHub y Linear en una actualización de progreso para Slack.",
+        "scenario": "Los standups consumen tiempo y la mitad es solo recordar lo que hiciste. {{assistantName}} compila tus PRs fusionados y tickets de Linear en curso cada mañana y publica una actualización ordenada para que el standup asíncrono se escriba solo.",
         "steps": {
           "one": {
-            "description": "Zero lee tu trabajo fusionado y abierto en GitHub y Linear.",
-            "title": "Zero recopila tu actividad"
+            "description": "{{assistantName}} lee tu trabajo fusionado y abierto en GitHub y Linear.",
+            "title": "{{assistantName}} recopila tu actividad"
           },
           "three": {
-            "description": "Zero publica la actualización en tu canal de stand-up todos los días laborables.",
+            "description": "{{assistantName}} publica la actualización en tu canal de stand-up todos los días laborables.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero escribe un resumen breve y legible del progreso.",
+            "description": "{{assistantName}} escribe un resumen breve y legible del progreso.",
             "title": "Resumido en una actualización"
           }
         },
@@ -3570,75 +3570,75 @@
       },
       "post-release-notes-slack": {
         "description": "Redacta un registro de cambios a partir del trabajo publicado recientemente y compártelo en Slack.",
-        "scenario": "El registro de cambios que ven los usuarios es diferente al registro de commit. Zero se activa en la etiqueta de liberación, redacta un resumen amigable y orientado al usuario de lo que se envió y lo publica en Slack y Notion.",
+        "scenario": "El registro de cambios que ven los usuarios es diferente al registro de commit. {{assistantName}} se activa en la etiqueta de liberación, redacta un resumen amigable y orientado al usuario de lo que se envió y lo publica en Slack y Notion.",
         "steps": {
           "one": {
-            "description": "Zero se activa en la etiqueta de lanzamiento.",
+            "description": "{{assistantName}} se activa en la etiqueta de lanzamiento.",
             "title": "Un PR recibe la etiqueta de versión"
           },
           "three": {
-            "description": "Zero comparte el anuncio en ambos lugares.",
+            "description": "{{assistantName}} comparte el anuncio en ambos lugares.",
             "title": "Publicado en Slack y Notion"
           },
           "two": {
-            "description": "Zero escribe un resumen orientado al usuario sobre lo que ha cambiado.",
-            "title": "Zero redacta el registro de cambios"
+            "description": "{{assistantName}} escribe un resumen orientado al usuario sobre lo que ha cambiado.",
+            "title": "{{assistantName}} redacta el registro de cambios"
           }
         },
         "title": "Publicar notas de la versión en Slack"
       },
       "prep-google-calendar-meetings": {
         "description": "Investiga a los asistentes externos y envía un resumen previo antes de las reuniones.",
-        "scenario": "Entrar en una llamada en frío significa improvisar. Zero observa nuevas reuniones externas, investiga al asistente y a la empresa con Apollo, extrae el contexto de la llamada previa de Gong y te envía un mensaje privado con un resumen de una página antes de que empiece.",
+        "scenario": "Entrar en una llamada en frío significa improvisar. {{assistantName}} observa nuevas reuniones externas, investiga al asistente y a la empresa con Apollo, extrae el contexto de la llamada previa de Gong y te envía un mensaje privado con un resumen de una página antes de que empiece.",
         "steps": {
           "one": {
-            "description": "Zero se activa cuando un asistente externo se une a tu calendario.",
+            "description": "{{assistantName}} se activa cuando un asistente externo se une a tu calendario.",
             "title": "Se añade una reunión"
           },
           "three": {
-            "description": "Zero te manda un expediente de una página antes de la llamada.",
+            "description": "{{assistantName}} te manda un expediente de una página antes de la llamada.",
             "title": "Informe de preparación enviado a Slack"
           },
           "two": {
-            "description": "Zero enriquece a la persona y a la empresa con Apollo y Gong.",
+            "description": "{{assistantName}} enriquece a la persona y a la empresa con Apollo y Gong.",
             "title": "Investigación del asistente"
           }
         },
         "title": "Prepara las reuniones de Google Calendar"
       },
       "publish-scheduled-posts-buffer": {
-        "description": "Cada día, Zero publica en Strapi el contenido programado para hoy en el calendario de Notion y deja las publicaciones sociales en Buffer.",
-        "scenario": "Un calendario de contenido solo funciona si alguien pulsa publicar. Zero lee los elementos programados de hoy de Notion, los publica en Strapi y pone en cola las publicaciones sociales correspondientes en Buffer.",
+        "description": "Cada día, {{assistantName}} publica en Strapi el contenido programado para hoy en el calendario de Notion y deja las publicaciones sociales en Buffer.",
+        "scenario": "Un calendario de contenido solo funciona si alguien pulsa publicar. {{assistantName}} lee los elementos programados de hoy de Notion, los publica en Strapi y pone en cola las publicaciones sociales correspondientes en Buffer.",
         "steps": {
           "one": {
-            "description": "Zero obtiene de Notion los elementos programados para hoy.",
-            "title": "Zero lee el calendario de hoy"
+            "description": "{{assistantName}} obtiene de Notion los elementos programados para hoy.",
+            "title": "{{assistantName}} lee el calendario de hoy"
           },
           "three": {
-            "description": "Zero programa las publicaciones promocionales en Buffer.",
+            "description": "{{assistantName}} programa las publicaciones promocionales en Buffer.",
             "title": "Publicaciones sociales en cola en Buffer"
           },
           "two": {
-            "description": "Zero publica el contenido en Strapi.",
+            "description": "{{assistantName}} publica el contenido en Strapi.",
             "title": "Publicado en el CMS"
           }
         },
         "title": "Publicar las publicaciones programadas en Buffer"
       },
       "report-ai-model-costs-slack": {
-        "description": "Cada día Zero informa del gasto de tokens LLM y la latencia de p95 por modelo y ruta de Langfuse a Slack.",
-        "scenario": "El gasto de los modelos aumenta silenciosamente entre rutas y modelos. Cada día, Zero lee Langfuse y publica el gasto de tokens y la latencia p95 por modelo y ruta para evitar sorpresas en la factura.",
+        "description": "Cada día {{assistantName}} informa del gasto de tokens LLM y la latencia de p95 por modelo y ruta de Langfuse a Slack.",
+        "scenario": "El gasto de los modelos aumenta silenciosamente entre rutas y modelos. Cada día, {{assistantName}} lee Langfuse y publica el gasto de tokens y la latencia p95 por modelo y ruta para evitar sorpresas en la factura.",
         "steps": {
           "one": {
-            "description": "Zero extrae los rastreos de gasto y latencia de tokens para el día.",
-            "title": "Zero lee Langfuse"
+            "description": "{{assistantName}} extrae los rastreos de gasto y latencia de tokens para el día.",
+            "title": "{{assistantName}} lee Langfuse"
           },
           "three": {
-            "description": "Zero publica el informe diario de costes y latencia.",
+            "description": "{{assistantName}} publica el informe diario de costes y latencia.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero agrega el gasto y la latencia p95 por modelo y por ruta.",
+            "description": "{{assistantName}} agrega el gasto y la latencia p95 por modelo y por ruta.",
             "title": "Desglosado por modelo y ruta"
           }
         },
@@ -3646,18 +3646,18 @@
       },
       "research-calendar-meetings": {
         "description": "Investiga a las personas que vas a conocer antes de cada evento del calendario.",
-        "scenario": "Llegar preparado significa investigar para lo que rara vez tienes tiempo. Zero observa nuevas reuniones, busca a los asistentes y a sus empresas, y te envía un dossier de una página antes de que empiece.",
+        "scenario": "Llegar preparado significa investigar para lo que rara vez tienes tiempo. {{assistantName}} observa nuevas reuniones, busca a los asistentes y a sus empresas, y te envía un dossier de una página antes de que empiece.",
         "steps": {
           "one": {
-            "description": "Zero se activa en nuevos eventos del calendario.",
+            "description": "{{assistantName}} se activa en nuevos eventos del calendario.",
             "title": "Se añade una reunión"
           },
           "three": {
-            "description": "Zero envía un informe de una página a Slack antes de la llamada.",
+            "description": "{{assistantName}} envía un informe de una página a Slack antes de la llamada.",
             "title": "Expediente entregado"
           },
           "two": {
-            "description": "Zero busca información sobre las personas y la empresa mediante Exa.",
+            "description": "{{assistantName}} busca información sobre las personas y la empresa mediante Exa.",
             "title": "Asistentes investigados"
           }
         },
@@ -3665,18 +3665,18 @@
       },
       "research-new-signups-apollo": {
         "description": "Investiga cada nuevo registro y publica un breve perfil.",
-        "scenario": "Un nuevo registro solo es una oportunidad si alguien lo detecta a tiempo. Zero consulta Clerk cada hora, investiga al nuevo usuario y su empresa mediante Apollo, y publica un breve perfil en Slack.",
+        "scenario": "Un nuevo registro solo es una oportunidad si alguien lo detecta a tiempo. {{assistantName}} consulta Clerk cada hora, investiga al nuevo usuario y su empresa mediante Apollo, y publica un breve perfil en Slack.",
         "steps": {
           "one": {
-            "description": "Zero obtiene cada hora los nuevos usuarios de Clerk.",
-            "title": "Zero lee los nuevos registros"
+            "description": "{{assistantName}} obtiene cada hora los nuevos usuarios de Clerk.",
+            "title": "{{assistantName}} lee los nuevos registros"
           },
           "three": {
-            "description": "Zero publica el perfil de cada registro en el canal.",
+            "description": "{{assistantName}} publica el perfil de cada registro en el canal.",
             "title": "Instantánea publicada en Slack"
           },
           "two": {
-            "description": "Zero completa el contexto de la persona y de su empresa.",
+            "description": "{{assistantName}} completa el contexto de la persona y de su empresa.",
             "title": "Investigado con Apollo"
           }
         },
@@ -3684,18 +3684,18 @@
       },
       "run-daily-query-sheets": {
         "description": "Ejecuta tu SQL guardado según una programación y añade los resultados a una hoja.",
-        "scenario": "El informe que reconstruyes cada mañana repite la misma consulta y el mismo pegado en una hoja. Zero ejecuta la consulta cada día y escribe los resultados con el formato adecuado directamente en Google Sheets.",
+        "scenario": "El informe que reconstruyes cada mañana repite la misma consulta y el mismo pegado en una hoja. {{assistantName}} ejecuta la consulta cada día y escribe los resultados con el formato adecuado directamente en Google Sheets.",
         "steps": {
           "one": {
-            "description": "Zero ejecuta tu consulta guardada de solo lectura contra el almacén.",
-            "title": "Zero ejecuta la consulta"
+            "description": "{{assistantName}} ejecuta tu consulta guardada de solo lectura contra el almacén.",
+            "title": "{{assistantName}} ejecuta la consulta"
           },
           "three": {
-            "description": "Zero añade los resultados a tu hoja de seguimiento.",
+            "description": "{{assistantName}} añade los resultados a tu hoja de seguimiento.",
             "title": "Escrito en Google Sheets"
           },
           "two": {
-            "description": "Zero da forma a la salida en columnas limpias.",
+            "description": "{{assistantName}} da forma a la salida en columnas limpias.",
             "title": "Resultados formateados"
           }
         },
@@ -3703,18 +3703,18 @@
       },
       "send-bugs-github-slack": {
         "description": "Registra los informes etiquetados como errores en incidencias de GitHub y avisa al equipo en Slack.",
-        "scenario": "Un informe de error solo es útil para los ingenieros si está completo. Zero recoge la etiqueta de error, recopila los pasos de reproducción y el impacto en el cliente, lo archiva limpiamente y lo publica en el canal de ingeniería.",
+        "scenario": "Un informe de error solo es útil para los ingenieros si está completo. {{assistantName}} recoge la etiqueta de error, recopila los pasos de reproducción y el impacto en el cliente, lo archiva limpiamente y lo publica en el canal de ingeniería.",
         "steps": {
           "one": {
-            "description": "Zero se activa con la etiqueta de error.",
+            "description": "{{assistantName}} se activa con la etiqueta de error.",
             "title": "Una incidencia recibe la etiqueta de error"
           },
           "three": {
-            "description": "Zero publica el informe estructurado en Slack.",
+            "description": "{{assistantName}} publica el informe estructurado en Slack.",
             "title": "Enviado a ingeniería"
           },
           "two": {
-            "description": "Zero ensambla pasos, impacto y contexto.",
+            "description": "{{assistantName}} ensambla pasos, impacto y contexto.",
             "title": "Reproducción e impacto preparados"
           }
         },
@@ -3722,37 +3722,37 @@
       },
       "sort-gmail-draft-replies": {
         "description": "Ordena tu bandeja de entrada y redacta las respuestas a los correos que las necesiten.",
-        "scenario": "Una bandeja de entrada llena es un trabajo a tiempo completo. Zero clasifica el correo entrante por urgencia y redacta las respuestas con tu voz para que las leas por encima y apruebes en lugar de escribir desde cero.",
+        "scenario": "Una bandeja de entrada llena es un trabajo a tiempo completo. {{assistantName}} clasifica el correo entrante por urgencia y redacta las respuestas con tu voz para que las leas por encima y apruebes en lugar de escribir desde cero.",
         "steps": {
           "one": {
-            "description": "Zero escanea los mensajes de Gmail que llegan.",
-            "title": "Zero lee correo nuevo"
+            "description": "{{assistantName}} escanea los mensajes de Gmail que llegan.",
+            "title": "{{assistantName}} lee correo nuevo"
           },
           "three": {
-            "description": "Zero prepara las respuestas para que las apruebes.",
+            "description": "{{assistantName}} prepara las respuestas para que las apruebes.",
             "title": "Respuestas redactadas"
           },
           "two": {
-            "description": "Zero etiqueta lo que te necesita ahora frente a lo que te necesita después.",
+            "description": "{{assistantName}} etiqueta lo que te necesita ahora frente a lo que te necesita después.",
             "title": "Ordenados por urgencia"
           }
         },
         "title": "Ordena Gmail y redacta las respuestas"
       },
       "sort-route-zendesk-tickets": {
-        "description": "Cuando llega un ticket de soporte, Zero establece su gravedad, lo redirige al equipo adecuado y redacta una primera respuesta.",
-        "scenario": "Cada ticket necesita un triaje antes de poder responder. Zero lee cada nuevo ticket, asigna la gravedad, lo dirige a la cola correcta y redacta una primera respuesta para que los agentes empiecen desde un borrador, no con una casilla en blanco.",
+        "description": "Cuando llega un ticket de soporte, {{assistantName}} establece su gravedad, lo redirige al equipo adecuado y redacta una primera respuesta.",
+        "scenario": "Cada ticket necesita un triaje antes de poder responder. {{assistantName}} lee cada nuevo ticket, asigna la gravedad, lo dirige a la cola correcta y redacta una primera respuesta para que los agentes empiecen desde un borrador, no con una casilla en blanco.",
         "steps": {
           "one": {
-            "description": "Zero lee el nuevo ticket de Zendesk.",
+            "description": "{{assistantName}} lee el nuevo ticket de Zendesk.",
             "title": "Llega un ticket"
           },
           "three": {
-            "description": "Zero prepara una primera respuesta coherente con tu marca.",
+            "description": "{{assistantName}} prepara una primera respuesta coherente con tu marca.",
             "title": "Primera respuesta redactada"
           },
           "two": {
-            "description": "Zero clasifica la urgencia y la envía al equipo adecuado.",
+            "description": "{{assistantName}} clasifica la urgencia y la envía al equipo adecuado.",
             "title": "Severidad establecida y enrutada"
           }
         },
@@ -3760,18 +3760,18 @@
       },
       "spot-churn-risk-stripe-zendesk": {
         "description": "Marca cuentas en riesgo de abandono y redacta un correo de recuperación.",
-        "scenario": "El abandono solo resulta evidente después de producirse. Zero revisa cada día Stripe y Zendesk para detectar problemas de facturación o aumentos de tickets, señala las cuentas en riesgo y redacta un correo de recuperación.",
+        "scenario": "El abandono solo resulta evidente después de producirse. {{assistantName}} revisa cada día Stripe y Zendesk para detectar problemas de facturación o aumentos de tickets, señala las cuentas en riesgo y redacta un correo de recuperación.",
         "steps": {
           "one": {
-            "description": "Zero lee el estado de facturación de Stripe y el volumen de tickets de Zendesk.",
-            "title": "Zero escanea cuentas"
+            "description": "{{assistantName}} lee el estado de facturación de Stripe y el volumen de tickets de Zendesk.",
+            "title": "{{assistantName}} escanea cuentas"
           },
           "three": {
-            "description": "Zero redacta un correo de contacto para su revisión.",
+            "description": "{{assistantName}} redacta un correo de contacto para su revisión.",
             "title": "Correo de recuperación redactado"
           },
           "two": {
-            "description": "Zero muestra cuentas que muestran señales de abandono.",
+            "description": "{{assistantName}} muestra cuentas que muestran señales de abandono.",
             "title": "Cuentas en riesgo señaladas"
           }
         },
@@ -3779,37 +3779,37 @@
       },
       "summarize-gmail-newsletters": {
         "description": "Resume los boletines que tienes en tu bandeja de entrada en un breve resumen.",
-        "scenario": "Te suscribes a veinte boletines y no lees ninguno. Zero recopila todo lo que has etiquetado como boletín y publica un resumen semanal ordenado para que recibas la señal sin la pila.",
+        "scenario": "Te suscribes a veinte boletines y no lees ninguno. {{assistantName}} recopila todo lo que has etiquetado como boletín y publica un resumen semanal ordenado para que recibas la señal sin la pila.",
         "steps": {
           "one": {
-            "description": "Zero lee los mensajes bajo la etiqueta de Boletines.",
-            "title": "Zero recopila boletines informativos"
+            "description": "{{assistantName}} lee los mensajes bajo la etiqueta de Boletines.",
+            "title": "{{assistantName}} recopila boletines informativos"
           },
           "three": {
-            "description": "Zero envía el resumen semanal.",
+            "description": "{{assistantName}} envía el resumen semanal.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero extrae los puntos clave de cada uno.",
+            "description": "{{assistantName}} extrae los puntos clave de cada uno.",
             "title": "Resumido en un solo resumen"
           }
         },
         "title": "Resumir boletines de Gmail"
       },
       "summarize-user-feedback-notion": {
-        "description": "Cada semana, Zero reúne comentarios de Productlane, Typeform, Intercom y GitHub, los agrupa por temas y los ordena en Notion.",
-        "scenario": "Los comentarios están repartidos entre cuatro herramientas y nadie tiene tiempo de leerlos todos. Cada semana, Zero reúne cada fuente, agrupa los comentarios por temas y escribe un resumen priorizado en Notion para destacar las solicitudes principales.",
+        "description": "Cada semana, {{assistantName}} reúne comentarios de Productlane, Typeform, Intercom y GitHub, los agrupa por temas y los ordena en Notion.",
+        "scenario": "Los comentarios están repartidos entre cuatro herramientas y nadie tiene tiempo de leerlos todos. Cada semana, {{assistantName}} reúne cada fuente, agrupa los comentarios por temas y escribe un resumen priorizado en Notion para destacar las solicitudes principales.",
         "steps": {
           "one": {
-            "description": "Zero lee nuevos comentarios de Productlane, Typeform, Intercom y GitHub.",
-            "title": "Zero recopila comentarios"
+            "description": "{{assistantName}} lee nuevos comentarios de Productlane, Typeform, Intercom y GitHub.",
+            "title": "{{assistantName}} recopila comentarios"
           },
           "three": {
-            "description": "Zero escribe el resumen priorizado en una página de Notion.",
+            "description": "{{assistantName}} escribe el resumen priorizado en una página de Notion.",
             "title": "Resumen guardado en Notion"
           },
           "two": {
-            "description": "Zero agrupa los comentarios relacionados y ordena los temas por frecuencia.",
+            "description": "{{assistantName}} agrupa los comentarios relacionados y ordena los temas por frecuencia.",
             "title": "Agrupados en temas"
           }
         },
@@ -3817,18 +3817,18 @@
       },
       "summarize-zendesk-tickets-daily": {
         "description": "Resume los tickets de Zendesk del último día y publica el resultado en Slack.",
-        "scenario": "La acumulación de tickets de soporte pasa desapercibida hasta convertirse en un problema. Cada mañana, Zero resume los tickets del último día por gravedad y antigüedad, y publica el resultado en Slack.",
+        "scenario": "La acumulación de tickets de soporte pasa desapercibida hasta convertirse en un problema. Cada mañana, {{assistantName}} resume los tickets del último día por gravedad y antigüedad, y publica el resultado en Slack.",
         "steps": {
           "one": {
-            "description": "Zero obtiene los tickets de Zendesk de las últimas 24 horas.",
-            "title": "Zero lee la cola"
+            "description": "{{assistantName}} obtiene los tickets de Zendesk de las últimas 24 horas.",
+            "title": "{{assistantName}} lee la cola"
           },
           "three": {
-            "description": "Zero publica el resumen diario de soporte.",
+            "description": "{{assistantName}} publica el resumen diario de soporte.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero organiza los tickets abiertos y señala los obsoletos.",
+            "description": "{{assistantName}} organiza los tickets abiertos y señala los obsoletos.",
             "title": "Agrupados por gravedad y edad"
           }
         },
@@ -3836,18 +3836,18 @@
       },
       "sync-asana-projects-notion": {
         "description": "Reúne el estado de los proyectos de Asana en un único tablero de Notion.",
-        "scenario": "El estado está en Asana pero la dirección lee Notion. Zero agrupa el estado de la tarea diariamente en un solo tablero de Notion y publica un resumen para que todos vean la misma imagen sin una reunión de estado.",
+        "scenario": "El estado está en Asana pero la dirección lee Notion. {{assistantName}} agrupa el estado de la tarea diariamente en un solo tablero de Notion y publica un resumen para que todos vean la misma imagen sin una reunión de estado.",
         "steps": {
           "one": {
-            "description": "Zero recopila el estado de tareas y proyectos entre equipos.",
-            "title": "Zero lee Asana"
+            "description": "{{assistantName}} recopila el estado de tareas y proyectos entre equipos.",
+            "title": "{{assistantName}} lee Asana"
           },
           "three": {
-            "description": "Zero publica un resumen en Slack.",
+            "description": "{{assistantName}} publica un resumen en Slack.",
             "title": "Resumen publicado"
           },
           "two": {
-            "description": "Zero actualiza un único tablero de estado en Notion.",
+            "description": "{{assistantName}} actualiza un único tablero de estado en Notion.",
             "title": "Agrupados en un solo tablero"
           }
         },
@@ -3855,18 +3855,18 @@
       },
       "sync-linear-roadmap-notion": {
         "description": "Mantén una hoja de ruta de Notion sincronizada con el estado de las incidencias de Linear.",
-        "scenario": "Las hojas de ruta quedan obsoletas en cuanto cambia un ticket. Cada día, Zero sincroniza el estado de Linear con un tablero Ahora / Próximo / Más adelante de Notion para que la hoja de ruta siempre refleje la realidad.",
+        "scenario": "Las hojas de ruta quedan obsoletas en cuanto cambia un ticket. Cada día, {{assistantName}} sincroniza el estado de Linear con un tablero Ahora / Próximo / Más adelante de Notion para que la hoja de ruta siempre refleje la realidad.",
         "steps": {
           "one": {
-            "description": "Zero recopila los estados actuales de los tickets y los hitos.",
-            "title": "Zero lee el estado de Linear"
+            "description": "{{assistantName}} recopila los estados actuales de los tickets y los hitos.",
+            "title": "{{assistantName}} lee el estado de Linear"
           },
           "three": {
-            "description": "Zero actualiza el tablero de la hoja de ruta en Notion.",
+            "description": "{{assistantName}} actualiza el tablero de la hoja de ruta en Notion.",
             "title": "Tablero actualizado en Notion"
           },
           "two": {
-            "description": "Zero distribuye el trabajo entre las columnas de la hoja de ruta.",
+            "description": "{{assistantName}} distribuye el trabajo entre las columnas de la hoja de ruta.",
             "title": "Asignado a Ahora / Próximo / Más adelante"
           }
         },
@@ -3874,37 +3874,37 @@
       },
       "track-feature-usage-posthog": {
         "description": "Destaca los mayores cambios semanales en el uso de funciones según PostHog.",
-        "scenario": "Nadie nota que una función pierde uso silenciosamente hasta que se convierte en un problema. Zero revisa PostHog semanalmente y publica qué funciones están subiendo o bajando para que el equipo vea cambios en la adopción temprano.",
+        "scenario": "Nadie nota que una función pierde uso silenciosamente hasta que se convierte en un problema. {{assistantName}} revisa PostHog semanalmente y publica qué funciones están subiendo o bajando para que el equipo vea cambios en la adopción temprano.",
         "steps": {
           "one": {
-            "description": "Zero extrae el uso de funciones de la semana.",
-            "title": "Zero lee PostHog"
+            "description": "{{assistantName}} extrae el uso de funciones de la semana.",
+            "title": "{{assistantName}} lee PostHog"
           },
           "three": {
-            "description": "Zero publica los cambios de adopción en tu canal.",
+            "description": "{{assistantName}} publica los cambios de adopción en tu canal.",
             "title": "Cambios publicados en Slack"
           },
           "two": {
-            "description": "Zero encuentra las funciones que más suben y bajan.",
+            "description": "{{assistantName}} encuentra las funciones que más suben y bajan.",
             "title": "Comparado semana tras semana"
           }
         },
         "title": "Seguir el uso de funciones con PostHog"
       },
       "track-keyword-ranks-ahrefs": {
-        "description": "Cada semana, Zero sigue la posición de las palabras clave objetivo en Ahrefs e informa de los mayores cambios en Notion.",
-        "scenario": "El seguimiento de posiciones exige exportar y comparar datos manualmente. Cada semana, Zero obtiene tus palabras clave objetivo, compara sus posiciones y escribe los mayores cambios en Notion para mostrar claramente los avances y retrocesos de SEO.",
+        "description": "Cada semana, {{assistantName}} sigue la posición de las palabras clave objetivo en Ahrefs e informa de los mayores cambios en Notion.",
+        "scenario": "El seguimiento de posiciones exige exportar y comparar datos manualmente. Cada semana, {{assistantName}} obtiene tus palabras clave objetivo, compara sus posiciones y escribe los mayores cambios en Notion para mostrar claramente los avances y retrocesos de SEO.",
         "steps": {
           "one": {
-            "description": "Zero extrae los rankings actuales de Ahrefs.",
-            "title": "Zero lee posiciones por palabras clave"
+            "description": "{{assistantName}} extrae los rankings actuales de Ahrefs.",
+            "title": "{{assistantName}} lee posiciones por palabras clave"
           },
           "three": {
-            "description": "Zero escribe en Notion los mayores cambios y su tendencia.",
+            "description": "{{assistantName}} escribe en Notion los mayores cambios y su tendencia.",
             "title": "Reportado en Notion"
           },
           "two": {
-            "description": "Zero compara con la semana pasada y encuentra los mayores cambios.",
+            "description": "{{assistantName}} compara con la semana pasada y encuentra los mayores cambios.",
             "title": "Mayores cambios identificados"
           }
         },
@@ -3912,56 +3912,56 @@
       },
       "track-signup-sources-sheets": {
         "description": "Atribuye cada nuevo registro a su fuente en una hoja de seguimiento.",
-        "scenario": "Saber de dónde proceden los registros suele exigir conectar Clerk con las analíticas a mano. Cada día, Zero atribuye cada registro a su canal y campaña, y lo guarda en una hoja de Google Sheets que puedes analizar.",
+        "scenario": "Saber de dónde proceden los registros suele exigir conectar Clerk con las analíticas a mano. Cada día, {{assistantName}} atribuye cada registro a su canal y campaña, y lo guarda en una hoja de Google Sheets que puedes analizar.",
         "steps": {
           "one": {
-            "description": "Zero obtiene los nuevos usuarios de Clerk.",
-            "title": "Zero lee los nuevos registros"
+            "description": "{{assistantName}} obtiene los nuevos usuarios de Clerk.",
+            "title": "{{assistantName}} lee los nuevos registros"
           },
           "three": {
-            "description": "Zero añade las filas atribuidas a tu hoja.",
+            "description": "{{assistantName}} añade las filas atribuidas a tu hoja.",
             "title": "Registrado en Google Sheets"
           },
           "two": {
-            "description": "Zero empareja cada registro con su fuente y campaña a través de Plausible.",
+            "description": "{{assistantName}} empareja cada registro con su fuente y campaña a través de Plausible.",
             "title": "Atribuido a un canal"
           }
         },
         "title": "Seguir las fuentes de registro en Google Sheets"
       },
       "watch-brand-mentions": {
-        "description": "Cada hora Zero busca en internet, Hacker News y X menciones de tu producto y las publica en Slack.",
-        "scenario": "Cuando encuentras un hilo sobre tu producto, la conversación ya ha avanzado. Zero busca cada hora en la web, Reddit y X, y publica las menciones nuevas en Slack para que puedas participar a tiempo.",
+        "description": "Cada hora {{assistantName}} busca en internet, Hacker News y X menciones de tu producto y las publica en Slack.",
+        "scenario": "Cuando encuentras un hilo sobre tu producto, la conversación ya ha avanzado. {{assistantName}} busca cada hora en la web, Reddit y X, y publica las menciones nuevas en Slack para que puedas participar a tiempo.",
         "steps": {
           "one": {
-            "description": "Zero escanea la web, Reddit y X con Exa.",
-            "title": "Zero busca menciones"
+            "description": "{{assistantName}} escanea la web, Reddit y X con Exa.",
+            "title": "{{assistantName}} busca menciones"
           },
           "three": {
-            "description": "Zero publica cada mención con un enlace y contexto.",
+            "description": "{{assistantName}} publica cada mención con un enlace y contexto.",
             "title": "Publicado en Slack"
           },
           "two": {
-            "description": "Zero conserva solo los resultados nuevos y relevantes.",
+            "description": "{{assistantName}} conserva solo los resultados nuevos y relevantes.",
             "title": "Nuevas menciones filtradas"
           }
         },
         "title": "Vigilar menciones de marca en HN y X"
       },
       "watch-sentry-after-release": {
-        "description": "Después de cada versión, Zero compara la tasa sin fallos con la referencia y avisa de cualquier regresión con una sugerencia de reversión.",
-        "scenario": "La ventana más arriesgada es justo después de un despliegue. Zero observa las tasas de fallo y errores de la nueva versión respecto a la línea base anterior, y si la cosa empeora marca la regresión y sugiere revertir.",
+        "description": "Después de cada versión, {{assistantName}} compara la tasa sin fallos con la referencia y avisa de cualquier regresión con una sugerencia de reversión.",
+        "scenario": "La ventana más arriesgada es justo después de un despliegue. {{assistantName}} observa las tasas de fallo y errores de la nueva versión respecto a la línea base anterior, y si la cosa empeora marca la regresión y sugiere revertir.",
         "steps": {
           "one": {
-            "description": "Después de un despliegue, Zero sigue en Sentry la tasa sin fallos y la tasa de errores de la versión.",
-            "title": "Zero vigila la nueva versión"
+            "description": "Después de un despliegue, {{assistantName}} sigue en Sentry la tasa sin fallos y la tasa de errores de la versión.",
+            "title": "{{assistantName}} vigila la nueva versión"
           },
           "three": {
-            "description": "Si la versión empeora, Zero avisa en Slack y sugiere revertirla.",
+            "description": "Si la versión empeora, {{assistantName}} avisa en Slack y sugiere revertirla.",
             "title": "Regresión detectada con una sugerencia de reversión"
           },
           "two": {
-            "description": "Zero compara los números en directo con la línea base del lanzamiento anterior.",
+            "description": "{{assistantName}} compara los números en directo con la línea base del lanzamiento anterior.",
             "title": "Comparado con la línea base"
           }
         },
@@ -4116,8 +4116,8 @@
         "start": "Exportar mis datos",
         "starting": "Iniciando la exportación"
       },
-      "backToZero": "Volver a Zero",
-      "description": "Descarga los archivos y registros de texto que creaste en Zero.",
+      "backToZero": "Volver a {{assistantName}}",
+      "description": "Descarga los archivos y registros de texto que creaste en {{assistantName}}.",
       "documentTitle": "Exportar datos",
       "duration": {
         "soon": "Pronto"
@@ -4676,10 +4676,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "Esta conversación compartida no existe.",
     "notFoundTitle": "Conversación compartida no encontrada",
-    "tryOkou": "Probar Okou"
+    "tryOkou": "Probar {{assistantName}}"
   },
   "usage": {
     "displayNames": {

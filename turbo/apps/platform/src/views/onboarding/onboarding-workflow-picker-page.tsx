@@ -45,6 +45,7 @@ import {
   OnboardingShell,
 } from "./onboarding-shell.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { assistantName$ } from "../../signals/branding.ts";
 
 const CATEGORY_ICONS: Readonly<
   Record<OnboardingWorkflowCategoryId, LucideIcon>
@@ -359,6 +360,7 @@ function findPreviewWorkflow(
 
 export function OnboardingWorkflowPickerPage() {
   const { t } = useTranslation();
+  const assistantName = useGet(assistantName$);
   const draft = useGet(onboardingDraft$);
   const ui = useGet(onboardingUi$);
   const setDraft = useSet(updateOnboardingDraft$);
@@ -367,7 +369,7 @@ export function OnboardingWorkflowPickerPage() {
   const pageSignal = useGet(pageSignal$);
   const [completeLoadable, complete] = useLoadableSet(completeOnboarding$);
   const { navigateTo } = useOnboardingNavigation();
-  const categories = onboardingWorkflowCategories(t);
+  const categories = onboardingWorkflowCategories(t, assistantName);
   const previewWorkflow = findPreviewWorkflow(categories, ui.workflowPreviewId);
   const selectedCategory = categories.find((category) => {
     return category.id === draft.categoryId;
