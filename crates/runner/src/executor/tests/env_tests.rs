@@ -1284,8 +1284,7 @@ fn build_run_payload_for_run_preserves_pi_resources() {
     ctx.cli_agent_type = "pi".to_string();
     ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
     ctx.pi_launch_config = Some(serde_json::json!({
-        "schemaVersion": 1,
-        "agentName": "Okou"
+        "schemaVersion": 2
     }));
     ctx.pi_model_config = Some(PiModelConfig {
         provider: "deepseek".to_string(),
@@ -1300,7 +1299,7 @@ fn build_run_payload_for_run_preserves_pi_resources() {
         "22222222-2222-4222-8222-222222222222"
     );
     let launch: serde_json::Value = serde_json::from_str(&payload.pi_launch_config).unwrap();
-    assert_eq!(launch["agentName"], "Okou");
+    assert_eq!(launch["schemaVersion"], 2);
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");

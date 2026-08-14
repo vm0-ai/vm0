@@ -1850,8 +1850,8 @@ mod tests {
             context
                 .pi_launch_config
                 .as_ref()
-                .and_then(|config| config["agentName"].as_str()),
-            Some("Okou")
+                .and_then(|config| config["schemaVersion"].as_u64()),
+            Some(2)
         );
         assert_eq!(
             context
