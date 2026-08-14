@@ -1,12 +1,12 @@
 import {
-  ZERO_WEB_SEARCH_MAX_DATE_CHARS,
-  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
-  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
-  ZERO_WEB_SEARCH_MAX_URL_CHARS,
-  type ZeroWebSearchRequest,
-  type ZeroWebSearchResponse,
-  type ZeroWebSearchResult,
-} from "@okouai/api-contracts/contracts/zero-web-search";
+  WEB_SEARCH_MAX_DATE_CHARS,
+  WEB_SEARCH_MAX_SNIPPET_CHARS,
+  WEB_SEARCH_MAX_TITLE_CHARS,
+  WEB_SEARCH_MAX_URL_CHARS,
+  type WebSearchRequest,
+  type WebSearchResponse,
+  type WebSearchResult,
+} from "@okouai/api-contracts/contracts/web-search";
 import { command } from "ccstate";
 import { z } from "zod";
 
@@ -79,17 +79,17 @@ type PerplexityResponseResult =
 
 interface AuthedWebSearchArgs {
   readonly auth: AuthContext & { readonly orgId: string };
-  readonly body: ZeroWebSearchRequest;
+  readonly body: WebSearchRequest;
 }
 
 interface CompleteWebSearchArgs {
   readonly apiKey: string;
-  readonly request: ZeroWebSearchRequest;
+  readonly request: WebSearchRequest;
   readonly recordUsage: () => Promise<number>;
 }
 
-type ZeroWebSearchCommandResponse =
-  | { readonly status: 200; readonly body: ZeroWebSearchResponse }
+type WebSearchCommandResponse =
+  | { readonly status: 200; readonly body: WebSearchResponse }
   | WebSearchErrorResponse
   | ManagedUsageErrorResponse;
 
@@ -169,7 +169,7 @@ function parseResponseText(text: string): unknown {
   return parsed === undefined ? text : parsed;
 }
 
-function providerRequestBody(request: ZeroWebSearchRequest) {
+function providerRequestBody(request: WebSearchRequest) {
   return {
     query: request.query,
     max_results: request.limit,
@@ -184,7 +184,7 @@ function providerRequestBody(request: ZeroWebSearchRequest) {
 
 async function fetchPerplexitySearch(
   apiKey: string,
-  request: ZeroWebSearchRequest,
+  request: WebSearchRequest,
   signal: AbortSignal,
 ): Promise<PerplexityBodyResult> {
   const result = await settle(
@@ -269,7 +269,7 @@ function truncateAtCharacterBoundary(value: string, maxChars: number): string {
 }
 
 function normalizedHttpUrl(value: string): string | undefined {
-  if (value.length > ZERO_WEB_SEARCH_MAX_URL_CHARS) {
+  if (value.length > WEB_SEARCH_MAX_URL_CHARS) {
     return undefined;
   }
   for (const character of value) {
@@ -282,24 +282,22 @@ function normalizedHttpUrl(value: string): string | undefined {
     return undefined;
   }
   const normalized = url.toString();
-  return normalized.length <= ZERO_WEB_SEARCH_MAX_URL_CHARS
-    ? normalized
-    : undefined;
+  return normalized.length <= WEB_SEARCH_MAX_URL_CHARS ? normalized : undefined;
 }
 
 function optionalDate(value: string | null | undefined): string | undefined {
   return typeof value === "string"
     ? truncateAtCharacterBoundary(
         sanitizeProviderText(value),
-        ZERO_WEB_SEARCH_MAX_DATE_CHARS,
+        WEB_SEARCH_MAX_DATE_CHARS,
       )
     : undefined;
 }
 
 function normalizePerplexityResponse(
-  request: ZeroWebSearchRequest,
+  request: WebSearchRequest,
   body: unknown,
-): readonly ZeroWebSearchResult[] | WebSearchErrorResponse {
+): readonly WebSearchResult[] | WebSearchErrorResponse {
   const parsed = perplexityResponseSchema.safeParse(body);
   if (!parsed.success) {
     return badGateway(
@@ -309,7 +307,7 @@ function normalizePerplexityResponse(
   }
 
   let remainingSnippetChars = MAX_TOTAL_SNIPPET_CHARS;
-  const results: ZeroWebSearchResult[] = [];
+  const results: WebSearchResult[] = [];
   for (const [index, result] of parsed.data.results
     .slice(0, request.limit)
     .entries()) {
@@ -322,7 +320,7 @@ function normalizePerplexityResponse(
     }
 
     const snippetLimit = Math.min(
-      ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
+      WEB_SEARCH_MAX_SNIPPET_CHARS,
       remainingSnippetChars,
     );
     const snippet = truncateAtCharacterBoundary(
@@ -336,7 +334,7 @@ function normalizePerplexityResponse(
       rank: index + 1,
       title: truncateAtCharacterBoundary(
         sanitizeProviderText(result.title),
-        ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
+        WEB_SEARCH_MAX_TITLE_CHARS,
       ),
       url,
       snippet,
@@ -359,10 +357,10 @@ function isWebSearchErrorResponse(
 }
 
 function successBody(
-  request: ZeroWebSearchRequest,
-  results: readonly ZeroWebSearchResult[],
+  request: WebSearchRequest,
+  results: readonly WebSearchResult[],
   creditsCharged: number,
-): ZeroWebSearchResponse {
+): WebSearchResponse {
   return {
     query: request.query,
     limit: request.limit,
@@ -379,7 +377,7 @@ function successBody(
 async function completeWebSearch(
   args: CompleteWebSearchArgs,
   providerSignal: AbortSignal,
-): Promise<ZeroWebSearchCommandResponse> {
+): Promise<WebSearchCommandResponse> {
   const providerResult = await fetchPerplexitySearch(
     args.apiKey,
     args.request,
@@ -404,16 +402,16 @@ async function completeWebSearch(
   };
 }
 
-export const zeroWebSearch$ = command(
+export const webSearch$ = command(
   async (
     { get, set },
     args: AuthedWebSearchArgs,
     signal: AbortSignal,
-  ): Promise<ZeroWebSearchCommandResponse> => {
+  ): Promise<WebSearchCommandResponse> => {
     const apiKey = env("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
-        "Zero Web Search Perplexity provider is not configured",
+        "Okou Web Search Perplexity provider is not configured",
         "NOT_CONFIGURED",
       );
     }
@@ -430,7 +428,7 @@ export const zeroWebSearch$ = command(
           provider: PROVIDER,
           category: BILLING_CATEGORY,
         },
-        label: "Zero Web Search",
+        label: "Okou Web Search",
       },
       requestSignal,
     );

@@ -1,13 +1,13 @@
-import { zeroWebSearchContract } from "@okouai/api-contracts/contracts/zero-web-search";
+import { webSearchContract } from "@okouai/api-contracts/contracts/web-search";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { zeroWebSearch$ } from "../services/zero-web-search.service";
+import { webSearch$ } from "../services/web-search.service";
 
-const webSearchBody$ = bodyResultOf(zeroWebSearchContract.search);
+const webSearchBody$ = bodyResultOf(webSearchContract.search);
 
 const webSearchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -16,12 +16,12 @@ const webSearchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  return await set(zeroWebSearch$, { auth, body: bodyResult.data }, signal);
+  return await set(webSearch$, { auth, body: bodyResult.data }, signal);
 });
 
-export const zeroWebSearchRoutes: readonly RouteEntry[] = [
+export const webSearchRoutes: readonly RouteEntry[] = [
   {
-    route: zeroWebSearchContract.search,
+    route: webSearchContract.search,
     handler: authRoute(
       {
         requireOrganization: true,

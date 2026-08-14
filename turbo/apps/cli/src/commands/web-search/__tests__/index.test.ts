@@ -15,10 +15,10 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroWebSearchCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { webSearchCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-web-search-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "web-search-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -67,10 +67,10 @@ describe("okou web-search command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-zero-token");
-    zeroWebSearchCommand.setOptionValue("limit", 5);
-    zeroWebSearchCommand.setOptionValue("recency", undefined);
-    zeroWebSearchCommand.setOptionValue("domain", []);
-    zeroWebSearchCommand.setOptionValue("json", undefined);
+    webSearchCommand.setOptionValue("limit", 5);
+    webSearchCommand.setOptionValue("recency", undefined);
+    webSearchCommand.setOptionValue("domain", []);
+    webSearchCommand.setOptionValue("json", undefined);
   });
 
   afterEach(async () => {
@@ -115,7 +115,7 @@ describe("okou web-search command", () => {
       ),
     );
 
-    await zeroWebSearchCommand.parseAsync([
+    await webSearchCommand.parseAsync([
       "node",
       "cli",
       "latest AI regulation",
@@ -146,7 +146,7 @@ describe("okou web-search command", () => {
       ),
     );
 
-    await zeroWebSearchCommand.parseAsync([
+    await webSearchCommand.parseAsync([
       "node",
       "cli",
       "latest AI regulation",
@@ -183,7 +183,7 @@ describe("okou web-search command", () => {
       }),
     );
 
-    await zeroWebSearchCommand.parseAsync(["node", "cli", "very narrow query"]);
+    await webSearchCommand.parseAsync(["node", "cli", "very narrow query"]);
 
     expect(output()).toContain("No web results found");
     expect(output()).toContain("broader query");
@@ -212,7 +212,7 @@ describe("okou web-search command", () => {
     );
 
     await expect(
-      zeroWebSearchCommand.parseAsync(["node", "cli", ...args]),
+      webSearchCommand.parseAsync(["node", "cli", ...args]),
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(message);
@@ -236,7 +236,7 @@ describe("okou web-search command", () => {
     );
 
     await expect(
-      zeroWebSearchCommand.parseAsync(["node", "cli", "latest news"]),
+      webSearchCommand.parseAsync(["node", "cli", "latest news"]),
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(

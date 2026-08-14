@@ -4,11 +4,11 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
-  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
-  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
-  zeroWebSearchContract,
-  type ZeroWebSearchRequest,
-} from "@okouai/api-contracts/contracts/zero-web-search";
+  WEB_SEARCH_MAX_SNIPPET_CHARS,
+  WEB_SEARCH_MAX_TITLE_CHARS,
+  webSearchContract,
+  type WebSearchRequest,
+} from "@okouai/api-contracts/contracts/web-search";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
 
@@ -29,7 +29,7 @@ import { now, nowDate } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { createDeferredPromise } from "../../utils";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroWebSearchRoutes } from "../zero-web-search";
+import { webSearchRoutes } from "../web-search";
 import {
   createBddApi,
   expectApiError,
@@ -47,9 +47,9 @@ const context = testContext();
 const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
 const MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024;
 
-const webSearchRoutes: readonly RouteEntry[] = [
+const webSearchTestRoutes: readonly RouteEntry[] = [
   ...zeroBillingStatusRoutes,
-  ...zeroWebSearchRoutes,
+  ...webSearchRoutes,
 ];
 
 interface AuthHeaders {
@@ -85,7 +85,7 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
 function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
   return setupAppWithRoutes({
     context,
-    routes: webSearchRoutes,
+    routes: webSearchTestRoutes,
     usagePricingResolution,
   });
 }
@@ -97,7 +97,7 @@ async function rawWebSearchRequest(
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: options.instanceSignal ?? context.signal,
-    routes: webSearchRoutes,
+    routes: webSearchTestRoutes,
     usagePricingResolution: options.usagePricingResolution,
   });
   const request = new Request("http://api.test/api/zero/web-search", {
@@ -122,9 +122,7 @@ async function setActorCredits(
   credits: number,
 ): Promise<void> {
   if (!actor.orgId) {
-    throw new Error(
-      "Zero Web Search test actor must belong to an organization",
-    );
+    throw new Error("Web Search test actor must belong to an organization");
   }
   await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits });
 }
@@ -183,8 +181,8 @@ async function setupMissingWebSearchPricing(): Promise<UsagePricingFixture> {
 }
 
 function defaultRequest(
-  overrides: Partial<ZeroWebSearchRequest> = {},
-): ZeroWebSearchRequest {
+  overrides: Partial<WebSearchRequest> = {},
+): WebSearchRequest {
   return {
     query: "latest AI regulation",
     limit: 5,
@@ -212,9 +210,7 @@ describe("okou web-search route", () => {
   it("rejects zero tokens without web-search:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
-      throw new Error(
-        "Zero Web Search test actor must belong to an organization",
-      );
+      throw new Error("Web Search test actor must belong to an organization");
     }
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
@@ -229,7 +225,7 @@ describe("okou web-search route", () => {
     });
 
     const response = await accept(
-      client()(zeroWebSearchContract).search({
+      client()(webSearchContract).search({
         headers: { authorization: `Bearer ${token}` },
         body: defaultRequest(),
       }),
@@ -245,9 +241,7 @@ describe("okou web-search route", () => {
   it("accepts agent tokens and attributes usage to their run", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
-      throw new Error(
-        "Zero Web Search test actor must belong to an organization",
-      );
+      throw new Error("Web Search test actor must belong to an organization");
     }
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -283,7 +277,7 @@ describe("okou web-search route", () => {
     context.mocks.ably.publish.mockClear();
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: { authorization: `Bearer ${token}` },
         body: defaultRequest(),
       }),
@@ -355,7 +349,7 @@ describe("okou web-search route", () => {
     mockEnv("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN", undefined);
 
     const response = await accept(
-      client()(zeroWebSearchContract).search({
+      client()(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -380,7 +374,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -407,7 +401,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -422,9 +416,7 @@ describe("okou web-search route", () => {
   it("uses allowance for runless searches when org credits are exhausted", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
-      throw new Error(
-        "Zero Web Search test actor must belong to an organization",
-      );
+      throw new Error("Web Search test actor must belong to an organization");
     }
     configureProvider();
     const pricing = await setupConfiguredWebSearchPricing();
@@ -450,7 +442,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -491,7 +483,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest({
           limit: 3,
@@ -548,7 +540,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -566,7 +558,7 @@ describe("okou web-search route", () => {
     configureProvider();
     const pricing = await setupConfiguredWebSearchPricing();
     await fundActor(actor);
-    const longTitle = `${"t".repeat(ZERO_WEB_SEARCH_MAX_TITLE_CHARS - 1)}😀`;
+    const longTitle = `${"t".repeat(WEB_SEARCH_MAX_TITLE_CHARS - 1)}😀`;
     server.use(
       http.post(PERPLEXITY_SEARCH_URL, () => {
         return HttpResponse.json({
@@ -574,7 +566,7 @@ describe("okou web-search route", () => {
             return {
               title: index === 0 ? longTitle : `Result ${index + 1}`,
               url: `https://example.com/${index}`,
-              snippet: "s".repeat(ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS + 100),
+              snippet: "s".repeat(WEB_SEARCH_MAX_SNIPPET_CHARS + 100),
             };
           }),
         });
@@ -582,7 +574,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -590,11 +582,11 @@ describe("okou web-search route", () => {
     );
 
     expect(response.body.results[0]?.title).toHaveLength(
-      ZERO_WEB_SEARCH_MAX_TITLE_CHARS - 1,
+      WEB_SEARCH_MAX_TITLE_CHARS - 1,
     );
     expect(
       response.body.results.slice(0, 4).every((result) => {
-        return result.snippet.length === ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS;
+        return result.snippet.length === WEB_SEARCH_MAX_SNIPPET_CHARS;
       }),
     ).toBeTruthy();
     expect(response.body.results[4]?.snippet).toBe("");
@@ -626,7 +618,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -697,7 +689,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -726,7 +718,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -756,7 +748,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -787,7 +779,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -813,7 +805,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -843,7 +835,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -880,7 +872,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -913,7 +905,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -953,7 +945,7 @@ describe("okou web-search route", () => {
     );
 
     const response = await accept(
-      client(pricing.resolution)(zeroWebSearchContract).search({
+      client(pricing.resolution)(webSearchContract).search({
         headers: authenticate(actor),
         body: defaultRequest(),
       }),
@@ -1061,14 +1053,14 @@ describe("okou web-search route", () => {
 
     const [first, second] = await Promise.all([
       accept(
-        searchClient(zeroWebSearchContract).search({
+        searchClient(webSearchContract).search({
           headers: authenticate(actor),
           body: defaultRequest({ query: "first query" }),
         }),
         [200],
       ),
       accept(
-        searchClient(zeroWebSearchContract).search({
+        searchClient(webSearchContract).search({
           headers: authenticate(actor),
           body: defaultRequest({ query: "second query" }),
         }),
