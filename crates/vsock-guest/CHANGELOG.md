@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.19.86](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.85...vsock-guest-v0.19.86) (2026-08-14)
+
 ## [0.19.85](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.84...vsock-guest-v0.19.85) (2026-08-14)
 
 

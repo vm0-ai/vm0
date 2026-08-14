@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.451.1](https://github.com/vm0-ai/vm0/compare/api-v1.451.0...api-v1.451.1) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.1
+    * @okouai/core bumped to 8.561.0
+    * @okouai/db bumped to 1.200.1
+    * @okouai/pi-agent-runtime bumped to 1.5.3
+
 ## [1.451.0](https://github.com/vm0-ai/vm0/compare/api-v1.450.1...api-v1.451.0) (2026-08-14)
 
 
