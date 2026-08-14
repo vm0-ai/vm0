@@ -2605,18 +2605,8 @@ jobs:
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
 
-          provider_payload=$(jq -nc \
-            --arg secret "$ANTHROPIC_API_KEY" \
-            '{type: "anthropic-api-key", secret: $secret}')
-          provider_response=$(curl -fsS "${headers[@]}" \
-            -X POST \
-            -d "$provider_payload" \
-            "${api_url}/api/okou/model-providers")
-          provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
-            <<< "$provider_response")
-
           policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
-          policy_payload=$(jq -c --arg providerId "$provider_id" '
+          policy_payload=$(jq -c '
             {
               policies: (
                 [.policies[] |
@@ -2632,9 +2622,9 @@ jobs:
                   {
                     model: "claude-sonnet-4-6",
                     isDefault: false,
-                    defaultProviderType: "anthropic-api-key",
+                    defaultProviderType: "vm0",
                     credentialScope: "org",
-                    modelProviderId: $providerId
+                    modelProviderId: null
                   }
                 ]
               )
@@ -2653,7 +2643,6 @@ jobs:
             | jq -e '.effectiveSwitches.realAgentInPreview == true' \
             >/dev/null
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   cli-e2e-03-runner:
