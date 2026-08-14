@@ -235,6 +235,11 @@ async def test_set_cookie_is_not_replayed_from_cached_brotli_response(real_flow)
             id="wrong-shape",
         ),
         pytest.param(
+            catalog_response(headers={"Content-Length": str(len(CATALOG_BODY) + 1)}),
+            "response_body",
+            id="length-mismatch",
+        ),
+        pytest.param(
             catalog_response(headers={"Content-Length": str(catalog_cache.MAX_ENTRY_BYTES + 1)}),
             "response_size",
             id="oversized-declaration",
