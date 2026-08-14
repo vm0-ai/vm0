@@ -9,7 +9,7 @@ import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import { latestRunFinishEventSubquery } from "../services/zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "../services/chat-thread-read-state-query";
 import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 

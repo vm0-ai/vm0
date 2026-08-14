@@ -9,7 +9,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { latestRunFinishEventSubquery } from "../services/zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "../services/chat-thread-read-state-query";
 import type { RouteEntry } from "../route-entry";
 
 const markAgentReadBody$ = bodyResultOf(
