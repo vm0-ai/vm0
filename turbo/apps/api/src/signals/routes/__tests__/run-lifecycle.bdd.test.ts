@@ -8403,6 +8403,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(initialAvailable.nextSyncAt).toBeUndefined();
     expect(initialAvailable.target).toStrictEqual(targetIdentity);
     expect(initialAvailable.baseUrlVars).toStrictEqual({ tenant: "acme" });
+    expect(initialAvailable.firewall).toStrictEqual(customFirewall);
     const { api: initialApi, body: currentAuthBody } =
       customConnectorRuntimeAuthBody(
         initialAvailable,

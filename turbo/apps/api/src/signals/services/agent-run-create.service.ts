@@ -4435,14 +4435,16 @@ async function buildNewRunCustomConnectorRuntimeContext(
   };
 }
 
+type CustomConnectorRuntimeFirewall = Omit<Firewall, "apis"> & {
+  readonly apis: (Firewall["apis"][number] & {
+    readonly id: string;
+  })[];
+};
+
 interface CustomConnectorRuntimeExecutionState {
   readonly firewall: Omit<ExecutionFirewallInlineEntry, "firewall"> & {
     readonly customConnectorId: string;
-    readonly firewall: Omit<Firewall, "apis"> & {
-      readonly apis: (Firewall["apis"][number] & {
-        readonly id: string;
-      })[];
-    };
+    readonly firewall: CustomConnectorRuntimeFirewall;
   };
   readonly networkPolicy: NetworkPolicy;
 }
@@ -4472,20 +4474,7 @@ export function customConnectorRuntimeExecutionState(args: {
     firewall: {
       kind: "inline",
       customConnectorId: args.connectorId,
-      firewall: {
-        name: source.name,
-        apis: source.apis.map((api, index) => {
-          return {
-            id: `${firewallName}:${index}`,
-            base: api.base,
-            ...(api.hostPolicy !== undefined
-              ? { hostPolicy: api.hostPolicy }
-              : {}),
-            auth: api.auth,
-            permissions: api.permissions ?? [],
-          };
-        }),
-      },
+      firewall: customConnectorRuntimeFirewall(source),
     },
     networkPolicy,
   };
@@ -4662,6 +4651,21 @@ function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
   };
 }
 
+function customConnectorRuntimeFirewall(
+  firewall: ExpandedFirewallConfig,
+): CustomConnectorRuntimeFirewall {
+  const runtime = runtimeFirewall(firewall);
+  return {
+    ...runtime,
+    apis: runtime.apis.map((api, index) => {
+      return {
+        id: `${runtime.name}:${index}`,
+        ...api,
+      };
+    }),
+  };
+}
+
 function builtinFirewallEntry(
   firewall: ExpandedFirewallConfig,
   vars: Record<string, string> | undefined,
@@ -4740,7 +4744,7 @@ function customConnectorInlineFirewallEntry(
   return {
     kind: "inline",
     customConnectorId,
-    firewall: runtimeFirewall(firewall),
+    firewall: customConnectorRuntimeFirewall(firewall),
   };
 }
 
