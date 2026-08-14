@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.447.3](https://github.com/vm0-ai/vm0/compare/api-v1.447.2...api-v1.447.3) (2026-08-14)
+
+
+### Refactoring
+
+* **api:** dual-write run metadata ([#27046](https://github.com/vm0-ai/vm0/issues/27046)) ([929b726](https://github.com/vm0-ai/vm0/commit/929b726ebd4faa983e0b85f8d5eac5081e011c80))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.3
+    * @okouai/core bumped to 8.559.7
+    * @okouai/db bumped to 1.198.15
+    * @okouai/pi-agent-runtime bumped to 1.4.21
+
 ## [1.447.2](https://github.com/vm0-ai/vm0/compare/api-v1.447.1...api-v1.447.2) (2026-08-14)
 
 
