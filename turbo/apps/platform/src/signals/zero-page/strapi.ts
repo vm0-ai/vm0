@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroStrapiIntegrationsContract,
+  strapiIntegrationsContract,
   type StrapiIntegration,
   type StrapiIntegrationSecret,
-} from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+} from "@okouai/api-contracts/contracts/strapi-integrations";
 import { toast } from "@okouai/ui/components/ui/sonner";
 
 import { i18n } from "../../i18n/index.ts";
@@ -20,7 +20,7 @@ const revealedSecret$ = state<
 export const strapiIntegrations$ = computed(
   async (get): Promise<readonly StrapiIntegration[]> => {
     get(reload$);
-    const client = get(zeroClient$)(zeroStrapiIntegrationsContract);
+    const client = get(zeroClient$)(strapiIntegrationsContract);
     const result = await accept(client.list(), [200]);
     return result.body;
   },
@@ -48,7 +48,7 @@ export const updateStrapiIntegrationForm$ = command(
 export const createStrapiIntegration$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const form = get(strapiIntegrationForm$);
-    const client = get(zeroClient$)(zeroStrapiIntegrationsContract);
+    const client = get(zeroClient$)(strapiIntegrationsContract);
     const result = await accept(
       client.create({ body: form, fetchOptions: { signal } }),
       [201],
@@ -75,7 +75,7 @@ export const createStrapiIntegration$ = command(
 
 export const revealStrapiIntegrationSecret$ = command(
   async ({ get, set }, integrationId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroStrapiIntegrationsContract);
+    const client = get(zeroClient$)(strapiIntegrationsContract);
     const result = await accept(
       client.revealSecret({
         params: { integrationId },
@@ -91,7 +91,7 @@ export const revealStrapiIntegrationSecret$ = command(
 
 export const checkStrapiIntegrationTest$ = command(
   async ({ get, set }, integrationId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroStrapiIntegrationsContract);
+    const client = get(zeroClient$)(strapiIntegrationsContract);
     const result = await accept(
       client.checkTest({
         params: { integrationId },
@@ -122,7 +122,7 @@ export const checkStrapiIntegrationTest$ = command(
 
 export const removeStrapiIntegration$ = command(
   async ({ get, set }, integrationId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroStrapiIntegrationsContract);
+    const client = get(zeroClient$)(strapiIntegrationsContract);
     await accept(
       client.remove({
         params: { integrationId },

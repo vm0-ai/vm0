@@ -4,7 +4,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { StrapiIntegration } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import type { StrapiIntegration } from "@okouai/api-contracts/contracts/strapi-integrations";
 import type {
   ChatRunFinishedEventConfig,
   ChatRunFinishedRunStatus,
@@ -210,7 +210,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
-import { strapiIntegrations$ } from "../../signals/zero-page/zero-strapi.ts";
+import { strapiIntegrations$ } from "../../signals/zero-page/strapi.ts";
 import {
   githubIntegrationData$,
   type GithubIntegrationData,
