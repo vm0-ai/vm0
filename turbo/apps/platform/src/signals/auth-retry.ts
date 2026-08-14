@@ -303,6 +303,8 @@ export const setupForegroundCatchUp$ = command(
   ({ get, set }, signal: AbortSignal): void => {
     const catchUpTarget = get(foregroundCatchUpTarget$);
     let catchUpPromise: Promise<void> | null = null;
+    let requestedVisibilityRevision = 0;
+    let visibilityRevision = 0;
     let catchUpSpanId: string | null = null;
     let hiddenReady: ReturnType<typeof createDeferredPromise<void>> | null =
       null;
@@ -356,35 +358,48 @@ export const setupForegroundCatchUp$ = command(
       blockUntilForeground();
     }
 
-    const catchUpForeground = (): Promise<void> => {
-      if (!catchUpPromise) {
+    const runRequestedCatchUps = async (): Promise<void> => {
+      while (true) {
+        const requestRevision = requestedVisibilityRevision;
         const spanId = createConnectionDiagnosticSpanId();
         const startedAtMs = now();
+        catchUpSpanId = spanId;
         publishConnectionDiagnostic({
           event: "foreground.catch-up",
           phase: "start",
           spanId,
         });
-        const catchUp = withCleanup(
-          set(
-            runTrackedForegroundCatchUp$,
-            {
-              spanId,
-              startedAtMs,
-              subscriberCount: get(foregroundCatchUpCommands$).size,
-            },
-            signal,
-          ),
-          () => {
-            if (catchUpPromise === catchUp) {
-              catchUpPromise = null;
-              catchUpSpanId = null;
-            }
-            markForegroundReady();
+        await set(
+          runTrackedForegroundCatchUp$,
+          {
+            spanId,
+            startedAtMs,
+            subscriberCount: get(foregroundCatchUpCommands$).size,
           },
+          signal,
         );
+        signal.throwIfAborted();
+
+        if (
+          requestRevision === requestedVisibilityRevision ||
+          document.visibilityState !== "visible"
+        ) {
+          return;
+        }
+      }
+    };
+
+    const catchUpForeground = (): Promise<void> => {
+      requestedVisibilityRevision = visibilityRevision;
+      if (!catchUpPromise) {
+        const catchUp = withCleanup(runRequestedCatchUps(), () => {
+          if (catchUpPromise === catchUp) {
+            catchUpPromise = null;
+            catchUpSpanId = null;
+          }
+          markForegroundReady();
+        });
         catchUpPromise = catchUp;
-        catchUpSpanId = spanId;
         set(foregroundReadyState$, { pending: true, promise: catchUp });
       } else if (catchUpSpanId !== null) {
         publishConnectionDiagnostic({
@@ -406,7 +421,10 @@ export const setupForegroundCatchUp$ = command(
 
     setupForegroundRequestListeners(
       catchUpTarget,
-      blockUntilForeground,
+      () => {
+        visibilityRevision += 1;
+        blockUntilForeground();
+      },
       signal,
     );
   },

@@ -443,6 +443,74 @@ describe("realtime signals", () => {
     expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
   });
 
+  it("replays the final visible catch-up after an in-flight catch-up", async () => {
+    mockSignedInUser();
+    const topic = "test:visibility-in-flight";
+    const subscriber = testSubscriber();
+    const firstCatchUpStarted = context.mocks.deferred<void>();
+    const firstCatchUpCanFinish = context.mocks.deferred<void>();
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => {
+      return visibilityState;
+    });
+    let catchUps = 0;
+    const holdFirstCatchUp$ = command(
+      async (_ctx, signal: AbortSignal): Promise<void> => {
+        catchUps += 1;
+        if (catchUps !== 1) {
+          return;
+        }
+        firstCatchUpStarted.resolve();
+        await firstCatchUpCanFinish.promise;
+        signal.throwIfAborted();
+      },
+    );
+
+    await setupAuthAndRealtime();
+    context.store.set(
+      subscribeRealtimeReadyCatchUp$,
+      holdFirstCatchUp$,
+      subscriber.signal,
+    );
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: keepAliveLoop$ },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await firstCatchUpStarted.promise;
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    const foregroundReady = context.store.get(foregroundReady$);
+    expect(foregroundReady.pending).toBeTruthy();
+
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    firstCatchUpCanFinish.resolve();
+    await foregroundReady.promise;
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(catchUps).toBe(2);
+      expect(context.store.get(foregroundReady$).pending).toBeFalsy();
+    });
+    expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+  });
+
   it("keeps a foreground opt-out loop live and initially primed", async () => {
     mockSignedInUser();
     const topic = "test:foreground-opt-out";
