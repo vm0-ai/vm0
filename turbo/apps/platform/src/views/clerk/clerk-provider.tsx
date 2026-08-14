@@ -12,6 +12,7 @@ import {
   clerkInstance$,
   clerkUi$,
   getAllowedAuthRedirectOriginsForCurrentPage,
+  resolveAuthBrandContext,
   resolveAppAuthUrl,
   resolveAppUrl,
   resolveClerkSatelliteConfig,
@@ -27,8 +28,16 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const { t } = useTranslation();
   const clerkInstance = useGet(clerkInstance$);
   const clerkUi = useGet(clerkUi$);
-  const brandName = useGet(brandName$);
+  const domainBrandName = useGet(brandName$);
   const locale = useGet(locale$);
+  const isAuthPage =
+    location.pathname === "/sign-in" ||
+    location.pathname.startsWith("/sign-in/") ||
+    location.pathname === "/sign-up" ||
+    location.pathname.startsWith("/sign-up/");
+  const clerkBrandName = isAuthPage
+    ? resolveAuthBrandContext().brandName
+    : domainBrandName;
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -40,7 +49,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
     allowedRedirectOrigins,
     appearance: getClerkAppearance(),
-    localization: getClerkLocalization(brandName, locale, t),
+    localization: getClerkLocalization(clerkBrandName, locale, t),
     publishableKey,
     signInFallbackRedirectUrl: appUrl,
     signInUrl: resolveAppAuthUrl("/sign-in"),

@@ -5,7 +5,6 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { usageEvent } from "@okouai/db/schema/usage-event";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { command } from "ccstate";
 import {
   and,
@@ -14,6 +13,7 @@ import {
   exists,
   gte,
   inArray,
+  isNotNull,
   isNull,
   ne,
   or,
@@ -116,12 +116,12 @@ async function loadThreadlessRunCandidates(
       completedAt: agentRuns.completedAt,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .where(
       and(
-        isNull(zeroRuns.chatThreadId),
-        ne(zeroRuns.triggerSource, "test"),
+        isNotNull(agentRuns.triggerSource),
+        isNull(agentRuns.chatThreadId),
+        ne(agentRuns.triggerSource, "test"),
         inArray(agentRuns.status, [
           ...ACTIVE_RUN_STATUSES,
           ...TERMINAL_RUN_STATUSES,
@@ -239,12 +239,17 @@ async function deleteIfStillEligible(
       return false;
     }
 
-    const [zeroRun] = await tx
-      .select({ chatThreadId: zeroRuns.chatThreadId })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, candidate.runId))
+    const [metadataRun] = await tx
+      .select({ chatThreadId: agentRuns.chatThreadId })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.id, candidate.runId),
+          isNotNull(agentRuns.triggerSource),
+        ),
+      )
       .limit(1);
-    if (!zeroRun || zeroRun.chatThreadId !== null) {
+    if (!metadataRun || metadataRun.chatThreadId !== null) {
       return false;
     }
 

@@ -5318,11 +5318,12 @@ async function resolveLatestPiResumeSession(
       sessionHistoryBlobEncoding: blobs.encoding,
     })
     .from(conversations)
-    .innerJoin(zeroRuns, eq(conversations.runId, zeroRuns.id))
+    .innerJoin(agentRuns, eq(conversations.runId, agentRuns.id))
     .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
     .where(
       and(
-        eq(zeroRuns.chatThreadId, chatThreadId),
+        eq(agentRuns.chatThreadId, chatThreadId),
+        isNotNull(agentRuns.triggerSource),
         eq(conversations.cliAgentType, "pi"),
         eq(conversations.cliAgentSessionId, chatThreadId),
         or(

@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroUsageRecordContract,
+  usageRecordContract,
   type UsageRecordRange,
   type UsageRecordScope,
-} from "@okouai/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/usage-record";
 import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
@@ -102,7 +102,7 @@ export const myUsageRecordAsync$ = computed(async (get) => {
   const pageSize = get(myUsagePageSize$);
   const range = get(myUsageRangeState$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUsageRecordContract);
+  const client = createClient(usageRecordContract);
   const result = await accept(
     client.get({
       query: {

@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 import {
   agentRuns,
   agentSessions,
@@ -24,8 +24,8 @@ export function zeroRunMcpConnectorList(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
-}): Computed<Promise<readonly ZeroMcpConnector[]>> {
-  return computed(async (get): Promise<readonly ZeroMcpConnector[]> => {
+}): Computed<Promise<readonly McpConnector[]>> {
+  return computed(async (get): Promise<readonly McpConnector[]> => {
     const db = get(db$);
     const rows = await db
       .select({ connector: customConnectorDefinitionSelection() })

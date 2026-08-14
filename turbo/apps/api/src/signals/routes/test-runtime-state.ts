@@ -24,7 +24,7 @@ import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
-import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -424,9 +424,9 @@ async function readRunApiStart(
   signal: AbortSignal,
 ): Promise<string | null> {
   const [run] = await db
-    .select({ apiStartedAt: zeroRuns.apiStartedAt })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ apiStartedAt: agentRuns.apiStartedAt })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   signal.throwIfAborted();
   if (!run) {
@@ -681,12 +681,16 @@ async function autonomyBudgetFixtureActionResponse(
     case "read-latest-workflow-automation-run": {
       const [run] = await db
         .select({
-          runId: zeroRuns.id,
-          autonomyBudget: zeroRuns.autonomyBudget,
+          runId: agentRuns.id,
+          autonomyBudget: agentRuns.autonomyBudget,
         })
-        .from(zeroRuns)
-        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-        .where(eq(zeroRuns.workflowAutomationId, body.automation_id))
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.workflowAutomationId, body.automation_id),
+            isNotNull(agentRuns.triggerSource),
+          ),
+        )
         .orderBy(desc(agentRuns.createdAt))
         .limit(1);
       signal.throwIfAborted();

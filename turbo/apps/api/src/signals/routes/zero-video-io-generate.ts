@@ -9,8 +9,8 @@ import {
   isVideoModelId,
   type VideoModelId,
 } from "@okouai/api-contracts/contracts/video-models";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -60,9 +60,9 @@ async function loadRunVideoModel(
   runId: string,
 ): Promise<VideoModelId | null> {
   const [run] = await db
-    .select({ selectedVideoModel: zeroRuns.selectedVideoModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ selectedVideoModel: agentRuns.selectedVideoModel })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   if (!run) {
     throw new Error("Expected a Zero run row for video model enforcement");

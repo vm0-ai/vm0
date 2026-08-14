@@ -20,8 +20,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { computerUseHosts } from "@okouai/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -251,31 +250,30 @@ async function resolveChatAgentRunSourceById(
 } | null> {
   const [source] = await db
     .select({
-      runId: zeroRuns.id,
+      runId: agentRuns.id,
       threadId: chatThreads.id,
       agentId: chatThreads.agentComposeId,
       title: chatThreads.title,
-      autonomyBudget: zeroRuns.autonomyBudget,
+      autonomyBudget: agentRuns.autonomyBudget,
     })
-    .from(zeroRuns)
-    .innerJoin(
-      agentRuns,
-      and(
-        eq(agentRuns.id, zeroRuns.id),
-        eq(agentRuns.userId, auth.userId),
-        eq(agentRuns.orgId, auth.orgId),
-      ),
-    )
+    .from(agentRuns)
     .leftJoin(
       chatThreads,
       and(
-        eq(chatThreads.id, zeroRuns.chatThreadId),
+        eq(chatThreads.id, agentRuns.chatThreadId),
         eq(chatThreads.userId, auth.userId),
       ),
     )
-    .where(eq(zeroRuns.id, sourceRunId))
+    .where(
+      and(
+        eq(agentRuns.id, sourceRunId),
+        eq(agentRuns.userId, auth.userId),
+        eq(agentRuns.orgId, auth.orgId),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    )
     .limit(1);
-  if (!source) {
+  if (!source || source.autonomyBudget === null) {
     return null;
   }
   const annotation =
@@ -801,9 +799,13 @@ async function resolveClientThreadRetryRun(
       status: agentRuns.status,
       createdAt: agentRuns.createdAt,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.chatThreadId, threadId),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    )
     .orderBy(asc(agentRuns.createdAt))
     .limit(1);
   if (!run) {
@@ -1846,12 +1848,12 @@ function appendInterruptUserMessage(params: {
     const [targetRun] = await tx
       .select({ id: agentRuns.id })
       .from(agentRuns)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
       .where(
         and(
           eq(agentRuns.id, params.interruptsRunId),
-          eq(zeroRuns.chatThreadId, params.threadId),
+          eq(agentRuns.chatThreadId, params.threadId),
           inArray(agentRuns.status, ["queued", "pending", "running"]),
+          isNotNull(agentRuns.triggerSource),
         ),
       )
       .limit(1);

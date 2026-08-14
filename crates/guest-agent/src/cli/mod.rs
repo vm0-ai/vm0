@@ -593,6 +593,61 @@ enum ParsedEventAction {
     Skip,
 }
 
+struct BestEffortAgentLog {
+    file: Option<tokio::fs::File>,
+}
+
+impl BestEffortAgentLog {
+    fn open(path: &str) -> Self {
+        match guest_contracts::runtime_paths::create_private(path) {
+            Ok(file) => Self {
+                file: Some(tokio::fs::File::from_std(file)),
+            },
+            Err(error) => {
+                Self::warn_failure("open", &error);
+                Self { file: None }
+            }
+        }
+    }
+
+    async fn write_raw_line(&mut self, raw_line: impl AsRef<[u8]>) {
+        let result = {
+            let Some(file) = self.file.as_mut() else {
+                return;
+            };
+            match file.write_all(raw_line.as_ref()).await {
+                Ok(()) => file.write_all(b"\n").await,
+                Err(error) => Err(error),
+            }
+        };
+        if let Err(error) = result {
+            self.disable("write", error);
+        }
+    }
+
+    async fn flush(&mut self) {
+        let result = match self.file.as_mut() {
+            Some(file) => file.flush().await,
+            None => return,
+        };
+        if let Err(error) = result {
+            self.disable("flush", error);
+        }
+    }
+
+    fn disable(&mut self, operation: &str, error: std::io::Error) {
+        self.file = None;
+        Self::warn_failure(operation, &error);
+    }
+
+    fn warn_failure(operation: &str, error: &std::io::Error) {
+        log_warn!(
+            LOG_TAG,
+            "Agent log {operation} failed; continuing without local transcript: {error}"
+        );
+    }
+}
+
 struct CliEventIngestor<'a> {
     framework: env::Framework,
     seq: u32,
@@ -625,19 +680,14 @@ impl<'a> CliEventIngestor<'a> {
         timing::record_e2e_from_api_start_at(op_name, &self.api_start_time, observed_at_ms);
     }
 
-    async fn write_raw_line(log_file: &mut tokio::fs::File, raw_line: impl AsRef<[u8]>) {
-        let _ = log_file.write_all(raw_line.as_ref()).await;
-        let _ = log_file.write_all(b"\n").await;
-    }
-
     async fn begin_event(
         &mut self,
-        log_file: &mut tokio::fs::File,
+        agent_log: &mut BestEffortAgentLog,
         raw_line: impl AsRef<[u8]>,
         event: &serde_json::Value,
         masker: &SecretMasker,
         framework: env::Framework,
-    ) -> Result<ParsedEventAction, AgentError> {
+    ) -> ParsedEventAction {
         let is_stream_event =
             event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event");
         if !is_stream_event
@@ -647,10 +697,10 @@ impl<'a> CliEventIngestor<'a> {
         {
             codex_startup.record_success_at(Instant::now());
         }
-        Self::write_raw_line(log_file, raw_line).await;
+        agent_log.write_raw_line(raw_line).await;
 
         if is_stream_event {
-            return Ok(ParsedEventAction::Skip);
+            return ParsedEventAction::Skip;
         }
         self.last_read_event_at = Some(Instant::now());
         if self.seq == 0 {
@@ -680,7 +730,7 @@ impl<'a> CliEventIngestor<'a> {
             }
         }
 
-        Ok(ParsedEventAction::Forward)
+        ParsedEventAction::Forward
     }
 
     fn replace_failure_diagnostic(&mut self, diagnostic: CliFailureDiagnostic) {
@@ -934,10 +984,9 @@ async fn execute_cli_inner(
         workload_containment.configure_command(&mut cmd)?;
     }
 
-    // Open the run log before spawning the CLI. If the run-id-scoped path is
-    // invalid or unavailable, fail without starting a child process.
-    let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
-    let mut log_file = tokio::fs::File::from_std(log_file);
+    // The local transcript is best-effort observability. A backend must not
+    // fail an otherwise healthy run because this sink is unavailable.
+    let mut agent_log = BestEffortAgentLog::open(runtime.agent_log_file.as_ref());
 
     let mut child = cmd.spawn()?;
 
@@ -1188,55 +1237,45 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            if replay_user_messages {
+                            let replay_marker: Option<&[u8]> = if replay_user_messages {
                                 match active_input_controller.replay_user_event_action(&event) {
-                                    ReplayUserEventAction::External => {}
-                                    ReplayUserEventAction::InternalInitialPrompt => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
-                                        continue;
-                                    }
-                                    ReplayUserEventAction::InternalActiveInput => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
-                                        continue;
-                                    }
+                                    ReplayUserEventAction::External => None,
+                                    ReplayUserEventAction::InternalInitialPrompt => Some(
+                                        br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
+                                    ),
+                                    ReplayUserEventAction::InternalActiveInput => Some(
+                                        br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
+                                    ),
                                     ReplayUserEventAction::UnknownPromptUser => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
                                         log_warn!(
                                             LOG_TAG,
                                             "Filtered unknown top-level Claude user replay event"
                                         );
-                                        continue;
+                                        Some(
+                                            br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
+                                        )
                                     }
                                 }
+                            } else {
+                                None
+                            };
+                            if let Some(replay_marker) = replay_marker {
+                                agent_log.write_raw_line(replay_marker).await;
+                                continue;
                             }
 
                             let post_result_cleanup_was_armed =
                                 termination_runtime.has_post_result_cleanup();
-                            match event_ingestor
+                            let event_action = event_ingestor
                                 .begin_event(
-                                    &mut log_file,
+                                    &mut agent_log,
                                     line.as_bytes(),
                                     &event,
                                     masker,
                                     runtime.framework,
                                 )
-                                .await?
-                            {
+                                .await;
+                            match event_action {
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
@@ -1327,7 +1366,7 @@ async fn execute_cli_inner(
                                 );
                             }
                         } else {
-                            CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes()).await;
+                            agent_log.write_raw_line(line.as_bytes()).await;
                         }
                     }
                     Ok(None) => {
@@ -1540,7 +1579,7 @@ async fn execute_cli_inner(
     // `tokio::fs::File` may still own an in-flight blocking write after
     // `write_all` returns. Wait for it before callers observe the completed
     // execution and read the run log.
-    let _ = log_file.flush().await;
+    agent_log.flush().await;
 
     active_input_controller.close_terminal();
     let mut active_input_error = None;

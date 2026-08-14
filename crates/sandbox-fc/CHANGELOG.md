@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.214](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.213...sandbox-fc-v0.37.214) (2026-08-14)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize firecracker boot configuration ([#27129](https://github.com/vm0-ai/vm0/issues/27129)) ([dfcfdc3](https://github.com/vm0-ai/vm0/commit/dfcfdc33db89cb9c2f94a4eae69c4e65a7a51049))
+
 ## [0.37.213](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.212...sandbox-fc-v0.37.213) (2026-08-14)
 
 ## [0.37.212](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.211...sandbox-fc-v0.37.212) (2026-08-13)

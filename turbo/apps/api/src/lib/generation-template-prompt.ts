@@ -20,7 +20,10 @@ import {
 } from "@okouai/core/avatar-template";
 import {
   DEFAULT_VIDEO_MODEL,
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_DURATIONS,
   VIDEO_MODEL_CONFIGS,
+  VIDEO_RESOLUTIONS,
   type VideoModelConfig,
 } from "@okouai/core/video-model-catalog";
 import type { VideoGenerationOptions } from "@okouai/api-contracts/contracts/chat-threads";
@@ -341,17 +344,54 @@ function honoursGenerateAudio(
 
 /**
  * Options the composer stores are sparse: only what the user touched is
- * present. Values the chosen model cannot honour are dropped rather than
- * rewritten, which leaves the generation service free to apply its own default
- * for that model instead of receiving a value it would reject.
+ * present. The legacy path validates them against the template-owned model.
+ * Once the run owns the model, the persisted template model is ignored and the
+ * remaining values are validated only against their shared contract domains.
  */
-function selectedVideoParameters(
-  options: VideoGenerationOptions | undefined,
-  videoModelSelectionEnabled: boolean,
+function selectedRunOwnedVideoParameters(
+  options: VideoGenerationOptions,
 ): readonly SelectedVideoParameter[] {
-  if (!options) {
-    return [];
+  const parameters: SelectedVideoParameter[] = [];
+  if (
+    options.aspectRatio !== undefined &&
+    VIDEO_ASPECT_RATIOS.includes(options.aspectRatio)
+  ) {
+    parameters.push({
+      label: `Aspect ratio: ${options.aspectRatio}`,
+      flag: `--aspect-ratio ${options.aspectRatio}`,
+    });
   }
+  if (
+    options.duration !== undefined &&
+    VIDEO_DURATIONS.includes(options.duration)
+  ) {
+    parameters.push({
+      label: `Duration: ${options.duration}`,
+      flag: `--duration ${options.duration}`,
+    });
+  }
+  if (
+    options.resolution !== undefined &&
+    VIDEO_RESOLUTIONS.includes(options.resolution)
+  ) {
+    parameters.push({
+      label: `Resolution: ${options.resolution}`,
+      flag: `--resolution ${options.resolution}`,
+    });
+  }
+  if (options.generateAudio !== undefined) {
+    parameters.push({
+      label: `Audio: ${options.generateAudio ? "on" : "off"}`,
+      // Audio is on by default, so only silence needs a flag.
+      flag: options.generateAudio ? "" : "--no-audio",
+    });
+  }
+  return parameters;
+}
+
+function selectedTemplateOwnedVideoParameters(
+  options: VideoGenerationOptions,
+): readonly SelectedVideoParameter[] {
   // Annotated so the per-model literal tuples widen to the shared value
   // domains; `includes` below is invariant in its argument.
   //
@@ -364,8 +404,9 @@ function selectedVideoParameters(
   if (config === undefined) {
     return [];
   }
+
   const parameters: SelectedVideoParameter[] = [];
-  if (!videoModelSelectionEnabled && options.model !== undefined) {
+  if (options.model !== undefined) {
     parameters.push({
       label: `Model: ${config.alias}`,
       flag: `--model ${config.alias}`,
@@ -409,6 +450,18 @@ function selectedVideoParameters(
     });
   }
   return parameters;
+}
+
+function selectedVideoParameters(
+  options: VideoGenerationOptions | undefined,
+  videoModelSelectionEnabled: boolean,
+): readonly SelectedVideoParameter[] {
+  if (!options) {
+    return [];
+  }
+  return videoModelSelectionEnabled
+    ? selectedRunOwnedVideoParameters(options)
+    : selectedTemplateOwnedVideoParameters(options);
 }
 
 function buildVideoGenerationTemplatePrompt(

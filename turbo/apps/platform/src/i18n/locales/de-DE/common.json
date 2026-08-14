@@ -2557,7 +2557,9 @@
       "requestFailed": "Die Anfrage ist fehlgeschlagen"
     },
     "realtime": {
-      "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite."
+      "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite.",
+      "disconnected": "Echtzeitverbindung getrennt",
+      "reconnecting": "Echtzeitverbindung wird wiederhergestellt"
     }
   },
   "invitationRedirect": {

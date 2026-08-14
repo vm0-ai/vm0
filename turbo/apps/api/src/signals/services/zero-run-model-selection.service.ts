@@ -1,6 +1,6 @@
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -15,11 +15,11 @@ export async function resolveZeroRunModelSelection(
 ): Promise<ZeroRunModelSelection | undefined> {
   const [row] = await db
     .select({
-      selectedModel: zeroRuns.selectedModel,
-      codexServiceTier: zeroRuns.codexServiceTier,
+      selectedModel: agentRuns.selectedModel,
+      codexServiceTier: agentRuns.codexServiceTier,
     })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return row;
 }

@@ -7600,10 +7600,13 @@ describe("CHAT-02: generation templates and attachments", () => {
         selection: {
           stylePresetId: videoTemplate.id,
           videoOptions: {
-            model: "fal-ai/veo3.1/fast",
-            aspectRatio: "9:16",
+            // The run-owned prompt path ignores this historical template
+            // model. MiniMax accepts neither 720p nor silence.
+            model: "MiniMax-H3",
+            aspectRatio: "21:9",
             duration: "5s",
-            resolution: "1080p",
+            resolution: "720p",
+            generateAudio: false,
           },
         },
       },
@@ -7615,11 +7618,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     const videoWithSelectionEnabledPrompt =
       videoWithSelectionEnabledRun.appendSystemPrompt ?? "";
     expect(videoWithSelectionEnabledPrompt).not.toContain("- Model:");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Aspect ratio: 9:16");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Resolution: 1080p");
-    expect(videoWithSelectionEnabledPrompt).not.toContain("Duration:");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Aspect ratio: 21:9");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Duration: 5s");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Resolution: 720p");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Audio: off");
     expect(videoWithSelectionEnabledPrompt).toContain(
-      "`--aspect-ratio 9:16 --resolution 1080p` verbatim",
+      "`--aspect-ratio 21:9 --duration 5s --resolution 720p --no-audio` verbatim",
     );
     expect(videoWithSelectionEnabledPrompt).not.toContain("--model");
     await cancelChatRun(actor, videoWithSelectionEnabled.runId);

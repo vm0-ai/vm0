@@ -12,10 +12,12 @@ import {
   modelProviderConnections,
   modelProviderSurfaces,
 } from "@okouai/db/schema/model-provider-gateway";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
+import {
+  nullableDriverValueDecoder,
+  pgBooleanDecoder,
+} from "../../lib/db-structured-result";
 import type { Db, ReadonlyDb } from "../external/db";
 
 export interface ChatThreadSessionRoute {
@@ -141,20 +143,20 @@ async function latestHistoricalThreadSession(args: {
     .select({
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
-      selectedModel: zeroRuns.selectedModel,
-      modelProvider: zeroRuns.modelProvider,
-      modelProviderId: zeroRuns.modelProviderId,
+      selectedModel: agentRuns.selectedModel,
+      modelProvider: agentRuns.modelProvider,
+      modelProviderId: agentRuns.modelProviderId,
       cliAgentType: conversations.cliAgentType,
       historylessConversation: historylessConversationSql(),
       routeRunCreatedAt: agentRuns.createdAt,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
     .where(
       and(
-        eq(zeroRuns.chatThreadId, args.threadId),
+        eq(agentRuns.chatThreadId, args.threadId),
+        isNotNull(agentRuns.triggerSource),
         eq(agentSessions.userId, args.userId),
         eq(agentSessions.orgId, args.orgId),
         eq(agentSessions.agentComposeId, args.agentComposeId),
@@ -190,14 +192,18 @@ async function latestSessionRunRoute(args: {
 }): Promise<SessionRunRoute | null> {
   const [row] = await args.db
     .select({
-      selectedModel: zeroRuns.selectedModel,
-      modelProvider: zeroRuns.modelProvider,
-      modelProviderId: zeroRuns.modelProviderId,
+      selectedModel: agentRuns.selectedModel,
+      modelProvider: agentRuns.modelProvider,
+      modelProviderId: agentRuns.modelProviderId,
       createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(agentRuns.sessionId, args.sessionId))
+    .where(
+      and(
+        eq(agentRuns.sessionId, args.sessionId),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
   return row ?? null;
@@ -315,10 +321,13 @@ export async function resolveChatThreadSession(args: {
       agentSessionRunId: chatThreads.agentSessionRunId,
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
-      selectedModel: zeroRuns.selectedModel,
-      modelProvider: zeroRuns.modelProvider,
-      modelProviderId: zeroRuns.modelProviderId,
-      routeRunId: zeroRuns.id,
+      selectedModel: agentRuns.selectedModel,
+      modelProvider: agentRuns.modelProvider,
+      modelProviderId: agentRuns.modelProviderId,
+      routeRunId:
+        sql`CASE WHEN ${agentRuns.triggerSource} IS NOT NULL THEN ${agentRuns.id} ELSE NULL END`.mapWith(
+          nullableDriverValueDecoder(agentRuns.id),
+        ),
       routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
       historylessConversation: historylessConversationSql(),
@@ -336,7 +345,6 @@ export async function resolveChatThreadSession(args: {
     )
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
     .leftJoin(agentRuns, eq(agentRuns.id, chatThreads.agentSessionRunId))
-    .leftJoin(zeroRuns, eq(zeroRuns.id, chatThreads.agentSessionRunId))
     .where(
       and(
         eq(chatThreads.id, args.threadId),

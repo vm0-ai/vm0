@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { usageRecordRangeSchema } from "./zero-usage-record";
+import { usageRecordRangeSchema } from "./usage-record";
 
 const c = initContract();
 

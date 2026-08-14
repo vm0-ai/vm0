@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
-import { zeroAttributionContract } from "@okouai/api-contracts/contracts/zero-attribution";
+import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
 import {
   zeroBillingAutoRechargeContract,
@@ -28,9 +28,9 @@ import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zer
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import {
-  zeroUsageRecordContract,
+  usageRecordContract,
   type UsageRecordRange,
-} from "@okouai/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/usage-record";
 import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
@@ -47,7 +47,7 @@ import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { zeroAttributionRoutes } from "../../zero-attribution";
+import { acquisitionAttributionRoutes } from "../../acquisition-attribution";
 import { zeroBankingRoutes } from "../../zero-banking";
 import { zeroBillingAutoRechargeRoutes } from "../../zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "../../zero-billing-checkout";
@@ -64,7 +64,7 @@ import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
 import { mapsRoutes } from "../../maps";
 import { zeroUsageMembersRoutes } from "../../zero-usage-members";
-import { zeroUsageRecordRoutes } from "../../zero-usage-record";
+import { usageRecordRoutes } from "../../usage-record";
 import { zeroVideoIoGenerateRoutes } from "../../zero-video-io-generate";
 import { voiceIoQuotaRoutes } from "../../voice-io-quota";
 import { voiceIoSpeechRoutes } from "../../voice-io-speech";
@@ -522,8 +522,8 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async readUsageRecord(actor: ApiTestUser) {
-      const client = setupApp({ context, routes: zeroUsageRecordRoutes })(
-        zeroUsageRecordContract,
+      const client = setupApp({ context, routes: usageRecordRoutes })(
+        usageRecordContract,
       );
       return await accept(
         client.get({
@@ -565,9 +565,10 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async recordSignupAttribution(actor: ApiTestUser) {
-      const client = setupApp({ context, routes: zeroAttributionRoutes })(
-        zeroAttributionContract,
-      );
+      const client = setupApp({
+        context,
+        routes: acquisitionAttributionRoutes,
+      })(acquisitionAttributionContract);
       return await accept(
         client.recordSignup({
           headers: authenticate(actor),

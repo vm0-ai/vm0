@@ -337,11 +337,13 @@ async function automationInputEvents(scenario: Scenario) {
 }
 
 function eventContextFromPrompt(prompt: string): Record<string, unknown> {
-  const marker = "# This run's event\n";
-  const markerIndex = prompt.indexOf(marker);
-  if (markerIndex === -1) {
+  const marker = ["Event data:\n", "# This run's event\n"].find((candidate) => {
+    return prompt.includes(candidate);
+  });
+  if (!marker) {
     throw new Error("Expected Stripe event context in runner prompt");
   }
+  const markerIndex = prompt.indexOf(marker);
   return z
     .record(z.string(), z.unknown())
     .parse(JSON.parse(prompt.slice(markerIndex + marker.length)));
@@ -355,10 +357,10 @@ async function claimScenarioRun(scenario: Scenario, stripeEventId?: string) {
       continue;
     }
     const claim = await runs.claimRunnerJob(event.runId);
+    const automationPrompt = `${claim.prompt}\n${claim.appendSystemPrompt ?? ""}`;
     if (
       stripeEventId === undefined ||
-      (typeof claim.appendSystemPrompt === "string" &&
-        claim.appendSystemPrompt.includes(stripeEventId))
+      automationPrompt.includes(stripeEventId)
     ) {
       return claim;
     }
@@ -488,9 +490,6 @@ describe("Stripe automation event webhook", () => {
     mockNow(receivedAt);
     const scenario = await setupScenario({
       billingReasons: ["subscription_cycle"],
-    });
-    await connectors.updateFeatureSwitches(scenario.actor, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
     });
     expect((await readStripeAutomation(scenario)).health).toStrictEqual({
       lastMatchingEventReceivedAt: null,
@@ -668,18 +667,10 @@ describe("Stripe automation event webhook", () => {
 
     const currentClaim = await claimScenarioRun(current);
     const legacyClaim = await claimScenarioRun(legacy);
-    if (
-      typeof currentClaim.appendSystemPrompt !== "string" ||
-      typeof legacyClaim.appendSystemPrompt !== "string"
-    ) {
-      throw new Error("Expected Stripe workflow runner prompts");
-    }
-    expect(currentClaim.appendSystemPrompt).toContain(
+    expect(currentClaim.prompt).toContain(
       "normalized, signed Stripe webhook snapshot",
     );
-    const currentContext = eventContextFromPrompt(
-      currentClaim.appendSystemPrompt,
-    );
+    const currentContext = eventContextFromPrompt(currentClaim.prompt);
     expect(currentContext).toMatchObject({
       event: { id: "evt_current_snapshot", livemode: true },
       invoice: {
@@ -723,9 +714,7 @@ describe("Stripe automation event webhook", () => {
       .parse(currentContext);
     expect(currentEvent.invoice.lines.data).toHaveLength(31);
 
-    expect(
-      eventContextFromPrompt(legacyClaim.appendSystemPrompt),
-    ).toMatchObject({
+    expect(eventContextFromPrompt(legacyClaim.prompt)).toMatchObject({
       relationships: {
         subscriptionId: "sub_legacy_snapshot",
         paymentIntentId: "pi_legacy_snapshot",
@@ -922,12 +911,9 @@ describe("Stripe automation event webhook", () => {
       unfiltered,
       "evt_unknown_billing_reason",
     );
-    if (typeof unknownClaim.appendSystemPrompt !== "string") {
-      throw new Error("Expected an unknown-reason Stripe workflow prompt");
-    }
-    expect(
-      eventContextFromPrompt(unknownClaim.appendSystemPrompt),
-    ).toMatchObject({ invoice: { billingReason: "future_reason" } });
+    expect(eventContextFromPrompt(unknownClaim.prompt)).toMatchObject({
+      invoice: { billingReason: "future_reason" },
+    });
   });
 
   it("skips a pending delivery when the owner flag turns off", async () => {

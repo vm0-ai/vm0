@@ -833,21 +833,41 @@ describe("okou workflow automation commands", () => {
       expect(logCalls).toContain("failure, startup_failure");
     });
 
-    it("should reject new GitHub webhook automation kinds outside enabled workspaces", async () => {
-      await expect(async () => {
-        await automationCommand.parseAsync([
-          "node",
-          "cli",
-          "add",
-          WORKFLOW_ID,
-          "github-issue-comment-created",
-        ]);
-      }).rejects.toThrow("process.exit called");
+    it("should add a GitHub issue comment automation without a staff workspace token", async () => {
+      const response = {
+        ...automationBase,
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: { subject: "both" },
+        },
+        schedule: null,
+        scheduleSummary: null,
+        nextRunAt: null,
+      };
+      const captured = captureCreateAutomation(response);
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "GitHub webhook automations are not enabled for this workspace",
-        ),
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "github-issue-comment-created",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: { subject: "both" },
+        },
+      });
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        "GitHub issue comment created",
       );
     });
 

@@ -18,7 +18,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-workflows";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
-import { zeroStrapiIntegrationsContract } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
@@ -3312,7 +3312,7 @@ describe("workflow detail page", () => {
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
-    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
       return respond(200, [
         {
           id: integrationId,

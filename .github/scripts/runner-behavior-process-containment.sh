@@ -117,7 +117,7 @@ test "$(cat "$base/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/control/memory.min")" = "$expected_control_memory_min"
 grep -Eq '^[0-9]+ [0-9]+$' "$parent/workload/cpu.max"
-grep -Eq '^[0-9]+$' "$parent/workload/memory.high"
+test "$(cat "$parent/workload/memory.high")" = max
 grep -Eq '^[0-9]+$' "$parent/workload/memory.max"
 test "$(cat "$parent/workload/pids.max")" = max
 test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT:-}"
@@ -505,9 +505,6 @@ relative = next(
     if line.startswith("0::")
 )
 workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
-# Disable soft-limit throttling for this smoke so reclaim cannot postpone the
-# workload-local OOM. The production memory.high policy is covered above.
-(workload / "memory.high").write_text("max")
 (workload / "memory.max").write_text(str(256 * 1024 * 1024))
 chunk_size = 16 * 1024 * 1024
 chunks = []

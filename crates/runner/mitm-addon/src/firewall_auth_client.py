@@ -221,13 +221,6 @@ def _get_https_context() -> ssl.SSLContext:
     return context
 
 
-def _normalized_host(host: str) -> str:
-    try:
-        return ipaddress.ip_address(host).compressed
-    except ValueError:
-        return host.encode("idna").decode("ascii")
-
-
 def _format_authority(host: str, port: int, *, include_port: bool) -> str:
     rendered_host = f"[{host}]" if ":" in host else host
     return f"{rendered_host}:{port}" if include_port else rendered_host
@@ -255,13 +248,13 @@ def _proxy_plan(
     scheme: str,
     origin_authority: str,
 ) -> tuple[str, int, str | None] | None:
-    if urllib.request.proxy_bypass(origin_authority):
-        return None
-
     configured_proxy = urllib.request.getproxies().get(scheme)
     if not configured_proxy:
         return None
-    proxy_url = configured_proxy if "://" in configured_proxy else f"http://{configured_proxy}"
+    normalized_proxy = platform_api.normalize_proxy_url(configured_proxy)
+    if urllib.request.proxy_bypass(origin_authority):
+        return None
+    proxy_url = normalized_proxy if "://" in normalized_proxy else f"http://{normalized_proxy}"
     parsed = urllib.parse.urlsplit(proxy_url)
     if parsed.scheme.lower() != "http":
         raise ValueError("Firewall auth supports only HTTP environment proxies")
@@ -270,7 +263,7 @@ def _proxy_plan(
     if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
         raise ValueError("Invalid firewall auth HTTP proxy URL")
     return (
-        _normalized_host(parsed.hostname),
+        parsed.hostname,
         _parsed_port(parsed, _DEFAULT_HTTP_PORT, subject="firewall auth HTTP proxy"),
         _proxy_authorization(parsed),
     )
@@ -285,7 +278,7 @@ def _build_connection_plan(req: urllib.request.Request) -> _ConnectionPlan:
         raise ValueError("Platform API URL must not contain user information")
 
     default_port = _DEFAULT_HTTPS_PORT if scheme == "https" else _DEFAULT_HTTP_PORT
-    origin_host = _normalized_host(parsed.hostname)
+    origin_host = parsed.hostname
     origin_port = _parsed_port(parsed, default_port, subject="platform API")
     origin_authority = _format_authority(
         origin_host,

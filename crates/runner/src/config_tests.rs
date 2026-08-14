@@ -189,11 +189,22 @@ fn normalize_api_base_url_accepts_http_https_and_preserves_path_prefix() {
         ("https://api.example.com", "https://api.example.com"),
         ("https://api.example.com/", "https://api.example.com"),
         ("http://localhost:3000/api/", "http://localhost:3000/api"),
+        ("https://faß.de/base", "https://xn--fa-hia.de/base"),
+        ("https://xn--fa-hia.de/base", "https://xn--fa-hia.de/base"),
+        (
+            "https://api。example.com.:8443/base/",
+            "https://api.example.com:8443/base",
+        ),
+        ("http://192.0.2.10:8080/base", "http://192.0.2.10:8080/base"),
         (
             "https://api.example.com/prefix/v1",
             "https://api.example.com/prefix/v1",
         ),
         ("http://[::1]:8080/base/", "http://[::1]:8080/base"),
+        (
+            "https://[2001:0db8:0:0:0:0:0:1]:8443/base",
+            "https://[2001:db8::1]:8443/base",
+        ),
     ];
 
     for (input, expected) in cases {
@@ -211,6 +222,11 @@ fn normalize_api_base_url_rejects_sensitive_or_non_base_components() {
         ("ftp://api.example.com", "http or https"),
         ("https://", "absolute http(s) URL"),
         ("api.example.com", "absolute http(s) URL"),
+        (
+            "https://ＦＯＯ.example.com",
+            "unsafe IDNA compatibility mappings",
+        ),
+        ("http://127.1", "canonical IPv4"),
     ];
 
     for (input, expected) in cases {

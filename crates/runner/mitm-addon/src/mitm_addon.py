@@ -355,8 +355,9 @@ def _prebind_bounded_requestheaders_upstream_destination(
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
         if upstream_admission.api_destination_matches(
             api_url,
-            trusted_authority.host,
-            trusted_authority.port,
+            scheme=flow.request.scheme,
+            hostname=trusted_authority.host,
+            port=trusted_authority.port,
         ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
             classification = _classify_request_for_flow_with_trusted_authority(
                 flow,
@@ -1851,10 +1852,7 @@ def error(flow: http.HTTPFlow) -> None:
 
 
 def _handle_error(flow: http.HTTPFlow) -> None:
-    """
-    Log connection-level errors (timeout, RST, TLS failure) to the
-    per-run JSONL network log and clean up request tracking state.
-    """
+    """Handle registered-run terminal work after a connection-level error."""
     start_time = flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
     codex_model_catalog_cache.handle_error(flow)
 
@@ -1862,7 +1860,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     network_log_path = flow_metadata.network_log_path(flow.metadata)
     proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
 
-    if not run_id or not network_log_path:
+    if not run_id:
         return
 
     latency_ms = elapsed_ms(start_time)
@@ -1874,18 +1872,19 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     request_size = _request_size(flow)
     error_msg = flow.error.msg if flow.error else "unknown error"
 
-    # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
-    log_entry, raw_url = _http_network_log_entry(
-        flow,
-        action=firewall_action,
-        status_code=0,
-        latency_ms=latency_ms,
-        request_size=request_size,
-        response_size=0,
-    )
-    log_entry["error"] = error_msg
+    if network_log_path:
+        # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
+        log_entry, raw_url = _http_network_log_entry(
+            flow,
+            action=firewall_action,
+            status_code=0,
+            latency_ms=latency_ms,
+            request_size=request_size,
+            response_size=0,
+        )
+        log_entry["error"] = error_msg
 
-    log_http_network_entry(network_log_path, log_entry, raw_url)
+        log_http_network_entry(network_log_path, log_entry, raw_url)
 
     # Report proxy-extracted usage for model provider responses.
     # The SSE parser may have partially populated model_provider_usage before the

@@ -1,6 +1,6 @@
 import { chatEvents } from "@okouai/db/schema/chat-event";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 
@@ -54,12 +54,16 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
       ),
     db()
       .select({
-        id: zeroRuns.id,
-        goalId: zeroRuns.goalId,
+        id: agentRuns.id,
+        goalId: agentRuns.goalId,
       })
-      .from(zeroRuns)
+      .from(agentRuns)
       .where(
-        and(eq(zeroRuns.chatThreadId, threadId), isNotNull(zeroRuns.goalId)),
+        and(
+          eq(agentRuns.chatThreadId, threadId),
+          isNotNull(agentRuns.goalId),
+          isNotNull(agentRuns.triggerSource),
+        ),
       ),
   ]);
   return {

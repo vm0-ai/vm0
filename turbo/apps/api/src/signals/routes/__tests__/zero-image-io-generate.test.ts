@@ -20,7 +20,7 @@ import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generation
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
-import { zeroUsageRecordRoutes } from "../zero-usage-record";
+import { usageRecordRoutes } from "../usage-record";
 import {
   createUsagePricingFixture,
   seedOrgMetadata,
@@ -137,7 +137,7 @@ function createImageIoTestApp(
       ...zeroImageIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
-      ...zeroUsageRecordRoutes,
+      ...usageRecordRoutes,
     ],
     usagePricingResolution,
   });

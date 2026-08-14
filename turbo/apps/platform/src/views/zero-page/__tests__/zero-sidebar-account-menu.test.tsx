@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { command } from "ccstate";
 import { HttpResponse } from "msw";
@@ -317,6 +323,96 @@ describe("zero sidebar account menu", () => {
       expect(accountButton).toHaveFocus();
       expect(accountButton.matches(":focus-visible")).toBeTruthy();
     });
+  });
+
+  it("shows realtime recovery status beside the expanded account only in debug mode", async () => {
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("threadListChanged"),
+      ).toBeTruthy();
+      expect(within(accountButton).queryByRole("status")).toBeNull();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerConnectionState("disconnected", {
+        retryIn: 5000,
+      });
+    });
+    await waitFor(() => {
+      expect(
+        within(accountButton).getByRole("status", {
+          name: "Realtime reconnecting",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerConnectionState("connected");
+    });
+    await waitFor(() => {
+      expect(within(accountButton).queryByRole("status")).toBeNull();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerFailure("terminal connection failure");
+    });
+    await waitFor(() => {
+      expect(
+        within(accountButton).getByRole("status", {
+          name: "Realtime disconnected",
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps realtime recovery status hidden when debug mode is disabled", async () => {
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("threadListChanged"),
+      ).toBeTruthy();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerConnectionState("disconnected", {
+        retryIn: 5000,
+      });
+    });
+    expect(within(accountButton).queryByRole("status")).toBeNull();
   });
 
   it("does not request or show member usage pack credits when the switch is disabled", async () => {

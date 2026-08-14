@@ -10,7 +10,7 @@ import {
   type WebSearchRequest,
 } from "@okouai/api-contracts/contracts/web-search";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
-import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -41,7 +41,7 @@ import {
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroUsageRecordRoutes } from "../zero-usage-record";
+import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
 const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
@@ -298,18 +298,18 @@ describe("okou web-search route", () => {
       ],
     });
     const usage = await accept(
-      setupApp({ context, routes: zeroUsageRecordRoutes })(
-        zeroUsageRecordContract,
-      ).get({
-        headers: authenticate(actor),
-        query: {
-          page: 1,
-          pageSize: 20,
-          scope: "mine",
-          range: "24h",
-          tz: "UTC",
+      setupApp({ context, routes: usageRecordRoutes })(usageRecordContract).get(
+        {
+          headers: authenticate(actor),
+          query: {
+            page: 1,
+            pageSize: 20,
+            scope: "mine",
+            range: "24h",
+            tz: "UTC",
+          },
         },
-      }),
+      ),
       [200],
     );
 

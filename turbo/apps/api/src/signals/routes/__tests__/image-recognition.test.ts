@@ -6,7 +6,7 @@ import {
   imageRecognitionContract,
 } from "@okouai/api-contracts/contracts/image-recognition";
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
-import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
@@ -26,7 +26,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { readUsageStorageCounts$ } from "./helpers/usage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { imageRecognitionRoutes } from "../image-recognition";
-import { zeroUsageRecordRoutes } from "../zero-usage-record";
+import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
 const store = createStore();
@@ -195,9 +195,7 @@ async function readUsageRecord(actor: RecognitionActor) {
   mockClerkUserLookup();
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
   const response = await accept(
-    setupApp({ context, routes: zeroUsageRecordRoutes })(
-      zeroUsageRecordContract,
-    ).get({
+    setupApp({ context, routes: usageRecordRoutes })(usageRecordContract).get({
       headers: { authorization: "Bearer clerk-session" },
       query: {
         page: 1,

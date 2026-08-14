@@ -4,7 +4,6 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   eq,
@@ -28,6 +27,7 @@ const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 function activeChatRunCondition(db: Pick<Db, "select">) {
   return and(
+    isNotNull(agentRuns.triggerSource),
     inArray(agentRuns.status, ACTIVE_CHAT_RUN_STATUSES),
     or(
       notExists(
@@ -36,7 +36,7 @@ function activeChatRunCondition(db: Pick<Db, "select">) {
           .from(agentRunCallbacks)
           .where(
             and(
-              eq(agentRunCallbacks.runId, zeroRuns.id),
+              eq(agentRunCallbacks.runId, agentRuns.id),
               eq(agentRunCallbacks.internalKind, "chat"),
               isNotNull(sql`${agentRunCallbacks.payload}->>'queuedMessageId'`),
             ),
@@ -48,7 +48,7 @@ function activeChatRunCondition(db: Pick<Db, "select">) {
           .from(chatEvents)
           .where(
             and(
-              eq(chatEvents.runId, zeroRuns.id),
+              eq(chatEvents.runId, agentRuns.id),
               chatEventTypeIn(["input.prompt"]),
             ),
           ),
@@ -62,6 +62,7 @@ function unresolvedCancellationRecoveryCondition(
   completedAtCondition: SQL,
 ) {
   return and(
+    isNotNull(agentRuns.triggerSource),
     eq(agentRuns.status, "cancelled"),
     isNotNull(agentRuns.cancellationRecoveryCompleted),
     completedAtCondition,
@@ -73,7 +74,7 @@ function unresolvedCancellationRecoveryCondition(
           .from(chatEvents)
           .where(
             and(
-              eq(chatEvents.runId, zeroRuns.id),
+              eq(chatEvents.runId, agentRuns.id),
               chatEventTypeIn(["run.cancelled"]),
             ),
           ),
@@ -105,12 +106,11 @@ export async function cancellationRecoveryPendingForThread(
   },
 ): Promise<boolean> {
   const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
     .where(
       and(
-        eq(zeroRuns.chatThreadId, args.threadId),
+        eq(agentRuns.chatThreadId, args.threadId),
         freshUnresolvedCancellationRecoveryCondition(db),
       ),
     )
@@ -136,15 +136,14 @@ async function chatThreadAdmissionBlockerExists(
         or(
           exists(
             db
-              .select({ id: zeroRuns.id })
-              .from(zeroRuns)
-              .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+              .select({ id: agentRuns.id })
+              .from(agentRuns)
               .where(
                 and(
-                  eq(zeroRuns.chatThreadId, args.threadId),
+                  eq(agentRuns.chatThreadId, args.threadId),
                   args.excludeRunId === undefined
                     ? undefined
-                    : ne(zeroRuns.id, args.excludeRunId),
+                    : ne(agentRuns.id, args.excludeRunId),
                   or(
                     activeChatRunCondition(db),
                     freshUnresolvedCancellationRecoveryCondition(
@@ -208,24 +207,22 @@ export async function expiredCancellationRecoveryThreads(
         pendingChatQueueEventCondition(db),
         notExists(
           db
-            .select({ id: zeroRuns.id })
-            .from(zeroRuns)
-            .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
             .where(
               and(
-                eq(zeroRuns.chatThreadId, chatEvents.chatThreadId),
+                eq(agentRuns.chatThreadId, chatEvents.chatThreadId),
                 activeChatRunCondition(db),
               ),
             ),
         ),
         exists(
           db
-            .select({ id: zeroRuns.id })
-            .from(zeroRuns)
-            .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
             .where(
               and(
-                eq(zeroRuns.chatThreadId, chatEvents.chatThreadId),
+                eq(agentRuns.chatThreadId, chatEvents.chatThreadId),
                 unresolvedCancellationRecoveryCondition(
                   db,
                   lte(agentRuns.completedAt, args.expiredBefore),

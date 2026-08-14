@@ -454,6 +454,8 @@ fn burst_past_channel_cap_drops_without_blocking() {
 
 #[tokio::test]
 async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
+    const TEST_SHUTDOWN_DEADLINE: Duration = Duration::from_secs(5);
+
     let server = MockServer::start_async().await;
 
     // Return 500 for every ingest. The dispatcher should log via
@@ -467,8 +469,12 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
         })
         .await;
 
-    let (layer, guard) =
+    let (layer, mut guard) =
         init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let dispatcher_task = guard
+        .handle
+        .take()
+        .expect("init must spawn a dispatcher task");
     let recording = RecordingLayer::default();
     let subscriber = tracing_subscriber::registry()
         .with(recording.clone())
@@ -476,11 +482,16 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::error!("trigger ingest failure");
-        guard.shutdown().await;
+        tokio::time::timeout(TEST_SHUTDOWN_DEADLINE, async {
+            guard.shutdown().await;
+            dispatcher_task
+                .await
+                .expect("Axiom dispatcher task failed during shutdown");
+        })
+        .await
+        .expect("Axiom shutdown exceeded the 5-second test deadline");
     }
 
-    // If the failure path panics or leaks the task, shutdown never returns
-    // (the test harness enforces its own timeout, so we'd see a hang).
     mock.assert_calls_async(1).await;
     let events = recording.events();
     assert!(

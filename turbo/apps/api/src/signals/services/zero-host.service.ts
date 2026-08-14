@@ -6,14 +6,14 @@ import type {
   HostedSiteDeploymentsResponse,
   HostedSitePrepareRequest,
 } from "@okouai/api-contracts/contracts/zero-host";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   hostedDeployments,
   hostedSites,
   type HostedSiteManifest,
   type HostedSiteManifestFile,
 } from "@okouai/db/schema/hosted-site";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";
 import {
@@ -284,9 +284,9 @@ async function resolveChatThreadId(
     return null;
   }
   const [run] = await db
-    .select({ chatThreadId: zeroRuns.chatThreadId })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ chatThreadId: agentRuns.chatThreadId })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return run?.chatThreadId ?? null;
 }

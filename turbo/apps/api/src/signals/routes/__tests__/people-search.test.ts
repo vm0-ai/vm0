@@ -5,7 +5,7 @@ import {
   type PeopleSearchRequest,
 } from "@okouai/api-contracts/contracts/people-search";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
-import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 import { webSearchContract } from "@okouai/api-contracts/contracts/web-search";
 import { HttpResponse, http, type JsonBodyType } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -35,7 +35,7 @@ import {
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroUsageRecordRoutes } from "../zero-usage-record";
+import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
 const PERPLEXITY_AGENT_URL = "https://api.perplexity.ai/v1/agent";
@@ -834,18 +834,18 @@ describe("okou people-search route", () => {
       [200],
     );
     const usage = await accept(
-      setupApp({ context, routes: zeroUsageRecordRoutes })(
-        zeroUsageRecordContract,
-      ).get({
-        headers: authenticate(actor),
-        query: {
-          page: 1,
-          pageSize: 100,
-          scope: "mine",
-          range: "today",
-          tz: "UTC",
+      setupApp({ context, routes: usageRecordRoutes })(usageRecordContract).get(
+        {
+          headers: authenticate(actor),
+          query: {
+            page: 1,
+            pageSize: 100,
+            scope: "mine",
+            range: "today",
+            tz: "UTC",
+          },
         },
-      }),
+      ),
       [200],
     );
     const usageRow = usage.body.rows.find((row) => {

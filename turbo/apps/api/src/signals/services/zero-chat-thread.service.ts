@@ -30,7 +30,6 @@ import {
   runUploadedFiles,
 } from "@okouai/db/schema/run-uploaded-file";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { unionAll } from "drizzle-orm/pg-core";
 import {
   and,
@@ -235,13 +234,13 @@ const zeroIndicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
   return notExists(
     db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
       .where(
         and(
-          eq(zeroRuns.chatThreadId, chatThreads.id),
+          eq(agentRuns.chatThreadId, chatThreads.id),
           inArray(agentRuns.status, ACTIVE_RUN_STATUSES),
+          isNotNull(agentRuns.triggerSource),
         ),
       ),
   );
@@ -363,15 +362,15 @@ export function zeroChatIndicators(args: {
           threadId: chatThreads.id,
           agentId: chatThreads.agentComposeId,
         })
-        .from(zeroRuns)
-        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-        .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+        .from(agentRuns)
+        .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
         .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
         .where(
           and(
             eq(chatThreads.userId, args.userId),
             eq(zeroAgents.orgId, args.orgId),
             inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+            isNotNull(agentRuns.triggerSource),
           ),
         ),
     );
@@ -494,13 +493,13 @@ function loadZeroChatThreadArtifactRows(
       createdAt: runUploadedFiles.createdAt,
     })
     .from(runUploadedFiles)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
     .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
     .where(
       and(
         eq(runUploadedFiles.userId, args.userId),
+        isNotNull(agentRuns.triggerSource),
         or(
-          eq(zeroRuns.chatThreadId, args.threadId),
+          eq(agentRuns.chatThreadId, args.threadId),
           exists(
             db
               .select({ id: chatEvents.id })
@@ -694,12 +693,12 @@ export async function chatThreadForRunFromDb(
 ): Promise<{ readonly chatThreadId: string; readonly userId: string } | null> {
   const [row] = await db
     .select({
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
     })
-    .from(zeroRuns)
-    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
 
   if (!row?.chatThreadId) {
@@ -716,14 +715,15 @@ interface ThreadRunToCancel {
 /**
  * Delete a chat thread after winding down everything attached to it. Deleting a
  * thread on its own leaves the linked automations firing and any in-flight runs
- * executing: `zero_runs.chatThreadId` is `ON DELETE SET NULL`, so a running run
+ * executing: both metadata copies use `ON DELETE SET NULL`, so a running run
  * simply loses its thread reference and keeps consuming credits.
  *
  * Lock the thread row while deleting it and collecting active runs. Inserts into
+ * either `agent_runs.chatThreadId` or the rollback copy in
  * `zero_runs.chatThreadId` take a FK lock on the same parent row, so this closes
  * the race where a new run attaches after the active-run scan but before the
- * thread delete. Cancellation still happens after the delete transaction because
- * it has runner notifications and queue-drain side effects.
+ * thread delete. Cancellation still happens after the delete transaction
+ * because it has runner notifications and queue-drain side effects.
  *
  * Run cancellation has side effects that cannot participate in the thread's
  * delete transaction (`cancelRun$` opens its own transaction and the runner
@@ -781,18 +781,18 @@ export const deleteChatThread$ = command(
       // queued/pending/running runs need stopping.
       const activeRuns = await tx
         .select({ runId: agentRuns.id, orgId: agentRuns.orgId })
-        .from(zeroRuns)
-        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+        .from(agentRuns)
         .where(
           and(
-            eq(zeroRuns.chatThreadId, ownedThread.id),
+            eq(agentRuns.chatThreadId, ownedThread.id),
             eq(agentRuns.userId, args.userId),
             inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+            isNotNull(agentRuns.triggerSource),
           ),
         );
 
       // Delete the thread last inside the lock. Cascades chat_events; captured
-      // active runs will have their zero_runs.chatThreadId set to NULL.
+      // active runs will have both metadata copies' chatThreadId set to NULL.
       const [deletedThread] = await tx
         .delete(chatThreads)
         .where(eq(chatThreads.id, ownedThread.id))
