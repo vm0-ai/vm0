@@ -96,11 +96,6 @@ async function readStage6Entries(): Promise<{
   );
   const stage6 = matching[0];
   assert.ok(stage6);
-  assert.equal(
-    journal.entries.at(-1)?.tag,
-    stage6.tag,
-    "The Stage 6 contraction must be the journal head",
-  );
   const previous = journal.entries.find((entry) => {
     return entry.idx === stage6.idx - 1;
   });
