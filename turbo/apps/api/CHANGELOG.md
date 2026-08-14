@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.447.2](https://github.com/vm0-ai/vm0/compare/api-v1.447.1...api-v1.447.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** stabilize billing dialogs and pending changes ([#26959](https://github.com/vm0-ai/vm0/issues/26959)) ([4d05aff](https://github.com/vm0-ai/vm0/commit/4d05aff72171d0d72c4ca3f90b2063abd1d3d17d))
+
+
+### Refactoring
+
+* **connector-check:** neutralize connector check naming ([#27053](https://github.com/vm0-ai/vm0/issues/27053)) ([76c5a43](https://github.com/vm0-ai/vm0/commit/76c5a43aacfb9616563d4e315acaeabb4d6c5afa))
+* **queue-position:** neutralize api shell ([#27065](https://github.com/vm0-ai/vm0/issues/27065)) ([8a504ad](https://github.com/vm0-ai/vm0/commit/8a504ad7efba1fd5f3e9a6f1c423ec1780dec869))
+* **user-preferences:** neutralize the user preferences api shell ([#27075](https://github.com/vm0-ai/vm0/issues/27075)) ([a99b31b](https://github.com/vm0-ai/vm0/commit/a99b31be509880d93d1e53bae60bbb849cbca916))
+* **voice-io:** neutralize voice io naming ([#27071](https://github.com/vm0-ai/vm0/issues/27071)) ([28c0cb5](https://github.com/vm0-ai/vm0/commit/28c0cb5713c0ad7da688315236f4f48fec19cee7))
+
+
+### Performance Improvements
+
+* **api:** attribute runner notification latency ([#27074](https://github.com/vm0-ai/vm0/issues/27074)) ([60f63cc](https://github.com/vm0-ai/vm0/commit/60f63cc454372e671acca0e9e58d37137973876a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.2
+    * @okouai/core bumped to 8.559.6
+    * @okouai/db bumped to 1.198.14
+    * @okouai/pi-agent-runtime bumped to 1.4.20
+
 ## [1.447.1](https://github.com/vm0-ai/vm0/compare/api-v1.447.0...api-v1.447.1) (2026-08-14)
 
 
