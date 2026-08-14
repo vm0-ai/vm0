@@ -90,6 +90,11 @@ export interface StripeSchedulePhase {
     readonly price: StripeRef;
     readonly quantity?: number;
   }[];
+  readonly discounts?: readonly {
+    readonly coupon: StripeRef;
+    readonly discount: StripeRef;
+    readonly promotion_code: StripeRef;
+  }[];
 }
 
 export interface StripeSubscriptionSchedule {
