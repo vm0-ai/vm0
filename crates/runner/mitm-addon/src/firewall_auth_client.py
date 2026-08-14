@@ -248,13 +248,12 @@ def _proxy_plan(
     scheme: str,
     origin_authority: str,
 ) -> tuple[str, int, str | None] | None:
-    if urllib.request.proxy_bypass(origin_authority):
-        return None
-
     configured_proxy = urllib.request.getproxies().get(scheme)
     if not configured_proxy:
         return None
     normalized_proxy = platform_api.normalize_proxy_url(configured_proxy)
+    if urllib.request.proxy_bypass(origin_authority):
+        return None
     proxy_url = normalized_proxy if "://" in normalized_proxy else f"http://{normalized_proxy}"
     parsed = urllib.parse.urlsplit(proxy_url)
     if parsed.scheme.lower() != "http":

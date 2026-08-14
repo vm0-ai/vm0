@@ -290,8 +290,8 @@ def test_environment_proxy_rejects_unsafe_hostname_before_dns(
         "HTTP_PROXY": "",
         "all_proxy": "",
         "ALL_PROXY": "",
-        "no_proxy": "",
-        "NO_PROXY": "",
+        "no_proxy": "platform.example",
+        "NO_PROXY": "platform.example",
     }
     with (
         patch.dict(os.environ, proxy_environment),
