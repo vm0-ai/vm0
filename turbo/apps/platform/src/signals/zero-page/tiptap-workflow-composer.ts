@@ -614,8 +614,10 @@ function createFeedbackItemNodeView(
   }
   function render(nextNode: ProseMirrorNode): void {
     const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
-    dom.className = `flex flex-col gap-1.5 pb-1.5 pt-1.5${
-      showDivider ? " border-t border-dashed border-border/60" : ""
+    // The top padding is breathing room for the dashed divider, so only the
+    // items that draw one get it. The first item keeps the editor's own pt-4.
+    dom.className = `flex flex-col gap-1.5 pb-1.5${
+      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
     }`;
     noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
     placeholderDom.hidden = nodeText(nextNode).length > 0;

@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import type { UserPreferenceChangedPayload } from "@okouai/api-contracts/contracts/realtime";
-import { zeroUserModelPreferenceContract } from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -18,7 +18,7 @@ import {
   userModelPreference,
 } from "../services/zero-user-data.service";
 
-const updateBody$ = bodyResultOf(zeroUserModelPreferenceContract.update);
+const updateBody$ = bodyResultOf(userModelPreferenceContract.update);
 
 const getUserModelPreferenceInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
@@ -101,16 +101,16 @@ const updateUserModelPreferenceInner$ = command(
   },
 );
 
-export const zeroUserModelPreferenceRoutes: readonly RouteEntry[] = [
+export const userModelPreferenceRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUserModelPreferenceContract.get,
+    route: userModelPreferenceContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getUserModelPreferenceInner$,
     ),
   },
   {
-    route: zeroUserModelPreferenceContract.update,
+    route: userModelPreferenceContract.update,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       updateUserModelPreferenceInner$,

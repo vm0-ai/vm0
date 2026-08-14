@@ -10,7 +10,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import { zeroModelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroUserModelPreferenceContract } from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createApp } from "../../../app-factory";
@@ -28,12 +28,12 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroModelPoliciesRoutes } from "../zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
-import { zeroUserModelPreferenceRoutes } from "../zero-user-model-preference";
+import { userModelPreferenceRoutes } from "../user-model-preference";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...zeroModelPoliciesRoutes,
   ...zeroModelProviderGatewayRoutes,
-  ...zeroUserModelPreferenceRoutes,
+  ...userModelPreferenceRoutes,
 ]);
 
 type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
@@ -446,8 +446,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const client = apiClient();
     const preferenceClient = setupApp({
       context,
-      routes: zeroUserModelPreferenceRoutes,
-    })(zeroUserModelPreferenceContract);
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -492,8 +492,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const client = apiClient();
     const preferenceClient = setupApp({
       context,
-      routes: zeroUserModelPreferenceRoutes,
-    })(zeroUserModelPreferenceContract);
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -940,8 +940,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const client = apiClient();
     const preferenceClient = setupApp({
       context,
-      routes: zeroUserModelPreferenceRoutes,
-    })(zeroUserModelPreferenceContract);
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -1000,8 +1000,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
     useSession(fixture);
     const preferenceClient = setupApp({
       context,
-      routes: zeroUserModelPreferenceRoutes,
-    })(zeroUserModelPreferenceContract);
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
 
     const stored = await accept(
       preferenceClient.update({
@@ -1051,8 +1051,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
     useSession(fixture);
     const preferenceClient = setupApp({
       context,
-      routes: zeroUserModelPreferenceRoutes,
-    })(zeroUserModelPreferenceContract);
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
 
     context.mocks.ably.publish.mockClear();
     await accept(
@@ -1097,8 +1097,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
     useSession(fixture);
     const preferenceClient = setupApp({
       context,
-      routes: zeroUserModelPreferenceRoutes,
-    })(zeroUserModelPreferenceContract);
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
 
     await accept(
       preferenceClient.update({
@@ -1133,8 +1133,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
     useSession(fixture);
     const preferenceClient = setupApp({
       context,
-      routes: zeroUserModelPreferenceRoutes,
-    })(zeroUserModelPreferenceContract);
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
 
     // A run model id is never a video model id; the cast is what a client
     // sending a stale or hand-written id would produce at runtime.

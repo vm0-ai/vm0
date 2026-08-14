@@ -46,7 +46,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
 import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
-import { zeroUserModelPreferenceContract } from "@okouai/api-contracts/contracts/zero-user-model-preference";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { HttpResponse, http } from "msw";
 import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
@@ -84,7 +84,7 @@ import { zeroSlackConnectRoutes } from "../../zero-slack-connect";
 import { slackEventsRoutes } from "../../slack-events";
 import { slackInteractiveRoutes } from "../../slack-interactive";
 import { zeroSlackOauthRoutes } from "../../zero-slack-oauth";
-import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
+import { userModelPreferenceRoutes } from "../../user-model-preference";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...githubOauthRoutes,
@@ -114,7 +114,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...slackEventsRoutes,
   ...slackInteractiveRoutes,
   ...zeroSlackOauthRoutes,
-  ...zeroUserModelPreferenceRoutes,
+  ...userModelPreferenceRoutes,
 ]);
 
 interface AuthHeaders {
@@ -1177,8 +1177,8 @@ export function createBddIntegrationApi(context: TestContext) {
     async readUserModelPreference(actor: ApiTestUser) {
       const client = setupApp({
         context,
-        routes: zeroUserModelPreferenceRoutes,
-      })(zeroUserModelPreferenceContract);
+        routes: userModelPreferenceRoutes,
+      })(userModelPreferenceContract);
       const response = await accept(
         client.get({ headers: authenticate(context, routeMocks, actor) }),
         [200],
@@ -1193,8 +1193,8 @@ export function createBddIntegrationApi(context: TestContext) {
     ): Promise<void> {
       const client = setupApp({
         context,
-        routes: zeroUserModelPreferenceRoutes,
-      })(zeroUserModelPreferenceContract);
+        routes: userModelPreferenceRoutes,
+      })(userModelPreferenceContract);
       await accept(
         client.update({
           headers: authenticate(context, routeMocks, actor),
