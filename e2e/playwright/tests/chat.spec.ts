@@ -1090,6 +1090,23 @@ test("Fast action stays rightmost across selection states and previews deactivat
   await expectFastActionRightmost(page);
 });
 
+test("chat composer keeps the model icon unclipped on narrow screens", async ({
+  page,
+}) => {
+  await mockSelectedFastModel(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  const modelPicker = page.getByRole("combobox", {
+    name: "GPT 5.6 Sol Fast",
+    exact: true,
+  });
+  const visibleIcons = modelPicker.locator("img:visible, svg:visible");
+  await expect(visibleIcons).toHaveCount(1);
+  await expect(visibleIcons.first()).toBeInViewport({ ratio: 1 });
+});
+
 test("send a message through the deployed runner", async ({ page }) => {
   test.setTimeout(120_000);
   const marker = `PRODUCT_CHAT_E2E_${Date.now()}`;
