@@ -20,6 +20,7 @@ import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
+import { mockResizeObserver } from "./chat-lifecycle-test-helpers.ts";
 
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
@@ -1782,6 +1783,9 @@ describe("zero attachment chips", () => {
         presignedFileUrl("attachment-html"),
       );
     });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
 
     click(screen.getByLabelText("Open in split view"));
 
@@ -1791,6 +1795,9 @@ describe("zero attachment chips", () => {
         presignedFileUrl("attachment-html"),
       );
     });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
   });
 
   it("navigates modal image artifacts within the current run", async () => {
@@ -2471,6 +2478,7 @@ describe("zero attachment chips", () => {
   });
 
   it("opens presentation HTML preview controls from chat message links", async () => {
+    const resizeObserver = mockResizeObserver();
     const presentationUrl =
       "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -2520,6 +2528,22 @@ describe("zero attachment chips", () => {
       "tabindex",
       "-1",
     );
+    const dialog = screen.getByTestId("attachment-lightbox");
+    const dialogViewport = within(dialog).getByTestId(
+      "presentation-artifact-viewport",
+    );
+    mockElementBox(dialogViewport, { height: 600, width: 960 });
+    act(() => {
+      resizeObserver.automationAll();
+    });
+    expect(
+      within(dialog).getByTestId("presentation-artifact-canvas"),
+    ).toHaveStyle({
+      height: "1080px",
+      transform: "translate(0px, 30px) scale(0.5)",
+      visibility: "visible",
+      width: "1920px",
+    });
 
     click(screen.getByLabelText("Enter fullscreen"));
 
@@ -2551,6 +2575,22 @@ describe("zero attachment chips", () => {
       "tabindex",
       "-1",
     );
+    const sidebar = screen.getByTestId("artifact-sidebar");
+    const sidebarViewport = within(sidebar).getByTestId(
+      "presentation-artifact-viewport",
+    );
+    mockElementBox(sidebarViewport, { height: 600, width: 480 });
+    act(() => {
+      resizeObserver.automationAll();
+    });
+    expect(
+      within(sidebar).getByTestId("presentation-artifact-canvas"),
+    ).toHaveStyle({
+      height: "1080px",
+      transform: "translate(0px, 165px) scale(0.25)",
+      visibility: "visible",
+      width: "1920px",
+    });
 
     click(screen.getByLabelText("Close artifact"));
 

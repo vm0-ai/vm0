@@ -67,6 +67,7 @@ import {
   shouldIgnoreImageArtifactNavigationKey,
 } from "./zero-artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
+import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -1425,23 +1426,31 @@ function ArtifactIframeBody({
     return <ArtifactSpinner />;
   }
   if (kind === "html") {
+    const frame = (
+      <AutoFocusedArtifactIframe
+        focusKey={`${resourceUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
+        focusOnMount={fullscreen && !isPresentationHtml}
+        src={resourceUrl}
+        title={t(
+          ($) => {
+            return $.artifacts.preview.dialogLabel;
+          },
+          { filename },
+        )}
+        sandbox="allow-same-origin allow-scripts"
+        tabIndex={isPresentationHtml ? -1 : undefined}
+        className="h-full w-full border-0 bg-background"
+        data-testid={`artifact-sidebar-body-${kind}`}
+      />
+    );
+
     return (
       <div className="h-full w-full">
-        <AutoFocusedArtifactIframe
-          focusKey={`${resourceUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
-          focusOnMount={fullscreen && !isPresentationHtml}
-          src={resourceUrl}
-          title={t(
-            ($) => {
-              return $.artifacts.preview.dialogLabel;
-            },
-            { filename },
-          )}
-          sandbox="allow-same-origin allow-scripts"
-          tabIndex={isPresentationHtml ? -1 : undefined}
-          className="h-full w-full border-0 bg-background"
-          data-testid={`artifact-sidebar-body-${kind}`}
-        />
+        {isPresentationHtml ? (
+          <PresentationArtifactViewport>{frame}</PresentationArtifactViewport>
+        ) : (
+          frame
+        )}
       </div>
     );
   }

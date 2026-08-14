@@ -83,6 +83,7 @@ import {
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
+import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -909,9 +910,11 @@ function ArtifactDialogDocumentFrameBody({
 }
 
 function ArtifactDialogBody({
+  artifact,
   imageNavigation,
   preview,
 }: {
+  artifact: AttachmentArtifactMetadata | undefined;
   imageNavigation?: ArtifactImageNavigationActions;
   preview: AttachmentLightboxState;
 }) {
@@ -947,7 +950,13 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "html") {
-    return <ArtifactDialogHtmlBody filename={filename} preview={preview} />;
+    return (
+      <ArtifactDialogHtmlBody
+        artifact={artifact}
+        filename={filename}
+        preview={preview}
+      />
+    );
   }
 
   return (
@@ -956,17 +965,18 @@ function ArtifactDialogBody({
 }
 
 function ArtifactDialogHtmlBody({
+  artifact,
   filename,
   preview,
 }: {
+  artifact: AttachmentArtifactMetadata | undefined;
   filename: string;
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
   const src = useResolvedAttachmentUrl(preview.url);
-  const isPresentationHtml =
-    preview.artifact?.artifactKind === "presentation-html";
+  const isPresentationHtml = artifact?.artifactKind === "presentation-html";
 
   if (src === null) {
     return (
@@ -977,27 +987,35 @@ function ArtifactDialogHtmlBody({
     );
   }
 
+  const frame = (
+    <AutoFocusedArtifactIframe
+      focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
+      focusOnMount={!isPresentationHtml}
+      src={src}
+      title={t(
+        ($) => {
+          return $.artifacts.preview.dialogLabel;
+        },
+        { filename },
+      )}
+      sandbox="allow-same-origin allow-scripts"
+      tabIndex={isPresentationHtml ? -1 : undefined}
+      scrolling="yes"
+      className="block h-full w-full border-0 bg-background"
+      data-testid="artifact-dialog-body-html"
+    />
+  );
+
   return (
     <div
       className="h-full w-full bg-background"
       data-testid="artifact-dialog-site-frame"
     >
-      <AutoFocusedArtifactIframe
-        focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
-        focusOnMount={!isPresentationHtml}
-        src={src}
-        title={t(
-          ($) => {
-            return $.artifacts.preview.dialogLabel;
-          },
-          { filename },
-        )}
-        sandbox="allow-same-origin allow-scripts"
-        tabIndex={isPresentationHtml ? -1 : undefined}
-        scrolling="yes"
-        className="block h-full w-full border-0 bg-background"
-        data-testid="artifact-dialog-body-html"
-      />
+      {isPresentationHtml ? (
+        <PresentationArtifactViewport>{frame}</PresentationArtifactViewport>
+      ) : (
+        frame
+      )}
     </div>
   );
 }
@@ -1365,6 +1383,7 @@ function ArtifactPreviewDialogContent({
           </div>
           <div className="min-h-0 flex-1 bg-background">
             <ArtifactDialogBody
+              artifact={artifact}
               imageNavigation={imageNavigation}
               preview={preview}
             />
