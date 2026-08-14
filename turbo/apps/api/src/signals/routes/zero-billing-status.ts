@@ -9,10 +9,7 @@ import type { RouteEntry } from "../route-entry";
 const getBillingStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const body = await get(zeroBillingStatus(auth.orgId));
-  return {
-    status: 200 as const,
-    body: { ...body, paymentMethodManagementAvailable: true },
-  };
+  return { status: 200 as const, body };
 });
 
 export const zeroBillingStatusRoutes: readonly RouteEntry[] = [

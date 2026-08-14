@@ -133,7 +133,6 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.videoGenerationAllowed).toBeFalsy();
-    expect(response.body.paymentMethodManagementAvailable).toBeTruthy();
     expect(response.body.credits).toBe(100_000);
     expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();

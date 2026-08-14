@@ -96,7 +96,6 @@ function activeProBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions: [],
-    paymentMethodManagementAvailable: true,
   };
 }
 
@@ -155,7 +154,6 @@ function noActiveBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 0,
     concurrencySubscriptions: [],
-    paymentMethodManagementAvailable: true,
   };
 }
 
