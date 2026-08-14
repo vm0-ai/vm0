@@ -217,6 +217,22 @@ async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
             False,
             id="wrong-explicit-port",
         ),
+        pytest.param(
+            "https://api.vm0.ai",
+            "api.vm0.ai",
+            "http",
+            443,
+            False,
+            id="https-configured-http-observed",
+        ),
+        pytest.param(
+            "http://api.vm0.ai:443",
+            "api.vm0.ai",
+            "https",
+            443,
+            False,
+            id="http-configured-https-observed",
+        ),
     ],
 )
 async def test_vm0_api_auto_allow_respects_authority_boundary(
@@ -285,6 +301,51 @@ async def test_vm0_api_wrong_port_uses_matching_firewall_deny_policy(
         client_ip="10.200.0.5",
         host="api.vm0.ai",
         port=8443,
+        path="/restricted",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["reason"] == "permission_denied"
+    assert body["permissions"] == ["read"]
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_vm0_api_wrong_scheme_uses_matching_firewall_deny_policy(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="plaintext-api-port",
+            api_entry={
+                "base": "http://api.vm0.ai:443",
+                "auth": {"headers": {}},
+                "permissions": [{"name": "read", "rules": ["GET /restricted"]}],
+            },
+            network_policy={
+                "allow": [],
+                "deny": ["read"],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.vm0.ai",
+        scheme="http",
+        port=443,
         path="/restricted",
     )
 

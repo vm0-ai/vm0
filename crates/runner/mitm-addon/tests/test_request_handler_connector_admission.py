@@ -121,6 +121,36 @@ async def test_matching_sni_and_host_retargets_unconnected_firewall_auth(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
+async def test_same_host_and_port_on_other_api_scheme_uses_normal_connector_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        base="https://api.vm0.ai:443",
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.vm0.ai",
+        path="/repos",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="http://api.vm0.ai:443"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.vm0.ai:443"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.port == 443
+    assert binding.kinds == frozenset(("connector_auth",))
+
+
 async def test_matching_sni_and_host_records_binding_when_unconnected_address_already_matches(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):

@@ -355,8 +355,9 @@ def _prebind_bounded_requestheaders_upstream_destination(
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
         if upstream_admission.api_destination_matches(
             api_url,
-            trusted_authority.host,
-            trusted_authority.port,
+            scheme=flow.request.scheme,
+            hostname=trusted_authority.host,
+            port=trusted_authority.port,
         ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
             classification = _classify_request_for_flow_with_trusted_authority(
                 flow,
