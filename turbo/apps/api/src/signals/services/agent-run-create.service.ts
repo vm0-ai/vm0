@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { posix } from "node:path";
 import { command, computed, type Computed } from "ccstate";
 import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type PiLaunchConfig,
   type PiModelConfig,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
@@ -129,11 +131,6 @@ import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { zeroRuns } from "@okouai/db/schema/zero-run";
 import type { PersistedStorageMount } from "@okouai/db/types";
 import {
-  formatPiUserPrompt,
-  loadPiRunSkills,
-  renderPiSystemPrompt,
-} from "@okouai/pi-agent-runtime";
-import {
   and,
   count,
   desc,
@@ -220,7 +217,6 @@ import {
 } from "@okouai/core/resource-registry";
 import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
-import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 import {
   activePersonalModelProviderAccount,
   ensurePersonalModelProviderAccount,
@@ -6307,8 +6303,7 @@ interface BuildRunnerJobPayloadInput {
 
 interface PreparedPiLaunchResources {
   readonly modelConfig: PiModelConfig;
-  readonly prompt: string;
-  readonly systemPrompt: string;
+  readonly launchConfig: PiLaunchConfig;
   readonly resumeSession: StoredExecutionContext["resumeSession"] | undefined;
 }
 
@@ -6328,8 +6323,7 @@ function storedExecutionContextWithPiResources(
     resumeSession: resources.resumeSession ?? null,
     cliAgentType: "pi",
     piSessionId: chatThreadId,
-    piPrompt: resources.prompt,
-    piSystemPrompt: resources.systemPrompt,
+    piLaunchConfig: resources.launchConfig,
     piModelConfig: resources.modelConfig,
   };
 }
@@ -6354,10 +6348,7 @@ async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
 }
 
 async function preparePiLaunchResources(args: {
-  readonly get: <T>(computedValue: Computed<T>) => T;
   readonly db: Db;
-  readonly runId: string;
-  readonly body: CreateRunBody;
   readonly composeId: string;
   readonly piSandbox: PiModelConfig | undefined;
   readonly chatThreadId: string | undefined;
@@ -6376,31 +6367,39 @@ async function preparePiLaunchResources(args: {
     additionalVolumeSources: args.additionalVolumeSources,
     persistedStorageMounts: args.persistedStorageMounts,
   });
-  const [resources, agentName, resumeSession] = await Promise.all([
-    loadPiLaunchStorageResources(args.get, args.db, {
-      snapshot,
-      persistedStorageMounts: args.persistedStorageMounts,
-    }),
+  const [agentName, resumeSession] = await Promise.all([
     resolvePiAgentName(args.db, args.composeId),
     resolveLatestPiResumeSession(args.db, args.chatThreadId),
   ]);
-  const skills = await loadPiRunSkills(resources.env, snapshot);
-  if (skills.diagnostics.length > 0) {
-    L.warn("Pi run Skill catalog contains diagnostics", {
-      runId: args.runId,
-      diagnostics: skills.diagnostics,
-    });
-  }
+  const instructionsMount = args.persistedStorageMounts.find((mount) => {
+    return (
+      mount.version !== undefined &&
+      mount.instructionsTargetFilename !== undefined
+    );
+  });
+  const memoryMount = args.persistedStorageMounts.find((mount) => {
+    return mount.name === MEMORY_ARTIFACT_NAME;
+  });
   return {
     modelConfig: args.piSandbox,
-    prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
-    systemPrompt: renderPiSystemPrompt({
+    launchConfig: {
+      schemaVersion: 1,
       agentName,
-      appendSystemPrompt: args.body.appendSystemPrompt,
-      agentInstructions: resources.agentInstructions,
-      memory: resources.memory,
-      skills: skills.skills,
-    }),
+      skillSnapshot: snapshot,
+      agentInstructionsPath:
+        instructionsMount?.instructionsTargetFilename === undefined
+          ? null
+          : posix.join(
+              instructionsMount.mountPath,
+              instructionsMount.instructionsTargetFilename,
+            ),
+      memory: memoryMount
+        ? {
+            directory: memoryMount.mountPath,
+            primaryFile: posix.join(memoryMount.mountPath, "MEMORY.md"),
+          }
+        : null,
+    },
     resumeSession,
   };
 }
@@ -6506,10 +6505,7 @@ function buildRunnerJobPayload(
       builtContextDraftPromise,
     );
     const piResources = await preparePiLaunchResources({
-      get,
       db,
-      runId: args.run.id,
-      body,
       composeId: args.resolved.composeId,
       piSandbox: args.piSandbox,
       chatThreadId: args.chatThreadId,

@@ -157,8 +157,26 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 /// Logical run-payload field name for API-owned Codex runtime metadata.
 pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
-/// Logical run-payload field name for the immutable Pi system prompt.
-pub const PI_SYSTEM_PROMPT_ENV: &str = "OKOU_PI_SYSTEM_PROMPT";
+/// Logical run-payload field name for non-secret Pi launch inputs.
+///
+/// The value is filesystem references only. It never reaches the Pi CLI child
+/// as an environment value; the guest-agent republishes it through
+/// [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
+pub const PI_LAUNCH_CONFIG_ENV: &str = "OKOU_PI_LAUNCH_CONFIG";
+
+/// Path to the private guest-agent-owned Pi launch payload JSON file.
+///
+/// Prompt-sized Pi launch inputs use this file instead of the child's argv or
+/// environment. The guest-agent writes it inside the per-run private runtime
+/// directory before spawning its own Pi CLI. See `piLaunchPayloadSchema` in
+/// `turbo/packages/api-contracts/src/contracts/runners.ts` for the reader side.
+pub const PI_LAUNCH_PAYLOAD_FILE_ENV: &str = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
+
+/// Private runtime subdirectory used by [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
+pub const PI_LAUNCH_PAYLOAD_PRIVATE_DIR_NAME: &str = "pi-launch-payload";
+
+/// Private runtime filename used by [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
+pub const PI_LAUNCH_PAYLOAD_FILENAME: &str = "payload.json";
 
 /// Logical run-payload field name for non-secret Pi model metadata.
 pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
@@ -199,9 +217,9 @@ pub struct RunPayload {
     /// JSON object describing API-owned Codex provider/runtime metadata.
     #[serde(default)]
     pub codex_runtime_config: String,
-    /// Complete Pi system prompt rendered once by the API.
+    /// JSON object describing non-secret Pi launch inputs.
     #[serde(default)]
-    pub pi_system_prompt: String,
+    pub pi_launch_config: String,
     /// JSON object describing non-secret Pi model metadata.
     #[serde(default)]
     pub pi_model_config: String,
@@ -232,7 +250,7 @@ impl RunPayload {
             artifacts,
             feature_flags,
             codex_runtime_config,
-            pi_system_prompt,
+            pi_launch_config,
             pi_model_config,
             pi_session_id,
         } = self;
@@ -275,8 +293,8 @@ impl RunPayload {
                 value: codex_runtime_config,
             },
             RunPayloadField {
-                name: PI_SYSTEM_PROMPT_ENV,
-                value: pi_system_prompt,
+                name: PI_LAUNCH_CONFIG_ENV,
+                value: pi_launch_config,
             },
             RunPayloadField {
                 name: PI_MODEL_CONFIG_ENV,
@@ -374,7 +392,8 @@ pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
 const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     RUN_ID_ENV,
     PI_SESSION_ID_ENV,
-    PI_SYSTEM_PROMPT_ENV,
+    PI_LAUNCH_CONFIG_ENV,
+    PI_LAUNCH_PAYLOAD_FILE_ENV,
     PI_MODEL_CONFIG_ENV,
     CLI_AGENT_TYPE_ENV,
     USE_MOCK_CLAUDE_ENV,
@@ -448,7 +467,10 @@ mod tests {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
-        assert_eq!(PI_SYSTEM_PROMPT_ENV, "OKOU_PI_SYSTEM_PROMPT");
+        assert_eq!(PI_LAUNCH_CONFIG_ENV, "OKOU_PI_LAUNCH_CONFIG");
+        assert_eq!(PI_LAUNCH_PAYLOAD_FILE_ENV, "OKOU_PI_LAUNCH_PAYLOAD_FILE");
+        assert_eq!(PI_LAUNCH_PAYLOAD_PRIVATE_DIR_NAME, "pi-launch-payload");
+        assert_eq!(PI_LAUNCH_PAYLOAD_FILENAME, "payload.json");
         assert_eq!(PI_MODEL_CONFIG_ENV, "OKOU_PI_MODEL_CONFIG");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(
@@ -475,7 +497,7 @@ mod tests {
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
-            pi_system_prompt: "fixed Pi prompt".to_string(),
+            pi_launch_config: "fixed Pi prompt".to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
             pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
@@ -488,7 +510,7 @@ mod tests {
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
         assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"deepseek"}"#);
-        assert_eq!(json["piSystemPrompt"], "fixed Pi prompt");
+        assert_eq!(json["piLaunchConfig"], "fixed Pi prompt");
         assert_eq!(json["piModelConfig"], r#"{"provider":"deepseek"}"#);
         assert_eq!(json["piSessionId"], "22222222-2222-4222-8222-222222222222");
     }
@@ -505,7 +527,7 @@ mod tests {
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
-            pi_system_prompt: "fixed Pi prompt".to_string(),
+            pi_launch_config: "fixed Pi prompt".to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
             pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
@@ -552,7 +574,7 @@ mod tests {
                     value: r#"{"providerId":"deepseek"}"#
                 },
                 RunPayloadField {
-                    name: PI_SYSTEM_PROMPT_ENV,
+                    name: PI_LAUNCH_CONFIG_ENV,
                     value: "fixed Pi prompt"
                 },
                 RunPayloadField {
@@ -639,7 +661,8 @@ mod tests {
             API_URL_ENV,
             RUN_ID_ENV,
             PI_SESSION_ID_ENV,
-            PI_SYSTEM_PROMPT_ENV,
+            PI_LAUNCH_CONFIG_ENV,
+            PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,

@@ -13,7 +13,8 @@ import { nowDate, timestampWithoutTimeZone } from "../../lib/time";
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StoragePresignedUrlCacheScope =
   | "system_storage"
-  | "workflow_skill_storage";
+  | "workflow_skill_storage"
+  | "readonly_storage";
 
 export const SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS = 2 * 60 * 60;
 const SYSTEM_STORAGE_PRESIGNED_URL_HARD_SAFETY_WINDOW_SECONDS = 15 * 60;
@@ -30,6 +31,10 @@ const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_CACHE_POLICY =
   "workflow-skill-storage-url-v1";
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 32;
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
+export const READ_ONLY_STORAGE_PRESIGNED_URL_TTL_SECONDS = 60 * 60;
+const READ_ONLY_STORAGE_PRESIGNED_URL_CACHE_POLICY = "readonly-storage-url-v1";
+export const READ_ONLY_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 128;
+export const READ_ONLY_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 256;
 const deletedCacheRowSchema = z.object({ cacheKey: z.string() });
 
 type StoragePresignedUrlCacheStatus =
@@ -41,6 +46,8 @@ type StoragePresignedUrlCacheStatus =
 export type SystemStoragePresignedUrlCacheStatus =
   StoragePresignedUrlCacheStatus;
 export type WorkflowSkillStoragePresignedUrlCacheStatus =
+  StoragePresignedUrlCacheStatus;
+export type ReadOnlyStoragePresignedUrlCacheStatus =
   StoragePresignedUrlCacheStatus;
 
 export interface SystemStoragePresignedUrlRequest {
@@ -58,6 +65,14 @@ export interface WorkflowSkillStoragePresignedUrlRequest {
   readonly publicEndpoint: boolean;
 }
 
+export interface ReadOnlyStoragePresignedUrlRequest {
+  readonly bucket: string;
+  readonly objectKey: string;
+  readonly storageVersionId: string;
+  readonly resolvedOrgId: string;
+  readonly publicEndpoint: boolean;
+}
+
 interface StoragePresignedUrlRequest {
   readonly scope: StoragePresignedUrlCacheScope;
   readonly bucket: string;
@@ -67,7 +82,7 @@ interface StoragePresignedUrlRequest {
   readonly publicEndpoint: boolean;
 }
 
-interface StoragePresignedUrlResult {
+export interface StoragePresignedUrlResult {
   readonly cacheKey: string;
   readonly url: string;
   readonly status: StoragePresignedUrlCacheStatus;
@@ -124,6 +139,24 @@ export function workflowSkillStoragePresignedUrlCacheKey(
     .digest("hex");
 }
 
+export function readOnlyStoragePresignedUrlCacheKey(
+  request: ReadOnlyStoragePresignedUrlRequest,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        READ_ONLY_STORAGE_PRESIGNED_URL_CACHE_POLICY,
+        request.bucket,
+        request.objectKey,
+        request.storageVersionId,
+        request.resolvedOrgId,
+        request.publicEndpoint ? "public" : "private",
+        READ_ONLY_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+      ]),
+    )
+    .digest("hex");
+}
+
 function systemStorageRequest(
   request: SystemStoragePresignedUrlRequest,
 ): StoragePresignedUrlRequest {
@@ -142,6 +175,19 @@ function workflowSkillStorageRequest(
 ): StoragePresignedUrlRequest {
   return {
     scope: "workflow_skill_storage",
+    bucket: request.bucket,
+    objectKey: request.objectKey,
+    storageVersionId: request.storageVersionId,
+    resolvedOrgId: request.resolvedOrgId,
+    publicEndpoint: request.publicEndpoint,
+  };
+}
+
+function readOnlyStorageRequest(
+  request: ReadOnlyStoragePresignedUrlRequest,
+): StoragePresignedUrlRequest {
+  return {
+    scope: "readonly_storage",
     bucket: request.bucket,
     objectKey: request.objectKey,
     storageVersionId: request.storageVersionId,
@@ -207,7 +253,11 @@ function objectKeyPrefixCondition(objectKeyPrefix: string | undefined) {
 function storagePresignedUrlCacheScope(
   value: string,
 ): StoragePresignedUrlCacheScope {
-  if (value === "system_storage" || value === "workflow_skill_storage") {
+  if (
+    value === "system_storage" ||
+    value === "workflow_skill_storage" ||
+    value === "readonly_storage"
+  ) {
     return value;
   }
   throw new Error(`Unexpected storage presigned URL cache scope: ${value}`);
@@ -678,6 +728,46 @@ export async function refreshDueWorkflowSkillStoragePresignedUrls(
       limit: args.limit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
       pruneLimit:
         args.pruneLimit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+    },
+    signal,
+  );
+}
+
+export async function resolveReadOnlyStoragePresignedUrls(args: {
+  readonly db: Db;
+  readonly get: ComputedGetter;
+  readonly requests: readonly ReadOnlyStoragePresignedUrlRequest[];
+}): Promise<ReadonlyMap<string, StoragePresignedUrlResult>> {
+  return await resolveStoragePresignedUrls({
+    ...args,
+    scope: "readonly_storage",
+    ttlSeconds: READ_ONLY_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+    cacheKey: readOnlyStoragePresignedUrlCacheKey,
+    normalize: readOnlyStorageRequest,
+  });
+}
+
+export async function refreshDueReadOnlyStoragePresignedUrls(
+  args: {
+    readonly db: Db;
+    readonly get: ComputedGetter;
+    readonly limit?: number;
+    readonly pruneLimit?: number;
+  },
+  signal?: AbortSignal,
+): Promise<{
+  readonly due: number;
+  readonly refreshed: number;
+  readonly pruned: number;
+}> {
+  return await refreshDueStoragePresignedUrls(
+    {
+      db: args.db,
+      get: args.get,
+      scope: "readonly_storage",
+      limit: args.limit ?? READ_ONLY_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
+      pruneLimit:
+        args.pruneLimit ?? READ_ONLY_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
     },
     signal,
   );

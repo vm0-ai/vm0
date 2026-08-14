@@ -216,7 +216,7 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
             "ignored\0pi-session".into(),
         ),
         (
-            guest_contracts::env::PI_SYSTEM_PROMPT_ENV.into(),
+            guest_contracts::env::PI_LAUNCH_CONFIG_ENV.into(),
             "ignored\0pi-prompt".into(),
         ),
         (
@@ -232,7 +232,7 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
     assert!(!user_env.contains_key("VM0_PROMPT"));
     assert!(!user_env.contains_key(guest_contracts::env::RUN_ID_ENV));
     assert!(!user_env.contains_key(guest_contracts::env::PI_SESSION_ID_ENV));
-    assert!(!user_env.contains_key(guest_contracts::env::PI_SYSTEM_PROMPT_ENV));
+    assert!(!user_env.contains_key(guest_contracts::env::PI_LAUNCH_CONFIG_ENV));
     assert!(!user_env.contains_key(guest_contracts::env::PI_MODEL_CONFIG_ENV));
 }
 
@@ -569,7 +569,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             "user-controlled-pi-session".into(),
         ),
         (
-            guest_contracts::env::PI_SYSTEM_PROMPT_ENV.into(),
+            guest_contracts::env::PI_LAUNCH_CONFIG_ENV.into(),
             "user-controlled-pi-prompt".into(),
         ),
         (
@@ -662,7 +662,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     for key in [
         guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::PI_SESSION_ID_ENV,
-        guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
         guest_contracts::env::PI_MODEL_CONFIG_ENV,
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::API_TOKEN_ENV,
@@ -744,7 +744,7 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     for key in [
         guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::PI_SESSION_ID_ENV,
-        guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
         guest_contracts::env::PI_MODEL_CONFIG_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
@@ -1264,7 +1264,7 @@ fn non_pi_execution_contexts_do_not_require_pi_resources() {
         let mut ctx = minimal_context();
         ctx.cli_agent_type = framework.to_string();
         ctx.pi_session_id = None;
-        ctx.pi_system_prompt = None;
+        ctx.pi_launch_config = None;
         ctx.pi_model_config = None;
 
         assert!(
@@ -1273,7 +1273,7 @@ fn non_pi_execution_contexts_do_not_require_pi_resources() {
         );
         let payload = build_run_payload_for_run(&ctx).unwrap();
         assert!(payload.pi_session_id.is_empty());
-        assert!(payload.pi_system_prompt.is_empty());
+        assert!(payload.pi_launch_config.is_empty());
         assert!(payload.pi_model_config.is_empty());
     }
 }
@@ -1283,7 +1283,10 @@ fn build_run_payload_for_run_preserves_pi_resources() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "pi".to_string();
     ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
-    ctx.pi_system_prompt = Some("fixed Pi prompt".to_string());
+    ctx.pi_launch_config = Some(serde_json::json!({
+        "schemaVersion": 1,
+        "agentName": "Okou"
+    }));
     ctx.pi_model_config = Some(PiModelConfig {
         provider: "deepseek".to_string(),
         base_url: "https://api.deepseek.com/".to_string(),
@@ -1296,7 +1299,8 @@ fn build_run_payload_for_run_preserves_pi_resources() {
         payload.pi_session_id,
         "22222222-2222-4222-8222-222222222222"
     );
-    assert_eq!(payload.pi_system_prompt, "fixed Pi prompt");
+    let launch: serde_json::Value = serde_json::from_str(&payload.pi_launch_config).unwrap();
+    assert_eq!(launch["agentName"], "Okou");
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");

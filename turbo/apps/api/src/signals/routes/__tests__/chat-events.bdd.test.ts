@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { gzipSync } from "node:zlib";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -3589,14 +3588,6 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const emptyStorageArchive = gzipSync(Buffer.alloc(1024));
-      context.mocks.s3.send.mockResolvedValue({
-        Body: {
-          async *[Symbol.asyncIterator]() {
-            yield emptyStorageArchive;
-          },
-        },
-      });
       const firstPrompt = "persist this turn in the native Pi session";
       const first = await sendChatRun(actor, {
         agentId,
@@ -3608,8 +3599,18 @@ describe("CHAT-02: model-first provider policies", () => {
 
       expect(firstContext.cliAgentType).toBe("pi");
       expect(firstContext.piSessionId).toBe(first.threadId);
-      expect(firstContext.prompt).toContain(firstPrompt);
-      expect(firstContext.piSystemPrompt).toContain("# Agent Identity");
+      expect(firstContext.prompt).toBe(firstPrompt);
+      expect(firstContext.piLaunchConfig).not.toHaveProperty(
+        "appendSystemPrompt",
+      );
+      expect(firstContext.piLaunchConfig).toMatchObject({
+        schemaVersion: 1,
+        skillSnapshot: {
+          schemaVersion: 1,
+          policyVersion: 1,
+          root: "/home/user/.pi/agent/skills",
+        },
+      });
       expect(firstContext.piModelConfig).toStrictEqual({
         provider: "deepseek",
         baseUrl: "https://api.deepseek.com/",
@@ -3619,6 +3620,7 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(firstContext.resumeSession).toBeNull();
       expect(firstContext).not.toHaveProperty("piExecutionMode");
       expect(firstContext).not.toHaveProperty("runSkillSnapshot");
+      expect(context.mocks.s3.send).not.toHaveBeenCalled();
       expect(claimEnvironment(firstContext).OPENAI_API_KEY).toBe(
         modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );

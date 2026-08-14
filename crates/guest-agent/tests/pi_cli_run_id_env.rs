@@ -1,4 +1,5 @@
-//! Pi CLI children receive the canonical Runner-owned run identity.
+//! Pi CLI children receive the canonical Runner-owned run identity and read
+//! their prompt-sized launch inputs from a private file instead of env.
 
 mod common;
 
@@ -13,13 +14,17 @@ async fn guest_exposes_canonical_run_id_to_pi_cli() -> Result<(), Box<dyn std::e
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir_all(&bin_dir)?;
     let capture_path = tmp.path().join("canonical-run-id.txt");
+    let payload_capture_path = tmp.path().join("pi-launch-payload-path.txt");
     let npx = bin_dir.join("npx");
     std::fs::write(
         &npx,
         r#"#!/bin/sh
 set -eu
 test -n "${OKOU_RUN_ID:-}"
+test -z "${OKOU_PI_LAUNCH_CONFIG:-}"
+test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
+printf '%s' "$OKOU_PI_LAUNCH_PAYLOAD_FILE" > "$PI_PAYLOAD_CAPTURE_PATH"
 IFS= read -r _
 printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"11111111-1111-4111-8111-111111111111","duration_ms":1}'
 "#,
@@ -51,7 +56,8 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
             &runtime_dir,
             &guest_contracts::env::RunPayload {
                 prompt: "verify canonical Pi run identity".to_string(),
-                pi_system_prompt: "system prompt".to_string(),
+                append_system_prompt: "Your name is Okou.".to_string(),
+                pi_launch_config: r#"{"schemaVersion":1,"agentName":"Okou"}"#.to_string(),
                 pi_model_config: "{}".to_string(),
                 pi_session_id: "11111111-1111-4111-8111-111111111111".to_string(),
                 ..guest_contracts::env::RunPayload::default()
@@ -67,6 +73,10 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
                 (
                     "RUN_ID_CAPTURE_PATH".to_string(),
                     capture_path.to_string_lossy().into_owned(),
+                ),
+                (
+                    "PI_PAYLOAD_CAPTURE_PATH".to_string(),
+                    payload_capture_path.to_string_lossy().into_owned(),
                 ),
             ]),
         )?;
@@ -88,5 +98,19 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"o
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
     assert_eq!(std::fs::read_to_string(capture_path)?, run_id);
+
+    let payload_path = std::fs::read_to_string(payload_capture_path)?;
+    assert_eq!(
+        payload_path,
+        guest_contracts::runtime_paths::pi_launch_payload_file(&runtime_dir).to_string_lossy()
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&std::fs::read(&payload_path)?)?;
+    assert_eq!(payload["schemaVersion"], 1);
+    assert_eq!(payload["appendSystemPrompt"], "Your name is Okou.");
+    assert_eq!(payload["launchConfig"]["agentName"], "Okou");
+    assert_eq!(
+        std::fs::metadata(&payload_path)?.permissions().mode() & 0o777,
+        0o600
+    );
     Ok(())
 }

@@ -7,14 +7,16 @@ import {
   type SkillDiagnostic,
 } from "@earendil-works/pi-agent-core";
 import type {
+  PiLaunchConfig,
   RunSkillSnapshot,
   RunSkillSnapshotEntry,
 } from "@okouai/api-contracts/contracts/runners";
 
-import type { PiRunSkills } from "./types";
+import type { PiRunSkills, PreparedPiLaunchPrompt } from "./types";
 
 const PI_AGENT_NAME_PLACEHOLDER = "{{agent_name}}";
 const CONNECTOR_SKILL_STORAGE_PREFIX = "connector-skill@";
+const PI_MEMORY_PREFIX_MAX_BYTES = 8 * 1024;
 
 const PI_BASE_SYSTEM_PROMPT_TEMPLATE = `You are ${PI_AGENT_NAME_PLACEHOLDER}, an AI agent. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.
 
@@ -207,4 +209,86 @@ export function formatPiUserPrompt(
     throw new Error(`Unknown Pi Skill "${name}"`);
   }
   return formatSkillInvocation(skill, invocation[2]);
+}
+
+async function readOptionalTextFile(
+  env: ExecutionEnv,
+  path: string | null,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  if (path === null) {
+    return null;
+  }
+  const result = await env.readTextFile(path, signal);
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error.code === "not_found") {
+    return null;
+  }
+  throw result.error;
+}
+
+function memoryFilePrefix(content: Uint8Array): string | null {
+  if (content.byteLength === 0) {
+    return null;
+  }
+  const truncated = content.byteLength > PI_MEMORY_PREFIX_MAX_BYTES;
+  const prefixBytes = truncated
+    ? content.subarray(0, PI_MEMORY_PREFIX_MAX_BYTES)
+    : content;
+  const decoded = new TextDecoder("utf-8").decode(prefixBytes, {
+    stream: truncated,
+  });
+  if (!truncated) {
+    return decoded;
+  }
+  const finalNewline = decoded.lastIndexOf("\n");
+  return finalNewline === -1 ? decoded : decoded.slice(0, finalNewline + 1);
+}
+
+async function readMemoryPrefix(
+  env: ExecutionEnv,
+  primaryFile: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const result = await env.readBinaryFile(primaryFile, signal);
+  if (result.ok) {
+    return memoryFilePrefix(result.value);
+  }
+  if (result.error.code === "not_found") {
+    return null;
+  }
+  throw result.error;
+}
+
+/** Build the Pi prompt from the exact Storage files already mounted in Sandbox. */
+export async function preparePiLaunchPrompt(
+  env: ExecutionEnv,
+  args: {
+    readonly launchConfig: PiLaunchConfig;
+    readonly appendSystemPrompt: string | null;
+    readonly prompt: string;
+  },
+  signal?: AbortSignal,
+): Promise<PreparedPiLaunchPrompt> {
+  const config = args.launchConfig;
+  const [skills, agentInstructions, memoryPrefix] = await Promise.all([
+    loadPiRunSkills(env, config.skillSnapshot),
+    readOptionalTextFile(env, config.agentInstructionsPath, signal),
+    config.memory
+      ? readMemoryPrefix(env, config.memory.primaryFile, signal)
+      : Promise.resolve(null),
+  ]);
+  return {
+    prompt: formatPiUserPrompt(args.prompt, skills.skills),
+    systemPrompt: renderPiSystemPrompt({
+      agentName: config.agentName,
+      appendSystemPrompt: args.appendSystemPrompt,
+      agentInstructions,
+      memory: config.memory ? { ...config.memory, prefix: memoryPrefix } : null,
+      skills: skills.skills,
+    }),
+    diagnostics: skills.diagnostics,
+  };
 }

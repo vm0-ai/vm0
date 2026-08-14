@@ -34,7 +34,7 @@ function isRegularFile(typeFlag: string): boolean {
   return typeFlag === "" || typeFlag === "0";
 }
 
-export function extractBinaryFilesFromTarGz(
+function extractBinaryFilesFromTarGz(
   gzBuffer: Buffer,
   targetPaths?: readonly string[],
 ): readonly ExtractedBinaryTarFile[] {

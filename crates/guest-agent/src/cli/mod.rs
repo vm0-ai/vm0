@@ -351,7 +351,8 @@ pub(super) struct CliRuntimeConfig<'a> {
     session_id_file: Cow<'a, str>,
     session_history_path_file: Cow<'a, str>,
     pi_session_id: Cow<'a, str>,
-    pi_system_prompt: Cow<'a, str>,
+    pi_launch_config: Cow<'a, str>,
+    pi_launch_payload_file: Cow<'a, str>,
     pi_model_config: Cow<'a, str>,
     user_env: &'a HashMap<String, String>,
 }
@@ -427,7 +428,8 @@ impl<'a> CliRuntimeConfig<'a> {
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
             pi_session_id: Cow::Borrowed(&config.pi_session_id),
-            pi_system_prompt: Cow::Borrowed(&config.pi_system_prompt),
+            pi_launch_config: Cow::Borrowed(&config.pi_launch_config),
+            pi_launch_payload_file: Cow::Borrowed(paths.pi_launch_payload_file()),
             pi_model_config: Cow::Borrowed(&config.pi_model_config),
             user_env: &config.user_env,
         })
@@ -493,7 +495,7 @@ const PI_NODE_OPTIONS: &str = "--disable-warning=ExperimentalWarning";
 fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<String>, AgentError> {
     for (name, value) in [
         ("Pi session id", runtime.pi_session_id.as_ref()),
-        ("Pi system prompt", runtime.pi_system_prompt.as_ref()),
+        ("Pi launch config", runtime.pi_launch_config.as_ref()),
         ("Pi model config", runtime.pi_model_config.as_ref()),
     ] {
         if value.is_empty() {
@@ -520,6 +522,30 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
     ])
 }
 
+/// Write the private launch payload the Pi CLI child reads at startup.
+///
+/// Prompt-sized launch inputs travel through this file so the child's argv and
+/// environment stay small. The file is created 0600 inside the run's 0700
+/// private runtime directory.
+fn write_pi_launch_payload_file(runtime: &CliRuntimeConfig<'_>) -> Result<(), AgentError> {
+    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
+        .map_err(|e| AgentError::Execution(format!("parse Pi launch config: {e}")))?;
+    let append_system_prompt = if runtime.append_system_prompt.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::Value::String(runtime.append_system_prompt.to_string())
+    };
+    let payload = serde_json::json!({
+        "schemaVersion": 1,
+        "appendSystemPrompt": append_system_prompt,
+        "launchConfig": launch_config,
+    });
+    let path = runtime.pi_launch_payload_file.as_ref();
+    paths::ensure_parent_dir(path)?;
+    paths::write_private(path, serde_json::to_vec(&payload)?)?;
+    Ok(())
+}
+
 fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] {
     [
         (
@@ -531,8 +557,8 @@ fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] 
             runtime.pi_session_id.to_string(),
         ),
         (
-            guest_contracts::env::PI_SYSTEM_PROMPT_ENV.to_string(),
-            runtime.pi_system_prompt.to_string(),
+            guest_contracts::env::PI_LAUNCH_PAYLOAD_FILE_ENV.to_string(),
+            runtime.pi_launch_payload_file.to_string(),
         ),
         (
             guest_contracts::env::PI_MODEL_CONFIG_ENV.to_string(),
@@ -861,6 +887,7 @@ async fn execute_cli_inner(
 
     let mut child_env_values = child_env::values_for_runtime(runtime);
     if matches!(runtime.framework, env::Framework::Pi) {
+        write_pi_launch_payload_file(runtime)?;
         child_env_values.extend(pi_child_env_values(runtime));
     }
     // Suppress Claude CLI features that are unnecessary or harmful in a
@@ -1823,6 +1850,7 @@ mod tests {
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
         codex_runtime_config, command, exec_boundary, pi_child_env_values, record_cli_exit,
         select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1831,6 +1859,7 @@ mod tests {
     use std::collections::HashMap;
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
+    use std::path::Path;
     use std::time::{Duration, Instant};
 
     fn guest_config_for_agent_context(user_env: HashMap<String, String>) -> env::GuestConfig {
@@ -1862,7 +1891,7 @@ mod tests {
             artifacts: Vec::new(),
             feature_flags: HashMap::new(),
             codex_runtime_config: String::new(),
-            pi_system_prompt: String::new(),
+            pi_launch_config: String::new(),
             pi_model_config: String::new(),
             pi_session_id: String::new(),
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
@@ -1916,7 +1945,8 @@ mod tests {
             session_id_file: Cow::Borrowed("/tmp/session-id"),
             session_history_path_file: Cow::Borrowed("/tmp/session-history-path"),
             pi_session_id: Cow::Borrowed(""),
-            pi_system_prompt: Cow::Borrowed(""),
+            pi_launch_config: Cow::Borrowed(""),
+            pi_launch_payload_file: Cow::Borrowed("/tmp/pi-launch-payload/payload.json"),
             pi_model_config: Cow::Borrowed(""),
             user_env,
         }
@@ -1950,7 +1980,7 @@ mod tests {
         )]);
         let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
         runtime.pi_session_id = Cow::Borrowed("22222222-2222-4222-8222-222222222222");
-        runtime.pi_system_prompt = Cow::Borrowed("immutable Pi prompt");
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1}"#);
         runtime.pi_model_config = Cow::Borrowed(r#"{"provider":"deepseek"}"#);
         let mut values = child_env::values_for_runtime(&runtime);
         values.extend(pi_child_env_values(&runtime));
@@ -1981,8 +2011,8 @@ mod tests {
                 runtime.pi_session_id.as_ref(),
             ),
             (
-                guest_contracts::env::PI_SYSTEM_PROMPT_ENV,
-                runtime.pi_system_prompt.as_ref(),
+                guest_contracts::env::PI_LAUNCH_PAYLOAD_FILE_ENV,
+                runtime.pi_launch_payload_file.as_ref(),
             ),
             (
                 guest_contracts::env::PI_MODEL_CONFIG_ENV,
@@ -1997,6 +2027,73 @@ mod tests {
                 Some(expected)
             );
         }
+    }
+
+    #[test]
+    fn pi_child_env_omits_launch_config_value() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1}"#);
+        let mut values = child_env::values_for_runtime(&runtime);
+        values.extend(pi_child_env_values(&runtime));
+        let values = child_env::normalize_values(values);
+
+        assert!(
+            !values
+                .iter()
+                .any(|(key, _)| key == guest_contracts::env::PI_LAUNCH_CONFIG_ENV)
+        );
+        assert!(
+            !values
+                .iter()
+                .any(|(_, value)| value.contains("schemaVersion"))
+        );
+    }
+
+    #[test]
+    fn pi_launch_payload_file_merges_append_system_prompt_privately() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::GuestPaths::from_runtime_dir(dir.path());
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(
+            env::Framework::Pi,
+            "prompt",
+            "Your name is Okou.",
+            &user_env,
+        );
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1,"agentName":"Okou"}"#);
+        runtime.pi_launch_payload_file = Cow::Borrowed(paths.pi_launch_payload_file());
+
+        write_pi_launch_payload_file(&runtime).unwrap();
+
+        let path = Path::new(paths.pi_launch_payload_file());
+        let payload: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(payload["schemaVersion"], 1);
+        assert_eq!(payload["appendSystemPrompt"], "Your name is Okou.");
+        assert_eq!(payload["launchConfig"]["agentName"], "Okou");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn pi_launch_payload_file_uses_null_for_absent_append_system_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::GuestPaths::from_runtime_dir(dir.path());
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1,"agentName":"Okou"}"#);
+        runtime.pi_launch_payload_file = Cow::Borrowed(paths.pi_launch_payload_file());
+
+        write_pi_launch_payload_file(&runtime).unwrap();
+
+        let raw = std::fs::read(paths.pi_launch_payload_file()).unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        assert!(payload["appendSystemPrompt"].is_null());
     }
 
     #[test]

@@ -1799,7 +1799,6 @@ async function buildClaimResponseBody(
       signal.throwIfAborted();
       const {
         connectorPermissionBaseline: _connectorPermissionBaseline,
-        piPrompt,
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
         storageMounts: _storedStorageMounts,
         ...runnerStoredContext
@@ -1808,7 +1807,7 @@ async function buildClaimResponseBody(
         ...runnerStoredContext,
         runId: args.run.id,
         reuseKey: args.reuseKey,
-        prompt: piPrompt ?? args.run.prompt,
+        prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
         agentComposeVersionId: args.run.agentComposeVersionId,
         vars: mergeClaimVars({

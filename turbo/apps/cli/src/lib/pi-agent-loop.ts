@@ -1,13 +1,17 @@
 import { once } from "node:events";
+import { readFile } from "node:fs/promises";
 import { createInterface, type Interface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 
 import {
   CANONICAL_PI_SESSION_DATABASE_PATH,
+  piLaunchPayloadSchema,
   piModelConfigSchema,
+  type PiLaunchPayload,
 } from "@okouai/api-contracts/contracts/runners";
 import {
   createPiNodeExecutionEnv as createNodeExecutionEnv,
+  preparePiLaunchPrompt,
   runPiAgentSession,
   type ExecutionEnv,
   type PiAgentModelConfig,
@@ -17,7 +21,7 @@ import { z } from "zod";
 
 const RUN_ID_ENV = "OKOU_RUN_ID";
 const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
-const PI_SYSTEM_PROMPT_ENV = "OKOU_PI_SYSTEM_PROMPT";
+const PI_LAUNCH_PAYLOAD_FILE_ENV = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
 const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
 
 const userFrameSchema = z
@@ -38,7 +42,7 @@ export interface PiAgentLoopIo {
 export interface PiSandboxAgentConfig {
   readonly runId: string;
   readonly sessionId: string;
-  readonly systemPrompt: string;
+  readonly launchPayload: PiLaunchPayload;
   readonly model: PiAgentModelConfig;
   readonly databasePath: string;
 }
@@ -62,10 +66,23 @@ function parseJsonEnv(env: NodeJS.ProcessEnv, name: string): unknown {
   }
 }
 
-/** Resolve immutable Pi runtime inputs injected by guest-agent. */
-export function piSandboxAgentConfigFromEnv(
+async function readLaunchPayload(
+  env: NodeJS.ProcessEnv,
+): Promise<PiLaunchPayload> {
+  const path = requiredEnv(env, PI_LAUNCH_PAYLOAD_FILE_ENV);
+  const raw = await readFile(path, "utf8");
+  return piLaunchPayloadSchema.parse(JSON.parse(raw) as unknown);
+}
+
+/**
+ * Resolve immutable Pi runtime inputs injected by guest-agent.
+ *
+ * Prompt-sized inputs arrive through the private launch payload file rather
+ * than the child environment, so this reads that file before the first turn.
+ */
+export async function piSandboxAgentConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
-): PiSandboxAgentConfig {
+): Promise<PiSandboxAgentConfig> {
   const runId = requiredEnv(env, RUN_ID_ENV);
   const parsedModel = piModelConfigSchema.parse(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
@@ -75,7 +92,7 @@ export function piSandboxAgentConfigFromEnv(
   return {
     runId,
     sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
-    systemPrompt: requiredEnv(env, PI_SYSTEM_PROMPT_ENV),
+    launchPayload: await readLaunchPayload(env),
     model: { ...model, apiKey },
     databasePath: CANONICAL_PI_SESSION_DATABASE_PATH,
   };
@@ -149,14 +166,28 @@ export async function runPiSandboxAgentLoop(
   });
 
   const startedAt = Date.now();
+  const launchPrompt = await preparePiLaunchPrompt(
+    args.executionEnv,
+    {
+      launchConfig: args.config.launchPayload.launchConfig,
+      appendSystemPrompt: args.config.launchPayload.appendSystemPrompt,
+      prompt: frame.message.content,
+    },
+    signal,
+  );
+  if (launchPrompt.diagnostics.length > 0) {
+    process.stderr.write(
+      `Pi run Skill catalog contains diagnostics: ${JSON.stringify(launchPrompt.diagnostics)}\n`,
+    );
+  }
   const runSession = args.runSession ?? runPiAgentSession;
   const result = await runSession(
     {
       sessionId: args.config.sessionId,
       databasePath: args.config.databasePath,
       model: args.config.model,
-      systemPrompt: args.config.systemPrompt,
-      prompt: frame.message.content,
+      systemPrompt: launchPrompt.systemPrompt,
+      prompt: launchPrompt.prompt,
       executionEnv: args.executionEnv,
       async onAssistantMessage(message) {
         await emitAssistantMessage(args.io, args.config, message);
