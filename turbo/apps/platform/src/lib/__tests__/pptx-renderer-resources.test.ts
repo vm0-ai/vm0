@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { renderPptx } from "../pptx-renderer.ts";
+import { PPTX_RENDER_LIMITS, renderPptx } from "../pptx-renderer.ts";
 import { createDeferredPromise } from "../../signals/utils.ts";
 
 const resourceState = vi.hoisted(() => {
@@ -9,6 +9,7 @@ const resourceState = vi.hoisted(() => {
     chartDisposed: false,
     chartFinished: true,
     chartListener: undefined as (() => void) | undefined,
+    chartOffCalls: 0,
     decodeError: undefined as Error | undefined,
     decodePromise: undefined as Promise<void> | undefined,
     decodedSources: [] as string[],
@@ -70,6 +71,7 @@ vi.mock("@aiden0z/pptx-renderer", () => {
           return resourceState.chartDisposed;
         },
         off(eventName: string, listener: () => void) {
+          resourceState.chartOffCalls += 1;
           if (
             eventName === "finished" &&
             resourceState.chartListener === listener
@@ -150,6 +152,7 @@ beforeEach(() => {
   resourceState.chartDisposed = false;
   resourceState.chartFinished = true;
   resourceState.chartListener = undefined;
+  resourceState.chartOffCalls = 0;
   resourceState.decodeError = undefined;
   resourceState.decodePromise = undefined;
   resourceState.decodedSources = [];
@@ -247,5 +250,48 @@ describe("pptx resource readiness", () => {
 
     session.dispose();
     target.remove();
+  });
+
+  it("aborts image and chart waiters when the resource deadline expires", async () => {
+    resourceState.chartFinished = false;
+    const imageGate = createDeferredPromise<void>(activeSignal());
+    resourceState.decodePromise = imageGate.promise;
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    const timeoutSpy = vi
+      .spyOn(window, "setTimeout")
+      .mockImplementation((handler, timeout) => {
+        return nativeSetTimeout(
+          handler,
+          timeout === PPTX_RENDER_LIMITS.resourceTimeoutMs ? 50 : timeout,
+        );
+      });
+    const removeAttributeSpy = vi.spyOn(
+      HTMLImageElement.prototype,
+      "removeAttribute",
+    );
+    const target = connectedTarget();
+
+    try {
+      await expect(renderResourcePage(target)).rejects.toMatchObject({
+        code: "resource_timeout",
+        pageIndex: 0,
+      });
+      await vi.waitFor(() => {
+        expect(resourceState.chartListener).toBeUndefined();
+        expect(resourceState.chartOffCalls).toBe(1);
+        expect(removeAttributeSpy).toHaveBeenCalledWith("src");
+      });
+      expect(resourceState.chartDisposed).toBeTruthy();
+      expect(target.childElementCount).toBe(0);
+    } finally {
+      if (!imageGate.settled()) {
+        imageGate.reject(
+          new DOMException("Resource deadline test settled", "AbortError"),
+        );
+      }
+      removeAttributeSpy.mockRestore();
+      timeoutSpy.mockRestore();
+      target.remove();
+    }
   });
 });

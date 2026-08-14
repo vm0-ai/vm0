@@ -11,6 +11,7 @@ import { domToBlob } from "modern-screenshot";
 import { animationFrame } from "signal-timers";
 
 import {
+  createChildAbortController,
   createDeferredPromise,
   detach,
   onRejection,
@@ -50,7 +51,12 @@ export type PptxRenderErrorCode =
   | "unsupported_content"
   | "unsupported_format";
 
-export type PptxUnsupportedFeature = "emf" | "equation" | "macro" | "ole";
+export type PptxUnsupportedFeature =
+  | "emf"
+  | "equation"
+  | "external_image"
+  | "macro"
+  | "ole";
 
 interface PptxRenderErrorOptions extends ErrorOptions {
   readonly feature?: PptxUnsupportedFeature;
@@ -229,6 +235,52 @@ function* packageXml(files: PptxFiles): Generator<string> {
   }
 }
 
+function* relationshipXml(files: PptxFiles): Generator<string> {
+  yield files.presentationRels;
+  const maps = [
+    files.slideRels,
+    files.slideLayoutRels,
+    files.slideMasterRels,
+    files.chartRels,
+  ];
+  for (const map of maps) {
+    if (map !== undefined) {
+      yield* map.values();
+    }
+  }
+}
+
+function relationshipAttribute(
+  relationship: Element,
+  name: string,
+): string | null {
+  const normalizedName = name.toLowerCase();
+  for (const attribute of relationship.attributes) {
+    if (attribute.localName.toLowerCase() === normalizedName) {
+      return attribute.value;
+    }
+  }
+  return null;
+}
+
+function hasExternalImageRelationship(xml: string): boolean {
+  const document = new DOMParser().parseFromString(xml, "application/xml");
+  for (const relationship of document.getElementsByTagName("*")) {
+    if (relationship.localName !== "Relationship") {
+      continue;
+    }
+    const targetMode = relationshipAttribute(relationship, "TargetMode");
+    const type = relationshipAttribute(relationship, "Type");
+    if (
+      targetMode?.trim().toLowerCase() === "external" &&
+      type?.trim().toLowerCase().endsWith("/relationships/image") === true
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function assertSupportedContent(files: PptxFiles): void {
   for (const rule of UNSUPPORTED_RULES) {
     for (const xml of packageXml(files)) {
@@ -237,6 +289,16 @@ function assertSupportedContent(files: PptxFiles): void {
           feature: rule.feature,
         });
       }
+    }
+  }
+
+  for (const xml of relationshipXml(files)) {
+    if (hasExternalImageRelationship(xml)) {
+      throw new PptxRenderError(
+        "unsupported_content",
+        "Externally linked images are not supported",
+        { feature: "external_image" },
+      );
     }
   }
 }
@@ -262,38 +324,43 @@ function mapParseError(error: unknown): PptxRenderError {
   );
 }
 
-async function forwardPromise<T>(
+function waitForAbortablePromise<T>(
   promise: Promise<T>,
-  deferred: ReturnType<typeof createDeferredPromise<T>>,
-): Promise<void> {
-  const [result] = await Promise.allSettled([promise]);
-  if (!deferred.settled()) {
-    if (result.status === "fulfilled") {
-      deferred.resolve(result.value);
-    } else {
-      deferred.reject(result.reason);
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted();
+  const aborted = createDeferredPromise<never>(signal);
+  return withCleanup(Promise.race([promise, aborted.promise]), () => {
+    if (!aborted.settled()) {
+      aborted.reject(
+        new DOMException("PPTX resource operation settled", "AbortError"),
+      );
     }
-  }
+  });
 }
 
 function waitWithDeadline<T>(
-  promise: Promise<T>,
+  operation: (signal: AbortSignal) => Promise<T>,
   signal: AbortSignal,
   timeoutError: PptxRenderError,
 ): Promise<T> {
-  const deferred = createDeferredPromise<T>(signal);
+  signal.throwIfAborted();
+  const deadlineController = createChildAbortController(signal);
+  const deadlineSignal = deadlineController.signal;
+  const operationPromise = operation(deadlineSignal);
+  const waitPromise = waitForAbortablePromise(operationPromise, deadlineSignal);
   const timeoutId = window.setTimeout(() => {
-    if (!deferred.settled()) {
-      deferred.reject(timeoutError);
+    if (!deadlineController.signal.aborted) {
+      deadlineController.abort(timeoutError);
     }
   }, PPTX_RENDER_LIMITS.resourceTimeoutMs);
-  detach(
-    forwardPromise(promise, deferred),
-    Reason.Daemon,
-    "PPTX resource deadline",
-  );
-  return withCleanup(deferred.promise, () => {
+  return withCleanup(waitPromise, () => {
     window.clearTimeout(timeoutId);
+    if (!deadlineController.signal.aborted) {
+      deadlineController.abort(
+        new DOMException("PPTX resource operation settled", "AbortError"),
+      );
+    }
   });
 }
 
@@ -411,7 +478,10 @@ async function decodeImage(
     return;
   }
 
-  const decodeResult = await settle(image.decode(), signal);
+  const decodeResult = await settle(
+    waitForAbortablePromise(image.decode(), signal),
+    signal,
+  );
   if (!decodeResult.ok) {
     throw new Error("A PPTX image resource could not be decoded", {
       cause: decodeResult.error,
@@ -435,7 +505,9 @@ async function waitForPageImages(
       probe.decoding = "async";
       probe.loading = "eager";
       probe.src = source;
-      return decodeImage(probe, signal);
+      return withCleanup(decodeImage(probe, signal), () => {
+        probe.removeAttribute("src");
+      });
     }),
   );
 }
@@ -463,9 +535,7 @@ async function waitForChartAnimation(
     onFinished();
   }
   await withCleanup(deferred.promise, () => {
-    if (!chart.isDisposed()) {
-      chart.off("finished", onFinished);
-    }
+    chart.off("finished", onFinished);
   });
 }
 
@@ -487,19 +557,17 @@ async function waitForPageResources(
   pageIndex: number,
   signal: AbortSignal,
 ): Promise<void> {
-  const resourcesReady = async () => {
-    await handle.ready;
-    await Promise.all([
-      document.fonts.ready,
-      waitForPageImages(page, signal),
-      waitForChartAnimations(chartInstances, signal),
-    ]);
-    await nextPaint(signal);
-    await nextPaint(signal);
-  };
-
   await waitWithDeadline(
-    resourcesReady(),
+    async (deadlineSignal) => {
+      await waitForAbortablePromise(handle.ready, deadlineSignal);
+      await Promise.all([
+        waitForAbortablePromise(document.fonts.ready, deadlineSignal),
+        waitForPageImages(page, deadlineSignal),
+        waitForChartAnimations(chartInstances, deadlineSignal),
+      ]);
+      await nextPaint(deadlineSignal);
+      await nextPaint(deadlineSignal);
+    },
     signal,
     new PptxRenderError(
       "resource_timeout",
@@ -605,7 +673,9 @@ async function exportPages(
     });
     activeCaptures.add(trackedCapture);
     const blob = await waitWithDeadline(
-      trackedCapture,
+      () => {
+        return trackedCapture;
+      },
       signal,
       new PptxRenderError(
         "resource_timeout",
@@ -673,7 +743,12 @@ async function waitForExportResources(
 ): Promise<void> {
   const resourcesResult = await settle(
     waitWithDeadline(
-      Promise.all([document.fonts.ready, waitForPageImages(page, signal)]),
+      async (deadlineSignal) => {
+        await Promise.all([
+          waitForAbortablePromise(document.fonts.ready, deadlineSignal),
+          waitForPageImages(page, deadlineSignal),
+        ]);
+      },
       signal,
       new PptxRenderError(
         "resource_timeout",
