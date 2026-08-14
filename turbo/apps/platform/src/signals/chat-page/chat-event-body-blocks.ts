@@ -2,7 +2,6 @@ import {
   chatEventCompatibilityRole,
   isChatEventContentTextType,
 } from "@okouai/api-contracts/contracts/chat-events";
-import { escapeHtmlTags } from "../../lib/markdown/pipeline.ts";
 import { messageDocumentToDisplayText } from "../zero-page/user-message-document-codec.ts";
 import {
   isFollowupsEvent,
@@ -66,19 +65,22 @@ function skipsEventBodyRendering(event: ChatEvent): boolean {
   );
 }
 
-/** Whether the event carries a body the transcript renders as markdown. */
+/** Whether the event carries an assistant body rendered as markdown. */
 export function hasChatEventBodyContent(event: ChatEvent): boolean {
   return chatEventTreeContent(event) !== null;
 }
 
 /**
- * The raw body an event's markdown tree is parsed from, or null when the event
- * renders no body. Cheap relative to planning: the visibility-driven ensure
- * pass runs on every scroll capture, so the unchanged-content skip has to cost
- * a lookup, not a card scan.
+ * The raw assistant body a markdown tree is parsed from, or null when the event
+ * does not use markdown rendering. Cheap relative to planning: the
+ * visibility-driven ensure pass runs on every scroll capture, so the
+ * unchanged-content skip has to cost a lookup, not a card scan.
  */
 export function chatEventTreeContent(event: ChatEvent): string | null {
-  if (skipsEventBodyRendering(event)) {
+  if (
+    chatEventCompatibilityRole(event.eventType) !== "assistant" ||
+    skipsEventBodyRendering(event)
+  ) {
     return null;
   }
   const content = chatEventBodyContent(event);
@@ -93,9 +95,7 @@ interface ChatEventTreePlan {
 }
 
 /**
- * Plans the single markdown document an event renders as. Assistant bodies go
- * through card recognition; user bodies are written in a composer, so their
- * newlines are literal and any HTML they contain is text.
+ * Plans the single markdown document an assistant event renders as.
  */
 export function chatEventTreePlan(
   event: ChatEvent,
@@ -105,20 +105,13 @@ export function chatEventTreePlan(
   if (content === null) {
     return null;
   }
-  if (chatEventCompatibilityRole(event.eventType) === "assistant") {
-    const plan = eventBodyPlan(content, {
-      previews: true,
-      browserThreadId: threadId,
-    });
-    return {
-      content,
-      treeSource: plan.treeSource,
-      descriptors: plan.descriptors,
-    };
-  }
+  const plan = eventBodyPlan(content, {
+    previews: true,
+    browserThreadId: threadId,
+  });
   return {
     content,
-    treeSource: escapeHtmlTags(content.replace(/\n/g, "  \n")),
-    descriptors: [],
+    treeSource: plan.treeSource,
+    descriptors: plan.descriptors,
   };
 }
