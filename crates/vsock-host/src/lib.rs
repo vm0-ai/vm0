@@ -70,6 +70,7 @@
 mod connection;
 mod exec_operation;
 mod file;
+mod guest_dns_readiness;
 mod operation_tracker;
 #[cfg(test)]
 mod tests;
@@ -97,6 +98,7 @@ pub use exec_operation::{
     SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
+pub use guest_dns_readiness::GuestDnsReadinessResult;
 
 /// Observer called when a request frame reaches the guest-write boundary.
 ///
