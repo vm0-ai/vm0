@@ -200,6 +200,18 @@ function feedbackNotes(): HTMLElement[] {
   );
 }
 
+async function findFeedbackItems(count: number): Promise<HTMLElement[]> {
+  return await waitFor(() => {
+    const items = Array.from(
+      document.querySelectorAll("[data-feedback-item]"),
+    ).filter((element): element is HTMLElement => {
+      return element instanceof HTMLElement;
+    });
+    expect(items).toHaveLength(count);
+    return items;
+  });
+}
+
 function pastePlainText(element: HTMLElement, value: string): void {
   fireEvent.paste(element, {
     clipboardData: {
@@ -2062,5 +2074,58 @@ describe("chat inline feedback", () => {
     );
     expect(sentPrompts[0]).toContain("Name owners.");
     expect(sentPrompts[0]).toContain("Add dates.");
+  });
+
+  it("keeps the divider spacing off the first inline feedback item", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The launch summary needs clearer risk ownership.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-feedback-spacing-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-spacing",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-spacing-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-spacing",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Quote")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Quote"));
+
+    // Alone, the quote chip aligns with the editor's own pt-4 inset.
+    const [onlyItem] = await findFeedbackItems(1);
+    expect(onlyItem).not.toHaveClass("pt-1.5");
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Quote")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Quote"));
+
+    const items = await findFeedbackItems(2);
+    expect(items[0]).not.toHaveClass("pt-1.5");
+    expect(items[1]).toHaveClass("pt-1.5", "border-t");
   });
 });
