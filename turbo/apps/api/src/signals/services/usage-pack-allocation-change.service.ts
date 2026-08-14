@@ -2248,7 +2248,11 @@ async function commitReflectedUsagePackChanges(
         .where(eq(usagePackAllocationChanges.id, expectedChange.id))
         .for("update")
         .limit(1);
-      if (!change || change.status === "completed") {
+      if (
+        !change ||
+        change.status === "applied" ||
+        change.status === "completed"
+      ) {
         continue;
       }
       if (change.status === "failed" || change.replacementAllocationId) {

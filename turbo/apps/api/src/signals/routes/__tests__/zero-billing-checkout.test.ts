@@ -4842,6 +4842,18 @@ describe("usage pack allocation management", () => {
       },
     );
 
+    await postManagedUsagePackEvent(
+      "customer.subscription.updated",
+      upgradedSubscription,
+    );
+    const reflected = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(reflected.changes).toContainEqual(
+      expect.objectContaining({ kind: "upgrade", status: "applied" }),
+    );
+
     await postManagedUsagePackEvent("invoice.paid", paidInvoice);
     const state = await readUsagePackState(
       fixture.orgId,
@@ -4866,6 +4878,9 @@ describe("usage pack allocation management", () => {
       ]),
     );
     expect(state.grants).toHaveLength(4);
+    expect(state.changes).toContainEqual(
+      expect.objectContaining({ kind: "upgrade", status: "completed" }),
+    );
   });
 
   it("adds an active member package to the existing subscription", async () => {
