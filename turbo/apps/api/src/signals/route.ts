@@ -141,10 +141,10 @@ import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-age
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
 import { zeroIntegrationsPhoneMessageRoutes } from "./routes/zero-integrations-phone-message";
 import { zeroIntegrationsPhoneUploadCompleteRoutes } from "./routes/zero-integrations-phone-upload-complete";
-import { zeroIntegrationsPhoneUploadInitRoutes } from "./routes/zero-integrations-phone-upload-init";
+import { integrationsPhoneUploadInitRoutes } from "./routes/integrations-phone-upload-init";
 import { zeroIntegrationsGithubDownloadFileRoutes } from "./routes/zero-integrations-github-download-file";
 import { zeroIntegrationsGithubUploadCompleteRoutes } from "./routes/zero-integrations-github-upload-complete";
-import { zeroIntegrationsGithubUploadInitRoutes } from "./routes/zero-integrations-github-upload-init";
+import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github-upload-init";
 import { zeroIntegrationsFeishuFileRoutes } from "./routes/zero-integrations-feishu-files";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
@@ -155,11 +155,11 @@ import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-inte
 import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
 import { zeroIntegrationsTeamsMessageRoutes } from "./routes/zero-integrations-teams-message";
 import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
-import { zeroIntegrationsTeamsUploadInitRoutes } from "./routes/zero-integrations-teams-upload-init";
+import { integrationsTeamsUploadInitRoutes } from "./routes/integrations-teams-upload-init";
 import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
 import { zeroIntegrationsTelegramMessageRoutes } from "./routes/zero-integrations-telegram-message";
 import { zeroIntegrationsTelegramUploadCompleteRoutes } from "./routes/zero-integrations-telegram-upload-complete";
-import { zeroIntegrationsTelegramUploadInitRoutes } from "./routes/zero-integrations-telegram-upload-init";
+import { integrationsTelegramUploadInitRoutes } from "./routes/integrations-telegram-upload-init";
 import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
 import { zeroSlackCommandsRoutes } from "./routes/zero-slack-commands";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
@@ -354,10 +354,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,
   ...zeroIntegrationsPhoneUploadCompleteRoutes,
-  ...zeroIntegrationsPhoneUploadInitRoutes,
+  ...integrationsPhoneUploadInitRoutes,
   ...zeroIntegrationsGithubDownloadFileRoutes,
   ...zeroIntegrationsGithubUploadCompleteRoutes,
-  ...zeroIntegrationsGithubUploadInitRoutes,
+  ...integrationsGithubUploadInitRoutes,
   ...zeroIntegrationsFeishuFileRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
@@ -368,13 +368,13 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsTeamsDownloadFileRoutes,
   ...zeroIntegrationsTeamsMessageRoutes,
   ...zeroIntegrationsTeamsUploadCompleteRoutes,
-  ...zeroIntegrationsTeamsUploadInitRoutes,
+  ...integrationsTeamsUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
   ...steamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,
-  ...zeroIntegrationsTelegramUploadInitRoutes,
+  ...integrationsTelegramUploadInitRoutes,
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsMultipartRoutes,

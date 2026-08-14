@@ -59,7 +59,7 @@ const init$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroIntegrationsTeamsUploadInitRoutes: readonly RouteEntry[] = [
+export const integrationsTeamsUploadInitRoutes: readonly RouteEntry[] = [
   {
     route: integrationsTeamsUploadInitContract.init,
     handler: authRoute({ requiredCapability: "teams:write" }, init$),
