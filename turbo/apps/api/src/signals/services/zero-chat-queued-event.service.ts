@@ -1,6 +1,7 @@
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import {
   chatEvents,
@@ -9,7 +10,6 @@ import {
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import {
   and,
@@ -272,15 +272,15 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       contextType: chatEvents.contextType,
-      sourceAutonomyBudget: zeroRuns.autonomyBudget,
+      sourceAutonomyBudget: agentRuns.autonomyBudget,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
     .leftJoin(
-      zeroRuns,
+      agentRuns,
       and(
         eq(chatEvents.contextType, "agent_run"),
-        eq(zeroRuns.id, chatEvents.contextId),
+        eq(agentRuns.id, chatEvents.contextId),
       ),
     )
     .where(

@@ -207,17 +207,14 @@ async function visibleSearchEventIds(
   );
 }
 
-async function lockProjectionThread(
+async function loadProjectionThread(
   tx: Tx,
   chatThreadId: string,
 ): Promise<{ readonly lastChatEventSeqId: number } | null> {
-  // An update lock keeps the parent alive and serializes overlapping projector
-  // ticks, so a stale tick cannot resurrect a row after a revoker.
   const [thread] = await tx
     .select({ lastChatEventSeqId: chatThreads.lastChatEventSeqId })
     .from(chatThreads)
     .where(eq(chatThreads.id, chatThreadId))
-    .for("update")
     .limit(1);
   return thread ?? null;
 }
@@ -403,14 +400,17 @@ async function projectThread(
   thread: CandidateThread,
 ): Promise<ThreadProjectionStats> {
   return await db.transaction(async (tx) => {
-    const lockedThread = await lockProjectionThread(tx, thread.chatThreadId);
-    if (!lockedThread) {
+    const projectionThread = await loadProjectionThread(
+      tx,
+      thread.chatThreadId,
+    );
+    if (!projectionThread) {
       return emptyThreadProjectionStats();
     }
     const progress = await loadThreadProjectionProgress(
       tx,
       thread.chatThreadId,
-      lockedThread.lastChatEventSeqId,
+      projectionThread.lastChatEventSeqId,
     );
 
     const batch = await buildSearchProjectionBatch(tx, thread, progress);
@@ -418,7 +418,7 @@ async function projectThread(
     await advanceProjectionWatermark(
       tx,
       thread.chatThreadId,
-      lockedThread.lastChatEventSeqId,
+      projectionThread.lastChatEventSeqId,
       progress,
     );
 

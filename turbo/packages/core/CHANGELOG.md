@@ -1,5 +1,42 @@
 # Changelog
 
+## [8.559.13](https://github.com/vm0-ai/vm0/compare/core-v8.559.12...core-v8.559.13) (2026-08-14)
+
+
+### Bug Fixes
+
+* **core:** disable video model selection by default ([#27190](https://github.com/vm0-ai/vm0/issues/27190)) ([a6dcb19](https://github.com/vm0-ai/vm0/commit/a6dcb193d5cf0904b9c2769860a0a8726df731c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.9
+
+## [8.559.12](https://github.com/vm0-ai/vm0/compare/core-v8.559.11...core-v8.559.12) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** fit presentation artifact previews ([#27081](https://github.com/vm0-ai/vm0/issues/27081)) ([d16bb8b](https://github.com/vm0-ai/vm0/commit/d16bb8b4cdccb028b777b343663272de143266f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.8
+
+## [8.559.11](https://github.com/vm0-ai/vm0/compare/core-v8.559.10...core-v8.559.11) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.7
+
 ## [8.559.10](https://github.com/vm0-ai/vm0/compare/core-v8.559.9...core-v8.559.10) (2026-08-14)
 
 

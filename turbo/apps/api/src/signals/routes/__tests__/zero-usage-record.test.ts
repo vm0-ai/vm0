@@ -162,7 +162,7 @@ async function createChatThreadRun(
 
 /**
  * Creates an unthreaded run whose compose declares an inline framework API
- * key. Such runs skip model-provider resolution (zero_runs.model_provider
+ * key. Such runs skip model-provider resolution (agent_runs.model_provider
  * stays NULL), so the sandbox usage-event webhook accepts their model-kind
  * events into the billing ledger.
  */

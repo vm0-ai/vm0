@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
-import { zeroAttributionContract } from "@okouai/api-contracts/contracts/zero-attribution";
+import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
 import {
   zeroBillingAutoRechargeContract,
@@ -47,7 +47,7 @@ import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { zeroAttributionRoutes } from "../../zero-attribution";
+import { acquisitionAttributionRoutes } from "../../acquisition-attribution";
 import { zeroBankingRoutes } from "../../zero-banking";
 import { zeroBillingAutoRechargeRoutes } from "../../zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "../../zero-billing-checkout";
@@ -565,9 +565,10 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async recordSignupAttribution(actor: ApiTestUser) {
-      const client = setupApp({ context, routes: zeroAttributionRoutes })(
-        zeroAttributionContract,
-      );
+      const client = setupApp({
+        context,
+        routes: acquisitionAttributionRoutes,
+      })(acquisitionAttributionContract);
       return await accept(
         client.recordSignup({
           headers: authenticate(actor),

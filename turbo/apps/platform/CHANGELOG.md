@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.750.0](https://github.com/vm0-ai/vm0/compare/app-v0.749.1...app-v0.750.0) (2026-08-14)
+
+
+### Features
+
+* **platform:** add browser-native pptx renderer ([#26915](https://github.com/vm0-ai/vm0/issues/26915)) ([fabca5b](https://github.com/vm0-ai/vm0/commit/fabca5b24e8d10c455c2189ef6ac2182d8700a52))
+
+
+### Bug Fixes
+
+* **auth:** preserve okou brand through primary clerk handoff ([#27101](https://github.com/vm0-ai/vm0/issues/27101)) ([b1f8ea1](https://github.com/vm0-ai/vm0/commit/b1f8ea1a7b4c604f0773b91400d5c3e864b905db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.9
+    * @okouai/connectors bumped to 1.206.1
+    * @okouai/core bumped to 8.559.13
+
+## [0.749.1](https://github.com/vm0-ai/vm0/compare/app-v0.749.0...app-v0.749.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* align first inline feedback item with composer padding ([#27156](https://github.com/vm0-ai/vm0/issues/27156)) ([acfcdcd](https://github.com/vm0-ai/vm0/commit/acfcdcd1cceada5ca6ce73058f61e425aec659b8)), closes [#27152](https://github.com/vm0-ai/vm0/issues/27152)
+* **platform:** allow concurrency quantity input ([#27161](https://github.com/vm0-ai/vm0/issues/27161)) ([2116b15](https://github.com/vm0-ai/vm0/commit/2116b15a39b360b5a8261ea86513dd0d306b0b76))
+* **platform:** fit presentation artifact previews ([#27081](https://github.com/vm0-ai/vm0/issues/27081)) ([d16bb8b](https://github.com/vm0-ai/vm0/commit/d16bb8b4cdccb028b777b343663272de143266f7))
+* statically import mermaid ([#27155](https://github.com/vm0-ai/vm0/issues/27155)) ([3a08e43](https://github.com/vm0-ai/vm0/commit/3a08e43c8e67a86e8c3e6b87d5b6fea207ea9873))
+
+
+### Refactoring
+
+* **platform:** signal locator landing timer ([#27169](https://github.com/vm0-ai/vm0/issues/27169)) ([a45cf28](https://github.com/vm0-ai/vm0/commit/a45cf288c46041de6f093394063db6329554c056))
+* **user-model-preference:** neutralize the api shell ([#27165](https://github.com/vm0-ai/vm0/issues/27165)) ([ae1a719](https://github.com/vm0-ai/vm0/commit/ae1a7197d8538d5da7032d1990e49ca0699641b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.8
+    * @okouai/core bumped to 8.559.12
+
+## [0.749.0](https://github.com/vm0-ai/vm0/compare/app-v0.748.6...app-v0.749.0) (2026-08-14)
+
+
+### Features
+
+* **app:** show realtime status in debug sidebar ([#27117](https://github.com/vm0-ai/vm0/issues/27117)) ([6c489f4](https://github.com/vm0-ai/vm0/commit/6c489f476dc224b5580969035e13477fe600c457))
+
+
+### Refactoring
+
+* **attribution:** neutralize acquisition attribution api naming ([#27137](https://github.com/vm0-ai/vm0/issues/27137)) ([3fb152c](https://github.com/vm0-ai/vm0/commit/3fb152c18d8434a59d819cb4abaa008781eb7a7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.7
+    * @okouai/core bumped to 8.559.11
+
 ## [0.748.6](https://github.com/vm0-ai/vm0/compare/app-v0.748.5...app-v0.748.6) (2026-08-14)
 
 

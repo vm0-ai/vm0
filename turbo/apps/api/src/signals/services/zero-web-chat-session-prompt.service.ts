@@ -7,7 +7,6 @@ import {
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   asc,
@@ -263,15 +262,15 @@ async function getLatestRunsByThreadId(
 ): Promise<WebChatPriorRun[]> {
   const runRows = await db
     .select({
-      runId: zeroRuns.id,
+      runId: agentRuns.id,
       status: agentRuns.status,
       prompt: agentRuns.prompt,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .where(
       and(
-        eq(zeroRuns.chatThreadId, threadId),
+        eq(agentRuns.chatThreadId, threadId),
+        isNotNull(agentRuns.triggerSource),
         or(
           sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
           sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,

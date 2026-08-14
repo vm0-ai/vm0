@@ -5,10 +5,11 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
+import uuid
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import usage
 from tests.threaded_http_test_server import ThreadedHttpTestServer
@@ -36,6 +37,25 @@ def compact_observation_rows(
             if isinstance(quantity, int) and quantity > 0:
                 rows.append((model, category, quantity))
     return rows
+
+
+def assert_usage_event_rows(
+    events: Sequence[dict[str, Any]],
+    resource_field: Literal["provider", "model"],
+    expected_rows: Sequence[tuple[str, str, int]],
+) -> None:
+    actual_rows = (
+        compact_observation_rows(events)
+        if resource_field == "model"
+        else [(event[resource_field], event["category"], event["quantity"]) for event in events]
+    )
+    assert len(actual_rows) == len(expected_rows)
+    assert sorted(actual_rows) == sorted(expected_rows)
+
+    idempotency_keys = [event["idempotencyKey"] for event in events]
+    assert len(set(idempotency_keys)) == len(idempotency_keys)
+    for key in idempotency_keys:
+        uuid.UUID(key)
 
 
 def compact_observation_quantities(

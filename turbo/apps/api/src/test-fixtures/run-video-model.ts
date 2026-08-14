@@ -6,8 +6,8 @@
  * historical-input and snapshot cases therefore need direct DB access.
  */
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { eq, sql } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";
 
@@ -61,14 +61,14 @@ async function readRunRow(runId: string): Promise<{
 }> {
   const [run] = await db()
     .select({
-      selectedVideoModel: zeroRuns.selectedVideoModel,
-      chatThreadId: zeroRuns.chatThreadId,
+      selectedVideoModel: agentRuns.selectedVideoModel,
+      chatThreadId: agentRuns.chatThreadId,
     })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   if (!run) {
-    throw new Error("Expected a Zero run row for the video model snapshot");
+    throw new Error("Expected a product run row for the video model snapshot");
   }
   return run;
 }

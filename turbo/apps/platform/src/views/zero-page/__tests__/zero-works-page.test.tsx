@@ -11,7 +11,7 @@ import {
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
 } from "@okouai/api-contracts/contracts/zero-feishu-connect";
-import { zeroStrapiIntegrationsContract } from "@okouai/api-contracts/contracts/zero-strapi-integrations";
+import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -566,7 +566,7 @@ describe("works page", () => {
   it("checks whether Strapi delivered its external test webhook", async () => {
     const integrationId = "00000000-0000-4000-8000-000000000091";
     let tested = false;
-    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
       return respond(200, [
         {
           id: integrationId,
@@ -580,16 +580,13 @@ describe("works page", () => {
         },
       ]);
     });
-    context.mocks.api(
-      zeroStrapiIntegrationsContract.checkTest,
-      ({ respond }) => {
-        tested = true;
-        return respond(200, {
-          received: true,
-          lastTestedAt: "2026-07-28T04:00:00.000Z",
-        });
-      },
-    );
+    context.mocks.api(strapiIntegrationsContract.checkTest, ({ respond }) => {
+      tested = true;
+      return respond(200, {
+        received: true,
+        lastTestedAt: "2026-07-28T04:00:00.000Z",
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -612,7 +609,7 @@ describe("works page", () => {
   it("localizes Strapi settings in Portuguese while preserving integration data", async () => {
     const integrationId = "00000000-0000-4000-8000-000000000092";
     context.mocks.data.userPreferences({ locale: "pt-BR" });
-    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
       return respond(200, [
         {
           id: integrationId,
@@ -626,15 +623,12 @@ describe("works page", () => {
         },
       ]);
     });
-    context.mocks.api(
-      zeroStrapiIntegrationsContract.checkTest,
-      ({ respond }) => {
-        return respond(200, {
-          received: true,
-          lastTestedAt: "2026-07-28T04:00:00.000Z",
-        });
-      },
-    );
+    context.mocks.api(strapiIntegrationsContract.checkTest, ({ respond }) => {
+      return respond(200, {
+        received: true,
+        lastTestedAt: "2026-07-28T04:00:00.000Z",
+      });
+    });
 
     detachedSetupPage({
       context,

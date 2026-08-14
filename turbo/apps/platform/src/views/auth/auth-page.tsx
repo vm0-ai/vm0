@@ -6,7 +6,7 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   buildSignInRedirectUrl,
   buildSignupRedirectUrl,
-  resolveAppUrl,
+  resolveAuthBrandContext,
 } from "../../signals/auth.ts";
 import { authPageMountRef$ } from "../../signals/auth-page-mount.ts";
 import { theme$ } from "../../signals/theme.ts";
@@ -41,27 +41,31 @@ export function AuthPage({ mode }: AuthPageProps) {
   const authPageMountRef = useSet(authPageMountRef$);
   const activeRoute = useGet(activeRoute$);
   const theme = useGet(theme$);
+  const authBrand = resolveAuthBrandContext();
 
   if (mode === "sign-in") {
-    const appUrl = resolveAppUrl();
-    const redirectUrl = buildSignInRedirectUrl(location.search);
+    const redirectUrl = buildSignInRedirectUrl(
+      location.search,
+      undefined,
+      location.hash,
+    );
 
     return (
       <>
         {activeRoute === "signIn" && (
           <GoogleOneTap
-            signInForceRedirectUrl={appUrl}
-            signUpForceRedirectUrl={appUrl}
+            signInForceRedirectUrl={redirectUrl}
+            signUpForceRedirectUrl={redirectUrl}
           />
         )}
-        <AuthLayout>
+        <AuthLayout authBrand={authBrand}>
           <div
             className="relative z-10 flex w-full max-w-md flex-col gap-3"
             data-testid="app-sign-in"
             ref={authPageMountRef}
           >
             <SignIn
-              appearance={getClerkAppearance(theme)}
+              appearance={getClerkAppearance(theme, authBrand.brandName)}
               fallback={<AuthLoadingFallback />}
               fallbackRedirectUrl={redirectUrl}
               forceRedirectUrl={redirectUrl}
@@ -74,13 +78,17 @@ export function AuthPage({ mode }: AuthPageProps) {
     );
   }
 
-  const redirectUrl = buildSignupRedirectUrl(location.search);
+  const redirectUrl = buildSignupRedirectUrl(
+    location.search,
+    undefined,
+    location.hash,
+  );
 
   return (
-    <AuthLayout>
+    <AuthLayout authBrand={authBrand}>
       <div data-testid="app-sign-up" ref={authPageMountRef}>
         <SignUp
-          appearance={getClerkAppearance(theme)}
+          appearance={getClerkAppearance(theme, authBrand.brandName)}
           fallback={<AuthLoadingFallback />}
           fallbackRedirectUrl={redirectUrl}
           forceRedirectUrl={redirectUrl}

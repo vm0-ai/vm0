@@ -1,8 +1,8 @@
-import { zeroAttributionContract } from "@okouai/api-contracts/contracts/zero-attribution";
+import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiAttributionHandlers = [
-  mockApi(zeroAttributionContract.recordSignup, ({ respond }) => {
+  mockApi(acquisitionAttributionContract.recordSignup, ({ respond }) => {
     return respond(200, { recorded: true });
   }),
 ];

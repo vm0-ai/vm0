@@ -611,17 +611,27 @@ fn test_rate_limits() -> FirecrackerDeviceRateLimits {
     }
 }
 
-#[test]
-fn fresh_boot_config_omits_rate_limiters_when_disabled() {
+fn fresh_boot_config_json(
+    workspace_device_path: Option<String>,
+    rate_limits: Option<&FirecrackerDeviceRateLimits>,
+) -> serde_json::Value {
+    let invariant = InvariantConfig::new();
     let config = build_fresh_boot_firecracker_config(
+        &invariant,
         &test_resources(),
         "/kernel".to_string(),
         "/dev/nbd0".to_string(),
-        None,
+        workspace_device_path,
         "/run/vsock.sock".to_string(),
-        None,
+        rate_limits,
     )
     .unwrap();
+    serde_json::to_value(config).unwrap()
+}
+
+#[test]
+fn fresh_boot_config_omits_rate_limiters_when_disabled() {
+    let config = fresh_boot_config_json(None, None);
 
     assert!(config["drives"][0].get("rate_limiter").is_none());
     assert!(
@@ -639,15 +649,7 @@ fn fresh_boot_config_omits_rate_limiters_when_disabled() {
 #[test]
 fn fresh_boot_config_includes_rate_limiters_when_enabled() {
     let rate_limits = test_rate_limits();
-    let config = build_fresh_boot_firecracker_config(
-        &test_resources(),
-        "/kernel".to_string(),
-        "/dev/nbd0".to_string(),
-        None,
-        "/run/vsock.sock".to_string(),
-        Some(&rate_limits),
-    )
-    .unwrap();
+    let config = fresh_boot_config_json(None, Some(&rate_limits));
 
     assert_eq!(
         config["drives"][0]["rate_limiter"],
@@ -672,15 +674,7 @@ fn fresh_boot_config_includes_rate_limiters_when_enabled() {
 
 #[test]
 fn fresh_boot_config_includes_workspace_drive_without_rate_limiters() {
-    let config = build_fresh_boot_firecracker_config(
-        &test_resources(),
-        "/kernel".to_string(),
-        "/dev/nbd0".to_string(),
-        Some("/workspaces/test/workspace.ext4".to_string()),
-        "/run/vsock.sock".to_string(),
-        None,
-    )
-    .unwrap();
+    let config = fresh_boot_config_json(Some("/workspaces/test/workspace.ext4".to_string()), None);
 
     assert_eq!(config["drives"][0]["drive_id"], "rootfs");
     assert_eq!(config["drives"][1]["drive_id"], "workspace");
@@ -697,15 +691,10 @@ fn fresh_boot_config_includes_workspace_drive_without_rate_limiters() {
 #[test]
 fn fresh_boot_config_includes_workspace_drive_and_splits_block_limiters() {
     let rate_limits = test_rate_limits();
-    let config = build_fresh_boot_firecracker_config(
-        &test_resources(),
-        "/kernel".to_string(),
-        "/dev/nbd0".to_string(),
+    let config = fresh_boot_config_json(
         Some("/workspaces/test/workspace.ext4".to_string()),
-        "/run/vsock.sock".to_string(),
         Some(&rate_limits),
-    )
-    .unwrap();
+    );
 
     assert_eq!(config["drives"][0]["drive_id"], "rootfs");
     assert_eq!(config["drives"][1]["drive_id"], "workspace");

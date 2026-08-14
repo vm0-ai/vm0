@@ -1562,12 +1562,15 @@ class TestFirewallAuthAsyncTransport:
     ):
         proxy = FakeAuthEndpoint()
         proxy.queue_json_response(firewall_auth_success_response({}))
+        resolver = _OrderedResolver(
+            expected_host="xn--fa-hia.proxy",
+            addresses=("127.0.0.1",),
+        )
 
         with proxy.run():
             proxy_url = proxy.api_url.replace(
-                "http://",
-                "http://proxy-user:proxy-password@",
-                1,
+                "127.0.0.1",
+                "proxy-user:proxy-password@faß.proxy",
             )
             proxy_environment = {
                 "http_proxy": proxy_url,
@@ -1579,6 +1582,7 @@ class TestFirewallAuthAsyncTransport:
             }
             with (
                 patch.dict(os.environ, proxy_environment),
+                patch.object(auth_client, "_dns_resolver", resolver),
                 mitm_ctx(api_url="http://platform.example:8123"),
                 patch.object(platform_api, "VERCEL_BYPASS", ""),
             ):
@@ -1595,6 +1599,32 @@ class TestFirewallAuthAsyncTransport:
         assert proxy.requests[0].headers["host"] == "platform.example:8123"
         assert proxy.requests[0].headers["proxy-authorization"] == expected_proxy_authorization
         assert proxy.requests[0].headers["authorization"] == "Bearer tok-xyz"
+
+    async def test_environment_proxy_rejects_unsafe_hostname_before_dns(self, mitm_ctx):
+        resolved_hosts: list[str] = []
+
+        class RecordingResolver:
+            async def lookup_ip(self, host: str) -> list[str]:
+                resolved_hosts.append(host)
+                return []
+
+        proxy_environment = {
+            "http_proxy": "http://proxy-user:proxy-password@\uff26\uff2f\uff2f.proxy:8123",
+            "HTTP_PROXY": "",
+            "all_proxy": "",
+            "ALL_PROXY": "",
+            "no_proxy": "platform.example",
+            "NO_PROXY": "platform.example",
+        }
+        with (
+            patch.dict(os.environ, proxy_environment),
+            patch.object(auth_client, "_dns_resolver", RecordingResolver()),
+            mitm_ctx(api_url="http://platform.example:8123"),
+            pytest.raises(UnicodeError, match="unsafe IDNA compatibility mapping"),
+        ):
+            await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert resolved_hosts == []
 
     async def test_no_proxy_bypasses_environment_proxy(self, mitm_ctx):
         origin = FakeAuthEndpoint()

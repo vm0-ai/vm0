@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.73.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.7...guest-agent-v0.73.8) (2026-08-14)
+
+
+### Bug Fixes
+
+* **guest-agent:** make agent log persistence best effort ([#27135](https://github.com/vm0-ai/vm0/issues/27135)) ([28356db](https://github.com/vm0-ai/vm0/commit/28356db2c3d9701530700771be2220c19c474b5b))
+
+## [0.73.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.6...guest-agent-v0.73.7) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** disable workload memory.high reclaim ([#27126](https://github.com/vm0-ai/vm0/issues/27126)) ([24743ab](https://github.com/vm0-ai/vm0/commit/24743ab1a9901f769ee07a40cffea63c2a516e37))
+
 ## [0.73.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.5...guest-agent-v0.73.6) (2026-08-14)
 
 

@@ -13,6 +13,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { logsListContract } from "@okouai/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -20,6 +21,7 @@ import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
+import { mockResizeObserver } from "./chat-lifecycle-test-helpers.ts";
 
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
@@ -1782,6 +1784,9 @@ describe("zero attachment chips", () => {
         presignedFileUrl("attachment-html"),
       );
     });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
 
     click(screen.getByLabelText("Open in split view"));
 
@@ -1791,6 +1796,9 @@ describe("zero attachment chips", () => {
         presignedFileUrl("attachment-html"),
       );
     });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
   });
 
   it("navigates modal image artifacts within the current run", async () => {
@@ -2470,15 +2478,81 @@ describe("zero attachment chips", () => {
     expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
   });
 
-  it("opens presentation HTML preview controls from chat message links", async () => {
-    const presentationUrl =
-      "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";
+  it("keeps hosted presentation aliases on the legacy preview when disabled", async () => {
+    const presentationUrl = "https://legacy-roadmap.sites.vm7.io";
+    const presentationDeploymentUrl = "https://dpl-legacy-roadmap.sites.vm7.io";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-legacy-presentation",
+            files: [
+              artifactFile(presentationDeploymentUrl, {
+                aliasUrl: presentationUrl,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-legacy-presentation-artifact",
+          role: "assistant",
+          content: `[Legacy roadmap](${presentationUrl})`,
+          runId: "run-legacy-presentation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationArtifactViewport]: false,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Open html preview for Legacy roadmap"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-body-html"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    expect(
+      within(sidebar).queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).not.toHaveAttribute("tabindex", "-1");
+  });
+
+  it("opens presentation HTML preview controls from hosted alias links", async () => {
+    const resizeObserver = mockResizeObserver();
+    const presentationUrl = "https://quarterly-roadmap.sites.vm7.io";
+    const presentationDeploymentUrl =
+      "https://dpl-quarterly-roadmap.sites.vm7.io";
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, {
         runs: [
           {
             runId: "run-presentation",
-            files: [artifactFile(presentationUrl)],
+            files: [
+              artifactFile(presentationDeploymentUrl, {
+                aliasUrl: presentationUrl,
+              }),
+            ],
           },
         ],
       });
@@ -2498,6 +2572,9 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({
       context,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationArtifactViewport]: true,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -2520,6 +2597,22 @@ describe("zero attachment chips", () => {
       "tabindex",
       "-1",
     );
+    const dialog = screen.getByTestId("attachment-lightbox");
+    const dialogViewport = within(dialog).getByTestId(
+      "presentation-artifact-viewport",
+    );
+    mockElementBox(dialogViewport, { height: 600, width: 960 });
+    act(() => {
+      resizeObserver.automationAll();
+    });
+    expect(
+      within(dialog).getByTestId("presentation-artifact-canvas"),
+    ).toHaveStyle({
+      height: "1080px",
+      transform: "translate(0px, 30px) scale(0.5)",
+      visibility: "visible",
+      width: "1920px",
+    });
 
     click(screen.getByLabelText("Enter fullscreen"));
 
@@ -2551,6 +2644,22 @@ describe("zero attachment chips", () => {
       "tabindex",
       "-1",
     );
+    const sidebar = screen.getByTestId("artifact-sidebar");
+    const sidebarViewport = within(sidebar).getByTestId(
+      "presentation-artifact-viewport",
+    );
+    mockElementBox(sidebarViewport, { height: 600, width: 480 });
+    act(() => {
+      resizeObserver.automationAll();
+    });
+    expect(
+      within(sidebar).getByTestId("presentation-artifact-canvas"),
+    ).toHaveStyle({
+      height: "1080px",
+      transform: "translate(0px, 165px) scale(0.25)",
+      visibility: "visible",
+      width: "1920px",
+    });
 
     click(screen.getByLabelText("Close artifact"));
 

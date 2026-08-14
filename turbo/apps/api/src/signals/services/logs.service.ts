@@ -15,7 +15,6 @@ import {
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { conversations } from "@okouai/db/schema/conversation";
 import {
   and,
@@ -162,7 +161,7 @@ export function logsList(
       conditions.push(eq(agentRuns.status, params.status));
     }
     if (params.triggerSource) {
-      conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
+      conditions.push(eq(agentRuns.triggerSource, params.triggerSource));
     }
 
     const whereClause = and(...conditions);
@@ -177,7 +176,7 @@ export function logsList(
           createdAt: agentRuns.createdAt,
           startedAt: agentRuns.startedAt,
           completedAt: agentRuns.completedAt,
-          triggerSource: zeroRuns.triggerSource,
+          triggerSource: agentRuns.triggerSource,
           agentId: zeroAgents.id,
           composeName: agentComposes.name,
           composeContent: agentComposeVersions.content,
@@ -185,7 +184,6 @@ export function logsList(
           cliAgentSessionId: conversations.cliAgentSessionId,
         })
         .from(agentRuns)
-        .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
         .leftJoin(
           agentComposeVersions,
           eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
@@ -258,13 +256,12 @@ async function getLogsTotalCount(
     conditions.push(eq(agentRuns.status, params.status));
   }
   if (params.triggerSource) {
-    conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
+    conditions.push(eq(agentRuns.triggerSource, params.triggerSource));
   }
 
   const [result] = await db
     .select({ count: count() })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
     .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
@@ -289,10 +286,9 @@ async function getAvailableFilters(
       .from(agentRuns)
       .where(and(...baseConditions)),
     db
-      .selectDistinct({ triggerSource: zeroRuns.triggerSource })
+      .selectDistinct({ triggerSource: agentRuns.triggerSource })
       .from(agentRuns)
-      .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-      .where(and(...baseConditions)),
+      .where(and(...baseConditions, isNotNull(agentRuns.triggerSource))),
     db
       .selectDistinct({ agentId: zeroAgents.id })
       .from(agentRuns)
@@ -375,12 +371,11 @@ export function logDetail(
         composeVersion: agentComposeVersions,
         agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
-        triggerSource: zeroRuns.triggerSource,
-        modelProvider: zeroRuns.modelProvider,
-        selectedModel: zeroRuns.selectedModel,
+        triggerSource: agentRuns.triggerSource,
+        modelProvider: agentRuns.modelProvider,
+        selectedModel: agentRuns.selectedModel,
       })
       .from(agentRuns)
-      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .leftJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),

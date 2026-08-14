@@ -5,6 +5,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   like,
   lt,
   lte,
@@ -27,12 +28,12 @@ import {
   type ArtifactKind,
   type ArtifactThumbnail,
 } from "@okouai/db/schema/artifact";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { sharedThreads } from "@okouai/db/schema/shared-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";
@@ -205,9 +206,9 @@ async function resolveChatThreadId(
   }
 
   const [run] = await db
-    .select({ chatThreadId: zeroRuns.chatThreadId })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, row.runId))
+    .select({ chatThreadId: agentRuns.chatThreadId })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, row.runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   signal.throwIfAborted();
   if (run?.chatThreadId) {
@@ -778,9 +779,14 @@ function toArtifactSummary(row: {
  */
 function fileChatThreadFilter(db: Db, chatThreadId: string): SQL {
   const runIds = db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.chatThreadId, chatThreadId));
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.chatThreadId, chatThreadId),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    );
   const fileIds = db
     .select({ id: runUploadedFiles.id })
     .from(runUploadedFiles)

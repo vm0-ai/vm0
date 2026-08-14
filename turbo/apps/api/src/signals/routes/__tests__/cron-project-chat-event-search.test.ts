@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { cronProjectChatEventSearchContract } from "@okouai/api-contracts/contracts/cron";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -13,6 +13,7 @@ import {
   readChatEventSearchProjectionFixture,
   rejectSearchablePromptFixture,
 } from "../../../test-fixtures/chat-event-search";
+import { holdChatEventInsertTransactionFixture } from "../../../test-fixtures/chat-events";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { createBddApi } from "./helpers/api-bdd";
@@ -102,7 +103,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
     expect(projection.indexedSeqId).toBe(projection.lastChatEventSeqId);
   });
 
-  it("serializes overlapping projection ticks idempotently", async () => {
+  it("keeps overlapping projection ticks idempotent", async () => {
     const chatThreadId = await createProjectionThread();
     const assistantText = `overlap assistant ${randomUUID()}`;
     await insertChatSearchProjectionCoverageFixture({
@@ -130,6 +131,45 @@ describe("GET /api/cron/project-chat-event-search", () => {
         return message.text === assistantText;
       }),
     ).toHaveLength(1);
+  });
+
+  it("does not take a thread lock that conflicts with event writes", async () => {
+    const chatThreadId = await createProjectionThread();
+    await insertChatSearchProjectionCoverageFixture({
+      chatThreadId,
+      promptText: `nonblocking prompt ${randomUUID()}`,
+      assistantText: `nonblocking assistant ${randomUUID()}`,
+      errorText: `nonblocking error ${randomUUID()}`,
+      terminalText: `nonblocking terminal ${randomUUID()}`,
+    });
+    const appendedText = `writer remains live ${randomUUID()}`;
+    const heldWriter = await holdChatEventInsertTransactionFixture({
+      threadId: chatThreadId,
+      content: appendedText,
+      signal: context.signal,
+    });
+    const firstTick = projectOwnedChatEventSearch([chatThreadId]);
+    onTestFinished(async () => {
+      heldWriter.release();
+      await Promise.allSettled([heldWriter.done, firstTick]);
+    });
+
+    const projected = await firstTick;
+    expect(projected.indexedEvents).toBe(2);
+
+    heldWriter.release();
+    await heldWriter.done;
+    const caughtUp = await projectOwnedChatEventSearch([chatThreadId]);
+    expect(caughtUp.indexedEvents).toBe(1);
+    const projection = await readChatEventSearchProjectionFixture(chatThreadId);
+    expect(projection.indexedSeqId).toBe(projection.lastChatEventSeqId);
+    expect(projection.messages).toContainEqual(
+      expect.objectContaining({
+        seqId: heldWriter.event.seqId,
+        role: "assistant",
+        text: appendedText,
+      }),
+    );
   });
 
   it("bounds each projection tick to the configured thread batch", async () => {

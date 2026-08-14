@@ -175,11 +175,11 @@ export {
 export {
   userModelPreferenceResponseSchema,
   updateUserModelPreferenceRequestSchema,
-  zeroUserModelPreferenceContract,
+  userModelPreferenceContract,
   type UserModelPreferenceResponse,
   type UpdateUserModelPreferenceRequest,
-  type ZeroUserModelPreferenceContract,
-} from "./zero-user-model-preference";
+  type UserModelPreferenceContract,
+} from "./user-model-preference";
 export {
   MAX_FILE_SIZE_BYTES,
   STORAGE_MANIFEST_MAX_FILES,
@@ -1243,12 +1243,12 @@ export {
 } from "./github-oauth";
 export {
   adAttributionMetadataSchema,
-  zeroAttributionContract,
+  acquisitionAttributionContract,
   type AdAttributionMetadata,
   type RecordSignupAttributionRequest,
   type RecordSignupAttributionResponse,
-  type ZeroAttributionContract,
-} from "./zero-attribution";
+  type AcquisitionAttributionContract,
+} from "./acquisition-attribution";
 export {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,

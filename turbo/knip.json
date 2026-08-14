@@ -33,6 +33,7 @@
     "apps/platform": {
       "entry": [
         "src/main.ts",
+        "src/lib/pptx-renderer.ts",
         "i18next.config.ts",
         "scripts/bench-p90-reporter.ts",
         "src/**/__benches__/**/*.bench.tsx",

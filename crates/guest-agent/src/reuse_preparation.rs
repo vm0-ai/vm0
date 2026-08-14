@@ -479,7 +479,7 @@ fn verify_workload_policy(workload_path: &Path) -> io::Result<()> {
             CPU_MAX_FILE,
             format!("{} {}", policy.cpu_quota_us, policy.cpu_period_us),
         ),
-        (MEMORY_HIGH_FILE, policy.memory_high_bytes.to_string()),
+        (MEMORY_HIGH_FILE, policy.memory_high.to_string()),
         (MEMORY_MAX_FILE, policy.memory_max_bytes.to_string()),
         (MEMORY_OOM_GROUP_FILE, "1".to_string()),
         (PIDS_MAX_FILE, policy.pids_max.to_string()),

@@ -10,7 +10,6 @@ import {
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -104,12 +103,11 @@ function runErrorProviderContext(
       .select({
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
-        modelProviderType: zeroRuns.modelProvider,
-        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-        selectedModel: zeroRuns.selectedModel,
+        modelProviderType: agentRuns.modelProvider,
+        modelProviderCredentialScope: agentRuns.modelProviderCredentialScope,
+        selectedModel: agentRuns.selectedModel,
       })
       .from(agentRuns)
-      .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
       .where(eq(agentRuns.id, runId))
       .limit(1);
 

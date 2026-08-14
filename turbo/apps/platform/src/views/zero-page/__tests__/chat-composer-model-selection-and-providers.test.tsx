@@ -27,9 +27,9 @@ import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/co
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
-  zeroUserModelPreferenceContract,
+  userModelPreferenceContract,
   type UserModelPreferenceResponse,
-} from "@okouai/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -172,7 +172,7 @@ describe("chat composer models", () => {
         workspaceDefaultPolicyId: policy.id,
       });
     });
-    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
       preferenceRequestCount += 1;
       return respond(200, {
         selectedModel: null,
@@ -228,7 +228,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroUserModelPreferenceContract.get,
+      userModelPreferenceContract.get,
       async ({ respond, withSignal }) => {
         if (blockModelRequests) {
           await withSignal(pendingModelRequests.promise);
@@ -348,11 +348,11 @@ describe("chat composer models", () => {
     const preferenceUpdate = context.mocks.deferred<void>();
 
     mockOrgModelRoutes("claude-fable-5");
-    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
       return respond(200, preference);
     });
     context.mocks.api(
-      zeroUserModelPreferenceContract.update,
+      userModelPreferenceContract.update,
       async ({ body, respond }) => {
         updatedModels.push(body.selectedModel);
         await preferenceUpdate.promise;
@@ -483,7 +483,7 @@ describe("chat composer models", () => {
         updatedAt: "2026-03-10T00:00:00Z",
       });
       context.mocks.api(
-        zeroUserModelPreferenceContract.update,
+        userModelPreferenceContract.update,
         ({ body, respond }) => {
           updatedPreference = body;
           return respond(200, {
@@ -564,7 +564,7 @@ describe("chat composer models", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.api(
-      zeroUserModelPreferenceContract.update,
+      userModelPreferenceContract.update,
       ({ body, respond }) => {
         updatedPreference = body;
         return respond(200, {
@@ -607,7 +607,7 @@ describe("chat composer models", () => {
 
     mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
-      zeroUserModelPreferenceContract.update,
+      userModelPreferenceContract.update,
       ({ body, respond }) => {
         updatedModel = body.selectedModel;
         return respond(200, {
@@ -1659,7 +1659,7 @@ describe("chat composer models", () => {
 
     mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
-      zeroUserModelPreferenceContract.get,
+      userModelPreferenceContract.get,
       async ({ respond, withSignal }) => {
         if (holdPreferenceReload) {
           preferenceReloadStarted = true;
@@ -1774,7 +1774,7 @@ describe("chat composer models", () => {
     let preferenceRequestStarted = false;
 
     mockOrgModelRoutes("claude-fable-5");
-    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
       preferenceRequestStarted = true;
       return respond(200, {
         selectedModel: "claude-opus-4-8",

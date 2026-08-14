@@ -49,6 +49,7 @@ import {
 } from "./zero-zoomable-image-canvas.tsx";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ArtifactActionSeparator,
   ArtifactActionTooltip,
@@ -67,6 +68,8 @@ import {
   shouldIgnoreImageArtifactNavigationKey,
 } from "./zero-artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
+import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -158,11 +161,18 @@ function ArtifactSidebarWithThreadContext({
     equalityFn: equalEventImageGroups,
   });
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const presentationArtifactViewportEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
+    false;
   const text$ = providedText$ ?? artifactRef.text$;
   const markdownTree$ = providedMarkdownTree$ ?? artifactRef.markdownTree$;
   const item =
     loadable.state === "hasData"
-      ? findArtifactItemForUrl(loadable.data, artifactRef.url)
+      ? findArtifactItemForUrl(
+          loadable.data,
+          artifactRef.url,
+          presentationArtifactViewportEnabled,
+        )
       : undefined;
   const imageNavigation =
     loadable.state === "hasData"
@@ -485,10 +495,16 @@ type ArtifactKindForBody =
 function findArtifactItemForUrl(
   runs: { runId: string; files: ChatThreadArtifactFile[] }[],
   url: string,
+  includeAliasUrl: boolean,
 ): ArtifactSidebarItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return artifactPreviewUrlsMatch(candidate.url, url);
+      return (
+        artifactPreviewUrlsMatch(candidate.url, url) ||
+        (includeAliasUrl &&
+          candidate.aliasUrl !== undefined &&
+          artifactPreviewUrlsMatch(candidate.aliasUrl, url))
+      );
     });
     if (file) {
       return { runId: run.runId, file };
@@ -1411,6 +1427,9 @@ function ArtifactIframeBody({
   fullscreen: boolean;
 }) {
   const { t } = useTranslation();
+  const presentationArtifactViewportEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
+    false;
   const resourceUrl = useResolvedAttachmentUrl(url);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
@@ -1420,28 +1439,38 @@ function ArtifactIframeBody({
       ? `${resourceUrl}#navpanes=0`
       : resourceUrl;
   const isPresentationHtml =
-    kind === "html" && artifactKind === "presentation-html";
+    presentationArtifactViewportEnabled &&
+    kind === "html" &&
+    artifactKind === "presentation-html";
   if (resourceUrl === null || src === null) {
     return <ArtifactSpinner />;
   }
   if (kind === "html") {
+    const frame = (
+      <AutoFocusedArtifactIframe
+        focusKey={`${resourceUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
+        focusOnMount={fullscreen && !isPresentationHtml}
+        src={resourceUrl}
+        title={t(
+          ($) => {
+            return $.artifacts.preview.dialogLabel;
+          },
+          { filename },
+        )}
+        sandbox="allow-same-origin allow-scripts"
+        tabIndex={isPresentationHtml ? -1 : undefined}
+        className="h-full w-full border-0 bg-background"
+        data-testid={`artifact-sidebar-body-${kind}`}
+      />
+    );
+
     return (
       <div className="h-full w-full">
-        <AutoFocusedArtifactIframe
-          focusKey={`${resourceUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
-          focusOnMount={fullscreen && !isPresentationHtml}
-          src={resourceUrl}
-          title={t(
-            ($) => {
-              return $.artifacts.preview.dialogLabel;
-            },
-            { filename },
-          )}
-          sandbox="allow-same-origin allow-scripts"
-          tabIndex={isPresentationHtml ? -1 : undefined}
-          className="h-full w-full border-0 bg-background"
-          data-testid={`artifact-sidebar-body-${kind}`}
-        />
+        {isPresentationHtml ? (
+          <PresentationArtifactViewport>{frame}</PresentationArtifactViewport>
+        ) : (
+          frame
+        )}
       </div>
     );
   }

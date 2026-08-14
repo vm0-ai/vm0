@@ -3,7 +3,6 @@ import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
@@ -89,6 +88,7 @@ export const cancelRun$ = command(
           orgId: agentRuns.orgId,
           sandboxId: agentRuns.sandboxId,
           runnerGroup: agentRuns.runnerGroup,
+          chatThreadId: agentRuns.chatThreadId,
           cancellationRecoveryCompleted:
             agentRuns.cancellationRecoveryCompleted,
         })
@@ -105,12 +105,6 @@ export const cancelRun$ = command(
         return notFound(`No such run: '${args.runId}'`);
       }
 
-      const [zeroRun] = await tx
-        .select({ chatThreadId: zeroRuns.chatThreadId })
-        .from(zeroRuns)
-        .where(eq(zeroRuns.id, args.runId))
-        .limit(1);
-
       if (run.status === "cancelled") {
         return {
           apiStartTime,
@@ -120,7 +114,7 @@ export const cancelRun$ = command(
           orgId: run.orgId,
           sandboxId: run.sandboxId,
           runnerGroup: run.runnerGroup,
-          chatThreadId: zeroRun?.chatThreadId ?? null,
+          chatThreadId: run.chatThreadId,
           cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
           runnerCancellationMode: args.runnerCancellationMode,
           alreadyCancelled: true,
@@ -160,7 +154,7 @@ export const cancelRun$ = command(
         orgId: run.orgId,
         sandboxId: run.sandboxId,
         runnerGroup: run.runnerGroup,
-        chatThreadId: zeroRun?.chatThreadId ?? null,
+        chatThreadId: run.chatThreadId,
         cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
         runnerCancellationMode: args.runnerCancellationMode,
         alreadyCancelled: false,

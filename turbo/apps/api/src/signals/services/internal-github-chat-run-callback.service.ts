@@ -6,7 +6,6 @@ import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -112,16 +111,15 @@ async function loadGitHubChatDeliveryContext(
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       sessionId: agentRuns.sessionId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
-        eq(zeroRuns.triggerSource, "github"),
+        eq(agentRuns.triggerSource, "github"),
       ),
     )
     .limit(1);

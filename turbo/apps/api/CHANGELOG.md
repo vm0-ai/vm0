@@ -1,5 +1,70 @@
 # Changelog
 
+## [1.447.9](https://github.com/vm0-ai/vm0/compare/api-v1.447.8...api-v1.447.9) (2026-08-14)
+
+
+### Bug Fixes
+
+* **connectors:** move playstation web sessions to runtime ([#27160](https://github.com/vm0-ai/vm0/issues/27160)) ([dc2c0b2](https://github.com/vm0-ai/vm0/commit/dc2c0b2cb7e2031ef15b659ec42229ea1eba2cd2))
+
+
+### Refactoring
+
+* **agentphone:** neutralize outbound message route naming ([#27191](https://github.com/vm0-ai/vm0/issues/27191)) ([e29d302](https://github.com/vm0-ai/vm0/commit/e29d302e2944fffaa5d43ab2c9944351f9b90090))
+* **db:** cut run reads over to agent_runs ([#27182](https://github.com/vm0-ai/vm0/issues/27182)) ([5fcc680](https://github.com/vm0-ai/vm0/commit/5fcc680051f3578a3d4ea2ddbf233039ce936dfe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.9
+    * @okouai/connectors bumped to 1.206.1
+    * @okouai/core bumped to 8.559.13
+    * @okouai/db bumped to 1.198.21
+    * @okouai/pi-agent-runtime bumped to 1.4.27
+
+## [1.447.8](https://github.com/vm0-ai/vm0/compare/api-v1.447.7...api-v1.447.8) (2026-08-14)
+
+
+### Refactoring
+
+* **telegram:** neutralize outbound message route naming ([#27175](https://github.com/vm0-ai/vm0/issues/27175)) ([3ebd04c](https://github.com/vm0-ai/vm0/commit/3ebd04cd3c57916b9bf25edd695db2ce71367f0c))
+* **user-model-preference:** neutralize the api shell ([#27165](https://github.com/vm0-ai/vm0/issues/27165)) ([ae1a719](https://github.com/vm0-ai/vm0/commit/ae1a7197d8538d5da7032d1990e49ca0699641b0))
+
+
+### Performance Improvements
+
+* **api:** reduce usage event retention to four days ([#27153](https://github.com/vm0-ai/vm0/issues/27153)) ([6d78288](https://github.com/vm0-ai/vm0/commit/6d782887f6cb9343101d17b23e0cb57689333a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.8
+    * @okouai/core bumped to 8.559.12
+    * @okouai/db bumped to 1.198.20
+    * @okouai/pi-agent-runtime bumped to 1.4.26
+
+## [1.447.7](https://github.com/vm0-ai/vm0/compare/api-v1.447.6...api-v1.447.7) (2026-08-14)
+
+
+### Refactoring
+
+* **attribution:** neutralize acquisition attribution api naming ([#27137](https://github.com/vm0-ai/vm0/issues/27137)) ([3fb152c](https://github.com/vm0-ai/vm0/commit/3fb152c18d8434a59d819cb4abaa008781eb7a7d))
+* **mcp:** neutralize connector discovery api naming ([#27114](https://github.com/vm0-ai/vm0/issues/27114)) ([add4476](https://github.com/vm0-ai/vm0/commit/add4476b509ce0794dc1bfa988be176de0461663))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.7
+    * @okouai/core bumped to 8.559.11
+    * @okouai/db bumped to 1.198.19
+    * @okouai/pi-agent-runtime bumped to 1.4.25
+
 ## [1.447.6](https://github.com/vm0-ai/vm0/compare/api-v1.447.5...api-v1.447.6) (2026-08-14)
 
 

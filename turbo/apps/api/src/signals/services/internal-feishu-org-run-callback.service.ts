@@ -5,7 +5,6 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { buildFeishuAgentResponseMessage } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";
@@ -69,11 +68,10 @@ async function loadRun(db: Db, runId: string): Promise<RunContext | undefined> {
       orgId: agentRuns.orgId,
       prompt: agentRuns.prompt,
       agentId: agentSessions.agentComposeId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   return run;

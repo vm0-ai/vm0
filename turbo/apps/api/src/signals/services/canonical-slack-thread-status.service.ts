@@ -4,7 +4,6 @@ import { slackChatIngress } from "@okouai/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { and, eq, inArray, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -166,11 +165,13 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
   }
   const activeRuns = await db
     .select({ payload: slackChatIngress.payload })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .innerJoin(
       chatEvents,
-      and(eq(chatEvents.runId, zeroRuns.id), chatEventTypeIn(["input.prompt"])),
+      and(
+        eq(chatEvents.runId, agentRuns.id),
+        chatEventTypeIn(["input.prompt"]),
+      ),
     )
     .innerJoin(
       slackChatIngress,
@@ -178,9 +179,9 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
     )
     .where(
       and(
-        inArray(zeroRuns.chatThreadId, chatThreadIds),
+        inArray(agentRuns.chatThreadId, chatThreadIds),
         inArray(agentRuns.status, ACTIVE_RUN_STATUSES),
-        eq(zeroRuns.triggerSource, "slack"),
+        eq(agentRuns.triggerSource, "slack"),
       ),
     );
   return activeRuns.some((run) => {
