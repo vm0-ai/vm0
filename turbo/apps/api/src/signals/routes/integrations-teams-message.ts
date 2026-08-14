@@ -258,7 +258,7 @@ const teamsWriteAuth = {
   requiredCapability: "teams:write",
 } as const;
 
-export const zeroIntegrationsTeamsMessageRoutes: readonly RouteEntry[] = [
+export const integrationsTeamsMessageRoutes: readonly RouteEntry[] = [
   {
     route: integrationsTeamsMessageContract.sendMessage,
     handler: authRoute(teamsWriteAuth, sendMessageInner$),
