@@ -5,6 +5,7 @@ import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback"
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "./routes/cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "./routes/cron-snapshot-chat-events";
+import { cronRetainChatEventsRoutes } from "./routes/cron-retain-chat-events";
 import { cronCompactUsageEventsRoutes } from "./routes/cron-compact-usage-events";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
@@ -224,6 +225,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...cronSnapshotChatEventsRoutes,
+  ...cronRetainChatEventsRoutes,
   ...cronCompactUsageEventsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,

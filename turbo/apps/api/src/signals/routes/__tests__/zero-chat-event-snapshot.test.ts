@@ -528,7 +528,7 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
-  it("preserves the only Snapshot when no lossless upgrade exists", async () => {
+  it("preserves and skips the only Snapshot when no lossless upgrade exists", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Snapshot fail-closed agent",
@@ -542,15 +542,19 @@ describe("chat event snapshot read endpoints", () => {
     await runSnapshotCron([threadId]);
     const retiredKey = await replaceHeadWithRetiredVersion(threadId);
 
-    await expect(
+    const unavailable = await accept(
       eventsClient().snapshot({
         headers: authenticate(owner),
         params: { threadId },
       }),
-    ).rejects.toThrow("Unknown response status 500");
-    await expect(runSnapshotCron([threadId])).rejects.toThrow(
-      "Unknown response status 500",
+      [404],
     );
+    expect(unavailable.body.error.code).toBe("CHAT_EVENT_SNAPSHOT_NOT_FOUND");
+    await expect(runSnapshotCron([threadId])).resolves.toMatchObject({
+      snapshots: 0,
+      archivedEvents: 0,
+      skippedUnsupportedHeads: 1,
+    });
     expect(readFakeChatEventObject(retiredKey)).toBeDefined();
     await expect(
       readChatEventSnapshotHead(context, threadId),

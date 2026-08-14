@@ -446,12 +446,14 @@ export async function setChatEventSnapshotHeadVersion(
   threadId: string,
   archiveSchemaVersion: number,
   objectKey?: string,
+  lastSeqId?: number,
 ): Promise<void> {
   await postAction(context, {
     action: "set-chat-event-snapshot-head-version",
     thread_id: threadId,
     archive_schema_version: archiveSchemaVersion,
     ...(objectKey === undefined ? {} : { object_key: objectKey }),
+    ...(lastSeqId === undefined ? {} : { last_seq_id: lastSeqId }),
   });
 }
 

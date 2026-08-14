@@ -42,7 +42,7 @@ export const chatEventSnapshots = pgTable(
       },
       { onDelete: "set null" },
     ),
-    /** The snapshot object contains every thread event with seq_id <= this. */
+    /** The snapshot object contains every logical thread event through this watermark. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
     /**
      * Last physical event represented by the Snapshot's terminal cursor.

@@ -1650,6 +1650,9 @@ async function chatEventFixtureActionResponse(
         ...(body.object_key === undefined
           ? {}
           : { objectKey: body.object_key }),
+        ...(body.last_seq_id === undefined
+          ? {}
+          : { lastSeqId: body.last_seq_id }),
       })
       .where(eq(chatEventSnapshots.id, pointer.id))
       .returning({ id: chatEventSnapshots.id });

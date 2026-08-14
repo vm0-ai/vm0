@@ -398,6 +398,10 @@ export {
   type TestChatEventSnapshotContract,
 } from "./test-chat-event-snapshot";
 export {
+  testChatEventRetentionContract,
+  type TestChatEventRetentionContract,
+} from "./test-chat-event-retention";
+export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,
