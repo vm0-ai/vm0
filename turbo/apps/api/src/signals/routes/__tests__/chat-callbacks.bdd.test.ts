@@ -1200,14 +1200,12 @@ describe("CHAT-02: completed chat callback", () => {
       .toBe(true);
     const completedMetadata = await readRunMetadataPair(context, first.runId);
     expect(completedMetadata.agent_run).toStrictEqual(
-      completedMetadata.zero_run,
-    );
-    expect(completedMetadata.zero_run).toStrictEqual(
       expect.objectContaining({
         first_assistant_event_acknowledged_at: expect.any(String),
         summary: "Generated summary",
       }),
     );
+    expect(completedMetadata.zero_run).toBeNull();
 
     const afterAutoSend = await waitForThreadMessages(
       actor,

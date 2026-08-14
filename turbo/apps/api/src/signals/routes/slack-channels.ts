@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
+import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -30,9 +30,9 @@ const getSlackChannelsInner$ = computed(async (get) => {
   };
 });
 
-export const zeroSlackChannelsRoutes: readonly RouteEntry[] = [
+export const slackChannelsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroSlackChannelsContract.list,
+    route: slackChannelsContract.list,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getSlackChannelsInner$,

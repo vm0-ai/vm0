@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   count,
@@ -187,7 +186,7 @@ async function insertPromotedRunnerJob(
 
   await writeRunMetadataInTransaction(tx, {
     patch: { apiStartedAt: new Date(promotedAt) },
-    where: eq(zeroRuns.id, args.runId),
+    where: eq(agentRuns.id, args.runId),
   });
 
   const timestamps = runnerJobQueueTimestamps();
