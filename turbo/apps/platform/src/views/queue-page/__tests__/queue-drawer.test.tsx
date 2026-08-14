@@ -492,12 +492,15 @@ describe("queue drawer", () => {
       expect(screen.getByText("Buy $500/month")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Buy $500/month"));
+    const buyButton = getButtonByText("Buy $500/month");
+    click(buyButton);
 
     await screen.findByText("$70.00");
     const reviewDialog = screen.getByRole("dialog", {
       name: "Buy concurrency",
     });
+    expect(buyButton).toHaveTextContent("Updating...");
+    expect(buyButton).toBeDisabled();
     expect(previewQuantity).toBe(5);
     expect(within(reviewDialog).getByText("5")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$220.00/month")).toBeInTheDocument();
@@ -610,11 +613,14 @@ describe("queue drawer", () => {
       expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Buy $200/month"));
+    const buyButton = getButtonByText("Buy $200/month");
+    click(buyButton);
 
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review concurrency change",
     });
+    expect(buyButton).toHaveTextContent("Updating...");
+    expect(buyButton).toBeDisabled();
     expect(checkoutQuantity).toBeNull();
     expect(previewedSubscriptionId).toBe("sub_concurrency_active");
     expect(previewedQuantity).toBe(4);

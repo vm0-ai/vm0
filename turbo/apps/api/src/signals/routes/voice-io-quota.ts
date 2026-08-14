@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroVoiceIoQuotaContract } from "@okouai/api-contracts/contracts/zero-voice-io-quota";
+import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -15,9 +15,9 @@ const getVoiceIoQuotaInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-export const zeroVoiceIoQuotaRoutes: readonly RouteEntry[] = [
+export const voiceIoQuotaRoutes: readonly RouteEntry[] = [
   {
-    route: zeroVoiceIoQuotaContract.get,
+    route: voiceIoQuotaContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getVoiceIoQuotaInner$,

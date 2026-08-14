@@ -2,8 +2,8 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   SUPPORTED_USER_LOCALES,
   type UserPreferencesResponse,
-  zeroUserPreferencesContract,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+  userPreferencesContract,
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -89,16 +89,13 @@ describe("preferences page", () => {
     context.mocks.data.userPreferences(
       createMockPreferences({ timezone: "UTC" }),
     );
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        capturedBodies.push(body as Record<string, unknown>);
-        return respond(200, {
-          ...createMockPreferences(),
-          ...(body as Partial<UserPreferencesResponse>),
-        });
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      return respond(200, {
+        ...createMockPreferences(),
+        ...(body as Partial<UserPreferencesResponse>),
+      });
+    });
 
     renderPreferencesPage();
 
@@ -186,19 +183,16 @@ describe("preferences page", () => {
         timezone: "UTC",
       }),
     );
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        capturedBodies.push(body as Record<string, unknown>);
-        return respond(200, {
-          ...createMockPreferences({
-            locale: "pt-BR",
-            supportedLocales: ["en-US", "pt-BR"],
-          }),
-          ...(body as Partial<UserPreferencesResponse>),
-        });
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      return respond(200, {
+        ...createMockPreferences({
+          locale: "pt-BR",
+          supportedLocales: ["en-US", "pt-BR"],
+        }),
+        ...(body as Partial<UserPreferencesResponse>),
+      });
+    });
 
     detachedSetupPage({
       context,

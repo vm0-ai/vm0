@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
-import { zeroVoiceIoSpeechContract } from "@okouai/api-contracts/contracts/zero-voice-io-speech";
+import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -23,7 +23,7 @@ import {
   SPEECH_RESPONSE_FORMAT,
   speechPricing$,
   VOICE_IO_TTS_MODEL,
-} from "../services/zero-voice-io-post.service";
+} from "../services/voice-io-post.service";
 import { env } from "../../lib/env";
 import {
   completeRunBuiltInAdmission$,
@@ -32,8 +32,8 @@ import {
 } from "../services/zero-run-built-in-admission.service";
 import { onRejection } from "../utils";
 
-const L = logger("ZeroVoiceIoSpeech");
-const speechBody$ = bodyResultOf(zeroVoiceIoSpeechContract.post);
+const L = logger("VoiceIoSpeech");
+const speechBody$ = bodyResultOf(voiceIoSpeechContract.post);
 
 interface GenerateSpeechResponseArgs {
   readonly orgId: string;
@@ -216,9 +216,9 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return result.response;
 });
 
-export const zeroVoiceIoSpeechRoutes: readonly RouteEntry[] = [
+export const voiceIoSpeechRoutes: readonly RouteEntry[] = [
   {
-    route: zeroVoiceIoSpeechContract.post,
+    route: voiceIoSpeechContract.post,
     handler: authRoute(
       {
         requireOrganization: true,

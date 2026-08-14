@@ -3471,6 +3471,44 @@ describe("workflow detail page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps webhook creation stable while the Team upgrade dialog opens", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(zeroWorkflowAutomationsContract.create, ({ respond }) => {
+      return respond(402, {
+        error: {
+          code: "TEAM_REQUIRED",
+          message: "Webhook automations require a Team or Custom workspace",
+        },
+      });
+    });
+    detachedSetupWorkflowDetailPage(
+      workflowDetailPath("automations"),
+      {},
+      "pro",
+      { workflowWebhookAutomationAllowed: true },
+    );
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    click(buttonByText("Integrations", picker));
+    click(buttonByText(/^Webhook/u, picker));
+    await waitFor(() => {
+      expect(buttonByText("Create webhook")).toBeInTheDocument();
+    });
+    const createButton = buttonByText("Create webhook");
+    click(createButton);
+
+    await expect(
+      screen.findByText("Upgrade for webhook automations"),
+    ).resolves.toBeInTheDocument();
+    expect(createButton).toBeDisabled();
+  });
+
   it("asks non-admins to contact an admin for webhook access", async () => {
     context.mocks.data.org({
       id: "org_1",
@@ -3505,6 +3543,7 @@ describe("workflow detail page", () => {
     const workflow = {
       ...salesResearch(),
       automations: [
+        weekdayWorkflowAutomation(),
         {
           ...webhookWorkflowAutomation(),
           enabled: false,
@@ -3527,11 +3566,19 @@ describe("workflow detail page", () => {
       "pro",
     );
 
-    click(await screen.findByRole("switch", { name: "Enable Webhook" }));
+    const enableSwitch = await screen.findByRole("switch", {
+      name: "Enable Webhook",
+    });
+    const unrelatedSwitch = screen.getByRole("switch", {
+      name: "Disable Every weekday at 9:00 AM",
+    });
+    click(enableSwitch);
     const upgradeTitle = await screen.findByText(
       "Upgrade for webhook automations",
     );
     expect(upgradeTitle).toBeInTheDocument();
+    expect(enableSwitch).toHaveAttribute("aria-disabled", "true");
+    expect(unrelatedSwitch).not.toHaveAttribute("aria-disabled", "true");
     expect(
       screen.getByText("Disabled — paid plan required"),
     ).toBeInTheDocument();

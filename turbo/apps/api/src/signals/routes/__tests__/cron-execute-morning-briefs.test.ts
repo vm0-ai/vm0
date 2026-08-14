@@ -11,7 +11,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
-import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { createStore } from "ccstate";
 import { Cron } from "croner";
@@ -55,7 +55,7 @@ import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsub
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 import { morningBriefRoutes } from "../morning-brief";
-import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
+import { userPreferencesRoutes } from "../user-preferences";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...cronExecuteMorningBriefsRoutes,
@@ -63,7 +63,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroChatThreadRoutes,
   ...zeroModelProvidersRoutes,
   ...morningBriefRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...userPreferencesRoutes,
 ]);
 
 /**
@@ -231,8 +231,8 @@ function morningBriefCronClient() {
 }
 
 function preferencesClient() {
-  return setupApp({ context, routes: zeroUserPreferencesRoutes })(
-    zeroUserPreferencesContract,
+  return setupApp({ context, routes: userPreferencesRoutes })(
+    userPreferencesContract,
   );
 }
 

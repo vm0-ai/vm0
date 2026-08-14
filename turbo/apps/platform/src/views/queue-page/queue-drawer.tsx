@@ -30,6 +30,8 @@ import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
+  concurrencyConfirmDialog$,
+  type ConcurrencyConfirmDialogState,
   openConcurrencyChangeReview$,
   openConcurrencyPurchaseReview$,
   startCheckout$,
@@ -583,6 +585,27 @@ function ConcurrencyPurchaseCard({
   );
 }
 
+function isQueueConcurrencyReviewOpen({
+  activeChangeReviewAvailable,
+  activeSubscriptionId,
+  confirmDialog,
+  purchaseReviewAvailable,
+}: {
+  readonly activeChangeReviewAvailable: boolean;
+  readonly activeSubscriptionId: string | undefined;
+  readonly confirmDialog: ConcurrencyConfirmDialogState | null;
+  readonly purchaseReviewAvailable: boolean;
+}): boolean {
+  if (confirmDialog?.action === "purchase") {
+    return purchaseReviewAvailable && confirmDialog.origin === "queue";
+  }
+  return (
+    activeChangeReviewAvailable &&
+    confirmDialog?.action === "change" &&
+    confirmDialog.subscriptionId === activeSubscriptionId
+  );
+}
+
 function ConcurrencyPurchaseCardMount({
   canManageBilling,
   tierColor,
@@ -601,6 +624,7 @@ function ConcurrencyPurchaseCardMount({
     openConcurrencyPurchaseReview$,
   );
   const quantity = useGet(concurrencyQuantity$);
+  const confirmDialog = useGet(concurrencyConfirmDialog$);
   const setQuantity = useSet(setConcurrencyQuantity$);
   const billingStatus = useLastResolved(billingStatusAsync$);
   const capabilities = billingStatus
@@ -620,10 +644,17 @@ function ConcurrencyPurchaseCardMount({
     !activeSubscription &&
     billingStatus?.concurrencyPurchaseReviewAvailable === true;
   const reviewingInApp = activeChangeReviewAvailable || purchaseReviewAvailable;
+  const reviewDialogOpen = isQueueConcurrencyReviewOpen({
+    activeChangeReviewAvailable,
+    activeSubscriptionId: activeSubscription?.id,
+    confirmDialog,
+    purchaseReviewAvailable,
+  });
   const loading =
     checkoutLoadable.state === "loading" ||
     reviewLoadable.state === "loading" ||
-    purchaseReviewLoadable.state === "loading";
+    purchaseReviewLoadable.state === "loading" ||
+    reviewDialogOpen;
 
   if (!canManageBilling || capabilities?.canBuyConcurrency !== true) {
     return null;
@@ -653,7 +684,7 @@ function ConcurrencyPurchaseCardMount({
         }
         if (purchaseReviewAvailable) {
           detach(
-            openPurchaseReview(quantity, newTab, pageSignal),
+            openPurchaseReview(quantity, newTab, "queue", pageSignal),
             Reason.DomCallback,
           );
           return;

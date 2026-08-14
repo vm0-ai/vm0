@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 
 import { notFound } from "../../lib/error";
 import { authContext$ } from "../auth/auth-context";
@@ -8,7 +8,7 @@ import { queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { queuePosition } from "../services/queue-position.service";
 
-const query$ = queryOf(zeroQueuePositionContract.getPosition);
+const query$ = queryOf(queuePositionContract.getPosition);
 
 const getQueuePositionInner$ = computed(async (get): Promise<unknown> => {
   const query = get(query$);
@@ -31,9 +31,9 @@ const getQueuePositionInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-export const zeroQueuePositionRoutes: readonly RouteEntry[] = [
+export const queuePositionRoutes: readonly RouteEntry[] = [
   {
-    route: zeroQueuePositionContract.getPosition,
+    route: queuePositionContract.getPosition,
     handler: authRoute({}, getQueuePositionInner$),
   },
 ];

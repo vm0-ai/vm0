@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -11,9 +11,7 @@ import {
   userPreferences,
 } from "../services/zero-user-data.service";
 
-const updateUserPreferencesBody$ = bodyResultOf(
-  zeroUserPreferencesContract.update,
-);
+const updateUserPreferencesBody$ = bodyResultOf(userPreferencesContract.update);
 
 const getUserPreferencesInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
@@ -54,16 +52,16 @@ const updateUserPreferencesInner$ = command(
   },
 );
 
-export const zeroUserPreferencesRoutes: readonly RouteEntry[] = [
+export const userPreferencesRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUserPreferencesContract.get,
+    route: userPreferencesContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getUserPreferencesInner$,
     ),
   },
   {
-    route: zeroUserPreferencesContract.update,
+    route: userPreferencesContract.update,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       updateUserPreferencesInner$,

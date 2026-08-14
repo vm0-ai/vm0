@@ -3,7 +3,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Sun, Moon, Monitor, Keyboard, Loader2, Palette } from "lucide-react";
 import { cn } from "@okouai/ui";
-import type { SendMode } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import {

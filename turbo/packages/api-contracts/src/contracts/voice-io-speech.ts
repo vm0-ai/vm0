@@ -4,7 +4,7 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroVoiceIoSpeechRequestSchema = z
+export const voiceIoSpeechRequestSchema = z
   .object({
     text: z.string().optional(),
     voice: z.string().optional(),
@@ -12,7 +12,7 @@ export const zeroVoiceIoSpeechRequestSchema = z
   })
   .passthrough();
 
-export const zeroVoiceIoSpeechResponseSchema = z.object({
+export const voiceIoSpeechResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
@@ -24,21 +24,17 @@ export const zeroVoiceIoSpeechResponseSchema = z.object({
   voice: z.string(),
 });
 
-export type ZeroVoiceIoSpeechRequest = z.infer<
-  typeof zeroVoiceIoSpeechRequestSchema
->;
-export type ZeroVoiceIoSpeechResponse = z.infer<
-  typeof zeroVoiceIoSpeechResponseSchema
->;
+export type VoiceIoSpeechRequest = z.infer<typeof voiceIoSpeechRequestSchema>;
+export type VoiceIoSpeechResponse = z.infer<typeof voiceIoSpeechResponseSchema>;
 
-export const zeroVoiceIoSpeechContract = c.router({
+export const voiceIoSpeechContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/voice-io/speech",
     headers: authHeadersSchema,
-    body: zeroVoiceIoSpeechRequestSchema,
+    body: voiceIoSpeechRequestSchema,
     responses: {
-      200: zeroVoiceIoSpeechResponseSchema,
+      200: voiceIoSpeechResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
@@ -51,4 +47,4 @@ export const zeroVoiceIoSpeechContract = c.router({
   },
 });
 
-export type ZeroVoiceIoSpeechContract = typeof zeroVoiceIoSpeechContract;
+export type VoiceIoSpeechContract = typeof voiceIoSpeechContract;

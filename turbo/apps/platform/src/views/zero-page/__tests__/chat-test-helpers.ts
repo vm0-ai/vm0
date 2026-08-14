@@ -22,7 +22,7 @@ import {
   zeroRunsByIdContract,
 } from "@okouai/api-contracts/contracts/zero-runs";
 import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
-import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import type { RunStatus } from "@okouai/api-contracts/contracts/runs";
 import {
   mockChatEventRows,
@@ -851,7 +851,7 @@ export function mockChatLifecycle(
       createdAt: "2026-03-10T00:00:00Z",
     });
   });
-  context.mocks.api(zeroQueuePositionContract.getPosition, ({ respond }) => {
+  context.mocks.api(queuePositionContract.getPosition, ({ respond }) => {
     return respond(200, { position: queuePosition, total: 0 });
   });
   context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {

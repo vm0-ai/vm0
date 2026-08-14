@@ -10,10 +10,10 @@ const queuePositionResponseSchema = z.object({
 });
 
 /**
- * Zero queue position contract (GET /api/okou/queue-position)
+ * Queue position contract (GET /api/okou/queue-position)
  * Returns the position of a queued run within its org queue.
  */
-export const zeroQueuePositionContract = c.router({
+export const queuePositionContract = c.router({
   getPosition: {
     method: "GET",
     path: "/api/okou/queue-position",
@@ -31,4 +31,4 @@ export const zeroQueuePositionContract = c.router({
   },
 });
 
-export type ZeroQueuePositionContract = typeof zeroQueuePositionContract;
+export type QueuePositionContract = typeof queuePositionContract;

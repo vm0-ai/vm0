@@ -14,7 +14,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
 import { Switch } from "@okouai/ui/components/ui/switch";
 import { SegmentControl, SegmentControlItem } from "@okouai/ui";
-import type { SendMode } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";

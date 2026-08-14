@@ -5,7 +5,7 @@ import {
   updateUserPreferencesRequestSchema,
   userLocaleSchema,
   userPreferencesResponseSchema,
-} from "./zero-user-preferences";
+} from "./user-preferences";
 
 describe("user preferences contract", () => {
   it("accepts Indonesian as a user locale", () => {
