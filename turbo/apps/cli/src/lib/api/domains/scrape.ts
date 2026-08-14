@@ -1,17 +1,15 @@
 import {
-  zeroScrapeContract,
-  type ZeroScrapeRequest,
-  type ZeroScrapeResponse,
-} from "@okouai/api-contracts/contracts/zero-scrape";
+  scrapeContract,
+  type ScrapeRequest,
+  type ScrapeResponse,
+} from "@okouai/api-contracts/contracts/scrape";
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function callZeroScrape(
-  body: ZeroScrapeRequest,
-): Promise<ZeroScrapeResponse> {
+export async function callScrape(body: ScrapeRequest): Promise<ScrapeResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroScrapeContract, config);
+  const client = initClient(scrapeContract, config);
 
   const result = await client.scrape({ headers: {}, body });
   if (result.status === 200) {

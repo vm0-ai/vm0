@@ -305,7 +305,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "scrape",
     description: "Scrape public web pages through managed Okou scrape",
     load: async () => {
-      return (await import("./commands/zero/scrape")).zeroScrapeCommand;
+      return (await import("./commands/scrape")).scrapeCommand;
     },
   },
   {

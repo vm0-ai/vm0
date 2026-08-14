@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { zeroScrapeResponseSchema } from "../zero-scrape";
+import { scrapeResponseSchema } from "../scrape";
 
 const baseResponse = {
   requestedUrl: "https://example.com/page",
@@ -11,10 +11,10 @@ const baseResponse = {
   billingQuantity: 1,
 } as const;
 
-describe("zeroScrapeResponseSchema", () => {
+describe("scrapeResponseSchema", () => {
   it("requires markdown result for markdown responses", () => {
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         format: "markdown",
         result: { markdown: "# Example" },
@@ -22,7 +22,7 @@ describe("zeroScrapeResponseSchema", () => {
     ).toBe(true);
 
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         format: "markdown",
         result: {},
@@ -32,7 +32,7 @@ describe("zeroScrapeResponseSchema", () => {
 
   it("requires links result for links responses", () => {
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         format: "links",
         billingCategory: "standard.links",
@@ -41,7 +41,7 @@ describe("zeroScrapeResponseSchema", () => {
     ).toBe(true);
 
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         format: "links",
         billingCategory: "standard.links",
@@ -52,7 +52,7 @@ describe("zeroScrapeResponseSchema", () => {
 
   it("rejects unknown billing categories", () => {
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         format: "markdown",
         billingCategory: "unknown",
@@ -63,7 +63,7 @@ describe("zeroScrapeResponseSchema", () => {
 
   it("rejects billing categories that do not match format and mode", () => {
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         format: "markdown",
         billingCategory: "standard.links",
@@ -74,7 +74,7 @@ describe("zeroScrapeResponseSchema", () => {
 
   it("requires response URL fields to be URLs", () => {
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         requestedUrl: "not a url",
         format: "markdown",
@@ -83,7 +83,7 @@ describe("zeroScrapeResponseSchema", () => {
     ).toBe(false);
 
     expect(
-      zeroScrapeResponseSchema.safeParse({
+      scrapeResponseSchema.safeParse({
         ...baseResponse,
         finalUrl: "/relative",
         format: "markdown",
