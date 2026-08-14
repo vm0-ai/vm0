@@ -1124,7 +1124,11 @@ function PricingStepDialog({
           </DialogTitle>
           <PricingStepIndicator current={step} total={total} />
         </DialogHeader>
-        <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+        {/* No bottom inset on the body: a step that ends in an action bar lets
+            the bar sit on the frame's edge, and a step that does not carries
+            its own. Otherwise the bar would float a padding's width above the
+            frame whenever the body is short enough not to scroll. */}
+        <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-5">
           {children}
         </div>
       </DialogContent>
@@ -1150,9 +1154,10 @@ function OrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
+      className={STEP_ACTION_BAR}
     >
       {checkoutError && (
-        <p className="mb-3 text-xs text-destructive">{checkoutError}</p>
+        <p className="text-xs text-destructive">{checkoutError}</p>
       )}
       <Button
         className="h-10 w-full text-sm font-medium"
@@ -1238,7 +1243,7 @@ function PlanSelectionStep({
     /* No panel border inside the dialog frame -- the only rule between the two
        plans is the hairline the second column carries, and it runs the full
        height of the body so the frame reads as two columns, not two cards. */
-    <div className="grid flex-1 grid-cols-1 sm:grid-cols-2">
+    <div className="grid flex-1 grid-cols-1 pb-5 sm:grid-cols-2">
       {USAGE_PACK_PLANS.map((plan, index) => {
         const action = usagePackPlanAction(
           checkoutAllowed,
@@ -1336,6 +1341,13 @@ function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
 const REVIEW_ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3";
 const REVIEW_HAIRLINE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
 const REVIEW_RULE = "border-t-[0.7px] border-border";
+
+/* A step's action stays on the frame's foot instead of scrolling away with the
+   body it belongs to: a long member list must never put the decision out of
+   reach. The bar spans the full frame width, so it cancels the body's inset and
+   restores it inside, and it carries the frame's own surface so the rows pass
+   underneath it rather than through it. */
+const STEP_ACTION_BAR = `sticky bottom-0 -mx-5 mt-auto flex flex-col gap-3 bg-card px-5 py-4 ${REVIEW_RULE}`;
 
 function ReviewSectionLabel({ label }: { readonly label: string }) {
   return (
@@ -1904,7 +1916,7 @@ function PackageReviewStep({
       </p>
       <UsagePackChangeCharges preview={preview} />
       <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
-      <div className="mt-auto flex flex-col gap-3">
+      <div className={STEP_ACTION_BAR}>
         {error && <p className="text-xs text-destructive">{error}</p>}
         <Button
           type="button"
@@ -2206,26 +2218,28 @@ function ManagedSubscriptionOrderSummary({
           })}
         </p>
       )}
-      {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
-      <Button
-        type="button"
-        className="mt-4 h-10 w-full text-sm font-medium"
-        disabled={
-          !members ||
-          (hasPendingChange && !hasScheduledDowngrade) ||
-          (!hasConfigurationChange && !restoresScheduledDowngrade) ||
-          previewing
-        }
-        onClick={() => {
-          detach(openPreview(), Reason.DomCallback);
-        }}
-      >
-        {managedSubscriptionActionLabel({
-          hasConfigurationChange,
-          previewing,
-          restoresScheduledDowngrade,
-        })}
-      </Button>
+      <div className={STEP_ACTION_BAR}>
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <Button
+          type="button"
+          className="h-10 w-full text-sm font-medium"
+          disabled={
+            !members ||
+            (hasPendingChange && !hasScheduledDowngrade) ||
+            (!hasConfigurationChange && !restoresScheduledDowngrade) ||
+            previewing
+          }
+          onClick={() => {
+            detach(openPreview(), Reason.DomCallback);
+          }}
+        >
+          {managedSubscriptionActionLabel({
+            hasConfigurationChange,
+            previewing,
+            restoresScheduledDowngrade,
+          })}
+        </Button>
+      </div>
     </section>
   );
 }
@@ -3008,7 +3022,7 @@ export function UsagePackPricingDialogs({
       }}
     >
       {!catalog || !managementLoaded ? (
-        <div className="flex-1 animate-pulse rounded-xl bg-muted/40" />
+        <div className="mb-5 flex-1 animate-pulse rounded-xl bg-muted/40" />
       ) : selectedPlan ? (
         <PackageConfigurationStep
           catalog={catalog}
