@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { command } from "ccstate";
 import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   isVideoModelId,
   type VideoModelId,
@@ -49,6 +51,7 @@ import {
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
 } from "../services/zero-run-built-in-admission.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
 
@@ -71,6 +74,35 @@ async function loadRunVideoModel(
     throw new Error("Run has an unsupported video model snapshot");
   }
   return run.selectedVideoModel;
+}
+
+async function loadEnforcedRunVideoModel(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+  runId: string | undefined,
+  signal: AbortSignal,
+): Promise<VideoModelId | null> {
+  if (!runId) {
+    return null;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    orgId,
+    userId,
+  );
+  signal.throwIfAborted();
+  if (
+    !isFeatureEnabled(
+      FeatureSwitchKey.VideoModelSelection,
+      featureSwitchContext,
+    )
+  ) {
+    return null;
+  }
+  const runVideoModel = await loadRunVideoModel(db, runId);
+  signal.throwIfAborted();
+  return runVideoModel;
 }
 
 interface GenerationError {
@@ -336,8 +368,13 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const runVideoModel = runId ? await loadRunVideoModel(db, runId) : null;
-  signal.throwIfAborted();
+  const runVideoModel = await loadEnforcedRunVideoModel(
+    db,
+    auth.orgId,
+    auth.userId,
+    runId,
+    signal,
+  );
   const options = parseVideoOptions(
     runVideoModel === null
       ? bodyResult.data

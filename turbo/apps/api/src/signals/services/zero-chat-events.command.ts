@@ -402,6 +402,7 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly videoModelSelectionEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -915,19 +916,25 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.LatestWebsiteTemplates,
       context,
     ),
+    videoModelSelectionEnabled: isFeatureEnabled(
+      FeatureSwitchKey.VideoModelSelection,
+      context,
+    ),
   };
 }
 
 function validateGenerationTemplatePrompt(
   generationTemplates: readonly GenerationTemplateRequest[],
-  latestWebsiteTemplatesEnabled: boolean,
+  featureSwitches: NormalSendFeatureSwitches,
 ): NormalSendFailure | undefined {
   if (generationTemplates.length === 0) {
     return undefined;
   }
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
-      latestWebsiteTemplatesEnabled,
+      latestWebsiteTemplatesEnabled:
+        featureSwitches.latestWebsiteTemplatesEnabled,
+      videoModelSelectionEnabled: featureSwitches.videoModelSelectionEnabled,
     });
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
@@ -2281,7 +2288,7 @@ const prepareNormalSend$ = command(
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
       runtimeBody.templates,
-      featureSwitches.latestWebsiteTemplatesEnabled,
+      featureSwitches,
     );
     if (generationTemplateError) {
       return generationTemplateError;
@@ -2324,6 +2331,7 @@ const prepareNormalSend$ = command(
       explicitTemplates: runtimeBody.templates,
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
+      videoModelSelectionEnabled: featureSwitches.videoModelSelectionEnabled,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(

@@ -7575,14 +7575,54 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoWithOptionsPrompt).toContain(
       "Parameters the user set explicitly",
     );
-    expect(videoWithOptionsPrompt).not.toContain("- Model:");
+    expect(videoWithOptionsPrompt).toContain("- Model: veo3.1-fast");
     expect(videoWithOptionsPrompt).toContain("- Aspect ratio: 9:16");
     expect(videoWithOptionsPrompt).toContain("- Resolution: 1080p");
     expect(videoWithOptionsPrompt).not.toContain("Duration:");
     expect(videoWithOptionsPrompt).toContain(
-      "`--aspect-ratio 9:16 --resolution 1080p` verbatim",
+      "`--model veo3.1-fast --aspect-ratio 9:16 --resolution 1080p` verbatim",
     );
     await cancelChatRun(actor, videoWithOptions.runId);
+
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.VideoModelSelection]: true },
+    );
+    const videoWithSelectionEnabled = await sendChatRun(actor, {
+      agentId,
+      prompt: "make another vertical product video",
+      template: {
+        type: "video",
+        selection: {
+          stylePresetId: videoTemplate.id,
+          videoOptions: {
+            model: "fal-ai/veo3.1/fast",
+            aspectRatio: "9:16",
+            duration: "5s",
+            resolution: "1080p",
+          },
+        },
+      },
+    });
+    const videoWithSelectionEnabledRun = await api.readRun(
+      actor,
+      videoWithSelectionEnabled.runId,
+    );
+    const videoWithSelectionEnabledPrompt =
+      videoWithSelectionEnabledRun.appendSystemPrompt ?? "";
+    expect(videoWithSelectionEnabledPrompt).not.toContain("- Model:");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Aspect ratio: 9:16");
+    expect(videoWithSelectionEnabledPrompt).toContain("- Resolution: 1080p");
+    expect(videoWithSelectionEnabledPrompt).not.toContain("Duration:");
+    expect(videoWithSelectionEnabledPrompt).toContain(
+      "`--aspect-ratio 9:16 --resolution 1080p` verbatim",
+    );
+    expect(videoWithSelectionEnabledPrompt).not.toContain("--model");
+    await cancelChatRun(actor, videoWithSelectionEnabled.runId);
 
     const avatarId = 81;
     const avatarVoiceId = "en-US-ChristopherNeural";
@@ -7643,9 +7683,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
 
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },

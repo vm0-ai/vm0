@@ -107,6 +107,7 @@ export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
   options: {
     readonly latestWebsiteTemplatesEnabled?: boolean;
+    readonly videoModelSelectionEnabled?: boolean;
   } = {},
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
@@ -114,7 +115,10 @@ export function buildGenerationTemplatePrompt(
   }
 
   if (generationTemplate.type === "video") {
-    return buildVideoGenerationTemplatePrompt(generationTemplate);
+    return buildVideoGenerationTemplatePrompt(
+      generationTemplate,
+      options.videoModelSelectionEnabled === true,
+    );
   }
   if (generationTemplate.type === "illustration") {
     return buildIllustrationGenerationTemplatePrompt(generationTemplate);
@@ -150,6 +154,7 @@ export function buildGenerationTemplatesPrompt(
   generationTemplates: readonly GenerationTemplateInput[],
   options: {
     readonly latestWebsiteTemplatesEnabled?: boolean;
+    readonly videoModelSelectionEnabled?: boolean;
   } = {},
 ): GenerationTemplatePromptResult {
   if (generationTemplates.length === 0) {
@@ -342,6 +347,7 @@ function honoursGenerateAudio(
  */
 function selectedVideoParameters(
   options: VideoGenerationOptions | undefined,
+  videoModelSelectionEnabled: boolean,
 ): readonly SelectedVideoParameter[] {
   if (!options) {
     return [];
@@ -359,6 +365,12 @@ function selectedVideoParameters(
     return [];
   }
   const parameters: SelectedVideoParameter[] = [];
+  if (!videoModelSelectionEnabled && options.model !== undefined) {
+    parameters.push({
+      label: `Model: ${config.alias}`,
+      flag: `--model ${config.alias}`,
+    });
+  }
   if (
     options.aspectRatio !== undefined &&
     config.aspectRatios.includes(options.aspectRatio)
@@ -401,6 +413,7 @@ function selectedVideoParameters(
 
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
+  videoModelSelectionEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const avatarId = parseAvatarTemplateStylePresetId(
     generationTemplate.selection.stylePresetId,
@@ -428,13 +441,16 @@ function buildVideoGenerationTemplatePrompt(
   const templateSource = `${sourceRepo}@${sourceRef}:${sourcePath}`;
   const parameters = selectedVideoParameters(
     generationTemplate.selection.videoOptions,
+    videoModelSelectionEnabled,
   );
   const parameterLines =
     parameters.length > 0
       ? [
           "",
           "Parameters the user set explicitly. Keep every one of them; do not",
-          "substitute different framing, length, or resolution, and do",
+          videoModelSelectionEnabled
+            ? "substitute different framing, length, or resolution, and do"
+            : "substitute a different model, framing, length, or resolution, and do",
           "not drop a flag because the template suggests another value:",
           ...parameters.map((parameter) => {
             return `- ${parameter.label}`;
