@@ -890,7 +890,9 @@ function PlanComparison({ tier }: { readonly tier: UsagePackPlanTier }) {
             }`}
           >
             <span>{row.label}</span>
-            <span className="text-right tabular-nums">{row.value}</span>
+            <span className="text-right font-normal tabular-nums">
+              {row.value}
+            </span>
           </div>
         );
       })}
