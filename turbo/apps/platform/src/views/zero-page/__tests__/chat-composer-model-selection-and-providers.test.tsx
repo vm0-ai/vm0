@@ -3353,7 +3353,7 @@ describe("chat composer video model", () => {
     // Every public catalog model is offered, with no plan or provider filter.
     expect(videoPanelButton("Seedance 2.5")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
-    expect(videoPanelButton("Use my default")).toHaveAttribute(
+    expect(videoPanelButton("Seedance 2.0 fast")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -3373,7 +3373,7 @@ describe("chat composer video model", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("clears the thread pin back to the member default", async () => {
+  it("pins the visible fallback model to the current thread", async () => {
     const user = userEvent.setup({ delay: null });
     const { bodies } = mockVideoModelThread("MiniMax-H3");
 
@@ -3390,11 +3390,38 @@ describe("chat composer video model", () => {
       "true",
     );
 
-    await user.click(await findVideoPanelButton("Use my default"));
+    await user.click(await findVideoPanelButton("Seedance 2.0 fast"));
 
     await waitFor(() => {
-      expect(bodies).toStrictEqual([{ model: null }]);
+      expect(bodies).toStrictEqual([
+        { model: "dreamina-seedance-2-0-fast-260128" },
+      ]);
     });
+  });
+
+  it("checks the resolved member default when the thread has no pin", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+
+    await expect(findVideoPanelButton("Veo 3.1 fast")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("hides the video model row while the feature switch is off", async () => {

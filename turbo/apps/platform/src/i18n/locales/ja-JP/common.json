@@ -4236,8 +4236,7 @@
           "deepseek": "ディープシーク"
         },
         "standard": "標準",
-        "videoModels": "動画モデル",
-        "videoModelUseDefault": "自分のデフォルトを使用"
+        "videoModels": "動画モデル"
       },
       "policies": {
         "actionsFor": "{{model}} のアクション",

@@ -4237,8 +4237,7 @@
           "deepseek": "Deepseek"
         },
         "standard": "Standard",
-        "videoModels": "Videomodelle",
-        "videoModelUseDefault": "Meine Standardeinstellung verwenden"
+        "videoModels": "Videomodelle"
       },
       "policies": {
         "actionsFor": "Aktionen für {{model}}",

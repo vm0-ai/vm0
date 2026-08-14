@@ -4236,8 +4236,7 @@
           "deepseek": "Deepseek"
         },
         "standard": "표준",
-        "videoModels": "동영상 모델",
-        "videoModelUseDefault": "내 기본값 사용"
+        "videoModels": "동영상 모델"
       },
       "policies": {
         "actionsFor": "{{model}}에 대한 작업",

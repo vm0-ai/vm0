@@ -34,6 +34,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import {
+  DEFAULT_VIDEO_MODEL,
   PUBLIC_VIDEO_MODELS,
   VIDEO_MODEL_CONFIGS,
   type VideoModel,
@@ -73,9 +74,9 @@ export interface ModelProviderSelection {
  * popover but nothing else: video models carry no provider routing, no price
  * tier, and no plan gate, so every catalog model is offered to everyone.
  *
- * `value` is `null` when the caller has pinned nothing and follows its own
- * default. That is a state the user can return to, so the panel lists it
- * alongside the models rather than treating it as "no selection".
+ * `value` is `null` when the caller has pinned nothing. The panel represents
+ * that state by selecting the effective member or catalog default, while any
+ * model click pins that concrete model to the current thread.
  */
 export interface VideoModelPickerState {
   readonly value: VideoModel | null;
@@ -726,6 +727,10 @@ function VideoModelPanel({
   videoModel: VideoModelPickerState;
 }) {
   const { t } = useTranslation();
+  const userPreference = useLastResolved(userModelPreference$);
+  const automaticVideoModel =
+    userPreference?.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+  const selectedVideoModel = videoModel.value ?? automaticVideoModel;
   return (
     <>
       <button
@@ -742,22 +747,12 @@ function VideoModelPanel({
           })}
         </span>
       </button>
-      <VideoModelPanelRow
-        label={t(($) => {
-          return $.settings.models.picker.videoModelUseDefault;
-        })}
-        selected={videoModel.value === null}
-        onSelect={() => {
-          videoModel.onChange(null);
-        }}
-      />
-      <SelectSeparator className="my-0" />
       {PUBLIC_VIDEO_MODELS.map((candidate) => {
         return (
           <VideoModelPanelRow
             key={candidate}
             label={VIDEO_MODEL_CONFIGS[candidate].label}
-            selected={videoModel.value === candidate}
+            selected={selectedVideoModel === candidate}
             onSelect={() => {
               videoModel.onChange(candidate);
             }}

@@ -4237,8 +4237,7 @@
           "deepseek": "गहन खोज"
         },
         "standard": "मानक",
-        "videoModels": "वीडियो मॉडल",
-        "videoModelUseDefault": "मेरा डिफ़ॉल्ट उपयोग करें"
+        "videoModels": "वीडियो मॉडल"
       },
       "policies": {
         "actionsFor": "{{model}} के लिए क्रियाएँ",

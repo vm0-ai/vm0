@@ -4236,8 +4236,7 @@
           "deepseek": "Deepseek"
         },
         "standard": "Standar",
-        "videoModels": "Model video",
-        "videoModelUseDefault": "Gunakan default saya"
+        "videoModels": "Model video"
       },
       "policies": {
         "actionsFor": "Tindakan untuk {{model}}",

@@ -4287,8 +4287,7 @@
           "deepseek": "Deepseek"
         },
         "standard": "Standard",
-        "videoModels": "Modèles vidéo",
-        "videoModelUseDefault": "Utiliser mes paramètres par défaut"
+        "videoModels": "Modèles vidéo"
       },
       "policies": {
         "actionsFor": "Actions pour {{model}}",
