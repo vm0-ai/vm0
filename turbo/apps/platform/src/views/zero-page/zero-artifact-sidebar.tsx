@@ -489,7 +489,11 @@ function findArtifactItemForUrl(
 ): ArtifactSidebarItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return artifactPreviewUrlsMatch(candidate.url, url);
+      return (
+        artifactPreviewUrlsMatch(candidate.url, url) ||
+        (candidate.aliasUrl !== undefined &&
+          artifactPreviewUrlsMatch(candidate.aliasUrl, url))
+      );
     });
     if (file) {
       return { runId: run.runId, file };

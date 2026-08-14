@@ -2477,16 +2477,21 @@ describe("zero attachment chips", () => {
     expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
   });
 
-  it("opens presentation HTML preview controls from chat message links", async () => {
+  it("opens presentation HTML preview controls from hosted alias links", async () => {
     const resizeObserver = mockResizeObserver();
-    const presentationUrl =
-      "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";
+    const presentationUrl = "https://quarterly-roadmap.sites.vm7.io";
+    const presentationDeploymentUrl =
+      "https://dpl-quarterly-roadmap.sites.vm7.io";
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, {
         runs: [
           {
             runId: "run-presentation",
-            files: [artifactFile(presentationUrl)],
+            files: [
+              artifactFile(presentationDeploymentUrl, {
+                aliasUrl: presentationUrl,
+              }),
+            ],
           },
         ],
       });
