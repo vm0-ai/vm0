@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   real,
@@ -27,9 +28,10 @@ export type PresentationTemplateVisibility =
   (typeof PRESENTATION_TEMPLATE_VISIBILITIES)[number];
 
 /**
- * Import lifecycle. `pending` is written when the row is created, `processing`
- * once page images exist, `ready` once the package is published. `failed` is
- * terminal and carries `error`.
+ * Import lifecycle. `pending` is written when browser uploads are prepared,
+ * `processing` only after the source and every page image are committed,
+ * `ready` once the package is published. `failed` is terminal and carries
+ * `error`.
  */
 export const PRESENTATION_TEMPLATE_STATUSES = [
   "pending",
@@ -74,11 +76,16 @@ export const presentationTemplates = pgTable(
     /** Object key of the uploaded deck, as assigned by the upload route. */
     sourceStorageKey: text("source_storage_key").notNull(),
     sourceFilename: text("source_filename").notNull(),
+    sourceSizeBytes: integer("source_size_bytes").notNull().default(0),
     pageKeys: text("page_keys")
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    /** Page width divided by height, written when the pages are committed. */
+    pageSizesBytes: integer("page_sizes_bytes")
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
+    /** Legacy compatibility column retained until #26578; new imports leave it null. */
     aspectRatio: real("aspect_ratio"),
     createdBy: text("created_by").notNull(),
     updatedBy: text("updated_by").notNull(),

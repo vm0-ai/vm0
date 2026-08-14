@@ -516,6 +516,7 @@ export function generatePresignedPutUrl(
     | {
         readonly usePublicEndpoint?: boolean;
         readonly metadata?: Readonly<Record<string, string>>;
+        readonly immutable?: boolean;
       } = false,
 ): Computed<Promise<string>> {
   const usePublicEndpoint =
@@ -523,12 +524,14 @@ export function generatePresignedPutUrl(
       ? options
       : (options.usePublicEndpoint ?? false);
   const metadata = typeof options === "boolean" ? undefined : options.metadata;
+  const immutable =
+    typeof options === "boolean" ? false : (options.immutable ?? false);
   return generatePresignedPutUrlWithClient(
     s3ClientForBucket(bucket, usePublicEndpoint),
     bucket,
     key,
     contentType,
-    { expiresIn, metadata },
+    { expiresIn, metadata, immutable },
   );
 }
 
@@ -667,6 +670,7 @@ function generatePresignedPutUrlWithClient(
   options: {
     readonly expiresIn: number;
     readonly metadata?: Readonly<Record<string, string>>;
+    readonly immutable?: boolean;
   },
 ): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
@@ -679,12 +683,17 @@ function generatePresignedPutUrlWithClient(
       Key: key,
       ContentType: contentType,
       Metadata: options.metadata,
+      IfNoneMatch: options.immutable ? "*" : undefined,
     });
+    const requiredHeaders = new Set(Object.keys(metadataHeaders ?? {}));
+    if (options.immutable) {
+      requiredHeaders.add("if-none-match");
+    }
     return getSignedUrl(client, command, {
       expiresIn: options.expiresIn,
-      ...(metadataHeaders
+      ...(requiredHeaders.size > 0
         ? {
-            unhoistableHeaders: new Set(Object.keys(metadataHeaders)),
+            unhoistableHeaders: requiredHeaders,
           }
         : {}),
     });
