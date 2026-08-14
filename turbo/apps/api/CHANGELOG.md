@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.448.0](https://github.com/vm0-ai/vm0/compare/api-v1.447.9...api-v1.448.0) (2026-08-14)
+
+
+### Features
+
+* roll out automation feature switches ([#27142](https://github.com/vm0-ai/vm0/issues/27142)) ([c24a2fb](https://github.com/vm0-ai/vm0/commit/c24a2fb503dbdc725c7dfc2a75257e39c5140195))
+
+
+### Refactoring
+
+* **agentphone:** neutralize upload-complete route naming ([#27198](https://github.com/vm0-ai/vm0/issues/27198)) ([975d9f1](https://github.com/vm0-ai/vm0/commit/975d9f108808d5fd0592d88934b125e6c3ab36c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.560.0
+    * @okouai/db bumped to 1.198.22
+
 ## [1.447.9](https://github.com/vm0-ai/vm0/compare/api-v1.447.8...api-v1.447.9) (2026-08-14)
 
 
