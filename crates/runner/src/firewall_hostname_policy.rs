@@ -1,8 +1,9 @@
-//! Raw hostname checks for the shared firewall base URL contract.
+//! Raw hostname checks for the shared credential endpoint identity contract.
 //!
 //! URL parsers intentionally canonicalize legacy IPv4 and IDNA spellings. The
-//! firewall contract rejects spellings that hide authority identity, so these
-//! checks run before `url::Url` can discard the original representation.
+//! shared firewall contract pins the behavior that rejects spellings hiding
+//! authority identity, so these checks run while callers still own the original
+//! representation.
 
 use unicode_normalization::UnicodeNormalization;
 
@@ -95,34 +96,54 @@ const UNICODE_17_ASSIGNMENT_RANGES: [(u32, u32); 47] = [
     (0x323b0, 0x33479),
 ];
 
-pub(crate) fn validate_base_host_for_cache(raw_host: &str) -> Result<(), String> {
+pub(crate) fn raw_url_authority(value: &str) -> Option<&str> {
+    let rest = value.split_once("://").map(|(_, rest)| rest)?;
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    Some(&rest[..authority_end])
+}
+
+pub(crate) fn raw_host_from_authority(authority: &str) -> &str {
+    let without_userinfo = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if without_userinfo.starts_with('[') {
+        return without_userinfo
+            .find(']')
+            .map_or(without_userinfo, |end| &without_userinfo[..=end]);
+    }
+    without_userinfo
+        .rsplit_once(':')
+        .map_or(without_userinfo, |(host, _)| host)
+}
+
+pub(crate) fn validate_raw_url_host(raw_host: &str, subject: &str) -> Result<(), String> {
     if raw_host.starts_with('[') && raw_host.ends_with(']') {
         return Ok(());
     }
     if raw_host.is_empty() {
-        return Err("base URL must include a host".to_string());
+        return Err(format!("{subject} must include a host"));
     }
 
-    validate_percent_encoding(raw_host)?;
+    validate_percent_encoding(raw_host, subject)?;
     let decoded_host = percent_decode(raw_host)
-        .ok_or_else(|| "base URL host has invalid percent encoding".to_string())?;
+        .ok_or_else(|| format!("{subject} host has invalid percent encoding"))?;
     let normalized_host = translate_idna_dots(&decoded_host);
     let host = normalized_host
         .strip_suffix('.')
         .unwrap_or(&normalized_host);
     if host.is_empty() || host.ends_with('.') || host.split('.').any(str::is_empty) {
-        return Err("base URL host labels must be non-empty".to_string());
+        return Err(format!("{subject} host labels must be non-empty"));
     }
     if host
         .chars()
         .any(|ch| matches!(ch, '*' | ',' | '<' | '>' | '[' | ']' | '^' | '|'))
     {
-        return Err("base URL host contains forbidden syntax".to_string());
+        return Err(format!("{subject} host contains forbidden syntax"));
     }
 
-    validate_canonical_ipv4(&decoded_host, host)?;
+    validate_canonical_ipv4(&decoded_host, host, subject)?;
     for label in host.split('.') {
-        validate_hostname_policy_label(label)?;
+        validate_hostname_policy_label(label, subject)?;
     }
     Ok(())
 }
@@ -142,12 +163,18 @@ pub(crate) fn is_ipv4_literal_like(host: &str) -> bool {
         })
 }
 
-fn validate_canonical_ipv4(raw_host: &str, normalized_host: &str) -> Result<(), String> {
+fn validate_canonical_ipv4(
+    raw_host: &str,
+    normalized_host: &str,
+    subject: &str,
+) -> Result<(), String> {
     let raw_host = raw_host.strip_suffix('.').unwrap_or(raw_host);
     if is_ipv4_literal_like(normalized_host)
         && (raw_host != normalized_host || !is_canonical_ipv4(normalized_host))
     {
-        return Err("base URL host must use canonical IPv4 address syntax".to_string());
+        return Err(format!(
+            "{subject} host must use canonical IPv4 address syntax"
+        ));
     }
     Ok(())
 }
@@ -165,7 +192,7 @@ fn is_canonical_ipv4(host: &str) -> bool {
         })
 }
 
-fn validate_percent_encoding(host: &str) -> Result<(), String> {
+fn validate_percent_encoding(host: &str, subject: &str) -> Result<(), String> {
     let bytes = host.as_bytes();
     let mut index = 0;
     while let Some(&byte) = bytes.get(index) {
@@ -185,12 +212,12 @@ fn validate_percent_encoding(host: &str) -> Result<(), String> {
                     .and_then(|byte| hex_value(*byte))
                     .is_none()
             {
-                return Err("base URL host has invalid percent encoding".to_string());
+                return Err(format!("{subject} host has invalid percent encoding"));
             }
             index += 3;
         }
         let decoded = percent_decode(&host[start..index])
-            .ok_or_else(|| "base URL host has invalid percent encoding".to_string())?;
+            .ok_or_else(|| format!("{subject} host has invalid percent encoding"))?;
         if decoded.chars().any(|ch| {
             ch <= '\u{20}'
                 || ch == '\u{7f}'
@@ -201,18 +228,22 @@ fn validate_percent_encoding(host: &str) -> Result<(), String> {
                 || ch == '.'
                 || IDNA_DOT_EQUIVALENTS.contains(&ch)
         }) {
-            return Err("base URL host contains encoded authority syntax".to_string());
+            return Err(format!("{subject} host contains encoded authority syntax"));
         }
     }
     Ok(())
 }
 
-fn validate_hostname_policy_label(label: &str) -> Result<(), String> {
+fn validate_hostname_policy_label(label: &str, subject: &str) -> Result<(), String> {
     if label.chars().any(has_unsafe_uts46_mapping) {
-        return Err("base URL host contains unsafe IDNA compatibility mappings".to_string());
+        return Err(format!(
+            "{subject} host contains unsafe IDNA compatibility mappings"
+        ));
     }
     if label.chars().any(is_post_policy_assignment) || alabel_uses_post_policy_assignment(label) {
-        return Err("base URL host exceeds the supported Unicode policy".to_string());
+        return Err(format!(
+            "{subject} host exceeds the supported Unicode policy"
+        ));
     }
     if !label.is_ascii() {
         let normalized: String = label
@@ -222,7 +253,9 @@ fn validate_hostname_policy_label(label: &str) -> Result<(), String> {
             .flat_map(char::to_lowercase)
             .collect();
         if normalized.is_ascii() {
-            return Err("base URL host contains unsafe IDNA compatibility mappings".to_string());
+            return Err(format!(
+                "{subject} host contains unsafe IDNA compatibility mappings"
+            ));
         }
     }
     Ok(())

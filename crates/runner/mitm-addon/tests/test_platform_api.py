@@ -56,6 +56,71 @@ class TestMakeApiRequest:
         assert unredirected_headers["x-vercel-protection-bypass"] == "secret-bypass-value"
 
     @pytest.mark.parametrize(
+        ("url", "expected"),
+        [
+            pytest.param(
+                "https://faß.de.:443/base?event=1#batch",
+                "https://xn--fa-hia.de:443/base?event=1#batch",
+                id="unicode",
+            ),
+            pytest.param(
+                "https://xn--fa-hia.de/base",
+                "https://xn--fa-hia.de/base",
+                id="alabel",
+            ),
+            pytest.param(
+                "https://api。vm0.ai/base",
+                "https://api.vm0.ai/base",
+                id="idna-dot",
+            ),
+            pytest.param(
+                "http://192.0.2.10:8080/base",
+                "http://192.0.2.10:8080/base",
+                id="ipv4",
+            ),
+            pytest.param(
+                "https://[2001:0DB8:0:0:0:0:0:1]:8443/base",
+                "https://[2001:db8::1]:8443/base",
+                id="ipv6",
+            ),
+        ],
+    )
+    def test_canonicalizes_platform_hostname_identity(self, url: str, expected: str):
+        req = platform_api.make_api_request(url, b"{}", "tok-xyz")
+
+        assert req.full_url == expected
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param(
+                "https://\uff26\uff2f\uff2f.vm0.ai/base",
+                id="unsafe-compatibility-alias",
+            ),
+            pytest.param("http://127.1/base", id="noncanonical-ipv4"),
+        ],
+    )
+    def test_rejects_noncanonical_platform_hostname_identity(self, url: str):
+        with pytest.raises(UnicodeError):
+            platform_api.make_api_request(url, b"{}", "tok-xyz")
+
+    @pytest.mark.parametrize(
+        ("url", "message"),
+        [
+            pytest.param(
+                "https://user:secret@api.vm0.ai/base",
+                "user information",
+                id="userinfo",
+            ),
+            pytest.param("https://api.vm0.ai:/base", "invalid port", id="empty-port"),
+            pytest.param("https://api.vm0.ai:65536/base", "invalid port", id="port-range"),
+        ],
+    )
+    def test_rejects_invalid_platform_authority(self, url: str, message: str):
+        with pytest.raises(ValueError, match=message):
+            platform_api.make_api_request(url, b"{}", "tok-xyz")
+
+    @pytest.mark.parametrize(
         "url",
         [
             pytest.param("file:///etc/passwd", id="file"),

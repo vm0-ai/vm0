@@ -7,6 +7,9 @@ import uuid
 
 from mitmproxy import ctx, http
 
+from authority_utils import authority_has_empty_port, format_url_host
+from url_utils import normalize_trusted_hostname
+
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 _VERCEL_BYPASS_HEADER = "x-vercel-protection-bypass"
@@ -33,9 +36,73 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _parsed_port(parsed_url: urllib.parse.SplitResult, *, subject: str) -> int | None:
+    if authority_has_empty_port(parsed_url.netloc):
+        raise ValueError(f"{subject} has an invalid port")
+    try:
+        return parsed_url.port
+    except ValueError as exc:
+        raise ValueError(f"{subject} has an invalid port") from exc
+
+
+def _canonical_platform_url(url: str) -> str:
+    parsed_url = urllib.parse.urlsplit(url)
+    scheme = parsed_url.scheme.lower()
+    if scheme not in {"http", "https"} or not parsed_url.netloc or parsed_url.hostname is None:
+        raise ValueError("Platform API URL must be an absolute http(s) URL")
+    if parsed_url.username is not None or parsed_url.password is not None:
+        raise ValueError("Platform API URL must not contain user information")
+
+    port = _parsed_port(parsed_url, subject="Platform API URL")
+    authority = format_url_host(normalize_trusted_hostname(parsed_url.hostname))
+    if port is not None:
+        authority = f"{authority}:{port}"
+    return urllib.parse.urlunsplit(
+        (scheme, authority, parsed_url.path, parsed_url.query, parsed_url.fragment)
+    )
+
+
+def normalize_proxy_url(proxy_url: str) -> str:
+    """Canonicalize the hostname in a URL or authority-form proxy setting."""
+    has_scheme = "://" in proxy_url
+    has_authority_prefix = proxy_url.startswith("//")
+    parsed_url = urllib.parse.urlsplit(
+        proxy_url if has_scheme or has_authority_prefix else f"//{proxy_url}"
+    )
+    if not parsed_url.netloc or parsed_url.hostname is None:
+        raise ValueError("Proxy URL must include a host")
+
+    port = _parsed_port(parsed_url, subject="Proxy URL")
+    authority = format_url_host(normalize_trusted_hostname(parsed_url.hostname))
+    if port is not None:
+        authority = f"{authority}:{port}"
+    userinfo, separator, _host = parsed_url.netloc.rpartition("@")
+    if separator:
+        authority = f"{userinfo}@{authority}"
+
+    normalized_url = urllib.parse.urlunsplit(
+        (parsed_url.scheme, authority, parsed_url.path, parsed_url.query, parsed_url.fragment)
+    )
+    if has_scheme or has_authority_prefix:
+        return normalized_url
+    return normalized_url.removeprefix("//")
+
+
+class _CanonicalProxyHandler(urllib.request.ProxyHandler):
+    """Apply vm0 hostname identity policy to the proxy selected by urllib."""
+
+    def proxy_open(
+        self,
+        req: urllib.request.Request,
+        proxy: str,
+        request_type: str,
+    ) -> object | None:
+        return super().proxy_open(req, normalize_proxy_url(proxy), request_type)
+
+
 def build_api_opener() -> urllib.request.OpenerDirector:
     """Build an opener that returns redirects as HTTP errors."""
-    return urllib.request.build_opener(_NoRedirect)
+    return urllib.request.build_opener(_CanonicalProxyHandler(), _NoRedirect)
 
 
 def configure_client_headers(*, client_session_id: str, client_version: str) -> None:
@@ -64,16 +131,14 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     redirects, using :func:`build_api_opener` or an equivalent transport policy,
     before contacting another URL.
     """
-    parsed_url = urllib.parse.urlsplit(url)
-    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-        raise ValueError("Platform API URL must be an absolute http(s) URL")
+    canonical_url = _canonical_platform_url(url)
     client_session_id, client_version = _CLIENT_HEADERS
 
     # S310 (suspicious-url-open-usage): callers build `url` from the
     # operator-configured platform API URL, and the scheme is validated above
     # before urllib can consume the request.
     req = urllib.request.Request(  # noqa: S310
-        url,
+        canonical_url,
         data=data,
         headers={
             "Content-Type": "application/json",
