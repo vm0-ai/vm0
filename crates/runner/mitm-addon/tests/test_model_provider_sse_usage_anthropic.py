@@ -52,6 +52,7 @@ def _anthropic_messages_sse_flow(
         host="api.anthropic.com",
         original_url="https://api.anthropic.com/v1/messages",
         firewall_name="model-provider:anthropic-api-key",
+        model_usage_provider="claude-sonnet-4-6",
     )
     flow.metadata[metadata_keys.VM_RUN_ID] = "00000000-0000-0000-0000-000000025133"
     return flow
@@ -518,6 +519,7 @@ class TestAnthropicMessagesSseUsage:
             host="api.anthropic.com",
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
+            model_usage_provider="claude-sonnet-4-6",
         )
         mitm_addon.responseheaders(flow)
         response_stream(flow)(
@@ -542,6 +544,7 @@ class TestAnthropicMessagesSseUsage:
             host="api.anthropic.com",
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
+            model_usage_provider="claude-sonnet-4-6",
         )
         mitm_addon.responseheaders(flow)
         response_stream(flow)(
@@ -565,6 +568,7 @@ class TestAnthropicMessagesSseUsage:
             host="api.anthropic.com",
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
+            model_usage_provider="claude-sonnet-4-6",
         )
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
@@ -587,6 +591,7 @@ class TestAnthropicMessagesSseUsage:
             host="api.anthropic.com",
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
+            model_usage_provider="claude-sonnet-4-6",
         )
         mitm_addon.responseheaders(flow)
         response_stream(flow)(
@@ -618,6 +623,7 @@ class TestAnthropicMessagesSseUsage:
             host="api.anthropic.com",
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
+            model_usage_provider="claude-sonnet-4-6",
         )
         mitm_addon.responseheaders(flow)
         response_stream(flow)(
@@ -642,6 +648,7 @@ class TestAnthropicMessagesSseUsage:
             host="api.anthropic.com",
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
+            model_usage_provider="claude-sonnet-4-6",
         )
         mitm_addon.responseheaders(flow)
         response_stream(flow)(
