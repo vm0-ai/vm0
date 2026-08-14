@@ -9,7 +9,7 @@ import {
 import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,
-} from "@okouai/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/user-model-preference";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";

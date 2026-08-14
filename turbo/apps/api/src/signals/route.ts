@@ -183,7 +183,7 @@ import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
-import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
+import { userModelPreferenceRoutes } from "./routes/user-model-preference";
 import { zeroAvatarVideoRoutes } from "./routes/zero-avatar-video";
 import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
 import { voiceIoSpeechRoutes } from "./routes/voice-io-speech";
@@ -332,7 +332,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...pushSubscriptionsRoutes,
   ...zeroUserPermissionGrantsRoutes,
   ...userPreferencesRoutes,
-  ...zeroUserModelPreferenceRoutes,
+  ...userModelPreferenceRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
   ...strapiIntegrationsRoutes,
