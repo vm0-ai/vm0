@@ -1711,7 +1711,6 @@
       "empty": "Envoyer un message pour commencer la conversation",
       "frequentlyUsed": "Fréquemment utilisé",
       "icon": "Icône de fil de discussion",
-      "loadingEarlier": "Chargement des messages précédents",
       "locator": {
         "you": "Vous"
       },

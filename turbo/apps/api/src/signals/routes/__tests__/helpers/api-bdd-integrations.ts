@@ -62,7 +62,7 @@ import { integrationsGithubRoutes } from "../../integrations-github";
 import { testSlackStateRoutes } from "../../test-slack-state";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroIntegrationsAgentPhoneRoutes } from "../../zero-integrations-agentphone";
-import { zeroIntegrationsGithubUploadCompleteRoutes } from "../../zero-integrations-github-upload-complete";
+import { integrationsGithubUploadCompleteRoutes } from "../../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "../../integrations-phone-message";
@@ -70,8 +70,8 @@ import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { zeroIntegrationsSlackRoutes } from "../../zero-integrations-slack";
 import { integrationsSlackMessageRoutes } from "../../integrations-slack-message";
-import { zeroIntegrationsSlackUploadCompleteRoutes } from "../../zero-integrations-slack-upload-complete";
-import { zeroIntegrationsSlackUploadInitRoutes } from "../../zero-integrations-slack-upload-init";
+import { integrationsSlackUploadCompleteRoutes } from "../../integrations-slack-upload-complete";
+import { integrationsSlackUploadInitRoutes } from "../../integrations-slack-upload-init";
 import { zeroIntegrationsTelegramRoutes } from "../../zero-integrations-telegram";
 import { integrationsTelegramMessageRoutes } from "../../integrations-telegram-message";
 import { integrationsTelegramUploadCompleteRoutes } from "../../integrations-telegram-upload-complete";
@@ -92,15 +92,15 @@ const TEST_APP_ROUTES = Object.freeze([
   ...testSlackStateRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
-  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
   ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
   ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
   ...integrationsSlackMessageRoutes,
-  ...zeroIntegrationsSlackUploadCompleteRoutes,
-  ...zeroIntegrationsSlackUploadInitRoutes,
+  ...integrationsSlackUploadCompleteRoutes,
+  ...integrationsSlackUploadInitRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,
@@ -778,7 +778,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsSlackUploadInitRoutes,
+        routes: integrationsSlackUploadInitRoutes,
       })(integrationsSlackUploadInitContract);
       return await accept(
         client.init({
@@ -796,7 +796,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsSlackUploadCompleteRoutes,
+        routes: integrationsSlackUploadCompleteRoutes,
       })(integrationsSlackUploadCompleteContract);
       return await accept(
         client.complete({
@@ -1645,7 +1645,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsGithubUploadCompleteRoutes,
+        routes: integrationsGithubUploadCompleteRoutes,
       })(integrationsGithubUploadCompleteContract);
       return await accept(
         client.complete({

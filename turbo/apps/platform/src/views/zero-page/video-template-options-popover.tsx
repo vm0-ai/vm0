@@ -570,7 +570,9 @@ function ThreadVideoTemplateOptionsPopover({
   readonly videoModelSignals: ComposerVideoModelSignals;
   readonly automaticVideoModel: VideoModel;
 }) {
-  const selectedVideoModel = useGet(videoModelSignals.selectedVideoModel$);
+  const selectedVideoModel = useLastResolved(
+    videoModelSignals.selectedVideoModel$,
+  );
   return (
     <VideoTemplateOptionsPopoverContent
       signals={signals}

@@ -160,13 +160,11 @@ interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly configureSelectedModel$: Command<Promise<void>, [AbortSignal]>;
 }
 
-/**
- * Video model pinned to the chat thread. Absent on composers that have no
- * thread to pin to yet, which is why every consumer treats the group as
- * optional rather than reading a null selection.
- */
+/** Video model selected for the composer, when that surface supports it. */
 export interface ComposerVideoModelSignals {
-  readonly selectedVideoModel$: Computed<VideoModel | null>;
+  readonly selectedVideoModel$: Computed<
+    VideoModel | null | Promise<VideoModel | null>
+  >;
   readonly setVideoModel$: Command<
     Promise<void>,
     [VideoModel | null, AbortSignal]

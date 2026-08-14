@@ -142,16 +142,16 @@ import { integrationsPhoneDownloadFileRoutes } from "./routes/integrations-phone
 import { integrationsPhoneMessageRoutes } from "./routes/integrations-phone-message";
 import { integrationsPhoneUploadCompleteRoutes } from "./routes/integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "./routes/integrations-phone-upload-init";
-import { zeroIntegrationsGithubDownloadFileRoutes } from "./routes/zero-integrations-github-download-file";
-import { zeroIntegrationsGithubUploadCompleteRoutes } from "./routes/zero-integrations-github-upload-complete";
+import { integrationsGithubDownloadFileRoutes } from "./routes/integrations-github-download-file";
+import { integrationsGithubUploadCompleteRoutes } from "./routes/integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github-upload-init";
-import { zeroIntegrationsFeishuFileRoutes } from "./routes/zero-integrations-feishu-files";
+import { integrationsFeishuFileRoutes } from "./routes/integrations-feishu-files";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { integrationsSlackMessageRoutes } from "./routes/integrations-slack-message";
 import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
-import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
-import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
-import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-integrations-slack-upload-materialize";
+import { integrationsSlackUploadCompleteRoutes } from "./routes/integrations-slack-upload-complete";
+import { integrationsSlackUploadInitRoutes } from "./routes/integrations-slack-upload-init";
+import { integrationsSlackUploadMaterializeRoutes } from "./routes/integrations-slack-upload-materialize";
 import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
 import { integrationsTeamsMessageRoutes } from "./routes/integrations-teams-message";
 import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
@@ -355,16 +355,16 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsPhoneMessageRoutes,
   ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
-  ...zeroIntegrationsGithubDownloadFileRoutes,
-  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...integrationsGithubDownloadFileRoutes,
+  ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
-  ...zeroIntegrationsFeishuFileRoutes,
+  ...integrationsFeishuFileRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...integrationsSlackMessageRoutes,
   ...integrationsFeishuMessageRoutes,
-  ...zeroIntegrationsSlackUploadCompleteRoutes,
-  ...zeroIntegrationsSlackUploadInitRoutes,
-  ...zeroIntegrationsSlackUploadMaterializeRoutes,
+  ...integrationsSlackUploadCompleteRoutes,
+  ...integrationsSlackUploadInitRoutes,
+  ...integrationsSlackUploadMaterializeRoutes,
   ...zeroIntegrationsTeamsDownloadFileRoutes,
   ...integrationsTeamsMessageRoutes,
   ...zeroIntegrationsTeamsUploadCompleteRoutes,

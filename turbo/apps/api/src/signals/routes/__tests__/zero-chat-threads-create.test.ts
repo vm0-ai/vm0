@@ -29,6 +29,8 @@ const api = createRunsApi(context);
 const WORKSPACE_DEFAULT_MODEL = "claude-sonnet-5";
 const OTHER_WORKSPACE_MODEL = "claude-opus-4-8";
 const PRIORITY_MODEL = "gpt-5.6-sol";
+const EXPLICIT_VIDEO_MODEL = "fal-ai/veo3.1/fast";
+const INHERITED_VIDEO_MODEL = "MiniMax-H3";
 
 interface AgentFixture {
   readonly userId: string;
@@ -119,6 +121,23 @@ function metadataClient() {
   );
 }
 
+async function readCreatedThreadEvent(threadId: string, token: string) {
+  const response = await accept(
+    threadsClient().events({
+      headers: { authorization: `Bearer ${token}` },
+      query: {},
+    }),
+    [200],
+  );
+  const event = response.body.events.find((candidate) => {
+    return candidate.kind === "created" && candidate.chatThreadId === threadId;
+  });
+  if (!event) {
+    throw new Error(`Created event not found for thread ${threadId}`);
+  }
+  return event;
+}
+
 describe("POST /api/zero/chat-threads", () => {
   it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedAgent();
@@ -135,6 +154,7 @@ describe("POST /api/zero/chat-threads", () => {
           agentId: fixture.agentId,
           title: "Deep dive on P2",
           model: OTHER_WORKSPACE_MODEL,
+          videoModel: EXPLICIT_VIDEO_MODEL,
         },
       }),
       [201],
@@ -159,6 +179,9 @@ describe("POST /api/zero/chat-threads", () => {
       selectedModel: OTHER_WORKSPACE_MODEL,
       serviceTier: null,
     });
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({ selectedVideoModel: EXPLICIT_VIDEO_MODEL });
   });
 
   it("inherits the model of the run that owns the token when model is omitted", async () => {
@@ -199,6 +222,60 @@ describe("POST /api/zero/chat-threads", () => {
     );
     expect(metadataResponse.body.selectedModel).toBe(OTHER_WORKSPACE_MODEL);
     expect(metadataResponse.body.serviceTier).toBeNull();
+  });
+
+  it("inherits the video model from the run's chat thread when omitted", async () => {
+    const fixture = await seedAgent();
+    const sourceToken = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const source = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Video model source",
+          model: OTHER_WORKSPACE_MODEL,
+          videoModel: INHERITED_VIDEO_MODEL,
+        },
+      }),
+      [201],
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.agentId,
+        triggerSource: "web",
+        chatThreadId: source.body.id,
+        selectedModel: OTHER_WORKSPACE_MODEL,
+      },
+      context.signal,
+    );
+    const inheritedToken = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+      runId,
+    });
+
+    const inherited = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${inheritedToken}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Inherited video model",
+        },
+      }),
+      [201],
+    );
+
+    await expect(
+      readCreatedThreadEvent(inherited.body.id, inheritedToken),
+    ).resolves.toMatchObject({ selectedVideoModel: INHERITED_VIDEO_MODEL });
   });
 
   it("inherits priority from the run's chat thread and allows an explicit standard override", async () => {

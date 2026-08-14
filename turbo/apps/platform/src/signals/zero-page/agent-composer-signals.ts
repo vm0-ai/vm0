@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentAgentId$ } from "../agent.ts";
 import {
@@ -8,8 +12,14 @@ import {
   sendNewThreadWithoutNavigation$,
 } from "../chat-page/optimistic-chat-thread-page.ts";
 import type { ChatForwardContext } from "../chat-page/chat-forward.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
+import {
+  featureSwitch$,
+  videoModelSelectionEnabled$,
+} from "../external/feature-switch.ts";
+import {
+  updateUserModelPreference$,
+  userModelPreference$,
+} from "../external/user-model-preference.ts";
 import {
   createAgentDraftSignals,
   type EnsuredAgentDraft,
@@ -26,9 +36,12 @@ import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
+  chatPageVideoModelSelection$,
   configureChatPageSelectedModel$,
   resetChatPageModelSelection$,
+  resetChatPageVideoModelSelection$,
   setChatPageModelSelection$,
+  setChatPageVideoModelSelection$,
 } from "./zero-chat-page.ts";
 import {
   newThreadComputerAccess$,
@@ -65,6 +78,30 @@ const setModelSelection$ = command(
         signal,
       );
     }
+  },
+);
+
+const setVideoModel$ = command(
+  async (
+    { get, set },
+    videoModel: VideoModel | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!get(videoModelSelectionEnabled$)) {
+      return;
+    }
+    set(setChatPageVideoModelSelection$, videoModel);
+    const userPreference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    await set(
+      updateUserModelPreference$,
+      {
+        selectedModel: userPreference.selectedModel,
+        serviceTier: userPreference.serviceTier,
+        selectedVideoModel: videoModel,
+      },
+      signal,
+    );
   },
 );
 
@@ -121,7 +158,10 @@ function createAgentComposerSignalsWithDraft(
         return false;
       }
       const access = get(newThreadComputerAccess$);
-      const hosts = await get(computerUseHosts$);
+      const [hosts, videoModelSelection] = await Promise.all([
+        get(computerUseHosts$),
+        get(chatPageVideoModelSelection$),
+      ]);
       signal.throwIfAborted();
       const hostId =
         access.kind === "computerUse"
@@ -138,6 +178,7 @@ function createAgentComposerSignalsWithDraft(
           prompt: submission.prompt,
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
+          videoModel: videoModelSelection ?? DEFAULT_VIDEO_MODEL,
           ...(access.kind === "computerUse"
             ? { computerUseHostId: hostId }
             : {}),
@@ -154,6 +195,7 @@ function createAgentComposerSignalsWithDraft(
       if (sent) {
         set(resetNewThreadComputerAccess$);
         set(resetChatPageModelSelection$);
+        set(resetChatPageVideoModelSelection$);
       }
       return sent;
     },
@@ -171,6 +213,10 @@ function createAgentComposerSignalsWithDraft(
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
     setModelSelection$,
     configureSelectedModel$: configureChatPageSelectedModel$,
+    videoModel: {
+      selectedVideoModel$: chatPageVideoModelSelection$,
+      setVideoModel$,
+    },
     computerUseHostId$,
     cloudBrowserEnabled$,
     setComputerUseHostId$,
