@@ -810,7 +810,7 @@ export {
   type SendMode,
   userLocaleSchema,
   type UserLocale,
-} from "./zero-user-preferences";
+} from "./user-preferences";
 export {
   featureSwitchesResponseSchema,
   updateFeatureSwitchesRequestSchema,
@@ -1111,9 +1111,9 @@ export {
   type ZeroPersonalModelProviderAccountsByIdContract,
 } from "./zero-personal-model-providers";
 export {
-  zeroUserPreferencesContract,
-  type ZeroUserPreferencesContract,
-} from "./zero-user-preferences";
+  userPreferencesContract,
+  type UserPreferencesContract,
+} from "./user-preferences";
 export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,

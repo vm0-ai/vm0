@@ -65,10 +65,10 @@ import {
 } from "@okouai/api-contracts/contracts/zero-team";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
@@ -101,7 +101,7 @@ import { zeroOrgMembersRoutes } from "../../zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
 import { zeroTeamRoutes } from "../../zero-team";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -210,7 +210,7 @@ const authOrgRoutes = [
   ...cliAuthRoutes,
   ...onboardingStatusRoutes,
   ...onboardingCompleteRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...userPreferencesRoutes,
   ...zeroOrgReadRoutes,
   ...zeroOrgDeleteRoutes,
   ...zeroOrgMembersRoutes,
@@ -798,7 +798,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<UserPreferencesResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -812,7 +812,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateUserPreferencesRequest,
     ): Promise<UserPreferencesResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
