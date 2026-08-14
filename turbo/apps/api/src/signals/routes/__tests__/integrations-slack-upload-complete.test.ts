@@ -44,9 +44,9 @@ import {
   deleteUsageStateFixture$,
   type UsageStateFixture,
 } from "./helpers/usage-state";
-import { zeroIntegrationsSlackUploadCompleteRoutes } from "../zero-integrations-slack-upload-complete";
-import { zeroIntegrationsSlackUploadInitRoutes } from "../zero-integrations-slack-upload-init";
-import { zeroIntegrationsSlackUploadMaterializeRoutes } from "../zero-integrations-slack-upload-materialize";
+import { integrationsSlackUploadCompleteRoutes } from "../integrations-slack-upload-complete";
+import { integrationsSlackUploadInitRoutes } from "../integrations-slack-upload-init";
+import { integrationsSlackUploadMaterializeRoutes } from "../integrations-slack-upload-materialize";
 
 type CompletedChatEvent = Extract<ChatEvent, { eventType: "run.completed" }>;
 
@@ -130,7 +130,7 @@ async function completeRun(args: {
   await flushWaitUntilForTest();
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -173,7 +173,7 @@ interface RunScopedContext {
   readonly agentId: string;
 }
 
-describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
+describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
   const usageFixtures: UsageStateFixture[] = [];
 
@@ -332,7 +332,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   it("returns 401 when no auth token is provided", async () => {
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -352,7 +352,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -366,11 +366,11 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
   it("returns 404 when no Slack installation exists for org", async () => {
     const { orgId, userId } = await seedBaseContext();
-    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+    const token = okouToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -385,7 +385,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   it("forwards Slack file info errors as 400 SLACK_ERROR", async () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
     context.mocks.slack.files.info.mockRejectedValueOnce(
       Object.assign(new Error("file_not_found"), {
         data: { ok: false, error: "file_not_found" },
@@ -394,7 +394,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -419,11 +419,11 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     mockSlackFileInfo(fileId);
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -474,7 +474,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       await seedRunScoped();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
     context.mocks.slack.files.getUploadURLExternal.mockClear();
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
       ok: true,
@@ -485,7 +485,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const initClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
@@ -538,7 +538,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const materializeClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadMaterializeRoutes,
+      routes: integrationsSlackUploadMaterializeRoutes,
     })(integrationsSlackUploadMaterializeContract);
     const materialized = await accept(
       materializeClient.materialize({
@@ -585,7 +585,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const completeClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const completed = await accept(
       completeClient.complete({
@@ -723,10 +723,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       await seedRunScoped();
     chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
     const initClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
@@ -783,7 +783,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const { orgId, userId, runId } = await seedRunScoped();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
     const fileId = "F-MISSING-PERMALINK";
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
       ok: true,
@@ -804,7 +804,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const initClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
@@ -839,7 +839,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const materializeClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadMaterializeRoutes,
+      routes: integrationsSlackUploadMaterializeRoutes,
     })(integrationsSlackUploadMaterializeContract);
     const materialized = await accept(
       materializeClient.materialize({
@@ -855,7 +855,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const completeClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const completed = await accept(
       completeClient.complete({
@@ -882,7 +882,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const { orgId, userId, runId } = await seedRunScoped();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
     const allocations: string[] = [];
     const bothAllocationsStarted = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
@@ -908,7 +908,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const initClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadInitRoutes,
+      routes: integrationsSlackUploadInitRoutes,
     })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
@@ -945,7 +945,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const materializeClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadMaterializeRoutes,
+      routes: integrationsSlackUploadMaterializeRoutes,
     })(integrationsSlackUploadMaterializeContract);
     const materialize = () => {
       return accept(
@@ -989,7 +989,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const completeClient = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const staleCompletion = await accept(
       completeClient.complete({
@@ -1088,11 +1088,11 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         },
       ),
     );
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     await accept(
       client.complete({
@@ -1138,7 +1138,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -1166,11 +1166,11 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     mockSlackFileInfo(fileId);
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+      routes: integrationsSlackUploadCompleteRoutes,
     })(integrationsSlackUploadCompleteContract);
     const body = { fileId, channel: "C123", title: "Retry upload" };
 

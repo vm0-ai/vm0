@@ -1023,27 +1023,6 @@ async function reserveChatEventSeqIds(
   return thread.lastSeqId - count + 1;
 }
 
-async function releaseChatEventSeqIds(
-  tx: ChatEventWriteTransaction,
-  chatThreadId: string,
-  count: number,
-): Promise<void> {
-  if (!Number.isInteger(count) || count <= 0) {
-    throw new Error("chat event seq_id release count must be positive");
-  }
-
-  const [thread] = await tx
-    .update(chatThreads)
-    .set({
-      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - ${count}`,
-    })
-    .where(eq(chatThreads.id, chatThreadId))
-    .returning({ id: chatThreads.id });
-  if (!thread) {
-    throw new Error(`Chat thread ${chatThreadId} not found`);
-  }
-}
-
 async function addSeqIdsToEvents(
   tx: ChatEventWriteTransaction,
   values: readonly PersistedChatEvent[],
@@ -1122,20 +1101,11 @@ export async function insertChatEvent(
               seqId: chatEvents.seqId,
             });
 
-  if (rows.length === 0) {
-    // A rejected idempotent write is not part of the canonical stream, so it
-    // must not consume the thread's next cursor.
-    await releaseChatEventSeqIds(tx, values.chatThreadId, 1);
-  } else {
-    const inserted = rows[0];
-    if (!inserted) {
-      throw new Error("Inserted chat event result is missing");
-    }
-    if (displayContext) {
-      await insertDisplayContext(tx, displayContext, inserted.createdAt);
-    }
+  const inserted = rows[0];
+  if (inserted && displayContext) {
+    await insertDisplayContext(tx, displayContext, inserted.createdAt);
   }
-  return rows[0] ?? null;
+  return inserted ?? null;
 }
 
 /**
@@ -1168,45 +1138,6 @@ export async function insertChatEvents(
       seqId: chatEvents.seqId,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     });
-
-  if (rows.length < valuesWithSeqIds.length) {
-    const reservedRangeByThread = new Map<
-      string,
-      { readonly firstSeqId: number; lastSeqId: number }
-    >();
-    for (const value of valuesWithSeqIds) {
-      const range = reservedRangeByThread.get(value.chatThreadId);
-      if (range === undefined) {
-        reservedRangeByThread.set(value.chatThreadId, {
-          firstSeqId: value.seqId,
-          lastSeqId: value.seqId,
-        });
-      } else {
-        range.lastSeqId = value.seqId;
-      }
-    }
-
-    const acceptedLastSeqIdByThread = new Map<string, number>();
-    for (const row of rows) {
-      const acceptedLastSeqId = acceptedLastSeqIdByThread.get(row.chatThreadId);
-      if (acceptedLastSeqId === undefined || row.seqId > acceptedLastSeqId) {
-        acceptedLastSeqIdByThread.set(row.chatThreadId, row.seqId);
-      }
-    }
-
-    for (const [chatThreadId, range] of [...reservedRangeByThread].sort(
-      ([left], [right]) => {
-        return left.localeCompare(right);
-      },
-    )) {
-      const acceptedLastSeqId =
-        acceptedLastSeqIdByThread.get(chatThreadId) ?? range.firstSeqId - 1;
-      const unusedSuffixCount = range.lastSeqId - acceptedLastSeqId;
-      if (unusedSuffixCount > 0) {
-        await releaseChatEventSeqIds(tx, chatThreadId, unusedSuffixCount);
-      }
-    }
-  }
 
   return rows.map((row) => {
     return {
@@ -1294,7 +1225,6 @@ export async function replaceLoadedChatEvent(
     });
   const inserted = rows[0];
   if (!inserted) {
-    await releaseChatEventSeqIds(tx, replacement.chatThreadId, 1);
     return null;
   }
 

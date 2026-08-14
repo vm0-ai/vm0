@@ -248,10 +248,9 @@ const slackWriteAuth = {
   requiredCapability: "slack:write",
 } as const;
 
-export const zeroIntegrationsSlackUploadCompleteRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: integrationsSlackUploadCompleteContract.complete,
-      handler: authRoute(slackWriteAuth, completeInner$),
-    },
-  ];
+export const integrationsSlackUploadCompleteRoutes: readonly RouteEntry[] = [
+  {
+    route: integrationsSlackUploadCompleteContract.complete,
+    handler: authRoute(slackWriteAuth, completeInner$),
+  },
+];

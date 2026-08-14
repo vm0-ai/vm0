@@ -29,13 +29,13 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
 import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
-import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
+import { integrationsFeishuFileRoutes } from "../integrations-feishu-files";
 import { integrationsFeishuMessageRoutes } from "../integrations-feishu-message";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...zeroFeishuConnectRoutes,
   ...zeroFeishuOauthRoutes,
-  ...zeroIntegrationsFeishuFileRoutes,
+  ...integrationsFeishuFileRoutes,
   ...integrationsFeishuMessageRoutes,
 ]);
 
@@ -525,7 +525,7 @@ describe("POST /api/okou/integrations/feishu/message", () => {
     );
     const initClient = setupApp({
       context,
-      routes: zeroIntegrationsFeishuFileRoutes,
+      routes: integrationsFeishuFileRoutes,
     })(integrationsFeishuUploadInitContract);
     const initialized = await accept(
       initClient.init({
@@ -587,7 +587,7 @@ describe("POST /api/okou/integrations/feishu/message", () => {
     captured = [];
     const completeClient = setupApp({
       context,
-      routes: zeroIntegrationsFeishuFileRoutes,
+      routes: integrationsFeishuFileRoutes,
     })(integrationsFeishuUploadCompleteContract);
     const completed = await accept(
       completeClient.complete({

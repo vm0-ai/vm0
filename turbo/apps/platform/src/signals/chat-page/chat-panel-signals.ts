@@ -86,7 +86,6 @@ export interface MessageListSignals {
   readonly recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
   >;
-  readonly historyBackfillPending$: Computed<boolean>;
   readonly donePhrase$: Computed<Promise<string>>;
   readonly loadMoreRenderedChatGroups$: Command<
     Promise<boolean>,
@@ -200,7 +199,6 @@ export interface ChatPanelSignals {
   readonly recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
   >;
-  readonly historyBackfillPending$: Computed<boolean>;
   readonly loadMoreRenderedChatGroups$: Command<
     Promise<boolean>,
     [AbortSignal]

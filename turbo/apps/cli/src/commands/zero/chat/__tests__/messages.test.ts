@@ -220,7 +220,7 @@ describe("okou chat messages command", () => {
     );
   });
 
-  it("rebuilds a sparse local generation before advancing its cursor", async () => {
+  it("continues a monotonic local history across sequence gaps", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
@@ -235,23 +235,10 @@ describe("okou chat messages command", () => {
       "utf8",
     );
     await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
-    const freshSnapshotRow = rawEventRow(10);
-    const freshSnapshot = snapshotNdjson([freshSnapshotRow]);
     const cursors: { eventId: string | null; seqId: string | null }[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json(
-          {
-            url: SNAPSHOT_DOWNLOAD_URL,
-            expiresInSeconds: 900,
-            lastEventId: freshSnapshotRow.id,
-            lastSeqId: 10,
-          },
-          { headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
-        return new HttpResponse(freshSnapshot);
+        throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, ({ request }) => {
         const url = new URL(request.url);
@@ -259,13 +246,16 @@ describe("okou chat messages command", () => {
         if (seqId === null) {
           throw new Error("Expected a rows cursor");
         }
+        expect(request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+        );
         cursors.push({
           eventId: url.searchParams.get("sinceEventId"),
           seqId,
         });
-        expect(seqId).toBe("10");
+        expect(seqId).toBe("4");
         return HttpResponse.json(
-          { rows: [rawEventRow(11)] },
+          { rows: [rawEventRow(7), rawEventRow(10)] },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
       }),
@@ -279,13 +269,53 @@ describe("okou chat messages command", () => {
       outputDirectory,
     ]);
 
-    expect(cursors).toStrictEqual([
-      { eventId: freshSnapshotRow.id, seqId: "10" },
-    ]);
+    expect(cursors).toStrictEqual([{ eventId: rawEventRow(4).id, seqId: "4" }]);
     expect((await readdir(threadDirectory)).sort()).toStrictEqual([
-      "event-SEQ_ID_11.json",
+      "event-SEQ_ID_10.json",
+      "event-SEQ_ID_4.json",
+      "event-SEQ_ID_7.json",
       "notes.txt",
-      "snapshot-to-10.ndjson",
+      "snapshot-to-2.ndjson",
+    ]);
+  });
+
+  it("rejects event rows that do not strictly increase", async () => {
+    const outputDirectory = await createOutputDirectory();
+    const threadDirectory = join(outputDirectory, THREAD_ID);
+    await mkdir(threadDirectory, { recursive: true });
+    await writeFile(
+      join(threadDirectory, "event-SEQ_ID_4.json"),
+      `${JSON.stringify(rawEventRow(4))}\n`,
+      "utf8",
+    );
+    server.use(
+      http.get(SNAPSHOT_URL, () => {
+        throw new Error("Snapshot endpoint must not be called");
+      }),
+      http.get(ROWS_URL, () => {
+        return HttpResponse.json({
+          rows: [rawEventRow(7), rawEventRow(6)],
+        });
+      }),
+    );
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "messages",
+        "--output-dir",
+        outputDirectory,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain(
+      "Chat event rows must have strictly increasing sequence IDs",
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(await readdir(threadDirectory)).toStrictEqual([
+      "event-SEQ_ID_4.json",
     ]);
   });
 

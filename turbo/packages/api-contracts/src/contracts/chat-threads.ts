@@ -550,7 +550,7 @@ const chatEventBaseSchema = z.object({
   runGroupId: z.string().optional(),
   runEventId: z.string().optional(),
   revokesEventId: z.string().optional(),
-  /** Server-assigned strict position within the chat thread. */
+  /** Strictly increasing thread position; it may start above 1 and have gaps. */
   seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
   createdAt: z.string(),
@@ -875,6 +875,11 @@ const chatThreadCreateBodySchema = z.object({
    * run's chat thread, use `priority` to enable it, or null for standard.
    */
   serviceTier: chatThreadServiceTierSchema.nullable().optional(),
+  /**
+   * Video model for the new thread. Omit it to inherit the calling run's chat
+   * thread video model.
+   */
+  videoModel: videoModelIdSchema.optional(),
   title: z.string().optional(),
 });
 

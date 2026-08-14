@@ -1971,9 +1971,6 @@ describe("CHAT-01 chat thread read state", () => {
     });
 
     const full = await chat.listThreadEvents(owner, threadId);
-    // The thread's first event owns seqId 1, which is how clients detect that
-    // no history remains behind the page.
-    expect(full.events[0]?.seqId).toBe(1);
     expect(
       full.events.map((event) => {
         return [event.eventType, event.content] as const;

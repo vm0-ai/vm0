@@ -124,7 +124,7 @@ const phoneReadAuth = {
   requiredCapability: "phone:read",
 } as const;
 
-export const zeroIntegrationsPhoneDownloadFileRoutes: readonly RouteEntry[] = [
+export const integrationsPhoneDownloadFileRoutes: readonly RouteEntry[] = [
   {
     route: integrationsPhoneDownloadFileContract.download,
     handler: authRoute(phoneReadAuth, download$),

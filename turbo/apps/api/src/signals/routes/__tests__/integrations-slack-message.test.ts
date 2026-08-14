@@ -16,7 +16,7 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { zeroIntegrationsSlackMessageRoutes } from "../zero-integrations-slack-message";
+import { integrationsSlackMessageRoutes } from "../integrations-slack-message";
 
 const context = testContext();
 const store = createStore();
@@ -58,7 +58,7 @@ function sandboxToken(args: {
   });
 }
 
-describe("POST /api/zero/integrations/slack/message", () => {
+describe("POST /api/okou/integrations/slack/message", () => {
   beforeEach(() => {
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
@@ -156,7 +156,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
   it("returns 401 when no auth token is provided", async () => {
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -179,7 +179,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -201,7 +201,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -219,7 +219,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -237,7 +237,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -274,7 +274,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -293,7 +293,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -327,7 +327,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -351,7 +351,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -373,7 +373,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -392,7 +392,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -437,7 +437,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsSlackMessageRoutes,
+      routes: integrationsSlackMessageRoutes,
     })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({

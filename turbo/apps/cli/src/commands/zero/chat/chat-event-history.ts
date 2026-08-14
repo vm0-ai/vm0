@@ -146,9 +146,9 @@ async function localHistoryState(args: {
       return { kind: "invalid" };
     }
   }
-  let expectedSeqId = cursor.lastSeqId + 1;
+  let previousSeqId = cursor.lastSeqId;
   for (const event of events) {
-    if (event.seqId !== expectedSeqId) {
+    if (event.seqId <= previousSeqId) {
       return { kind: "invalid" };
     }
     try {
@@ -164,7 +164,7 @@ async function localHistoryState(args: {
     } catch {
       return { kind: "invalid" };
     }
-    expectedSeqId += 1;
+    previousSeqId = event.seqId;
   }
   return snapshot !== undefined || events.length > 0
     ? { kind: "valid", cursor }
@@ -209,10 +209,14 @@ async function syncRows(args: {
     if (page.kind === "expired") {
       return "expired";
     }
-    for (const [index, row] of page.rows.entries()) {
-      if (row.seqId !== cursor.lastSeqId + index + 1) {
-        throw new Error("Chat event rows must have contiguous sequence IDs");
+    let previousSeqId = cursor.lastSeqId;
+    for (const row of page.rows) {
+      if (row.seqId <= previousSeqId) {
+        throw new Error(
+          "Chat event rows must have strictly increasing sequence IDs",
+        );
       }
+      previousSeqId = row.seqId;
     }
     const stagedDirectory = await mkdtemp(
       join(args.directory, ".okou-chat-history-page-"),
@@ -253,8 +257,7 @@ async function replaceManagedHistoryFiles(args: {
     listManagedHistoryFiles(args.stagedDirectory),
   ]);
   // Removing the newest rows first and installing the new generation oldest
-  // first leaves either a valid prefix or an invalid generation that the next
-  // invocation rebuilds; no interrupted operation can commit a sparse cursor.
+  // first preserves cursor-prefix ordering during replacement.
   for (const file of [...existing].reverse()) {
     await rm(join(args.targetDirectory, file.name));
   }

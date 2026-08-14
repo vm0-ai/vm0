@@ -62,19 +62,19 @@ import { integrationsGithubRoutes } from "../../integrations-github";
 import { testSlackStateRoutes } from "../../test-slack-state";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroIntegrationsAgentPhoneRoutes } from "../../zero-integrations-agentphone";
-import { zeroIntegrationsGithubUploadCompleteRoutes } from "../../zero-integrations-github-upload-complete";
+import { integrationsGithubUploadCompleteRoutes } from "../../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
-import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
+import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "../../integrations-phone-message";
 import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { zeroIntegrationsSlackRoutes } from "../../zero-integrations-slack";
-import { zeroIntegrationsSlackMessageRoutes } from "../../zero-integrations-slack-message";
-import { zeroIntegrationsSlackUploadCompleteRoutes } from "../../zero-integrations-slack-upload-complete";
-import { zeroIntegrationsSlackUploadInitRoutes } from "../../zero-integrations-slack-upload-init";
+import { integrationsSlackMessageRoutes } from "../../integrations-slack-message";
+import { integrationsSlackUploadCompleteRoutes } from "../../integrations-slack-upload-complete";
+import { integrationsSlackUploadInitRoutes } from "../../integrations-slack-upload-init";
 import { zeroIntegrationsTelegramRoutes } from "../../zero-integrations-telegram";
 import { integrationsTelegramMessageRoutes } from "../../integrations-telegram-message";
-import { zeroIntegrationsTelegramUploadCompleteRoutes } from "../../zero-integrations-telegram-upload-complete";
+import { integrationsTelegramUploadCompleteRoutes } from "../../integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
@@ -92,18 +92,18 @@ const TEST_APP_ROUTES = Object.freeze([
   ...testSlackStateRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
-  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
-  ...zeroIntegrationsPhoneDownloadFileRoutes,
+  ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
   ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
-  ...zeroIntegrationsSlackMessageRoutes,
-  ...zeroIntegrationsSlackUploadCompleteRoutes,
-  ...zeroIntegrationsSlackUploadInitRoutes,
+  ...integrationsSlackMessageRoutes,
+  ...integrationsSlackUploadCompleteRoutes,
+  ...integrationsSlackUploadInitRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...integrationsTelegramMessageRoutes,
-  ...zeroIntegrationsTelegramUploadCompleteRoutes,
+  ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroModelPoliciesRoutes,
@@ -742,7 +742,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsSlackMessageRoutes,
+        routes: integrationsSlackMessageRoutes,
       })(integrationsSlackMessageContract);
       return await accept(
         client.sendMessage({
@@ -760,7 +760,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsSlackMessageRoutes,
+        routes: integrationsSlackMessageRoutes,
       })(integrationsSlackMessageContract);
       return await accept(
         client.sendMessage({
@@ -778,7 +778,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsSlackUploadInitRoutes,
+        routes: integrationsSlackUploadInitRoutes,
       })(integrationsSlackUploadInitContract);
       return await accept(
         client.init({
@@ -796,7 +796,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsSlackUploadCompleteRoutes,
+        routes: integrationsSlackUploadCompleteRoutes,
       })(integrationsSlackUploadCompleteContract);
       return await accept(
         client.complete({
@@ -1561,7 +1561,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+        routes: integrationsTelegramUploadCompleteRoutes,
       })(integrationsTelegramUploadCompleteContract);
       return await accept(
         client.complete({
@@ -1645,7 +1645,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsGithubUploadCompleteRoutes,
+        routes: integrationsGithubUploadCompleteRoutes,
       })(integrationsGithubUploadCompleteContract);
       return await accept(
         client.complete({
@@ -1799,7 +1799,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsPhoneDownloadFileRoutes,
+        routes: integrationsPhoneDownloadFileRoutes,
       })(integrationsPhoneDownloadFileContract);
       return await accept(
         client.download({

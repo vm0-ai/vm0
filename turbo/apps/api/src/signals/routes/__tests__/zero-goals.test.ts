@@ -385,7 +385,6 @@ describe("zero goals", () => {
     }
 
     const page = await chat.listThreadEvents(actor, goal.threadId);
-    expect(page.events[0]?.seqId).toBe(1);
     const goalQueueEvent = page.events.find((event) => {
       return event.id === goalEventId;
     });
