@@ -290,6 +290,14 @@ export function assertStage2PooledTransactionShape(sql: string): void {
     1,
   );
   assert.equal(countOccurrences(sql, productionTransactionTimeout), 2);
+  assert.equal(
+    countOccurrences(
+      sql,
+      'array_agg("definition" ORDER BY "definition" COLLATE "C")',
+    ),
+    8,
+  );
+  assert.doesNotMatch(sql, /array_agg\("definition" ORDER BY "definition"\)/u);
 
   const preflight = statements.find((statement) => {
     return statement.includes(
@@ -424,11 +432,8 @@ export function assertProductionExceptionConstants(
   }
 }
 
-function noticeVariables(sql: string, label: string): string[] {
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const notice = sql.match(
-    new RegExp(`RAISE NOTICE\\s+'${escapedLabel}:[^']*',([\\s\\S]*?);`, "u"),
-  );
+function noticeVariables(sql: string, noticePattern: RegExp): string[] {
+  const notice = sql.match(noticePattern);
   assert.ok(notice);
   return [...(notice[1] ?? "").matchAll(/\bv_[a-z0-9_]+\b/gu)].map((match) => {
     return match[0];
@@ -437,7 +442,10 @@ function noticeVariables(sql: string, label: string): string[] {
 
 export function assertStage2NoticeVariableBindings(sql: string): void {
   assert.deepEqual(
-    noticeVariables(sql, "Stage 2 agent-run metadata preflight"),
+    noticeVariables(
+      sql,
+      /RAISE NOTICE\s+'Stage 2 agent-run metadata preflight:[^']*',([\s\S]*?);/u,
+    ),
     [
       "v_ledger_timestamp",
       "v_agent_run_count",
@@ -458,7 +466,10 @@ export function assertStage2NoticeVariableBindings(sql: string): void {
     ],
   );
   assert.deepEqual(
-    noticeVariables(sql, "Stage 2 agent-run metadata validation"),
+    noticeVariables(
+      sql,
+      /RAISE NOTICE\s+'Stage 2 agent-run metadata validation:[^']*',([\s\S]*?);/u,
+    ),
     [
       "v_agent_run_count",
       "v_zero_run_count",

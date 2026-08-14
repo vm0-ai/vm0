@@ -271,7 +271,7 @@ BEGIN
 			v_invalid_source_count;
 	END IF;
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_actual_inbound_fk_definitions
 	FROM (
 		SELECT
@@ -311,7 +311,7 @@ BEGIN
 			AND "constraint_row"."confrelid" = 'public.agent_runs'::regclass
 	) AS "inbound_fk_definition";
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_expected_inbound_fk_definitions
 	FROM unnest(v_expected_inbound_fk_definitions) AS "definition";
 
@@ -322,7 +322,7 @@ BEGIN
 			v_inbound_fk_count;
 	END IF;
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_actual_non_fk_definitions
 	FROM (
 		SELECT
@@ -352,7 +352,7 @@ BEGIN
 			)
 	) AS "non_fk_definition";
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_expected_non_fk_definitions
 	FROM unnest(v_expected_non_fk_definitions) AS "definition";
 
@@ -1569,7 +1569,7 @@ BEGIN
 			v_invalid_callback_shape_count;
 	END IF;
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_actual_inbound_fk_definitions
 	FROM (
 		SELECT
@@ -1609,7 +1609,7 @@ BEGIN
 			AND "constraint_row"."confrelid" = 'public.agent_runs'::regclass
 	) AS "inbound_fk_definition";
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_expected_inbound_fk_definitions
 	FROM unnest(v_expected_inbound_fk_definitions) AS "definition";
 
@@ -1618,7 +1618,7 @@ BEGIN
 		RAISE EXCEPTION 'Stage 2 final inbound agent_runs FK definitions drifted';
 	END IF;
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_actual_non_fk_definitions
 	FROM (
 		SELECT
@@ -1648,7 +1648,7 @@ BEGIN
 			)
 	) AS "non_fk_definition";
 
-	SELECT array_agg("definition" ORDER BY "definition")
+	SELECT array_agg("definition" ORDER BY "definition" COLLATE "C")
 	INTO v_expected_non_fk_definitions
 	FROM unnest(v_expected_non_fk_definitions) AS "definition";
 
