@@ -9,7 +9,7 @@ import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-boo
 import { onboardingStatus } from "../services/onboarding.service";
 import { tapError } from "../utils";
 
-const L = logger("zero-onboarding-status.route");
+const L = logger("onboarding-status.route");
 
 const getOnboardingStatusInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
@@ -50,7 +50,7 @@ const getOnboardingStatusInner$ = command(
   },
 );
 
-export const zeroOnboardingStatusRoutes: readonly RouteEntry[] = [
+export const onboardingStatusRoutes: readonly RouteEntry[] = [
   {
     route: onboardingStatusContract.getStatus,
     handler: authRoute({}, getOnboardingStatusInner$),

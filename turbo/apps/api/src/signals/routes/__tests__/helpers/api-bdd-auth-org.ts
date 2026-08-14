@@ -92,8 +92,8 @@ import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-d
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
 import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
 import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
-import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { onboardingCompleteRoutes } from "../../onboarding-complete";
+import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
 import { orgLogoRoutes } from "../../org-logo";
@@ -208,8 +208,8 @@ interface RawJsonResponse {
 const authOrgRoutes = [
   ...authMeRoutes,
   ...cliAuthRoutes,
-  ...zeroOnboardingStatusRoutes,
-  ...zeroOnboardingCompleteRoutes,
+  ...onboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroOrgReadRoutes,
   ...zeroOrgDeleteRoutes,
