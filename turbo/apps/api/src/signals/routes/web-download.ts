@@ -1,23 +1,23 @@
 import { computed } from "ccstate";
-import { zeroWebFilesContract } from "@okouai/api-contracts/contracts/zero-web-files";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { notFound, badRequestMessage } from "../../lib/error";
-import { zeroWebDownloadFile } from "../services/zero-web-download.service";
+import { webDownloadFile } from "../services/web-download.service";
 import type { RouteEntry } from "../route-entry";
 
 const downloadFileInner$ = computed(async (get) => {
   const auth = get(authContext$);
-  const params = get(queryOf(zeroWebFilesContract.download));
+  const params = get(queryOf(webFilesContract.download));
 
   const fileId = params.file_id;
   if (!fileId) {
     return badRequestMessage("file_id query parameter is required");
   }
 
-  const result = await get(zeroWebDownloadFile(fileId, auth.userId));
+  const result = await get(webDownloadFile(fileId, auth.userId));
   if (!result) {
     return notFound("File not found");
   }
@@ -35,9 +35,9 @@ const downloadFileInner$ = computed(async (get) => {
   });
 });
 
-export const zeroWebDownloadRoutes: readonly RouteEntry[] = [
+export const webDownloadRoutes: readonly RouteEntry[] = [
   {
-    route: zeroWebFilesContract.download,
+    route: webFilesContract.download,
     handler: authRoute(
       {
         requireOrganization: false,

@@ -25,7 +25,7 @@ import {
 } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
+import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import {
@@ -106,7 +106,7 @@ const userConfigRoutes = [
   ...authMeRoutes,
   ...zeroAgentsRoutes,
   ...zeroUserModelPreferenceRoutes,
-  ...zeroPushSubscriptionsRoutes,
+  ...pushSubscriptionsRoutes,
   ...zeroUserPreferencesRoutes,
 ] as const;
 

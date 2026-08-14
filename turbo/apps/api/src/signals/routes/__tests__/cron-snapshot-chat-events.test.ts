@@ -43,6 +43,8 @@ const PREVIOUS_ARCHIVE_SCHEMA_VERSION = 4;
 const DUPLICATE_EVENT_ID_NAMESPACE = "46842b1d-a596-47fb-86b3-4f51962751c7";
 const DUPLICATE_EVENT_ID_WARNING =
   "Normalized duplicate chat event IDs in snapshot";
+const SNAPSHOT_COMPLETED_MESSAGE = "Completed chat event snapshot";
+const SNAPSHOT_COMPLETED_TYPE = "chat_event_snapshot_completed";
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
 
@@ -72,6 +74,50 @@ async function runSnapshotCron(
     [200],
   );
   return response.body;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function snapshotCompletionEvents(): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.ingest.mock.calls.flatMap(([dataset, events]) => {
+    if (dataset !== "web-logs" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.type === SNAPSHOT_COMPLETED_TYPE;
+    });
+  });
+}
+
+function expectSnapshotCompletion(expected: {
+  readonly duplicateEventIdConflictThreads: number;
+  readonly duplicateEventIdConflicts: number;
+  readonly duplicateEventIdsRemapped: number;
+  readonly duplicateEventReferencesRemapped: number;
+}): void {
+  const events = snapshotCompletionEvents();
+  expect(events).toHaveLength(1);
+  const event = events[0];
+  expect({
+    level: event?.level,
+    message: event?.message,
+    source: event?.source,
+    type: event?.type,
+    context: event?.context,
+    duplicateEventIdConflictThreads: event?.duplicateEventIdConflictThreads,
+    duplicateEventIdConflicts: event?.duplicateEventIdConflicts,
+    duplicateEventIdsRemapped: event?.duplicateEventIdsRemapped,
+    duplicateEventReferencesRemapped: event?.duplicateEventReferencesRemapped,
+  }).toStrictEqual({
+    level: "info",
+    message: SNAPSHOT_COMPLETED_MESSAGE,
+    source: "api",
+    type: SNAPSHOT_COMPLETED_TYPE,
+    context: "api:cron:snapshot-chat-events",
+    ...expected,
+  });
 }
 
 async function projectChatEventSearch(...chatThreadIds: readonly string[]) {
@@ -380,9 +426,16 @@ describe("cron snapshot chat events", () => {
       ]),
     );
     context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.axiom.ingest.mockClear();
 
     const result = await runSnapshotCron([threadId]);
     expect(result).toMatchObject({
+      duplicateEventIdConflictThreads: 0,
+      duplicateEventIdConflicts: 0,
+      duplicateEventIdsRemapped: 0,
+      duplicateEventReferencesRemapped: 0,
+    });
+    expectSnapshotCompletion({
       duplicateEventIdConflictThreads: 0,
       duplicateEventIdConflicts: 0,
       duplicateEventIdsRemapped: 0,
@@ -398,6 +451,29 @@ describe("cron snapshot chat events", () => {
         return call[0] === DUPLICATE_EVENT_ID_WARNING;
       }),
     ).toBeFalsy();
+  }, 60_000);
+
+  it("does not log completion when snapshotting fails", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Failing snapshot agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `failing-snapshot-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+
+    const snapshotFailure = new Error("Forced snapshot R2 write failure");
+    installFakeChatEventR2(context, recordedPuts, () => {
+      return Promise.reject(snapshotFailure);
+    });
+    context.mocks.axiom.ingest.mockClear();
+
+    await expect(runSnapshotCron([threadId])).rejects.toThrow(
+      "Unknown response status 500",
+    );
+    expect(snapshotCompletionEvents()).toHaveLength(0);
   }, 60_000);
 
   it("normalizes duplicate IDs and their resolved historical references deterministically", async () => {
@@ -565,6 +641,7 @@ describe("cron snapshot chat events", () => {
     ).toBeTruthy();
 
     installFakeChatEventR2(context, recordedPuts);
+    context.mocks.axiom.ingest.mockClear();
     const secondResult = await runSnapshotCron([secondThreadId]);
     expect(secondResult).toMatchObject({
       duplicateEventIdConflictThreads: 1,
@@ -572,6 +649,12 @@ describe("cron snapshot chat events", () => {
       duplicateEventIdsRemapped: 2,
       duplicateEventReferencesRemapped: 2,
       nonV4SnapshotHeads: 0,
+    });
+    expectSnapshotCompletion({
+      duplicateEventIdConflictThreads: 1,
+      duplicateEventIdConflicts: 1,
+      duplicateEventIdsRemapped: 2,
+      duplicateEventReferencesRemapped: 2,
     });
     const secondPut = putsForThread(secondThreadId)[1];
     if (secondPut === undefined) {

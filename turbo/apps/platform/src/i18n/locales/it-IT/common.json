@@ -1712,6 +1712,9 @@
       "frequentlyUsed": "Usato frequentemente",
       "icon": "Icona del thread di chat",
       "loadingEarlier": "Caricamento dei messaggi precedenti",
+      "locator": {
+        "you": "Tu"
+      },
       "noEmojiFound": "Nessuna emoji trovata",
       "notFound": "Conversazione non trovata",
       "openArtifacts": "Artefatti aperti",
@@ -4385,6 +4388,24 @@
           "enabled_many": "Abilitato per le prossime {{count}} esecuzioni",
           "enabled_other": "Abilitato per le prossime {{count}} esecuzioni",
           "title": "Acquisisci i contenuti di rete"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "Attese attive",
+          "blurred": "senza focus",
+          "channel": "canale",
+          "clear": "Cancella",
+          "connection": "connessione",
+          "copyJson": "Copia JSON",
+          "description": "Controlla il ciclo di vita del browser, il recupero dell'autenticazione e i segnali di connessione Ably.",
+          "empty": "Nessun evento diagnostico registrato.",
+          "events": "eventi",
+          "focused": "con focus",
+          "log": "Registro eventi",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "recupero",
+          "title": "Diagnostica della connessione in tempo reale",
+          "unavailable": "non disponibile"
         },
         "tab": "Debug"
       },

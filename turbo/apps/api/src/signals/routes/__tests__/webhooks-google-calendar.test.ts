@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
 
@@ -18,6 +19,8 @@ import {
   createWorkflowsBddApi,
   mockGoogleCalendarConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
@@ -198,7 +201,7 @@ function configureGoogleCalendarApiMock(args: {
 }
 
 interface CalendarScenario {
-  readonly actor: ApiTestUser;
+  readonly actor: ApiTestUser & { readonly orgId: string };
   readonly runnerGroup: string;
   readonly workflowId: string;
 }
@@ -220,7 +223,28 @@ async function setupFixture(): Promise<CalendarScenario> {
   });
   mocks.clerk.session(actor.userId, actor.orgId, "org:member");
   context.mocks.s3.send.mockResolvedValue({});
-  return { actor, runnerGroup, workflowId };
+  return {
+    actor: { ...actor, orgId: actor.orgId },
+    runnerGroup,
+    workflowId,
+  };
+}
+
+async function expectAutomationDisplayMessage(
+  threadId: string,
+  expectedMessage: string,
+): Promise<void> {
+  const events = await wf.readThreadEvents(threadId);
+  const visibleEvent = events.find((event) => {
+    return (
+      event.eventType === "input.automation" ||
+      event.eventType === "input.prompt"
+    );
+  });
+  if (!visibleEvent) {
+    throw new Error("Expected a visible calendar automation event");
+  }
+  expect(chatEventDisplayText(visibleEvent)).toBe(expectedMessage);
 }
 
 async function connectGoogleCalendar(
@@ -352,6 +376,9 @@ describe("POST /api/webhooks/google-calendar", () => {
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
     await connectGoogleCalendar(scenario);
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
 
     const created = await accept(
       automationsClient().create({
@@ -379,6 +406,13 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 1,
       duplicates: 0,
     });
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
+    await expectAutomationDisplayMessage(
+      created.body.chatThreadId,
+      'Google Calendar event "Planning" was created.',
+    );
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
@@ -563,8 +597,11 @@ describe("POST /api/webhooks/google-calendar", () => {
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
     await connectGoogleCalendar(scenario);
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
 
-    await accept(
+    const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -590,6 +627,13 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 1,
       duplicates: 0,
     });
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
+    await expectAutomationDisplayMessage(
+      created.body.chatThreadId,
+      'Google Calendar event "Existing updated" was updated.',
+    );
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
@@ -669,8 +713,11 @@ describe("POST /api/webhooks/google-calendar", () => {
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
     await connectGoogleCalendar(scenario);
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+    });
 
-    await accept(
+    const cancelled = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -707,6 +754,13 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 1,
       duplicates: 0,
     });
+    if (!cancelled.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
+    await expectAutomationDisplayMessage(
+      cancelled.body.chatThreadId,
+      "A Google Calendar event was cancelled.",
+    );
     // Only the cancelled automation dispatched a run; the minimal deleted
     // payload never reaches the updated automation.
     await runsApi.heartbeatRunner(runnerGroup);

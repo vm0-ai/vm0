@@ -1,6 +1,11 @@
 import { computed, type Computed } from "ccstate";
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
-import type { NetworkLogsResponse } from "@okouai/api-contracts/contracts/runs";
+import {
+  runStatusSchema,
+  type AgentEventsResponse,
+  type NetworkLogsResponse,
+  type RunEvent,
+} from "@okouai/api-contracts/contracts/runs";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { and, eq } from "drizzle-orm";
 
@@ -8,17 +13,21 @@ import { db$, type Db } from "../external/db";
 import { getDatasetName, queryAxiom } from "../external/axiom";
 import { escapeAplString } from "../../lib/axiom-apl";
 import {
+  buildAgentEventPaginationFilters,
   buildTimeCursorProjection,
   buildTimePaginationFilters,
   buildTimePaginationOrder,
   filterTimedAxiomRecords,
+  nextSequenceCursor,
   nextTimeCursor,
+  sequenceCursorValue,
   timeCursorBoundary,
 } from "./log-pagination";
 import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
 
 type ServiceDb = Pick<Db, "select">;
+
 async function verifyRunOwnership(
   db: ServiceDb,
   runId: string,
@@ -122,6 +131,98 @@ export function zeroRunContext(
     };
   });
 }
+
+interface AgentEventsParams {
+  runId: string;
+  userId: string;
+  orgId: string;
+  since?: number;
+  sinceTime?: number;
+  cursor?: string;
+  limit: number;
+  order: "asc" | "desc";
+}
+
+interface AxiomAgentEvent {
+  _time: string;
+  runId: string;
+  userId: string;
+  sequenceNumber: number;
+  eventType: string;
+  eventData: Record<string, unknown>;
+}
+
+export function zeroRunAgentEvents(
+  params: AgentEventsParams,
+): Computed<Promise<AgentEventsResponse | null>> {
+  return computed(async (get): Promise<AgentEventsResponse | null> => {
+    const db = get(db$);
+
+    // Verify ownership and get the run metadata needed by the Activity reader.
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        createdAt: agentRuns.createdAt,
+        status: agentRuns.status,
+        lastEventSequence: agentRuns.lastEventSequence,
+      })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.id, params.runId),
+          eq(agentRuns.userId, params.userId),
+          eq(agentRuns.orgId, params.orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!run) {
+      return null;
+    }
+
+    const { limit, order } = params;
+    const previousCursorValue = sequenceCursorValue(params.cursor, order);
+
+    const dataset = getDatasetName("agent-run-events");
+    const paginationFilter = buildAgentEventPaginationFilters(params);
+    const apl = `['${dataset}']
+| where runId == "${escapeAplString(params.runId)}"
+| where _time >= datetime("${run.createdAt.toISOString()}")
+${paginationFilter}
+| order by sequenceNumber ${order}
+| limit ${limit + 1}`;
+
+    const events = (
+      await get(queryAxiom<AxiomAgentEvent>(apl, { noCache: true }))
+    ).slice();
+
+    const pageHasMore = events.length > limit;
+    const resultEvents = pageHasMore ? events.slice(0, limit) : events;
+    const nextCursor = nextSequenceCursor(
+      resultEvents,
+      pageHasMore,
+      order,
+      previousCursorValue,
+    );
+    const hasMore = nextCursor !== null;
+
+    return {
+      events: resultEvents.map((e) => {
+        return {
+          sequenceNumber: e.sequenceNumber,
+          eventType: e.eventType,
+          eventData: e.eventData,
+          createdAt: e._time,
+        } satisfies RunEvent;
+      }),
+      hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
+      status: runStatusSchema.parse(run.status),
+      lastEventSequence: run.lastEventSequence,
+    };
+  });
+}
+
 export function zeroRunNetworkLogs(
   params: NetworkLogsParams,
 ): Computed<Promise<NetworkLogsResponse | null>> {

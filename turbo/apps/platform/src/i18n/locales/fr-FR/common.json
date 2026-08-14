@@ -1712,6 +1712,9 @@
       "frequentlyUsed": "Fréquemment utilisé",
       "icon": "Icône de fil de discussion",
       "loadingEarlier": "Chargement des messages précédents",
+      "locator": {
+        "you": "Vous"
+      },
       "noEmojiFound": "Aucun emoji trouvé",
       "notFound": "Fil de discussion introuvable",
       "openArtifacts": "Ouvrir les artéfacts",
@@ -4385,6 +4388,24 @@
           "enabled_many": "Activé pour les prochaines exécutions de {{count}}",
           "enabled_other": "Activé pour les prochaines exécutions de {{count}}",
           "title": "Capturer les corps réseau"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "Attentes actives",
+          "blurred": "sans focus",
+          "channel": "canal",
+          "clear": "Effacer",
+          "connection": "connexion",
+          "copyJson": "Copier le JSON",
+          "description": "Inspectez le cycle de vie du navigateur, la récupération de l'authentification et les signaux de connexion Ably.",
+          "empty": "Aucun événement de diagnostic enregistré.",
+          "events": "événements",
+          "focused": "avec focus",
+          "log": "Journal des événements",
+          "offline": "hors ligne",
+          "online": "en ligne",
+          "recovery": "récupération",
+          "title": "Diagnostic de connexion en temps réel",
+          "unavailable": "indisponible"
         },
         "tab": "Débogage"
       },

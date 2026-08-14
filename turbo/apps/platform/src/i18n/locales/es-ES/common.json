@@ -1712,6 +1712,9 @@
       "frequentlyUsed": "Usados con frecuencia",
       "icon": "Icono del hilo de chat",
       "loadingEarlier": "Cargando mensajes anteriores",
+      "locator": {
+        "you": "Tú"
+      },
       "noEmojiFound": "No se ha encontrado ningún emoji",
       "notFound": "Hilo de chat no encontrado",
       "openArtifacts": "Abrir artefactos",
@@ -4385,6 +4388,24 @@
           "enabled_many": "Activado para las próximas {{count}} ejecuciones",
           "enabled_other": "Activado para las próximas {{count}} ejecuciones",
           "title": "Capturar cuerpos de red"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "Esperas activas",
+          "blurred": "sin foco",
+          "channel": "canal",
+          "clear": "Borrar",
+          "connection": "conexión",
+          "copyJson": "Copiar JSON",
+          "description": "Inspecciona el ciclo de vida del navegador, la recuperación de autenticación y las señales de conexión de Ably.",
+          "empty": "No se registraron eventos de diagnóstico.",
+          "events": "eventos",
+          "focused": "con foco",
+          "log": "Registro de eventos",
+          "offline": "sin conexión",
+          "online": "en línea",
+          "recovery": "recuperación",
+          "title": "Diagnóstico de conexión en tiempo real",
+          "unavailable": "no disponible"
         },
         "tab": "Depuración"
       },

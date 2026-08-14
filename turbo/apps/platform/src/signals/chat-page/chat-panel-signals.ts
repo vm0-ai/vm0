@@ -24,6 +24,7 @@ import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
+import type { ChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 
 type RecommendedFollowup = ChatRecommendedFollowup;
 
@@ -150,6 +151,8 @@ export interface ChatPanelSignals {
   readonly readyScrollAfterRenderRequest$: Computed<
     Promise<ReadyScrollAfterRenderRequest | null>
   >;
+  /** The mounted scroll viewport, for readers that measure it themselves. */
+  readonly scrollContainer$: Computed<HTMLElement | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
@@ -169,6 +172,7 @@ export interface ChatPanelSignals {
   readonly composer: ComposerSignals;
   readonly feedback: ChatThreadFeedbackSignals;
   readonly sharing: ChatThreadSharingSignals;
+  readonly locator: ChatConversationLocatorSignals;
   // -- Thread-owned automation resources -----------------------------------
   readonly headerAutomations: HeaderAutomationSignals;
   // -- Thread-owned utility sidebar -----------------------------------------

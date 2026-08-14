@@ -3,6 +3,10 @@ import type {
   LogStatus,
   TriggerSource,
 } from "@okouai/api-contracts/contracts/logs";
+import type {
+  AgentEventsResponse as ApiAgentEventsResponse,
+  RunEvent,
+} from "@okouai/api-contracts/contracts/runs";
 import { i18n } from "../../i18n/index.ts";
 
 // Re-export from core contract to stay in sync with the API schema
@@ -109,10 +113,5 @@ export interface LogDetail {
   artifact: Artifact;
 }
 
-// Agent event from telemetry API
-export interface AgentEvent {
-  sequenceNumber: number;
-  eventType: string;
-  eventData: unknown;
-  createdAt: string;
-}
+export type AgentEvent = RunEvent;
+export type AgentEventsResponse = ApiAgentEventsResponse;

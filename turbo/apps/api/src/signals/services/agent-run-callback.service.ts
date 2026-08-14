@@ -6,7 +6,7 @@ import { and, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
-import type { Db } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import { settle, tapError } from "../utils";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
@@ -34,7 +34,7 @@ import {
   handleWorkflowAutomationInternalCallback,
   handleWorkflowAutomationInternalCallback$,
 } from "./zero-workflow-automation-run-callback.service";
-import { continueGoalIfIdle$ } from "./zero-goal-continuation.service";
+import { handleTerminalGoalContinuation$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");
 
@@ -109,11 +109,13 @@ interface DispatchInternalRunCallbackInput {
   readonly result?: Record<string, unknown>;
   readonly error?: string;
   readonly kind: InternalRunCallbackKind;
+  readonly handleTerminalGoal: boolean;
 }
 
 interface DispatchInternalCallbackInput {
   readonly kind: InternalRunCallbackKind;
   readonly envelope: InternalRunCallbackEnvelope;
+  readonly handleTerminalGoal: boolean;
 }
 
 const dispatchInternalCallback$ = command(
@@ -130,6 +132,7 @@ const dispatchInternalCallback$ = command(
         };
       }
       case "chat": {
+        const db = set(writeDb$);
         return await set(
           handleChatInternalCallback$,
           {
@@ -145,6 +148,26 @@ const dispatchInternalCallback$ = command(
                 inputSignal,
               );
             },
+            handleTerminalGoal: input.handleTerminalGoal
+              ? async (runId, inputSignal) => {
+                  await tapError(
+                    set(
+                      handleTerminalGoalContinuation$,
+                      {
+                        db,
+                        runId,
+                      },
+                      inputSignal,
+                    ),
+                    (error) => {
+                      L.error("Goal continuation dispatch failed", {
+                        runId,
+                        error,
+                      });
+                    },
+                  );
+                }
+              : undefined,
           },
           signal,
         );
@@ -226,6 +249,7 @@ const dispatchSingleInternalCallback$ = command(
         {
           kind: input.kind,
           envelope: callbackEnvelope(input),
+          handleTerminalGoal: input.handleTerminalGoal,
         },
         signal,
       ),
@@ -425,9 +449,14 @@ export const dispatchRunCallbacks$ = command(
     signal.throwIfAborted();
 
     const results: DispatchResult[] = [];
+    let terminalGoalOwnedByChatCallback = false;
     for (const callback of callbacks) {
       const internalKind = internalRunCallbackKindForRecord(callback);
-      const dispatchResult = internalKind
+      const handleTerminalGoal: boolean =
+        redriveChatCallbackId === undefined &&
+        internalKind === "chat" &&
+        !terminalGoalOwnedByChatCallback;
+      const dispatchResult: DispatchResult = internalKind
         ? await set(
             dispatchSingleInternalCallback$,
             {
@@ -438,6 +467,7 @@ export const dispatchRunCallbacks$ = command(
               result,
               error,
               kind: internalKind,
+              handleTerminalGoal,
             },
             signal,
           )
@@ -452,15 +482,19 @@ export const dispatchRunCallbacks$ = command(
           });
       signal.throwIfAborted();
       results.push(dispatchResult);
+      terminalGoalOwnedByChatCallback ||=
+        handleTerminalGoal && dispatchResult.success;
     }
-    if (redriveChatCallbackId === undefined) {
+    if (
+      redriveChatCallbackId === undefined &&
+      !terminalGoalOwnedByChatCallback
+    ) {
       await tapError(
         set(
-          continueGoalIfIdle$,
+          handleTerminalGoalContinuation$,
           {
             db,
             runId,
-            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           },
           signal,
         ),

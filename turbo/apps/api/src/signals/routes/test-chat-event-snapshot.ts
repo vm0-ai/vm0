@@ -5,6 +5,7 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { snapshotChatEvents$ } from "../services/cron-snapshot-chat-events.service";
+import { recordChatEventSnapshotCompleted } from "./cron-snapshot-chat-events";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -32,6 +33,7 @@ const snapshotChatEventFixturesRoute$ = command(
       signal,
     );
     signal.throwIfAborted();
+    recordChatEventSnapshotCompleted(result);
     return {
       status: 200 as const,
       body: { success: true as const, ...result },

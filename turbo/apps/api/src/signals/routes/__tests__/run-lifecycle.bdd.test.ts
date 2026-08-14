@@ -4916,6 +4916,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sequence: 1,
       resource: undefined,
     });
+    // An unrelated runner's heartbeat must not drop this runner's retained
+    // snapshot. Parallel test files share one database and perform incidental
+    // claim setup under their own mocked clocks, so this heartbeat is issued
+    // far ahead of `baseTime` to pin the stale-runner pruning boundary.
+    mockNow(baseTime + 9 * 60 * 60 * 1000);
+    await api.heartbeatRunner(runnerGroup);
+    mockNow(baseTime + 5000);
     await expectReusePreference("reusableSandbox");
 
     mockNow(baseTime + 20_000);

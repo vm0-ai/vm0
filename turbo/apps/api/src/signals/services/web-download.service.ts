@@ -14,7 +14,7 @@ interface DownloadFileResult {
  * Locate and download a user-owned file by its file ID and owning user.
  * Returns null when no matching S3 object exists.
  */
-export function zeroWebDownloadFile(
+export function webDownloadFile(
   fileId: string,
   userId: string,
 ): Computed<Promise<DownloadFileResult | null>> {

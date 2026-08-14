@@ -18,6 +18,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
@@ -233,16 +234,14 @@ async function postWebhook(rawBody: string): Promise<{
   return { status: response.status, body: await response.json() };
 }
 
-function eventContextFromPrompt(
-  appendSystemPrompt: string,
-): Record<string, unknown> {
-  const marker = "# This run's event\n";
-  const markerIndex = appendSystemPrompt.indexOf(marker);
+function eventContextFromAgentPrompt(prompt: string): Record<string, unknown> {
+  const marker = "\nEvent data:\n";
+  const markerIndex = prompt.indexOf(marker);
   if (markerIndex === -1) {
-    throw new Error("Expected automation event payload in appendSystemPrompt");
+    throw new Error("Expected automation event payload in the agent prompt");
   }
   const parsed = JSON.parse(
-    appendSystemPrompt.slice(markerIndex + marker.length),
+    prompt.slice(markerIndex + marker.length),
   ) as unknown;
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("Expected automation event payload object");
@@ -269,7 +268,10 @@ describe("Google Forms Pub/Sub webhook", () => {
     await updateFeatureSwitchesForUser(
       context,
       { orgId: actor.orgId, userId: actor.userId },
-      { [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true },
+      {
+        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+        [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
+      },
     );
     mockGoogleFormsConnectorOAuth();
     await workflows.connectConnector(actor, "google-forms");
@@ -326,6 +328,18 @@ describe("Google Forms Pub/Sub webhook", () => {
     );
 
     const events = await workflows.readThreadEvents(created.body.chatThreadId);
+    const visibleEvent = events.find((event) => {
+      return (
+        event.eventType === "input.automation" ||
+        event.eventType === "input.prompt"
+      );
+    });
+    if (!visibleEvent) {
+      throw new Error("Expected a visible Google Forms automation event");
+    }
+    expect(chatEventDisplayText(visibleEvent)).toBe(
+      `A new response from respondent@example.test was submitted to Google Form "${FORM_TITLE}".`,
+    );
     const runId = events.find((event) => {
       return event.eventType === "input.prompt" && event.runId;
     })?.runId;
@@ -334,10 +348,7 @@ describe("Google Forms Pub/Sub webhook", () => {
     }
     await runs.heartbeatRunner(RUNNER_GROUP);
     const claim = await runs.claimRunnerJob(runId);
-    if (typeof claim.appendSystemPrompt !== "string") {
-      throw new Error("Expected appendSystemPrompt on the claimed run");
-    }
-    const eventContext = eventContextFromPrompt(claim.appendSystemPrompt);
+    const eventContext = eventContextFromAgentPrompt(claim.prompt);
     expect(eventContext).toStrictEqual({
       automationId: created.body.id,
       formId: FORM_ID,
@@ -351,6 +362,8 @@ describe("Google Forms Pub/Sub webhook", () => {
       previouslyDelivered: false,
     });
     expect(eventContext).not.toHaveProperty("answers");
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
 
     const retry = await postWebhook(push);
     expect(retry).toStrictEqual({

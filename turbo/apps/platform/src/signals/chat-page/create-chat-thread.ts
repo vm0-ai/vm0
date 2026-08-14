@@ -209,6 +209,7 @@ import {
 } from "./chat-goal.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import { createChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 import type {
   ChatEventSignals,
   SendChatEventInput,
@@ -3881,6 +3882,10 @@ function createChatPanelSignalsWithDraft(
     ...artifact,
   };
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
+  const locator = createChatConversationLocatorSignals({
+    threadId,
+    scrollContainer$: messages.scroll.scrollContainer$,
+  });
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
@@ -3900,6 +3905,7 @@ function createChatPanelSignalsWithDraft(
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
     scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,
+    scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
     awayFromBottom$: messages.scroll.awayFromBottom$,
     scrollTo$: messages.scroll.scrollTo$,
@@ -3909,6 +3915,7 @@ function createChatPanelSignalsWithDraft(
     composer,
     feedback,
     sharing,
+    locator,
     ...threadOwned,
     sidebar: messages.sidebar,
     ...publicChatThreadEventSignals(messages),

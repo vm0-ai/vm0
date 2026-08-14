@@ -1,5 +1,117 @@
 # Changelog
 
+## [1.446.0](https://github.com/vm0-ai/vm0/compare/api-v1.445.5...api-v1.446.0) (2026-08-14)
+
+
+### Features
+
+* **connectors:** add playstation store web session ([#26923](https://github.com/vm0-ai/vm0/issues/26923)) ([9ff65da](https://github.com/vm0-ai/vm0/commit/9ff65da32860adc04ec37c526a39f1ef16d72a60))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.9
+    * @okouai/connectors bumped to 1.206.0
+    * @okouai/core bumped to 8.559.3
+    * @okouai/db bumped to 1.198.11
+    * @okouai/pi-agent-runtime bumped to 1.4.17
+
+## [1.445.5](https://github.com/vm0-ai/vm0/compare/api-v1.445.4...api-v1.445.5) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.198.10
+
+## [1.445.4](https://github.com/vm0-ai/vm0/compare/api-v1.445.3...api-v1.445.4) (2026-08-13)
+
+
+### Refactoring
+
+* **web-files:** neutralize private web file modules ([#27029](https://github.com/vm0-ai/vm0/issues/27029)) ([66e73ca](https://github.com/vm0-ai/vm0/commit/66e73cafc219d273a91aa383c5edbbb7e28ee465))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.8
+    * @okouai/core bumped to 8.559.2
+    * @okouai/db bumped to 1.198.9
+    * @okouai/pi-agent-runtime bumped to 1.4.16
+
+## [1.445.3](https://github.com/vm0-ai/vm0/compare/api-v1.445.2...api-v1.445.3) (2026-08-13)
+
+
+### Refactoring
+
+* **api:** neutralize web push module names ([#27028](https://github.com/vm0-ai/vm0/issues/27028)) ([4db851a](https://github.com/vm0-ai/vm0/commit/4db851a12f168bf450082da90a698b1460719b21))
+* **api:** rename platform realtime token route shell ([#27023](https://github.com/vm0-ai/vm0/issues/27023)) ([d3505a0](https://github.com/vm0-ai/vm0/commit/d3505a077b47dd8c2521f325dc9097fc7e04a83d))
+* **morning-brief:** neutralize manual trigger shell ([#27027](https://github.com/vm0-ai/vm0/issues/27027)) ([ed36ad6](https://github.com/vm0-ai/vm0/commit/ed36ad6fded5ea236b41ce87eb0af8b36aa5b048))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.7
+    * @okouai/core bumped to 8.559.1
+    * @okouai/db bumped to 1.198.8
+    * @okouai/pi-agent-runtime bumped to 1.4.15
+
+## [1.445.2](https://github.com/vm0-ai/vm0/compare/api-v1.445.1...api-v1.445.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **api:** record chat event snapshot completion ([#27019](https://github.com/vm0-ai/vm0/issues/27019)) ([577cfc1](https://github.com/vm0-ai/vm0/commit/577cfc1a1bb252e760e9bda9b694e39f937b9f33))
+* **platform:** restore activity event log ([#27004](https://github.com/vm0-ai/vm0/issues/27004)) ([0ebee7b](https://github.com/vm0-ai/vm0/commit/0ebee7b8eeefbe07d638c86479a22dcea7dfa73e))
+
+
+### Performance Improvements
+
+* **api:** attribute pi launch resource latency ([#27012](https://github.com/vm0-ai/vm0/issues/27012)) ([4e02383](https://github.com/vm0-ai/vm0/commit/4e02383aea54de5ab2e1092ea949e82e41b57c48))
+* **api:** avoid duplicate goal run preparation ([#27008](https://github.com/vm0-ai/vm0/issues/27008)) ([3a4fafb](https://github.com/vm0-ai/vm0/commit/3a4fafb1b968bcd2127f1d7bda0c7a01ccd334ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.6
+    * @okouai/core bumped to 8.559.0
+    * @okouai/db bumped to 1.198.7
+    * @okouai/pi-agent-runtime bumped to 1.4.14
+
+## [1.445.1](https://github.com/vm0-ai/vm0/compare/api-v1.445.0...api-v1.445.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **api:** drain orphaned workflow automation events ([#27001](https://github.com/vm0-ai/vm0/issues/27001)) ([85e2e74](https://github.com/vm0-ai/vm0/commit/85e2e7492cc44e0d465aaa4ff079a64357e3154f))
+* **chat:** normalize duplicate snapshot event ids ([#27007](https://github.com/vm0-ai/vm0/issues/27007)) ([1dabd70](https://github.com/vm0-ai/vm0/commit/1dabd70b26cb833dd0673e8ff1c02ebf686df139))
+
+
+### Refactoring
+
+* **artifacts:** rename artifact catalog route shell ([#27002](https://github.com/vm0-ai/vm0/issues/27002)) ([3a15a8b](https://github.com/vm0-ai/vm0/commit/3a15a8bb568093a3323ebb606bfb0786e26b996a))
+* **chat:** remove unified indicator api fallback ([#27006](https://github.com/vm0-ai/vm0/issues/27006)) ([2dde1fd](https://github.com/vm0-ai/vm0/commit/2dde1fd5a9484199da407cf1dc83815dfdc35add))
+* **logs:** neutralize the logs API modules ([#26996](https://github.com/vm0-ai/vm0/issues/26996)) ([cc2db86](https://github.com/vm0-ai/vm0/commit/cc2db861dbbb832336f7a6486c166fbdba2e618d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.5
+    * @okouai/core bumped to 8.558.0
+    * @okouai/db bumped to 1.198.6
+    * @okouai/pi-agent-runtime bumped to 1.4.13
+
 ## [1.445.0](https://github.com/vm0-ai/vm0/compare/api-v1.444.3...api-v1.445.0) (2026-08-13)
 
 

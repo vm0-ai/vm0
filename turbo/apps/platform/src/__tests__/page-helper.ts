@@ -105,6 +105,7 @@ export async function setupPage(options: {
     pendingInvitations?: MockedInvitation[];
   };
   debugLoggers?: string[];
+  cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   withoutRender?: boolean;
 }) {
@@ -135,11 +136,14 @@ export async function setupPage(options: {
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }
+  const cachedFeatureSwitchOverrides = {
+    ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
+  };
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
     getAllFeatureStates({
       orgId: activeOrgId,
-      overrides: featureSwitchOverrides,
+      overrides: cachedFeatureSwitchOverrides,
     }),
   );
 

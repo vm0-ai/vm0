@@ -8,7 +8,7 @@ import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { zeroWebDownloadRoutes } from "../zero-web-download";
+import { webDownloadRoutes } from "../web-download";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
@@ -131,7 +131,7 @@ function requestDownload(args: {
     : {};
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: zeroWebDownloadRoutes,
+    routes: webDownloadRoutes,
   });
   return Promise.resolve(
     app.request(`${ROUTE}${search}`, { method: "GET", headers }),

@@ -1,5 +1,92 @@
 # Changelog
 
+## [0.747.3](https://github.com/vm0-ai/vm0/compare/app-v0.747.2...app-v0.747.3) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.9
+    * @okouai/connectors bumped to 1.206.0
+    * @okouai/core bumped to 8.559.3
+
+## [0.747.2](https://github.com/vm0-ai/vm0/compare/app-v0.747.1...app-v0.747.2) (2026-08-13)
+
+
+### Refactoring
+
+* **web-files:** neutralize private web file modules ([#27029](https://github.com/vm0-ai/vm0/issues/27029)) ([66e73ca](https://github.com/vm0-ai/vm0/commit/66e73cafc219d273a91aa383c5edbbb7e28ee465))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.8
+    * @okouai/core bumped to 8.559.2
+
+## [0.747.1](https://github.com/vm0-ai/vm0/compare/app-v0.747.0...app-v0.747.1) (2026-08-13)
+
+
+### Refactoring
+
+* **morning-brief:** neutralize manual trigger shell ([#27027](https://github.com/vm0-ai/vm0/issues/27027)) ([ed36ad6](https://github.com/vm0-ai/vm0/commit/ed36ad6fded5ea236b41ce87eb0af8b36aa5b048))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.7
+    * @okouai/core bumped to 8.559.1
+
+## [0.747.0](https://github.com/vm0-ai/vm0/compare/app-v0.746.0...app-v0.747.0) (2026-08-13)
+
+
+### Features
+
+* add conversation locator rail behind a feature switch ([#26052](https://github.com/vm0-ai/vm0/issues/26052)) ([f50df2d](https://github.com/vm0-ai/vm0/commit/f50df2d6786a4646ca110921e78ebd63eab63038))
+* **chat:** stack every message a user sent back to back ([#27014](https://github.com/vm0-ai/vm0/issues/27014)) ([8e8586b](https://github.com/vm0-ai/vm0/commit/8e8586bf34fc335fe6d28ff4a4eb151d606db726))
+
+
+### Bug Fixes
+
+* **platform:** restore activity event log ([#27004](https://github.com/vm0-ai/vm0/issues/27004)) ([0ebee7b](https://github.com/vm0-ai/vm0/commit/0ebee7b8eeefbe07d638c86479a22dcea7dfa73e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.6
+    * @okouai/core bumped to 8.559.0
+
+## [0.746.0](https://github.com/vm0-ai/vm0/compare/app-v0.745.0...app-v0.746.0) (2026-08-13)
+
+
+### Features
+
+* **platform:** add realtime connection diagnostics ([#26995](https://github.com/vm0-ai/vm0/issues/26995)) ([a30413a](https://github.com/vm0-ai/vm0/commit/a30413a31b7186088360882aace86a60eaddec66))
+
+
+### Bug Fixes
+
+* **platform:** close realtime in hidden tabs ([#26964](https://github.com/vm0-ai/vm0/issues/26964)) ([410e2b2](https://github.com/vm0-ai/vm0/commit/410e2b250c133fb95ef925d91c856a064563c105))
+
+
+### Refactoring
+
+* **chat:** remove unified indicator api fallback ([#27006](https://github.com/vm0-ai/vm0/issues/27006)) ([2dde1fd](https://github.com/vm0-ai/vm0/commit/2dde1fd5a9484199da407cf1dc83815dfdc35add))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.5
+    * @okouai/core bumped to 8.558.0
+
 ## [0.745.0](https://github.com/vm0-ai/vm0/compare/app-v0.744.0...app-v0.745.0) (2026-08-13)
 
 

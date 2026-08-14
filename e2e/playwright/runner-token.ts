@@ -1,12 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
+import { clerkSetup } from "@clerk/testing/playwright";
 import { chromium, type Page } from "@playwright/test";
 
 import {
   refreshClerkSessionToken,
-  signInWithClerkTestingHelper,
+  signInWithLoadedClerkTestingHelper,
+  withLoadedClerkTestingPage,
 } from "./lib/auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
@@ -78,52 +79,54 @@ async function main(): Promise<void> {
   const browser = await chromium.launch();
   try {
     for (const target of targets) {
-      const context = await browser.newContext({
-        ignoreHTTPSErrors: true,
-        extraHTTPHeaders: vercelAutomationBypassSecret
-          ? {
-              "x-vercel-protection-bypass": vercelAutomationBypassSecret,
-            }
-          : undefined,
-      });
-      try {
-        await setupClerkTestingToken({ context });
-        const page = await context.newPage();
-        let clerkSessionToken = await signInWithClerkTestingHelper(
-          page,
-          target.email,
+      await withLoadedClerkTestingPage(
+        browser,
+        {
           appUrl,
-          { activeOrganizationId: target.organizationId },
-        );
-        await ensureRunnerOrganizationReady({
-          apiUrl,
-          clerkSessionToken,
-          vercelAutomationBypassSecret,
-        });
-        if (target.upgradeToPro) {
-          await completePaidOnboarding(page, target, appUrl, outputDirectory);
-          clerkSessionToken = await refreshClerkSessionToken(page, {
-            activeOrganizationId: target.organizationId,
+          contextOptions: {
+            ignoreHTTPSErrors: true,
+            extraHTTPHeaders: vercelAutomationBypassSecret
+              ? {
+                  "x-vercel-protection-bypass": vercelAutomationBypassSecret,
+                }
+              : undefined,
+          },
+        },
+        async (page) => {
+          let clerkSessionToken = await signInWithLoadedClerkTestingHelper(
+            page,
+            target.email,
+            appUrl,
+            { activeOrganizationId: target.organizationId },
+          );
+          await ensureRunnerOrganizationReady({
+            apiUrl,
+            clerkSessionToken,
+            vercelAutomationBypassSecret,
           });
-        }
-        const token = await issueCliToken({
-          apiUrl,
-          clerkSessionToken,
-          vercelAutomationBypassSecret,
-        });
-        const outputFile = join(outputDirectory, target.fileName);
-        await writeFile(
-          outputFile,
-          `${JSON.stringify({ token, apiUrl }, null, 2)}\n`,
-          { encoding: "utf8", mode: 0o600 },
-        );
-        console.log("Generated runner E2E API credential", {
-          email: target.email,
-          outputFile,
-        });
-      } finally {
-        await context.close();
-      }
+          if (target.upgradeToPro) {
+            await completePaidOnboarding(page, target, appUrl, outputDirectory);
+            clerkSessionToken = await refreshClerkSessionToken(page, {
+              activeOrganizationId: target.organizationId,
+            });
+          }
+          const token = await issueCliToken({
+            apiUrl,
+            clerkSessionToken,
+            vercelAutomationBypassSecret,
+          });
+          const outputFile = join(outputDirectory, target.fileName);
+          await writeFile(
+            outputFile,
+            `${JSON.stringify({ token, apiUrl }, null, 2)}\n`,
+            { encoding: "utf8", mode: 0o600 },
+          );
+          console.log("Generated runner E2E API credential", {
+            email: target.email,
+            outputFile,
+          });
+        },
+      );
     }
   } finally {
     await browser.close();

@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroWebFilesContract } from "@okouai/api-contracts/contracts/zero-web-files";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 
 import { env } from "../../lib/env";
 import { notFound } from "../../lib/error";
@@ -16,7 +16,7 @@ const FILE_URL_TTL_SECONDS = 2 * 60 * 60;
 
 const fileUrlInner$ = computed(async (get) => {
   const auth = get(authContext$);
-  const params = get(queryOf(zeroWebFilesContract.fileUrl));
+  const params = get(queryOf(webFilesContract.fileUrl));
 
   const object = await get(resolvedArtifactObject(auth.userId, params.file_id));
   if (!object) {
@@ -38,9 +38,9 @@ const fileUrlInner$ = computed(async (get) => {
   return { status: 200 as const, body: { url } };
 });
 
-export const zeroWebFileUrlRoutes: readonly RouteEntry[] = [
+export const webFileUrlRoutes: readonly RouteEntry[] = [
   {
-    route: zeroWebFilesContract.fileUrl,
+    route: webFilesContract.fileUrl,
     handler: authRoute(
       {
         requireOrganization: false,

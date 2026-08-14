@@ -1671,6 +1671,9 @@
       "frequentlyUsed": "頻繁に使用される",
       "icon": "チャットスレッドアイコン",
       "loadingEarlier": "以前のメッセージを読み込んでいます",
+      "locator": {
+        "you": "あなた"
+      },
       "noEmojiFound": "絵文字が見つかりませんでした",
       "notFound": "チャットスレッドが見つかりません",
       "openArtifacts": "オープンアーティファクト",
@@ -4332,6 +4335,24 @@
           "enabled_one": "次回の {{count}} の実行で有効になります",
           "enabled_other": "次回の {{count}} の実行に対して有効になります",
           "title": "ネットワーク本体をキャプチャする"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "処理中の待機",
+          "blurred": "フォーカス外",
+          "channel": "チャネル",
+          "clear": "消去",
+          "connection": "接続",
+          "copyJson": "JSON をコピー",
+          "description": "ブラウザーのライフサイクル、認証の復旧、Ably 接続シグナルを確認します。",
+          "empty": "診断イベントは記録されていません。",
+          "events": "イベント",
+          "focused": "フォーカス中",
+          "log": "イベントログ",
+          "offline": "オフライン",
+          "online": "オンライン",
+          "recovery": "復旧",
+          "title": "リアルタイム接続診断",
+          "unavailable": "利用不可"
         },
         "tab": "デバッグ"
       },

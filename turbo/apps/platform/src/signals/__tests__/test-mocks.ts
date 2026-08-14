@@ -7,6 +7,7 @@ import {
   hasSubscription,
   rejectAblySubscribe,
   rejectNextAblySubscribe,
+  triggerAblyConnectionState,
   triggerAblyConnectionClosed,
   triggerAblyEvent,
   triggerAblyFailure,
@@ -320,6 +321,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
     },
     ably: {
       trigger: triggerAblyEvent,
+      triggerConnectionState: triggerAblyConnectionState,
       triggerFailure: triggerAblyFailure,
       triggerReconnect: triggerAblyReconnect,
       triggerReauth: triggerAblyReauth,

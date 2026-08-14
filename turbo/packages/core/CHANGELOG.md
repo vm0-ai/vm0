@@ -1,5 +1,65 @@
 # Changelog
 
+## [8.559.3](https://github.com/vm0-ai/vm0/compare/core-v8.559.2...core-v8.559.3) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.9
+
+## [8.559.2](https://github.com/vm0-ai/vm0/compare/core-v8.559.1...core-v8.559.2) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.8
+
+## [8.559.1](https://github.com/vm0-ai/vm0/compare/core-v8.559.0...core-v8.559.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.7
+
+## [8.559.0](https://github.com/vm0-ai/vm0/compare/core-v8.558.0...core-v8.559.0) (2026-08-13)
+
+
+### Features
+
+* add conversation locator rail behind a feature switch ([#26052](https://github.com/vm0-ai/vm0/issues/26052)) ([f50df2d](https://github.com/vm0-ai/vm0/commit/f50df2d6786a4646ca110921e78ebd63eab63038))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.6
+
+## [8.558.0](https://github.com/vm0-ai/vm0/compare/core-v8.557.0...core-v8.558.0) (2026-08-13)
+
+
+### Features
+
+* **platform:** add realtime connection diagnostics ([#26995](https://github.com/vm0-ai/vm0/issues/26995)) ([a30413a](https://github.com/vm0-ai/vm0/commit/a30413a31b7186088360882aace86a60eaddec66))
+
+
+### Refactoring
+
+* **chat:** remove unified indicator api fallback ([#27006](https://github.com/vm0-ai/vm0/issues/27006)) ([2dde1fd](https://github.com/vm0-ai/vm0/commit/2dde1fd5a9484199da407cf1dc83815dfdc35add))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.5
+
 ## [8.557.0](https://github.com/vm0-ai/vm0/compare/core-v8.556.1...core-v8.557.0) (2026-08-13)
 
 

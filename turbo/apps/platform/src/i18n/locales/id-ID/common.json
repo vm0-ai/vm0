@@ -1671,6 +1671,9 @@
       "frequentlyUsed": "Sering digunakan",
       "icon": "Ikon thread chat",
       "loadingEarlier": "Memuat pesan sebelumnya",
+      "locator": {
+        "you": "Anda"
+      },
       "noEmojiFound": "Emoji tidak ditemukan",
       "notFound": "Utas chat tidak ditemukan",
       "openArtifacts": "Buka artefak",
@@ -4332,6 +4335,24 @@
           "enabled_one": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "enabled_other": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "title": "Tangkap body jaringan"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "Penantian aktif",
+          "blurred": "tidak fokus",
+          "channel": "kanal",
+          "clear": "Hapus",
+          "connection": "koneksi",
+          "copyJson": "Salin JSON",
+          "description": "Periksa siklus hidup browser, pemulihan autentikasi, dan sinyal koneksi Ably.",
+          "empty": "Tidak ada peristiwa diagnostik yang direkam.",
+          "events": "peristiwa",
+          "focused": "fokus",
+          "log": "Log peristiwa",
+          "offline": "luring",
+          "online": "daring",
+          "recovery": "pemulihan",
+          "title": "Diagnostik koneksi waktu nyata",
+          "unavailable": "tidak tersedia"
         },
         "tab": "Debug"
       },
