@@ -41,10 +41,21 @@ const upgradeDatabase = `migration_zero_runs_stage_6_upgrade_${process.pid}`;
 const freshDatabase = `migration_zero_runs_stage_6_fresh_${process.pid}`;
 const lifecycleRunId = "00000000-0000-4000-8000-000000092401";
 const productRunId = "00000000-0000-4000-8000-000000092402";
+const catalogScaleRoutineCount = 160;
+const catalogRoutineDelaySeconds = 0.07;
 
 function databaseConnectionUrl(databaseName: string): string {
   const url = new URL(databaseUrl);
   url.pathname = `/${databaseName}`;
+  return url.toString();
+}
+
+function catalogLatencyConnectionUrl(databaseName: string): string {
+  const url = new URL(databaseConnectionUrl(databaseName));
+  url.searchParams.set(
+    "options",
+    "-c search_path=stage6_catalog_latency,pg_catalog,public",
+  );
   return url.toString();
 }
 
@@ -408,6 +419,40 @@ async function validateCatalogPreflight(args: {
   });
 }
 
+async function installCatalogLatencyFixture(client: Client): Promise<void> {
+  // A newly created Neon branch can deparse user routines from cold catalog
+  // pages. Put this latency shim ahead of pg_catalog only on the runner test
+  // connection so the actual 0924 DO statement deterministically exceeds its
+  // published 10-second cumulative budget without changing the migration.
+  await client.query(`
+    CREATE SCHEMA "stage6_catalog_latency";
+    CREATE FUNCTION "stage6_catalog_latency"."pg_get_functiondef"(
+      "function_oid" oid
+    ) RETURNS text
+    LANGUAGE sql
+    AS $function$
+      SELECT pg_catalog.pg_get_functiondef("function_oid")
+      FROM pg_catalog.pg_sleep(${catalogRoutineDelaySeconds})
+    $function$;
+
+    CREATE SCHEMA "stage6_catalog_scale";
+    DO $block$
+    DECLARE
+      "routine_index" integer;
+    BEGIN
+      FOR "routine_index" IN 1..${catalogScaleRoutineCount} LOOP
+        EXECUTE format(
+          'CREATE FUNCTION stage6_catalog_scale.%I() '
+          'RETURNS integer LANGUAGE sql IMMUTABLE AS %L',
+          'catalog_probe_' || "routine_index"::text,
+          'SELECT ' || "routine_index"::text
+        );
+      END LOOP;
+    END
+    $block$;
+  `);
+}
+
 async function readAgentRunsSchema(client: Client): Promise<unknown> {
   const columns = await client.query(`
       SELECT
@@ -554,9 +599,20 @@ async function validateStage6(): Promise<void> {
       });
       await locker.query("COMMIT");
 
+      await installCatalogLatencyFixture(control);
       await runner.end();
-      runner = postgres(upgradeUrl, { max: 1 });
+      runner = postgres(catalogLatencyConnectionUrl(upgradeDatabase), {
+        max: 1,
+      });
+      const catalogMigrationStartedAt = performance.now();
       await applyPendingMigrations(runner);
+      const catalogMigrationElapsedMs =
+        performance.now() - catalogMigrationStartedAt;
+      assert.ok(
+        catalogMigrationElapsedMs >= 10_500 &&
+          catalogMigrationElapsedMs < 45_000,
+        `Expected the catalog preflight to exceed its published 10-second budget but finish within the 60-second recovery, got ${String(catalogMigrationElapsedMs)}ms`,
+      );
 
       const migratedState = await control.query<{
         appliedCount: number;
@@ -581,7 +637,7 @@ async function validateStage6(): Promise<void> {
       const upgradeSchema = await readAgentRunsSchema(control);
       await validateFreshReplay(upgradeSchema);
       console.log(
-        `Stage 6 lock failure observed after ${lockFailure.elapsedMs.toFixed(0)}ms; clean retry and fresh replay succeeded`,
+        `Stage 6 lock failure observed after ${lockFailure.elapsedMs.toFixed(0)}ms; production-scale catalog preflight completed after ${catalogMigrationElapsedMs.toFixed(0)}ms; clean retry and fresh replay succeeded`,
       );
     } finally {
       await locker.query("ROLLBACK").catch(() => {
