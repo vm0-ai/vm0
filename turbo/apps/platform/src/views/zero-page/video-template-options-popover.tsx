@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Check, ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
@@ -31,7 +31,12 @@ import {
   type VideoModelConfig,
 } from "@okouai/core/video-model-catalog";
 import { useTranslation } from "react-i18next";
-import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
+import type {
+  ComposerSignals,
+  ComposerVideoModelSignals,
+} from "../../signals/zero-page/composer-signals.ts";
+import { videoModelSelectionEnabled$ } from "../../signals/external/feature-switch.ts";
+import { userModelPreference$ } from "../../signals/external/user-model-preference.ts";
 
 /**
  * Only the values the user actually chose are persisted, so a template written
@@ -40,9 +45,12 @@ import type { ComposerSignals } from "../../signals/zero-page/composer-signals.t
 function toVideoOptionsPatch(
   next: ResolvedVideoGenerationOptions,
   modelDefaults: ResolvedVideoGenerationOptions,
+  includeLegacyModel: boolean,
 ): VideoGenerationOptions {
   return {
-    ...(next.model === DEFAULT_VIDEO_MODEL ? {} : { model: next.model }),
+    ...(includeLegacyModel && next.model !== DEFAULT_VIDEO_MODEL
+      ? { model: next.model }
+      : {}),
     ...(next.aspectRatio === modelDefaults.aspectRatio
       ? {}
       : { aspectRatio: next.aspectRatio }),
@@ -376,27 +384,29 @@ export function VideoModelPickerRow({
 function VideoSettingsPane({
   resolved,
   config,
+  showLegacyModel,
   onChange,
 }: {
   readonly resolved: ResolvedVideoGenerationOptions;
   readonly config: VideoModelConfig;
+  readonly showLegacyModel: boolean;
   readonly onChange: (next: ResolvedVideoGenerationOptions) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1.5">
-      {/* The model stays visible here as context — it is edited from its own
-          zone on the chip, so this pane never nests a second picker. */}
-      <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
-        <span className="text-[13px] text-muted-foreground">
-          {t(($) => {
-            return $.chat.templates.videoOptionsModel;
-          })}
-        </span>
-        <span className="truncate text-[13px] font-medium text-foreground">
-          {config.label}
-        </span>
-      </div>
+      {showLegacyModel && (
+        <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
+          <span className="text-[13px] text-muted-foreground">
+            {t(($) => {
+              return $.chat.templates.videoOptionsModel;
+            })}
+          </span>
+          <span className="truncate text-[13px] font-medium text-foreground">
+            {config.label}
+          </span>
+        </div>
+      )}
       <SettingsPanel>
         <VideoOptionField
           label={t(($) => {
@@ -459,12 +469,17 @@ function VideoSettingsPane({
   );
 }
 
-export function VideoTemplateOptionsPopover({
-  signals,
-  onChange,
-}: {
+interface VideoTemplateOptionsPopoverProps {
   readonly signals: ComposerSignals;
   readonly onChange: (next: GenerationTemplateRequest) => void;
+}
+
+function VideoTemplateOptionsPopoverContent({
+  signals,
+  onChange,
+  runVideoModel,
+}: VideoTemplateOptionsPopoverProps & {
+  readonly runVideoModel: VideoModel | null;
 }) {
   const { t } = useTranslation();
   const anchor = useGet(signals.template.videoTemplateOptionsAnchor$);
@@ -475,12 +490,18 @@ export function VideoTemplateOptionsPopover({
     return null;
   }
 
-  const resolved = resolveVideoGenerationOptions(value.selection.videoOptions);
+  const resolved = resolveVideoGenerationOptions({
+    ...value.selection.videoOptions,
+    ...(runVideoModel === null ? {} : { model: runVideoModel }),
+  });
   const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[resolved.model];
   const apply = (next: ResolvedVideoGenerationOptions): void => {
     // Re-resolve so a value the newly chosen model rejects falls back the same
     // way the generation service would.
-    const settled = resolveVideoGenerationOptions(next);
+    const settled = resolveVideoGenerationOptions({
+      ...next,
+      ...(runVideoModel === null ? {} : { model: runVideoModel }),
+    });
     const modelDefaults = resolveVideoGenerationOptions({
       model: settled.model,
     });
@@ -488,7 +509,11 @@ export function VideoTemplateOptionsPopover({
       ...value,
       selection: {
         ...value.selection,
-        videoOptions: toVideoOptionsPatch(settled, modelDefaults),
+        videoOptions: toVideoOptionsPatch(
+          settled,
+          modelDefaults,
+          runVideoModel === null,
+        ),
       },
     });
   };
@@ -528,9 +553,66 @@ export function VideoTemplateOptionsPopover({
         <VideoSettingsPane
           resolved={resolved}
           config={config}
+          showLegacyModel={runVideoModel === null}
           onChange={apply}
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+function ThreadVideoTemplateOptionsPopover({
+  signals,
+  videoModelSignals,
+  automaticVideoModel,
+  onChange,
+}: VideoTemplateOptionsPopoverProps & {
+  readonly videoModelSignals: ComposerVideoModelSignals;
+  readonly automaticVideoModel: VideoModel;
+}) {
+  const selectedVideoModel = useGet(videoModelSignals.selectedVideoModel$);
+  return (
+    <VideoTemplateOptionsPopoverContent
+      signals={signals}
+      runVideoModel={selectedVideoModel ?? automaticVideoModel}
+      onChange={onChange}
+    />
+  );
+}
+
+function RunOwnedVideoTemplateOptionsPopover({
+  signals,
+  onChange,
+}: VideoTemplateOptionsPopoverProps) {
+  const userPreference = useLastResolved(userModelPreference$);
+  const automaticVideoModel =
+    userPreference?.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+  if (signals.videoModel) {
+    return (
+      <ThreadVideoTemplateOptionsPopover
+        signals={signals}
+        videoModelSignals={signals.videoModel}
+        automaticVideoModel={automaticVideoModel}
+        onChange={onChange}
+      />
+    );
+  }
+  return (
+    <VideoTemplateOptionsPopoverContent
+      signals={signals}
+      runVideoModel={automaticVideoModel}
+      onChange={onChange}
+    />
+  );
+}
+
+export function VideoTemplateOptionsPopover(
+  props: VideoTemplateOptionsPopoverProps,
+) {
+  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
+  return videoModelSelectionEnabled ? (
+    <RunOwnedVideoTemplateOptionsPopover {...props} />
+  ) : (
+    <VideoTemplateOptionsPopoverContent {...props} runVideoModel={null} />
   );
 }

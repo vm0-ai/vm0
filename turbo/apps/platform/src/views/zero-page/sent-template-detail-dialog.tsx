@@ -9,6 +9,7 @@ import {
 } from "@okouai/ui/components/ui/dialog";
 import { findVideoTemplateItem, r2ImageTransformUrl } from "@okouai/core";
 import {
+  DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
   resolveVideoGenerationOptions,
 } from "@okouai/core/video-model-catalog";
@@ -17,6 +18,7 @@ import {
   closeSentTemplateDetail$,
   sentTemplateDetail$,
 } from "../../signals/zero-page/sent-template-detail.ts";
+import { videoModelSelectionEnabled$ } from "../../signals/external/feature-switch.ts";
 
 function SentVideoTemplateDetail({
   titleSnapshot,
@@ -26,10 +28,12 @@ function SentVideoTemplateDetail({
   readonly template: Extract<GenerationTemplateRequest, { type: "video" }>;
 }) {
   const { t } = useTranslation();
+  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
   const item = findVideoTemplateItem(template.selection.stylePresetId);
-  const resolved = resolveVideoGenerationOptions(
-    template.selection.videoOptions,
-  );
+  const resolved = resolveVideoGenerationOptions({
+    ...template.selection.videoOptions,
+    ...(videoModelSelectionEnabled ? { model: DEFAULT_VIDEO_MODEL } : {}),
+  });
   const config = VIDEO_MODEL_CONFIGS[resolved.model];
   const audio = resolved.generateAudio
     ? t(($) => {
@@ -39,12 +43,16 @@ function SentVideoTemplateDetail({
         return $.chat.templates.videoSpecAudioOff;
       });
   const rows: readonly { label: string; value: string }[] = [
-    {
-      label: t(($) => {
-        return $.chat.templates.videoOptionsModel;
-      }),
-      value: config.label,
-    },
+    ...(videoModelSelectionEnabled
+      ? []
+      : [
+          {
+            label: t(($) => {
+              return $.chat.templates.videoOptionsModel;
+            }),
+            value: config.label,
+          },
+        ]),
     {
       label: t(($) => {
         return $.chat.templates.videoOptionsRatio;
