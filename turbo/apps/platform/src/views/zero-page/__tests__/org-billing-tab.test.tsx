@@ -428,6 +428,9 @@ describe("organization billing settings", () => {
       name: "Choose a plan",
     });
     expect(choosePlanHeading).toBeInTheDocument();
+    // The plan steps are a dialog over the billing tab, not a page that
+    // replaces it, so the plan the workspace is deciding against stays visible.
+    expect(screen.getByText("No active plan")).toBeInTheDocument();
     const proPlan = await screen.findByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
     expect(proPlan).toHaveTextContent("Plan$0/month");
@@ -579,6 +582,21 @@ describe("organization billing settings", () => {
       name: "Configure member packages",
     });
 
+    // The plan steps are modal, so the settings dialog underneath is inert
+    // until the step dialog closes.
+    const packagesDialog = screen.getByRole("dialog", {
+      name: "Configure member packages",
+    });
+    click(within(packagesDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Configure member packages" }),
+      ).not.toBeInTheDocument();
+    });
+    // Closing the flow lands back on the billing overview it was opened from.
+    expect(screen.getByText("No active plan")).toBeInTheDocument();
+    expect(buttonByText("Upgrade")).toBeInTheDocument();
+
     const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
     click(within(settingsDialog).getByLabelText("Close"));
     await waitFor(() => {
@@ -589,6 +607,10 @@ describe("organization billing settings", () => {
 
     const reopenedDialog = await openSettingsFromAccountMenu("Alex Chen");
     click(buttonByText("Billing", reopenedDialog));
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    click(buttonByText("Upgrade"));
     await expect(
       screen.findByRole("heading", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
