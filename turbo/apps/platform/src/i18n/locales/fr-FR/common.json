@@ -4271,6 +4271,7 @@
         "inheritDefault": "Hériter des paramètres par défaut de l'organisation",
         "loadError": "Impossible de charger les modèles.",
         "loading": "Chargement des modèles...",
+        "manageMoreModels": "Gérer d'autres modèles",
         "models": "Modèles",
         "noConfiguredModels": "Aucun modèle configuré",
         "priceTiers": {
@@ -4285,7 +4286,8 @@
           "claudeCodeOauth": "Claude Code (jeton OAuth)",
           "deepseek": "Deepseek"
         },
-        "standard": "Standard"
+        "standard": "Standard",
+        "videoModels": "Modèles vidéo"
       },
       "policies": {
         "actionsFor": "Actions pour {{model}}",
