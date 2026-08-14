@@ -28,6 +28,7 @@ import {
 import {
   advanceChatEventSequenceAsPreviousApi,
   readChatEventSnapshotHead,
+  replaceChatEventSnapshotHeadAsPreviousApi,
   setChatEventSnapshotHeadVersion,
   validateChatEventSnapshotRollout,
 } from "./helpers/runtime-state";
@@ -988,5 +989,89 @@ describe("cron snapshot chat events", () => {
     expect(head.archive_schema_version).toBe(5);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);
     expect(head.object_key).not.toBe(parentHead.object_key);
+  }, 90_000);
+
+  it("does not re-head a stale pointer after the previous API publishes", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot legacy-writer CAS agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `snapshot-legacy-cas-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    const initialRows = await chat.listThreadEventRows(owner, threadId);
+    await runSnapshotCron([threadId]);
+    const parentHead = await readChatEventSnapshotHead(context, threadId);
+
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `snapshot-stale-publisher-tail-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+
+    const uploadStarted = createDeferredPromise<void>(context.signal);
+    const releaseUpload = createDeferredPromise<void>(context.signal);
+    installFakeChatEventR2(context, recordedPuts, async (put) => {
+      if (!put.key.startsWith(`chat-events/${threadId}/`)) {
+        return;
+      }
+      uploadStarted.resolve(undefined);
+      await releaseUpload.promise;
+    });
+    const stalePublication = runSnapshotCron([threadId]);
+    await uploadStarted.promise;
+
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `snapshot-newer-legacy-head-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    const currentRows = [
+      ...initialRows,
+      ...(await chat.listThreadEventRows(
+        owner,
+        threadId,
+        parentHead.last_seq_id,
+      )),
+    ];
+    const legacyLastRow = currentRows.at(-1);
+    if (legacyLastRow === undefined) {
+      throw new Error("Expected a terminal row for the previous API head");
+    }
+    const legacyBody = gzipSync(
+      Buffer.from(
+        currentRows
+          .map((row) => {
+            return JSON.stringify(row);
+          })
+          .join("\n") + "\n",
+      ),
+    );
+    const legacyObjectKey = `chat-events/${threadId}/${legacyLastRow.seqId.toString()}-${createHash("sha256").update(legacyBody).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(legacyObjectKey, legacyBody);
+    await replaceChatEventSnapshotHeadAsPreviousApi(context, {
+      threadId,
+      lastSeqId: legacyLastRow.seqId,
+      archiveSchemaVersion: 5,
+      objectKey: legacyObjectKey,
+    });
+    const previousApiHead = await readChatEventSnapshotHead(context, threadId);
+    expect(previousApiHead).toMatchObject({
+      last_event_id: legacyLastRow.id,
+      last_seq_id: legacyLastRow.seqId,
+      object_key: legacyObjectKey,
+      snapshot_count: 2,
+    });
+
+    releaseUpload.resolve(undefined);
+    await stalePublication;
+
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(previousApiHead);
   }, 90_000);
 });

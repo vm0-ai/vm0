@@ -543,6 +543,24 @@ export async function advanceChatEventSequenceAsPreviousApi(
   });
 }
 
+export async function replaceChatEventSnapshotHeadAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly threadId: string;
+    readonly lastSeqId: number;
+    readonly archiveSchemaVersion: number;
+    readonly objectKey: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "replace-chat-event-snapshot-head-as-previous-api",
+    thread_id: args.threadId,
+    last_seq_id: args.lastSeqId,
+    archive_schema_version: args.archiveSchemaVersion,
+    object_key: args.objectKey,
+  });
+}
+
 export async function validateChatEventSnapshotRollout(
   context: TestContext,
   args: {

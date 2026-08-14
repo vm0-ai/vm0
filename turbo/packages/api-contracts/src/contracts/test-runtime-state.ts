@@ -163,6 +163,13 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     object_key: z.string().optional(),
   }),
   z.object({
+    action: z.literal("replace-chat-event-snapshot-head-as-previous-api"),
+    thread_id: z.uuid(),
+    last_seq_id: z.int().positive(),
+    archive_schema_version: z.int().positive(),
+    object_key: z.string().min(1),
+  }),
+  z.object({
     action: z.literal("validate-chat-event-snapshot-rollout"),
     thread_id: z.uuid(),
     last_seq_id: z.int().positive(),

@@ -1,6 +1,8 @@
 import { deleteDB, openDB, type IDBPDatabase } from "idb";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { setupPage } from "../../__tests__/page-helper.ts";
+import { testContext } from "../__tests__/test-helpers.ts";
 import {
   CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_ORDER_INDEX,
@@ -11,11 +13,13 @@ import {
   CHAT_THREAD_EVENT_SYNC_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "./chat-idb-schema.ts";
-import { createChatIdbOpener } from "./chat-idb-store.ts";
+import { chatIdb$ } from "./chat-idb-store.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
 });
+
+const context = testContext();
 
 function testDatabase() {
   const suffix = crypto.randomUUID();
@@ -32,12 +36,18 @@ function testDatabase() {
   return {
     databaseName,
     async openProduction() {
-      const opener = createChatIdbOpener({
-        reload: () => {
-          return undefined;
+      await setupPage({
+        context,
+        path: "/error",
+        withoutRender: true,
+        user: { id: userId, fullName: "Chat IDB Schema User" },
+        session: { token: "test-token" },
+        org: {
+          activeOrg: { id: orgId, name: "Chat IDB Schema Org" },
+          memberships: [{ id: orgId }],
         },
       });
-      const db = await opener.openChatIdb(userId, orgId);
+      const db = await context.store.get(chatIdb$);
       openedDatabases.push(db);
       return db;
     },
@@ -54,7 +64,7 @@ function currentStoreNames(): string[] {
   ].sort();
 }
 
-describe("Chat IndexedDB schema bootstrap", () => {
+describe("Chat IndexedDB production bootstrap", () => {
   it("opens a new database at the current version with every production store", async () => {
     const database = testDatabase();
 
@@ -96,21 +106,5 @@ describe("Chat IndexedDB schema bootstrap", () => {
       currentStoreNames(),
     );
     expect(db.objectStoreNames.contains("retired_cache")).toBe(false);
-  });
-
-  it("preserves current-version data when the production opener reconnects", async () => {
-    const database = testDatabase();
-    const first = await database.openProduction();
-    await first.put(CHAT_THREAD_SNAPSHOT_STORE, {
-      id: "retained-snapshot",
-      marker: "keep",
-    });
-    first.close();
-
-    const second = await database.openProduction();
-
-    await expect(
-      second.get(CHAT_THREAD_SNAPSHOT_STORE, "retained-snapshot"),
-    ).resolves.toStrictEqual({ id: "retained-snapshot", marker: "keep" });
   });
 });

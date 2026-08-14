@@ -1472,6 +1472,7 @@ type ChatEventFixtureAction = Extract<
     action:
       | "advance-chat-event-sequence-as-previous-api"
       | "read-chat-event-snapshot-head"
+      | "replace-chat-event-snapshot-head-as-previous-api"
       | "set-chat-event-snapshot-head-version"
       | "validate-chat-event-snapshot-rollout";
   }
@@ -1483,6 +1484,7 @@ function isChatEventFixtureAction(
   return (
     body.action === "advance-chat-event-sequence-as-previous-api" ||
     body.action === "read-chat-event-snapshot-head" ||
+    body.action === "replace-chat-event-snapshot-head-as-previous-api" ||
     body.action === "set-chat-event-snapshot-head-version" ||
     body.action === "validate-chat-event-snapshot-rollout"
   );
@@ -1701,6 +1703,43 @@ async function validateChatEventSnapshotRollout(
   };
 }
 
+async function replaceChatEventSnapshotHeadAsPreviousApi(
+  db: Db,
+  body: Extract<
+    ChatEventFixtureAction,
+    { action: "replace-chat-event-snapshot-head-as-previous-api" }
+  >,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    const [previousHead] = await tx
+      .update(chatEventSnapshots)
+      .set({ isHead: false })
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    if (previousHead === undefined) {
+      throw new Error(
+        "replace-chat-event-snapshot-head-as-previous-api missing head",
+      );
+    }
+    await tx.insert(chatEventSnapshots).values({
+      chatThreadId: body.thread_id,
+      parentSnapshotId: previousHead.id,
+      lastSeqId: body.last_seq_id,
+      archiveSchemaVersion: body.archive_schema_version,
+      objectKey: body.object_key,
+      isHead: true,
+    });
+  });
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function chatEventFixtureActionResponse(
   db: Db,
   body: ChatEventFixtureAction,
@@ -1724,6 +1763,9 @@ async function chatEventFixtureActionResponse(
       );
     }
     return { status: 200 as const, body: { ok: true as const } };
+  }
+  if (body.action === "replace-chat-event-snapshot-head-as-previous-api") {
+    return await replaceChatEventSnapshotHeadAsPreviousApi(db, body, signal);
   }
   if (body.action === "set-chat-event-snapshot-head-version") {
     const [pointer] = await db
@@ -1765,7 +1807,12 @@ async function chatEventFixtureActionResponse(
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
       .orderBy(
         desc(chatEventSnapshots.archiveSchemaVersion),
         desc(chatEventSnapshots.lastSeqId),

@@ -417,6 +417,7 @@ async function readSnapshotPrefix(
 function exactSnapshotPointer(source: SnapshotSource) {
   return and(
     eq(chatEventSnapshots.id, source.id),
+    eq(chatEventSnapshots.isHead, true),
     eq(chatEventSnapshots.lastSeqId, source.lastSeqId),
     eq(chatEventSnapshots.lastEventId, source.lastEventId),
     eq(chatEventSnapshots.objectKey, source.objectKey),
