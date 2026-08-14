@@ -4000,10 +4000,7 @@ describe("okou workflow automations", () => {
     const requestedAt = Date.UTC(2026, 7, 1, 12, 34, 56);
     mockNow(requestedAt);
     const runnerGroup = runs.configureRunnerGroup();
-    const { fixture, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
+    const { workflowId } = await setupFixture();
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),

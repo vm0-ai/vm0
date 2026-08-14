@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
@@ -20,7 +19,6 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
 /**
@@ -401,9 +399,6 @@ describe("chat-run-finished workflow automations", () => {
     { timeout: 30_000 },
     async () => {
       const fixture = await setupChatAutomationFixture();
-      await updateFeatureSwitchesForUser(context, fixture.actor, {
-        [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-      });
       const run = await startWatchedChatRun(fixture, "watched completed run");
       await setRunAutonomyBudgetFixture(context, run.runId, 2);
 

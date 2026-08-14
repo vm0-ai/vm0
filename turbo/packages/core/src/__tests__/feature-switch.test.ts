@@ -96,9 +96,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.UserFriendlyAutomationMessage]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
@@ -109,9 +106,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
-      true,
-    );
-    expect(staffOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
@@ -135,9 +129,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.UserFriendlyAutomationMessage]).toBe(
-      true,
-    );
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
@@ -149,9 +140,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
-      true,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);

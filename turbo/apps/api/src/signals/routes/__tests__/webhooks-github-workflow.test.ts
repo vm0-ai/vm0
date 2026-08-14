@@ -4,7 +4,6 @@ import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationCreateRequest,
 } from "@okouai/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -20,7 +19,6 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { webhooksGithubRoutes } from "../webhooks-github";
@@ -507,10 +505,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       const installed = await gh.installGithubApp(actor, agentId);
       mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
       mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-      await updateFeatureSwitchesForUser(context, fixture, {
-        [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-      });
-
       const created = await accept(
         automationsClient().create({
           headers: authHeaders(),
@@ -753,10 +747,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     const installed = await gh.installGithubApp(actor, agentId);
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),

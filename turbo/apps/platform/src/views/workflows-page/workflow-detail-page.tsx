@@ -1281,8 +1281,6 @@ function AutomationCreateAction() {
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
   const googleFormsWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.GoogleFormsWorkflowAutomations] ?? false;
-  const githubWebhookAutomationsEnabled =
-    features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
   const stripeInvoicePaidAutomationsEnabled =
     features[FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations] ?? false;
   const strapiIntegrationEnabled =
@@ -1297,7 +1295,6 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
       googleCalendarAutomationsEnabled
       googleFormsWorkflowAutomationsEnabled={
         googleFormsWorkflowAutomationsEnabled
@@ -4508,12 +4505,10 @@ function buildStripeInvoicePaidAutomationOptions(
 }
 
 function buildIntegrationAutomationOptions({
-  githubWebhookAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly githubWebhookAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
@@ -4540,60 +4535,58 @@ function buildIntegrationAutomationOptions({
     }),
     icon: BrandGithub,
   });
-  if (githubWebhookAutomationsEnabled) {
-    integrationOptions.push(
-      {
-        kind: "github-pull-request",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.pullRequestTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.pullRequestDescription;
-        }),
-        icon: BrandGithub,
-      },
-      {
-        kind: "github-workflow-job",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.workflowJobTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.workflowJobDescription;
-        }),
-        icon: BrandGithub,
-      },
-      {
-        kind: "github-pull-request-review",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.reviewTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.reviewDescription;
-        }),
-        icon: BrandGithub,
-      },
-      {
-        kind: "github-deployment-status",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.deploymentStatusTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.deploymentStatusDescription;
-        }),
-        icon: BrandGithub,
-      },
-      {
-        kind: "github-issue-comment",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.issueCommentTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.issueCommentDescription;
-        }),
-        icon: BrandGithub,
-      },
-    );
-  }
+  integrationOptions.push(
+    {
+      kind: "github-pull-request",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-workflow-job",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.workflowJobTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.workflowJobDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-pull-request-review",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.reviewTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.reviewDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-deployment-status",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.deploymentStatusTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.deploymentStatusDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-issue-comment",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.issueCommentTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.issueCommentDescription;
+      }),
+      icon: BrandGithub,
+    },
+  );
   integrationOptions.push(
     ...buildStripeInvoicePaidAutomationOptions(
       stripeInvoicePaidAutomationsEnabled,
@@ -4819,7 +4812,6 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 }
 
 function buildAutomationCreateCategories({
-  githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleFormsWorkflowAutomationsEnabled,
   googleMeetAutomationsEnabled,
@@ -4828,7 +4820,6 @@ function buildAutomationCreateCategories({
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
@@ -4845,7 +4836,6 @@ function buildAutomationCreateCategories({
     googleFormsWorkflowAutomationsEnabled,
   );
   const integrationOptions = buildIntegrationAutomationOptions({
-    githubWebhookAutomationsEnabled,
     stripeInvoicePaidAutomationsEnabled,
     strapiIntegrationEnabled,
     webhookTierEligible,
@@ -4981,7 +4971,6 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
-  githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleFormsWorkflowAutomationsEnabled,
   googleMeetAutomationsEnabled,
@@ -4991,7 +4980,6 @@ function AutomationCreateMenu({
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
-  readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
@@ -5005,7 +4993,6 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
-    githubWebhookAutomationsEnabled,
     googleCalendarAutomationsEnabled,
     googleFormsWorkflowAutomationsEnabled,
     googleMeetAutomationsEnabled,

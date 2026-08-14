@@ -2740,26 +2740,7 @@ describe("workflow detail page", () => {
     expect(queryAllByRoleFast("link", form)).toHaveLength(0);
   });
 
-  it("hides new GitHub webhook creation entries when the feature is disabled", async () => {
-    mockWorkflowApis([salesResearch()]);
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.GithubWebhookAutomations]: false,
-    });
-
-    await waitFor(() => {
-      expect(buttonByText("Add automation")).toBeInTheDocument();
-    });
-    click(buttonByText("Add automation"));
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    click(buttonByText("Integrations"));
-    expect(
-      screen.queryByText("GitHub issue comment created"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("creates a GitHub issue comment automation behind the feature switch", async () => {
+  it("creates a GitHub issue comment automation", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
@@ -2767,9 +2748,7 @@ describe("workflow detail page", () => {
     });
     setMockGithubIntegration(createDefaultMockGithubIntegration());
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.GithubWebhookAutomations]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();

@@ -3,10 +3,7 @@ import {
   restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
   workflowAutomationAgentPrompt,
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationEventUsesUserFriendlyMessage,
   workflowAutomationEventTypeSchema,
-  workflowAutomationPrompt,
   type WorkflowAutomationEventPayload,
 } from "./workflow-automation-context.service";
 import {
@@ -41,9 +38,6 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
     return null;
   }
   const eventType = workflowAutomationEventTypeSchema.parse(args.eventType);
-  const useUserFriendlyMessage = workflowAutomationEventUsesUserFriendlyMessage(
-    args.eventPayload,
-  );
   const eventPayload = restoredWorkflowAutomationEventPayload(
     args.eventPayload,
   );
@@ -56,12 +50,8 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
     eventPayload,
   });
   return {
-    prompt: useUserFriendlyMessage
-      ? workflowAutomationAgentPrompt(context)
-      : workflowAutomationPrompt(context),
-    appendSystemPrompt: useUserFriendlyMessage
-      ? undefined
-      : workflowAutomationAppendSystemPrompt(context),
+    prompt: workflowAutomationAgentPrompt(context),
+    appendSystemPrompt: undefined,
     callbacks:
       eventType === "schedule"
         ? buildWorkflowAutomationCallbacks(

@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import { generateKeyPairSync, sign as signData } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -14,7 +13,6 @@ import { server } from "../../../mocks/server";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
@@ -181,10 +179,6 @@ describe("POST /api/webhooks/google-workspace-events", () => {
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped workflow actor");
     }
-    const featureSwitchActor = {
-      userId: actor.userId,
-      orgId: actor.orgId,
-    };
     const agent = await workflows.createAgent(actor, {
       displayName: "Google Meet automation agent",
     });
@@ -195,10 +189,6 @@ describe("POST /api/webhooks/google-workspace-events", () => {
     await connectGoogleMeet(actor);
     mocks.clerk.session(actor.userId, actor.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
-    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),

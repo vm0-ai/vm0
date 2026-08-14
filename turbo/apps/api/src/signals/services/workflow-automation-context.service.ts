@@ -22,7 +22,10 @@ type DisplayMessageRenderer = (
 ) => string;
 
 const EVENT_PAYLOAD_OBJECT_KEY_ORDER = "__vm0EventPayloadObjectKeyOrderV1";
-const USER_FRIENDLY_AUTOMATION_MESSAGE = "__vm0UserFriendlyAutomationMessageV1";
+// Queued rows admitted during the rollout may still contain this reserved
+// field. Keep stripping it until those persisted payloads have drained.
+const LEGACY_AUTOMATION_MESSAGE_VARIANT_FIELD =
+  "__vm0UserFriendlyAutomationMessageV1";
 const eventPayloadObjectKeyOrderSchema = z.array(
   z.object({
     path: z.array(z.union([z.string(), z.number()])),
@@ -87,7 +90,7 @@ function restoreEventPayloadObjectKeyOrder(
     return (
       path.length > 0 ||
       (key !== EVENT_PAYLOAD_OBJECT_KEY_ORDER &&
-        key !== USER_FRIENDLY_AUTOMATION_MESSAGE)
+        key !== LEGACY_AUTOMATION_MESSAGE_VARIANT_FIELD)
     );
   });
   const persistedKeySet = new Set(persistedKeys);
@@ -113,15 +116,14 @@ function restoreEventPayloadObjectKeyOrder(
 
 /**
  * JSONB reorders object keys. Persist their original order alongside the values
- * so claim can reproduce the pre-queue system prompt byte for byte.
+ * so claim can reproduce the pre-queue agent prompt byte for byte.
  */
 export function persistedWorkflowAutomationEventPayload(
   payload: WorkflowAutomationEventPayload,
-  options?: { readonly userFriendlyAutomationMessage?: boolean },
 ): WorkflowAutomationEventPayload {
   if (
     EVENT_PAYLOAD_OBJECT_KEY_ORDER in payload ||
-    USER_FRIENDLY_AUTOMATION_MESSAGE in payload
+    LEGACY_AUTOMATION_MESSAGE_VARIANT_FIELD in payload
   ) {
     throw new Error("Workflow automation event payload uses a reserved field");
   }
@@ -130,17 +132,7 @@ export function persistedWorkflowAutomationEventPayload(
   return {
     ...payload,
     [EVENT_PAYLOAD_OBJECT_KEY_ORDER]: objectKeyOrder,
-    ...(options?.userFriendlyAutomationMessage
-      ? { [USER_FRIENDLY_AUTOMATION_MESSAGE]: true }
-      : {}),
   };
-}
-
-/** The prompt variant is admitted with the event so later flag changes do not split it. */
-export function workflowAutomationEventUsesUserFriendlyMessage(
-  payload: WorkflowAutomationEventPayload,
-): boolean {
-  return payload[USER_FRIENDLY_AUTOMATION_MESSAGE] === true;
 }
 
 /** Rows admitted before key-order metadata was written must use the blob. */
@@ -738,11 +730,10 @@ export const EVENT_POLICY: Readonly<
  * current run from earlier ones are the trigger identity and the event payload,
  * and both live outside the conversation, so the run has to be told.
  *
- * Legacy runs put the same technical trigger in the visible user turn and an
- * automation-specific system append. User-friendly runs keep the visible turn
- * human-readable and build the agent's user prompt from this context instead.
- * Every technical trigger carries an identifier that is unique per firing, so
- * a resumed session self-labels which round each turn belongs to.
+ * The visible turn stays human-readable while the agent's user prompt receives
+ * this full context. Every technical trigger carries an identifier that is
+ * unique per firing, so a resumed session self-labels which round each turn
+ * belongs to.
  *
  * These prompts state facts only. Behavioral instructions belong in the
  * workflow's own skill, and diagnostic guidance belongs in the output of the
@@ -782,17 +773,6 @@ export function storedWorkflowAutomationContext(args: {
   };
 }
 
-/**
- * The visible user turn. Without the trigger line, consecutive firings of the
- * same automation produce byte-identical user turns.
- */
-export function workflowAutomationPrompt(args: {
-  readonly workflowName: string;
-  readonly trigger: string;
-}): string {
-  return [`/${args.workflowName}`, `Trigger: ${args.trigger}`].join("\n");
-}
-
 export function workflowAutomationDisplayMessage(
   context: WorkflowAutomationContext,
 ): string {
@@ -800,8 +780,8 @@ export function workflowAutomationDisplayMessage(
 }
 
 /**
- * Agent-only user prompt for the user-friendly variant. It supplies facts and
- * event data; behavioral instructions remain in the workflow skill.
+ * Agent-facing user prompt. It supplies facts and event data; behavioral
+ * instructions remain in the workflow skill.
  */
 export function workflowAutomationAgentPrompt(
   context: WorkflowAutomationContext,
@@ -824,22 +804,6 @@ export function workflowAutomationAgentPrompt(
         ]),
     "",
     "Event data:",
-    JSON.stringify(context.event, null, 2),
-  ].join("\n");
-}
-
-export function workflowAutomationAppendSystemPrompt(
-  context: WorkflowAutomationContext,
-): string {
-  return [
-    "# Current context",
-    `Run created by workflow automation "${context.workflowName}".`,
-    `Trigger: ${context.trigger}`,
-    `Procedure: skill "${context.workflowName}".`,
-    "Output destination: this web chat thread, read by the user.",
-    ...(context.notes ?? []),
-    "",
-    "# This run's event",
     JSON.stringify(context.event, null, 2),
   ].join("\n");
 }

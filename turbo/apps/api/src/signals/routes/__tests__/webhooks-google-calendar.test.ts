@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
 
@@ -20,7 +19,6 @@ import {
   mockGoogleCalendarConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
@@ -376,10 +374,6 @@ describe("POST /api/webhooks/google-calendar", () => {
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
     await connectGoogleCalendar(scenario);
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -597,10 +591,6 @@ describe("POST /api/webhooks/google-calendar", () => {
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
     await connectGoogleCalendar(scenario);
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -713,10 +703,6 @@ describe("POST /api/webhooks/google-calendar", () => {
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
     await connectGoogleCalendar(scenario);
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.UserFriendlyAutomationMessage]: true,
-    });
-
     const cancelled = await accept(
       automationsClient().create({
         headers: authHeaders(),
