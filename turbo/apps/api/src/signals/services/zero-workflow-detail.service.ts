@@ -17,7 +17,7 @@ import {
 import {
   loadWorkflowVolumeFiles,
   SKILL_FILENAME,
-} from "./zero-workflow-volume.service";
+} from "./workflow-volume.service";
 import { loadWorkflowAutomations } from "./zero-workflow-automation.service";
 
 export function zeroWorkflowDetail(args: {

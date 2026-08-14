@@ -263,7 +263,7 @@ import {
   type QueueFirstRunSessionSnapshotState,
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
-import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
+import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 import { resolveVideoModelForRun } from "./video-model.service";
 import {
   cappedBaseConcurrencyLimit,

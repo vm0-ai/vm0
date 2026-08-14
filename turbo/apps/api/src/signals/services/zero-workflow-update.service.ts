@@ -11,7 +11,7 @@ import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
 import {
   loadWorkflowVolumeFiles,
   SKILL_FILENAME,
-} from "./zero-workflow-volume.service";
+} from "./workflow-volume.service";
 import type { WorkflowRow } from "./zero-workflow-data.service";
 
 interface UpdateZeroWorkflowInput {

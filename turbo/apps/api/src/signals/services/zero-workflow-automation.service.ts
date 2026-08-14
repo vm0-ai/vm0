@@ -129,7 +129,7 @@ import {
   ensureWorkflowUserAutomationThread,
   loadWorkflowUserAutomationThreadId,
 } from "./zero-workflow-user-automation-thread.service";
-import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { buildWorkflowScheduleAutomationBrief } from "./workflow-automation-brief.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
