@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.75](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.74...nbd-cow-v0.4.75) (2026-08-14)
+
+
+### Bug Fixes
+
+* **nbd-cow:** remove benchmark dependency on which executable ([#27119](https://github.com/vm0-ai/vm0/issues/27119)) ([d7f6f38](https://github.com/vm0-ai/vm0/commit/d7f6f38660606d777f3d17d0d0a5c91d00510685))
+
 ## [0.4.74](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.73...nbd-cow-v0.4.74) (2026-08-13)
 
 
