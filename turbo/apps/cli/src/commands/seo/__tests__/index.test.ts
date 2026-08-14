@@ -15,10 +15,10 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroSeoCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { seoCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-seo-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "seo-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -60,7 +60,7 @@ describe("okou seo command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-zero-token");
-    for (const command of zeroSeoCommand.commands) {
+    for (const command of seoCommand.commands) {
       command.setOptionValue("json", undefined);
       if (command.name() === "serp") {
         command.setOptionValue("engine", "google");
@@ -110,7 +110,7 @@ describe("okou seo command", () => {
       ),
     );
 
-    await zeroSeoCommand.parseAsync([
+    await seoCommand.parseAsync([
       "node",
       "cli",
       "serp",
@@ -155,7 +155,7 @@ describe("okou seo command", () => {
       ),
     );
 
-    await zeroSeoCommand.parseAsync([
+    await seoCommand.parseAsync([
       "node",
       "cli",
       "keyword-ideas",
@@ -187,7 +187,7 @@ describe("okou seo command", () => {
       ),
     );
 
-    await zeroSeoCommand.parseAsync([
+    await seoCommand.parseAsync([
       "node",
       "cli",
       "serp",
@@ -221,7 +221,7 @@ describe("okou seo command", () => {
     );
 
     await expect(
-      zeroSeoCommand.parseAsync([
+      seoCommand.parseAsync([
         "node",
         "cli",
         "serp",
@@ -246,7 +246,7 @@ describe("okou seo command", () => {
   });
 
   it("explains DataForSEO engine compatibility in serp help", () => {
-    const command = zeroSeoCommand.commands.find((candidate) => {
+    const command = seoCommand.commands.find((candidate) => {
       return candidate.name() === "serp";
     });
     if (!command) {

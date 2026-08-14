@@ -29,7 +29,7 @@ import {
   type FeishuInboundMessage,
   type FeishuPromptFile,
 } from "./zero-feishu-dispatch.service";
-import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
+import { publishFeishuOrgChanged } from "./feishu-realtime.service";
 
 const L = logger("FeishuWebhooks");
 

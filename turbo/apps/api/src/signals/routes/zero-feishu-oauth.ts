@@ -54,7 +54,7 @@ import {
   getCustomConnectorById,
   type CustomConnectorHttpRow,
 } from "../services/zero-custom-connector.service";
-import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
+import { publishFeishuOrgChanged } from "../services/feishu-realtime.service";
 import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
 import { tapError } from "../utils";
 

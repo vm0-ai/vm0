@@ -23,7 +23,7 @@ import { server } from "../../../mocks/server";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
-import { zeroIntegrationsTeamsDownloadFileRoutes } from "../zero-integrations-teams-download-file";
+import { integrationsTeamsDownloadFileRoutes } from "../integrations-teams-download-file";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
@@ -1728,7 +1728,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const app = createAppWithRoutes({
       signal: context.signal,
-      routes: zeroIntegrationsTeamsDownloadFileRoutes,
+      routes: integrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
       `/api/zero/integrations/teams/download-file?${new URLSearchParams({
@@ -1815,7 +1815,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const app = createAppWithRoutes({
       signal: context.signal,
-      routes: zeroIntegrationsTeamsDownloadFileRoutes,
+      routes: integrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
       `/api/zero/integrations/teams/download-file?${new URLSearchParams({

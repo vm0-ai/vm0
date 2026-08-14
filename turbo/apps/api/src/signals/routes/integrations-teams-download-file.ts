@@ -313,7 +313,7 @@ const teamsWriteAuth = {
   requiredCapability: "teams:write",
 } as const;
 
-export const zeroIntegrationsTeamsDownloadFileRoutes: readonly RouteEntry[] = [
+export const integrationsTeamsDownloadFileRoutes: readonly RouteEntry[] = [
   {
     route: teamsDownloadFileContract.download,
     handler: authRoute(teamsWriteAuth, download$),
