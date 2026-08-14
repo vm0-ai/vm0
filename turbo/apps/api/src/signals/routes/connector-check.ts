@@ -1,4 +1,4 @@
-import { zeroConnectorCheckContract } from "@okouai/api-contracts/contracts/zero-connector-check";
+import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
 import { command } from "ccstate";
 
 import {
@@ -25,7 +25,7 @@ function missingAgentRunReadCapability(): AuthErrorResponse {
 
 const checkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const bodyResult = await get(bodyResultOf(zeroConnectorCheckContract.check));
+  const bodyResult = await get(bodyResultOf(connectorCheckContract.check));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -57,9 +57,9 @@ const checkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result.diagnostic };
 });
 
-export const zeroConnectorCheckRoutes: readonly RouteEntry[] = [
+export const connectorCheckRoutes: readonly RouteEntry[] = [
   {
-    route: zeroConnectorCheckContract.check,
+    route: connectorCheckContract.check,
     handler: authRoute(
       {
         requireOrganization: true,

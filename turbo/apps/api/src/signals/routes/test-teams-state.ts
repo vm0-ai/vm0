@@ -286,8 +286,8 @@ function vm0ManagedKeyRows(composeId: string) {
       label: composeId,
     },
     {
-      vendor: "anthropic",
-      apiKey: `vm0-key-anthropic-${composeId}`,
+      vendor: getVm0Vendor("claude-opus-4-8"),
+      apiKey: `vm0-key-claude-${composeId}`,
       label: composeId,
     },
     {

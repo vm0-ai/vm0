@@ -375,7 +375,10 @@ export function buildDesktopTrayMenuItems(
   actions: DesktopTrayMenuActions,
 ): readonly DesktopTrayMenuItem[] {
   return [
-    { label: "Open Computer Use", click: actions.showMainWindow },
+    {
+      label: `Open ${desktopBrandName(state)}`,
+      click: actions.showMainWindow,
+    },
     {
       label: authStatusLabel(state),
       submenu: buildAuthSubmenu(state, actions),

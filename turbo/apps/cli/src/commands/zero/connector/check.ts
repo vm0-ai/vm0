@@ -1,15 +1,15 @@
 import { Command, Option } from "commander";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
+  ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
-} from "@okouai/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/connector-check";
 
 import { getApiUrl } from "../../../lib/api/config";
 import {
-  diagnoseZeroConnectorCheck,
+  diagnoseConnectorCheck,
   getZeroConnector,
-  type ZeroConnectorCheckDiagnosticResult,
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
@@ -41,7 +41,7 @@ type ValidatedCheckConnectorOptions = CheckConnectorOptions &
   );
 
 export type ResolvedDiagnostic = Extract<
-  ZeroConnectorCheckDiagnosticResult,
+  ConnectorCheckDiagnosticResult,
   { readonly outcome: "resolved" }
 >;
 type ResolvedUrlDiagnostic = Extract<
@@ -228,7 +228,7 @@ function requestedEnvironmentName(request: ConnectorCheckRequest): string {
 
 function unsafeInputError(
   reason: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "unsafe-input" }
   >["reason"],
 ): Error {
@@ -251,7 +251,7 @@ function unsafeInputError(
 function ambiguousConnectorError(
   request: UrlDiagnosticRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "ambiguous" }
   >,
 ): Error {
@@ -281,7 +281,7 @@ function unknownConnectorError(request: ConnectorCheckRequest): Error {
 
 function noMatchError(
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "no-match" }
   >,
 ): Error {
@@ -295,7 +295,7 @@ function noMatchError(
 function connectorMismatchError(
   request: UrlDiagnosticRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "connector-mismatch" }
   >,
 ): Error {
@@ -308,7 +308,7 @@ function connectorMismatchError(
 function environmentNotOwnedError(
   request: ConnectorCheckRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "environment-not-owned" }
   >,
 ): Error {
@@ -321,7 +321,7 @@ function environmentNotOwnedError(
 function environmentNotUsedError(
   request: ConnectorCheckRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "environment-not-used" }
   >,
 ): Error {
@@ -333,7 +333,7 @@ function environmentNotUsedError(
 
 export function resolveConnectorCheckDiagnostic(
   request: ConnectorCheckRequest,
-  result: ZeroConnectorCheckDiagnosticResult,
+  result: ConnectorCheckDiagnosticResult,
 ): ResolvedDiagnostic {
   switch (result.outcome) {
     case "resolved":
@@ -950,7 +950,7 @@ How connectors work:
       }
       const method = opts.method.toUpperCase();
       const request = buildDiagnosticRequest(opts, method);
-      const diagnostic = await diagnoseZeroConnectorCheck(request);
+      const diagnostic = await diagnoseConnectorCheck(request);
       const result = resolveConnectorCheckDiagnostic(request, diagnostic);
 
       printDiagnosticSummary(request, result);

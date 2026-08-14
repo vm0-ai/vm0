@@ -32,9 +32,9 @@ import {
   type UsageRecordRange,
 } from "@okouai/api-contracts/contracts/zero-usage-record";
 import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
-import { zeroVoiceIoQuotaContract } from "@okouai/api-contracts/contracts/zero-voice-io-quota";
-import { zeroVoiceIoSpeechContract } from "@okouai/api-contracts/contracts/zero-voice-io-speech";
-import { zeroVoiceIoSttContract } from "@okouai/api-contracts/contracts/zero-voice-io-stt";
+import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
+import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
+import { voiceIoSttContract } from "@okouai/api-contracts/contracts/voice-io-stt";
 
 import { mockEnv } from "../../../../lib/env";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -66,9 +66,9 @@ import { mapsRoutes } from "../../maps";
 import { zeroUsageMembersRoutes } from "../../zero-usage-members";
 import { zeroUsageRecordRoutes } from "../../zero-usage-record";
 import { zeroVideoIoGenerateRoutes } from "../../zero-video-io-generate";
-import { zeroVoiceIoQuotaRoutes } from "../../zero-voice-io-quota";
-import { zeroVoiceIoSpeechRoutes } from "../../zero-voice-io-speech";
-import { zeroVoiceIoSttRoutes } from "../../zero-voice-io-stt";
+import { voiceIoQuotaRoutes } from "../../voice-io-quota";
+import { voiceIoSpeechRoutes } from "../../voice-io-speech";
+import { voiceIoSttRoutes } from "../../voice-io-stt";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
@@ -601,8 +601,8 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async readVoiceQuota(actor: ApiTestUser) {
-      const client = setupApp({ context, routes: zeroVoiceIoQuotaRoutes })(
-        zeroVoiceIoQuotaContract,
+      const client = setupApp({ context, routes: voiceIoQuotaRoutes })(
+        voiceIoQuotaContract,
       );
       return await accept(client.get({ headers: authenticate(actor) }), [200]);
     },
@@ -612,8 +612,8 @@ export function createBillingMediaApi(context: TestContext) {
       formData: FormData,
       statuses: readonly (200 | 400 | 401 | 402 | 403 | 429 | 500)[],
     ) {
-      const client = setupApp({ context, routes: zeroVoiceIoSttRoutes })(
-        zeroVoiceIoSttContract,
+      const client = setupApp({ context, routes: voiceIoSttRoutes })(
+        voiceIoSttContract,
       );
       return await accept(
         client.post({ headers: authenticate(actor), body: formData }),
@@ -630,8 +630,8 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly VoiceSpeechStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroVoiceIoSpeechRoutes })(
-        zeroVoiceIoSpeechContract,
+      const client = setupApp({ context, routes: voiceIoSpeechRoutes })(
+        voiceIoSpeechContract,
       );
       return await accept(
         client.post({ headers: authenticate(actor), body }),

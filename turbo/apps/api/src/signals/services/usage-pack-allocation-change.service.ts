@@ -841,6 +841,38 @@ async function persistUsagePackChangePreview(
   return change;
 }
 
+function storedUsagePackChangePreview(
+  change: UsagePackAllocationChangeRow,
+): UsagePackChangePreviewResponse {
+  if (
+    (change.kind !== "upgrade" && change.kind !== "downgrade") ||
+    change.sourceUsagePackUsd === null ||
+    change.targetUsagePackUsd === null ||
+    change.immediateAmountCents === null ||
+    change.nextRecurringAmountCents === null ||
+    change.currency === null ||
+    change.effectiveAt === null ||
+    change.prorationTimestamp === null ||
+    change.previewExpiresAt === null
+  ) {
+    throw new Error(`Usage pack change ${change.id} has no preview snapshot`);
+  }
+  return {
+    changeId: change.id,
+    kind: change.kind,
+    sourceUsagePackUsd: usagePackUsd(change.sourceUsagePackUsd),
+    targetUsagePackUsd: usagePackUsd(change.targetUsagePackUsd),
+    immediateAmountCents: change.immediateAmountCents,
+    nextRecurringAmountCents: change.nextRecurringAmountCents,
+    currency: change.currency,
+    effectiveAt: change.effectiveAt.toISOString(),
+    prorationDate: new Date(change.prorationTimestamp * 1000).toISOString(),
+    expiresAt: (
+      change.stripePendingUpdateExpiresAt ?? change.previewExpiresAt
+    ).toISOString(),
+  };
+}
+
 export async function previewUsagePackAllocationChange(
   db: Db,
   args: UsagePackChangePreviewArgs,
@@ -867,6 +899,21 @@ export async function previewUsagePackAllocationChange(
   const stripeSubscriptionId = context?.subscription.stripeSubscriptionId;
   if (!context || !stripeSubscriptionId) {
     return { status: "not_found" };
+  }
+  const existing = context.changes.find((change) => {
+    return (
+      change.subscriptionChangeId === null && change.userId === args.userId
+    );
+  });
+  if (
+    existing &&
+    (existing.status !== "previewed" ||
+      (existing.previewExpiresAt !== null &&
+        existing.previewExpiresAt > nowDate()))
+  ) {
+    return existing.targetUsagePackUsd === args.targetUsagePackUsd
+      ? { status: "ready", preview: storedUsagePackChangePreview(existing) }
+      : { status: "conflict" };
   }
   if (context.subscription.cancelAtPeriodEnd) {
     return { status: "conflict" };
@@ -2201,7 +2248,11 @@ async function commitReflectedUsagePackChanges(
         .where(eq(usagePackAllocationChanges.id, expectedChange.id))
         .for("update")
         .limit(1);
-      if (!change || change.status === "completed") {
+      if (
+        !change ||
+        change.status === "applied" ||
+        change.status === "completed"
+      ) {
         continue;
       }
       if (change.status === "failed" || change.replacementAllocationId) {

@@ -65,10 +65,10 @@ import {
 } from "@okouai/api-contracts/contracts/zero-team";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
@@ -92,8 +92,8 @@ import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-d
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
 import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
 import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
-import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { onboardingCompleteRoutes } from "../../onboarding-complete";
+import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
 import { orgLogoRoutes } from "../../org-logo";
@@ -101,7 +101,7 @@ import { zeroOrgMembersRoutes } from "../../zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
 import { zeroTeamRoutes } from "../../zero-team";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -208,9 +208,9 @@ interface RawJsonResponse {
 const authOrgRoutes = [
   ...authMeRoutes,
   ...cliAuthRoutes,
-  ...zeroOnboardingStatusRoutes,
-  ...zeroOnboardingCompleteRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...onboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
+  ...userPreferencesRoutes,
   ...zeroOrgReadRoutes,
   ...zeroOrgDeleteRoutes,
   ...zeroOrgMembersRoutes,
@@ -798,7 +798,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<UserPreferencesResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -812,7 +812,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateUserPreferencesRequest,
     ): Promise<UserPreferencesResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),

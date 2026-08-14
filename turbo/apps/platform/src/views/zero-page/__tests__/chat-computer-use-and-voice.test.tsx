@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
-import { zeroVoiceIoQuotaContract } from "@okouai/api-contracts/contracts/zero-voice-io-quota";
+import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { fill } from "../../../__tests__/page-helper.ts";
@@ -1207,7 +1207,7 @@ describe("chat lifecycle", () => {
       },
     });
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: null });
     });
     context.mocks.http.post("*/api/okou/voice-io/stt", async () => {
@@ -1265,7 +1265,7 @@ describe("chat lifecycle", () => {
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: 10 });
     });
     context.mocks.http.post("*/api/okou/voice-io/stt", () => {
@@ -1494,7 +1494,7 @@ describe("chat lifecycle", () => {
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: false, count: 10, limit: 10 });
     });
     context.mocks.http.post("*/api/okou/voice-io/stt", () => {
@@ -1535,7 +1535,7 @@ describe("chat lifecycle", () => {
       role: "member",
     });
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: false, count: 10, limit: 10 });
     });
 
@@ -1560,7 +1560,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("pro"));
     });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: false, count: 10, limit: 10 });
     });
     mockChatLifecycle(context, { threadId });
@@ -1594,7 +1594,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("pro"));
     });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: false, count: 10, limit: 10 });
     });
     mockChatLifecycle(context, { threadId });
@@ -1625,7 +1625,7 @@ describe("chat lifecycle", () => {
       context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
         return respond(200, billingStatus(tier));
       });
-      context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
         return respond(200, { allowed: false, count: 10, limit: 10 });
       });
       mockChatLifecycle(context, { threadId });

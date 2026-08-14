@@ -265,6 +265,7 @@ import {
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
+import { resolveVideoModelForRun } from "./zero-video-model.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -652,9 +653,13 @@ type QueuePayloadRequiredResult = Extract<
 type AtomicLaunchCommitAttempt =
   | AtomicLaunchCommitResult
   | CreateRunErrorResult;
+interface AtomicLaunchCommitCompletion {
+  readonly result: AtomicLaunchCommitAttempt;
+  readonly transactionReturnedAt: number;
+}
 type CommitAtomicLaunch = (
   encryptedQueuedParams: string | undefined,
-) => Promise<AtomicLaunchCommitAttempt>;
+) => Promise<AtomicLaunchCommitCompletion>;
 type CommittedAtomicLaunchResult = Exclude<
   AtomicLaunchCommitResult,
   | { readonly kind: "queue-payload-required" }
@@ -5700,6 +5705,7 @@ interface LaunchRunRowsArgs {
   readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly zeroRunModelPin: ZeroRunModelPin | undefined;
+  readonly selectedVideoModel: string;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly chatThreadId: string | undefined;
   readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -5765,6 +5771,7 @@ function launchZeroRunValues(
     ...(metadata.codexServiceTier === undefined
       ? {}
       : { codexServiceTier: metadata.codexServiceTier }),
+    selectedVideoModel: args.selectedVideoModel,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   };
@@ -6585,6 +6592,7 @@ function preparedLaunchRowsArgs(args: {
     sessionStorageMounts: args.commit.launch.sessionStorageMounts,
     modelProvider: args.commit.context.modelProvider,
     zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
+    selectedVideoModel: args.commit.context.selectedVideoModel,
     callbackRows: args.commit.callbackRows,
     chatThreadId: args.commit.createArgs.chatThreadId,
     zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
@@ -7034,6 +7042,7 @@ async function commitFailedLaunch(args: {
         sessionStorageMounts: undefined,
         modelProvider: args.context.modelProvider,
         zeroRunModelPin: args.createArgs.zeroRunModelPin,
+        selectedVideoModel: args.context.selectedVideoModel,
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
@@ -7463,7 +7472,7 @@ async function commitPreparedLaunchUnderLock(
 
 async function commitPreparedLaunch(
   args: CommitPreparedLaunchArgs,
-): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
+): Promise<AtomicLaunchCommitCompletion> {
   const committed = await args.db.transaction(async (tx) => {
     const payload = queuedRunnerJobPayload({
       ...args.launch.runnerJobPayload,
@@ -7488,12 +7497,16 @@ async function commitPreparedLaunch(
       admissionLockHeldStartedAt,
     };
   });
+  const transactionReturnedAt = now();
   args.timing.recordElapsed(
     "api_dispatch_admission_lock_held",
     "nested",
     committed.admissionLockHeldStartedAt,
   );
-  return committed.result;
+  return {
+    result: committed.result,
+    transactionReturnedAt,
+  };
 }
 
 function buildAtomicLaunchPayload(
@@ -7588,6 +7601,8 @@ interface PreparedRunContext {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly imageRecognitionAvailable: boolean;
+  /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
+  readonly selectedVideoModel: string;
 }
 
 function isPiSandboxEnabledForRun(
@@ -8584,6 +8599,14 @@ function prepareRunContext(
       const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
+      const selectedVideoModel = await resolveVideoModelForRun({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        chatThreadId: args.chatThreadId,
+      });
+      signal.throwIfAborted();
+
       const outputMetadata = await timing.measure(
         "api_dispatch_prepare_context_prepare_output_metadata",
         "nested",
@@ -8620,6 +8643,7 @@ function prepareRunContext(
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
+        selectedVideoModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({
           includeZeroTokenSecret: args.includeZeroTokenSecret,
           selectedModel:
@@ -8634,6 +8658,7 @@ function prepareRunContext(
 function committedAtomicLaunchResponse(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
+  readonly transactionReturnedAt: number;
   readonly timing: ApiDispatchTimingCollector;
   readonly launch: PreparedRunnerLaunch;
 }): Extract<CreateRunRouteResult, { readonly status: 201 }> {
@@ -8671,7 +8696,21 @@ function committedAtomicLaunchResponse(args: {
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
+  const runContextRegisteredAt = now();
   const dispatchedProfile = args.committed.runnerJobPayload.profile;
+  args.timing.flush({
+    runId: args.committed.run.id,
+    runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+    profile: dispatchedProfile,
+    dispatchPath: "direct",
+    ...(args.createArgs.timingDimensions
+      ? { dimensions: args.createArgs.timingDimensions }
+      : {}),
+    ...(args.createArgs.body.triggerSource
+      ? { triggerSource: args.createArgs.body.triggerSource }
+      : {}),
+  });
+  const dispatchTimingsRegisteredAt = now();
   const pendingActivation: PendingRunActivation = {
     apiStartTime: args.createArgs.apiStartTime,
     chatThreadId: args.createArgs.chatThreadId,
@@ -8685,19 +8724,13 @@ function committedAtomicLaunchResponse(args: {
         args.committed.runnerJobPayload.historyGenerationRunId,
       createdAt: args.committed.runnerJobCreatedAt,
     },
+    timing: {
+      activationOrigin: "direct",
+      commitReturnedAt: args.transactionReturnedAt,
+      runContextRegisteredAt,
+      dispatchTimingsRegisteredAt,
+    },
   };
-  args.timing.flush({
-    runId: args.committed.run.id,
-    runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-    profile: dispatchedProfile,
-    dispatchPath: "direct",
-    ...(args.createArgs.timingDimensions
-      ? { dimensions: args.createArgs.timingDimensions }
-      : {}),
-    ...(args.createArgs.body.triggerSource
-      ? { triggerSource: args.createArgs.body.triggerSource }
-      : {}),
-  });
   const response = createdRunResponse(args.committed.run, {
     status: "pending",
   });
@@ -8754,31 +8787,33 @@ function finalizeAtomicLaunchCommit(
     readonly input: AtomicLaunchRunInput;
     readonly identity: LaunchRunIdentity;
     readonly launch: PreparedRunnerLaunch;
-    readonly committed: AtomicLaunchCommitAttempt;
+    readonly committed: AtomicLaunchCommitCompletion;
   },
   signal: AbortSignal,
 ): QueueFirstAgentRunResult | QueuePayloadRequiredResult {
-  if (isReturnableRouteError(args.committed, signal)) {
-    return args.committed;
+  const committed = args.committed.result;
+  if (isReturnableRouteError(committed, signal)) {
+    return committed;
   }
-  if (args.committed.kind === "queue-first-claim-lost") {
+  if (committed.kind === "queue-first-claim-lost") {
     flushQueueFirstClaimLostTiming({
       createArgs: args.input.args,
       identity: args.identity,
       launch: args.launch,
       timing: args.input.timing,
     });
-    return args.committed;
+    return committed;
   }
-  if (args.committed.kind === "thread-session-snapshot-stale") {
-    return args.committed;
+  if (committed.kind === "thread-session-snapshot-stale") {
+    return committed;
   }
-  if (args.committed.kind === "queue-payload-required") {
-    return args.committed;
+  if (committed.kind === "queue-payload-required") {
+    return committed;
   }
   return committedAtomicLaunchResponse({
     createArgs: args.input.args,
-    committed: args.committed,
+    committed,
+    transactionReturnedAt: args.committed.transactionReturnedAt,
     timing: args.input.timing,
     launch: args.launch,
   });
@@ -9137,7 +9172,11 @@ export const completeAgentRun$ = command(
       return result;
     }
 
-    await set(activatePendingRun$, result.pendingActivation);
+    const activationScheduledAt = now();
+    await set(activatePendingRun$, {
+      activation: result.pendingActivation,
+      activationScheduledAt,
+    });
     if (signal.aborted) {
       L.debug("Request remained aborted after run activation", {
         runId: result.pendingActivation.runnerNotification.runId,

@@ -77,14 +77,14 @@ import { zeroBillingUsagePackCreditsRoutes } from "./routes/zero-billing-usage-p
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
-import { zeroSharedThreadRoutes } from "./routes/zero-shared-threads";
+import { sharedThreadRoutes } from "./routes/shared-threads";
 import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { codexDeviceAuthRoutes } from "./routes/codex-device-auth";
 import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
-import { zeroConnectorCheckRoutes } from "./routes/zero-connector-check";
+import { connectorCheckRoutes } from "./routes/connector-check";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
@@ -106,8 +106,8 @@ import { weatherRoutes } from "./routes/weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
-import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
+import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
+import { onboardingStatusRoutes } from "./routes/onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
 import { zeroOrgDeleteRoutes } from "./routes/zero-org-delete";
 import { orgLogoRoutes } from "./routes/org-logo";
@@ -115,7 +115,7 @@ import { zeroOrgMembersRoutes } from "./routes/zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "./routes/zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { pushSubscriptionsRoutes } from "./routes/push-subscriptions";
-import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
+import { queuePositionRoutes } from "./routes/queue-position";
 import { realtimeTokenRoutes } from "./routes/realtime-token";
 import { imageRecognitionRoutes } from "./routes/image-recognition";
 import { translationRoutes } from "./routes/translation";
@@ -127,7 +127,7 @@ import { zeroMeModelProviderAccountRoutes } from "./routes/zero-me-model-provide
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
-import { zeroScrapeRoutes } from "./routes/zero-scrape";
+import { scrapeRoutes } from "./routes/scrape";
 import { peopleSearchRoutes } from "./routes/people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
@@ -181,13 +181,13 @@ import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
-import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
+import { userPreferencesRoutes } from "./routes/user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
 import { zeroAvatarVideoRoutes } from "./routes/zero-avatar-video";
-import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
-import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
-import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
+import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
+import { voiceIoSpeechRoutes } from "./routes/voice-io-speech";
+import { voiceIoSttRoutes } from "./routes/voice-io-stt";
 import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
@@ -268,14 +268,14 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBankingRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatEventsRoutes,
-  ...zeroSharedThreadRoutes,
+  ...sharedThreadRoutes,
   ...claudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
   ...codexDeviceAuthRoutes,
   ...zeroConnectorCatalogRoutes,
-  ...zeroConnectorCheckRoutes,
+  ...connectorCheckRoutes,
   ...zeroConnectorsExternalCodeRoutes,
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
@@ -296,7 +296,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...mapsRoutes,
   ...zeroMcpConnectorsRoutes,
   ...weatherRoutes,
-  ...zeroScrapeRoutes,
+  ...scrapeRoutes,
   ...peopleSearchRoutes,
   ...zeroWebSearchRoutes,
   ...zeroBrowserRoutes,
@@ -309,20 +309,20 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMeModelProvidersListRoutes,
   ...zeroMeModelProvidersResetSubscriptionRoutes,
   ...zeroMeModelProvidersUpsertRoutes,
-  ...zeroVoiceIoQuotaRoutes,
-  ...zeroVoiceIoSpeechRoutes,
-  ...zeroVoiceIoSttRoutes,
+  ...voiceIoQuotaRoutes,
+  ...voiceIoSpeechRoutes,
+  ...voiceIoSttRoutes,
   ...webDownloadRoutes,
   ...webFileUrlRoutes,
-  ...zeroQueuePositionRoutes,
+  ...queuePositionRoutes,
   ...realtimeTokenRoutes,
   ...imageRecognitionRoutes,
   ...translationRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
-  ...zeroOnboardingCompleteRoutes,
-  ...zeroOnboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
+  ...onboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgDeleteRoutes,
   ...orgLogoRoutes,
@@ -331,7 +331,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroOrgReadRoutes,
   ...pushSubscriptionsRoutes,
   ...zeroUserPermissionGrantsRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...userPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,

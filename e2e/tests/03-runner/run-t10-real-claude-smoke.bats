@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Real Claude BYOK smoke test through supported model, agent, chat, and usage APIs.
+# Real VM0-managed Claude smoke test through supported model, agent, and chat APIs.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
@@ -115,7 +115,19 @@ run_real_claude_steer() {
     printf '%s\n%s\n' "$steer_output" "$successor_output"
 }
 
-@test "real claude returns a successful answer" {
+@test "vm0-managed real claude returns a successful answer" {
+    run runner_api_curl "/api/okou/model-policies"
+    assert_success
+    run jq -e '
+        any(.policies[]?;
+            .model == "claude-sonnet-4-6" and
+            .defaultProviderType == "vm0" and
+            .credentialScope == "org" and
+            .modelProviderId == null
+        )
+    ' <<<"$output"
+    assert_success
+
     run run_real_claude_chat \
         "123+456. Reply only RESULT=<answer>." \
         "RESULT=579"
@@ -123,19 +135,12 @@ run_real_claude_steer() {
     assert_success
     assert_output --partial '"status":"completed"'
     assert_output --partial "RESULT=579"
-    local run_id thread_id
-    run_id="$(runner_chat_field "$output" '.runId')"
-    thread_id="$(runner_chat_field "$output" '.threadId')"
-    [[ -n "$run_id" ]]
+    [[ -n "$(runner_chat_field "$output" '.runId')" ]]
+    [[ -n "$(runner_chat_field "$output" '.threadId')" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
-
-    run runner_e2e_assert_no_usage_for_thread "$thread_id" "$run_id"
-    echo "$output"
-    assert_success
-    assert_output --partial '"vm0UsageCredits":0'
 }
 
-@test "real claude steers an active run then starts a successor" {
+@test "vm0-managed real claude steers an active run then starts a successor" {
     local steer_nonce steer_prompt after_complete_nonce after_complete_prompt
     steer_nonce="$(_runner_uuid)"
     steer_prompt="claude-steer-${steer_nonce%%-*}"

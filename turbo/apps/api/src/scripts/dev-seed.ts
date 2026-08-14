@@ -37,10 +37,9 @@ function writeLine(message: string): void {
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
  *
  * API keys are read from environment variables per vendor:
- *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
- * Anthropic and OpenAI also fall back to their provider env names because
- * CI and local dev already use them for real model smoke tests.
- * DeepSeek also falls back to its provider env name.
+ *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_OPENROUTER_KEY, DEV_MODEL_OPENAI_KEY)
+ * OpenAI and DeepSeek also fall back to their provider env names because CI
+ * and local dev already use them for real model smoke tests.
  */
 
 /** 1 USD = 1000 credits */
@@ -501,7 +500,7 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["__fallback__", usd(0.005), 1],
   ]),
 
-  // Firecrawl single-page scrape fixed vm0 product pricing. Requests disable
+  // Firecrawl single-page scrape fixed Okou product pricing. Requests disable
   // document parsers so provider cost stays bounded to the exposed modes.
   ...usageGroup("scrape", "firecrawl", [
     ["standard.markdown", usd(0.004), 1],
@@ -651,9 +650,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
 
 function getVendorApiKeyEnvVars(vendor: string): string[] {
   const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
-  if (vendor === "anthropic") {
-    return [envVar, "ANTHROPIC_API_KEY"];
-  }
   if (vendor === "openai") {
     return [envVar, "OPENAI_API_KEY"];
   }

@@ -11,9 +11,10 @@ import {
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
 } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { zeroRunsByIdContract } from "@okouai/api-contracts/contracts/zero-runs";
-import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import {
   click,
   fill,
@@ -294,6 +295,79 @@ describe("chat lifecycle", () => {
         "https://checkout.stripe.com/credits?credits=25000",
       );
     });
+  });
+
+  it("keeps a paid credit trigger stable while its review dialog opens", async () => {
+    const checkoutReady = createDeferredPromise<void>(context.signal);
+    const threadId = "e1000000-0000-4000-a000-000000000009";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        credits: 0,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      async ({ respond }) => {
+        await checkoutReady.promise;
+        return respond(200, {
+          status: "preview",
+          credits: 25_000,
+          amountCents: 2500,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: "chat-credit-preview-token",
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("$100")).toBeInTheDocument();
+    });
+    click(buttonByText("Custom"));
+    await fill(screen.getByLabelText("Custom dollar amount"), "25");
+    const buyButton = buttonByText("Buy");
+    click(buyButton);
+
+    await waitFor(() => {
+      expect(buyButton).toHaveTextContent("Preparing...");
+      expect(buyButton).toBeDisabled();
+    });
+    checkoutReady.resolve(undefined);
+
+    await expect(
+      screen.findByRole("dialog", { name: "Review credit purchase" }),
+    ).resolves.toBeInTheDocument();
+    expect(buyButton).toHaveTextContent("Preparing...");
+    expect(buyButton).toBeDisabled();
   });
 
   it("uses the plan capability when a paid tier cannot buy credits", async () => {
@@ -589,7 +663,7 @@ describe("chat lifecycle", () => {
         createdAt: "2026-03-10T00:00:00Z",
       });
     });
-    context.mocks.api(zeroQueuePositionContract.getPosition, ({ respond }) => {
+    context.mocks.api(queuePositionContract.getPosition, ({ respond }) => {
       return respond(200, { position: 0, total: 0 });
     });
 

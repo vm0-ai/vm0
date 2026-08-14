@@ -8,8 +8,8 @@ import {
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroOnboardingCompleteRoutes } from "../zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "../zero-onboarding-status";
+import { onboardingCompleteRoutes } from "../onboarding-complete";
+import { onboardingStatusRoutes } from "../onboarding-status";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -19,13 +19,13 @@ function authHeaders() {
 }
 
 function onboardingStatusClient() {
-  return setupApp({ context, routes: zeroOnboardingStatusRoutes })(
+  return setupApp({ context, routes: onboardingStatusRoutes })(
     onboardingStatusContract,
   );
 }
 
 function onboardingCompleteClient() {
-  return setupApp({ context, routes: zeroOnboardingCompleteRoutes })(
+  return setupApp({ context, routes: onboardingCompleteRoutes })(
     onboardingCompleteContract,
   );
 }

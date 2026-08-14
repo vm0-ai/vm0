@@ -8,7 +8,7 @@ import {
   zeroPersonalModelProviderAccountsByIdContract,
 } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
-import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -19,7 +19,7 @@ import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-
 import { zeroMeModelProviderAccountRoutes } from "../../zero-me-model-provider-accounts";
 import { zeroMeModelProvidersListRoutes } from "../../zero-me-model-providers-list";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -34,7 +34,7 @@ const authDeviceSupportRoutes: readonly RouteEntry[] = [
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...userPreferencesRoutes,
 ];
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -71,7 +71,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
   return {
     async readPreferences(actor: ApiTestUser) {
       return await accept(
-        authDeviceSupportApp(context)(zeroUserPreferencesContract).get({
+        authDeviceSupportApp(context)(userPreferencesContract).get({
           headers: authenticate(context, actor),
         }),
         [200],

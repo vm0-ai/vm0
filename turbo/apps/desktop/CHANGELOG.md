@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.38.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.8...desktop-v0.38.9) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+
+## [0.38.8](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.7...desktop-v0.38.8) (2026-08-14)
+
+
+### Bug Fixes
+
+* **desktop:** use app brand in tray open action ([#27047](https://github.com/vm0-ai/vm0/issues/27047)) ([ab9d909](https://github.com/vm0-ai/vm0/commit/ab9d909106a5b18c379c9428b0f8591fb7f6e1e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.0
+
 ## [0.38.7](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.6...desktop-v0.38.7) (2026-08-14)
 
 

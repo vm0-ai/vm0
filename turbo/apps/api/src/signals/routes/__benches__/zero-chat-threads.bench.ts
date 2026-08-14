@@ -29,7 +29,7 @@ import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-
 import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
 import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
-import { zeroUserPreferencesContract } from "@okouai/api-contracts/contracts/zero-user-preferences";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
@@ -60,7 +60,7 @@ import { zeroConnectorsRoutes } from "../zero-connectors";
 import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
 import { zeroOrgReadRoutes } from "../zero-org-read";
-import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
+import { userPreferencesRoutes } from "../user-preferences";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
   ...zeroMeModelProvidersListRoutes,
@@ -108,8 +108,8 @@ const connectorsClient = setupApp({ context, routes: zeroConnectorsRoutes })(
 );
 const userPreferencesClient = setupApp({
   context,
-  routes: zeroUserPreferencesRoutes,
-})(zeroUserPreferencesContract);
+  routes: userPreferencesRoutes,
+})(userPreferencesContract);
 const billingStatusClient = setupApp({
   context,
   routes: zeroBillingStatusRoutes,

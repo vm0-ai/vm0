@@ -15,10 +15,10 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroScrapeCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { scrapeCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-scrape-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "scrape-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -101,7 +101,7 @@ describe("okou scrape command", () => {
       ),
     );
 
-    await zeroScrapeCommand.parseAsync([
+    await scrapeCommand.parseAsync([
       "node",
       "cli",
       "https://example.com",
@@ -150,7 +150,7 @@ describe("okou scrape command", () => {
       ),
     );
 
-    await zeroScrapeCommand.parseAsync([
+    await scrapeCommand.parseAsync([
       "node",
       "cli",
       "https://example.com",
@@ -189,7 +189,7 @@ describe("okou scrape command", () => {
       }),
     );
 
-    await zeroScrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
+    await scrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
 
     expect(output()).toContain("Scrape completed");
     expect(output()).toContain("Billing category: standard.markdown");
@@ -207,7 +207,7 @@ describe("okou scrape command", () => {
     );
 
     await expect(async () => {
-      await zeroScrapeCommand.parseAsync([
+      await scrapeCommand.parseAsync([
         "node",
         "cli",
         "https://example.com",
@@ -237,11 +237,7 @@ describe("okou scrape command", () => {
     );
 
     await expect(async () => {
-      await zeroScrapeCommand.parseAsync([
-        "node",
-        "cli",
-        "https://example.com",
-      ]);
+      await scrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
     }).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain("502: Firecrawl rejected this scrape");

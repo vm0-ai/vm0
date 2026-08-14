@@ -810,7 +810,7 @@ export {
   type SendMode,
   userLocaleSchema,
   type UserLocale,
-} from "./zero-user-preferences";
+} from "./user-preferences";
 export {
   featureSwitchesResponseSchema,
   updateFeatureSwitchesRequestSchema,
@@ -1027,15 +1027,15 @@ export {
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export {
+  connectorCheckContract,
   connectorCheckDiagnosticResultSchema,
   connectorCheckPolicySchema,
   connectorCheckRequestSchema,
-  zeroConnectorCheckContract,
+  type ConnectorCheckContract,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckPolicy,
   type ConnectorCheckRequest,
-  type ZeroConnectorCheckContract,
-} from "./zero-connector-check";
+} from "./connector-check";
 export {
   connectorAuthMethodIdSchema,
   connectorSlugSchema,
@@ -1111,9 +1111,9 @@ export {
   type ZeroPersonalModelProviderAccountsByIdContract,
 } from "./zero-personal-model-providers";
 export {
-  zeroUserPreferencesContract,
-  type ZeroUserPreferencesContract,
-} from "./zero-user-preferences";
+  userPreferencesContract,
+  type UserPreferencesContract,
+} from "./user-preferences";
 export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
@@ -1281,21 +1281,21 @@ export {
   type RedeemResponse,
 } from "./zero-billing";
 export {
-  zeroScrapeContract,
-  zeroScrapeBillingCategorySchema,
-  zeroScrapeFormatSchema,
-  zeroScrapeLinksResponseSchema,
-  zeroScrapeMarkdownResponseSchema,
-  zeroScrapeModeSchema,
-  zeroScrapeRequestSchema,
-  zeroScrapeResponseSchema,
-  type ZeroScrapeBillingCategory,
-  type ZeroScrapeContract,
-  type ZeroScrapeFormat,
-  type ZeroScrapeMode,
-  type ZeroScrapeRequest,
-  type ZeroScrapeResponse,
-} from "./zero-scrape";
+  scrapeContract,
+  scrapeBillingCategorySchema,
+  scrapeFormatSchema,
+  scrapeLinksResponseSchema,
+  scrapeMarkdownResponseSchema,
+  scrapeModeSchema,
+  scrapeRequestSchema,
+  scrapeResponseSchema,
+  type ScrapeBillingCategory,
+  type ScrapeContract,
+  type ScrapeFormat,
+  type ScrapeMode,
+  type ScrapeRequest,
+  type ScrapeResponse,
+} from "./scrape";
 export {
   FINANCE_DEFAULT_INTERVAL,
   FINANCE_DEFAULT_RANGE,
@@ -1492,9 +1492,9 @@ export {
   type SlackChannel,
 } from "./zero-slack-channels";
 export {
-  zeroQueuePositionContract,
-  type ZeroQueuePositionContract,
-} from "./zero-queue-position";
+  queuePositionContract,
+  type QueuePositionContract,
+} from "./queue-position";
 export {
   zeroComputerUseAuditEventsContract,
   zeroComputerUseAuthorizationRequestsContract,
@@ -1703,26 +1703,26 @@ export {
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
 export {
-  zeroVoiceIoQuotaContract,
+  voiceIoQuotaContract,
   audioInputQuotaResponseSchema,
-  type ZeroVoiceIoQuotaContract,
+  type VoiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "./zero-voice-io-quota";
+} from "./voice-io-quota";
 export {
-  zeroVoiceIoSpeechContract,
-  zeroVoiceIoSpeechRequestSchema,
-  zeroVoiceIoSpeechResponseSchema,
-  type ZeroVoiceIoSpeechContract,
-  type ZeroVoiceIoSpeechRequest,
-  type ZeroVoiceIoSpeechResponse,
-} from "./zero-voice-io-speech";
+  voiceIoSpeechContract,
+  voiceIoSpeechRequestSchema,
+  voiceIoSpeechResponseSchema,
+  type VoiceIoSpeechContract,
+  type VoiceIoSpeechRequest,
+  type VoiceIoSpeechResponse,
+} from "./voice-io-speech";
 export {
-  zeroVoiceIoSttContract,
-  zeroVoiceIoSttResponseSchema,
-  zeroVoiceIoSttQuotaErrorSchema,
-  type ZeroVoiceIoSttContract,
-  type ZeroVoiceIoSttResponse,
-} from "./zero-voice-io-stt";
+  voiceIoSttContract,
+  voiceIoSttResponseSchema,
+  voiceIoSttQuotaErrorSchema,
+  type VoiceIoSttContract,
+  type VoiceIoSttResponse,
+} from "./voice-io-stt";
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,

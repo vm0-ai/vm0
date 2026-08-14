@@ -27,9 +27,9 @@ import {
 } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   updateUserPreferencesRequestSchema,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
@@ -45,7 +45,7 @@ import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { orgLogoRoutes } from "../../org-logo";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import { zeroWorkflowsRoutes } from "../../zero-workflows";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
@@ -224,8 +224,8 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async readPreferences(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context, routes: zeroUserPreferencesRoutes })(
-          zeroUserPreferencesContract,
+        setupApp({ context, routes: userPreferencesRoutes })(
+          userPreferencesContract,
         ).get({
           headers: authenticate(context, actor),
         }),
@@ -239,8 +239,8 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroUserPreferencesRoutes })(
-          zeroUserPreferencesContract,
+        setupApp({ context, routes: userPreferencesRoutes })(
+          userPreferencesContract,
         ).update({
           headers: authenticate(context, actor),
           body,

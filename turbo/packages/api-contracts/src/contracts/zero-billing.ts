@@ -80,13 +80,6 @@ const usageAllowanceSchema = z.object({
 
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
-  /**
-   * Always `true` since #25716 retired the payment-method portal rollout
-   * switch. It stays optional like every other capability flag so a new app
-   * reaching a draining older API keeps the shared
-   * `org-plan-capabilities.ts` default instead of failing response parsing.
-   */
-  paymentMethodManagementAvailable: z.boolean().optional(),
   canBuyConcurrency: z.boolean().optional(),
   concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
