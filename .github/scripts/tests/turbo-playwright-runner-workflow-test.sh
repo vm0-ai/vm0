@@ -12,6 +12,7 @@ RUNNER_HELPERS=(
 )
 RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
 RUNNER_MOCK_CLAUDE_BOOTSTRAP="${REPO_ROOT}/e2e/playwright/runner-mock-claude-bootstrap.bash"
+RUNNER_PI_BOOTSTRAP="${REPO_ROOT}/e2e/playwright/runner-pi-bootstrap.bash"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -50,7 +51,10 @@ if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 2 ]]; then
   fail "the default and real Pi runner accounts must remain on limited-free"
 fi
 
-ruby -ryaml -ropen3 -rtempfile - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
+ruby -ryaml -ropen3 -rtempfile - \
+  "$WORKFLOW" \
+  "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" \
+  "$RUNNER_PI_BOOTSTRAP" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
@@ -359,7 +363,16 @@ pi_step = bootstrap_steps.find do |step|
   step["name"] == "Bootstrap real Pi account"
 end
 raise "missing real Pi account bootstrap" unless pi_step
-pi_script = pi_step.fetch("run")
+unless pi_step.fetch("run").end_with?(
+    "runner-pi-bootstrap.bash /tmp/e2e-api-credentials-runner-real-pi.json",
+  )
+  raise "real Pi account bootstrap must use the focused executable"
+end
+unless pi_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
+    "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+  raise "real Pi bootstrap must receive the preview bypass secret"
+end
+pi_script = File.read(ARGV.fetch(2))
 %w[
   /api/okou/model-policies
   /api/okou/user-model-preference
