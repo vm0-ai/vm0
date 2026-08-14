@@ -20,13 +20,13 @@ import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroIntegrationsGithubUploadCompleteRoutes } from "../zero-integrations-github-upload-complete";
+import { integrationsGithubUploadCompleteRoutes } from "../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../integrations-github-upload-init";
-import { zeroIntegrationsGithubDownloadFileRoutes } from "../zero-integrations-github-download-file";
+import { integrationsGithubDownloadFileRoutes } from "../integrations-github-download-file";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...zeroIntegrationsGithubDownloadFileRoutes,
-  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...integrationsGithubDownloadFileRoutes,
+  ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
 ]);
 
@@ -49,7 +49,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId?: string;
@@ -82,7 +82,7 @@ function setupGitHubTokenMock(installationId: string): void {
   );
 }
 
-describe("GitHub zero file integration routes", () => {
+describe("GitHub file integration routes", () => {
   async function seedFixture(): Promise<GitHubFileFixture> {
     const actor = bdd.user();
     if (!actor.orgId) {
@@ -166,7 +166,7 @@ describe("GitHub zero file integration routes", () => {
       {
         method: "GET",
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             capabilities: ["github:read"],
@@ -207,7 +207,7 @@ describe("GitHub zero file integration routes", () => {
       {
         method: "GET",
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             capabilities: ["github:read"],
@@ -234,7 +234,7 @@ describe("GitHub zero file integration routes", () => {
       {
         method: "GET",
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             capabilities: ["github:read"],
@@ -261,7 +261,7 @@ describe("GitHub zero file integration routes", () => {
       {
         method: "GET",
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             capabilities: ["github:write"],
@@ -294,7 +294,7 @@ describe("GitHub zero file integration routes", () => {
           length: 1234,
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             capabilities: ["github:write"],
@@ -359,7 +359,7 @@ describe("GitHub zero file integration routes", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsGithubUploadCompleteRoutes,
+      routes: integrationsGithubUploadCompleteRoutes,
     })(integrationsGithubUploadCompleteContract);
     const response = await accept(
       client.complete({
@@ -371,7 +371,7 @@ describe("GitHub zero file integration routes", () => {
           caption: "Daily report",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: run.runId,

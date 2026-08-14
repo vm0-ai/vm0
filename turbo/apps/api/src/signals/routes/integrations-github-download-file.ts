@@ -228,7 +228,7 @@ const githubReadAuth = {
   requiredCapability: "github:read",
 } as const;
 
-export const zeroIntegrationsGithubDownloadFileRoutes: readonly RouteEntry[] = [
+export const integrationsGithubDownloadFileRoutes: readonly RouteEntry[] = [
   {
     route: githubDownloadFileContract.download,
     handler: authRoute(githubReadAuth, download$),
