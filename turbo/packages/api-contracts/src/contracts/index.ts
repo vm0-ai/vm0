@@ -1492,9 +1492,9 @@ export {
   type SlackChannel,
 } from "./zero-slack-channels";
 export {
-  zeroQueuePositionContract,
-  type ZeroQueuePositionContract,
-} from "./zero-queue-position";
+  queuePositionContract,
+  type QueuePositionContract,
+} from "./queue-position";
 export {
   zeroComputerUseAuditEventsContract,
   zeroComputerUseAuthorizationRequestsContract,

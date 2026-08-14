@@ -13,7 +13,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { zeroRunsByIdContract } from "@okouai/api-contracts/contracts/zero-runs";
-import { zeroQueuePositionContract } from "@okouai/api-contracts/contracts/zero-queue-position";
+import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import {
   click,
   fill,
@@ -589,7 +589,7 @@ describe("chat lifecycle", () => {
         createdAt: "2026-03-10T00:00:00Z",
       });
     });
-    context.mocks.api(zeroQueuePositionContract.getPosition, ({ respond }) => {
+    context.mocks.api(queuePositionContract.getPosition, ({ respond }) => {
       return respond(200, { position: 0, total: 0 });
     });
 
