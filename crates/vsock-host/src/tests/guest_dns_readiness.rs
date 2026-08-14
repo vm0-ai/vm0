@@ -168,12 +168,13 @@ async fn guest_dns_readiness_timeout_abandons_connection_for_parking_and_ignores
 async fn dropping_guest_dns_readiness_after_write_abandons_connection_for_parking() {
     let (host_stream, guest_stream) = make_pair();
     let (request_tx, request_rx) = oneshot::channel();
+    let (release_tx, release_rx) = oneshot::channel();
     let guest = tokio::spawn(async move {
         let mut guest = MockGuest::new(guest_stream);
         guest.complete_handshake().await;
         let _request = guest.expect_message(MSG_GUEST_DNS_READINESS).await;
         request_tx.send(()).unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        release_rx.await.unwrap();
     });
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
     let request_host = Arc::clone(&host);
@@ -193,5 +194,6 @@ async fn dropping_guest_dns_readiness_after_write_abandons_connection_for_parkin
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
     );
+    release_tx.send(()).unwrap();
     guest.await.unwrap();
 }
