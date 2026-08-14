@@ -45,7 +45,7 @@ import {
   MODEL_TOKEN_CATEGORIES,
   MODEL_TOKEN_USAGE_KINDS,
 } from "./model-token-categories";
-import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
+import { getOrgBillingPeriod$ } from "./org-billing-period.service";
 import { resolveEmails } from "./zero-usage.service";
 import {
   fixedRangeToPeriod,
