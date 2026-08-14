@@ -5403,7 +5403,10 @@ function TemplatePickerCategoryContent({
 
   if (selectedCategory === "avatar" && hasAvatarTab) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6">
+      // No padding here: like the other category panels, the picker's own
+      // scroll containers pad themselves so the selection ring is not clipped
+      // at their edges.
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <AvatarTemplatePickerContent
           signals={signals}
           value={value}

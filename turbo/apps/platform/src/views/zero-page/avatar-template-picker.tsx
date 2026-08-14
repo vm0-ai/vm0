@@ -1116,9 +1116,9 @@ function AvatarVoiceCatalog({
     <section className="flex min-h-0 min-w-0 flex-col">
       <div
         data-avatar-voice-list-scroll=""
-        // Same ring allowance as the avatar grid, for the voice cards' focus
-        // ring at the container edges.
-        className="-m-1 min-h-0 flex-1 overflow-y-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // Top allowance for the first voice card's focus ring; the bottom
+        // padding mirrors the catalog panel.
+        className="min-h-0 flex-1 overflow-y-auto pb-6 pt-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onScroll={handleVoiceScroll}
       >
         {catalog.state === "hasError" ? (
@@ -1169,7 +1169,7 @@ function AvatarVoicePickerContent({
   return (
     <div
       data-avatar-voice-picker=""
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden px-6"
     >
       <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden md:grid-cols-[minmax(210px,0.72fr)_minmax(0,1.55fr)] md:grid-rows-1">
         <div
@@ -1237,10 +1237,10 @@ function AvatarCatalogPickerContent({
   return (
     <div
       data-avatar-template-grid-scroll=""
-      // The selection ring draws 2px outside each card (ring + offset), so the
-      // scroll container pads by the same allowance and pulls it back with a
-      // negative margin — otherwise edge rows clip the ring.
-      className="-m-1 min-h-0 flex-1 overflow-y-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      // Pads itself like the other category panels: the ring draws 2px
+      // outside each card, and pt-0.5 is exactly that allowance, so edge rows
+      // keep their ring inside this clip box.
+      className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       onScroll={handleAvatarScroll}
     >
       {catalog.state === "hasError" ? (
