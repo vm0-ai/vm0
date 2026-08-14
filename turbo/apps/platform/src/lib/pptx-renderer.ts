@@ -5,8 +5,9 @@ import {
   type PptxFiles,
   type PresentationData,
   type SlideHandle,
+  type SlideRendererOptions,
 } from "@aiden0z/pptx-renderer";
-import { domToBlob, waitUntilLoad } from "modern-screenshot";
+import { domToBlob } from "modern-screenshot";
 import { animationFrame } from "signal-timers";
 
 import {
@@ -135,6 +136,17 @@ const ZIP_SIGNATURES: ReadonlySet<string> = new Set([
 const OLE_SIGNATURE: readonly number[] = [
   0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1,
 ];
+const CSS_IMAGE_URL_PATTERN =
+  /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/giu;
+const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+
+type PptxChartInstance =
+  NonNullable<SlideRendererOptions["chartInstances"]> extends Set<
+    infer Instance
+  >
+    ? Instance
+    : never;
+type PptxChartInstances = Set<PptxChartInstance>;
 
 function sourceSize(data: ArrayBuffer | Blob): number {
   return data instanceof Blob ? data.size : data.byteLength;
@@ -300,30 +312,188 @@ async function nextPaint(signal: AbortSignal): Promise<void> {
   signal.throwIfAborted();
 }
 
+function imageSource(image: HTMLImageElement): string {
+  return image.currentSrc || image.src;
+}
+
+function addImageSource(sources: Set<string>, source: string | null): void {
+  const normalized = source?.trim();
+  if (normalized) {
+    sources.add(normalized);
+  }
+}
+
+function collectPageImageSources(page: HTMLElement): {
+  readonly elementsBySource: ReadonlyMap<string, HTMLImageElement>;
+  readonly sources: ReadonlySet<string>;
+} {
+  const elementsBySource = new Map<string, HTMLImageElement>();
+  const sources = new Set<string>();
+
+  for (const image of page.querySelectorAll<HTMLImageElement>("img")) {
+    const source = imageSource(image).trim();
+    if (source) {
+      sources.add(source);
+      if (!elementsBySource.has(source)) {
+        elementsBySource.set(source, image);
+      }
+    }
+  }
+
+  for (const image of page.querySelectorAll("svg image")) {
+    addImageSource(sources, image.getAttribute("href"));
+    addImageSource(sources, image.getAttributeNS(XLINK_NAMESPACE, "href"));
+  }
+
+  const view = page.ownerDocument.defaultView;
+  if (view !== null) {
+    const elements: Element[] = [page, ...page.querySelectorAll("*")];
+    for (const element of elements) {
+      const backgroundImage = view.getComputedStyle(element).backgroundImage;
+      for (const match of backgroundImage.matchAll(CSS_IMAGE_URL_PATTERN)) {
+        addImageSource(sources, match[1] ?? match[2] ?? match[3] ?? null);
+      }
+    }
+  }
+
+  return { elementsBySource, sources };
+}
+
+function imageLoadError(): Error {
+  return new Error("A PPTX image resource could not be decoded");
+}
+
+async function waitForImageLoadFallback(
+  image: HTMLImageElement,
+  signal: AbortSignal,
+): Promise<void> {
+  if (image.complete) {
+    if (image.naturalWidth === 0) {
+      throw imageLoadError();
+    }
+    return;
+  }
+
+  const deferred = createDeferredPromise<void>(signal);
+  const onLoad = () => {
+    if (!deferred.settled()) {
+      deferred.resolve(undefined);
+    }
+  };
+  const onError = () => {
+    if (!deferred.settled()) {
+      deferred.reject(imageLoadError());
+    }
+  };
+  image.addEventListener("load", onLoad, { once: true });
+  image.addEventListener("error", onError, { once: true });
+  if (image.complete) {
+    if (image.naturalWidth === 0) {
+      onError();
+    } else {
+      onLoad();
+    }
+  }
+
+  await withCleanup(deferred.promise, () => {
+    image.removeEventListener("load", onLoad);
+    image.removeEventListener("error", onError);
+  });
+}
+
+async function decodeImage(
+  image: HTMLImageElement,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
+  if (image.decode === undefined) {
+    await waitForImageLoadFallback(image, signal);
+    return;
+  }
+
+  const decodeResult = await settle(image.decode(), signal);
+  if (!decodeResult.ok) {
+    throw new Error("A PPTX image resource could not be decoded", {
+      cause: decodeResult.error,
+    });
+  }
+  signal.throwIfAborted();
+}
+
+async function waitForPageImages(
+  page: HTMLElement,
+  signal: AbortSignal,
+): Promise<void> {
+  const { elementsBySource, sources } = collectPageImageSources(page);
+  await Promise.all(
+    Array.from(sources, (source) => {
+      const renderedImage = elementsBySource.get(source);
+      if (renderedImage !== undefined) {
+        return decodeImage(renderedImage, signal);
+      }
+      const probe = page.ownerDocument.createElement("img");
+      probe.decoding = "async";
+      probe.loading = "eager";
+      probe.src = source;
+      return decodeImage(probe, signal);
+    }),
+  );
+}
+
+function chartAnimationFinished(chart: PptxChartInstance): boolean {
+  return chart.isDisposed() || chart.getZr().animation.isFinished();
+}
+
+async function waitForChartAnimation(
+  chart: PptxChartInstance,
+  signal: AbortSignal,
+): Promise<void> {
+  if (chartAnimationFinished(chart)) {
+    return;
+  }
+
+  const deferred = createDeferredPromise<void>(signal);
+  const onFinished = () => {
+    if (!deferred.settled()) {
+      deferred.resolve(undefined);
+    }
+  };
+  chart.on("finished", onFinished);
+  if (chartAnimationFinished(chart)) {
+    onFinished();
+  }
+  await withCleanup(deferred.promise, () => {
+    if (!chart.isDisposed()) {
+      chart.off("finished", onFinished);
+    }
+  });
+}
+
+async function waitForChartAnimations(
+  chartInstances: PptxChartInstances,
+  signal: AbortSignal,
+): Promise<void> {
+  await Promise.all(
+    Array.from(chartInstances, (chart) => {
+      return waitForChartAnimation(chart, signal);
+    }),
+  );
+}
+
 async function waitForPageResources(
   page: HTMLElement,
   handle: SlideHandle,
+  chartInstances: PptxChartInstances,
   pageIndex: number,
   signal: AbortSignal,
 ): Promise<void> {
-  const mediaErrors: Error[] = [];
   const resourcesReady = async () => {
+    await handle.ready;
     await Promise.all([
-      handle.ready,
       document.fonts.ready,
-      waitUntilLoad(page, {
-        timeout: PPTX_RENDER_LIMITS.resourceTimeoutMs,
-        onError(error) {
-          mediaErrors.push(error);
-        },
-      }),
+      waitForPageImages(page, signal),
+      waitForChartAnimations(chartInstances, signal),
     ]);
-    if (mediaErrors.length > 0) {
-      throw new AggregateError(
-        mediaErrors,
-        "One or more page images failed to load",
-      );
-    }
     await nextPaint(signal);
     await nextPaint(signal);
   };
@@ -403,6 +573,7 @@ async function exportPages(
   pages: readonly PptxRenderedPage[],
   ensureActive: () => void,
   signal: AbortSignal,
+  activeCaptures: Set<Promise<Blob>>,
 ): Promise<readonly Blob[]> {
   const output: (Blob | undefined)[] = Array.from(
     { length: pages.length },
@@ -411,41 +582,59 @@ async function exportPages(
     },
   );
   let nextIndex = 0;
+  let firstFailure: { readonly error: unknown } | undefined;
+
+  const exportPage = async (
+    page: PptxRenderedPage,
+    index: number,
+  ): Promise<Blob> => {
+    signal.throwIfAborted();
+    ensureActive();
+    await waitForExportResources(page.element, index, signal);
+    ensureActive();
+    const rawCapture = domToBlob(page.element, {
+      backgroundColor: "#ffffff",
+      height: PPTX_PAGE_HEIGHT,
+      scale: 1,
+      timeout: PPTX_RENDER_LIMITS.resourceTimeoutMs,
+      type: "image/png",
+      width: PPTX_PAGE_WIDTH,
+    });
+    const trackedCapture = withCleanup(rawCapture, () => {
+      activeCaptures.delete(trackedCapture);
+    });
+    activeCaptures.add(trackedCapture);
+    const blob = await waitWithDeadline(
+      trackedCapture,
+      signal,
+      new PptxRenderError(
+        "resource_timeout",
+        `Page ${(index + 1).toString()} PNG export timed out`,
+        { pageIndex: index },
+      ),
+    );
+    ensureActive();
+    if (blob.size === 0 || blob.type !== "image/png") {
+      throw new PptxRenderError(
+        "export_failed",
+        `Page ${(index + 1).toString()} did not produce a valid PNG blob`,
+        { pageIndex: index },
+      );
+    }
+    return blob;
+  };
 
   const worker = async () => {
-    while (nextIndex < pages.length) {
+    while (firstFailure === undefined && nextIndex < pages.length) {
       const index = nextIndex;
       nextIndex += 1;
       const page = pages[index];
-      signal.throwIfAborted();
-      ensureActive();
-      await waitForExportResources(page.element, index, signal);
-      ensureActive();
-      const blob = await waitWithDeadline(
-        domToBlob(page.element, {
-          backgroundColor: "#ffffff",
-          height: PPTX_PAGE_HEIGHT,
-          scale: 1,
-          timeout: PPTX_RENDER_LIMITS.resourceTimeoutMs,
-          type: "image/png",
-          width: PPTX_PAGE_WIDTH,
-        }),
-        signal,
-        new PptxRenderError(
-          "resource_timeout",
-          `Page ${(index + 1).toString()} PNG export timed out`,
-          { pageIndex: index },
-        ),
-      );
-      ensureActive();
-      if (blob.size === 0 || blob.type !== "image/png") {
-        throw new PptxRenderError(
-          "export_failed",
-          `Page ${(index + 1).toString()} did not produce a valid PNG blob`,
-          { pageIndex: index },
-        );
+      const [result] = await Promise.allSettled([exportPage(page, index)]);
+      if (result.status === "rejected") {
+        firstFailure ??= { error: result.reason };
+      } else {
+        output[index] = result.value;
       }
-      output[index] = blob;
     }
   };
 
@@ -455,7 +644,16 @@ async function exportPages(
     },
     worker,
   );
-  await Promise.all(workers);
+  const workerResults = await Promise.allSettled(workers);
+  if (firstFailure !== undefined) {
+    throw firstFailure.error;
+  }
+  const rejectedWorker = workerResults.find((result) => {
+    return result.status === "rejected";
+  });
+  if (rejectedWorker?.status === "rejected") {
+    throw rejectedWorker.reason;
+  }
   return output.map((blob, index) => {
     if (blob === undefined) {
       throw new PptxRenderError(
@@ -473,33 +671,27 @@ async function waitForExportResources(
   pageIndex: number,
   signal: AbortSignal,
 ): Promise<void> {
-  const mediaErrors: Error[] = [];
-  await waitWithDeadline(
-    Promise.all([
-      document.fonts.ready,
-      waitUntilLoad(page, {
-        timeout: PPTX_RENDER_LIMITS.resourceTimeoutMs,
-        onError(error) {
-          mediaErrors.push(error);
-        },
-      }),
-    ]),
-    signal,
-    new PptxRenderError(
-      "resource_timeout",
-      `Page ${(pageIndex + 1).toString()} resources were not ready for PNG export`,
-      { pageIndex },
+  const resourcesResult = await settle(
+    waitWithDeadline(
+      Promise.all([document.fonts.ready, waitForPageImages(page, signal)]),
+      signal,
+      new PptxRenderError(
+        "resource_timeout",
+        `Page ${(pageIndex + 1).toString()} resources were not ready for PNG export`,
+        { pageIndex },
+      ),
     ),
+    signal,
   );
-  if (mediaErrors.length > 0) {
+  if (!resourcesResult.ok) {
+    if (resourcesResult.error instanceof PptxRenderError) {
+      throw resourcesResult.error;
+    }
     throw new PptxRenderError(
       "export_failed",
       `Page ${(pageIndex + 1).toString()} has image resources that could not be exported`,
       {
-        cause: new AggregateError(
-          mediaErrors,
-          "One or more page images failed to export",
-        ),
+        cause: resourcesResult.error,
         pageIndex,
       },
     );
@@ -524,6 +716,29 @@ async function buildValidatedPresentation(
   const presentation = buildPresentation(files, { lazySlides: true });
   validatePresentation(presentation);
   return presentation;
+}
+
+async function releaseExportAfterCaptures(
+  captures: readonly Promise<Blob>[],
+  release: () => void,
+): Promise<void> {
+  await Promise.allSettled(captures);
+  release();
+}
+
+function releaseExportOwnership(
+  activeCaptures: ReadonlySet<Promise<Blob>>,
+  release: () => void,
+): void {
+  if (activeCaptures.size === 0) {
+    release();
+    return;
+  }
+  detach(
+    releaseExportAfterCaptures([...activeCaptures], release),
+    Reason.Daemon,
+    "PPTX PNG export ownership",
+  );
 }
 
 async function createRenderSession(
@@ -569,7 +784,9 @@ async function createRenderSession(
     for (let index = 0; index < presentation.slides.length; index += 1) {
       signal.throwIfAborted();
       const nodeErrors: unknown[] = [];
+      const chartInstances: PptxChartInstances = new Set();
       const handle = renderSlide(presentation, presentation.slides[index], {
+        chartInstances,
         mediaUrlCache,
         onNodeError(nodeId, error) {
           nodeErrors.push(
@@ -583,7 +800,13 @@ async function createRenderSession(
       handles.push(handle);
       const element = createPageSurface(presentation, handle, index);
       root.append(element);
-      await waitForPageResources(element, handle, index, signal);
+      await waitForPageResources(
+        element,
+        handle,
+        chartInstances,
+        index,
+        signal,
+      );
       if (nodeErrors.length > 0) {
         throw new AggregateError(nodeErrors, "One or more PPTX nodes failed");
       }
@@ -621,10 +844,16 @@ async function createRenderSession(
         );
       }
       exportInProgress = true;
+      const activeCaptures = new Set<Promise<Blob>>();
       const exportResult = await settle(
-        withCleanup(exportPages(pages, ensureActive, combinedSignal), () => {
-          exportInProgress = false;
-        }),
+        withCleanup(
+          exportPages(pages, ensureActive, combinedSignal, activeCaptures),
+          () => {
+            releaseExportOwnership(activeCaptures, () => {
+              exportInProgress = false;
+            });
+          },
+        ),
         combinedSignal,
       );
       if (!exportResult.ok) {

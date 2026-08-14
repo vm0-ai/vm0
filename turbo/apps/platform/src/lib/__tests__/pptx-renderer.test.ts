@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import supportedFixture from "./fixtures/pptx/supported.pptx?inline";
 import tooManyPagesFixture from "./fixtures/pptx/too-many-pages.pptx?inline";
@@ -10,11 +10,27 @@ import {
   renderPptx,
   type PptxRenderSession,
 } from "../pptx-renderer.ts";
+import { createDeferredPromise } from "../../signals/utils.ts";
 
 const screenshotState = vi.hoisted(() => {
   return {
     active: 0,
+    blockedPages: [] as string[],
+    blockPromise: undefined as Promise<void> | undefined,
+    capturedPages: [] as string[],
+    failedPages: [] as string[],
+    failPage: undefined as string | undefined,
     maxActive: 0,
+    pageTwoStarted: undefined as Promise<void> | undefined,
+    resolvePageTwoStarted: undefined as (() => void) | undefined,
+  };
+});
+
+const imageState = vi.hoisted(() => {
+  return {
+    decodeError: undefined as Error | undefined,
+    decodePromise: undefined as Promise<void> | undefined,
+    decodedSources: [] as string[],
   };
 });
 
@@ -27,14 +43,30 @@ vi.mock("modern-screenshot", () => {
         screenshotState.active,
       );
       const pageNumber = element.dataset.pptxPage ?? "missing";
-      await Promise.resolve();
-      if (pageNumber === "1") {
-        await Promise.resolve();
+      screenshotState.capturedPages.push(pageNumber);
+      if (pageNumber === "2") {
+        screenshotState.resolvePageTwoStarted?.();
       }
-      screenshotState.active -= 1;
-      return new Blob([pageNumber], { type: "image/png" });
+      try {
+        await Promise.resolve();
+        if (pageNumber === screenshotState.failPage) {
+          screenshotState.failedPages.push(pageNumber);
+          throw new Error(`Page ${pageNumber} screenshot failed`);
+        }
+        if (
+          screenshotState.blockedPages.includes(pageNumber) &&
+          screenshotState.blockPromise !== undefined
+        ) {
+          await screenshotState.blockPromise;
+        }
+        if (pageNumber === "1") {
+          await screenshotState.pageTwoStarted;
+        }
+        return new Blob([pageNumber], { type: "image/png" });
+      } finally {
+        screenshotState.active -= 1;
+      }
     },
-    async waitUntilLoad() {},
   };
 });
 
@@ -97,6 +129,31 @@ beforeAll(() => {
       return findNamespace(this);
     },
   });
+  Object.defineProperty(HTMLImageElement.prototype, "decode", {
+    configurable: true,
+    value(this: HTMLImageElement): Promise<void> {
+      imageState.decodedSources.push(this.currentSrc || this.src);
+      if (imageState.decodeError !== undefined) {
+        return Promise.reject(imageState.decodeError);
+      }
+      return imageState.decodePromise ?? Promise.resolve();
+    },
+  });
+});
+
+beforeEach(() => {
+  screenshotState.active = 0;
+  screenshotState.blockedPages = [];
+  screenshotState.blockPromise = undefined;
+  screenshotState.capturedPages = [];
+  screenshotState.failedPages = [];
+  screenshotState.failPage = undefined;
+  screenshotState.maxActive = 0;
+  screenshotState.pageTwoStarted = undefined;
+  screenshotState.resolvePageTwoStarted = undefined;
+  imageState.decodeError = undefined;
+  imageState.decodePromise = undefined;
+  imageState.decodedSources = [];
 });
 
 describe("renderPptx", () => {
@@ -140,8 +197,11 @@ describe("renderPptx", () => {
   });
 
   it("exports ordered PNG blobs from the same rendered page elements", async () => {
-    screenshotState.active = 0;
-    screenshotState.maxActive = 0;
+    const pageTwoStarted = createDeferredPromise<void>(activeSignal());
+    screenshotState.pageTwoStarted = pageTwoStarted.promise;
+    screenshotState.resolvePageTwoStarted = () => {
+      pageTwoStarted.resolve(undefined);
+    };
     const target = connectedTarget();
     const session = await renderSupported(target);
 
@@ -167,6 +227,44 @@ describe("renderPptx", () => {
     target.remove();
   });
 
+  it("waits for real fixture images to decode before completing preview", async () => {
+    const imageGate = createDeferredPromise<void>(activeSignal());
+    imageState.decodePromise = imageGate.promise;
+    const target = connectedTarget();
+    const renderPromise = renderSupported(target);
+    let renderCompleted = false;
+    const observeRender = async () => {
+      await renderPromise;
+      renderCompleted = true;
+    };
+    const observation = observeRender();
+
+    await vi.waitFor(() => {
+      expect(imageState.decodedSources.length).toBeGreaterThan(0);
+    });
+    expect(renderCompleted).toBeFalsy();
+
+    imageGate.resolve(undefined);
+    const session = await renderPromise;
+    await observation;
+    expect(renderCompleted).toBeTruthy();
+
+    session.dispose();
+    target.remove();
+  });
+
+  it("turns a real fixture image decode failure into a render error", async () => {
+    imageState.decodeError = new Error("image decode failed");
+    const target = connectedTarget();
+
+    await expect(renderSupported(target)).rejects.toMatchObject({
+      code: "render_failed",
+    });
+    expect(imageState.decodedSources.length).toBeGreaterThan(0);
+    expect(target.childElementCount).toBe(0);
+    target.remove();
+  });
+
   it("limits a render session to one active PNG export operation", async () => {
     const target = connectedTarget();
     const session = await renderSupported(target);
@@ -176,6 +274,76 @@ describe("renderPptx", () => {
       code: "concurrency_limit",
     });
     await firstExport;
+
+    session.dispose();
+    target.remove();
+  });
+
+  it("stops assigning pages after a failure and retains sibling ownership", async () => {
+    const blockedCapture = createDeferredPromise<void>(activeSignal());
+    screenshotState.failPage = "1";
+    screenshotState.blockedPages = ["2"];
+    screenshotState.blockPromise = blockedCapture.promise;
+    const target = connectedTarget();
+    const session = await renderSupported(target);
+    const firstExport = Promise.allSettled([
+      session.exportPngs(activeSignal()),
+    ]);
+
+    await vi.waitFor(() => {
+      expect(screenshotState.failedPages).toStrictEqual(["1"]);
+      expect(screenshotState.capturedPages).toContain("2");
+    });
+    await expect(session.exportPngs(activeSignal())).rejects.toMatchObject({
+      code: "concurrency_limit",
+    });
+    expect(screenshotState.capturedPages).not.toContain("3");
+
+    blockedCapture.resolve(undefined);
+    const [result] = await firstExport;
+    expect(result).toMatchObject({
+      reason: { code: "export_failed" },
+      status: "rejected",
+    });
+    expect(screenshotState.maxActive).toBeLessThanOrEqual(
+      PPTX_RENDER_LIMITS.pageExportConcurrency,
+    );
+
+    session.dispose();
+    target.remove();
+  });
+
+  it("retains the export lock until timed-out raw captures settle", async () => {
+    const blockedCapture = createDeferredPromise<void>(activeSignal());
+    screenshotState.blockedPages = ["1", "2"];
+    screenshotState.blockPromise = blockedCapture.promise;
+    const target = connectedTarget();
+    const session = await renderSupported(target);
+    const exportSignal = AbortSignal.timeout(500);
+    const firstExport = Promise.allSettled([session.exportPngs(exportSignal)]);
+
+    await vi.waitFor(() => {
+      expect(screenshotState.capturedPages).toContain("1");
+      expect(screenshotState.capturedPages).toContain("2");
+    });
+    const [result] = await firstExport;
+    expect(result).toMatchObject({
+      reason: { name: "TimeoutError" },
+      status: "rejected",
+    });
+    await expect(session.exportPngs(activeSignal())).rejects.toMatchObject({
+      code: "concurrency_limit",
+    });
+
+    blockedCapture.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(screenshotState.active).toBe(0);
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    screenshotState.blockedPages = [];
+    screenshotState.blockPromise = undefined;
+    await expect(session.exportPngs(activeSignal())).resolves.toHaveLength(3);
 
     session.dispose();
     target.remove();
