@@ -3719,7 +3719,7 @@ describe("CHAT-02: model-first provider policies", () => {
         "appendSystemPrompt",
       );
       expect(firstContext.piLaunchConfig).toStrictEqual({ schemaVersion: 2 });
-      expect(firstContext.storageMounts).toStrictEqual(
+      expect(firstContext.storageManifest?.storageMounts).toStrictEqual(
         expect.arrayContaining([
           expect.objectContaining({
             mountPath: "/home/user/.pi/agent",
