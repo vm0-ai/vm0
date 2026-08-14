@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.451.3](https://github.com/vm0-ai/vm0/compare/api-v1.451.2...api-v1.451.3) (2026-08-14)
+
+
+### Bug Fixes
+
+* **api:** stabilize custom connector firewall ids ([#27297](https://github.com/vm0-ai/vm0/issues/27297)) ([2b58522](https://github.com/vm0-ai/vm0/commit/2b5852246f6fa11df1a6acb80494fa3b7f59a851))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.3
+    * @okouai/core bumped to 8.562.0
+    * @okouai/db bumped to 1.200.3
+
 ## [1.451.2](https://github.com/vm0-ai/vm0/compare/api-v1.451.1...api-v1.451.2) (2026-08-14)
 
 
