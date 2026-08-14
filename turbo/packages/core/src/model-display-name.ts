@@ -5,7 +5,7 @@ import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-thre
  * Falls back to the raw model ID if no mapping is found.
  */
 const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
-  // Canonical Claude model IDs
+  // Anthropic direct (claude-code-oauth-token, anthropic-api-key, vm0)
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-5": "Claude Opus 5",
   "claude-sonnet-5": "Claude Sonnet 5",
