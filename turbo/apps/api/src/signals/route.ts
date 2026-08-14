@@ -138,7 +138,7 @@ import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
 import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
-import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
+import { integrationsPhoneDownloadFileRoutes } from "./routes/integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "./routes/integrations-phone-message";
 import { zeroIntegrationsPhoneUploadCompleteRoutes } from "./routes/zero-integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "./routes/integrations-phone-upload-init";
@@ -351,7 +351,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamsConnectRoutes,
   ...zeroTeamsOauthRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
-  ...zeroIntegrationsPhoneDownloadFileRoutes,
+  ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
   ...zeroIntegrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
