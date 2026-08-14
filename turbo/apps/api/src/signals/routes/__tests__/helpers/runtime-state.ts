@@ -543,6 +543,30 @@ export async function advanceChatEventSequenceAsPreviousApi(
   });
 }
 
+export async function validateChatEventSnapshotRollout(
+  context: TestContext,
+  args: {
+    readonly threadId: string;
+    readonly lastSeqId: number;
+    readonly lastEventId: string;
+    readonly archiveSchemaVersion: number;
+  },
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["chat_event_snapshot_rollout"]>
+> {
+  const response = await postAction(context, {
+    action: "validate-chat-event-snapshot-rollout",
+    thread_id: args.threadId,
+    last_seq_id: args.lastSeqId,
+    last_event_id: args.lastEventId,
+    archive_schema_version: args.archiveSchemaVersion,
+  });
+  if (!response.chat_event_snapshot_rollout) {
+    throw new Error("validateChatEventSnapshotRollout missing rollout state");
+  }
+  return response.chat_event_snapshot_rollout;
+}
+
 export async function readChatEventSnapshotHead(
   context: TestContext,
   threadId: string,

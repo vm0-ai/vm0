@@ -5001,7 +5001,7 @@
           "name": "last_event_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "archive_schema_version": {
           "name": "archive_schema_version",
@@ -5062,8 +5062,8 @@
           "method": "btree",
           "with": {}
         },
-        "chat_event_snapshots_thread_version_unique": {
-          "name": "chat_event_snapshots_thread_version_unique",
+        "chat_event_snapshots_thread_version_idx": {
+          "name": "chat_event_snapshots_thread_version_idx",
           "columns": [
             {
               "expression": "chat_thread_id",
@@ -5078,7 +5078,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

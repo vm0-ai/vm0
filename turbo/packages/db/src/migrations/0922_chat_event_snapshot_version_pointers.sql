@@ -1,17 +1,5 @@
-LOCK TABLE "chat_event_snapshots" IN SHARE ROW EXCLUSIVE MODE;
---> statement-breakpoint
-WITH "ranked_snapshots" AS (
-  SELECT
-    "id",
-    ROW_NUMBER() OVER (
-      PARTITION BY "chat_thread_id", "archive_schema_version"
-      ORDER BY "last_seq_id" DESC, "is_head" DESC, "created_at" DESC, "id" DESC
-    ) AS "snapshot_rank"
-  FROM "chat_event_snapshots"
-)
-DELETE FROM "chat_event_snapshots"
-USING "ranked_snapshots"
-WHERE "chat_event_snapshots"."id" = "ranked_snapshots"."id"
-  AND "ranked_snapshots"."snapshot_rank" > 1;
---> statement-breakpoint
-CREATE UNIQUE INDEX "chat_event_snapshots_thread_version_unique" ON "chat_event_snapshots" USING btree ("chat_thread_id", "archive_schema_version");
+-- DB/API expand phase: the previous API replaces a Snapshot by inserting
+-- another row with the same (thread, version). Keep that statement legal for
+-- the observed 102-minute rollout/rollback window. #27174 will deduplicate the
+-- rows and make this index unique after the previous API has drained.
+CREATE INDEX "chat_event_snapshots_thread_version_idx" ON "chat_event_snapshots" USING btree ("chat_thread_id", "archive_schema_version");

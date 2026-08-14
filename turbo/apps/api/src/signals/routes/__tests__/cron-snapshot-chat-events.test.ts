@@ -29,6 +29,7 @@ import {
   advanceChatEventSequenceAsPreviousApi,
   readChatEventSnapshotHead,
   setChatEventSnapshotHeadVersion,
+  validateChatEventSnapshotRollout,
 } from "./helpers/runtime-state";
 
 const context = testContext();
@@ -381,6 +382,42 @@ describe("cron snapshot chat events", () => {
 
     await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(2);
+  }, 60_000);
+
+  it("keeps the previous API writer legal across the pointer migrations", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot rollout agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `snapshot-rollout-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+
+    const put = putsForThread(threadId)[0];
+    if (put === undefined) {
+      throw new Error("Expected a Snapshot rollout object");
+    }
+    const lastEvent = expectArchiveInvariants(put, threadId).at(-1);
+    if (lastEvent === undefined) {
+      throw new Error("Expected a terminal Snapshot rollout event");
+    }
+
+    const rollout = await validateChatEventSnapshotRollout(context, {
+      threadId,
+      lastSeqId: lastEvent.seqId,
+      lastEventId: lastEvent.id,
+      archiveSchemaVersion: 5,
+    });
+    expect(rollout).toStrictEqual({
+      pre_migration_schema_available: false,
+      pre_migration_last_event_id: lastEvent.id,
+      pre_migration_snapshot_count: 2,
+      migrated_last_event_id: lastEvent.id,
+      migrated_snapshot_count: 2,
+    });
   }, 60_000);
 
   it("keeps no-conflict prefix and tail bytes and observability unchanged", async () => {

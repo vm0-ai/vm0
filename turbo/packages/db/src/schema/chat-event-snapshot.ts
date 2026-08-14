@@ -44,8 +44,14 @@ export const chatEventSnapshots = pgTable(
     ),
     /** The snapshot object contains every thread event with seq_id <= this. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
-    /** Last physical event represented by the Snapshot's terminal cursor. */
-    lastEventId: uuid("last_event_id").notNull(),
+    /**
+     * Last physical event represented by the Snapshot's terminal cursor.
+     *
+     * Nullable only for the DB/API rollout window: the previous API omits the
+     * column, and migration 0923 fills it with a trigger until that API has
+     * drained. #27174 owns the later NOT NULL contraction.
+     */
+    lastEventId: uuid("last_event_id"),
     /** Version of the NDJSON line shape inside the archive object. */
     archiveSchemaVersion: integer("archive_schema_version").notNull(),
     objectKey: text("object_key").notNull().unique(),
@@ -58,7 +64,9 @@ export const chatEventSnapshots = pgTable(
         .on(table.chatThreadId)
         .where(sql`${table.isHead}`),
       index("chat_event_snapshots_thread_idx").on(table.chatThreadId),
-      uniqueIndex("chat_event_snapshots_thread_version_unique").on(
+      // The previous API can create duplicate version rows while it drains.
+      // #27174 makes this unique after the DB/API rollback window closes.
+      index("chat_event_snapshots_thread_version_idx").on(
         table.chatThreadId,
         table.archiveSchemaVersion,
       ),

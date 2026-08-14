@@ -47,6 +47,7 @@ import {
   type DuplicateEventIdNormalizationStats,
 } from "./chat-event-snapshot-duplicate-id-normalization";
 import { decodeChatEventSnapshotBody } from "./chat-event-row-downgrade.service";
+import { chatEventSnapshotCursorSchemaAvailable } from "./chat-event-snapshot-schema.service";
 import { upgradeChatEventSnapshotBody } from "./chat-event-snapshot-upgrade.service";
 
 const log = logger("api:cron:snapshot-chat-events");
@@ -171,6 +172,34 @@ function hoursBefore(now: Date, hours: number): Date {
 
 function encodeArchiveLine(line: ChatEventRow): Buffer {
   return Buffer.from(`${JSON.stringify(line)}\n`);
+}
+
+async function snapshotStatsBeforeCursorMigration(
+  db: Db,
+  chatThreadIds: readonly string[] | null,
+  signal: AbortSignal,
+): Promise<ChatEventSnapshotStats> {
+  signal.throwIfAborted();
+  const convergence = await chatEventSnapshotConvergence(db, chatThreadIds);
+  signal.throwIfAborted();
+  return {
+    snapshots: 0,
+    archivedEvents: 0,
+    unreadableParents: 0,
+    duplicateEventIdConflictThreads: 0,
+    duplicateEventIdConflicts: 0,
+    duplicateEventIdsRemapped: 0,
+    duplicateEventReferencesRemapped: 0,
+    retiredSnapshotReferencesDeleted: 0,
+    r2ObjectsScanned: 0,
+    r2ObjectsMeasured: 0,
+    r2ObjectsDeleted: 0,
+    r2BytesMeasured: 0,
+    r2BytesDeleted: 0,
+    r2GcShardsScanned: 0,
+    r2GcSubpartitionedShards: 0,
+    ...convergence,
+  };
 }
 
 /**
@@ -325,11 +354,20 @@ async function storedSnapshotSource(
     .from(chatEventSnapshots)
     .where(eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId))
     .orderBy(
+      desc(chatEventSnapshots.isHead),
       desc(chatEventSnapshots.lastSeqId),
       desc(chatEventSnapshots.archiveSchemaVersion),
       desc(chatEventSnapshots.createdAt),
+      desc(chatEventSnapshots.id),
     );
-  return sources[0] ?? null;
+  const source = sources[0];
+  if (source === undefined) {
+    return null;
+  }
+  if (source.lastEventId === null) {
+    throw new Error("Chat Event Snapshot pointer has no terminal event ID");
+  }
+  return { ...source, lastEventId: source.lastEventId };
 }
 
 async function readSnapshotPrefix(
@@ -630,6 +668,10 @@ export const migrateCurrentChatEventSnapshot$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const db = set(writeDb$);
+    if (!(await chatEventSnapshotCursorSchemaAvailable(db))) {
+      signal.throwIfAborted();
+      return false;
+    }
     const [thread] = await db
       .select({ indexedSeqId: chatThreads.lastChatEventSeqId })
       .from(chatThreads)
@@ -651,6 +693,7 @@ export const migrateCurrentChatEventSnapshot$ = command(
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, chatThreadId),
+          eq(chatEventSnapshots.isHead, true),
           eq(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
@@ -703,6 +746,7 @@ async function chatEventSnapshotConvergence(
     .from(chatEventSnapshots)
     .where(
       and(
+        eq(chatEventSnapshots.isHead, true),
         chatThreadIds === null
           ? undefined
           : inArray(chatEventSnapshots.chatThreadId, chatThreadIds),
@@ -999,8 +1043,15 @@ export const snapshotChatEvents$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventSnapshotStats> => {
     const db = set(writeDb$);
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const chatThreadIds = scope.kind === "global" ? null : scope.chatThreadIds;
+    if (!(await chatEventSnapshotCursorSchemaAvailable(db))) {
+      return await snapshotStatsBeforeCursorMigration(
+        db,
+        chatThreadIds,
+        signal,
+      );
+    }
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const ownedObjectKeys =
       scope.kind === "global" ? null : new Set(scope.r2ObjectKeys);
     const candidates = await db
@@ -1022,6 +1073,7 @@ export const snapshotChatEvents$ = command(
         chatEventSnapshots,
         and(
           eq(chatEventSnapshots.chatThreadId, chatThreads.id),
+          eq(chatEventSnapshots.isHead, true),
           eq(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,

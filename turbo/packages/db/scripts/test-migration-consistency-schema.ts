@@ -1851,6 +1851,16 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
+  // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
+  // Previous API revisions omit last_event_id when publishing a Snapshot.
+  // Remove in #27174 after those writers and their rollback window drain.
+  {
+    definition:
+      "CREATE TRIGGER chat_event_snapshots_fill_last_event_id BEFORE INSERT OR UPDATE OF last_seq_id ON public.chat_event_snapshots FOR EACH ROW EXECUTE FUNCTION set_chat_event_snapshot_last_event_id()",
+    schemaName: "public",
+    tableName: "chat_event_snapshots",
+    triggerName: "chat_event_snapshots_fill_last_event_id",
+  },
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -2064,6 +2074,14 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "519c7504c787a49c4c6bea8a588711fc",
     functionName: "reject_chat_event_source_update",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same DB/API rollout fallback and #27174 removal gate as its trigger.
+  {
+    bodyHash: "52760733123de7ce0c19385757029432",
+    functionName: "set_chat_event_snapshot_last_event_id",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
