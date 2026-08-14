@@ -306,6 +306,8 @@ async fn post_checkpoint_with_unavailable_compatibility(
             if payload.cli_agent_session_history_disposition
                 == Some(checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable) =>
         {
+            // Rollout compatibility: remove after API versions predating
+            // `unavailable` can no longer receive runner traffic or be restored.
             log_warn!(
                 LOG_TAG,
                 "Checkpoint API rejected the unavailable history disposition; retrying with the legacy historyless disposition"

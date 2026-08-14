@@ -296,10 +296,26 @@ impl FinalSessionHistoryIdentity {
                 if self.history_marker_payload.is_some() {
                     return Err(FinalSessionHistoryIdentityError::UnexpectedHistoryMarker);
                 }
-                self.history_source
+                let history_source = self
+                    .history_source
                     .as_ref()
-                    .ok_or(FinalSessionHistoryIdentityError::MissingHistorySource)?
-                    .validate()?;
+                    .ok_or(FinalSessionHistoryIdentityError::MissingHistorySource)?;
+                history_source.validate()?;
+                if !matches!(
+                    (self.framework, history_source),
+                    (
+                        FinalSessionHistoryFramework::ClaudeCode,
+                        FinalSessionHistorySourceRef::ClaudeCode { .. }
+                    ) | (
+                        FinalSessionHistoryFramework::Codex,
+                        FinalSessionHistorySourceRef::Codex { .. }
+                    ) | (
+                        FinalSessionHistoryFramework::Pi,
+                        FinalSessionHistorySourceRef::Pi { .. }
+                    )
+                ) {
+                    return Err(FinalSessionHistoryIdentityError::InvalidHistorySource);
+                }
             }
             LEGACY_FINAL_SESSION_HISTORY_IDENTITY_VERSION => {
                 if self.history_source.is_some() {
@@ -705,6 +721,21 @@ mod tests {
             },
         )
         .unwrap_err();
+        assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistorySource);
+    }
+
+    #[test]
+    fn final_identity_rejects_history_source_from_another_framework() {
+        let err = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::Codex,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            12,
+            valid_source(),
+        )
+        .unwrap_err();
+
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistorySource);
     }
 
