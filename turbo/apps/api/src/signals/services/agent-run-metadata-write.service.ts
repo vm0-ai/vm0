@@ -24,7 +24,7 @@ export type RunMetadataValues = Pick<
   | "triggerBrief"
 >;
 
-export type RunMetadataInput = Readonly<
+type RunMetadataInput = Readonly<
   Pick<RunMetadataValues, "triggerSource"> &
     Partial<Omit<RunMetadataValues, "triggerSource">>
 >;
@@ -40,7 +40,7 @@ interface RunMetadataWriteArgs {
   readonly where: SQL;
 }
 
-export interface RunMetadataSourceRow {
+interface RunMetadataSourceRow {
   readonly id: string;
   readonly apiStartedAt: Date | null;
 }
@@ -152,6 +152,9 @@ function targetMetadataDiffPredicate(patch: RunMetadataPatch): SQL {
   return predicate;
 }
 
+// DB/API compatibility for mixed Stage 3/4 rollout (observed up to ~102 minutes).
+// Remove via #26924 only after Stage 4 read cutover and bridge removal, once old
+// API revisions and deferred callbacks have drained through production gates.
 export async function writeRunMetadataInTransaction(
   tx: Tx,
   args: RunMetadataWriteArgs,
