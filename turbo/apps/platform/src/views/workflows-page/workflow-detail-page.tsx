@@ -178,6 +178,7 @@ import {
   setWorkflowAutomationPickerCategory$,
   setWorkflowAutomationPickerOpen$,
   setWorkflowWebhookUpgradeDialogOpen$,
+  workflowWebhookUpgradeDialogSource$,
   workflowCopyForm$,
   workflowDetailActiveTab$,
   workflowAutomationCreateDialog$,
@@ -9044,7 +9045,11 @@ function CreateWebhookAutomationDialog({
   const [createLoadable, createWebhookAutomation] = useLoadableSet(
     createWorkflowWebhookAutomation$,
   );
-  const creating = createLoadable.state === "loading";
+  const upgradeDialogSource = useGet(workflowWebhookUpgradeDialogSource$);
+  const creating =
+    createLoadable.state === "loading" ||
+    (upgradeDialogSource?.action === "create" &&
+      upgradeDialogSource.workflowId === workflowId);
 
   return (
     <Dialog
@@ -9720,7 +9725,11 @@ function AutomationStatusSwitch({
   const [enabledLoadable, setEnabled] = useLoadableSet(
     setWorkflowAutomationEnabled$,
   );
-  const toggling = enabledLoadable.state === "loading";
+  const upgradeDialogSource = useGet(workflowWebhookUpgradeDialogSource$);
+  const toggling =
+    enabledLoadable.state === "loading" ||
+    (upgradeDialogSource?.action === "enable" &&
+      upgradeDialogSource.automationId === automation.id);
 
   return (
     <div className="flex items-center justify-start sm:justify-center">
