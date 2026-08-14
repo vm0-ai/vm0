@@ -64,7 +64,7 @@ const recordSignupAttributionResponseSchema = z.object({
   recorded: z.boolean(),
 });
 
-export const zeroAttributionContract = c.router({
+export const acquisitionAttributionContract = c.router({
   recordSignup: {
     method: "POST",
     path: "/api/okou/attribution/signup",
@@ -87,4 +87,5 @@ export type RecordSignupAttributionRequest = z.infer<
 export type RecordSignupAttributionResponse = z.infer<
   typeof recordSignupAttributionResponseSchema
 >;
-export type ZeroAttributionContract = typeof zeroAttributionContract;
+export type AcquisitionAttributionContract =
+  typeof acquisitionAttributionContract;
