@@ -145,7 +145,7 @@ const sendMessage$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroIntegrationsFeishuMessageRoutes: readonly RouteEntry[] = [
+export const integrationsFeishuMessageRoutes: readonly RouteEntry[] = [
   {
     route: integrationsFeishuMessageContract.sendMessage,
     handler: authRoute(
