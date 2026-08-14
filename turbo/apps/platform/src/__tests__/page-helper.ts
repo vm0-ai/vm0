@@ -108,6 +108,7 @@ export async function setupPage(options: {
   debugLoggers?: string[];
   cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
   withoutRender?: boolean;
 }) {
   ensureTestLocalStorage();
@@ -151,7 +152,9 @@ export async function setupPage(options: {
   if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase]) {
     new SharedWorkerTestBootstrap(
       options.context.store,
+      options.context.workerStore,
       options.context.signal,
+      options.afterSharedDatabaseWorkerHeartbeat,
     );
   }
 

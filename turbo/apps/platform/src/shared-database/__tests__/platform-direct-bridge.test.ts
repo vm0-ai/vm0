@@ -9,7 +9,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
-import { setupPage } from "../../__tests__/page-helper.ts";
+import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
 import { createChatEventSignals } from "../../signals/chat-page/chat-event-signals.ts";
 import { eventDrivenChatThreads$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
@@ -220,7 +220,7 @@ describe("shared database direct Platform bridge", () => {
   });
 
   it("does not turn a healthy SharedWorker connection red when the tab is hidden", () => {
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    context.mocks.browser.visibilityState("hidden");
     context.store.set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: true,
@@ -233,6 +233,43 @@ describe("shared database direct Platform bridge", () => {
     expect(context.store.get(zeroDebugRealtimeIndicator$)).toBe("reconnecting");
     context.store.set(setSharedDatabaseConnectionStatus$, "disconnected");
     expect(context.store.get(zeroDebugRealtimeIndicator$)).toBe("disconnected");
+  });
+
+  it("runs immediate and interval heartbeats through the isolated worker store", async () => {
+    const heartbeatGates: {
+      readonly promise: Promise<void>;
+      readonly resolve: (value: void) => void;
+    }[] = [];
+    detachedSetupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+      user: { id: userId(), fullName: "Direct Bridge User" },
+      session: { token: "direct-bridge-token" },
+      org: {
+        activeOrg: { id: orgId(), name: "Direct Bridge Org" },
+        memberships: [{ id: orgId() }],
+      },
+      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
+      afterSharedDatabaseWorkerHeartbeat: async () => {
+        const gate = context.mocks.deferred<void>();
+        heartbeatGates.push(gate);
+        await gate.promise;
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(heartbeatGates).toHaveLength(1);
+    });
+    heartbeatGates[0]?.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(heartbeatGates).toHaveLength(2);
+    });
+    heartbeatGates[1]?.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(heartbeatGates).toHaveLength(3);
+    });
+    expect(context.store).not.toBe(context.workerStore);
   });
 
   it("does not recursively invalidate after IndexedDB writes fail", async () => {

@@ -1,5 +1,4 @@
 import type { Store } from "ccstate";
-import { createChildAbortController } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
 import {
   sharedDatabaseClientMessageSchema,
@@ -27,12 +26,6 @@ function serializedError(error: unknown): { name: string; message: string } {
   return { name: Error.name, message: String(error) };
 }
 
-function cancelRequest(controller: AbortController | undefined): void {
-  controller?.abort(
-    new DOMException("Shared database request cancelled", "AbortError"),
-  );
-}
-
 export class SharedDatabaseMessagePortServer {
   constructor(
     private readonly store: Store,
@@ -41,7 +34,7 @@ export class SharedDatabaseMessagePortServer {
   ) {
     signal.throwIfAborted();
     const clientId = crypto.randomUUID();
-    const requestControllers = new Map<string, AbortController>();
+    const cancelledRequestIds = new Set<string>();
     const requestTasks = new Map<string, Promise<void>>();
     let disconnected = false;
     const emit = (message: SharedDatabaseWorkerMessage): void => {
@@ -51,22 +44,20 @@ export class SharedDatabaseMessagePortServer {
     };
     this.store.set(connectSharedDatabaseWorkerClient$, clientId, emit);
     const finishRequest = (requestId: string): void => {
-      requestControllers.delete(requestId);
       requestTasks.delete(requestId);
     };
     const startRequest = (
       message: RequestMessage,
       operation: (signal: AbortSignal) => Promise<unknown> | unknown,
     ): void => {
-      const controller = createChildAbortController(signal);
-      requestControllers.set(message.requestId, controller);
       const completion = (async (): Promise<void> => {
         const runOperation = async (): Promise<unknown> => {
-          return await operation(controller.signal);
+          return await operation(signal);
         };
         const [result] = await Promise.allSettled([runOperation()]);
         finishRequest(message.requestId);
-        if (controller.signal.aborted || !result) {
+        const cancelled = cancelledRequestIds.delete(message.requestId);
+        if (cancelled || disconnected || signal.aborted || !result) {
           return;
         }
         if (result.status === "fulfilled") {
@@ -92,12 +83,7 @@ export class SharedDatabaseMessagePortServer {
       }
       disconnected = true;
       port.removeEventListener("message", handleMessage);
-      for (const controller of requestControllers.values()) {
-        controller.abort(
-          new DOMException("MessagePort disconnected", "AbortError"),
-        );
-      }
-      requestControllers.clear();
+      cancelledRequestIds.clear();
       requestTasks.clear();
       this.store.set(disconnectSharedDatabaseWorkerClient$, clientId);
       port.close();
@@ -111,7 +97,9 @@ export class SharedDatabaseMessagePortServer {
       }
       const message = parsed.data;
       if (message.type === "cancel") {
-        cancelRequest(requestControllers.get(message.requestId));
+        if (requestTasks.has(message.requestId)) {
+          cancelledRequestIds.add(message.requestId);
+        }
         return;
       }
       if (message.type === "disconnect") {

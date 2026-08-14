@@ -16,11 +16,13 @@ export interface TestContext {
   readonly resourceId: string;
   readonly signal: AbortSignal;
   readonly store: Store;
+  readonly workerStore: Store;
   readonly track: (promise: Promise<unknown>) => void;
 }
 
 export function testContext(): TestContext {
   let store: Store | null = null;
+  let workerStore: Store | null = null;
   let mocks: TestMocks | null = null;
   let resourceId: string | null = null;
   let controller = new AbortController();
@@ -62,6 +64,20 @@ export function testContext(): TestContext {
         });
       }
       return store;
+    },
+    get workerStore(): Store {
+      if (!workerStore) {
+        L.debug("create worker store");
+        workerStore = createStore();
+        context.signal.addEventListener(
+          "abort",
+          () => {
+            workerStore = null;
+          },
+          { once: true },
+        );
+      }
+      return workerStore;
     },
     track(promise: Promise<unknown>): void {
       trackedPromises.push(Promise.allSettled([promise]));

@@ -1,9 +1,7 @@
 import { command } from "ccstate";
-import { delay } from "signal-timers";
-import { IN_VITEST } from "../env.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
-import { createDeferredPromise, jsonParseOr, setLoop } from "./utils.ts";
+import { jsonParseOr, onDomEventFn, setLoop } from "./utils.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
 import { ReconnectingSharedDatabaseBridge } from "../shared-database/reconnecting-client.ts";
 import {
@@ -120,52 +118,37 @@ export const heartbeatSharedDatabaseNow$ = command(
 
 export const runSharedDatabaseHeartbeatLoop$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (IN_VITEST) {
-      return;
-    }
     const authRecovery = await get(authRecovery$);
     signal.throwIfAborted();
-    let wake = createDeferredPromise<void>(signal);
-    const wakeNow = (): void => {
-      if (!wake.settled()) {
-        wake.resolve(undefined);
-      }
-    };
-    const wakeWhenVisible = (): void => {
+    const token = await authRecovery.getToken(signal);
+    signal.throwIfAborted();
+    if (!token) {
+      throw new Error("Clerk token is required for the shared database");
+    }
+    const heartbeatNow = onDomEventFn(async () => {
+      await set(heartbeatSharedDatabaseNow$, signal);
+    });
+    const heartbeatWhenVisible = onDomEventFn(async () => {
       if (document.visibilityState === "visible") {
-        wakeNow();
+        await set(heartbeatSharedDatabaseNow$, signal);
       }
-    };
-    document.addEventListener("visibilitychange", wakeWhenVisible);
-    window.addEventListener("focus", wakeNow);
-    signal.addEventListener(
-      "abort",
-      () => {
-        document.removeEventListener("visibilitychange", wakeWhenVisible);
-        window.removeEventListener("focus", wakeNow);
-      },
-      { once: true },
-    );
+    });
+    document.addEventListener("visibilitychange", heartbeatWhenVisible, {
+      signal,
+    });
+    window.addEventListener("focus", heartbeatNow, { signal });
 
+    let waitBeforeFirstPoll = true;
     await setLoop(
       async (loopSignal): Promise<boolean> => {
-        const token = await authRecovery.getToken(loopSignal);
-        loopSignal.throwIfAborted();
-        if (!token) {
-          throw new Error("Clerk token is required for the shared database");
+        if (waitBeforeFirstPoll) {
+          waitBeforeFirstPoll = false;
+          return false;
         }
-        await Promise.race([
-          delay(heartbeatInterval(token), { signal: loopSignal }),
-          wake.promise,
-        ]);
-        if (!wake.settled()) {
-          wake.resolve(undefined);
-        }
-        wake = createDeferredPromise<void>(loopSignal);
-        await set(heartbeatSharedDatabaseNow$, signal);
+        await set(heartbeatSharedDatabaseNow$, loopSignal);
         return false;
       },
-      0,
+      heartbeatInterval(token),
       signal,
     );
   },

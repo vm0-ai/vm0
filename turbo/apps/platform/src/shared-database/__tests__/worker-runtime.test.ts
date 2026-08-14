@@ -132,11 +132,15 @@ function snapshotNdjson(rows: readonly ChatEventRow[]): string {
 
 async function connectRuntime(events: WorkerEvent[] = []): Promise<string> {
   const clientId = crypto.randomUUID();
-  context.store.set(bootstrapSharedDatabaseWorker$, context.signal);
-  context.store.set(connectSharedDatabaseWorkerClient$, clientId, (event) => {
-    events.push(event);
-  });
-  await context.store.set(
+  context.workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+  context.workerStore.set(
+    connectSharedDatabaseWorkerClient$,
+    clientId,
+    (event) => {
+      events.push(event);
+    },
+  );
+  await context.workerStore.set(
     heartbeatSharedDatabaseWorker$,
     clientId,
     identity(),
@@ -151,7 +155,7 @@ async function query<TKey extends ChatEventDataKey | ChatThreadEventDataKey>(
   value: SharedDatabaseQuery<TKey>,
   signal: AbortSignal = context.signal,
 ) {
-  return await context.store.set(
+  return await context.workerStore.set(
     querySharedDatabaseWorker$,
     clientId,
     value,
@@ -259,13 +263,13 @@ describe("shared database worker runtime", () => {
     );
 
     const attachment = context.mocks.ably.deferNextSubscribe();
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
       eventDataKey,
     );
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -346,7 +350,7 @@ describe("shared database worker runtime", () => {
     });
     context.mocks.ably.rejectNextSubscribe("channel attach failed");
 
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -422,7 +426,7 @@ describe("shared database worker runtime", () => {
         });
       },
     );
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -539,7 +543,7 @@ describe("shared database worker runtime", () => {
         return respond(200, { rows });
       },
     );
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -617,7 +621,7 @@ describe("shared database worker runtime", () => {
       },
     );
 
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -660,7 +664,7 @@ describe("shared database worker runtime", () => {
   it("does not report a disconnected realtime session as connected on heartbeat", async () => {
     const workerEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -680,7 +684,7 @@ describe("shared database worker runtime", () => {
         status: "disconnected",
       });
     });
-    await context.store.set(
+    await context.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       clientId,
       identity(),
@@ -891,7 +895,7 @@ describe("shared database worker runtime", () => {
       events: eventLog,
     });
     compactSnapshotAvailable = true;
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -966,7 +970,7 @@ describe("shared database worker runtime", () => {
     const clientId = await connectRuntime(workerEvents);
     const dataKey = chatEventKey(crypto.randomUUID());
     const remoteRow = chatEventRow(dataKey.threadId, 1);
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -1044,7 +1048,7 @@ describe("shared database worker runtime", () => {
     const clientId = await connectRuntime(workerEvents);
     const dataKey = chatThreadEventKey();
     const snapshotEventId = crypto.randomUUID();
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -1118,7 +1122,7 @@ describe("shared database worker runtime", () => {
     const recoveredRow = chatEventRow(dataKey.threadId, 1);
     let authorized = false;
     const authorizationHeaders: (string | null)[] = [];
-    context.store.set(
+    context.workerStore.set(
       subscribeSharedDatabaseWorker$,
       clientId,
       crypto.randomUUID(),
@@ -1166,7 +1170,7 @@ describe("shared database worker runtime", () => {
     await Promise.resolve();
     expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
 
-    await context.store.set(
+    await context.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       clientId,
       identity(),
@@ -1183,7 +1187,7 @@ describe("shared database worker runtime", () => {
     expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
 
     authorized = true;
-    await context.store.set(
+    await context.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       clientId,
       { ...identity(), token: "replacement-token" },

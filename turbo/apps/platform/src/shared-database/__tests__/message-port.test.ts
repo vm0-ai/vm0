@@ -1,6 +1,6 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { createStore, type Store } from "ccstate";
+import type { Store } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
@@ -129,8 +129,8 @@ function installProtocolBridge(): {
   readonly platformPort: InMemoryMessagePort;
   readonly workerPort: InMemoryMessagePort;
 } {
-  const platformStore = createStore();
-  const workerStore = createStore();
+  const platformStore = context.store;
+  const workerStore = context.workerStore;
   const [platformPort, workerPort] = messagePortPair();
   workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
   new SharedDatabaseMessagePortServer(workerStore, workerPort, context.signal);
@@ -275,7 +275,7 @@ describe("shared database MessagePort protocol", () => {
   });
 
   it("reconnects a stale pruned tab and restores its subscription", async () => {
-    const workerStore = createStore();
+    const workerStore = context.workerStore;
     workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
     const start = Date.parse("2030-01-01T00:00:00.000Z");
     mockNow(start, context.signal);
@@ -489,7 +489,7 @@ describe("shared database MessagePort protocol", () => {
   });
 
   it("disconnects a worker port immediately on malformed input", async () => {
-    const workerStore = createStore();
+    const workerStore = context.workerStore;
     const [platformPort, workerPort] = messagePortPair();
     workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
     new SharedDatabaseMessagePortServer(

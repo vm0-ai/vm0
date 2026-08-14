@@ -280,6 +280,16 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
+      visibilityState: (visibilityState: DocumentVisibilityState): void => {
+        const descriptor = defineWindowProperty(
+          document,
+          "visibilityState",
+          visibilityState,
+        );
+        restoreOnAbort(getSignal(), () => {
+          restoreWindowProperty(document, "visibilityState", descriptor);
+        });
+      },
       cookie: (cookie: string): void => {
         vi.spyOn(document, "cookie", "get").mockReturnValue(cookie);
       },

@@ -22,11 +22,21 @@ import {
   setSharedDatabaseConnectionStatus$,
 } from "../signals/shared-database.ts";
 import { resolveApiBaseForTarget } from "../signals/api-base.ts";
+import { createDeferredPromise } from "../signals/utils.ts";
 
 type DirectWorkerEvent = Extract<
   SharedDatabaseWorkerMessage,
   { readonly type: "append" | "reload-required" | "status" }
 >;
+
+async function waitForWorkerOperation<T>(
+  operation: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted();
+  const aborted = createDeferredPromise<never>(signal);
+  return await Promise.race([operation, aborted.promise]);
+}
 
 class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly clientId = crypto.randomUUID();
@@ -34,10 +44,13 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   private ownerSignal: AbortSignal | null = null;
 
   constructor(
-    private readonly store: Store,
+    private readonly platformStore: Store,
+    private readonly workerStore: Store,
     private readonly apiBaseUrl: string,
+    private readonly workerSignal: AbortSignal,
+    private readonly afterWorkerHeartbeat?: () => Promise<void>,
   ) {
-    store.set(
+    workerStore.set(
       connectSharedDatabaseWorkerClient$,
       this.clientId,
       (event: DirectWorkerEvent) => {
@@ -49,7 +62,10 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
           location.reload();
           return;
         }
-        store.set(setSharedDatabaseConnectionStatus$, event.status);
+        this.platformStore.set(
+          setSharedDatabaseConnectionStatus$,
+          event.status,
+        );
       },
     );
   }
@@ -59,25 +75,28 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     signal: AbortSignal,
   ): Promise<void> {
     this.bindOwner(signal);
-    await this.store.set(
+    await this.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       this.clientId,
       identity,
       this.apiBaseUrl,
-      signal,
+      this.workerSignal,
     );
+    await this.afterWorkerHeartbeat?.();
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
-    const result = await this.store.set(
+    signal.throwIfAborted();
+    const operation = this.workerStore.set(
       querySharedDatabaseWorker$,
       this.clientId,
       query,
-      signal,
+      this.workerSignal,
     );
+    const result = await waitForWorkerOperation(operation, signal);
     const cloned: unknown = structuredClone(result);
     return parseSharedDatabaseQueryResult(query.dataKey, cloned);
   }
@@ -90,7 +109,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     signal.throwIfAborted();
     const subscriptionId = crypto.randomUUID();
     this.callbacks.set(subscriptionId, callback);
-    this.store.set(
+    this.workerStore.set(
       subscribeSharedDatabaseWorker$,
       this.clientId,
       subscriptionId,
@@ -100,7 +119,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       "abort",
       () => {
         this.callbacks.delete(subscriptionId);
-        this.store.set(
+        this.workerStore.set(
           unsubscribeSharedDatabaseWorker$,
           this.clientId,
           subscriptionId,
@@ -124,7 +143,10 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       "abort",
       () => {
         this.callbacks.clear();
-        this.store.set(disconnectSharedDatabaseWorkerClient$, this.clientId);
+        this.workerStore.set(
+          disconnectSharedDatabaseWorkerClient$,
+          this.clientId,
+        );
       },
       { once: true },
     );
@@ -133,14 +155,19 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
 
 export class SharedWorkerTestBootstrap {
   constructor(
-    private readonly store: Store,
+    private readonly platformStore: Store,
+    private readonly workerStore: Store,
     signal: AbortSignal,
+    afterWorkerHeartbeat?: () => Promise<void>,
   ) {
-    this.store.set(bootstrapSharedDatabaseWorker$, signal);
+    this.workerStore.set(bootstrapSharedDatabaseWorker$, signal);
     const bridge = new DirectSharedDatabaseBridge(
-      this.store,
+      this.platformStore,
+      this.workerStore,
       resolveApiBaseForTarget("api"),
+      signal,
+      afterWorkerHeartbeat,
     );
-    this.store.set(installSharedDatabaseBridge$, bridge);
+    this.platformStore.set(installSharedDatabaseBridge$, bridge);
   }
 }
