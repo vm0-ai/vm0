@@ -225,7 +225,7 @@ async function resolveStoredExternalCodeMethod(args: {
     expectedGrantKind: "external-code",
   });
   if (!resolved.ok) {
-    return internalServerError("Invalid external-code authorization session");
+    return connectorExternalCodeUnavailable(args.connectorSlug);
   }
   return resolved;
 }

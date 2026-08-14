@@ -369,7 +369,7 @@ async function resolveStoredDeviceAuthMethod(args: {
     expectedGrantKind: "device-auth",
   });
   if (!resolved.ok) {
-    return internalServerError("Invalid OAuth device authorization session");
+    return connectorOauthDeviceAuthUnavailable(args.connectorSlug);
   }
   return resolved;
 }

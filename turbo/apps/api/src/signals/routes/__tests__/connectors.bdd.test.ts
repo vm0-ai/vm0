@@ -691,6 +691,40 @@ describe("CONN-02: OAuth device authorization", () => {
     });
   });
 
+  it("returns 403 when a device-auth runtime becomes unavailable before polling", async () => {
+    mockTestOAuthDeviceConnectorProvider({ deviceCode: "pending" });
+    const actor = createBddApi(context).user();
+    const session = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+    );
+    await installCatalogWithUnavailableMethods({
+      capabilityIdentityEnvName: "DEEL_OAUTH_CLIENT_ID",
+      filteredAuthMethods: [
+        {
+          connectorSlug: "test-oauth-device",
+          authMethodId: "oauth",
+          reasons: ["missing-grant-provider"],
+        },
+      ],
+    });
+
+    const response = await connectorsApi.requestDeviceAuthPoll(
+      actor,
+      "test-oauth-device",
+      session.sessionId,
+      session.sessionToken,
+      [403],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error).toStrictEqual({
+      message: "test-oauth-device connector is not available",
+      code: "FORBIDDEN",
+    });
+  });
+
   it("starts and completes a device authorization session, with state visible through connector APIs", async () => {
     mockTestOAuthDeviceConnectorProvider();
 
@@ -1593,6 +1627,38 @@ describe("CONN-02: external-code authorization", () => {
       actor,
       "aws",
       "cli",
+      [403],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error).toStrictEqual({
+      message: "aws connector is not available",
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("returns 403 when an external-code runtime becomes unavailable before completion", async () => {
+    const actor = createBddApi(context).user();
+    const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
+    await installCatalogWithUnavailableMethods({
+      capabilityIdentityEnvName: "DOCUSIGN_OAUTH_CLIENT_ID",
+      filteredAuthMethods: [
+        {
+          connectorSlug: "aws",
+          authMethodId: "cli",
+          reasons: ["missing-grant-provider"],
+        },
+      ],
+    });
+
+    const response = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "aws",
+      {
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        code: "bdd-code",
+      },
       [403],
     );
 
