@@ -7,7 +7,7 @@ import {
   type UsageRecordSource,
   usageRecordKindSchema,
   usageRecordSourceSchema,
-} from "@okouai/api-contracts/contracts/zero-usage-record";
+} from "@okouai/api-contracts/contracts/usage-record";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
@@ -582,7 +582,7 @@ async function queryUsageRecordBreakdown(
   return breakdownByRow;
 }
 
-export const zeroUsageRecord$ = command(
+export const usageRecord$ = command(
   async (
     { get, set },
     args: UsageRecordArgs,

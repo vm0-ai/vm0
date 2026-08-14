@@ -1404,19 +1404,19 @@ export {
   type UsageMembersResponse,
 } from "./zero-usage";
 export {
-  zeroUsageRecordContract,
+  usageRecordContract,
   usageRecordKindSchema,
   usageRecordRangeSchema,
   usageRecordScopeSchema,
   usageRecordSourceSchema,
-  type ZeroUsageRecordContract,
+  type UsageRecordContract,
   type UsageRecordKind,
   type UsageRecordRange,
   type UsageRecordResponse,
   type UsageRecordRow,
   type UsageRecordScope,
   type UsageRecordSource,
-} from "./zero-usage-record";
+} from "./usage-record";
 export {
   zeroTeamContract,
   teamComposeItemSchema,
@@ -1483,11 +1483,11 @@ export {
   type ZeroSlackOauthCallbackQuery,
 } from "./zero-slack-oauth";
 export {
-  zeroSlackChannelsContract,
+  slackChannelsContract,
   slackChannelSchema,
-  type ZeroSlackChannelsContract,
+  type SlackChannelsContract,
   type SlackChannel,
-} from "./zero-slack-channels";
+} from "./slack-channels";
 export {
   queuePositionContract,
   type QueuePositionContract,

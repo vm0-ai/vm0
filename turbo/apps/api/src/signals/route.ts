@@ -138,29 +138,29 @@ import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
 import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
-import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
+import { integrationsPhoneDownloadFileRoutes } from "./routes/integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "./routes/integrations-phone-message";
 import { integrationsPhoneUploadCompleteRoutes } from "./routes/integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "./routes/integrations-phone-upload-init";
-import { zeroIntegrationsGithubDownloadFileRoutes } from "./routes/zero-integrations-github-download-file";
-import { zeroIntegrationsGithubUploadCompleteRoutes } from "./routes/zero-integrations-github-upload-complete";
+import { integrationsGithubDownloadFileRoutes } from "./routes/integrations-github-download-file";
+import { integrationsGithubUploadCompleteRoutes } from "./routes/integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github-upload-init";
-import { zeroIntegrationsFeishuFileRoutes } from "./routes/zero-integrations-feishu-files";
+import { integrationsFeishuFileRoutes } from "./routes/integrations-feishu-files";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
-import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
+import { integrationsSlackMessageRoutes } from "./routes/integrations-slack-message";
 import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
-import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
-import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
-import { zeroIntegrationsSlackUploadMaterializeRoutes } from "./routes/zero-integrations-slack-upload-materialize";
+import { integrationsSlackUploadCompleteRoutes } from "./routes/integrations-slack-upload-complete";
+import { integrationsSlackUploadInitRoutes } from "./routes/integrations-slack-upload-init";
+import { integrationsSlackUploadMaterializeRoutes } from "./routes/integrations-slack-upload-materialize";
 import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
-import { zeroIntegrationsTeamsMessageRoutes } from "./routes/zero-integrations-teams-message";
+import { integrationsTeamsMessageRoutes } from "./routes/integrations-teams-message";
 import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
 import { integrationsTeamsUploadInitRoutes } from "./routes/integrations-teams-upload-init";
 import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
 import { integrationsTelegramMessageRoutes } from "./routes/integrations-telegram-message";
-import { zeroIntegrationsTelegramUploadCompleteRoutes } from "./routes/zero-integrations-telegram-upload-complete";
+import { integrationsTelegramUploadCompleteRoutes } from "./routes/integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "./routes/integrations-telegram-upload-init";
-import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
+import { slackChannelsRoutes } from "./routes/slack-channels";
 import { slackCommandsRoutes } from "./routes/slack-commands";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { slackEventsRoutes } from "./routes/slack-events";
@@ -180,7 +180,7 @@ import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
-import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
+import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
@@ -351,29 +351,29 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamsConnectRoutes,
   ...zeroTeamsOauthRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
-  ...zeroIntegrationsPhoneDownloadFileRoutes,
+  ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
   ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
-  ...zeroIntegrationsGithubDownloadFileRoutes,
-  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...integrationsGithubDownloadFileRoutes,
+  ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
-  ...zeroIntegrationsFeishuFileRoutes,
+  ...integrationsFeishuFileRoutes,
   ...zeroIntegrationsSlackRoutes,
-  ...zeroIntegrationsSlackMessageRoutes,
+  ...integrationsSlackMessageRoutes,
   ...integrationsFeishuMessageRoutes,
-  ...zeroIntegrationsSlackUploadCompleteRoutes,
-  ...zeroIntegrationsSlackUploadInitRoutes,
-  ...zeroIntegrationsSlackUploadMaterializeRoutes,
+  ...integrationsSlackUploadCompleteRoutes,
+  ...integrationsSlackUploadInitRoutes,
+  ...integrationsSlackUploadMaterializeRoutes,
   ...zeroIntegrationsTeamsDownloadFileRoutes,
-  ...zeroIntegrationsTeamsMessageRoutes,
+  ...integrationsTeamsMessageRoutes,
   ...zeroIntegrationsTeamsUploadCompleteRoutes,
   ...integrationsTeamsUploadInitRoutes,
-  ...zeroSlackChannelsRoutes,
+  ...slackChannelsRoutes,
   ...steamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...integrationsTelegramMessageRoutes,
-  ...zeroIntegrationsTelegramUploadCompleteRoutes,
+  ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
@@ -381,7 +381,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
   ...zeroUsageMembersRoutes,
-  ...zeroUsageRecordRoutes,
+  ...usageRecordRoutes,
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,

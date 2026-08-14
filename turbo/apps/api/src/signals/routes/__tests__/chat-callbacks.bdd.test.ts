@@ -1200,14 +1200,12 @@ describe("CHAT-02: completed chat callback", () => {
       .toBe(true);
     const completedMetadata = await readRunMetadataPair(context, first.runId);
     expect(completedMetadata.agent_run).toStrictEqual(
-      completedMetadata.zero_run,
-    );
-    expect(completedMetadata.zero_run).toStrictEqual(
       expect.objectContaining({
         first_assistant_event_acknowledged_at: expect.any(String),
         summary: "Generated summary",
       }),
     );
+    expect(completedMetadata.zero_run).toBeNull();
 
     const afterAutoSend = await waitForThreadMessages(
       actor,
@@ -3463,7 +3461,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ).toBeFalsy();
   }, 30_000);
 
-  it("reclaims only unused suffixes from repeated event batches", async () => {
+  it("keeps rejected event reservations as sequence gaps", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {
       agentId,
@@ -3492,20 +3490,20 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       sandboxHeaders,
       [200],
     );
-    // The existing sequence-one row is the rejected suffix of this batch.
+    // The existing sequence-one row rejects its reserved position.
     await webhooks.requestAgentEvents(
       { runId: run.runId, events: [sequenceZero, sequenceOne] },
       sandboxHeaders,
       [200],
     );
-    // A fully repeated batch releases its entire reservation.
+    // A fully repeated batch still consumes its reservation.
     await webhooks.requestAgentEvents(
       { runId: run.runId, events: [sequenceZero] },
       sandboxHeaders,
       [200],
     );
-    // This time the rejected sequence-one row is an interior gap before a
-    // newly accepted row and must not cause the accepted row to be renumbered.
+    // The rejected sequence-one row leaves another gap before the newly
+    // accepted row.
     await webhooks.requestAgentEvents(
       {
         runId: run.runId,
@@ -3568,9 +3566,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ) {
       throw new Error("Expected every canonical repeated-batch output");
     }
-    expect(sequenceZeroRow.seqId).toBe(sequenceOneRow.seqId + 1);
-    expect(sequenceTwoRow.seqId).toBe(sequenceZeroRow.seqId + 2);
-    expect(sequenceThreeRow.seqId).toBe(sequenceTwoRow.seqId + 1);
+    expect(sequenceZeroRow.seqId).toBeGreaterThan(sequenceOneRow.seqId);
+    expect(sequenceTwoRow.seqId).toBeGreaterThan(sequenceZeroRow.seqId + 2);
+    expect(sequenceThreeRow.seqId).toBeGreaterThan(sequenceTwoRow.seqId);
     expect(firstAssistantEventsForRun(run.runId)).toHaveLength(1);
   });
 

@@ -33,6 +33,7 @@ export const chatEventRowSchema = z
     contextId: z.string().nullable(),
     runEventSequenceNumber: z.number().int().nullable(),
     runEventId: z.string().nullable(),
+    /** Strictly increasing within a thread; it may start above 1 and have gaps. */
     seqId: z.number().int(),
     createdAt: z.iso.datetime(),
   })

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
-import { zeroUsageRecordContract } from "@okouai/api-contracts/contracts/zero-usage-record";
+import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
@@ -29,7 +29,7 @@ import {
   readUsageStorageCounts$,
 } from "./helpers/usage-state";
 import { mapsRoutes } from "../maps";
-import { zeroUsageRecordRoutes } from "../zero-usage-record";
+import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -90,9 +90,7 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context, routes: zeroUsageRecordRoutes })(
-    zeroUsageRecordContract,
-  );
+  return setupApp({ context, routes: usageRecordRoutes })(usageRecordContract);
 }
 
 function createdAt(minutesAgo: number): Date {

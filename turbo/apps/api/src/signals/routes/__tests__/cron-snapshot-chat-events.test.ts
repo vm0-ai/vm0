@@ -817,20 +817,29 @@ describe("cron snapshot chat events", () => {
     expect(unownedRows.length).toBeGreaterThan(0);
   }, 60_000);
 
-  it("publishes sparse indexed coverage and tails later rows", async () => {
+  it("publishes sparse streams and indexed coverage before tailing later rows", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Sparse snapshot agent",
     });
+    await api.ensureOrgModelProvider(owner);
+    const thread = await chat.createThread(owner, {
+      agentId: agent.agentId,
+      title: "Sparse snapshot thread",
+    });
+    await advanceChatEventSequenceAsPreviousApi(context, thread.id, 3);
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
+      threadId: thread.id,
       prompt: `sparse-snapshot-${randomUUID()}`,
     });
     const initialRows = await chat.listThreadEventRows(owner, threadId);
+    const firstPhysicalRow = initialRows[0];
     const lastPhysicalRow = initialRows.at(-1);
-    if (lastPhysicalRow === undefined) {
+    if (firstPhysicalRow === undefined || lastPhysicalRow === undefined) {
       throw new Error("Expected a physical chat event before the sparse tail");
     }
+    expect(firstPhysicalRow.seqId).toBeGreaterThan(1);
     const coveredSeqId = lastPhysicalRow.seqId + 1;
 
     await advanceChatEventSequenceAsPreviousApi(context, threadId, 1);
@@ -842,7 +851,16 @@ describe("cron snapshot chat events", () => {
     if (put === undefined) {
       throw new Error("Expected a sparse-coverage snapshot object");
     }
-    expectArchiveInvariants(put, threadId, lastPhysicalRow.seqId);
+    const archived = expectArchiveInvariants(
+      put,
+      threadId,
+      lastPhysicalRow.seqId,
+    );
+    const firstArchivedRow = archived[0];
+    if (firstArchivedRow === undefined) {
+      throw new Error("Expected an archived chat event");
+    }
+    expect(firstArchivedRow.seqId).toBeGreaterThan(1);
     expect(OBJECT_KEY_PATTERN.exec(put.key)?.[2]).toBe(coveredSeqId.toString());
     const head = await readChatEventSnapshotHead(context, threadId);
     expect(head.last_event_id).toBe(lastPhysicalRow.id);
@@ -855,15 +873,11 @@ describe("cron snapshot chat events", () => {
     });
     const tail = await chat.listThreadEventRows(owner, threadId, coveredSeqId);
     expect(tail.length).toBeGreaterThan(0);
-    expect(
-      tail.map((row) => {
-        return row.seqId;
-      }),
-    ).toStrictEqual(
-      tail.map((_, index) => {
-        return coveredSeqId + index + 1;
-      }),
-    );
+    let previousSeqId = coveredSeqId;
+    for (const row of tail) {
+      expect(row.seqId).toBeGreaterThan(previousSeqId);
+      previousSeqId = row.seqId;
+    }
   }, 60_000);
 
   it("refuses V4 to V5 when no lossless Snapshot migration exists", async () => {

@@ -7526,7 +7526,8 @@ function ComposerVideoModelPickerSlot({
   const panelOpen = useGet(signals.model.videoModelPanelOpen$);
   const setPanelOpen = useSet(signals.model.setVideoModelPanelOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
-  const selectedVideoModel = useGet(videoModelSignals.selectedVideoModel$);
+  const selectedVideoModel =
+    useLastResolved(videoModelSignals.selectedVideoModel$) ?? null;
   const setVideoModel = useSet(videoModelSignals.setVideoModel$);
   const pageSignal = useGet(pageSignal$);
   const videoModel: VideoModelPickerState = {

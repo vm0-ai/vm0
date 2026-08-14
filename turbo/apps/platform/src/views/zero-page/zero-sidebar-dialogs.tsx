@@ -789,7 +789,7 @@ function ChatMessageCommandItem({
   const title = thread?.title ?? message.agentName;
   return (
     <CommandItem
-      value={`message-${message.matchedMessage.messageId}`}
+      value={`message-${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
       onSelect={onSelect}
       className="group w-full gap-2 px-1 py-2"
     >
@@ -1018,7 +1018,7 @@ function AgentListDialogUnifiedSearch({
         if (item.kind === "message") {
           return (
             <ChatMessageCommandItem
-              key={`message-${item.message.matchedMessage.messageId}`}
+              key={`message-${item.message.matchedMessage.chatThreadId}:${item.message.matchedMessage.seqId}`}
               message={item.message}
               thread={item.thread}
               indicator={chatThreadCommandIndicator(

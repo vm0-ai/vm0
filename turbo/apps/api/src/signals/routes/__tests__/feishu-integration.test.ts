@@ -40,7 +40,7 @@ import { createDeferredPromise } from "../../utils";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
 import { feishuEventsRoutes } from "../feishu-events";
 import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
-import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
+import { integrationsFeishuFileRoutes } from "../integrations-feishu-files";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -3036,7 +3036,7 @@ describe("Feishu integration", () => {
     );
     const app = createAppWithRoutes({
       signal: context.signal,
-      routes: zeroIntegrationsFeishuFileRoutes,
+      routes: integrationsFeishuFileRoutes,
     });
     const downloadResponse = await app.request(
       `/api/zero/integrations/feishu/download-file?${new URLSearchParams({

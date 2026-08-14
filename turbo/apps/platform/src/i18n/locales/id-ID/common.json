@@ -887,6 +887,21 @@
       "changeAnytime": "Naikkan atau turunkan paket kapan saja.",
       "compare": "Bandingkan paket",
       "compareAll": "Bandingkan semua paket",
+      "comparison": {
+        "addOnConcurrency": "Konkurensi tambahan",
+        "available": "Tersedia",
+        "concurrentRuns": "Proses bersamaan",
+        "included": "Ya",
+        "ownLlmKeys": "Kunci LLM Anda sendiri",
+        "privateAgents": "Agen privat",
+        "sharedAgents": "Agen bersama",
+        "support": "Dukungan",
+        "supportEmail": "Email",
+        "supportPriority": "Prioritas",
+        "unlimited": "Tanpa batas",
+        "voiceInput": "Input suara",
+        "voiceInputValue": "{{requests}}/hari · {{minutes}} mnt"
+      },
       "currentPlan": "Paket saat ini",
       "custom": {
         "name": "Kustom"
@@ -954,9 +969,7 @@
         "concurrentSlots": "Slot bersamaan",
         "configurePackages": "Konfigurasikan paket anggota",
         "credits": "Kredit",
-        "creditsPerMember": "{{credits}} kredit per anggota",
         "currentMember": "Anggota saat ini",
-        "everythingOnPlus": "Semua di {{plan}}, ditambah:",
         "existingPackagesUnchanged": "Paket anggota yang ada tetap tidak berubah.",
         "management": {
           "comparison": "Perbandingan langganan saat ini dan baru",
@@ -996,11 +1009,14 @@
         },
         "monthlyTotal": "Total bulanan",
         "orderSummary": "Ringkasan pesanan",
+        "packagePerMemberNote": "Setiap anggota memerlukan paket. Anda memilihnya pada langkah berikutnya.",
         "packCredits": "{{credits}} kredit",
         "packCreditsDiscount": "{{credits}} kredit · diskon {{discount}}%",
         "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
         "planChangeError": "Perubahan langganan tidak dapat disiapkan. Coba lagi.",
+        "planPlusPackages": "Paket {{plan}} · paket anggota {{lowest}}–{{highest}} per orang",
         "planStep": "Paket",
+        "priceFrom": "mulai",
         "purchasedCredits": "Kredit yang dibeli",
         "selectPlan": "Mulai dengan {{plan}}",
         "selectUsage": "Penggunaan untuk {{name}}",
@@ -1670,7 +1686,6 @@
       "empty": "Kirim pesan untuk memulai percakapan",
       "frequentlyUsed": "Sering digunakan",
       "icon": "Ikon thread chat",
-      "loadingEarlier": "Memuat pesan sebelumnya",
       "locator": {
         "you": "Anda"
       },

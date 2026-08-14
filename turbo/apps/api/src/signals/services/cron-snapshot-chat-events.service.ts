@@ -247,14 +247,12 @@ async function readCanonicalEvents(
 ): Promise<{
   readonly lines: readonly Buffer[];
   readonly count: number;
-  readonly firstSeqId: number | null;
   readonly lastEventId: string | null;
   readonly lastSeqId: number;
 }> {
   const lines: Buffer[] = [];
   let cursor = fromSeqId;
   let count = 0;
-  let firstSeqId: number | null = null;
   let lastEventId: string | null = null;
   for (;;) {
     const rows = await db
@@ -283,7 +281,6 @@ async function readCanonicalEvents(
       .orderBy(asc(chatEvents.seqId))
       .limit(EVENT_PAGE_SIZE);
     for (const row of rows) {
-      firstSeqId ??= row.seqId;
       lastEventId = row.id;
       lines.push(archiveLine(row));
     }
@@ -296,7 +293,6 @@ async function readCanonicalEvents(
       return {
         lines,
         count,
-        firstSeqId,
         lastEventId,
         lastSeqId: candidate.indexedSeqId,
       };
@@ -393,10 +389,8 @@ async function readSnapshotPrefix(
     CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   );
   const rows = decodeChatEventSnapshotBody(upgraded);
-  const first = rows[0];
   const last = rows.at(-1);
   if (
-    first?.seqId !== 1 ||
     last === undefined ||
     last.id !== source.lastEventId ||
     last.seqId > source.lastSeqId
@@ -587,14 +581,6 @@ async function archiveThread(
   if (archive.count === 0 && source === null) {
     throw new Error(
       `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
-    );
-  }
-  // PostgreSQL owns the complete prefix only for a thread that has never had a
-  // Snapshot. Once a pointer exists, a missing or unreadable object is an
-  // invariant failure rather than permission to rebuild from reclaimed rows.
-  if (source === null && archive.firstSeqId !== 1) {
-    throw new Error(
-      `chat event snapshot rebuild for ${candidate.chatThreadId} started at seq ${String(archive.firstSeqId)} instead of the thread's first event`,
     );
   }
   const lastEventId = terminalSnapshotEventId(archive.lastEventId, source);

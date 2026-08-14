@@ -106,7 +106,7 @@ const usageRecordResponseSchema = z.object({
   }),
 });
 
-export const zeroUsageRecordContract = c.router({
+export const usageRecordContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/usage/record",
@@ -131,6 +131,6 @@ export const zeroUsageRecordContract = c.router({
   },
 });
 
-export type ZeroUsageRecordContract = typeof zeroUsageRecordContract;
+export type UsageRecordContract = typeof usageRecordContract;
 export type UsageRecordResponse = z.infer<typeof usageRecordResponseSchema>;
 export type UsageRecordRow = z.infer<typeof usageRecordRowSchema>;

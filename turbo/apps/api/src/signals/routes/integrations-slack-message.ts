@@ -145,7 +145,7 @@ const slackWriteAuth = {
   requiredCapability: "slack:write",
 } as const;
 
-export const zeroIntegrationsSlackMessageRoutes: readonly RouteEntry[] = [
+export const integrationsSlackMessageRoutes: readonly RouteEntry[] = [
   {
     route: integrationsSlackMessageContract.sendMessage,
     handler: authRoute(slackWriteAuth, sendMessageInner$),
