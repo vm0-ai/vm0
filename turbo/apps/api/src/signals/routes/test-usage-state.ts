@@ -27,7 +27,6 @@ import { userConnectors } from "@okouai/db/schema/user-connector";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import { variables } from "@okouai/db/schema/variable";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   count,
@@ -246,11 +245,6 @@ async function deleteUsageStateFixture(
     return row.id;
   });
   if (runIds.length > 0) {
-    await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-    signal.throwIfAborted();
-  }
-
-  if (runIds.length > 0) {
     await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
     signal.throwIfAborted();
   }
@@ -413,12 +407,6 @@ async function seedRun(
   signal.throwIfAborted();
   if (!run) {
     throw new Error("seedRun: run insert returned no row");
-  }
-  if (metadata) {
-    await db.insert(zeroRuns).values({
-      id: run.id,
-      ...metadata,
-    });
   }
   signal.throwIfAborted();
   return { runId: run.id };
@@ -721,8 +709,6 @@ async function deleteRun(
   runId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await db.delete(zeroRuns).where(eq(zeroRuns.id, runId));
-  signal.throwIfAborted();
   await db.delete(agentRuns).where(eq(agentRuns.id, runId));
   signal.throwIfAborted();
 }

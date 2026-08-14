@@ -19,7 +19,6 @@ import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
@@ -78,7 +77,7 @@ const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
 // iterations would otherwise see an unseeded DB, error silently in
 // tinybench, and produce empty samples without failing the suite.
 //
-// The fixture bulks up zero_runs / agent_runs / chat_events and the
+// The fixture bulks up agent_runs / chat_events and the
 // user-visible GET data sets well past planner cross-over so Postgres uses the
 // same index-driven paths production hits. With tiny fixtures the planner picks
 // seq scans and the per-query overhead this bench needs to measure disappears.
@@ -506,7 +505,6 @@ async function seedBackgroundLoad(): Promise<void> {
   );
 
   const runRows: (typeof agentRuns.$inferInsert)[] = [];
-  const zRunRows: (typeof zeroRuns.$inferInsert)[] = [];
   for (let t = 0; t < BACKGROUND_THREAD_COUNT; t++) {
     for (let r = 0; r < BACKGROUND_RUNS_PER_THREAD; r++) {
       const runId = randomUUID();
@@ -524,17 +522,10 @@ async function seedBackgroundLoad(): Promise<void> {
         prompt: "bg",
         ...metadata,
       });
-      zRunRows.push({
-        id: runId,
-        ...metadata,
-      });
     }
   }
   await chunkedInsert(runRows, (chunk) => {
     return db.insert(agentRuns).values(chunk);
-  });
-  await chunkedInsert(zRunRows, (chunk) => {
-    return db.insert(zeroRuns).values(chunk);
   });
 }
 
@@ -603,7 +594,6 @@ async function seedTargetThreadRuns(
   }
 
   const runRows: (typeof agentRuns.$inferInsert)[] = [];
-  const zRunRows: (typeof zeroRuns.$inferInsert)[] = [];
   const eventRows: {
     chatThreadId: string;
     runId: string;
@@ -629,10 +619,6 @@ async function seedTargetThreadRuns(
       sessionId: session.id,
       status: STATUSES[i % STATUSES.length]!,
       prompt: `bench prompt ${String(i)}`,
-      ...metadata,
-    });
-    zRunRows.push({
-      id: runId,
       ...metadata,
     });
     for (let m = 0; m < TARGET_MESSAGES_PER_RUN; m++) {
@@ -662,9 +648,6 @@ async function seedTargetThreadRuns(
   }
   await chunkedInsert(runRows, (chunk) => {
     return db.insert(agentRuns).values(chunk);
-  });
-  await chunkedInsert(zRunRows, (chunk) => {
-    return db.insert(zeroRuns).values(chunk);
   });
   await chunkedInsert(eventRows, (chunk) => {
     return db.insert(chatEvents).values(chunk);
@@ -776,7 +759,6 @@ async function logPlannerDiagnostic(
   const db = store.set(writeDb$);
   await db.execute(sql`
     ANALYZE
-      zero_runs,
       agent_runs,
       chat_threads,
       chat_events,

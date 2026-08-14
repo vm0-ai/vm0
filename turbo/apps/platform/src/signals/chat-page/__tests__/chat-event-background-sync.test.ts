@@ -17,8 +17,14 @@ import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
+import { createChatEventSignals } from "../chat-event-signals.ts";
 import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
+import {
+  setCurrentLeftPane$,
+  setCurrentRightPane$,
+} from "../chat-thread-pane-state.ts";
+import { createChatPanelSignals } from "../create-chat-thread.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -33,6 +39,7 @@ const THIRD_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
 const FIRST_TEN_UNREAD_THREAD_IDS = Array.from({ length: 10 }, (_, index) => {
   return `c0000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`;
 });
+const OPEN_UNREAD_THREAD_ID = "c0000000-0000-4000-a000-000000000001";
 const ELEVENTH_UNREAD_THREAD_ID = "c0000000-0000-4000-a000-000000000011";
 const FIRST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000803";
@@ -193,7 +200,7 @@ describe("chat event background sync", () => {
     );
   });
 
-  it("catches up only the first 10 unread threads after reconnect", async () => {
+  it("catches up open threads plus 10 other unread threads after reconnect", async () => {
     const requestedThreadIds: string[] = [];
     let unreadThreadIds = [THREAD_ID];
     let indicatorRequests = 0;
@@ -223,6 +230,29 @@ describe("chat event background sync", () => {
       expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
     requestedThreadIds.length = 0;
+
+    const firstOpenChatEvents = createChatEventSignals(OPEN_UNREAD_THREAD_ID);
+    const secondOpenChatEvents = createChatEventSignals(OTHER_THREAD_ID);
+    context.store.set(setCurrentLeftPane$, {
+      kind: "thread",
+      thread: createChatPanelSignals(
+        firstOpenChatEvents,
+        "first-open-agent",
+        context.signal,
+      ),
+    });
+    context.store.set(setCurrentRightPane$, {
+      kind: "thread",
+      thread: createChatPanelSignals(
+        secondOpenChatEvents,
+        "second-open-agent",
+        context.signal,
+      ),
+    });
+    await Promise.all([
+      context.store.set(firstOpenChatEvents.setup$, context.signal),
+      context.store.set(secondOpenChatEvents.setup$, context.signal),
+    ]);
     unreadThreadIds = [
       ...FIRST_TEN_UNREAD_THREAD_IDS,
       ELEVENTH_UNREAD_THREAD_ID,
@@ -232,10 +262,14 @@ describe("chat event background sync", () => {
 
     await waitFor(() => {
       expect(indicatorRequests).toBe(2);
-      expect(requestedThreadIds).toHaveLength(10);
+      expect(requestedThreadIds).toHaveLength(12);
     });
     expect(new Set(requestedThreadIds)).toStrictEqual(
-      new Set(FIRST_TEN_UNREAD_THREAD_IDS),
+      new Set([
+        ...FIRST_TEN_UNREAD_THREAD_IDS,
+        ELEVENTH_UNREAD_THREAD_ID,
+        OTHER_THREAD_ID,
+      ]),
     );
   });
 

@@ -1,6 +1,6 @@
 {
-  "id": "1a7ff6ac-a387-4045-83fc-a0f73c0b4af1",
-  "prevId": "5f8048cf-efbf-4fe3-8acd-1ac73bf9bb35",
+  "id": "5d1f6b66-9cb4-4629-8e70-2cb79ad996af",
+  "prevId": "1a7ff6ac-a387-4045-83fc-a0f73c0b4af1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5210,6 +5210,27 @@
         }
       },
       "indexes": {
+        "idx_chat_events_created_at_id": {
+          "name": "idx_chat_events_created_at_id",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_chat_events_thread_created": {
           "name": "idx_chat_events_thread_created",
           "columns": [

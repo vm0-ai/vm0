@@ -40,7 +40,6 @@ import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-ag
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
 import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -1042,8 +1041,6 @@ async function deleteTelegramPostFixtureForAction(
       .delete(agentRunCallbacks)
       .where(inArray(agentRunCallbacks.runId, runIds));
     signal.throwIfAborted();
-    await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-    signal.throwIfAborted();
     await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
     signal.throwIfAborted();
   }
@@ -1406,11 +1403,6 @@ async function seedCompletedRunForAction(
   if (!run) {
     return actionBadRequest("failed to seed completed run");
   }
-  await db.insert(zeroRuns).values({
-    id: run.id,
-    ...metadata,
-  });
-  signal.throwIfAborted();
   return actionOk({ agent_session_id: sessionId, run_id: run.id });
 }
 
@@ -2018,9 +2010,6 @@ const deleteTestTelegramState$ = command(
       });
 
       if (ids.length > 0) {
-        await db.delete(zeroRuns).where(inArray(zeroRuns.id, ids));
-        signal.throwIfAborted();
-
         await db.delete(agentRuns).where(inArray(agentRuns.id, ids));
         signal.throwIfAborted();
       }

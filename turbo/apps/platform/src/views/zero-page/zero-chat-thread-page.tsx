@@ -7658,21 +7658,7 @@ function PagedUserMessage({
               attachments={allAttachments}
               onImageClick={openLightbox}
             />
-          ) : (
-            <>
-              <UserMessageAttachments
-                attachments={allAttachments}
-                onImageClick={openLightbox}
-              />
-              {event.tree !== undefined && (
-                <UserMessageBubble>
-                  <div className="px-4 py-3">
-                    <MarkdownEventBody tree={event.tree} mediaPreview={false} />
-                  </div>
-                </UserMessageBubble>
-              )}
-            </>
-          )}
+          ) : null}
           <UserMessageActions
             canCopy={canCopy}
             copied={copied}

@@ -2297,20 +2297,6 @@ async function validatePermanentArtifactTriggerBehavior(
       ],
     );
     await client.query(
-      `INSERT INTO "zero_runs" (
-         "id", "trigger_source", "autonomy_budget", "chat_thread_id"
-       )
-       VALUES
-         ($1, 'chat', 10, $4),
-         ($2, 'chat', 10, $3)`,
-      [
-        fixture.firstRunId,
-        fixture.secondRunId,
-        fixture.firstThreadId,
-        fixture.secondThreadId,
-      ],
-    );
-    await client.query(
       `INSERT INTO "run_uploaded_files" (
          "id", "source", "external_id", "user_id", "org_id", "url",
          "run_id"
@@ -2592,24 +2578,81 @@ async function validatePermanentAgentRunMetadataState(
       },
     ]);
 
-    const bridge = await client.query<{
-      functionAbsent: boolean;
-      triggerAbsent: boolean;
+    const retiredPhysicalState = await client.query<{
+      constraintCount: number;
+      physicalRelationCount: number;
+      rewriteReferenceCount: number;
+      routineReferenceCount: number;
+      tableAbsent: boolean;
+      transitionRoutineCount: number;
+      transitionTriggerCount: number;
     }>(`
       SELECT
-        to_regprocedure(
-          'public.sync_zero_run_metadata_to_agent_runs()'
-        ) IS NULL AS "functionAbsent",
-        NOT EXISTS (
-          SELECT 1
+        to_regclass('public.zero_runs') IS NULL AS "tableAbsent",
+        (
+          SELECT count(*)::integer
+          FROM "pg_class" AS "relation_row"
+          INNER JOIN "pg_namespace" AS "namespace_row"
+            ON "namespace_row"."oid" = "relation_row"."relnamespace"
+          WHERE "namespace_row"."nspname" = 'public'
+            AND "relation_row"."relname" IN (
+              'zero_runs',
+              'zero_runs_pkey',
+              'idx_zero_runs_chat_thread_id',
+              'idx_zero_runs_workflow_automation',
+              'idx_zero_runs_goal'
+            )
+        ) AS "physicalRelationCount",
+        (
+          SELECT count(*)::integer
+          FROM "pg_constraint"
+          WHERE "conname" LIKE 'zero_runs_%'
+        ) AS "constraintCount",
+        (
+          SELECT count(*)::integer
           FROM "pg_trigger"
-          WHERE "tgrelid" = 'public.zero_runs'::regclass
-            AND "tgname" = 'sync_zero_run_metadata_to_agent_runs'
+          WHERE "tgname" = 'sync_zero_run_metadata_to_agent_runs'
             AND NOT "tgisinternal"
-        ) AS "triggerAbsent"
+        ) AS "transitionTriggerCount",
+        (
+          SELECT count(*)::integer
+          FROM "pg_proc" AS "routine_row"
+          INNER JOIN "pg_namespace" AS "namespace_row"
+            ON "namespace_row"."oid" = "routine_row"."pronamespace"
+          WHERE "namespace_row"."nspname" = 'public'
+            AND "routine_row"."proname" IN (
+              'sync_zero_run_metadata_to_agent_runs',
+              'backfill_agent_run_metadata_stage2'
+            )
+        ) AS "transitionRoutineCount",
+        (
+          SELECT count(*)::integer
+          FROM "pg_proc" AS "routine_row"
+          INNER JOIN "pg_namespace" AS "namespace_row"
+            ON "namespace_row"."oid" = "routine_row"."pronamespace"
+          WHERE "routine_row"."prokind" IN ('f', 'p')
+            AND "namespace_row"."nspname" NOT IN (
+              'pg_catalog',
+              'information_schema'
+            )
+            AND pg_get_functiondef("routine_row"."oid") ILIKE '%zero_runs%'
+        ) AS "routineReferenceCount",
+        (
+          SELECT count(*)::integer
+          FROM "pg_rewrite" AS "rewrite_row"
+          WHERE pg_get_ruledef("rewrite_row"."oid") ILIKE '%zero_runs%'
+        ) AS "rewriteReferenceCount"
     `);
-    assert.deepEqual(bridge.rows, [
-      { functionAbsent: true, triggerAbsent: true },
+    assert.deepEqual(retiredPhysicalState.rows, [
+      {
+        constraintCount: 0,
+        physicalRelationCount: 0,
+        rewriteReferenceCount: 0,
+        routineReferenceCount: 0,
+        tableAbsent: true,
+        transitionRoutineCount: 0,
+        transitionTriggerCount: 0,
+      },
     ]);
 
     const metadataReaders = await client.query<{
@@ -2734,7 +2777,7 @@ async function validatePermanentAgentRunMetadataState(
     ]);
 
     console.log(
-      "   ✅ nullable two-state metadata, range, permanent readers, and bridge removal are enforced\n",
+      "   ✅ nullable two-state metadata, range, permanent readers, and physical zero_runs removal are enforced\n",
     );
   } finally {
     await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [

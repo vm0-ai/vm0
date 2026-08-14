@@ -22,7 +22,6 @@ import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
@@ -46,10 +45,7 @@ import {
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
-import {
-  type RunMetadataValues,
-  writeRunMetadata,
-} from "../services/agent-run-metadata-write.service";
+import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
 import {
   chatEventSnapshotCursorSchemaAvailable,
@@ -80,68 +76,6 @@ const orgAdmissionLockStateRowSchema = z.object({
   held: z.boolean(),
   waiting: z.boolean(),
 });
-type StoredRunMetadata = Pick<
-  typeof agentRuns.$inferSelect,
-  keyof RunMetadataValues
->;
-
-function serializeRunMetadata(row: StoredRunMetadata) {
-  return {
-    trigger_source: row.triggerSource,
-    autonomy_budget: row.autonomyBudget,
-    workflow_automation_id: row.workflowAutomationId,
-    goal_id: row.goalId,
-    model_provider: row.modelProvider,
-    model_provider_id: row.modelProviderId,
-    model_provider_credential_scope: row.modelProviderCredentialScope,
-    selected_model: row.selectedModel,
-    codex_service_tier: row.codexServiceTier,
-    selected_video_model: row.selectedVideoModel,
-    chat_thread_id: row.chatThreadId,
-    api_started_at: row.apiStartedAt?.toISOString() ?? null,
-    first_assistant_event_acknowledged_at:
-      row.firstAssistantEventAcknowledgedAt?.toISOString() ?? null,
-    summary: row.summary,
-    trigger_brief: row.triggerBrief,
-  };
-}
-
-type RunMetadataReadFixtureAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "read-run-metadata-pair" }
->;
-
-function isRunMetadataReadFixtureAction(
-  body: TestRuntimeStateActionBody,
-): body is RunMetadataReadFixtureAction {
-  return body.action === "read-run-metadata-pair";
-}
-
-async function runMetadataReadFixtureActionResponse(
-  db: Db,
-  body: RunMetadataReadFixtureAction,
-  signal: AbortSignal,
-) {
-  // Test-only physical-table probe retained for Stage 6 drop verification.
-  const [agentRows, zeroRows] = await Promise.all([
-    db.select().from(agentRuns).where(eq(agentRuns.id, body.run_id)).limit(1),
-    db.select().from(zeroRuns).where(eq(zeroRuns.id, body.run_id)).limit(1),
-  ]);
-  signal.throwIfAborted();
-  const agentRun = agentRows[0];
-  const zeroRun = zeroRows[0];
-  return {
-    status: 200 as const,
-    body: {
-      ok: true as const,
-      run_metadata_pair: {
-        agent_run: agentRun ? serializeRunMetadata(agentRun) : null,
-        zero_run: zeroRun ? serializeRunMetadata(zeroRun) : null,
-      },
-    },
-  };
-}
-
 type RunSummaryFixtureAction = Extract<
   TestRuntimeStateActionBody,
   { action: "save-run-summary" }
@@ -1791,9 +1725,6 @@ const postRuntimeStateAction$ = command(
     }
     if (isChatEventFixtureAction(body)) {
       return await chatEventFixtureActionResponse(db, body, signal);
-    }
-    if (isRunMetadataReadFixtureAction(body)) {
-      return await runMetadataReadFixtureActionResponse(db, body, signal);
     }
     if (isRunSummaryFixtureAction(body)) {
       return await runSummaryFixtureActionResponse(db, body, signal);
