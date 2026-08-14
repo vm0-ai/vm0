@@ -9,6 +9,7 @@ use tracing::info;
 use vsock_proto::ExecTermination;
 
 use crate::api::ApiClient;
+use crate::boot_config::{BootConfigInput, FirecrackerBootConfig};
 use crate::config::SnapshotConfig;
 use crate::exec_operation_result::{captured_exec_output_bytes, reject_stream_overflow};
 use crate::factory::InvariantConfig;
@@ -235,46 +236,61 @@ async fn configure_snapshot_vm(
     sock_paths: &SockPaths,
     inv: &InvariantConfig,
 ) -> Result<String, SnapshotError> {
-    // The COW-device bind mount was established inside `unshare --mount`
-    // at spawn time; `configure_drive` only needs the path string FC will
-    // open inside its private mount namespace.
-    let drive_bind_str = paths.cow_device_bind().display().to_string();
-    let workspace_drive_bind_str = paths.workspace_device_bind().display().to_string();
-
-    // 6. Configure VM via API. Keep drive requests ordered so snapshot creation
-    // matches the fresh-boot config path: rootfs first, workspace second.
-    let kernel_path = config.kernel_path.display().to_string();
     prepare_runtime_socket_dir(sock_paths)?;
-    let vsock_uds_str = sock_paths.vsock().display().to_string();
+    let boot_config = build_snapshot_boot_config(config, paths, sock_paths, inv);
+    let vsock_uds_str = boot_config.vsock.uds_path.clone();
+    let FirecrackerBootConfig {
+        boot_source,
+        drives,
+        machine_config,
+        network_interfaces: [network_interface],
+        vsock,
+        balloon,
+    } = boot_config;
 
-    client
-        .configure_drive("rootfs", &drive_bind_str, true, false, None)
-        .await?;
-    client
-        .configure_drive("workspace", &workspace_drive_bind_str, false, false, None)
-        .await?;
+    for drive in &drives {
+        client.configure_drive_payload(drive).await?;
+    }
 
     tokio::try_join!(
-        client.configure_machine(config.vcpu_count, config.memory_mb),
-        client.configure_boot_source(&kernel_path, &inv.boot_args),
-        client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name, None, None),
-        client.configure_vsock(inv.guest_cid, &vsock_uds_str),
-        client.configure_balloon(
-            inv.balloon.amount_mib,
-            inv.balloon.deflate_on_oom,
-            inv.balloon.stats_polling_interval_s
-        ),
+        client.configure_machine_payload(&machine_config),
+        client.configure_boot_source_payload(&boot_source),
+        client.configure_network_interface_payload(&network_interface),
+        client.configure_vsock_payload(&vsock),
+        client.configure_balloon_payload(&balloon),
     )?;
 
     Ok(vsock_uds_str)
 }
 
+fn build_snapshot_boot_config(
+    config: &SnapshotCreateConfig,
+    paths: &SandboxPaths,
+    sock_paths: &SockPaths,
+    invariant: &InvariantConfig,
+) -> FirecrackerBootConfig {
+    // The COW-device bind mounts are established inside `unshare --mount`
+    // at spawn time. Firecracker opens these stable paths inside that private
+    // mount namespace, and the workspace drive is mandatory for snapshots.
+    FirecrackerBootConfig::new(BootConfigInput {
+        invariant,
+        vcpu_count: config.vcpu_count,
+        memory_mb: config.memory_mb,
+        kernel_path: config.kernel_path.display().to_string(),
+        rootfs_path: paths.cow_device_bind().display().to_string(),
+        workspace_path: Some(paths.workspace_device_bind().display().to_string()),
+        vsock_path: sock_paths.vsock().display().to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::time::Duration;
 
     use crate::api::test_support::{MOCK_REQUEST_READ_TIMEOUT, MockFirecrackerApi, MockResponse};
+    use crate::sandbox::build_fresh_boot_firecracker_config;
     use crate::snapshot::SnapshotError;
 
     use super::*;
@@ -427,18 +443,70 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn configure_snapshot_vm_orders_rootfs_before_workspace_drive() {
+    async fn snapshot_api_configuration_matches_fresh_boot_topology() {
         let mut api = MockFirecrackerApi::repeating(MockResponse::no_content());
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = SandboxPaths::new(dir.path().join("work"));
         let sock_paths = SockPaths::new(dir.path().join("sock"));
         let client = ApiClient::new(api.socket_path()).unwrap();
         let config = snapshot_create_config(dir.path().join("snapshot-output"));
-        let inv = InvariantConfig::new();
+        let invariant = InvariantConfig::new();
+        let snapshot_boot_config =
+            build_snapshot_boot_config(&config, &paths, &sock_paths, &invariant);
+        let fresh_boot_config = build_fresh_boot_firecracker_config(
+            &invariant,
+            &sandbox::ResourceLimits {
+                cpu_count: config.vcpu_count,
+                memory_mb: config.memory_mb,
+            },
+            config.kernel_path.display().to_string(),
+            paths.cow_device_bind().display().to_string(),
+            Some(paths.workspace_device_bind().display().to_string()),
+            sock_paths.vsock().display().to_string(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(fresh_boot_config, snapshot_boot_config);
+
+        let FirecrackerBootConfig {
+            boot_source,
+            drives,
+            machine_config,
+            network_interfaces: [network_interface],
+            vsock,
+            balloon,
+        } = snapshot_boot_config;
+        let mut expected_bodies = HashMap::from([
+            (
+                "/machine-config".to_string(),
+                serde_json::to_value(machine_config).unwrap(),
+            ),
+            (
+                "/boot-source".to_string(),
+                serde_json::to_value(boot_source).unwrap(),
+            ),
+            (
+                format!("/network-interfaces/{}", network_interface.iface_id),
+                serde_json::to_value(network_interface).unwrap(),
+            ),
+            ("/vsock".to_string(), serde_json::to_value(vsock).unwrap()),
+            (
+                "/balloon".to_string(),
+                serde_json::to_value(balloon).unwrap(),
+            ),
+        ]);
+        for drive in drives {
+            let path = format!("/drives/{}", drive.drive_id);
+            assert!(
+                expected_bodies
+                    .insert(path, serde_json::to_value(drive).unwrap())
+                    .is_none()
+            );
+        }
 
         tokio::time::timeout(
             MOCK_REQUEST_READ_TIMEOUT,
-            configure_snapshot_vm(&client, &config, &paths, &sock_paths, &inv),
+            configure_snapshot_vm(&client, &config, &paths, &sock_paths, &invariant),
         )
         .await
         .expect("snapshot VM configuration should finish")
@@ -454,23 +522,16 @@ mod tests {
         assert_eq!(requests[1].method, "PUT");
         assert_eq!(requests[1].path, "/drives/workspace");
 
-        let mut paths: Vec<&str> = requests
-            .iter()
-            .map(|request| request.path.as_str())
-            .collect();
-        paths.sort_unstable();
-        assert_eq!(
-            paths,
-            [
-                "/balloon",
-                "/boot-source",
-                "/drives/rootfs",
-                "/drives/workspace",
-                "/machine-config",
-                "/network-interfaces/eth0",
-                "/vsock",
-            ]
-        );
+        for request in requests {
+            assert_eq!(request.method, "PUT");
+            let expected_body = expected_bodies
+                .remove(&request.path)
+                .unwrap_or_else(|| panic!("unexpected API request path: {}", request.path));
+            let actual_body: serde_json::Value = serde_json::from_str(&request.body)
+                .unwrap_or_else(|error| panic!("invalid API request body: {error}"));
+            assert_eq!(actual_body, expected_body, "path: {}", request.path);
+        }
+        assert!(expected_bodies.is_empty());
     }
 
     #[tokio::test]
