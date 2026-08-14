@@ -82,38 +82,36 @@ async fn execution_timeout_terminates_a_stuck_active_input_steer()
         &runtime.paths,
         Instant::now(),
     );
-    tokio::pin!(execution);
     let ready_file = tmp.path().join(common::MOCK_CODEX_TURN_STEER_READY_FILE);
-    tokio::select! {
-        result = &mut execution => {
-            return Err(format!("Codex execution ended before the steer blocked: {result:?}").into());
-        }
-        ready = common::wait_for_file_contains(
-            &ready_file,
-            common::MOCK_CODEX_TURN_STEER_READY_EVENT,
-            Duration::from_secs(5),
-        ) => ready?,
-    }
-
+    let ready_file = ready_file
+        .to_str()
+        .ok_or_else(|| std::io::Error::other("mock readiness path is not valid UTF-8"))?;
     let execution_timeout = runtime
         .config
         .agent_execution_timeout
         .expect("test config should set an execution timeout");
-    tokio::time::pause();
-    tokio::time::advance(execution_timeout).await;
-    tokio::select! {
-        biased;
-        result = &mut execution => {
-            return Err(format!("Codex execution ended before the sink settle budget: {result:?}").into());
-        }
-        () = std::future::ready(()) => {}
-    }
-    tokio::time::advance(Duration::from_secs(10)).await;
-    tokio::time::resume();
+    let checkpoints = [
+        common::VirtualTimeCheckpoint::new(
+            ready_file,
+            common::MOCK_CODEX_TURN_STEER_READY_EVENT,
+            execution_timeout,
+        ),
+        common::VirtualTimeCheckpoint::new(
+            ready_file,
+            common::MOCK_CODEX_TURN_STEER_READY_EVENT,
+            Duration::from_secs(10),
+        ),
+    ];
 
-    let result = tokio::time::timeout(Duration::from_secs(10), execution)
-        .await
-        .expect("execution deadline should terminate the stuck steer")?;
+    // The first jump selects the execution timeout and starts the bounded sink
+    // settle timer. The second jump exhausts that timer while the mock keeps
+    // the turn/steer response pending.
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        common::execute_with_virtual_time_checkpoints(execution, &checkpoints),
+    )
+    .await
+    .expect("execution deadline should terminate the stuck steer")??;
 
     assert_eq!(result.exit_code, AGENT_EXECUTION_TIMEOUT_EXIT_CODE);
     let error = result
