@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.6...guest-contracts-v0.11.7) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
 ## [0.11.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.5...guest-contracts-v0.11.6) (2026-08-14)
 
 

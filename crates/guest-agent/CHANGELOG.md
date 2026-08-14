@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.1...guest-agent-v0.74.2) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
 ## [0.74.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.0...guest-agent-v0.74.1) (2026-08-14)
 
 ## [0.74.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.9...guest-agent-v0.74.0) (2026-08-14)
