@@ -3028,28 +3028,31 @@ describe("organization billing settings", () => {
     const purchaseDialog = await screen.findByRole("dialog", {
       name: "Buy concurrency",
     });
-    click(
-      within(purchaseDialog).getByLabelText(
-        "Increase additional concurrency quantity",
-      ),
-    );
+    const quantityInput = within(purchaseDialog).getByRole("textbox", {
+      name: "Slots",
+    });
+    expect(quantityInput).toHaveValue("1");
+    fireEvent.change(quantityInput, { target: { value: "" } });
+    expect(quantityInput).toHaveValue("");
+    expect(buttonByText("Buy $0/month", purchaseDialog)).toBeDisabled();
+    fireEvent.change(quantityInput, { target: { value: "5" } });
 
     await waitFor(() => {
       expect(
-        within(purchaseDialog).getByText("Buy $200/month"),
+        within(purchaseDialog).getByText("Buy $500/month"),
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Buy $200/month", purchaseDialog));
+    click(buttonByText("Buy $500/month", purchaseDialog));
 
     await screen.findByText("$120.00");
     const reviewDialog = screen.getByRole("dialog", {
       name: "Buy concurrency",
     });
     await waitFor(() => {
-      expect(previewedQuantity).toBe(2);
+      expect(previewedQuantity).toBe(5);
       expect(within(reviewDialog).getByText("$120.00")).toBeInTheDocument();
-      expect(within(reviewDialog).getByText("2")).toBeInTheDocument();
+      expect(within(reviewDialog).getByText("5")).toBeInTheDocument();
       expect(
         within(reviewDialog).getByText("$360.00/month"),
       ).toBeInTheDocument();
@@ -3057,7 +3060,7 @@ describe("organization billing settings", () => {
     click(buttonByText("Confirm", reviewDialog));
 
     await waitFor(() => {
-      expect(requestedQuantity).toBe(2);
+      expect(requestedQuantity).toBe(5);
       expect(
         screen.getByText(
           "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
