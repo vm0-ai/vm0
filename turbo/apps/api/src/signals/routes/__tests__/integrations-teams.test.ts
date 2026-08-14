@@ -25,7 +25,7 @@ import {
   teamsFixtureExternalId,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
-import { zeroIntegrationsTeamsMessageRoutes } from "../zero-integrations-teams-message";
+import { integrationsTeamsMessageRoutes } from "../integrations-teams-message";
 import { zeroIntegrationsTeamsUploadCompleteRoutes } from "../zero-integrations-teams-upload-complete";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
@@ -183,7 +183,7 @@ describe("Microsoft Teams integration CLI routes", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsTeamsMessageRoutes,
+      routes: integrationsTeamsMessageRoutes,
     })(integrationsTeamsMessageContract);
     const response = await accept(
       client.sendMessage({
@@ -227,7 +227,7 @@ describe("Microsoft Teams integration CLI routes", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsTeamsMessageRoutes,
+      routes: integrationsTeamsMessageRoutes,
     })(integrationsTeamsMessageContract);
     const response = await accept(
       client.sendMessage({
