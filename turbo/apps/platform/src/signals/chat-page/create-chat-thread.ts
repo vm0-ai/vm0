@@ -1657,18 +1657,6 @@ function createLatestEventSignals(
   };
 }
 
-/** Per-thread chat event sequences start at 1, so this marks the oldest event. */
-const FIRST_CHAT_EVENT_SEQ_ID = 1;
-
-function createEventHistoryBackfillPending(
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
-): Computed<boolean> {
-  return computed((get): boolean => {
-    const first = get(rawEvents$).find(isServerProjectionEntry);
-    return first !== undefined && first.event.seqId !== FIRST_CHAT_EVENT_SEQ_ID;
-  });
-}
-
 function createArtifacts(threadId: string) {
   const internalArtifactsReload$ = state(0);
   const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
@@ -1970,7 +1958,6 @@ function createPagedEventProjections({
   eventTrees$: Computed<ReadonlyMap<string, Root>>;
 }) {
   const rawEvents$ = createRawEventsComputed(registeredEvents$);
-  const historyBackfillPending$ = createEventHistoryBackfillPending(rawEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
     return semanticTranscriptEventsFromRaw(
       get(rawEvents$),
@@ -1982,7 +1969,6 @@ function createPagedEventProjections({
   return {
     rawEvents$,
     chatEvents$,
-    historyBackfillPending$,
     eventRunIndicatorState$,
     ...createLatestEventSignals(rawEvents$),
     ...createEventSemanticSignals(semanticEvents$, eventRunIndicatorState$),
@@ -3650,7 +3636,6 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     thinkingEventId$: events.thinkingEventId$,
     thinkingText$: events.thinkingText$,
     recommendedFollowupSource$: events.recommendedFollowupSource$,
-    historyBackfillPending$: events.historyBackfillPending$,
     donePhrase$: events.donePhrase$,
     loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:

@@ -144,7 +144,7 @@ export const chatThreads = pgTable(
      * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
-    /** Last seq_id allocated to an event in this thread. */
+    /** Last seq_id reserved in this thread; reservations may remain unused. */
     lastChatEventSeqId: bigint("last_chat_event_seq_id", {
       mode: "number",
     })
