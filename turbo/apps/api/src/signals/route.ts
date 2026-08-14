@@ -106,8 +106,8 @@ import { weatherRoutes } from "./routes/weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
-import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
+import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
+import { onboardingStatusRoutes } from "./routes/onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
 import { zeroOrgDeleteRoutes } from "./routes/zero-org-delete";
 import { orgLogoRoutes } from "./routes/org-logo";
@@ -321,8 +321,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
-  ...zeroOnboardingCompleteRoutes,
-  ...zeroOnboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
+  ...onboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgDeleteRoutes,
   ...orgLogoRoutes,
