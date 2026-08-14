@@ -161,10 +161,10 @@ import { zeroIntegrationsTelegramMessageRoutes } from "./routes/zero-integration
 import { zeroIntegrationsTelegramUploadCompleteRoutes } from "./routes/zero-integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "./routes/integrations-telegram-upload-init";
 import { zeroSlackChannelsRoutes } from "./routes/zero-slack-channels";
-import { zeroSlackCommandsRoutes } from "./routes/zero-slack-commands";
+import { slackCommandsRoutes } from "./routes/slack-commands";
 import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
-import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
-import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
+import { slackEventsRoutes } from "./routes/slack-events";
+import { slackInteractiveRoutes } from "./routes/slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
 import { zeroFeishuBrowserConnectRoutes } from "./routes/zero-feishu-browser-connect";
 import { zeroFeishuConnectRoutes } from "./routes/zero-feishu-connect";
@@ -339,9 +339,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,
   ...zeroSlackOauthRoutes,
-  ...zeroSlackCommandsRoutes,
-  ...zeroSlackEventsRoutes,
-  ...zeroSlackInteractiveRoutes,
+  ...slackCommandsRoutes,
+  ...slackEventsRoutes,
+  ...slackInteractiveRoutes,
   ...zeroFeishuBrowserConnectRoutes,
   ...zeroFeishuConnectRoutes,
   ...zeroFeishuEventsRoutes,

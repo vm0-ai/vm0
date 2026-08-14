@@ -1434,13 +1434,10 @@ export {
   type ZeroSlackConnectContract,
 } from "./zero-slack-connect";
 export {
-  zeroSlackCommandsContract,
-  type ZeroSlackCommandsContract,
-} from "./zero-slack-commands";
-export {
-  zeroSlackEventsContract,
-  type ZeroSlackEventsContract,
-} from "./zero-slack-events";
+  slackCommandsContract,
+  type SlackCommandsContract,
+} from "./slack-commands";
+export { slackEventsContract, type SlackEventsContract } from "./slack-events";
 export {
   zeroTeamsBotContract,
   teamsInboundActivitySchema,
@@ -1472,9 +1469,9 @@ export {
   type ZeroTeamsOauthContract,
 } from "./zero-teams-oauth";
 export {
-  zeroSlackInteractiveContract,
-  type ZeroSlackInteractiveContract,
-} from "./zero-slack-interactive";
+  slackInteractiveContract,
+  type SlackInteractiveContract,
+} from "./slack-interactive";
 export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,
