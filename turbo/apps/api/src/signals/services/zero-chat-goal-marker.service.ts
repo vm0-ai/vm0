@@ -1,6 +1,6 @@
 import type { Tx } from "../../lib/db-types";
 import { insertChatEvent } from "./zero-chat-event.service";
-import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
+import { nonEmptyGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 
 type DbTransaction = Tx;
 

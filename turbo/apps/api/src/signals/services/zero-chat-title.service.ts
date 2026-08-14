@@ -33,7 +33,7 @@ import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
   normalizeRecommendedFollowups,
-} from "./zero-chat-recommended-followups.service";
+} from "./chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {

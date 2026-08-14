@@ -166,7 +166,7 @@ import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 import { resolveChatThreadSession } from "./chat-session-continuity.service";
-import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
+import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
