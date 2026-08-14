@@ -107,7 +107,6 @@ enum AppServerRunOutcome {
     Completed(Box<Result<CliExecutionResult, AgentError>>),
     ExecutionTimedOut { timeout_secs: u64 },
     UserCancelled,
-    ActiveInputQuiescenceFailed,
 }
 
 async fn settle_active_input_before_stop<Run>(
@@ -126,20 +125,16 @@ where
     let settle = async {
         tokio::select! {
             biased;
-            result = run.as_mut() => Ok(Some(result)),
-            idle = active_input.wait_for_sink_idle() => idle.map(|()| None),
+            _ = run.as_mut() => {}
+            _ = active_input.wait_for_sink_idle() => {}
         }
     };
-    match tokio::time::timeout(
+    let _ = tokio::time::timeout(
         Duration::from_secs(crate::constants::ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS),
         settle,
     )
-    .await
-    {
-        Ok(Ok(Some(result))) => AppServerRunOutcome::Completed(Box::new(result)),
-        Ok(Ok(None)) => stopped,
-        Ok(Err(_)) | Err(_) => AppServerRunOutcome::ActiveInputQuiescenceFailed,
-    }
+    .await;
+    stopped
 }
 
 async fn run_with_execution_deadline(
@@ -446,20 +441,39 @@ async fn run_codex_app_server(
     )
     .await;
     active_input.close_terminal();
-    let active_input_delivery_ids = active_input_controller.finalize_receipts().await;
 
     let shutdown_result = match &run_outcome {
         AppServerRunOutcome::Completed(result) if result.is_ok() => client.shutdown().await,
         AppServerRunOutcome::Completed(_)
         | AppServerRunOutcome::ExecutionTimedOut { .. }
-        | AppServerRunOutcome::UserCancelled
-        | AppServerRunOutcome::ActiveInputQuiescenceFailed => client.terminate().await,
+        | AppServerRunOutcome::UserCancelled => client.terminate().await,
     };
+    if shutdown_result.is_ok()
+        && matches!(
+            &run_outcome,
+            AppServerRunOutcome::ExecutionTimedOut { .. } | AppServerRunOutcome::UserCancelled
+        )
+        && active_input_controller.sink_in_flight()
+    {
+        active_input_controller.mark_sink_stopped_after_consumer_exit();
+    }
+    let active_input_delivery_ids = active_input_controller.finalize_receipts().await;
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
     // Complete the final event-log write after the child is stopped and
     // before callers observe the finished app-server execution.
     let _ = log_file.flush().await;
-    let active_input_delivery_ids = active_input_delivery_ids?;
+    let active_input_delivery_ids = match active_input_delivery_ids {
+        Ok(delivery_ids) => delivery_ids,
+        Err(active_input_error) => {
+            if let Err(shutdown_error) = &shutdown_result {
+                return Err(AgentError::Execution(format!(
+                    "codex app-server cleanup failed before active-input quiescence: {}",
+                    masker.mask_string(&shutdown_error.to_string())
+                )));
+            }
+            return Err(active_input_error);
+        }
+    };
 
     match run_outcome {
         AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
@@ -532,9 +546,6 @@ async fn run_codex_app_server(
                 active_input_delivery_ids,
             })
         }
-        AppServerRunOutcome::ActiveInputQuiescenceFailed => Err(AgentError::Execution(
-            "Codex active-input steer did not quiesce after terminal stop".to_string(),
-        )),
     }
 }
 

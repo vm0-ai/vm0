@@ -721,6 +721,15 @@ impl ActiveInputController {
         Ok(())
     }
 
+    /// Records that the active-input sink cannot make further progress.
+    ///
+    /// Callers must first confirm that the backend consumer process exited.
+    /// This closes only the local in-flight operation; it does not record
+    /// backend acceptance or add a delivery receipt.
+    pub(crate) fn mark_sink_stopped_after_consumer_exit(&self) {
+        self.inner.sink_in_flight_tx.send_replace(false);
+    }
+
     /// Stop direct receipt delivery and return every backend-accepted ID.
     pub async fn finalize_receipts(&self) -> Result<Vec<String>, AgentError> {
         let sink_in_flight = self.sink_in_flight();
