@@ -114,7 +114,7 @@ export const chatEvents = pgTable(
      * our placeholder from real agent thinking stored in the same leaf.
      */
     runEventId: text("run_event_id"),
-    /** Strictly increasing position within the owning chat thread. */
+    /** Strictly increasing thread position; it may start above 1 and have gaps. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

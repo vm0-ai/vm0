@@ -190,7 +190,7 @@ describe("okou chat messages command", () => {
     );
   });
 
-  it("rebuilds a sparse local generation before advancing its cursor", async () => {
+  it("continues a monotonic local history across sequence gaps", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
@@ -205,18 +205,10 @@ describe("okou chat messages command", () => {
       "utf8",
     );
     await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
-    const freshSnapshot = snapshotNdjson([rawEventRow(10)]);
     const cursors: string[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json({
-          url: SNAPSHOT_DOWNLOAD_URL,
-          expiresInSeconds: 900,
-          lastSeqId: 10,
-        });
-      }),
-      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
-        return new HttpResponse(freshSnapshot);
+        throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, ({ request }) => {
         const cursor = new URL(request.url).searchParams.get("sinceSeqId");
@@ -224,8 +216,10 @@ describe("okou chat messages command", () => {
           throw new Error("Expected a rows cursor");
         }
         cursors.push(cursor);
-        expect(cursor).toBe("10");
-        return HttpResponse.json({ rows: [rawEventRow(11)] });
+        expect(cursor).toBe("4");
+        return HttpResponse.json({
+          rows: [rawEventRow(7), rawEventRow(10)],
+        });
       }),
     );
 
@@ -237,11 +231,13 @@ describe("okou chat messages command", () => {
       outputDirectory,
     ]);
 
-    expect(cursors).toStrictEqual(["10"]);
+    expect(cursors).toStrictEqual(["4"]);
     expect((await readdir(threadDirectory)).sort()).toStrictEqual([
-      "event-SEQ_ID_11.json",
+      "event-SEQ_ID_10.json",
+      "event-SEQ_ID_4.json",
+      "event-SEQ_ID_7.json",
       "notes.txt",
-      "snapshot-to-10.ndjson",
+      "snapshot-to-2.ndjson",
     ]);
   });
 

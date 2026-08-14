@@ -3184,7 +3184,6 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
       >
         <ChatThreadSessionError thread={thread} />
         <ChatThreadEmptyState thread={thread} />
-        <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
         <ChatThreadNextRunModelNotice thread={thread} />
@@ -4474,26 +4473,6 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
       <ChatThreadSkeletonOverlay thread={thread} />
       <ScrollToBottomButton thread={thread} />
       <ChatConversationLocator thread={thread} />
-    </div>
-  );
-}
-
-function ChatHistoryBackfillSkeleton({ thread }: { thread: ChatPanelSignals }) {
-  const { t } = useTranslation();
-  const historyBackfillPending = useGet(thread.historyBackfillPending$);
-  if (!historyBackfillPending) {
-    return null;
-  }
-  return (
-    <div
-      data-history-backfill-skeleton
-      role="status"
-      aria-label={t(($) => {
-        return $.chat.thread.loadingEarlier;
-      })}
-      className="flex flex-col gap-6"
-    >
-      <ChatEventSkeletonPair />
     </div>
   );
 }
