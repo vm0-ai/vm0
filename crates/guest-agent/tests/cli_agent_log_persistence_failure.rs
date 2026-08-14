@@ -14,6 +14,8 @@ async fn agent_log_delimiter_failure_terminates_live_claude_process()
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let (mut gate, gated_mock) = common::PostOpenMockGate::create(tmp.path(), &mock)?;
+    // Tokio may accept the delimiter into its blocking-write buffer. The next
+    // record forces that pending write to complete and surface EFBIG.
     let prompt = format!("@ECHO-HANG@\n{RAW_RECORD}\n{RAW_RECORD}");
     unsafe {
         common::setup_env(&gated_mock, tmp.path(), &prompt, 3, 1)?;
