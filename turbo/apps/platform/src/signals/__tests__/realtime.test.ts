@@ -14,12 +14,13 @@ import {
 } from "../../__tests__/mock-auth.ts";
 import {
   setupRealtime$,
+  realtimeSubscriptionSnapshot$,
   setAblyLoop$,
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
-import { authRecovery$, setupClerk$ } from "../auth.ts";
+import { setupClerk$ } from "../auth.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
@@ -273,7 +274,7 @@ describe("realtime signals", () => {
     });
   });
 
-  it("closes realtime when setup completes while already hidden", async () => {
+  it("keeps the initial realtime client when visible within the grace period", async () => {
     mockSignedInUser();
     const topic = "test:initially-hidden";
     const subscriber = testSubscriber();
@@ -302,19 +303,17 @@ describe("realtime signals", () => {
     document.dispatchEvent(new Event("visibilitychange"));
 
     await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
       expect(runs).toBe(1);
     });
+    expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
   });
 
-  it("closes realtime while hidden and reconnects after foreground auth", async () => {
+  it("pauses subscriptions and resumes the same client within the grace period", async () => {
     mockSignedInUser();
     const topic = "test:visibility";
     const subscriber = testSubscriber();
-    const touchCanFinish = context.mocks.deferred<void>();
-    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
     let visibilityState: DocumentVisibilityState = "visible";
     vi.spyOn(document, "visibilityState", "get").mockImplementation(() => {
       return visibilityState;
@@ -351,18 +350,97 @@ describe("realtime signals", () => {
 
     visibilityState = "visible";
     document.dispatchEvent(new Event("visibilitychange"));
-    window.dispatchEvent(new Event("focus"));
-    await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-    });
-    expect(runs).toBe(1);
-    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
-
-    touchCanFinish.resolve();
     await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
       expect(runs).toBe(2);
     });
+    expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+    expect(mockedClerk.sessionGetToken).not.toHaveBeenCalledWith({
+      skipCache: true,
+    });
+  });
+
+  it("closes realtime after the grace period and rebuilds when visible", async () => {
+    mockSignedInUser();
+    const topic = "test:visibility-close";
+    const subscriber = testSubscriber();
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => {
+      return visibilityState;
+    });
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: loop$ },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+    await waitFor(() => {
+      expect(
+        context.store.get(realtimeSubscriptionSnapshot$).connectionState,
+      ).toBe("closed");
+    });
+
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(runs).toBe(1);
+    });
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+  });
+
+  it("cancels stale close timers across repeated visibility changes", async () => {
+    mockSignedInUser();
+    const topic = "test:visibility-reset";
+    const subscriber = testSubscriber();
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => {
+      return visibilityState;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: keepAliveLoop$ },
+      subscriber.signal,
+    );
+    context.track(loopPromise);
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      expect(
+        context.store.get(realtimeSubscriptionSnapshot$).connectionState,
+      ).toBe("connected");
+    });
+    expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
   });
 
   it("keeps a foreground opt-out loop live and initially primed", async () => {
@@ -395,14 +473,11 @@ describe("realtime signals", () => {
       expect(runs).toBe(1);
     });
 
-    mockedClerk.sessionTouch.mockClear();
     window.dispatchEvent(new Event("focus"));
-    await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-    });
     const foregroundReady = await context.store.get(foregroundReady$);
     await foregroundReady.promise;
     expect(runs).toBe(1);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
 
     context.mocks.ably.trigger(topic);
     await waitFor(() => {
@@ -443,10 +518,8 @@ describe("realtime signals", () => {
     });
 
     context.mocks.ably.triggerFailure("terminal connection failure");
-    mockedClerk.sessionTouch.mockClear();
     window.dispatchEvent(new Event("focus"));
     await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
       expect(catchUps).toBe(1);
     });
     expect(subscribedDuringCatchUp).toBeTruthy();
@@ -456,6 +529,7 @@ describe("realtime signals", () => {
     catchUpCanFinish.resolve();
     await foregroundReady.promise;
     expect(context.store.get(foregroundReady$).pending).toBeFalsy();
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
   });
 
   it("removes aborted realtime-ready catch-up subscribers", async () => {
@@ -474,23 +548,18 @@ describe("realtime signals", () => {
     );
     subscriber.abort();
 
-    mockedClerk.sessionTouch.mockClear();
     window.dispatchEvent(new Event("focus"));
-    await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-    });
     const foregroundReady = context.store.get(foregroundReady$);
     await foregroundReady.promise;
     expect(catchUps).toBe(0);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
   });
 
-  it("rebuilds a failed realtime client after foreground auth and pokes once", async () => {
+  it("rebuilds a failed realtime client and pokes once", async () => {
     mockSignedInUser();
     const loopTopic = "test:failed-foreground-loop";
     const payloadTopic = "test:failed-foreground-payload";
     const subscriber = testSubscriber();
-    const touchCanFinish = context.mocks.deferred<void>();
-    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
     const payloads: unknown[] = [];
     let loopRuns = 0;
     let payloadCatchUps = 0;
@@ -545,13 +614,6 @@ describe("realtime signals", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     window.dispatchEvent(new Event("focus"));
     await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-    });
-    expect(loopRuns).toBe(1);
-    expect(payloadCatchUps).toBe(0);
-
-    touchCanFinish.resolve();
-    await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(loopTopic)).toBeTruthy();
       expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeTruthy();
       expect(loopRuns).toBe(2);
@@ -568,6 +630,7 @@ describe("realtime signals", () => {
       ]);
     });
     expect(payloadCatchUps).toBe(1);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
   });
 
   it("rebuilds a failed realtime client when the network comes back", async () => {
@@ -597,10 +660,11 @@ describe("realtime signals", () => {
     window.dispatchEvent(new Event("online"));
 
     await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
       expect(runs).toBe(1);
     });
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
   });
 
   it("waits for the next foreground catch-up after rebuilding fails", async () => {
@@ -681,7 +745,7 @@ describe("realtime signals", () => {
     });
   });
 
-  it("keeps signed-out foreground recovery silent and skips catch-up", async () => {
+  it("does not consult Clerk before signed-out foreground catch-up", async () => {
     mockSignedInUser();
     const topic = "test:signed-out-visibility";
     const subscriber = testSubscriber();
@@ -693,7 +757,6 @@ describe("realtime signals", () => {
     });
 
     await setupAuthAndRealtime();
-    const authRecovery = await context.store.get(authRecovery$);
     const loopPromise = context.store.set(
       setAblyLoop$,
       {
@@ -713,26 +776,34 @@ describe("realtime signals", () => {
     });
 
     mockClerkSessionSignedOut(true);
-    document.dispatchEvent(new Event("visibilitychange"));
-    await expect(authRecovery.refreshAuth(context.signal)).resolves.toBeNull();
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(runs).toBe(2);
+    });
 
-    expect(runs).toBe(1);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+    expect(mockedClerk.sessionGetToken).not.toHaveBeenCalledWith({
+      skipCache: true,
+    });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("shares an in-flight foreground recovery with a concurrent 401", async () => {
+  it("does not block foreground catch-up on an in-flight 401 refresh", async () => {
     mockSignedInUser();
-    const touchCanFinish = context.mocks.deferred<void>();
-    const firstResponseCanFinish = context.mocks.deferred<void>();
+    const topic = "test:foreground-during-401";
+    const subscriber = testSubscriber();
     const freshTokenCanFinish = context.mocks.deferred<string>();
-    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
     let requests = 0;
     let forcedTokenRefreshes = 0;
-    context.mocks.api(zeroFeatureSwitchesContract.get, async ({ respond }) => {
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       requests += 1;
       if (requests === 1) {
-        await firstResponseCanFinish.promise;
         return respond(401, {
           error: {
             code: "UNAUTHORIZED",
@@ -751,67 +822,12 @@ describe("realtime signals", () => {
     });
 
     await setupAuthAndRealtime();
-    const responsePromise = context.store.set(
-      reloadFeatureSwitch$,
-      context.signal,
-    );
-    await waitFor(() => {
-      expect(requests).toBe(1);
-    });
-
-    document.dispatchEvent(new Event("visibilitychange"));
-    await waitFor(() => {
-      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-    });
-
-    firstResponseCanFinish.resolve();
-    touchCanFinish.resolve();
-    await waitFor(() => {
-      expect(forcedTokenRefreshes).toBe(1);
-    });
-    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-
-    freshTokenCanFinish.resolve("fresh-token");
-    await responsePromise;
-    expect(requests).toBe(2);
-    expect(forcedTokenRefreshes).toBe(1);
-    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
-    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
-  });
-
-  it("retries Clerk-wrapped foreground network failures before catch-up", async () => {
-    mockSignedInUser();
-    const topic = "test:visibility-network-retry";
-    const subscriber = testSubscriber();
-    let touchAttempts = 0;
-    mockedClerk.sessionTouch.mockImplementation(() => {
-      touchAttempts += 1;
-      if (touchAttempts === 1) {
-        return Promise.reject(
-          new Error(
-            'ClerkJS: Network error at "https://clerk.example.test/touch" - TypeError: Load failed',
-          ),
-        );
-      }
-      return Promise.resolve();
-    });
-    let runs = 0;
-    const loop$ = command((_ctx, _signal: AbortSignal) => {
-      runs += 1;
-      return false;
-    });
-
-    await setupAuthAndRealtime();
     const loopPromise = context.store.set(
       setAblyLoop$,
-      {
-        topic,
-        loopCommand$: loop$,
-      },
+      { topic, loopCommand$: loop$ },
       subscriber.signal,
     );
     context.track(loopPromise);
-
     await waitFor(() => {
       expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
     });
@@ -820,11 +836,27 @@ describe("realtime signals", () => {
       expect(runs).toBe(1);
     });
 
-    document.dispatchEvent(new Event("visibilitychange"));
+    const responsePromise = context.store.set(
+      reloadFeatureSwitch$,
+      context.signal,
+    );
+    await waitFor(() => {
+      expect(forcedTokenRefreshes).toBe(1);
+    });
+
+    window.dispatchEvent(new Event("focus"));
     await waitFor(() => {
       expect(runs).toBe(2);
     });
-    expect(touchAttempts).toBe(2);
+    const foregroundReady = context.store.get(foregroundReady$);
+    await foregroundReady.promise;
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+
+    freshTokenCanFinish.resolve("fresh-token");
+    await responsePromise;
+    expect(requests).toBe(2);
+    expect(forcedTokenRefreshes).toBe(1);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
   it("reruns a loop for a notification received while the handler is in flight", async () => {

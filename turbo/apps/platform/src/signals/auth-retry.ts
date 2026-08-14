@@ -1,24 +1,21 @@
 /**
- * Auth recovery shared by foreground catch-up and authenticated requests.
+ * Token access and 401 recovery for authenticated requests.
  *
- * Every recovery trigger joins the same root-owned Clerk refresh. Request
- * cancellation stops only that request from waiting; it does not interrupt the
- * shared refresh used by the rest of the app.
+ * Forced refreshes are root-owned and shared. Request cancellation stops only
+ * that request from waiting; it does not interrupt a refresh used by the rest
+ * of the app.
  */
 import { command, computed, state, type Command } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
-import { isNetworkRequestError } from "../lib/network-error.ts";
 import { now } from "../lib/time.ts";
 import {
   connectionDiagnosticError,
   createConnectionDiagnosticSpanId,
   publishConnectionDiagnostic,
-  type ConnectionDiagnosticEventName,
 } from "./connection-diagnostics.ts";
 import {
   createDeferredPromise,
   onDomEventFn,
-  retryWithFibonacciBackoff,
   settle,
   withCleanup,
 } from "./utils";
@@ -27,7 +24,7 @@ type ClerkLike = Pick<Clerk, "session" | "addListener">;
 
 export interface AuthRecovery {
   readonly getToken: (signal?: AbortSignal) => Promise<string | null>;
-  readonly refreshAuth: (signal?: AbortSignal) => Promise<string | null>;
+  readonly forceRefreshToken: (signal?: AbortSignal) => Promise<string | null>;
 }
 
 const FOREGROUND_CATCH_UP_REQUEST_EVENT = "request-catch-up";
@@ -51,7 +48,7 @@ const foregroundReadyState$ = state<ForegroundReady>(settledForegroundReady());
 
 /**
  * Shared barrier for work that must not confirm remote state while the app is
- * hidden or Clerk is still recovering the foreground session.
+ * hidden or foreground subscribers are still catching up.
  */
 export const foregroundReady$ = computed((get) => {
   return get(foregroundReadyState$);
@@ -88,7 +85,6 @@ const runForegroundCatchUp$ = command(
 );
 
 interface TrackedForegroundCatchUpArgs {
-  readonly authRecovery: AuthRecovery;
   readonly spanId: string;
   readonly startedAtMs: number;
   readonly subscriberCount: number;
@@ -97,53 +93,15 @@ interface TrackedForegroundCatchUpArgs {
 const runTrackedForegroundCatchUp$ = command(
   async (
     { set },
-    {
-      authRecovery,
-      spanId,
-      startedAtMs,
-      subscriberCount,
-    }: TrackedForegroundCatchUpArgs,
+    { spanId, startedAtMs, subscriberCount }: TrackedForegroundCatchUpArgs,
     signal: AbortSignal,
   ): Promise<void> => {
     const catchUpResult = await settle(
       (async () => {
-        const authSpanId = createConnectionDiagnosticSpanId();
-        const authStartedAtMs = now();
-        publishConnectionDiagnostic({
-          event: "foreground.auth-refresh",
-          phase: "start",
-          spanId: authSpanId,
-        });
-        const authResult = await settle(
-          authRecovery.refreshAuth(signal),
-          signal,
-        );
-        if (!authResult.ok) {
-          publishConnectionDiagnostic({
-            details: connectionDiagnosticError(authResult.error),
-            durationMs: now() - authStartedAtMs,
-            event: "foreground.auth-refresh",
-            phase: "error",
-            spanId: authSpanId,
-          });
-          throw authResult.error;
-        }
-        publishConnectionDiagnostic({
-          details: { tokenAvailable: authResult.value !== null },
-          durationMs: now() - authStartedAtMs,
-          event: "foreground.auth-refresh",
-          phase: "finish",
-          spanId: authSpanId,
-        });
-
-        if (
-          authResult.value === null ||
-          document.visibilityState !== "visible"
-        ) {
+        if (document.visibilityState !== "visible") {
           publishConnectionDiagnostic({
             details: {
-              skipReason:
-                authResult.value === null ? "missing-token" : "hidden",
+              skipReason: "hidden",
               visibilityState: document.visibilityState,
             },
             event: "foreground.skipped",
@@ -246,11 +204,11 @@ export function createAuthRecovery(
   clerk: ClerkLike,
   getRootSignal: () => AbortSignal,
 ): AuthRecovery {
-  let refreshPromise: Promise<string | null> | null = null;
-  let refreshSpanId: string | null = null;
+  let forceRefreshPromise: Promise<string | null> | null = null;
+  let forceRefreshSpanId: string | null = null;
 
-  const refreshAuth = (signal?: AbortSignal): Promise<string | null> => {
-    if (!refreshPromise) {
+  const forceRefreshToken = (signal?: AbortSignal): Promise<string | null> => {
+    if (!forceRefreshPromise) {
       const rootSignal = getRootSignal();
       const spanId = createConnectionDiagnosticSpanId();
       const startedAtMs = now();
@@ -260,32 +218,38 @@ export function createAuthRecovery(
         spanId,
       });
       const refresh = withCleanup(
-        runTrackedAuthRefresh(clerk, rootSignal, spanId, startedAtMs),
+        runTrackedForceRefresh(clerk, rootSignal, spanId, startedAtMs),
         () => {
-          if (refreshPromise === refresh) {
-            refreshPromise = null;
-            refreshSpanId = null;
+          if (forceRefreshPromise === refresh) {
+            forceRefreshPromise = null;
+            forceRefreshSpanId = null;
           }
         },
       );
-      refreshPromise = refresh;
-      refreshSpanId = spanId;
-    } else if (refreshSpanId !== null) {
+      forceRefreshPromise = refresh;
+      forceRefreshSpanId = spanId;
+    } else if (forceRefreshSpanId !== null) {
       publishConnectionDiagnostic({
         event: "auth.refresh",
         phase: "join",
-        spanId: refreshSpanId,
+        spanId: forceRefreshSpanId,
       });
     }
-    return waitForAuthRecovery(refreshPromise, signal);
+    return waitForAuthRecovery(forceRefreshPromise, signal);
   };
 
   return {
     getToken: (signal?: AbortSignal) => {
-      const tokenPromise = refreshPromise ?? readCachedToken(clerk);
-      return waitForAuthRecovery(tokenPromise, signal);
+      if (forceRefreshPromise) {
+        return waitForAuthRecovery(forceRefreshPromise, signal);
+      }
+      const rootSignal = getRootSignal();
+      const tokenSignal = signal
+        ? AbortSignal.any([rootSignal, signal])
+        : rootSignal;
+      return readToken(clerk, tokenSignal);
     },
-    refreshAuth,
+    forceRefreshToken,
   };
 }
 
@@ -331,8 +295,8 @@ function setupForegroundRequestListeners(
  * Route visibility, focus, network restoration, and realtime reconnect through
  * one catch-up task.
  */
-export const setupAuthCatchUp$ = command(
-  ({ get, set }, authRecovery: AuthRecovery, signal: AbortSignal): void => {
+export const setupForegroundCatchUp$ = command(
+  ({ get, set }, signal: AbortSignal): void => {
     const catchUpTarget = get(foregroundCatchUpTarget$);
     let catchUpPromise: Promise<void> | null = null;
     let catchUpSpanId: string | null = null;
@@ -388,7 +352,7 @@ export const setupAuthCatchUp$ = command(
       blockUntilForeground();
     }
 
-    const catchUpAfterAuth = (): Promise<void> => {
+    const catchUpForeground = (): Promise<void> => {
       if (!catchUpPromise) {
         const spanId = createConnectionDiagnosticSpanId();
         const startedAtMs = now();
@@ -401,7 +365,6 @@ export const setupAuthCatchUp$ = command(
           set(
             runTrackedForegroundCatchUp$,
             {
-              authRecovery,
               spanId,
               startedAtMs,
               subscriberCount: get(foregroundCatchUpCommands$).size,
@@ -432,7 +395,7 @@ export const setupAuthCatchUp$ = command(
     catchUpTarget.addEventListener(
       FOREGROUND_CATCH_UP_REQUEST_EVENT,
       onDomEventFn(async () => {
-        await catchUpAfterAuth();
+        await catchUpForeground();
       }),
       { signal },
     );
@@ -446,53 +409,13 @@ export const setupAuthCatchUp$ = command(
 );
 
 type SettledClerkSession = Exclude<Clerk["session"], undefined>;
-type AuthClerkWaitName = Extract<
-  ConnectionDiagnosticEventName,
-  `auth.clerk.${string}`
->;
-
-async function runAuthDiagnosticWait<T>(
-  name: AuthClerkWaitName,
-  attempt: number,
-  operation: () => Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  const spanId = createConnectionDiagnosticSpanId();
-  const startedAtMs = now();
-  publishConnectionDiagnostic({
-    details: { attempt },
-    event: name,
-    phase: "start",
-    spanId,
-  });
-  const result = await settle(operation(), signal);
-  if (!result.ok) {
-    publishConnectionDiagnostic({
-      details: { ...connectionDiagnosticError(result.error), attempt },
-      durationMs: now() - startedAtMs,
-      event: name,
-      phase: "error",
-      spanId,
-    });
-    throw result.error;
-  }
-  publishConnectionDiagnostic({
-    details: { attempt },
-    durationMs: now() - startedAtMs,
-    event: name,
-    phase: "finish",
-    spanId,
-  });
-  return result.value;
-}
-
-async function runTrackedAuthRefresh(
+async function runTrackedForceRefresh(
   clerk: ClerkLike,
   signal: AbortSignal,
   spanId: string,
   startedAtMs: number,
 ): Promise<string | null> {
-  const result = await settle(runAuthRefresh(clerk, signal), signal);
+  const result = await settle(forceRefreshClerkToken(clerk, signal), signal);
   if (!result.ok) {
     publishConnectionDiagnostic({
       details: connectionDiagnosticError(result.error),
@@ -546,68 +469,29 @@ function waitForSettledClerkSession(
   return deferred.promise;
 }
 
-function runAuthRefresh(
+async function forceRefreshClerkToken(
   clerk: ClerkLike,
   signal: AbortSignal,
 ): Promise<string | null> {
-  let attempt = 0;
-  return retryAuthRecoveryOperation(() => {
-    attempt += 1;
-    return refreshClerkSession(clerk, attempt, signal);
-  }, signal);
-}
-
-async function refreshClerkSession(
-  clerk: ClerkLike,
-  attempt: number,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const session = await runAuthDiagnosticWait(
-    "auth.clerk.session-before-touch",
-    attempt,
-    () => {
-      return waitForSettledClerkSession(clerk, signal);
-    },
-    signal,
-  );
+  const session = await waitForSettledClerkSession(clerk, signal);
   if (session === null) {
     return null;
   }
-
-  await runAuthDiagnosticWait(
-    "auth.clerk.touch",
-    attempt,
-    async () => {
-      await session.touch({ intent: "focus" });
-    },
-    signal,
-  );
-
-  // Clerk may replace or clear the session while touch is in flight.
-  const refreshedSession = await runAuthDiagnosticWait(
-    "auth.clerk.session-after-touch",
-    attempt,
-    () => {
-      return waitForSettledClerkSession(clerk, signal);
-    },
-    signal,
-  );
-  if (refreshedSession === null) {
-    return null;
-  }
-
-  return await runAuthDiagnosticWait(
-    "auth.clerk.token",
-    attempt,
-    () => {
-      return refreshedSession.getToken({ skipCache: true });
-    },
+  return await waitForAuthRecovery(
+    session.getToken({ skipCache: true }),
     signal,
   );
 }
 
-async function readCachedToken(clerk: ClerkLike): Promise<string | null> {
-  return (await clerk.session?.getToken()) ?? null;
+async function readToken(
+  clerk: ClerkLike,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const session = await waitForSettledClerkSession(clerk, signal);
+  if (session === null) {
+    return null;
+  }
+  return await waitForAuthRecovery(session.getToken(), signal);
 }
 
 function waitForAuthRecovery<T>(
@@ -624,38 +508,4 @@ function waitForAuthRecovery<T>(
       aborted.reject(new DOMException("Auth recovery settled", "AbortError"));
     }
   });
-}
-
-function isClerkOfflineError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "clerk_offline"
-  );
-}
-
-function isClerkNetworkError(error: unknown): boolean {
-  return (
-    error instanceof Error && error.message.startsWith("ClerkJS: Network error")
-  );
-}
-
-function isAuthRecoveryNetworkError(error: unknown): boolean {
-  return (
-    isClerkOfflineError(error) ||
-    isClerkNetworkError(error) ||
-    isNetworkRequestError(error)
-  );
-}
-
-function retryAuthRecoveryOperation<T>(
-  operation: () => Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  return retryWithFibonacciBackoff(
-    operation,
-    isAuthRecoveryNetworkError,
-    signal,
-  );
 }

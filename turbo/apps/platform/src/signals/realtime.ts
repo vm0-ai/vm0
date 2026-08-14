@@ -25,7 +25,9 @@ import {
 } from "./connection-diagnostics.ts";
 import {
   createDeferredPromise,
+  onDomEventFn,
   onRejection,
+  resetSignal,
   settle,
   setLoop,
   throwIfAbort,
@@ -39,6 +41,14 @@ const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
   1000, 2000, 5000, 10_000, 30_000,
 ] as const;
 const MAX_TRANSIENT_RETRIES = 3;
+const REALTIME_BACKGROUND_CLOSE_GRACE_MS = 15_000;
+const realtimeBackgroundCloseDelayMs = IN_VITEST
+  ? 0
+  : REALTIME_BACKGROUND_CLOSE_GRACE_MS;
+
+function isDocumentVisible(): boolean {
+  return document.visibilityState === "visible";
+}
 
 type RealtimeConnectionState = ConnectionStateChange["current"];
 type RealtimeChannelState = ChannelStateChange["current"];
@@ -94,6 +104,8 @@ interface StableRealtimeChannel {
     topic: string | null,
     callback: ChannelCallback,
   ) => void;
+  readonly pauseSubscriptions: () => void;
+  readonly resumeSubscriptions: () => Promise<void>;
   readonly suspend: () => void;
   readonly replace: (channel: RealtimeChannel) => Promise<void>;
 }
@@ -709,133 +721,202 @@ function unsubscribeRealtimeSubscriptionChannels(
   }
 }
 
+interface StableRealtimeChannelState {
+  currentChannel: RealtimeChannel | null;
+  paused: boolean;
+  replacement: Promise<void> | null;
+  replacementChannel: RealtimeChannel | null;
+  readonly subscriptions: Map<ChannelCallback, ActiveChannelSubscription>;
+}
+
+async function attachStableRealtimeSubscription(
+  state: StableRealtimeChannelState,
+  channel: RealtimeChannel,
+  subscription: ActiveChannelSubscription,
+): Promise<void> {
+  if (subscription.channels.has(channel)) {
+    return;
+  }
+  await trackRealtimeSubscription(
+    () => {
+      return onRejection(
+        subscribeToRealtimeChannel(channel, subscription),
+        () => {
+          unsubscribeFromRealtimeChannel(channel, subscription);
+        },
+      );
+    },
+    subscription,
+    state.subscriptions.size,
+  );
+  if (
+    state.subscriptions.get(subscription.callback) !== subscription ||
+    state.paused ||
+    (channel !== state.currentChannel && channel !== state.replacementChannel)
+  ) {
+    unsubscribeFromRealtimeChannel(channel, subscription);
+    return;
+  }
+  subscription.channels.add(channel);
+}
+
+async function subscribeStableRealtimeChannel(
+  state: StableRealtimeChannelState,
+  topic: string | null,
+  callback: ChannelCallback,
+): Promise<void> {
+  const subscription: ActiveChannelSubscription = {
+    topic,
+    callback,
+    channels: new Set(),
+  };
+  state.subscriptions.set(callback, subscription);
+
+  if (state.paused) {
+    return;
+  }
+  const activeReplacement = state.replacement;
+  if (activeReplacement) {
+    await activeReplacement;
+  }
+  if (
+    state.subscriptions.get(callback) !== subscription ||
+    state.paused ||
+    !state.currentChannel
+  ) {
+    return;
+  }
+  await attachStableRealtimeSubscription(
+    state,
+    state.currentChannel,
+    subscription,
+  );
+}
+
+async function resumeStableRealtimeSubscriptions(
+  state: StableRealtimeChannelState,
+): Promise<void> {
+  state.paused = false;
+  const activeReplacement = state.replacement;
+  if (activeReplacement) {
+    await activeReplacement;
+  }
+  const channel = state.currentChannel;
+  if (state.paused || !channel) {
+    return;
+  }
+  const results = await Promise.allSettled(
+    [...state.subscriptions.values()].map(async (subscription) => {
+      await attachStableRealtimeSubscription(state, channel, subscription);
+    }),
+  );
+  const failure = results.find((result) => {
+    return result.status === "rejected";
+  });
+  if (failure?.status === "rejected") {
+    state.paused = true;
+    unsubscribeRealtimeSubscriptionChannels(state.subscriptions.values());
+    throw failure.reason;
+  }
+}
+
+async function replaceStableRealtimeChannel(
+  state: StableRealtimeChannelState,
+  channel: RealtimeChannel,
+): Promise<void> {
+  const activeReplacement = state.replacement;
+  if (activeReplacement) {
+    await activeReplacement;
+  }
+
+  const activeSubscriptions = [...state.subscriptions.values()];
+  state.replacementChannel = channel;
+  const replacePromise = (async () => {
+    const results = state.paused
+      ? []
+      : await Promise.allSettled(
+          activeSubscriptions.map(async (subscription) => {
+            await attachStableRealtimeSubscription(
+              state,
+              channel,
+              subscription,
+            );
+          }),
+        );
+    const failure = results.find((result) => {
+      return result.status === "rejected";
+    });
+    if (failure?.status === "rejected") {
+      for (const subscription of activeSubscriptions) {
+        if (subscription.channels.delete(channel)) {
+          unsubscribeFromRealtimeChannel(channel, subscription);
+        }
+      }
+      throw failure.reason;
+    }
+
+    state.currentChannel = channel;
+    for (const subscription of state.subscriptions.values()) {
+      for (const attachedChannel of subscription.channels) {
+        if (attachedChannel !== channel) {
+          unsubscribeFromRealtimeChannel(attachedChannel, subscription);
+          subscription.channels.delete(attachedChannel);
+        }
+      }
+    }
+  })();
+  state.replacement = replacePromise;
+  await withCleanup(replacePromise, () => {
+    if (state.replacement === replacePromise) {
+      state.replacement = null;
+      state.replacementChannel = null;
+    }
+  });
+}
+
 function createStableRealtimeChannel(
   initialChannel: RealtimeChannel,
 ): StableRealtimeChannel {
-  const subscriptions = new Map<ChannelCallback, ActiveChannelSubscription>();
-  let currentChannel: RealtimeChannel | null = initialChannel;
-  let replacement: Promise<void> | null = null;
-
-  const attach = async (
-    channel: RealtimeChannel,
-    subscription: ActiveChannelSubscription,
-  ): Promise<void> => {
-    if (subscription.channels.has(channel)) {
-      return;
-    }
-    await trackRealtimeSubscription(
-      () => {
-        return onRejection(
-          subscribeToRealtimeChannel(channel, subscription),
-          () => {
-            unsubscribeFromRealtimeChannel(channel, subscription);
-          },
-        );
-      },
-      subscription,
-      subscriptions.size,
-    );
-    if (subscriptions.get(subscription.callback) !== subscription) {
-      unsubscribeFromRealtimeChannel(channel, subscription);
-      return;
-    }
-    subscription.channels.add(channel);
+  const state: StableRealtimeChannelState = {
+    currentChannel: initialChannel,
+    paused: false,
+    replacement: null,
+    replacementChannel: null,
+    subscriptions: new Map(),
   };
 
   return {
     state: () => {
-      return currentChannel?.state ?? null;
+      return state.currentChannel?.state ?? null;
     },
     subscribe: async (topic, callback) => {
-      const subscription: ActiveChannelSubscription = {
-        topic,
-        callback,
-        channels: new Set(),
-      };
-      subscriptions.set(callback, subscription);
-
-      const activeReplacement = replacement;
-      if (!activeReplacement) {
-        const channel = currentChannel;
-        if (!channel) {
-          return Promise.resolve();
-        }
-        subscription.channels.add(channel);
-        await trackRealtimeSubscription(
-          () => {
-            return subscribeToRealtimeChannel(channel, subscription);
-          },
-          subscription,
-          subscriptions.size,
-        );
-        return;
-      }
-
-      await activeReplacement;
-      if (subscriptions.get(callback) !== subscription) {
-        return;
-      }
-      const channel = currentChannel;
-      if (channel) {
-        await attach(channel, subscription);
-      }
+      await subscribeStableRealtimeChannel(state, topic, callback);
     },
     unsubscribe: (_topic, callback) => {
-      const subscription = subscriptions.get(callback);
+      const subscription = state.subscriptions.get(callback);
       if (!subscription) {
         return;
       }
-      subscriptions.delete(callback);
+      state.subscriptions.delete(callback);
       for (const channel of subscription.channels) {
         unsubscribeFromRealtimeChannel(channel, subscription);
       }
       subscription.channels.clear();
     },
+    pauseSubscriptions: () => {
+      state.paused = true;
+      unsubscribeRealtimeSubscriptionChannels(state.subscriptions.values());
+    },
+    resumeSubscriptions: async () => {
+      await resumeStableRealtimeSubscriptions(state);
+    },
     suspend: () => {
-      currentChannel = null;
-      unsubscribeRealtimeSubscriptionChannels(subscriptions.values());
+      state.paused = true;
+      state.currentChannel = null;
+      unsubscribeRealtimeSubscriptionChannels(state.subscriptions.values());
     },
     replace: async (channel) => {
-      const activeReplacement = replacement;
-      if (activeReplacement) {
-        await activeReplacement;
-      }
-
-      const activeSubscriptions = [...subscriptions.values()];
-      const replacePromise = (async () => {
-        const results = await Promise.allSettled(
-          activeSubscriptions.map(async (subscription) => {
-            await attach(channel, subscription);
-          }),
-        );
-        const failure = results.find((result) => {
-          return result.status === "rejected";
-        });
-        if (failure?.status === "rejected") {
-          for (const subscription of activeSubscriptions) {
-            if (subscription.channels.delete(channel)) {
-              unsubscribeFromRealtimeChannel(channel, subscription);
-            }
-          }
-          throw failure.reason;
-        }
-
-        currentChannel = channel;
-        for (const subscription of subscriptions.values()) {
-          for (const attachedChannel of subscription.channels) {
-            if (attachedChannel !== channel) {
-              unsubscribeFromRealtimeChannel(attachedChannel, subscription);
-              subscription.channels.delete(attachedChannel);
-            }
-          }
-        }
-      })();
-      replacement = replacePromise;
-      await withCleanup(replacePromise, () => {
-        if (replacement === replacePromise) {
-          replacement = null;
-        }
-      });
+      await replaceStableRealtimeChannel(state, channel);
     },
   };
 }
@@ -980,6 +1061,14 @@ const connectRealtimeClient$ = command(
   },
 );
 
+const resetRealtimeCloseSignal$ = resetSignal();
+const realtimeCloseDue$ = state(false);
+
+const cancelRealtimeClose$ = command(({ set }, signal: AbortSignal): void => {
+  set(resetRealtimeCloseSignal$, signal);
+  set(realtimeCloseDue$, false);
+});
+
 const closeRealtimeWhileHidden$ = command(({ get, set }) => {
   if (document.visibilityState === "visible") {
     return;
@@ -996,8 +1085,37 @@ const closeRealtimeWhileHidden$ = command(({ get, set }) => {
   });
 });
 
+const updateRealtimeVisibility$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (isDocumentVisible()) {
+      set(cancelRealtimeClose$, signal);
+      return;
+    }
+
+    const session = get(internalRealtimeSession$);
+    if (!session) {
+      return;
+    }
+    L.debug("page hidden, pausing realtime subscriptions");
+    session.channel.pauseSubscriptions();
+    set(realtimeCloseDue$, false);
+    const closeSignal = set(resetRealtimeCloseSignal$, signal);
+    await delay(realtimeBackgroundCloseDelayMs, { signal: closeSignal });
+    signal.throwIfAborted();
+    closeSignal.throwIfAborted();
+    if (isDocumentVisible()) {
+      return;
+    }
+    set(realtimeCloseDue$, true);
+    set(closeRealtimeWhileHidden$);
+  },
+);
+
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (document.visibilityState === "visible") {
+      set(cancelRealtimeClose$, signal);
+    }
     const session = get(internalRealtimeSession$);
     const subscriberPokeTarget = get(subscriberPokeTarget$);
     if (!session) {
@@ -1092,10 +1210,15 @@ const foregroundRealtimeCatchUp$ = command(
     }
 
     if (document.visibilityState !== "visible") {
-      set(closeRealtimeWhileHidden$);
+      session.channel.pauseSubscriptions();
+      if (get(realtimeCloseDue$)) {
+        set(closeRealtimeWhileHidden$);
+      }
       return;
     }
 
+    await session.channel.resumeSubscriptions();
+    signal.throwIfAborted();
     L.debug("foreground catch-up ready, poking subscribers");
     subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
     await set(runRealtimeReadyCatchUp$, signal);
@@ -1143,14 +1266,13 @@ export const setupRealtime$ = command(
       close: connected.close,
     });
     set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
-    document.addEventListener(
-      "visibilitychange",
-      () => {
-        set(closeRealtimeWhileHidden$);
-      },
-      { signal },
-    );
-    set(closeRealtimeWhileHidden$);
+    const handleVisibilityChange = onDomEventFn(async () => {
+      await set(updateRealtimeVisibility$, signal);
+    });
+    document.addEventListener("visibilitychange", handleVisibilityChange, {
+      signal,
+    });
+    handleVisibilityChange(new Event("visibilitychange"));
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {

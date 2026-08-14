@@ -70,7 +70,7 @@ export function createAuthedContractClient<T extends AppRouter>(
         const recoverySignal = requestSignal
           ? AbortSignal.any([rootSignal, requestSignal])
           : rootSignal;
-        const freshToken = await authRecovery.refreshAuth(requestSignal);
+        const freshToken = await authRecovery.forceRefreshToken(requestSignal);
         if (freshToken) {
           response = await requestWithToken(freshToken, recoverySignal);
         }

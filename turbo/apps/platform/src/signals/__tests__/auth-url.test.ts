@@ -240,7 +240,7 @@ describe("platform auth redirects", () => {
     });
   });
 
-  it("keeps foreground touch under one owner outside the rollout", async () => {
+  it("uses Clerk's default foreground session touch", async () => {
     setBrowserUrl("https://app.vm0.ai/agents");
 
     detachedSetupPage({
@@ -264,7 +264,6 @@ describe("platform auth redirects", () => {
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
-      touchSession: false,
       ui: expect.objectContaining({
         ClerkUI: expect.any(Function),
         version: "1.27.0",
@@ -300,7 +299,6 @@ describe("platform auth redirects", () => {
       satelliteAutoSync: true,
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
-      touchSession: false,
       ui: expect.objectContaining({
         ClerkUI: expect.any(Function),
         version: "1.27.0",
