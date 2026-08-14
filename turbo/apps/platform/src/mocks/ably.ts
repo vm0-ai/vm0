@@ -72,6 +72,10 @@ type ChannelStateListener = (stateChange: MockChannelStateChange) => void;
 let capturedAuthCallback: AuthCallback | null = null;
 let tokenBodies: AuthCallbackToken[] = [];
 let nextSubscribeError: Error | null = null;
+let nextSubscribeGate: {
+  readonly started: ReturnType<typeof createDeferredPromise<void>>;
+  readonly release: ReturnType<typeof createDeferredPromise<void>>;
+} | null = null;
 const realtimeInstances = new Set<Realtime>();
 const subscribeErrors = new Map<
   string,
@@ -188,7 +192,13 @@ class FakeChannel {
       callbacks.add(callback);
     }
 
+    const subscribeGate = nextSubscribeGate;
+    nextSubscribeGate = null;
     await Promise.resolve();
+    if (subscribeGate) {
+      subscribeGate.started.resolve(undefined);
+      await subscribeGate.release.promise;
+    }
     if (this.connectionState() === "closed") {
       throw new Error("Connection closed");
     }
@@ -480,6 +490,24 @@ export function rejectNextAblySubscribe(message: string): void {
   nextSubscribeError = new Error(message);
 }
 
+export function deferNextAblySubscribe(signal: AbortSignal): {
+  readonly started: Promise<void>;
+  readonly attach: () => void;
+} {
+  if (nextSubscribeGate) {
+    throw new Error("An Ably subscribe is already deferred");
+  }
+  const started = createDeferredPromise<void>(signal);
+  const release = createDeferredPromise<void>(signal);
+  nextSubscribeGate = { started, release };
+  return {
+    started: started.promise,
+    attach: () => {
+      release.resolve(undefined);
+    },
+  };
+}
+
 export function rejectAblySubscribe(
   topic: string,
   message: string,
@@ -516,6 +544,7 @@ export function resetAblySubscriptions(): void {
   capturedAuthCallback = null;
   tokenBodies = [];
   nextSubscribeError = null;
+  nextSubscribeGate = null;
   subscribeErrors.clear();
 }
 

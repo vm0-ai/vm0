@@ -7,14 +7,12 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type { InboundMessage, TokenRequest } from "ably";
 import type { IDBPDatabase } from "idb";
+import { delay } from "signal-timers";
+import { IN_VITEST } from "../env.ts";
 import { now } from "../lib/time.ts";
 import { createChatIdbOpener } from "../signals/external/chat-idb-store.ts";
 import { createIdbEventRowStores } from "../signals/external/idb-event-row-store.ts";
@@ -48,10 +46,16 @@ import {
   createSharedDatabaseRealtimeSession,
   type SharedDatabaseRealtimeSession,
 } from "./worker-realtime.ts";
+import {
+  assertChatEventSchemaVersion,
+  CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+} from "./chat-event-schema-version.ts";
+import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "./event-log-policy.ts";
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
 const STALE_CLIENT_AFTER_MS = 3 * 60 * 1000;
+const REALTIME_CATCH_UP_RETRY_DELAYS_MS = [1000, 2000, 5000] as const;
 
 type WorkerClientEvent = Extract<
   SharedDatabaseWorkerMessage,
@@ -92,6 +96,22 @@ interface ChatThreadEventSyncResult {
   readonly changed: boolean;
 }
 
+interface ChatThreadEventRemoteState {
+  readonly result: ChatThreadEventQueryResult;
+  readonly cursor: { readonly eventId: string; readonly seqId: number } | null;
+  readonly replacement: boolean;
+  readonly cursorFromServerSnapshot: boolean;
+  readonly newEvents: readonly ChatThreadEvent[];
+}
+
+interface ChatThreadEventRemoteContext {
+  readonly client: ReturnType<
+    typeof createSharedDatabaseContractClient<typeof chatThreadsContract>
+  >;
+  readonly credential: CredentialState;
+  readonly requestToken: string;
+}
+
 interface ChatEventActor {
   readonly kind: "chat-event";
   readonly dataKey: ChatEventDataKey;
@@ -107,6 +127,7 @@ interface ChatThreadEventActor {
   degraded: boolean;
   observedSeqId: number | null;
   invalidationPending: boolean;
+  initialSnapshotRebasePending: boolean;
   inFlight: Promise<ChatThreadEventSyncResult> | null;
 }
 
@@ -466,7 +487,9 @@ export class SharedDatabaseWorkerRuntime {
     credential: CredentialState,
   ): Promise<ChatEventSyncResult> {
     const [settled] = await Promise.allSettled([
-      this.syncChatEvents(actor, credential, this.rootSignal),
+      this.runSubscribedSyncWithRetries(actor, credential, () => {
+        return this.syncChatEvents(actor, credential, this.rootSignal);
+      }),
     ]);
     actor.inFlight = null;
     const repeatAfterCurrentSync = actor.invalidationPending;
@@ -503,7 +526,9 @@ export class SharedDatabaseWorkerRuntime {
     credential: CredentialState,
   ): Promise<ChatThreadEventSyncResult> {
     const [settled] = await Promise.allSettled([
-      this.syncChatThreadEvents(actor, credential, this.rootSignal),
+      this.runSubscribedSyncWithRetries(actor, credential, () => {
+        return this.syncChatThreadEvents(actor, credential, this.rootSignal);
+      }),
     ]);
     actor.inFlight = null;
     const repeatAfterCurrentSync = actor.invalidationPending;
@@ -521,6 +546,39 @@ export class SharedDatabaseWorkerRuntime {
     this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
     this.removeUnusedActors();
     throw settled?.reason;
+  }
+
+  private async runSubscribedSyncWithRetries<T>(
+    actor: DatasetActor,
+    credential: CredentialState,
+    run: () => Promise<T>,
+    retryIndex = 0,
+  ): Promise<T> {
+    const result = await settle(run(), this.rootSignal);
+    if (result.ok) {
+      return result.value;
+    }
+    const actorId = sharedDatabaseDataKeyId(actor.dataKey);
+    credential.dirtyDataKeyIds.add(actorId);
+    const retryDelayMs = REALTIME_CATCH_UP_RETRY_DELAYS_MS[retryIndex];
+    if (
+      retryDelayMs === undefined ||
+      credential.authBlocked ||
+      !this.isActorSubscribed(actorId)
+    ) {
+      throw result.error;
+    }
+    await delay(IN_VITEST ? 0 : retryDelayMs, { signal: this.rootSignal });
+    this.rootSignal.throwIfAborted();
+    if (credential.authBlocked || !this.isActorSubscribed(actorId)) {
+      throw result.error;
+    }
+    return await this.runSubscribedSyncWithRetries(
+      actor,
+      credential,
+      run,
+      retryIndex + 1,
+    );
   }
 
   private repeatRealtimeCatchUp(
@@ -599,10 +657,7 @@ export class SharedDatabaseWorkerRuntime {
     let loadNextPage = true;
     while (loadNextPage) {
       const page = await client.rows({
-        headers: {
-          [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-        },
+        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
         params: { threadId: actor.dataKey.threadId },
         query: {
           sinceSeqId: cursor.lastSeqId,
@@ -616,6 +671,7 @@ export class SharedDatabaseWorkerRuntime {
         this.blockCredential(credential, requestToken);
         throw new SharedDatabaseAuthBlockedError();
       }
+      assertChatEventSchemaVersion(page.headers);
       if (page.status === 410) {
         if (cursorFromServer) {
           throw new Error(
@@ -689,10 +745,7 @@ export class SharedDatabaseWorkerRuntime {
     readonly cursor: ChatEventCursor;
   }> {
     const snapshot = await client.snapshot({
-      headers: {
-        [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      },
+      headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
       params: { threadId: dataKey.threadId },
       fetchOptions: { signal },
     });
@@ -701,6 +754,7 @@ export class SharedDatabaseWorkerRuntime {
       this.blockCredential(credential, requestToken);
       throw new SharedDatabaseAuthBlockedError();
     }
+    assertChatEventSchemaVersion(snapshot.headers);
     if (snapshot.status === 404) {
       return {
         rows: [],
@@ -749,15 +803,18 @@ export class SharedDatabaseWorkerRuntime {
         return requestToken;
       },
     );
-    let result = cached;
-    let cursor = chatThreadEventCursor(result);
-    initializeObservedSeqId(actor, cursor?.seqId ?? null);
-    let replacement = false;
-    let cursorFromServerSnapshot = false;
-    let newEvents: ChatThreadEvent[] = [];
+    const cachedCursor = chatThreadEventCursor(cached);
+    initializeObservedSeqId(actor, cachedCursor?.seqId ?? null);
+    let state: ChatThreadEventRemoteState = {
+      result: cached,
+      cursor: cachedCursor,
+      replacement: false,
+      cursorFromServerSnapshot: false,
+      newEvents: [],
+    };
 
-    if (result.snapshot === null || cursor === null || actor.degraded) {
-      result = {
+    if (cached.snapshot === null || cachedCursor === null || actor.degraded) {
+      const result = {
         snapshot: await this.fetchChatThreadSnapshot(
           client,
           credential,
@@ -766,15 +823,64 @@ export class SharedDatabaseWorkerRuntime {
         ),
         events: [],
       };
-      cursor = chatThreadEventCursor(result);
-      replacement = true;
-      cursorFromServerSnapshot = true;
+      state = {
+        result,
+        cursor: chatThreadEventCursor(result),
+        replacement: true,
+        cursorFromServerSnapshot: true,
+        newEvents: [],
+      };
     }
 
+    const remoteContext = { client, credential, requestToken };
+    state = await this.loadChatThreadEventTail(remoteContext, state, signal);
+    state = await this.maybeRebaseChatThreadEventSnapshot(
+      actor,
+      remoteContext,
+      state,
+      signal,
+    );
+
+    const shouldWrite = state.replacement || state.newEvents.length > 0;
+    if (shouldWrite) {
+      const stores = createStrictIdbChatThreadEventStores(() => {
+        return this.getDatabase(actor.dataKey);
+      });
+      const snapshot = state.result.snapshot;
+      if (!snapshot) {
+        throw new Error("ChatThreadEvent synchronization requires a snapshot");
+      }
+      const write = state.replacement
+        ? stores.writeStore.replaceFromSnapshot(
+            {
+              chatThreads: snapshot.chatThreads,
+              latestEventId: snapshot.latestEventId,
+              latestSeqId: snapshot.latestSeqId,
+            },
+            state.result.events,
+            signal,
+          )
+        : stores.writeStore.upsertEvents(state.newEvents, signal);
+      const written = await settle(write, signal);
+      actor.degraded = !written.ok;
+    }
+    return {
+      result: state.result,
+      changed: advanceObservedSeqId(actor, state.cursor?.seqId ?? null),
+    };
+  }
+
+  private async loadChatThreadEventTail(
+    context: ChatThreadEventRemoteContext,
+    initialState: ChatThreadEventRemoteState,
+    signal: AbortSignal,
+  ): Promise<ChatThreadEventRemoteState> {
+    const { client, credential, requestToken } = context;
+    let state = initialState;
     let hasMore = true;
     while (hasMore) {
       const page = await client.events({
-        query: cursor ? { sinceSeqId: cursor.seqId } : {},
+        query: state.cursor ? { sinceSeqId: state.cursor.seqId } : {},
         fetchOptions: { signal },
       });
       signal.throwIfAborted();
@@ -783,12 +889,12 @@ export class SharedDatabaseWorkerRuntime {
         throw new SharedDatabaseAuthBlockedError();
       }
       if (page.status === 410) {
-        if (cursorFromServerSnapshot) {
+        if (state.cursorFromServerSnapshot) {
           throw new Error(
             "ChatThreadEvent cursor expired immediately after a server snapshot",
           );
         }
-        result = {
+        const result = {
           snapshot: await this.fetchChatThreadSnapshot(
             client,
             credential,
@@ -797,58 +903,79 @@ export class SharedDatabaseWorkerRuntime {
           ),
           events: [],
         };
-        cursor = chatThreadEventCursor(result);
-        newEvents = [];
-        replacement = true;
-        cursorFromServerSnapshot = true;
+        state = {
+          result,
+          cursor: chatThreadEventCursor(result),
+          replacement: true,
+          cursorFromServerSnapshot: true,
+          newEvents: [],
+        };
         continue;
       }
       if (page.status !== 200) {
         throw new SharedDatabaseHttpError(page.status);
       }
       const pageEvents = page.body.events.filter((event) => {
-        return cursor === null || event.seqId > cursor.seqId;
+        return state.cursor === null || event.seqId > state.cursor.seqId;
       });
       if (pageEvents.length > 0) {
-        result = {
-          snapshot: result.snapshot,
-          events: [...result.events, ...pageEvents],
-        };
-        newEvents.push(...pageEvents);
         const lastEvent = pageEvents.at(-1)!;
-        cursor = { eventId: lastEvent.id, seqId: lastEvent.seqId };
-        cursorFromServerSnapshot = false;
+        state = {
+          result: {
+            snapshot: state.result.snapshot,
+            events: [...state.result.events, ...pageEvents],
+          },
+          cursor: { eventId: lastEvent.id, seqId: lastEvent.seqId },
+          replacement: state.replacement,
+          cursorFromServerSnapshot: false,
+          newEvents: [...state.newEvents, ...pageEvents],
+        };
       }
       hasMore = page.body.hasMore && page.body.events.length > 0;
     }
+    return state;
+  }
 
-    const shouldWrite = replacement || newEvents.length > 0;
-    if (shouldWrite) {
-      const stores = createStrictIdbChatThreadEventStores(() => {
-        return this.getDatabase(actor.dataKey);
-      });
-      const snapshot = result.snapshot;
-      if (!snapshot) {
-        throw new Error("ChatThreadEvent synchronization requires a snapshot");
-      }
-      const write = replacement
-        ? stores.writeStore.replaceFromSnapshot(
-            {
-              chatThreads: snapshot.chatThreads,
-              latestEventId: snapshot.latestEventId,
-              latestSeqId: snapshot.latestSeqId,
-            },
-            result.events,
-            signal,
-          )
-        : stores.writeStore.upsertEvents(newEvents, signal);
-      const written = await settle(write, signal);
-      actor.degraded = !written.ok;
+  private async maybeRebaseChatThreadEventSnapshot(
+    actor: ChatThreadEventActor,
+    context: ChatThreadEventRemoteContext,
+    state: ChatThreadEventRemoteState,
+    signal: AbortSignal,
+  ): Promise<ChatThreadEventRemoteState> {
+    const { client, credential, requestToken } = context;
+    if (!actor.initialSnapshotRebasePending) {
+      return state;
     }
-    return {
-      result,
-      changed: advanceObservedSeqId(actor, cursor?.seqId ?? null),
-    };
+    actor.initialSnapshotRebasePending = false;
+    if (
+      state.replacement ||
+      state.result.events.length <=
+        CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD
+    ) {
+      return state;
+    }
+    const rebasedSnapshot = await settle(
+      this.fetchChatThreadSnapshot(client, credential, requestToken, signal),
+      signal,
+    );
+    if (!rebasedSnapshot.ok) {
+      if (credential.authBlocked) {
+        throw rebasedSnapshot.error;
+      }
+      return state;
+    }
+    const result = { snapshot: rebasedSnapshot.value, events: [] };
+    return await this.loadChatThreadEventTail(
+      context,
+      {
+        result,
+        cursor: chatThreadEventCursor(result),
+        replacement: true,
+        cursorFromServerSnapshot: true,
+        newEvents: [],
+      },
+      signal,
+    );
   }
 
   private async fetchChatThreadSnapshot(
@@ -988,6 +1115,7 @@ export class SharedDatabaseWorkerRuntime {
             degraded: false,
             observedSeqId: null,
             invalidationPending: false,
+            initialSnapshotRebasePending: true,
             inFlight: null,
           };
     this.actors.set(id, actor);
@@ -1128,6 +1256,19 @@ export class SharedDatabaseWorkerRuntime {
       this.rootSignal,
     );
     this.realtimeSessions.set(userId, session);
+    const catchUpAfterAttach = (async (): Promise<void> => {
+      const attached = await session.ready;
+      this.rootSignal.throwIfAborted();
+      if (!attached || this.realtimeSessions.get(userId) !== session) {
+        return;
+      }
+      this.catchUpSubscribedActorsForUser(userId);
+    })();
+    detach(
+      settle(catchUpAfterAttach, this.rootSignal),
+      Reason.Daemon,
+      `shared database post-attach catch-up: ${userId}`,
+    );
   }
 
   private async fetchRealtimeTokenRequest(
@@ -1176,33 +1317,58 @@ export class SharedDatabaseWorkerRuntime {
           (actor.kind === "chat-event" &&
             threadId !== null &&
             actor.dataKey.threadId === threadId));
-      if (
-        !matches ||
-        actor.invalidationPending ||
-        !this.isActorSubscribed(id)
-      ) {
+      if (!matches || !this.isActorSubscribed(id)) {
         continue;
       }
-      actor.invalidationPending = true;
       const credential = this.requireCredential(actor.dataKey);
-      credential.dirtyDataKeyIds.add(id);
-      if (credential.authBlocked) {
-        continue;
-      }
-      if (actor.inFlight) {
-        continue;
-      }
-      actor.invalidationPending = false;
-      const catchUp: Promise<unknown> =
-        actor.kind === "chat-event"
-          ? this.ensureChatEventSync(actor, credential)
-          : this.ensureChatThreadEventSync(actor, credential);
-      detach(
-        settle(catchUp, this.rootSignal),
-        Reason.Daemon,
+      this.enqueueActorCatchUp(
+        actor,
+        credential,
         `shared database realtime catch-up: ${id}`,
       );
     }
+  }
+
+  private catchUpSubscribedActorsForUser(userId: string): void {
+    for (const actor of this.actors.values()) {
+      const actorId = sharedDatabaseDataKeyId(actor.dataKey);
+      if (actor.dataKey.userId !== userId || !this.isActorSubscribed(actorId)) {
+        continue;
+      }
+      const credential = this.credentials.get(
+        sharedDatabaseCredentialId(actor.dataKey),
+      );
+      if (!credential) {
+        continue;
+      }
+      this.enqueueActorCatchUp(
+        actor,
+        credential,
+        `shared database post-attach actor catch-up: ${actorId}`,
+      );
+    }
+  }
+
+  private enqueueActorCatchUp(
+    actor: DatasetActor,
+    credential: CredentialState,
+    description: string,
+  ): void {
+    const actorId = sharedDatabaseDataKeyId(actor.dataKey);
+    if (actor.invalidationPending || !this.isActorSubscribed(actorId)) {
+      return;
+    }
+    actor.invalidationPending = true;
+    credential.dirtyDataKeyIds.add(actorId);
+    if (credential.authBlocked || actor.inFlight) {
+      return;
+    }
+    actor.invalidationPending = false;
+    const catchUp: Promise<unknown> =
+      actor.kind === "chat-event"
+        ? this.ensureChatEventSync(actor, credential)
+        : this.ensureChatThreadEventSync(actor, credential);
+    detach(settle(catchUp, this.rootSignal), Reason.Daemon, description);
   }
 
   private broadcastRealtimeStatus(

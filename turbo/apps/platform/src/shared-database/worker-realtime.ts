@@ -16,7 +16,7 @@ interface SharedDatabaseRealtimeOptions {
 }
 
 export interface SharedDatabaseRealtimeSession {
-  readonly ready: Promise<void>;
+  readonly ready: Promise<boolean>;
   readonly close: () => void;
 }
 
@@ -74,10 +74,20 @@ export function createSharedDatabaseRealtimeSession(
     suspendedRetryTimeout: 15_000,
   });
   const channel = ably.channels.get(`user:${options.userId}`);
+  let channelState: "attached" | "attaching" | "failed" = "attaching";
   const handleConnectionStateChange = (
     stateChange: ConnectionStateChange,
   ): void => {
-    options.onStatus(connectionStatus(stateChange.current));
+    const status = connectionStatus(stateChange.current);
+    options.onStatus(
+      status !== "connected"
+        ? status
+        : channelState === "attached"
+          ? "connected"
+          : channelState === "failed"
+            ? "disconnected"
+            : "connecting",
+    );
   };
   ably.connection.on(handleConnectionStateChange);
 
@@ -86,16 +96,17 @@ export function createSharedDatabaseRealtimeSession(
       options.onMessage(message);
     }
   };
-  const subscribe = async (): Promise<void> => {
+  const subscribe = async (): Promise<boolean> => {
     const [result] = await Promise.allSettled([
       channel.subscribe(handleMessage),
     ]);
     if (controller.signal.aborted) {
-      return;
+      return false;
     }
-    options.onStatus(
-      result?.status === "fulfilled" ? "connected" : "disconnected",
-    );
+    const attached = result?.status === "fulfilled";
+    channelState = attached ? "attached" : "failed";
+    options.onStatus(attached ? "connected" : "disconnected");
+    return attached;
   };
   const ready = subscribe();
 

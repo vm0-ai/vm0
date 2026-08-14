@@ -2,6 +2,7 @@ import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
 import { vi } from "vitest";
 
 import {
+  deferNextAblySubscribe,
   getAuthTokenHistory,
   hasChannelSubscription,
   hasSubscription,
@@ -320,6 +321,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
     },
     ably: {
+      deferNextSubscribe: () => {
+        return deferNextAblySubscribe(getSignal());
+      },
       trigger: triggerAblyEvent,
       triggerConnectionState: triggerAblyConnectionState,
       triggerFailure: triggerAblyFailure,

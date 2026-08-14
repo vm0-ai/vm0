@@ -28,6 +28,7 @@ import type {
   ChatThreadEventDataKey,
   ChatThreadEventQueryResult,
 } from "../../shared-database/data-key.ts";
+import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "../../shared-database/event-log-policy.ts";
 import {
   onSharedDatabase$,
   queryChatThreadEventSharedDatabase$,
@@ -40,7 +41,6 @@ import type {
 } from "./chat-thread-event-types.ts";
 
 const L = logger("ChatThreadEventSourcing");
-const EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD = 100;
 
 type Stores = ReturnType<typeof createIdbChatThreadEventStores>;
 type ChatThreadsClient = InitClientReturn<ChatThreadsContract, InitClientArgs>;
@@ -434,7 +434,7 @@ const subscribeLegacyEventDrivenChatThreads$ = command(
           initialSnapshotRebasePending = false;
           if (
             !result.snapshotReplaced &&
-            result.eventCount > EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD
+            result.eventCount > CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD
           ) {
             await bestEffort(
               set(syncChatThreadEvents$, "snapshot-rebase", signal),

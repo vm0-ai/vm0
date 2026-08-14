@@ -10,6 +10,7 @@ import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { openDB } from "idb";
+import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
@@ -206,6 +207,193 @@ describe("shared database worker runtime", () => {
     expect(networkRequests).toBe(0);
   });
 
+  it("catches up both datasets after delayed first Ably attachment", async () => {
+    const workerEvents: WorkerEvent[] = [];
+    const clientId = await connectRuntime(workerEvents);
+    const eventDataKey = chatEventKey(crypto.randomUUID());
+    const threadDataKey = chatThreadEventKey();
+    const firstRow = chatEventRow(eventDataKey.threadId, 1);
+    const secondRow = chatEventRow(eventDataKey.threadId, 2);
+    const renamedEvent = renamedThreadEvent(2, "new title");
+    let availableRows: readonly ChatEventRow[] = [firstRow];
+    let availableThreadEvents: readonly ChatThreadEvent[] = [];
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query: requestQuery, respond }) => {
+        return respond(200, {
+          rows: availableRows.filter((row) => {
+            return row.seqId > requestQuery.sinceSeqId;
+          }),
+        });
+      },
+    );
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [snapshotThread("old title")],
+        latestEventId: crypto.randomUUID(),
+        latestSeqId: 1,
+      });
+    });
+    context.mocks.api(
+      chatThreadsContract.events,
+      ({ query: requestQuery, respond }) => {
+        return respond(200, {
+          events: availableThreadEvents.filter((event) => {
+            return (
+              requestQuery.sinceSeqId === undefined ||
+              event.seqId > requestQuery.sinceSeqId
+            );
+          }),
+          hasMore: false,
+        });
+      },
+    );
+
+    const attachment = context.mocks.ably.deferNextSubscribe();
+    context.store.set(
+      subscribeSharedDatabaseWorker$,
+      clientId,
+      crypto.randomUUID(),
+      eventDataKey,
+    );
+    context.store.set(
+      subscribeSharedDatabaseWorker$,
+      clientId,
+      crypto.randomUUID(),
+      threadDataKey,
+    );
+    await attachment.started;
+
+    await expect(
+      query(clientId, {
+        dataKey: eventDataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual([firstRow]);
+    await expect(
+      query(clientId, {
+        dataKey: threadDataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual({
+      snapshot: {
+        chatThreads: [snapshotThread("old title")],
+        latestEventId: expect.any(String),
+        latestSeqId: 1,
+      },
+      events: [],
+    });
+    const appendCountBeforeAttach = workerEvents.filter((event) => {
+      return event.type === "append";
+    }).length;
+
+    availableRows = [firstRow, secondRow];
+    availableThreadEvents = [renamedEvent];
+    attachment.attach();
+
+    await vi.waitFor(() => {
+      expect(
+        workerEvents.filter((event) => {
+          return event.type === "append";
+        }),
+      ).toHaveLength(appendCountBeforeAttach + 2);
+    });
+    await expect(
+      query(clientId, {
+        dataKey: eventDataKey,
+        afterSeqId: null,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual([firstRow, secondRow]);
+    await expect(
+      query(clientId, {
+        dataKey: threadDataKey,
+        afterSeqId: null,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual({
+      snapshot: {
+        chatThreads: [snapshotThread("old title")],
+        latestEventId: expect.any(String),
+        latestSeqId: 1,
+      },
+      events: [renamedEvent],
+    });
+  });
+
+  it("keeps a failed first Ably attachment disconnected", async () => {
+    const workerEvents: WorkerEvent[] = [];
+    const clientId = await connectRuntime(workerEvents);
+    let snapshotRequests = 0;
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      snapshotRequests += 1;
+      return respond(200, {
+        chatThreads: [],
+        latestEventId: null,
+        latestSeqId: null,
+      });
+    });
+    context.mocks.ably.rejectNextSubscribe("channel attach failed");
+
+    context.store.set(
+      subscribeSharedDatabaseWorker$,
+      clientId,
+      crypto.randomUUID(),
+      chatThreadEventKey(),
+    );
+
+    await vi.waitFor(() => {
+      expect(workerEvents.at(-1)).toMatchObject({
+        type: "status",
+        status: "disconnected",
+      });
+    });
+    expect(snapshotRequests).toBe(0);
+  });
+
+  it("rejects a mismatched ChatEvent response schema version", async () => {
+    const clientId = await connectRuntime();
+    const dataKey = chatEventKey(crypto.randomUUID());
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.http.get(
+      `*/api/okou/chat-threads/${dataKey.threadId}/event-rows`,
+      () => {
+        return HttpResponse.json(
+          { rows: [] },
+          {
+            headers: { [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "999" },
+          },
+        );
+      },
+    );
+
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).rejects.toThrow("Unexpected Chat Event schema version 999");
+  });
+
   it("loads a ChatEvent snapshot plus tail and serves strict cursor reads from cache", async () => {
     const workerEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
@@ -248,7 +436,7 @@ describe("shared database worker runtime", () => {
         consistency: "catch-up",
       }),
     ).resolves.toStrictEqual([snapshotRow, tailRow]);
-    expect(requestedSeqIds).toStrictEqual([2, 3]);
+    expect(requestedSeqIds).toStrictEqual([2, 3, 3]);
     expect(
       workerEvents.filter((event) => {
         return event.type === "append";
@@ -379,7 +567,7 @@ describe("shared database worker runtime", () => {
         }),
       ).toHaveLength(3);
     });
-    expect(requestedSeqIds).toStrictEqual([0, 1, 1, 2]);
+    expect(requestedSeqIds).toStrictEqual([0, 1, 1, 1, 2]);
     await expect(
       query(clientId, {
         dataKey,
@@ -387,6 +575,86 @@ describe("shared database worker runtime", () => {
         consistency: "cache-only",
       }),
     ).resolves.toStrictEqual([secondRow, thirdRow]);
+  });
+
+  it("retries one failed realtime catch-up without another notification", async () => {
+    const workerEvents: WorkerEvent[] = [];
+    const clientId = await connectRuntime(workerEvents);
+    const dataKey = chatEventKey(crypto.randomUUID());
+    const firstRow = chatEventRow(dataKey.threadId, 1);
+    const secondRow = chatEventRow(dataKey.threadId, 2);
+    let availableRows: readonly ChatEventRow[] = [firstRow];
+    let failNextPage = false;
+    let failedRequests = 0;
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.http.get(
+      `*/api/okou/chat-threads/${dataKey.threadId}/event-rows`,
+      ({ request }) => {
+        if (failNextPage) {
+          failNextPage = false;
+          failedRequests += 1;
+          return HttpResponse.json(
+            { error: { code: "INTERNAL_ERROR", message: "try again" } },
+            { status: 500 },
+          );
+        }
+        const sinceSeqId = Number(
+          new URL(request.url).searchParams.get("sinceSeqId"),
+        );
+        return HttpResponse.json({
+          rows: availableRows.filter((row) => {
+            return row.seqId > sinceSeqId;
+          }),
+        });
+      },
+    );
+
+    context.store.set(
+      subscribeSharedDatabaseWorker$,
+      clientId,
+      crypto.randomUUID(),
+      dataKey,
+    );
+    await vi.waitFor(async () => {
+      await expect(
+        query(clientId, {
+          dataKey,
+          afterSeqId: null,
+          consistency: "cache-only",
+        }),
+      ).resolves.toStrictEqual([firstRow]);
+    });
+    const appendCountBeforeNotification = workerEvents.filter((event) => {
+      return event.type === "append";
+    }).length;
+
+    availableRows = [firstRow, secondRow];
+    failNextPage = true;
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${dataKey.threadId}`);
+
+    await vi.waitFor(() => {
+      expect(
+        workerEvents.filter((event) => {
+          return event.type === "append";
+        }),
+      ).toHaveLength(appendCountBeforeNotification + 1);
+    });
+    expect(failedRequests).toBe(1);
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: 1,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual([secondRow]);
   });
 
   it("does not report a disconnected realtime session as connected on heartbeat", async () => {
@@ -569,6 +837,91 @@ describe("shared database worker runtime", () => {
       },
       events: [currentEvent],
     });
+  });
+
+  it("compacts a valid ChatThreadEvent cache above the event-log bound", async () => {
+    const workerEvents: WorkerEvent[] = [];
+    const clientId = await connectRuntime(workerEvents);
+    const dataKey = chatThreadEventKey();
+    const eventLog = Array.from({ length: 101 }, (_, index) => {
+      return renamedThreadEvent(index + 1, `title ${index + 1}`);
+    });
+    const lastEvent = eventLog.at(-1)!;
+    let compactSnapshotAvailable = false;
+    let snapshotRequests = 0;
+    const requestedSeqIds: (number | undefined)[] = [];
+
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      snapshotRequests += 1;
+      return compactSnapshotAvailable
+        ? respond(200, {
+            chatThreads: [snapshotThread("title 101")],
+            latestEventId: lastEvent.id,
+            latestSeqId: lastEvent.seqId,
+          })
+        : respond(200, {
+            chatThreads: [snapshotThread("initial title")],
+            latestEventId: null,
+            latestSeqId: null,
+          });
+    });
+    context.mocks.api(
+      chatThreadsContract.events,
+      ({ query: requestQuery, respond }) => {
+        requestedSeqIds.push(requestQuery.sinceSeqId);
+        return respond(200, {
+          events: requestQuery.sinceSeqId === undefined ? eventLog : [],
+          hasMore: false,
+        });
+      },
+    );
+
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual({
+      snapshot: {
+        chatThreads: [snapshotThread("initial title")],
+        latestEventId: null,
+        latestSeqId: null,
+      },
+      events: eventLog,
+    });
+    compactSnapshotAvailable = true;
+    context.store.set(
+      subscribeSharedDatabaseWorker$,
+      clientId,
+      crypto.randomUUID(),
+      dataKey,
+    );
+
+    await vi.waitFor(() => {
+      expect(snapshotRequests).toBe(2);
+    });
+    const compacted = {
+      snapshot: {
+        chatThreads: [snapshotThread("title 101")],
+        latestEventId: lastEvent.id,
+        latestSeqId: lastEvent.seqId,
+      },
+      events: [],
+    };
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual(compacted);
+    expect(requestedSeqIds).toStrictEqual([undefined, 101, 101]);
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "append";
+      }),
+    ).toHaveLength(0);
   });
 
   it("rejects when a fresh ChatThreadEvent snapshot cursor is already expired", async () => {
