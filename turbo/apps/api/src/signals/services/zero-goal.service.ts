@@ -19,7 +19,7 @@ import {
   appendGoalCloseMarker,
   appendGoalOpenMarker,
 } from "./zero-chat-goal-marker.service";
-import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
+import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
 import { lockGoalThread } from "./goal-lock.service";
 import {
