@@ -314,6 +314,10 @@ function billingScheduledChange(
   return null;
 }
 
+function billingCanRestorePlan(status: BillingStatusResponse | null): boolean {
+  return status?.canRestorePlan === true;
+}
+
 type BillingManagementMode = "payment_methods" | null;
 
 function billingManagementMode(
@@ -380,14 +384,10 @@ function canReplaceCancellationWithPro(
 
 function canRestoreCurrentPlan(args: {
   currentTier: BillingTier;
-  scheduledChange: ScheduledBillingChange;
+  canRestorePlan: boolean;
   isCurrent: boolean;
 }): boolean {
-  return (
-    isPaidTier(args.currentTier) &&
-    args.scheduledChange !== null &&
-    args.isCurrent
-  );
+  return isPaidTier(args.currentTier) && args.canRestorePlan && args.isCurrent;
 }
 
 function planCardAction(args: {
@@ -566,6 +566,7 @@ function PlanCard({
   plan,
   currentTier,
   scheduledChange,
+  canRestorePlan,
   periodEnd,
   loading,
   onAction,
@@ -574,6 +575,7 @@ function PlanCard({
   plan: BillingPlan;
   currentTier: BillingTier;
   scheduledChange: ScheduledBillingChange;
+  canRestorePlan: boolean;
   periodEnd: string | null | undefined;
   loading: boolean;
   onAction: (planTier: BillingTier, e: React.MouseEvent) => void;
@@ -583,7 +585,7 @@ function PlanCard({
   const isDowngradeTarget = isPlanDowngradeTarget(plan, scheduledChange);
   const restoreCurrentPlan = canRestoreCurrentPlan({
     currentTier,
-    scheduledChange,
+    canRestorePlan,
     isCurrent,
   });
   const action = planCardAction({
@@ -703,12 +705,14 @@ function PlanCard({
 function PricingPage({
   currentTier,
   scheduledChange,
+  canRestorePlan,
   periodEnd,
   onBack,
   onRestore,
 }: {
   currentTier: BillingTier;
   scheduledChange: ScheduledBillingChange;
+  canRestorePlan: boolean;
   periodEnd: string | null | undefined;
   onBack: () => void;
   onRestore: () => void;
@@ -815,6 +819,7 @@ function PricingPage({
               plan={plan}
               currentTier={currentTier}
               scheduledChange={scheduledChange}
+              canRestorePlan={canRestorePlan}
               periodEnd={periodEnd}
               loading={loading}
               onAction={handlePlanAction}
@@ -1096,6 +1101,7 @@ function RestorePlanConfirmDialog({
 function PlanActionButtons({
   isPaid,
   hasScheduledChange,
+  canRestorePlan,
   currentTier,
   futureTier,
   loading,
@@ -1107,6 +1113,7 @@ function PlanActionButtons({
 }: {
   isPaid: boolean;
   hasScheduledChange: boolean;
+  canRestorePlan: boolean;
   currentTier: BillingTier;
   futureTier: "pro" | "team" | null;
   loading: boolean;
@@ -1125,8 +1132,7 @@ function PlanActionButtons({
   const showDowngrade = futureTier
     ? futureTier === "team"
     : !customLocked && isPaid && !hasScheduledChange;
-  const showRestore =
-    !futureTier && !customLocked && isPaid && hasScheduledChange;
+  const showRestore = !futureTier && !customLocked && isPaid && canRestorePlan;
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -2418,6 +2424,7 @@ function UsagePackMigrationProgressPage({
 
 function BillingPricingPage({
   currentTier,
+  canRestorePlan,
   migration,
   migrationLoading,
   migrationOpen,
@@ -2430,6 +2437,7 @@ function BillingPricingPage({
   scheduledChange,
 }: {
   readonly currentTier: BillingTier;
+  readonly canRestorePlan: boolean;
   readonly migration: UsagePackMigrationStateResponse | null;
   readonly migrationLoading: boolean;
   readonly migrationOpen: boolean;
@@ -2474,6 +2482,7 @@ function BillingPricingPage({
         <PricingPage
           currentTier={currentTier}
           scheduledChange={scheduledChange}
+          canRestorePlan={canRestorePlan}
           periodEnd={periodEnd}
           onBack={onBack}
           onRestore={onRestore}
@@ -2695,6 +2704,7 @@ export function OrgBillingTab() {
   const isPaid = isPaidTier(currentTier);
   const scheduledChange = billingScheduledChange(status);
   const hasScheduledChange = scheduledChange !== null;
+  const canRestorePlan = billingCanRestorePlan(status);
   const isCancelling = scheduledChange?.type === "cancel";
   const isDowngrading = scheduledChange?.type === "downgrade";
   const periodEnd = status?.currentPeriodEnd;
@@ -2764,6 +2774,7 @@ export function OrgBillingTab() {
     return (
       <BillingPricingPage
         currentTier={currentTier}
+        canRestorePlan={canRestorePlan}
         migration={migration}
         migrationLoading={migrationLoading}
         migrationOpen={migrationOpen}
@@ -2829,6 +2840,7 @@ export function OrgBillingTab() {
                 <PlanActionButtons
                   isPaid={isPaid}
                   hasScheduledChange={hasScheduledChange}
+                  canRestorePlan={canRestorePlan}
                   currentTier={currentTier}
                   futureTier={scheduledPlanActions.futureTier}
                   loading={planActionsLoading(

@@ -32,6 +32,7 @@ import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
 } from "./org-plan-entitlement-read.service";
+import { canRestorePlanSubscription } from "./zero-billing-restore.service";
 
 const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
   pro: 20_000,
@@ -146,6 +147,7 @@ interface BillingStatusResponse {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   scheduledChange: ScheduledBillingChange | null;
+  canRestorePlan: boolean;
   hasSubscription: boolean;
   autoRecharge: {
     enabled: boolean;
@@ -546,6 +548,10 @@ function scheduledBillingChange(
     };
   }
 
+  if (!org.pendingSubscriptionScheduleId) {
+    return null;
+  }
+
   const targetTier = scheduledTargetTier(org.pendingSubscriptionTargetTier);
   if (!targetTier) {
     return null;
@@ -618,6 +624,7 @@ function billingStatusResponse(args: {
     currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: org.cancelAtPeriodEnd,
     scheduledChange: scheduledBillingChange(org),
+    canRestorePlan: canRestorePlanSubscription(org),
     hasSubscription:
       hasManageablePlanSubscription(org) ||
       args.concurrencySubscriptions.length > 0 ||

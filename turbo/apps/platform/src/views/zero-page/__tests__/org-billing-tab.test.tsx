@@ -241,6 +241,7 @@ function mockBillingStory(): {
     billingStatus = {
       ...billingStatus,
       cancelAtPeriodEnd: true,
+      canRestorePlan: true,
       scheduledChange: {
         type: "cancel",
         targetTier: "limited-free-1",
@@ -256,6 +257,7 @@ function mockBillingStory(): {
     billingStatus = {
       ...billingStatus,
       cancelAtPeriodEnd: false,
+      canRestorePlan: false,
       scheduledChange: null,
     };
     return respond(200, { status: "restored" });
@@ -3776,6 +3778,7 @@ describe("organization billing settings", () => {
           : {
               ...activeProBillingStatus(),
               cancelAtPeriodEnd: true,
+              canRestorePlan: true,
               scheduledChange: {
                 type: "cancel",
                 targetTier: "limited-free-1",
@@ -3828,6 +3831,50 @@ describe("organization billing settings", () => {
     });
     expect(successToast).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    { caseName: "not restorable", canRestorePlan: false },
+    { caseName: "omitted by an older API", canRestorePlan: undefined },
+  ])(
+    "does not offer restore when a scheduled change is $caseName",
+    async ({ canRestorePlan }) => {
+      context.mocks.data.org({
+        id: "org_1",
+        name: "Expiring Plan Org",
+        role: "admin",
+      });
+      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(200, {
+          ...activeProBillingStatus(),
+          subscriptionStatus: "atom_grant",
+          cancelAtPeriodEnd: true,
+          scheduledChange: {
+            type: "cancel",
+            targetTier: "limited-free-1",
+            effectiveDate: "2026-04-01T00:00:00Z",
+          },
+          ...(canRestorePlan === undefined ? {} : { canRestorePlan }),
+        });
+      });
+
+      await openBillingTab();
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/has been cancelled and will end on Apr 1, 2026/),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Restore plan")).not.toBeInTheDocument();
+
+      click(screen.getByText("Compare all plans"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Compare plans")).toBeInTheDocument();
+        expect(screen.getByText("Current plan")).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Restore plan")).not.toBeInTheDocument();
+    },
+  );
 
   it("previews and confirms a saved-billing credit purchase in the app", async () => {
     const checkoutReady = createDeferredPromise<void>(context.signal);
@@ -4067,6 +4114,7 @@ describe("organization billing settings", () => {
         billingStatus = {
           ...billingStatus,
           cancelAtPeriodEnd: targetTier === "limited-free-1",
+          canRestorePlan: true,
           scheduledChange:
             targetTier === "pro"
               ? {
@@ -4090,6 +4138,7 @@ describe("organization billing settings", () => {
       billingStatus = {
         ...billingStatus,
         cancelAtPeriodEnd: false,
+        canRestorePlan: false,
         scheduledChange: null,
       };
       return respond(200, { status: "restored" });
@@ -4170,6 +4219,7 @@ describe("organization billing settings", () => {
     let billingStatus: BillingStatusResponse = {
       ...activeTeamBillingStatus(),
       cancelAtPeriodEnd: true,
+      canRestorePlan: true,
       scheduledChange: {
         type: "cancel",
         targetTier: "limited-free-1",

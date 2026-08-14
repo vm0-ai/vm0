@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { testBillingReconciliationStateContract } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import type StripeSDK from "stripe";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -10,6 +11,7 @@ import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { mockStripeClient } from "../../external/stripe-client";
 import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
 import {
@@ -19,8 +21,10 @@ import {
   type TestUsagePackSubscriptionStateResponse,
 } from "../test-usage-pack-subscription-state";
 import { webhooksStripeRoutes } from "../webhooks-stripe";
+import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
+const routeMocks = createZeroRouteMocks(context);
 
 const TEST_PRICE_PRO = "price_usage_pack_lifecycle_pro";
 const TEST_PRICE_TEAM = "price_usage_pack_lifecycle_team";
@@ -284,6 +288,17 @@ async function readUsagePackState(fixture: UsagePackLifecycleFixture) {
   return response.state;
 }
 
+async function readBillingStatus(fixture: UsagePackLifecycleFixture) {
+  routeMocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+  const response = await accept(
+    setupApp({ context, routes: billingStatusRoutes })(
+      zeroBillingStatusContract,
+    ).get({ headers: { authorization: "Bearer clerk-session" } }),
+    [200],
+  );
+  return response.body;
+}
+
 async function seedUsagePackLifecycle(
   selections: readonly UsagePackSelection[],
   tier: "pro" | "team" = "pro",
@@ -541,6 +556,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
     const customerId = `cus_${randomUUID()}`;
     const subscriptionId = `unused_sub_${randomUUID()}`;
     const usagePackSubscriptionId = randomUUID();
+    let cleanupUsagePackSubscriptionId: string = usagePackSubscriptionId;
     const grantedUserId = `user_${randomUUID()}`;
     const paidPeriod = period(0);
     const grantPeriod = {
@@ -562,7 +578,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
       await usagePackStateAction({
         action: "cleanup",
         orgId,
-        usagePackSubscriptionId,
+        usagePackSubscriptionId: cleanupUsagePackSubscriptionId,
         deleteGrants: true,
         deleteOrgMetadata: true,
       });
@@ -620,6 +636,13 @@ describe("usage pack subscription Stripe lifecycle", () => {
     );
     expect(planState.legacyCredits).toStrictEqual([]);
     expect(planState.fulfillmentInvoiceIds).toStrictEqual([]);
+    const atomBillingStatus = await readBillingStatus(fixture);
+    expect(atomBillingStatus.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "limited-free-1",
+      effectiveDate: new Date(grantPeriod.end * 1000).toISOString(),
+    });
+    expect(atomBillingStatus.canRestorePlan).toBeFalsy();
 
     const grantInvoiceId = `in_atom_member_pack_${randomUUID()}`;
     const grantInvoice = {
@@ -682,6 +705,75 @@ describe("usage pack subscription Stripe lifecycle", () => {
       500,
     );
     await expect(grantRows(fixture)).resolves.toHaveLength(1);
+
+    const checkoutSessionId = `cs_${randomUUID()}`;
+    const seededSubscription = await usagePackStateAction({
+      action: "seed",
+      orgId,
+      tier: "team",
+      stripePlanPriceId: TEST_PRICE_PLAN_TEAM,
+      stripeCustomerId: customerId,
+      stripeCheckoutSessionId: checkoutSessionId,
+      allocations: [
+        {
+          userId: grantedUserId,
+          invitationId: null,
+          usagePackUsd: 20,
+          stripePriceId: TEST_PRICE_PACK_20,
+        },
+      ],
+    });
+    if (seededSubscription.action !== "seeded") {
+      throw new Error("Failed to seed the replacement usage pack subscription");
+    }
+    const subscribedFixture: UsagePackLifecycleFixture = {
+      ...fixture,
+      tier: "team",
+      subscriptionId: `sub_${randomUUID()}`,
+      usagePackSubscriptionId: seededSubscription.usagePackSubscriptionId,
+      checkoutSessionId,
+    };
+    cleanupUsagePackSubscriptionId = seededSubscription.usagePackSubscriptionId;
+    const subscriptionPeriod = period(0);
+    const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+    const subscription = stripeSubscription(
+      subscribedFixture,
+      subscriptionPeriod,
+      quantities,
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
+
+    await postStripeEvent(
+      stripeEvent("checkout.session.completed", {
+        id: checkoutSessionId,
+        customer: customerId,
+        subscription: subscribedFixture.subscriptionId,
+        metadata: usagePackMetadata(subscribedFixture),
+      }),
+      200,
+    );
+    await postStripeEvent(
+      stripeEvent("customer.subscription.created", subscription),
+      200,
+    );
+    await postStripeEvent(
+      stripeEvent(
+        "invoice.paid",
+        paidInvoice(subscribedFixture, {
+          invoiceId: `in_${randomUUID()}`,
+          paidPeriod: subscriptionPeriod,
+          quantities,
+        }),
+      ),
+      200,
+    );
+
+    const subscriptionBillingStatus =
+      await readBillingStatus(subscribedFixture);
+    expect(subscriptionBillingStatus.tier).toBe("team");
+    expect(subscriptionBillingStatus.hasSubscription).toBeTruthy();
+    expect(subscriptionBillingStatus.scheduledChange).toBeNull();
+    expect(subscriptionBillingStatus.canRestorePlan).toBeFalsy();
   });
 
   it("retries a one-time Atom usage-pack grant after the old Team subscription is deleted", async () => {
