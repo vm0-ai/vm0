@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
@@ -150,54 +151,102 @@ describe("api client headers", () => {
     expect(second.requestId).not.toBe(first.requestId);
   });
 
-  it("recovers a non-realtime 401 without a foreground task", async () => {
+  it("does not retry ClerkOfflineError after a 401", async () => {
     mockSignedInUser();
     let requests = 0;
     let forcedTokenRefreshes = 0;
     context.mocks.http.get("*/api/okou/auth-recovery-test", () => {
       requests += 1;
-      if (requests === 1) {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "UNAUTHORIZED",
-              message: "Unauthorized",
-            },
+      return HttpResponse.json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
           },
-          { status: 401 },
-        );
-      }
-      return HttpResponse.json({ recovered: true });
+        },
+        { status: 401 },
+      );
     });
     mockedClerk.sessionGetToken.mockImplementation((options) => {
       if (options?.skipCache) {
         forcedTokenRefreshes += 1;
-        if (forcedTokenRefreshes === 1) {
-          return Promise.reject(
-            Object.assign(new Error("Clerk is offline"), {
-              code: "clerk_offline",
-            }),
-          );
-        }
-        if (forcedTokenRefreshes === 2) {
-          return Promise.reject(new TypeError("Failed to fetch"));
-        }
-        return Promise.resolve("fresh-token");
+        return Promise.reject(
+          Object.assign(new Error("Clerk is offline"), {
+            code: "clerk_offline",
+          }),
+        );
       }
       return Promise.resolve("test-token");
     });
 
-    const response = await getFetchForTest()("/api/okou/auth-recovery-test");
+    await expect(
+      getFetchForTest()("/api/okou/auth-recovery-test"),
+    ).rejects.toMatchObject({ code: "clerk_offline" });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ recovered: true });
-    expect(requests).toBe(2);
-    expect(forcedTokenRefreshes).toBe(3);
-    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(3);
+    expect(requests).toBe(1);
+    expect(forcedTokenRefreshes).toBe(1);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
-  it("waits for Clerk to settle its session before refreshing the token", async () => {
+  it("singleflights concurrent 401 token refreshes", async () => {
+    mockSignedInUser();
+    const initialRequestsReady = context.mocks.deferred<void>();
+    const freshTokenCanFinish = context.mocks.deferred<string>();
+    let requests = 0;
+    let forcedTokenRefreshes = 0;
+    context.mocks.http.get(
+      "*/api/okou/concurrent-auth-recovery-test",
+      async () => {
+        requests += 1;
+        if (requests <= 2) {
+          if (requests === 2) {
+            initialRequestsReady.resolve();
+          }
+          await initialRequestsReady.promise;
+          return HttpResponse.json(
+            {
+              error: {
+                code: "UNAUTHORIZED",
+                message: "Unauthorized",
+              },
+            },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json({ recovered: true });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      if (options?.skipCache) {
+        forcedTokenRefreshes += 1;
+        return freshTokenCanFinish.promise;
+      }
+      return Promise.resolve("test-token");
+    });
+
+    const fetcher = getFetchForTest();
+    const first = fetcher("/api/okou/concurrent-auth-recovery-test");
+    const second = fetcher("/api/okou/concurrent-auth-recovery-test");
+
+    await waitFor(() => {
+      expect(requests).toBe(2);
+      expect(forcedTokenRefreshes).toBe(1);
+    });
+    freshTokenCanFinish.resolve("fresh-token");
+
+    const responses = await Promise.all([first, second]);
+    expect(
+      responses.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([200, 200]);
+    expect(requests).toBe(4);
+    expect(forcedTokenRefreshes).toBe(1);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+  });
+
+  it("waits for Clerk to settle before the initial request", async () => {
     mockSignedInUser();
     mockClerkSessionTransitioning(true);
 
@@ -240,14 +289,18 @@ describe("api client headers", () => {
       "/api/okou/auth-session-transition-test",
     );
     await listenerRegistered.promise;
+    expect(authorizationHeaders).toStrictEqual([]);
     mockClerkSessionTransitioning(false);
 
     const response = await responsePromise;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ recovered: true });
-    expect(authorizationHeaders).toStrictEqual([null, "Bearer fresh-token"]);
-    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    expect(authorizationHeaders).toStrictEqual([
+      "Bearer test-token",
+      "Bearer fresh-token",
+    ]);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
@@ -295,7 +348,7 @@ describe("api client headers", () => {
 
     await expect(responsePromise).rejects.toMatchObject({ name: "AbortError" });
     mockClerkSessionTransitioning(false);
-    expect(requests).toBe(1);
+    expect(requests).toBe(0);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 

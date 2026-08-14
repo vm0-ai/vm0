@@ -50,9 +50,14 @@ interface ClerkProviderProps {
   signInUrl?: string;
   signUpFallbackRedirectUrl?: string;
   signUpUrl?: string;
+  touchSession?: boolean;
 }
 
-export function ClerkProvider({ children, localization }: ClerkProviderProps) {
+export function ClerkProvider({
+  children,
+  localization,
+  touchSession,
+}: ClerkProviderProps) {
   return createElement(
     Fragment,
     null,
@@ -60,6 +65,8 @@ export function ClerkProvider({ children, localization }: ClerkProviderProps) {
       "data-clerk-sign-in-email-code-subtitle":
         localization?.signIn?.emailCode?.subtitle,
       "data-clerk-sign-in-start-title": localization?.signIn?.start?.title,
+      "data-clerk-touch-session":
+        touchSession === undefined ? undefined : String(touchSession),
       "data-testid": "clerk-provider-config",
       hidden: true,
     }),

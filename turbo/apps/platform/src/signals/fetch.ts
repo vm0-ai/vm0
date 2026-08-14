@@ -175,7 +175,7 @@ export const fetch$ = computed((get) => {
       const recoverySignal = requestSignal
         ? AbortSignal.any([rootSignal, requestSignal])
         : rootSignal;
-      const freshToken = await authRecovery.refreshAuth(requestSignal);
+      const freshToken = await authRecovery.forceRefreshToken(requestSignal);
       if (freshToken) {
         response = await performFetch(freshToken, recoverySignal);
       }

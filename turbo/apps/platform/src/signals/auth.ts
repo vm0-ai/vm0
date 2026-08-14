@@ -18,7 +18,7 @@ import {
 } from "../lib/platform-host.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import { createAuthRecovery, setupAuthCatchUp$ } from "./auth-retry.ts";
+import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 import { rootSignal$ } from "./root-signal.ts";
@@ -409,7 +409,6 @@ export const clerk$ = computed(async (get) => {
   const satelliteConfig = resolveClerkSatelliteConfig();
   await clerkInstance.load({
     ui,
-    touchSession: false,
     ...(satelliteConfig
       ? {
           isSatellite: true,
@@ -440,9 +439,7 @@ export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
-    const authRecovery = await get(authRecovery$);
-    signal.throwIfAborted();
-    set(setupAuthCatchUp$, authRecovery, signal);
+    set(setupForegroundCatchUp$, signal);
 
     // Set initial Sentry user context
     if (clerk.user) {

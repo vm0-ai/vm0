@@ -6,12 +6,7 @@ const MAX_CONNECTION_DIAGNOSTIC_EVENTS = 500;
 const CONNECTION_DIAGNOSTIC_EVENT = "vm0:connection-diagnostic";
 
 export type ConnectionDiagnosticEventName =
-  | "auth.clerk.session-after-touch"
-  | "auth.clerk.session-before-touch"
-  | "auth.clerk.token"
-  | "auth.clerk.touch"
   | "auth.refresh"
-  | "foreground.auth-refresh"
   | "foreground.catch-up"
   | "foreground.request"
   | "foreground.skipped"
@@ -60,7 +55,6 @@ export type ConnectionDiagnosticChannelState =
   | "suspended";
 
 export interface ConnectionDiagnosticDetails {
-  readonly attempt?: number;
   readonly channelState?: ConnectionDiagnosticChannelState;
   readonly connectionState?: ConnectionDiagnosticConnectionState;
   readonly errorCode?: number | string;
@@ -71,11 +65,7 @@ export interface ConnectionDiagnosticDetails {
   readonly previousChannelState?: ConnectionDiagnosticChannelState;
   readonly previousConnectionState?: ConnectionDiagnosticConnectionState;
   readonly retryInMs?: number;
-  readonly skipReason?:
-    | "hidden"
-    | "missing-session"
-    | "missing-token"
-    | "no-realtime-session";
+  readonly skipReason?: "hidden" | "no-realtime-session";
   readonly statusCode?: number;
   readonly subscriberCount?: number;
   readonly subscriptionKind?: "channel" | "payload" | "topic";
@@ -179,7 +169,6 @@ function sanitizeDiagnosticDetails(
     return undefined;
   }
   return {
-    attempt: details.attempt,
     channelState: details.channelState,
     connectionState: details.connectionState,
     errorCode:

@@ -95,7 +95,7 @@ describe("connection diagnostics settings", () => {
     releaseFeatureSwitchResponse.resolve();
   });
 
-  it("exports lifecycle, auth recovery, and sanitized Ably state events", async () => {
+  it("exports lifecycle, foreground catch-up, and sanitized Ably state events", async () => {
     const user = userEvent.setup();
     const clipboard = context.mocks.browser.clipboardWriteText();
     let visibilityState: DocumentVisibilityState = "visible";
@@ -118,7 +118,7 @@ describe("connection diagnostics settings", () => {
     await user.click(diagnosticsSummary);
     await waitFor(() => {
       expect(
-        screen.getByText(/auth\.clerk\.touch · finish/),
+        screen.getByText(/foreground\.subscriber-catch-up · finish/),
       ).toBeInTheDocument();
     });
 
@@ -144,7 +144,7 @@ describe("connection diagnostics settings", () => {
       expect(clipboard.writes).toHaveLength(1);
     });
     const exported = latestClipboardWrite(clipboard.writes);
-    expect(exported).toContain('"event": "auth.clerk.touch"');
+    expect(exported).toContain('"event": "foreground.subscriber-catch-up"');
     expect(exported).toContain('"connectionState": "disconnected"');
     expect(exported).toContain('"retryInMs": 5000');
     expect(exported).toContain("[url]");
