@@ -3,6 +3,8 @@ import { computed } from "ccstate";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { connectionDiagnostics$ } from "../connection-diagnostics.ts";
 import { realtimeSubscriptionSnapshot$ } from "../realtime.ts";
+import { sharedDatabaseConnectionStatus$ } from "../shared-database.ts";
+import { sharedDatabaseModeEnabled$ } from "../shared-database-mode.ts";
 
 export type ZeroDebugRealtimeIndicator = "disconnected" | "reconnecting" | null;
 
@@ -14,7 +16,17 @@ export const zeroDebugRealtimeIndicator$ = computed(
     }
 
     const { online, visibilityState } = diagnostics.snapshot;
-    if (!online || visibilityState !== "visible") {
+    if (!online) {
+      return "disconnected";
+    }
+    if (get(sharedDatabaseModeEnabled$)) {
+      const status = get(sharedDatabaseConnectionStatus$);
+      if (status === "connected") {
+        return null;
+      }
+      return status === "connecting" ? "reconnecting" : "disconnected";
+    }
+    if (visibilityState !== "visible") {
       return "disconnected";
     }
 

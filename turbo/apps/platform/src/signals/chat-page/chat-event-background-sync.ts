@@ -25,6 +25,8 @@ import {
   chatEventDebugSummaries,
   chatEventTraceTime,
 } from "./chat-event-debug.ts";
+import { authenticatedIdentity$ } from "../auth.ts";
+import { queryChatEventSharedDatabase$ } from "../shared-database.ts";
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
@@ -303,5 +305,35 @@ export const setupChatEventBackgroundSync$ = command(
       set(subscribeChatEventBackgroundSync$, signal),
       set(syncInitialUnreadChatThreadEvents$, signal),
     ]);
+  },
+);
+
+export const prewarmSharedUnreadChatEvents$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const [{ userId, orgId }, unreadThreadIds] = await Promise.all([
+      get(authenticatedIdentity$),
+      get(allUnreadThreadIds$),
+    ]);
+    signal.throwIfAborted();
+    await Promise.all(
+      Array.from(unreadThreadIds)
+        .slice(0, BACKGROUND_UNREAD_THREAD_LIMIT)
+        .map((threadId) => {
+          return set(
+            queryChatEventSharedDatabase$,
+            {
+              dataKey: {
+                kind: "chat-event",
+                userId,
+                orgId,
+                threadId,
+              },
+              afterSeqId: null,
+              consistency: "catch-up",
+            },
+            signal,
+          );
+        }),
+    );
   },
 );

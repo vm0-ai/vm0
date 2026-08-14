@@ -1343,6 +1343,7 @@ describe("chat drafts", () => {
       resourceId: context.resourceId,
       signal: ownerSignal,
       store: context.store,
+      workerStore: context.workerStore,
       track: context.track,
     };
     const partStarted = context.mocks.deferred<void>();

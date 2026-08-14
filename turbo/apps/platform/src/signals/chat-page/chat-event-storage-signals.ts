@@ -12,6 +12,14 @@ import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event
 import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
+import { authenticatedIdentity$ } from "../auth.ts";
+import type { ChatEventDataKey } from "../../shared-database/data-key.ts";
+import {
+  onSharedDatabase$,
+  queryChatEventSharedDatabase$,
+} from "../shared-database.ts";
+import { sharedDatabaseModeEnabled$ } from "../shared-database-mode.ts";
+import { enqueueSharedDatabaseInvalidation$ } from "../shared-database-invalidation-queue.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";
 import {
   clearIndexedDbChatEventRows$,
@@ -277,6 +285,93 @@ function createRowCacheSignals(
   return { loadRowCacheIntoPersistentEvents$ };
 }
 
+function createSharedDatabaseEventSignals({
+  threadId,
+  persistentChatEvents$,
+  chatEvents$,
+  mergePersistentEvents$,
+}: {
+  readonly threadId: string;
+  readonly persistentChatEvents$: PersistentChatEvents$;
+  readonly chatEvents$: Computed<ChatEvent[]>;
+  readonly mergePersistentEvents$: Command<
+    Promise<void>,
+    [PersistedChatEvent[], AbortSignal]
+  >;
+}) {
+  const dataKey$ = computed(async (get): Promise<ChatEventDataKey> => {
+    const { userId, orgId } = await get(authenticatedIdentity$);
+    return { kind: "chat-event", userId, orgId, threadId };
+  });
+  const load$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const dataKey = await get(dataKey$);
+      signal.throwIfAborted();
+      const rows = await set(
+        queryChatEventSharedDatabase$,
+        { dataKey, afterSeqId: null, consistency: "cache-only" },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (rows.length === 0) {
+        return;
+      }
+      const events = rows.map((row) => {
+        return chatEventFromRow(row);
+      });
+      set(persistentChatEvents$, (previous) => {
+        return mergePersistentEvents([previous, events]);
+      });
+      set(reconcileOptimisticChatEvents$, { threadId, events });
+      await set(notifyChatEventsChanged$, chatEvents$, signal);
+    },
+  );
+  const sync$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const dataKey = await get(dataKey$);
+      signal.throwIfAborted();
+      const afterSeqId = get(persistentChatEvents$).at(-1)?.seqId ?? null;
+      const cachedRows = await set(
+        queryChatEventSharedDatabase$,
+        { dataKey, afterSeqId, consistency: "cache-only" },
+        signal,
+      );
+      signal.throwIfAborted();
+      const rows =
+        cachedRows.length > 0
+          ? cachedRows
+          : await set(
+              queryChatEventSharedDatabase$,
+              { dataKey, afterSeqId, consistency: "catch-up" },
+              signal,
+            );
+      signal.throwIfAborted();
+      await set(
+        mergePersistentEvents$,
+        rows.map((row) => {
+          return chatEventFromRow(row);
+        }),
+        signal,
+      );
+    },
+  );
+  const subscribe$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const dataKey = await get(dataKey$);
+      signal.throwIfAborted();
+      await set(
+        onSharedDatabase$,
+        dataKey,
+        () => {
+          set(enqueueSharedDatabaseInvalidation$, dataKey);
+        },
+        signal,
+      );
+    },
+  );
+  return { load$, subscribe$, sync$ };
+}
+
 export function createChatEventStorageSignals({
   threadId,
 }: {
@@ -325,13 +420,35 @@ export function createChatEventStorageSignals({
       signal.throwIfAborted();
     },
   );
-  const syncRemoteEvents$ = createSyncRemoteRowsCommand({
+  const syncLegacyRemoteEvents$ = createSyncRemoteRowsCommand({
     threadId,
     mergePersistentEvents$,
   });
+  const sharedDatabase = createSharedDatabaseEventSignals({
+    threadId,
+    persistentChatEvents$,
+    chatEvents$,
+    mergePersistentEvents$,
+  });
+  const syncRemoteEvents$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      await set(
+        get(sharedDatabaseModeEnabled$)
+          ? sharedDatabase.sync$
+          : syncLegacyRemoteEvents$,
+        signal,
+      );
+    },
+  );
   const rowCache = createRowCacheSignals(threadId, persistentChatEvents$);
   const initializeIndexedDbEvents$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (get(sharedDatabaseModeEnabled$)) {
+        await set(sharedDatabase.subscribe$, signal);
+        signal.throwIfAborted();
+        await set(sharedDatabase.load$, signal);
+        return;
+      }
       const result = await settle(
         set(rowCache.loadRowCacheIntoPersistentEvents$, signal),
         signal,

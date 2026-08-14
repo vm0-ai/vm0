@@ -685,6 +685,9 @@ importers:
       unist-util-visit:
         specifier: ^5.0.0
         version: 5.1.0
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@okouai/eslint-config':
         specifier: workspace:*

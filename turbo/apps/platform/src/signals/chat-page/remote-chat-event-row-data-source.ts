@@ -3,36 +3,18 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
+import {
+  assertChatEventSchemaVersion,
+  CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+} from "../../shared-database/chat-event-schema-version.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatEventRowRemote");
 export const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
-
-const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
-  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-    CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-});
-
-function assertChatEventSchemaVersion(headers: Headers): void {
-  const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-  // A newly promoted app can briefly reach the previous API during the
-  // backend rollout/rollback window (observed maximum: 102 minutes). Remove
-  // the missing-header tolerance with #27194 after that window is closed.
-  if (
-    version !== null &&
-    version !== CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()
-  ) {
-    throw new Error(`Unexpected Chat Event schema version ${version}`);
-  }
-}
 
 type ChatEventRowsPage =
   | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }

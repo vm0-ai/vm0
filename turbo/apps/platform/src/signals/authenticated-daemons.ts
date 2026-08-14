@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { clerk$ } from "./auth.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
@@ -6,12 +7,23 @@ import {
   setupChatIndicatorForegroundCatchUp$,
 } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
-import { setupChatEventBackgroundSync$ } from "./chat-page/chat-event-background-sync.ts";
+import {
+  prewarmSharedUnreadChatEvents$,
+  setupChatEventBackgroundSync$,
+} from "./chat-page/chat-event-background-sync.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupBillingRealtime$ } from "./zero-page/billing.ts";
 import { subscribeCustomConnectorListChanged$ } from "./zero-page/settings/custom-connectors.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
+import { selectSharedDatabaseMode$ } from "./shared-database-mode.ts";
+import {
+  heartbeatSharedDatabaseNow$,
+  runSharedDatabaseHeartbeatLoop$,
+  setupSharedDatabaseBridge$,
+} from "./shared-database-browser.ts";
+import { runSharedDatabaseInvalidationDaemon$ } from "./shared-database-invalidation-daemon.ts";
 
 /** Start user-scoped background services after Clerk has resolved. */
 export const setupAuthenticatedDaemons$ = command(
@@ -20,6 +32,15 @@ export const setupAuthenticatedDaemons$ = command(
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
       return;
+    }
+
+    const sharedDatabaseEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.SharedChatDatabase] ?? false;
+    set(selectSharedDatabaseMode$, sharedDatabaseEnabled);
+    if (sharedDatabaseEnabled) {
+      set(setupSharedDatabaseBridge$, signal);
+      await set(heartbeatSharedDatabaseNow$, signal);
+      signal.throwIfAborted();
     }
 
     await Promise.all([
@@ -31,8 +52,16 @@ export const setupAuthenticatedDaemons$ = command(
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
       set(setupUserPreferenceRealtime$, signal),
-      set(setupChatEventBackgroundSync$, signal),
+      sharedDatabaseEnabled
+        ? set(prewarmSharedUnreadChatEvents$, signal)
+        : set(setupChatEventBackgroundSync$, signal),
       set(subscribeCustomConnectorListChanged$, signal),
+      ...(sharedDatabaseEnabled
+        ? [
+            set(runSharedDatabaseHeartbeatLoop$, signal),
+            set(runSharedDatabaseInvalidationDaemon$, signal),
+          ]
+        : []),
     ]);
   },
 );

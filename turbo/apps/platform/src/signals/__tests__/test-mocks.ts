@@ -2,6 +2,7 @@ import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
 import { vi } from "vitest";
 
 import {
+  deferNextAblySubscribe,
   getAuthTokenHistory,
   hasChannelSubscription,
   hasSubscription,
@@ -279,6 +280,16 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
+      visibilityState: (visibilityState: DocumentVisibilityState): void => {
+        const descriptor = defineWindowProperty(
+          document,
+          "visibilityState",
+          visibilityState,
+        );
+        restoreOnAbort(getSignal(), () => {
+          restoreWindowProperty(document, "visibilityState", descriptor);
+        });
+      },
       cookie: (cookie: string): void => {
         vi.spyOn(document, "cookie", "get").mockReturnValue(cookie);
       },
@@ -320,6 +331,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
     },
     ably: {
+      deferNextSubscribe: () => {
+        return deferNextAblySubscribe(getSignal());
+      },
       trigger: triggerAblyEvent,
       triggerConnectionState: triggerAblyConnectionState,
       triggerFailure: triggerAblyFailure,
