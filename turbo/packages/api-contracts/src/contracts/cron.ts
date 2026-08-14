@@ -107,6 +107,10 @@ const cronSnapshotChatEventsResponseSchema =
     snapshots: z.number(),
     archivedEvents: z.number(),
     unreadableParents: z.number().int().nonnegative(),
+    skippedUnreadableHeads: z.number().int().nonnegative(),
+    skippedUndecodableHeads: z.number().int().nonnegative(),
+    skippedIncompleteHeads: z.number().int().nonnegative(),
+    skippedUnsupportedHeads: z.number().int().nonnegative(),
     duplicateEventIdConflictThreads: z.number().int().nonnegative(),
     duplicateEventIdConflicts: z.number().int().nonnegative(),
     duplicateEventIdsRemapped: z.number().int().nonnegative(),
@@ -120,6 +124,27 @@ const cronSnapshotChatEventsResponseSchema =
     r2GcShardsScanned: z.number().int().nonnegative(),
     r2GcSubpartitionedShards: z.number().int().nonnegative(),
   });
+
+const cronRetainChatEventsResponseSchema = z.object({
+  success: z.literal(true),
+  cutoff: z.iso.datetime(),
+  rootScanLimit: z.number().int().positive(),
+  deleteLimit: z.number().int().positive(),
+  scanned: z.number().int().nonnegative(),
+  candidates: z.number().int().nonnegative(),
+  deleted: z.number().int().nonnegative(),
+  skippedCutoffBoundary: z.number().int().nonnegative(),
+  skippedSnapshot: z.number().int().nonnegative(),
+  skippedSearchWatermark: z.number().int().nonnegative(),
+  skippedPendingRunless: z.number().int().nonnegative(),
+  skippedNonterminalRun: z.number().int().nonnegative(),
+  skippedActiveInput: z.number().int().nonnegative(),
+  skippedRevokeGroup: z.number().int().nonnegative(),
+  skippedBatchLimit: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+  overlapPrevented: z.boolean(),
+  durationMs: z.number().int().nonnegative(),
+});
 
 const cronCompactUsageEventsResponseSchema = z.object({
   success: z.literal(true),
@@ -311,6 +336,20 @@ export const cronSnapshotChatEventsContract = c.router({
       500: z.object({ error: z.string() }),
     },
     summary: "Archive chat events into immutable full-thread R2 snapshots",
+  },
+});
+
+export const cronRetainChatEventsContract = c.router({
+  retain: {
+    method: "GET",
+    path: "/api/cron/retain-chat-events",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRetainChatEventsResponseSchema,
+      401: apiErrorSchema,
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Physically retain the 30-day PostgreSQL chat event window",
   },
 });
 
@@ -599,6 +638,7 @@ export {
   cleanupResponseSchema,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronSnapshotChatEventsResponseSchema,
+  cronRetainChatEventsResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,

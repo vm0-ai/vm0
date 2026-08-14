@@ -128,6 +128,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     thread_id: z.uuid(),
     archive_schema_version: z.int().positive(),
     object_key: z.string().optional(),
+    last_seq_id: z.int().nonnegative().optional(),
   }),
   z.object({
     action: z.literal("replace-chat-event-snapshot-head-as-previous-api"),
@@ -231,7 +232,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
     .object({
       archive_schema_version: z.int().positive(),
       last_event_id: z.uuid(),
-      last_seq_id: z.int().positive(),
+      last_seq_id: z.int().nonnegative(),
       object_key: z.string(),
       snapshot_count: z.int().positive(),
     })

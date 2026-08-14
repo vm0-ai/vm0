@@ -1,4 +1,5 @@
 import { userMessageDocumentSchema } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { sql, type SQLWrapper } from "drizzle-orm";
 
@@ -46,4 +47,30 @@ export function canonicalChatEventGoalId(
     WHEN ${contextType} = 'goal' THEN ${contextId}
     ELSE NULL
   END`.mapWith(nullableDriverValueDecoder(chatEvents.contextId));
+}
+
+/** Canonical payload leaves projected from an archived raw row. */
+export function canonicalArchivedChatEventContent(
+  row: ChatEventRow,
+): string | null {
+  return row.payload?.content ?? null;
+}
+
+export function canonicalArchivedChatEventUserMessage(row: ChatEventRow) {
+  const userMessage = row.payload?.userMessage;
+  return userMessage === undefined
+    ? null
+    : userMessageDocumentSchema.parse(userMessage);
+}
+
+export function canonicalArchivedChatEventError(
+  row: ChatEventRow,
+): string | null {
+  return row.payload?.error ?? null;
+}
+
+export function canonicalArchivedChatEventGoalId(
+  row: ChatEventRow,
+): string | null {
+  return row.contextType === "goal" ? row.contextId : null;
 }

@@ -17,9 +17,12 @@ import {
   exists,
   gt,
   inArray,
+  isNotNull,
+  isNull,
   lt,
   lte,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -58,6 +61,10 @@ interface ChatEventSnapshotStats {
   readonly snapshots: number;
   readonly archivedEvents: number;
   readonly unreadableParents: number;
+  readonly skippedUnreadableHeads: number;
+  readonly skippedUndecodableHeads: number;
+  readonly skippedIncompleteHeads: number;
+  readonly skippedUnsupportedHeads: number;
   readonly duplicateEventIdConflictThreads: number;
   readonly duplicateEventIdConflicts: number;
   readonly duplicateEventIdsRemapped: number;
@@ -186,6 +193,10 @@ async function snapshotStatsBeforeCursorMigration(
     snapshots: 0,
     archivedEvents: 0,
     unreadableParents: 0,
+    skippedUnreadableHeads: 0,
+    skippedUndecodableHeads: 0,
+    skippedIncompleteHeads: 0,
+    skippedUnsupportedHeads: 0,
     duplicateEventIdConflictThreads: 0,
     duplicateEventIdConflicts: 0,
     duplicateEventIdsRemapped: 0,
@@ -308,36 +319,91 @@ interface SnapshotSource {
   readonly schemaVersion: number;
 }
 
+type SnapshotSkipReason =
+  | "unreadable"
+  | "undecodable"
+  | "incomplete"
+  | "unsupported";
+
+type SnapshotSourceResolution =
+  | { readonly kind: "initial" }
+  | { readonly kind: "reusable"; readonly source: SnapshotSource }
+  | { readonly kind: "skipped"; readonly reason: SnapshotSkipReason };
+
+interface SnapshotSourceMetadata {
+  readonly id: string;
+  readonly lastSeqId: number | null;
+  readonly lastEventId: string | null;
+  readonly objectKey: string | null;
+  readonly schemaVersion: number | null;
+}
+
+function resolveSnapshotSource(
+  source: SnapshotSourceMetadata | undefined,
+): SnapshotSourceResolution {
+  if (source === undefined) {
+    return { kind: "initial" };
+  }
+  if (
+    source.lastSeqId === null ||
+    source.lastSeqId <= 0 ||
+    source.lastEventId === null ||
+    source.objectKey === null ||
+    source.objectKey.trim().length === 0 ||
+    source.schemaVersion === null
+  ) {
+    return { kind: "skipped", reason: "incomplete" };
+  }
+  if (source.schemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
+    return { kind: "skipped", reason: "unsupported" };
+  }
+  return {
+    kind: "reusable",
+    source: {
+      id: source.id,
+      lastSeqId: source.lastSeqId,
+      lastEventId: source.lastEventId,
+      objectKey: source.objectKey,
+      schemaVersion: source.schemaVersion,
+    },
+  };
+}
+
 function candidateCurrentSource(
   candidate: SnapshotCandidate,
 ): SnapshotSource | null {
-  if (candidate.headId === null) {
+  const resolved = resolveSnapshotSource(
+    candidate.headId === null
+      ? undefined
+      : {
+          id: candidate.headId,
+          lastSeqId: candidate.headLastSeqId,
+          lastEventId: candidate.headLastEventId,
+          objectKey: candidate.headObjectKey,
+          schemaVersion: candidate.headArchiveSchemaVersion,
+        },
+  );
+  if (resolved.kind === "initial") {
     return null;
   }
-  if (
-    candidate.headLastSeqId === null ||
-    candidate.headLastEventId === null ||
-    candidate.headObjectKey === null ||
-    candidate.headArchiveSchemaVersion === null
-  ) {
-    throw new Error("Chat Event Snapshot pointer metadata is incomplete");
+  if (resolved.kind === "skipped") {
+    throw new Error("Chat Event Snapshot pointer is not reusable");
   }
-  return {
-    id: candidate.headId,
-    lastSeqId: candidate.headLastSeqId,
-    lastEventId: candidate.headLastEventId,
-    objectKey: candidate.headObjectKey,
-    schemaVersion: candidate.headArchiveSchemaVersion,
-  };
+  return resolved.source;
 }
 
 async function storedSnapshotSource(
   db: Db,
   candidate: SnapshotCandidate,
-): Promise<SnapshotSource | null> {
-  const current = candidateCurrentSource(candidate);
-  if (current !== null) {
-    return current;
+): Promise<SnapshotSourceResolution> {
+  if (candidate.headId !== null) {
+    return resolveSnapshotSource({
+      id: candidate.headId,
+      lastSeqId: candidate.headLastSeqId,
+      lastEventId: candidate.headLastEventId,
+      objectKey: candidate.headObjectKey,
+      schemaVersion: candidate.headArchiveSchemaVersion,
+    });
   }
   const sources = await db
     .select({
@@ -357,14 +423,15 @@ async function storedSnapshotSource(
       desc(chatEventSnapshots.id),
     );
   const source = sources[0];
-  if (source === undefined) {
-    return null;
-  }
-  if (source.lastEventId === null) {
-    throw new Error("Chat Event Snapshot pointer has no terminal event ID");
-  }
-  return { ...source, lastEventId: source.lastEventId };
+  return resolveSnapshotSource(source);
 }
+
+type SnapshotPrefixResolution =
+  | { readonly kind: "reusable"; readonly body: Buffer }
+  | {
+      readonly kind: "skipped";
+      readonly reason: "unreadable" | "undecodable";
+    };
 
 async function readSnapshotPrefix(
   get: ComputedGetter,
@@ -372,40 +439,54 @@ async function readSnapshotPrefix(
   chatThreadId: string,
   source: SnapshotSource,
   signal: AbortSignal,
-): Promise<Buffer> {
-  const downloaded = await get(downloadS3Buffer(bucket, source.objectKey));
-  signal.throwIfAborted();
-  const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(source.objectKey)?.[1];
-  if (digest === undefined || sha256Hex(downloaded) !== digest) {
-    throw new Error(
-      "Chat Event Snapshot object checksum does not match its key",
-    );
-  }
-  const decompressed = await gunzipAsync(downloaded);
-  signal.throwIfAborted();
-  const upgraded = upgradeChatEventSnapshotBody(
-    decompressed,
-    source.schemaVersion,
-    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+): Promise<SnapshotPrefixResolution> {
+  const downloaded = await settle(
+    get(downloadS3Buffer(bucket, source.objectKey)),
+    signal,
   );
-  const rows = decodeChatEventSnapshotBody(upgraded);
-  const last = rows.at(-1);
-  if (
-    last === undefined ||
-    last.id !== source.lastEventId ||
-    last.seqId > source.lastSeqId
-  ) {
-    throw new Error("Chat Event Snapshot body does not match its cursor");
+  if (!downloaded.ok) {
+    return { kind: "skipped", reason: "unreadable" };
   }
-  for (const [index, row] of rows.entries()) {
-    if (
-      row.chatThreadId !== chatThreadId ||
-      (index > 0 && row.seqId <= (rows[index - 1]?.seqId ?? 0))
-    ) {
-      throw new Error("Chat Event Snapshot body violates prefix ordering");
-    }
-  }
-  return upgraded;
+  const decoded = await settle(
+    (async () => {
+      const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(
+        source.objectKey,
+      )?.[1];
+      if (digest === undefined || sha256Hex(downloaded.value) !== digest) {
+        throw new Error(
+          "Chat Event Snapshot object checksum does not match its key",
+        );
+      }
+      const decompressed = await gunzipAsync(downloaded.value);
+      const upgraded = upgradeChatEventSnapshotBody(
+        decompressed,
+        source.schemaVersion,
+        CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      );
+      const rows = decodeChatEventSnapshotBody(upgraded);
+      const last = rows.at(-1);
+      if (
+        last === undefined ||
+        last.id !== source.lastEventId ||
+        last.seqId > source.lastSeqId
+      ) {
+        throw new Error("Chat Event Snapshot body does not match its cursor");
+      }
+      for (const [index, row] of rows.entries()) {
+        if (
+          row.chatThreadId !== chatThreadId ||
+          (index > 0 && row.seqId <= (rows[index - 1]?.seqId ?? 0))
+        ) {
+          throw new Error("Chat Event Snapshot body violates prefix ordering");
+        }
+      }
+      return upgraded;
+    })(),
+    signal,
+  );
+  return decoded.ok
+    ? { kind: "reusable", body: decoded.value }
+    : { kind: "skipped", reason: "undecodable" };
 }
 
 function exactSnapshotPointer(source: SnapshotSource) {
@@ -529,7 +610,64 @@ async function publishSnapshotVersion(
 
 interface ArchivedThread {
   readonly archivedEvents: number | null;
+  readonly skippedHead: SnapshotSkipReason | null;
   readonly normalization: DuplicateEventIdNormalizationStats;
+}
+
+function skippedArchivedThread(
+  candidate: SnapshotCandidate,
+  reason: SnapshotSkipReason,
+): ArchivedThread {
+  log.warn("Skipped Chat Event Snapshot pointer", {
+    type: "chat_event_snapshot_head_skipped",
+    chatThreadId: candidate.chatThreadId,
+    reason,
+  });
+  return {
+    archivedEvents: null,
+    skippedHead: reason,
+    normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+  };
+}
+
+type ArchivePrefixResolution =
+  | {
+      readonly kind: "reusable";
+      readonly source: SnapshotSource | null;
+      readonly prefix: Buffer | null;
+    }
+  | { readonly kind: "skipped"; readonly reason: SnapshotSkipReason };
+
+async function resolveArchivePrefix(
+  get: ComputedGetter,
+  db: Db,
+  bucket: string,
+  candidate: SnapshotCandidate,
+  signal: AbortSignal,
+): Promise<ArchivePrefixResolution> {
+  const sourceResolution = await storedSnapshotSource(db, candidate);
+  signal.throwIfAborted();
+  if (sourceResolution.kind === "skipped") {
+    return sourceResolution;
+  }
+  if (sourceResolution.kind === "initial") {
+    return { kind: "reusable", source: null, prefix: null };
+  }
+  const prefixResolution = await readSnapshotPrefix(
+    get,
+    bucket,
+    candidate.chatThreadId,
+    sourceResolution.source,
+    signal,
+  );
+  if (prefixResolution.kind === "skipped") {
+    return prefixResolution;
+  }
+  return {
+    kind: "reusable",
+    source: sourceResolution.source,
+    prefix: prefixResolution.body,
+  };
 }
 
 function terminalSnapshotEventId(
@@ -550,18 +688,17 @@ async function archiveThread(
   candidate: SnapshotCandidate,
   signal: AbortSignal,
 ): Promise<ArchivedThread> {
-  const source = await storedSnapshotSource(db, candidate);
-  signal.throwIfAborted();
-  const prefix =
-    source === null
-      ? null
-      : await readSnapshotPrefix(
-          get,
-          bucket,
-          candidate.chatThreadId,
-          source,
-          signal,
-        );
+  const resolved = await resolveArchivePrefix(
+    get,
+    db,
+    bucket,
+    candidate,
+    signal,
+  );
+  if (resolved.kind === "skipped") {
+    return skippedArchivedThread(candidate, resolved.reason);
+  }
+  const { source, prefix } = resolved;
   const targetSeqId = Math.max(candidate.indexedSeqId, source?.lastSeqId ?? 0);
   const archive = await readCanonicalEvents(
     db,
@@ -575,6 +712,7 @@ async function archiveThread(
   ) {
     return {
       archivedEvents: null,
+      skippedHead: null,
       normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
     };
   }
@@ -634,11 +772,13 @@ async function archiveThread(
     }
     return {
       archivedEvents: null,
+      skippedHead: null,
       normalization: prepared.normalization,
     };
   }
   return {
     archivedEvents: published.value ? archive.count : null,
+    skippedHead: null,
     normalization: prepared.normalization,
   };
 }
@@ -701,7 +841,7 @@ export const migrateCurrentChatEventSnapshot$ = command(
     if (stored === undefined) {
       return false;
     }
-    await archiveThread(
+    const archived = await archiveThread(
       get,
       db,
       env("R2_USER_STORAGES_BUCKET_NAME"),
@@ -717,7 +857,7 @@ export const migrateCurrentChatEventSnapshot$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return true;
+    return archived.skippedHead === null;
   },
 );
 
@@ -1014,6 +1154,65 @@ async function collectR2SnapshotGarbage(
   };
 }
 
+async function loadSnapshotCandidates(
+  db: Db,
+  chatThreadIds: readonly string[] | null,
+): Promise<readonly SnapshotCandidate[]> {
+  return await db
+    .select({
+      chatThreadId: chatThreads.id,
+      indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
+      headId: chatEventSnapshots.id,
+      headLastSeqId: chatEventSnapshots.lastSeqId,
+      headLastEventId: chatEventSnapshots.lastEventId,
+      headObjectKey: chatEventSnapshots.objectKey,
+      headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+    })
+    .from(chatThreads)
+    .innerJoin(
+      chatEventSearchMessageWatermarks,
+      eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),
+    )
+    .leftJoin(
+      chatEventSnapshots,
+      and(
+        eq(chatEventSnapshots.chatThreadId, chatThreads.id),
+        eq(chatEventSnapshots.isHead, true),
+        eq(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
+      ),
+    )
+    .where(
+      and(
+        chatThreadIds === null
+          ? undefined
+          : inArray(chatThreads.id, chatThreadIds),
+        or(
+          gt(
+            chatEventSearchMessageWatermarks.indexedSeqId,
+            sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
+          ),
+          and(
+            isNotNull(chatEventSnapshots.id),
+            or(
+              isNull(chatEventSnapshots.lastEventId),
+              lte(chatEventSnapshots.lastSeqId, 0),
+              sql`btrim(${chatEventSnapshots.objectKey}) = ''`,
+            ),
+          ),
+        ),
+      ),
+    )
+    .orderBy(
+      asc(chatEventSnapshots.archiveSchemaVersion),
+      asc(chatThreads.lastMessageAt),
+      asc(chatThreads.id),
+    )
+    .limit(chatEventSnapshotThreadBatchSize());
+}
+
 /**
  * Archives Chat Events into immutable, content-addressed R2 Snapshots. The
  * first Snapshot may bootstrap from the currently available Raw Event prefix,
@@ -1042,56 +1241,16 @@ export const snapshotChatEvents$ = command(
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const ownedObjectKeys =
       scope.kind === "global" ? null : new Set(scope.r2ObjectKeys);
-    const candidates = await db
-      .select({
-        chatThreadId: chatThreads.id,
-        indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
-        headId: chatEventSnapshots.id,
-        headLastSeqId: chatEventSnapshots.lastSeqId,
-        headLastEventId: chatEventSnapshots.lastEventId,
-        headObjectKey: chatEventSnapshots.objectKey,
-        headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      })
-      .from(chatThreads)
-      .innerJoin(
-        chatEventSearchMessageWatermarks,
-        eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),
-      )
-      .leftJoin(
-        chatEventSnapshots,
-        and(
-          eq(chatEventSnapshots.chatThreadId, chatThreads.id),
-          eq(chatEventSnapshots.isHead, true),
-          eq(
-            chatEventSnapshots.archiveSchemaVersion,
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
-        ),
-      )
-      // A missing current-version pointer is an upgrade candidate. An existing
-      // pointer is refreshed only when its PostgreSQL tail advances.
-      .where(
-        and(
-          chatThreadIds === null
-            ? undefined
-            : inArray(chatThreads.id, chatThreadIds),
-          gt(
-            chatEventSearchMessageWatermarks.indexedSeqId,
-            sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
-          ),
-        ),
-      )
-      .orderBy(
-        asc(chatEventSnapshots.archiveSchemaVersion),
-        asc(chatThreads.lastMessageAt),
-        asc(chatThreads.id),
-      )
-      .limit(chatEventSnapshotThreadBatchSize());
+    const candidates = await loadSnapshotCandidates(db, chatThreadIds);
     signal.throwIfAborted();
 
     let snapshots = 0;
     let archivedEvents = 0;
-    const unreadableParents = 0;
+    let unreadableParents = 0;
+    let skippedUnreadableHeads = 0;
+    let skippedUndecodableHeads = 0;
+    let skippedIncompleteHeads = 0;
+    let skippedUnsupportedHeads = 0;
     let duplicateEventIdConflictThreads = 0;
     let duplicateEventIdConflicts = 0;
     let duplicateEventIdsRemapped = 0;
@@ -1099,6 +1258,29 @@ export const snapshotChatEvents$ = command(
     for (const candidate of candidates) {
       const archived = await archiveThread(get, db, bucket, candidate, signal);
       signal.throwIfAborted();
+      switch (archived.skippedHead) {
+        case "unreadable": {
+          skippedUnreadableHeads += 1;
+          unreadableParents += 1;
+          break;
+        }
+        case "undecodable": {
+          skippedUndecodableHeads += 1;
+          unreadableParents += 1;
+          break;
+        }
+        case "incomplete": {
+          skippedIncompleteHeads += 1;
+          break;
+        }
+        case "unsupported": {
+          skippedUnsupportedHeads += 1;
+          break;
+        }
+        case null: {
+          break;
+        }
+      }
       if (archived.archivedEvents !== null) {
         snapshots += 1;
         archivedEvents += archived.archivedEvents;
@@ -1138,6 +1320,10 @@ export const snapshotChatEvents$ = command(
       snapshots,
       archivedEvents,
       unreadableParents,
+      skippedUnreadableHeads,
+      skippedUndecodableHeads,
+      skippedIncompleteHeads,
+      skippedUnsupportedHeads,
       duplicateEventIdConflictThreads,
       duplicateEventIdConflicts,
       duplicateEventIdsRemapped,

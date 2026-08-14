@@ -67,6 +67,7 @@ describe("chatEvents schema", () => {
       "chat_events_run_event_seq_unique",
       "chat_events_run_terminal_unique",
       "chat_events_thread_seq_unique",
+      "idx_chat_events_created_at_id",
       "idx_chat_events_run_id",
       "idx_chat_events_thread_created",
       "idx_chat_events_thread_run_terminal_created",
