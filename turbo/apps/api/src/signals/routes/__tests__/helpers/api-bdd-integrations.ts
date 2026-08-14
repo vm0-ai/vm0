@@ -62,7 +62,7 @@ import { integrationsGithubRoutes } from "../../integrations-github";
 import { testSlackStateRoutes } from "../../test-slack-state";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroIntegrationsAgentPhoneRoutes } from "../../zero-integrations-agentphone";
-import { zeroIntegrationsGithubUploadCompleteRoutes } from "../../zero-integrations-github-upload-complete";
+import { integrationsGithubUploadCompleteRoutes } from "../../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "../../integrations-phone-message";
@@ -92,7 +92,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...testSlackStateRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
-  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
   ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
@@ -1645,7 +1645,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsGithubUploadCompleteRoutes,
+        routes: integrationsGithubUploadCompleteRoutes,
       })(integrationsGithubUploadCompleteContract);
       return await accept(
         client.complete({
