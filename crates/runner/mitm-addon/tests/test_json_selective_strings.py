@@ -11,8 +11,10 @@ from usage.json_selective import JsonSelectiveExtractor, ScalarField
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
-        (b'{"model":"plain-ascii"}', "plain-ascii"),
-        (b'{"model":"snowman \xe2\x98\x83"}', "snowman \u2603"),
+        pytest.param(b'{"model":"plain-ascii"}', "plain-ascii", id="ascii"),
+        pytest.param(b'{"model":"caf\xc3\xa9"}', "caf\u00e9", id="two-byte"),
+        pytest.param(b'{"model":"snowman \xe2\x98\x83"}', "snowman \u2603", id="three-byte"),
+        pytest.param(b'{"model":"emoji \xf0\x9f\x98\x80"}', "emoji \U0001f600", id="four-byte"),
     ],
 )
 def test_decodes_selected_unescaped_strings(payload, expected):
@@ -23,6 +25,26 @@ def test_decodes_selected_unescaped_strings(payload, expected):
 
     assert result.complete is True
     assert result.values == {("model",): expected}
+
+
+@pytest.mark.parametrize(
+    ("encoded", "expected", "split"),
+    [
+        pytest.param(b"\xc3\xa9", "\u00e9", 1, id="two-byte-split-1"),
+        pytest.param(b"\xf0\x9f\x98\x80", "\U0001f600", 1, id="four-byte-split-1"),
+        pytest.param(b"\xf0\x9f\x98\x80", "\U0001f600", 2, id="four-byte-split-2"),
+        pytest.param(b"\xf0\x9f\x98\x80", "\U0001f600", 3, id="four-byte-split-3"),
+    ],
+)
+def test_decodes_selected_multibyte_string_across_chunks(encoded, expected, split):
+    extractor = JsonSelectiveExtractor(scalar_fields={("model",): ScalarField("string")})
+
+    extractor.feed(b'{"model":"prefix ' + encoded[:split])
+    extractor.feed(encoded[split:] + b'"}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {("model",): f"prefix {expected}"}
 
 
 @pytest.mark.parametrize(
@@ -225,13 +247,23 @@ def test_bulk_skip_preserves_pending_escape_state_across_chunks(first_suffix, se
     assert result.values == {("usage", "input_tokens"): 7}
 
 
-def test_accepts_multibyte_unselected_string_across_chunks():
+@pytest.mark.parametrize(
+    ("encoded", "split"),
+    [
+        pytest.param(b"\xc3\xa9", 1, id="two-byte-split-1"),
+        pytest.param(b"\xe2\x98\x83", 1, id="three-byte-split-1"),
+        pytest.param(b"\xf0\x9f\x98\x80", 1, id="four-byte-split-1"),
+        pytest.param(b"\xf0\x9f\x98\x80", 2, id="four-byte-split-2"),
+        pytest.param(b"\xf0\x9f\x98\x80", 3, id="four-byte-split-3"),
+    ],
+)
+def test_accepts_multibyte_unselected_string_across_chunks(encoded, split):
     extractor = JsonSelectiveExtractor(
         scalar_fields={("usage", "input_tokens"): ScalarField("int")}
     )
 
-    extractor.feed(b'{"content":"\xe2')
-    extractor.feed(b'\x98\x83","usage":{"input_tokens":9}}')
+    extractor.feed(b'{"content":"' + encoded[:split])
+    extractor.feed(encoded[split:] + b'","usage":{"input_tokens":9}}')
     result = extractor.finish()
 
     assert result.complete is True
