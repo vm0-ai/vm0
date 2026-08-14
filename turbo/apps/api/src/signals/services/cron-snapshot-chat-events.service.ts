@@ -216,13 +216,11 @@ async function readCanonicalEvents(
 ): Promise<{
   readonly lines: readonly Buffer[];
   readonly count: number;
-  readonly firstSeqId: number | null;
   readonly lastSeqId: number;
 }> {
   const lines: Buffer[] = [];
   let cursor = fromSeqId;
   let count = 0;
-  let firstSeqId: number | null = null;
   for (;;) {
     const rows = await db
       .select({
@@ -250,7 +248,6 @@ async function readCanonicalEvents(
       .orderBy(asc(chatEvents.seqId))
       .limit(EVENT_PAGE_SIZE);
     for (const row of rows) {
-      firstSeqId ??= row.seqId;
       lines.push(archiveLine(row));
     }
     count += rows.length;
@@ -262,7 +259,6 @@ async function readCanonicalEvents(
       return {
         lines,
         count,
-        firstSeqId,
         lastSeqId: candidate.indexedSeqId,
       };
     }
@@ -436,14 +432,6 @@ async function archiveThread(
     }
     throw new Error(
       `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
-    );
-  }
-  // A full rebuild must start at the thread's first event. Publishing a
-  // prefix-less body would advance the head to a truncated archive, and the
-  // exact-parent CAS cannot detect that on its own.
-  if (parent.kind !== "reusable" && archive.firstSeqId !== 1) {
-    throw new Error(
-      `chat event snapshot rebuild for ${candidate.chatThreadId} started at seq ${String(archive.firstSeqId)} instead of the thread's first event`,
     );
   }
   const prepared =

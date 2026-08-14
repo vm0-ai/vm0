@@ -114,10 +114,9 @@ const slackWriteAuth = {
   requiredCapability: "slack:write",
 } as const;
 
-export const zeroIntegrationsSlackUploadMaterializeRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: integrationsSlackUploadMaterializeContract.materialize,
-      handler: authRoute(slackWriteAuth, materializeInner$),
-    },
-  ];
+export const integrationsSlackUploadMaterializeRoutes: readonly RouteEntry[] = [
+  {
+    route: integrationsSlackUploadMaterializeContract.materialize,
+    handler: authRoute(slackWriteAuth, materializeInner$),
+  },
+];

@@ -1,5 +1,5 @@
 import { elapsedSinceApiStartMs } from "@okouai/api-contracts/contracts/runners";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -33,9 +33,9 @@ async function recordFirstAssistantEventAcknowledgement(args: {
   readonly acknowledgedAt: number;
 }): Promise<void> {
   const firstAssistantClaimWhere = and(
-    eq(zeroRuns.id, args.runId),
-    isNotNull(zeroRuns.apiStartedAt),
-    isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
+    eq(agentRuns.id, args.runId),
+    isNotNull(agentRuns.apiStartedAt),
+    isNull(agentRuns.firstAssistantEventAcknowledgedAt),
   );
   if (!firstAssistantClaimWhere) {
     throw new Error("First assistant acknowledgement predicate is empty");

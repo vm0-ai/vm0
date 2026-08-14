@@ -26,7 +26,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function mintZeroToken(args: {
+function mintOkouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly ZeroCapability[];
@@ -54,7 +54,7 @@ async function mintFileReadToken(): Promise<{
   return {
     orgId,
     userId,
-    token: mintZeroToken({
+    token: mintOkouToken({
       userId,
       orgId,
       capabilities: ["file:read"],
@@ -122,7 +122,7 @@ function artifactKey(userId: string, fileId: string, filename: string): string {
   return `artifacts/${userId}/${fileId}/${filename}`;
 }
 
-describe("GET /api/zero/web/file-url", () => {
+describe("GET /api/okou/web/file-url", () => {
   it("returns 401 when no auth token is provided", async () => {
     const response = await accept(
       client().fileUrl({ headers: {}, query: { file_id: "abc" } }),
@@ -134,7 +134,7 @@ describe("GET /api/zero/web/file-url", () => {
   });
 
   it("returns 403 for a zero token without file:read capability", async () => {
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       capabilities: ["agent:read"],

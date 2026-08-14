@@ -433,17 +433,20 @@ describe("organization billing settings", () => {
     expect(screen.getByText("No active plan")).toBeInTheDocument();
     const proPlan = await screen.findByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
-    expect(proPlan).toHaveTextContent("Plan$0/month");
-    expect(proPlan).toHaveTextContent("Member packages$20/month");
-    expect(proPlan).toHaveTextContent("Monthly total$20/month");
+    // The figure is a floor, not a fixed total: a workspace pays the plan plus
+    // one package for every member, and packages run $20 to $200.
+    expect(proPlan).toHaveTextContent("from $20/month");
     expect(
-      within(proPlan).getByText(/credits per member$/u),
+      within(proPlan).getByText("Plan $0 · member packages $20–$200 each"),
     ).toBeInTheDocument();
-    expect(teamPlan).toHaveTextContent("Plan$160/month");
-    expect(teamPlan).toHaveTextContent("Member packages$20/month");
-    expect(teamPlan).toHaveTextContent("Monthly total$180/month");
+    expect(teamPlan).toHaveTextContent("from $180/month");
     expect(
-      within(teamPlan).getByText("Everything on Pro, plus:"),
+      within(teamPlan).getByText("Plan $160 · member packages $20–$200 each"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Every member needs a package. You pick each member's package in the next step.",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("group", { name: "Member usage" }),
@@ -455,14 +458,6 @@ describe("organization billing settings", () => {
       ),
     ).toBeInTheDocument();
     expect(within(proPlan).queryByText("20,000 credits / month")).toBeNull();
-    expect(
-      within(proPlan).getByText("7 shared agents, unlimited private"),
-    ).toBeInTheDocument();
-    expect(
-      within(proPlan).getByText(
-        "Voice input (300 requests/day · 200 min/day per member)",
-      ),
-    ).toBeInTheDocument();
     expect(within(proPlan).queryByText("Pay as you go after that")).toBeNull();
     expect(
       within(teamPlan).getByText(
@@ -470,11 +465,29 @@ describe("organization billing settings", () => {
       ),
     ).toBeInTheDocument();
     expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
-    expect(
-      within(teamPlan).getByText(
-        "Voice input (500 requests/day · 500 min/day per member)",
-      ),
-    ).toBeInTheDocument();
+
+    // Both columns carry the same rows so the plans can be read across.
+    for (const plan of [proPlan, teamPlan]) {
+      for (const label of [
+        "Concurrent runs",
+        "Add-on concurrency",
+        "Shared agents",
+        "Private agents",
+        "Voice input",
+        "Your own LLM keys",
+        "Support",
+      ]) {
+        expect(within(plan).getByText(label)).toBeInTheDocument();
+      }
+    }
+    expect(proPlan).toHaveTextContent("Concurrent runs2");
+    expect(proPlan).toHaveTextContent("Add-on concurrency—");
+    expect(proPlan).toHaveTextContent("Voice input300/day · 200 min");
+    expect(proPlan).toHaveTextContent("SupportEmail");
+    expect(teamPlan).toHaveTextContent("Concurrent runs10");
+    expect(teamPlan).toHaveTextContent("Add-on concurrencyAvailable");
+    expect(teamPlan).toHaveTextContent("Voice input500/day · 500 min");
+    expect(teamPlan).toHaveTextContent("SupportPriority");
 
     click(buttonByText("Start with Team", teamPlan));
 
@@ -528,9 +541,6 @@ describe("organization billing settings", () => {
     ).toBeInTheDocument();
     expect(within(memberUsage).getByText("Team plan")).toBeInTheDocument();
     expect(within(memberUsage).getByText("$160")).toBeInTheDocument();
-    expect(
-      within(memberUsage).getByText("10 concurrent runs · Priority support"),
-    ).toBeInTheDocument();
     expect(memberUsage).toHaveTextContent(
       "Monthly total63,702 credits · 3,702 bonus$220/month",
     );
@@ -1570,8 +1580,8 @@ describe("organization billing settings", () => {
     const proPlan = screen.getByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
     expect(buttonByText("Manage", proPlan)).not.toBeDisabled();
-    expect(proPlan).toHaveTextContent("Monthly total$20/month");
-    expect(teamPlan).toHaveTextContent("Monthly total$180/month");
+    expect(proPlan).toHaveTextContent("from $20/month");
+    expect(teamPlan).toHaveTextContent("from $180/month");
     expect(
       within(teamPlan).getByText("Existing member packages stay unchanged."),
     ).toBeInTheDocument();

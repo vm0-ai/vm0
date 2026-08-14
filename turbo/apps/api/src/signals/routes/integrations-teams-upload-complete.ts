@@ -207,10 +207,9 @@ const teamsWriteAuth = {
   requiredCapability: "teams:write",
 } as const;
 
-export const zeroIntegrationsTeamsUploadCompleteRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: integrationsTeamsUploadCompleteContract.complete,
-      handler: authRoute(teamsWriteAuth, complete$),
-    },
-  ];
+export const integrationsTeamsUploadCompleteRoutes: readonly RouteEntry[] = [
+  {
+    route: integrationsTeamsUploadCompleteContract.complete,
+    handler: authRoute(teamsWriteAuth, complete$),
+  },
+];

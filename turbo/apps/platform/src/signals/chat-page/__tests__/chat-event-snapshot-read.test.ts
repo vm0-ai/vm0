@@ -129,17 +129,19 @@ function mockSignedInUser(): void {
 }
 
 describe("chat event snapshot read", () => {
-  it("tails from snapshot coverage beyond the final archive row", async () => {
+  it("reads sparse snapshot positions and tails from its coverage", async () => {
     mockSignedInUser();
-    const { threadId, promptEventRow, assistantEventRow } = threadFixture();
-    const tailEventRow = baseRow(threadId, 4);
+    const threadId = crypto.randomUUID();
+    const promptEventRow = promptRow(threadId, 5, "snapshot prompt");
+    const assistantEventRow = baseRow(threadId, 8);
+    const tailEventRow = baseRow(threadId, 12);
     const appDb = await openTestChatDb();
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
-        lastSeqId: 3,
+        lastSeqId: 10,
       });
     });
     context.mocks.http.get(SNAPSHOT_URL, () => {
@@ -148,7 +150,7 @@ describe("chat event snapshot read", () => {
     const rowRequests: number[] = [];
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
-      if (query.sinceSeqId === 3) {
+      if (query.sinceSeqId === 10) {
         return respond(200, { rows: [tailEventRow] });
       }
       return respond(200, { rows: [] });
@@ -170,9 +172,9 @@ describe("chat event snapshot read", () => {
         };
       }),
     ).toStrictEqual([
-      { id: promptEventRow.id, seqId: 1, eventType: "input.prompt" },
-      { id: assistantEventRow.id, seqId: 2, eventType: "output.message" },
-      { id: tailEventRow.id, seqId: 4, eventType: "output.message" },
+      { id: promptEventRow.id, seqId: 5, eventType: "input.prompt" },
+      { id: assistantEventRow.id, seqId: 8, eventType: "output.message" },
+      { id: tailEventRow.id, seqId: 12, eventType: "output.message" },
     ]);
     const prompt = events[0];
     if (prompt?.eventType !== "input.prompt") {
@@ -183,7 +185,7 @@ describe("chat event snapshot read", () => {
       parts: [{ type: "text", text: "snapshot prompt" }],
     });
     expect(prompt).not.toHaveProperty("contextType");
-    expect(rowRequests).toStrictEqual([3, 4]);
+    expect(rowRequests).toStrictEqual([10, 12]);
 
     await expect(
       appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),

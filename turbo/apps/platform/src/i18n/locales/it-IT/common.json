@@ -908,6 +908,21 @@
       "changeAnytime": "Aggiorna o esegui il downgrade in qualsiasi momento.",
       "compare": "Confronta i piani",
       "compareAll": "Confronta tutti i piani",
+      "comparison": {
+        "addOnConcurrency": "Concorrenza aggiuntiva",
+        "available": "Disponibile",
+        "concurrentRuns": "Esecuzioni simultanee",
+        "included": "Sì",
+        "ownLlmKeys": "Le tue chiavi LLM",
+        "privateAgents": "Agenti privati",
+        "sharedAgents": "Agenti condivisi",
+        "support": "Assistenza",
+        "supportEmail": "E-mail",
+        "supportPriority": "Prioritaria",
+        "unlimited": "Illimitati",
+        "voiceInput": "Input vocale",
+        "voiceInputValue": "{{requests}}/giorno · {{minutes}} min"
+      },
       "currentPlan": "Piano attuale",
       "custom": {
         "name": "Personalizzato"
@@ -975,9 +990,7 @@
         "concurrentSlots": "Slot simultanei",
         "configurePackages": "Configura i pacchetti dei membri",
         "credits": "Crediti",
-        "creditsPerMember": "{{credits}} crediti per membro",
         "currentMember": "Membro attuale",
-        "everythingOnPlus": "Tutto di {{plan}}, più:",
         "existingPackagesUnchanged": "I pacchetti esistenti dei membri restano invariati.",
         "management": {
           "comparison": "Confronto tra abbonamento attuale e nuovo",
@@ -1017,11 +1030,14 @@
         },
         "monthlyTotal": "Totale mensile",
         "orderSummary": "Riepilogo dell’ordine",
+        "packagePerMemberNote": "Ogni membro ha bisogno di un pacchetto. Li scegli nel passaggio successivo.",
         "packCredits": "{{credits}} crediti",
         "packCreditsDiscount": "{{credits}} crediti · {{discount}}% di sconto",
         "packOption": "{{price}} · {{credits}} crediti · {{discount}}% di sconto",
         "planChangeError": "Impossibile preparare la modifica dell’abbonamento. Riprova.",
+        "planPlusPackages": "Piano {{plan}} · pacchetti per membro da {{lowest}} a {{highest}}",
         "planStep": "Piano",
+        "priceFrom": "da",
         "purchasedCredits": "Crediti acquistati",
         "selectPlan": "Inizia con {{plan}}",
         "selectUsage": "Utilizzo per {{name}}",
@@ -1711,7 +1727,6 @@
       "empty": "Invia un messaggio per avviare la conversazione",
       "frequentlyUsed": "Usato frequentemente",
       "icon": "Icona del thread di chat",
-      "loadingEarlier": "Caricamento dei messaggi precedenti",
       "locator": {
         "you": "Tu"
       },

@@ -546,7 +546,7 @@ const chatEventBaseSchema = z.object({
   runGroupId: z.string().optional(),
   runEventId: z.string().optional(),
   revokesEventId: z.string().optional(),
-  /** Server-assigned strict position within the chat thread. */
+  /** Strictly increasing thread position; it may start above 1 and have gaps. */
   seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
   createdAt: z.string(),

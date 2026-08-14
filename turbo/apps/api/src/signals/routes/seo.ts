@@ -1,16 +1,16 @@
-import { zeroSeoContract } from "@okouai/api-contracts/contracts/zero-seo";
+import { seoContract } from "@okouai/api-contracts/contracts/seo";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { zeroSeo$ } from "../services/zero-seo.service";
+import { seo$ } from "../services/seo.service";
 
-const serpBody$ = bodyResultOf(zeroSeoContract.serp);
-const keywordIdeasBody$ = bodyResultOf(zeroSeoContract.keywordIdeas);
-const rankedKeywordsBody$ = bodyResultOf(zeroSeoContract.rankedKeywords);
-const backlinksSummaryBody$ = bodyResultOf(zeroSeoContract.backlinksSummary);
+const serpBody$ = bodyResultOf(seoContract.serp);
+const keywordIdeasBody$ = bodyResultOf(seoContract.keywordIdeas);
+const rankedKeywordsBody$ = bodyResultOf(seoContract.rankedKeywords);
+const backlinksSummaryBody$ = bodyResultOf(seoContract.backlinksSummary);
 
 const serpInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
@@ -21,7 +21,7 @@ const serpInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   return await set(
-    zeroSeo$,
+    seo$,
     { auth, request: { operation: "serp", body: bodyResult.data } },
     signal,
   );
@@ -37,7 +37,7 @@ const keywordIdeasInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroSeo$,
+      seo$,
       {
         auth,
         request: { operation: "keyword-ideas", body: bodyResult.data },
@@ -57,7 +57,7 @@ const rankedKeywordsInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroSeo$,
+      seo$,
       {
         auth,
         request: { operation: "ranked-keywords", body: bodyResult.data },
@@ -77,7 +77,7 @@ const backlinksSummaryInner$ = command(
       return bodyResult.response;
     }
     return await set(
-      zeroSeo$,
+      seo$,
       {
         auth,
         request: { operation: "backlinks-summary", body: bodyResult.data },
@@ -93,21 +93,21 @@ const seoAuth = {
   requiredCapability: "seo:read",
 } as const;
 
-export const zeroSeoRoutes: readonly RouteEntry[] = [
+export const seoRoutes: readonly RouteEntry[] = [
   {
-    route: zeroSeoContract.serp,
+    route: seoContract.serp,
     handler: authRoute(seoAuth, serpInner$),
   },
   {
-    route: zeroSeoContract.keywordIdeas,
+    route: seoContract.keywordIdeas,
     handler: authRoute(seoAuth, keywordIdeasInner$),
   },
   {
-    route: zeroSeoContract.rankedKeywords,
+    route: seoContract.rankedKeywords,
     handler: authRoute(seoAuth, rankedKeywordsInner$),
   },
   {
-    route: zeroSeoContract.backlinksSummary,
+    route: seoContract.backlinksSummary,
     handler: authRoute(seoAuth, backlinksSummaryInner$),
   },
 ];

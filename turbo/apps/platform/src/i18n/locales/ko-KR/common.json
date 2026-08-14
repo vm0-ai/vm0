@@ -887,6 +887,21 @@
       "changeAnytime": "언제든지 업그레이드 또는 다운그레이드 가능.",
       "compare": "플랜 비교",
       "compareAll": "모든 플랜 비교",
+      "comparison": {
+        "addOnConcurrency": "동시 실행 추가 구매",
+        "available": "구매 가능",
+        "concurrentRuns": "동시 실행",
+        "included": "지원",
+        "ownLlmKeys": "자체 LLM 키",
+        "privateAgents": "비공개 에이전트",
+        "sharedAgents": "공유 에이전트",
+        "support": "지원",
+        "supportEmail": "이메일",
+        "supportPriority": "우선",
+        "unlimited": "무제한",
+        "voiceInput": "음성 입력",
+        "voiceInputValue": "{{requests}}회/일 · {{minutes}}분"
+      },
       "currentPlan": "현재 플랜",
       "custom": {
         "name": "사용자 지정"
@@ -954,9 +969,7 @@
         "concurrentSlots": "동시 실행 슬롯",
         "configurePackages": "구성원 패키지 설정",
         "credits": "크레딧",
-        "creditsPerMember": "멤버당 {{credits}} 크레딧",
         "currentMember": "현재 구성원",
-        "everythingOnPlus": "{{plan}}의 모든 기능에 더해:",
         "existingPackagesUnchanged": "기존 멤버 패키지는 변경되지 않습니다.",
         "management": {
           "comparison": "현재 및 새 구독 비교",
@@ -996,11 +1009,14 @@
         },
         "monthlyTotal": "월간 합계",
         "orderSummary": "주문 요약",
+        "packagePerMemberNote": "모든 멤버에게 패키지가 필요합니다. 다음 단계에서 멤버별로 선택합니다.",
         "packCredits": "{{credits}} 크레딧",
         "packCreditsDiscount": "{{credits}} 크레딧 · {{discount}}% 할인",
         "packOption": "{{price}} · {{credits}} 크레딧 · {{discount}}% 할인",
         "planChangeError": "구독 변경을 준비하지 못했습니다. 다시 시도하세요.",
+        "planPlusPackages": "플랜 {{plan}} · 멤버 패키지 각 {{lowest}}~{{highest}}",
         "planStep": "플랜",
+        "priceFrom": "최소",
         "purchasedCredits": "구매 크레딧",
         "selectPlan": "{{plan}} 시작하기",
         "selectUsage": "{{name}} 사용량",
@@ -1670,7 +1686,6 @@
       "empty": "대화를 시작하려면 메시지를 보내세요",
       "frequentlyUsed": "자주 사용하는 항목",
       "icon": "채팅 스레드 아이콘",
-      "loadingEarlier": "이전 메시지 불러오는 중",
       "locator": {
         "you": "나"
       },

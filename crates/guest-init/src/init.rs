@@ -17,7 +17,7 @@ use std::io;
 use std::path::Path;
 
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, CONTROL_MEMORY_RESERVE_BYTES, EXEC_CGROUP_BASE_PATH,
+    CGROUP_V2_MOUNT_PATH, CONTROL_MEMORY_MIN_BYTES, EXEC_CGROUP_BASE_PATH,
     REQUIRED_CGROUP_CONTROLLERS, REQUIRED_CGROUP_SUBTREE_CONTROL,
 };
 
@@ -187,7 +187,7 @@ fn initialize_process_containment() -> Result<(), InitError> {
     let memory_min_path = base.join(MEMORY_MIN_FILE);
     fs::write(
         &memory_min_path,
-        CONTROL_MEMORY_RESERVE_BYTES.to_string().as_bytes(),
+        CONTROL_MEMORY_MIN_BYTES.to_string().as_bytes(),
     )
     .map_err(|source| InitError::Filesystem {
         operation: "configure control memory protection in",
@@ -305,7 +305,7 @@ fn verify_process_containment_base(base: &Path) -> Result<(), InitError> {
             path: base.join(MEMORY_MIN_FILE).display().to_string(),
             source,
         })?;
-    if memory_min.trim() != CONTROL_MEMORY_RESERVE_BYTES.to_string() {
+    if memory_min.trim() != CONTROL_MEMORY_MIN_BYTES.to_string() {
         return Err(InitError::InvalidProcessContainment(format!(
             "exec cgroup base {MEMORY_MIN_FILE} does not preserve control memory"
         )));
@@ -370,7 +370,7 @@ mod tests {
         }
         fs::write(
             base.join(MEMORY_MIN_FILE),
-            CONTROL_MEMORY_RESERVE_BYTES.to_string(),
+            CONTROL_MEMORY_MIN_BYTES.to_string(),
         )
         .unwrap();
     }
