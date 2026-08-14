@@ -132,6 +132,9 @@ export const prepareOnboardingVideoRun$ = command(
         [200],
       );
       signal.throwIfAborted();
+      if (!("url" in result.body)) {
+        throw new Error("Onboarding checkout unexpectedly returned a preview");
+      }
       checkoutUrl = result.body.url;
     } else {
       const client = get(zeroClient$)(zeroBillingCheckoutContract);
@@ -148,6 +151,9 @@ export const prepareOnboardingVideoRun$ = command(
         [200],
       );
       signal.throwIfAborted();
+      if (!("url" in result.body)) {
+        throw new Error("Onboarding checkout unexpectedly returned a preview");
+      }
       checkoutUrl = result.body.url;
     }
     set(capturePaidOnboardingCheckoutCreated$, "onboarding_video");

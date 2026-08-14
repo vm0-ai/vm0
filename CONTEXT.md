@@ -35,3 +35,21 @@ self-harm. It excludes non-graphic news, medical, educational, historical,
 safety, moderation, and ordinary fictional discussion.
 
 _Avoid_: 18+ content, adult content
+
+# Billing Context
+
+The billing context decides whether a purchase can be reviewed and confirmed inside vm0 or must continue on a Stripe-hosted page.
+
+## Language
+
+**Saved payment method**:
+A Stripe payment method available to an organization through, in priority order, the subscription default, customer invoice default, an attached card, or a legacy default source.
+_Avoid_: Bound card, default card
+
+**Operation invoice**:
+The invoice produced by confirming the current purchase or subscription change. Unpaid invoices from earlier operations are not part of this decision.
+_Avoid_: Customer balance, historical invoice
+
+**Hosted invoice payment**:
+The Stripe-hosted invoice page used when an operation invoice remains unpaid after an in-app confirmation attempt.
+_Avoid_: Checkout

@@ -48,6 +48,7 @@ import {
   type UsagePackChangeInvoiceInput,
 } from "./usage-pack-allocation-change.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
+import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
 import {
   activeUsagePackPlanPriceId,
@@ -1467,6 +1468,48 @@ export async function previewUsagePackSubscriptionChange(
   };
 }
 
+export async function discardUsagePackSubscriptionChangePreviewForPaymentSetup(
+  db: Db,
+  args: { readonly orgId: string; readonly changeId: string },
+): Promise<void> {
+  const discardedAt = nowDate();
+  await db.transaction(async (tx) => {
+    const discarded = await tx
+      .update(usagePackSubscriptionChanges)
+      .set({
+        status: "failed",
+        failureReason: "payment_method_setup_required",
+        completedAt: discardedAt,
+        updatedAt: discardedAt,
+      })
+      .where(
+        and(
+          eq(usagePackSubscriptionChanges.id, args.changeId),
+          eq(usagePackSubscriptionChanges.orgId, args.orgId),
+          eq(usagePackSubscriptionChanges.status, "previewed"),
+        ),
+      )
+      .returning({ id: usagePackSubscriptionChanges.id });
+    if (discarded.length === 0) {
+      return;
+    }
+    await tx
+      .update(usagePackAllocationChanges)
+      .set({
+        status: "failed",
+        failureReason: "payment_method_setup_required",
+        completedAt: discardedAt,
+        updatedAt: discardedAt,
+      })
+      .where(
+        and(
+          eq(usagePackAllocationChanges.subscriptionChangeId, args.changeId),
+          eq(usagePackAllocationChanges.status, "previewed"),
+        ),
+      );
+  });
+}
+
 function subscriptionPhaseItems(
   subscription: StripeSubscription,
 ): StripeSchedulePhaseItemParam[] {
@@ -2107,14 +2150,14 @@ async function recordImmediateSubscriptionChangeInvoice(
   stored: StoredSubscriptionChange,
   invoice: StripeInvoice,
   pendingUpdateExpiresAt: Date | null,
+  pendingPayment: boolean,
 ): Promise<void> {
-  const pending = pendingUpdateExpiresAt !== null;
   const updatedAt = nowDate();
   await db.transaction(async (tx) => {
     await tx
       .update(usagePackSubscriptionChanges)
       .set({
-        status: pending ? "pending_payment" : "applying",
+        status: pendingPayment ? "pending_payment" : "applying",
         stripeInvoiceId: invoice.id,
         stripePendingUpdateExpiresAt: pendingUpdateExpiresAt,
         updatedAt,
@@ -2123,7 +2166,7 @@ async function recordImmediateSubscriptionChangeInvoice(
     await tx
       .update(usagePackAllocationChanges)
       .set({
-        status: pending ? "pending_payment" : "applying",
+        status: pendingPayment ? "pending_payment" : "applying",
         stripePendingUpdateExpiresAt: pendingUpdateExpiresAt,
         updatedAt,
       })
@@ -2192,19 +2235,27 @@ async function applyImmediateSubscriptionChange(
   }
   const pendingUpdateExpiresAt =
     subscriptionPendingUpdateExpiresAt(updatedSubscription);
-  const pending = pendingUpdateExpiresAt !== null;
+  const payment = await completeBillingOperationInvoice(
+    getStripeClient(),
+    invoice,
+    `usage-pack-subscription:${args.stored.root.id}`,
+    signal,
+  );
+  const pending = payment.status === "pending_payment";
   await recordImmediateSubscriptionChangeInvoice(
     db,
     args.stored,
     invoice,
     pendingUpdateExpiresAt,
+    pending,
   );
   return {
     status: "confirmed",
     response: {
       status: pending ? "pending_payment" : "processing",
       effectiveAt: args.stored.root.effectiveAt.toISOString(),
-      hostedInvoiceUrl: null,
+      hostedInvoiceUrl:
+        payment.status === "pending_payment" ? payment.hostedInvoiceUrl : null,
     },
   };
 }

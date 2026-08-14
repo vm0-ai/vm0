@@ -1643,7 +1643,7 @@ describe("organization billing settings", () => {
   });
 
   it("previews and confirms a current member package change inline", async () => {
-    let pendingPayment = false;
+    let changeProcessing = false;
     let paymentApplied = false;
     let previewed = false;
     let confirmationRequests = 0;
@@ -1695,11 +1695,11 @@ describe("organization billing settings", () => {
               usagePackUsd: paymentApplied ? 50 : 20,
               currentPeriodEnd: "2026-04-01T00:00:00Z",
               pendingChange:
-                pendingPayment && !paymentApplied
+                changeProcessing && !paymentApplied
                   ? {
                       id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
                       kind: "upgrade",
-                      status: "pending_payment",
+                      status: "applying",
                       targetUsagePackUsd: 50,
                       effectiveAt: "2026-03-16T00:00:00Z",
                     }
@@ -1751,9 +1751,9 @@ describe("organization billing settings", () => {
         expect(body).toStrictEqual({
           changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
         });
-        pendingPayment = true;
+        changeProcessing = true;
         return respond(200, {
-          status: "pending_payment",
+          status: "processing",
           effectiveAt: "2026-03-16T00:00:00Z",
           hostedInvoiceUrl: null,
         });
@@ -2466,7 +2466,7 @@ describe("organization billing settings", () => {
           changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
         });
         return respond(200, {
-          status: "pending_payment",
+          status: "processing",
           effectiveAt: "2026-03-16T00:00:00Z",
           hostedInvoiceUrl: null,
         });
@@ -3992,6 +3992,74 @@ describe("organization billing settings", () => {
     },
   );
 
+  it("reviews a saved-card plan purchase in app and opens its unpaid invoice", async () => {
+    let requestedTier: "pro" | "team" | null = null;
+    let supportsInAppPreview: boolean | undefined;
+    let confirmedPreviewToken: string | null = null;
+    const hostedInvoiceUrl =
+      "https://invoice.stripe.com/plan-purchase-authentication";
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Plan Preview Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, noActiveBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        requestedTier = body.tier;
+        supportsInAppPreview = body.supportsInAppPreview;
+        return respond(200, {
+          status: "preview",
+          purchaseType: "plan",
+          tier: body.tier,
+          immediateAmountCents: 16_000,
+          nextRecurringAmountCents: 16_000,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: "plan-preview-token",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingCheckoutContract.confirm,
+      ({ body, respond }) => {
+        confirmedPreviewToken = body.previewToken;
+        return respond(200, {
+          status: "pending_payment",
+          hostedInvoiceUrl,
+        });
+      },
+    );
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    const locationBeforePurchase = window.location.href;
+    click(screen.getByText("Upgrade"));
+    await screen.findByText("Compare plans");
+    click(screen.getByText("Start with Team"));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Order summary",
+    });
+    expect(within(reviewDialog).getByText("Team")).toBeInTheDocument();
+    expect(within(reviewDialog).getAllByText("$160.00")).toHaveLength(2);
+    expect(requestedTier).toBe("team");
+    expect(supportsInAppPreview).toBeTruthy();
+    expect(window.location.href).toBe(locationBeforePurchase);
+
+    click(buttonByText("Confirm", reviewDialog));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(hostedInvoiceUrl);
+    });
+    expect(confirmedPreviewToken).toBe("plan-preview-token");
+  });
+
   it("previews and confirms a saved-billing credit purchase in the app", async () => {
     const checkoutReady = createDeferredPromise<void>(context.signal);
     let startRequest: CreditCheckoutRequest | null = null;
@@ -4067,7 +4135,7 @@ describe("organization billing settings", () => {
     expect(within(reviewDialog).getByText("+20,000")).toBeInTheDocument();
     expect(startRequest).toMatchObject({
       credits: 20_000,
-      previewExistingBilling: true,
+      supportsInAppPreview: true,
     });
     expect(window.location.href).toBe(locationBeforePurchase);
 

@@ -4,6 +4,7 @@ import { orgConcurrencyEntitlements } from "@okouai/db/schema/org-concurrency-en
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { usagePackSubscriptions } from "@okouai/db/schema/usage-pack-subscription";
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
@@ -41,6 +42,7 @@ import {
 import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
+  BILLING_PURCHASE_PURPOSE,
   BILLING_RESTORE_PURPOSE,
 } from "./billing-payment-method.service";
 import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
@@ -199,6 +201,11 @@ interface CheckoutSubscriptionContext {
 interface BillingRestoreCheckoutOutcome {
   readonly handled: boolean;
   readonly orgId: string | null;
+}
+
+interface CheckoutCompletedOutcome {
+  readonly drainOrgId: string | null;
+  readonly orgIds: readonly string[];
 }
 
 interface InvoicePaidOrg {
@@ -2118,6 +2125,25 @@ function billingRestoreCheckoutMetadata(
   return { orgId, subscriptionId };
 }
 
+function billingPurchaseCheckoutMetadata(
+  session: CheckoutSessionInput,
+): { readonly orgId: string; readonly subscriptionId: string } | null {
+  if (session.metadata?.purpose !== BILLING_PURCHASE_PURPOSE) {
+    return null;
+  }
+  const orgId = session.metadata.orgId;
+  const subscriptionId = session.metadata.subscriptionId;
+  if (!orgId || !subscriptionId) {
+    L.warn("billing purchase checkout missing metadata", {
+      sessionId: session.id,
+      orgId: orgId ?? null,
+      subscriptionId: subscriptionId ?? null,
+    });
+    return null;
+  }
+  return { orgId, subscriptionId };
+}
+
 function billingDowngradeTargetTier(
   value: string | undefined,
 ): BillingDowngradeCheckoutTargetTier | null {
@@ -2155,11 +2181,88 @@ function billingDowngradeCheckoutMetadata(session: CheckoutSessionInput): {
   return { orgId, subscriptionId, targetTier };
 }
 
+async function billingSetupSubscriptionState(
+  db: Db,
+  metadata: { readonly orgId: string; readonly subscriptionId: string },
+  subscriptionScope: "plan" | "purchase",
+): Promise<{
+  readonly org:
+    | {
+        readonly stripeCustomerId: string | null;
+        readonly stripeSubscriptionId: string | null;
+      }
+    | undefined;
+  readonly subscriptionMatches: boolean;
+  readonly expectedCustomerId: string | null;
+}> {
+  const [org] = await db
+    .select({
+      stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, metadata.orgId))
+    .limit(1);
+  if (subscriptionScope === "plan") {
+    return {
+      org,
+      subscriptionMatches:
+        org?.stripeSubscriptionId === metadata.subscriptionId,
+      expectedCustomerId: org?.stripeCustomerId ?? null,
+    };
+  }
+
+  const [usagePackSubscriptionsRows, concurrencySubscriptionsRows] =
+    await Promise.all([
+      db
+        .select({ stripeCustomerId: usagePackSubscriptions.stripeCustomerId })
+        .from(usagePackSubscriptions)
+        .where(
+          and(
+            eq(usagePackSubscriptions.orgId, metadata.orgId),
+            eq(
+              usagePackSubscriptions.stripeSubscriptionId,
+              metadata.subscriptionId,
+            ),
+          ),
+        )
+        .limit(1),
+      db
+        .select({
+          stripeSubscriptionId:
+            orgConcurrencySubscriptions.stripeSubscriptionId,
+        })
+        .from(orgConcurrencySubscriptions)
+        .where(
+          and(
+            eq(orgConcurrencySubscriptions.orgId, metadata.orgId),
+            eq(
+              orgConcurrencySubscriptions.stripeSubscriptionId,
+              metadata.subscriptionId,
+            ),
+          ),
+        )
+        .limit(1),
+    ]);
+  const usagePackSubscription = usagePackSubscriptionsRows[0];
+  const concurrencySubscription = concurrencySubscriptionsRows[0];
+  return {
+    org,
+    subscriptionMatches:
+      org?.stripeSubscriptionId === metadata.subscriptionId ||
+      usagePackSubscription !== undefined ||
+      concurrencySubscription !== undefined,
+    expectedCustomerId:
+      org?.stripeCustomerId ?? usagePackSubscription?.stripeCustomerId ?? null,
+  };
+}
+
 async function applyBillingSetupPaymentMethod(
   db: Db,
   session: CheckoutSessionInput,
   metadata: { readonly orgId: string; readonly subscriptionId: string },
   logContext: string,
+  subscriptionScope: "plan" | "purchase" = "plan",
 ): Promise<boolean> {
   if (session.mode !== "setup") {
     L.warn(`billing ${logContext} checkout completed with unexpected mode`, {
@@ -2178,19 +2281,13 @@ async function applyBillingSetupPaymentMethod(
     return false;
   }
 
-  const [org] = await db
-    .select({
-      stripeCustomerId: orgMetadata.stripeCustomerId,
-      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, metadata.orgId))
-    .limit(1);
+  const { org, subscriptionMatches, expectedCustomerId } =
+    await billingSetupSubscriptionState(db, metadata, subscriptionScope);
 
   if (
     !org ||
-    org.stripeSubscriptionId !== metadata.subscriptionId ||
-    (org.stripeCustomerId !== null && org.stripeCustomerId !== customerId)
+    !subscriptionMatches ||
+    (expectedCustomerId !== null && expectedCustomerId !== customerId)
   ) {
     L.warn(
       `billing ${logContext} checkout no longer matches org billing state`,
@@ -2201,6 +2298,7 @@ async function applyBillingSetupPaymentMethod(
         metadataSubscriptionId: metadata.subscriptionId,
         orgStripeCustomerId: org?.stripeCustomerId ?? null,
         orgStripeSubscriptionId: org?.stripeSubscriptionId ?? null,
+        subscriptionScope,
       },
     );
     return false;
@@ -2254,6 +2352,27 @@ async function handleBillingRestoreCheckoutCompleted(
   }
 
   return { handled: true, orgId: metadata.orgId };
+}
+
+async function handleBillingPurchaseCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingPurchaseCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  const paymentMethodSet = await applyBillingSetupPaymentMethod(
+    db,
+    session,
+    metadata,
+    "purchase",
+    "purchase",
+  );
+  return {
+    handled: true,
+    orgId: paymentMethodSet ? metadata.orgId : null,
+  };
 }
 
 async function handleBillingDowngradeCheckoutCompleted(
@@ -3447,15 +3566,48 @@ async function processSubscriptionInvoicePaid(
   return true;
 }
 
+function billingSetupCheckoutOutcome(
+  result: BillingRestoreCheckoutOutcome,
+): CheckoutCompletedOutcome {
+  return {
+    drainOrgId: null,
+    orgIds: result.orgId === null ? [] : [result.orgId],
+  };
+}
+
+async function handleBillingSetupCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<CheckoutCompletedOutcome | null> {
+  const restoreResult = await handleBillingRestoreCheckoutCompleted(
+    db,
+    session,
+  );
+  if (restoreResult.handled) {
+    return billingSetupCheckoutOutcome(restoreResult);
+  }
+  const downgradeResult = await handleBillingDowngradeCheckoutCompleted(
+    db,
+    session,
+  );
+  if (downgradeResult.handled) {
+    return billingSetupCheckoutOutcome(downgradeResult);
+  }
+  const purchaseResult = await handleBillingPurchaseCheckoutCompleted(
+    db,
+    session,
+  );
+  return purchaseResult.handled
+    ? billingSetupCheckoutOutcome(purchaseResult)
+    : null;
+}
+
 async function handleCheckoutCompleted(
   db: Db,
   getClerk: ClerkClientProvider,
   session: CheckoutSessionInput,
   paidAt: Date,
-): Promise<{
-  readonly drainOrgId: string | null;
-  readonly orgIds: readonly string[];
-}> {
+): Promise<CheckoutCompletedOutcome> {
   const usagePackInvitation = await handleUsagePackInvitationCheckoutPaid(
     db,
     getClerk(),
@@ -3469,30 +3621,12 @@ async function handleCheckoutCompleted(
     };
   }
 
-  const billingRestoreResult = await handleBillingRestoreCheckoutCompleted(
+  const billingSetupResult = await handleBillingSetupCheckoutCompleted(
     db,
     session,
   );
-  if (billingRestoreResult.handled) {
-    return {
-      drainOrgId: null,
-      orgIds:
-        billingRestoreResult.orgId === null ? [] : [billingRestoreResult.orgId],
-    };
-  }
-
-  const billingDowngradeResult = await handleBillingDowngradeCheckoutCompleted(
-    db,
-    session,
-  );
-  if (billingDowngradeResult.handled) {
-    return {
-      drainOrgId: null,
-      orgIds:
-        billingDowngradeResult.orgId === null
-          ? []
-          : [billingDowngradeResult.orgId],
-    };
+  if (billingSetupResult) {
+    return billingSetupResult;
   }
 
   if (session.metadata?.purpose === "credit_purchase") {

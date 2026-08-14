@@ -342,8 +342,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SavedBillingCreditPurchase]: {
     maintainer: "yuma@vm0.ai",
     description:
-      "Preview saved-billing credit purchases and confirm them in the app.",
-    enabled: true,
+      "Preview purchases with saved billing and confirm them in the app.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",

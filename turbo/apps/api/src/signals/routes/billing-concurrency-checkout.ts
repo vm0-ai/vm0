@@ -3,6 +3,7 @@ import { zeroBillingConcurrencyCheckoutContract } from "@okouai/api-contracts/co
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
+import { nowDate } from "../../lib/time";
 import {
   badRequestMessage,
   conflict,
@@ -19,9 +20,16 @@ import {
 } from "../services/org-concurrency-entitlements.service";
 import {
   previewInitialConcurrencyPurchase$,
+  orgPlanSubscriptionId,
   startConcurrencyPurchase$,
 } from "../services/zero-billing-checkout.service";
 import { previewConcurrencySubscriptionChange$ } from "../services/zero-billing-concurrency-subscription.service";
+import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
+import {
+  revalidateBillingPurchase,
+  routeBillingPurchasePreview,
+} from "../services/zero-billing-payment-method.service";
+import { getStripeClient } from "../external/stripe-client";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -83,6 +91,118 @@ async function loadConcurrencyPurchaseTarget(
   };
 }
 
+type ReadyConcurrencyPurchaseTarget = Extract<
+  ConcurrencyPurchaseTarget,
+  { readonly ok: true }
+>;
+
+async function loadConcurrencyPaymentPreview(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly target: ReadyConcurrencyPurchaseTarget;
+    readonly quantity: number;
+    readonly supportsInAppPreview: boolean;
+    readonly returnUrl: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<
+  | { readonly kind: "missing_subscription" }
+  | {
+      readonly kind: "ready";
+      readonly paymentMethodPreviewToken?: string;
+      readonly checkoutUrl?: string;
+    }
+> {
+  const subscriptionId =
+    args.target.existingSubscription?.id ??
+    (await orgPlanSubscriptionId(args.db, args.orgId));
+  signal.throwIfAborted();
+  if (!subscriptionId) {
+    return { kind: "missing_subscription" };
+  }
+  if (!args.supportsInAppPreview || !args.returnUrl) {
+    return { kind: "ready" };
+  }
+  const targetQuantity = args.target.existingSubscription
+    ? args.target.existingSubscription.quantity + args.quantity
+    : args.quantity;
+  const route = await routeBillingPurchasePreview(
+    {
+      stripe: getStripeClient(),
+      orgId: args.orgId,
+      customerId: null,
+      subscriptionId,
+      operation: "concurrency",
+      operationId: `${subscriptionId}:${targetQuantity}`,
+      returnUrl: args.returnUrl,
+    },
+    signal,
+  );
+  return route.kind === "checkout"
+    ? { kind: "ready", checkoutUrl: route.url }
+    : {
+        kind: "ready",
+        paymentMethodPreviewToken: route.paymentMethodPreviewToken,
+      };
+}
+
+async function revalidateConcurrencyPaymentPreview(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly target: ReadyConcurrencyPurchaseTarget;
+    readonly quantity: number;
+    readonly paymentMethodPreviewToken: string;
+  },
+  signal: AbortSignal,
+): Promise<
+  | { readonly kind: "continue" }
+  | { readonly kind: "invalid_preview" }
+  | { readonly kind: "checkout"; readonly url: string }
+> {
+  const subscriptionId =
+    args.target.existingSubscription?.id ??
+    (await orgPlanSubscriptionId(args.db, args.orgId));
+  signal.throwIfAborted();
+  const targetQuantity = args.target.existingSubscription
+    ? args.target.existingSubscription.quantity + args.quantity
+    : args.quantity;
+  const preview = parseBillingPaymentMethodPreviewToken(
+    args.paymentMethodPreviewToken,
+  );
+  if (
+    !subscriptionId ||
+    !preview ||
+    preview.operation !== "concurrency" ||
+    preview.operationId !== `${subscriptionId}:${targetQuantity}` ||
+    preview.orgId !== args.orgId ||
+    preview.subscriptionId !== subscriptionId ||
+    new Date(preview.expiresAt) <= nowDate()
+  ) {
+    return { kind: "invalid_preview" };
+  }
+  const revalidated = await revalidateBillingPurchase(
+    {
+      stripe: getStripeClient(),
+      orgId: args.orgId,
+      customerId: preview.customerId,
+      subscriptionId,
+      paymentMethodId: preview.paymentMethodId,
+      operation: preview.operation,
+      operationId: preview.operationId,
+      returnUrl: preview.returnUrl,
+    },
+    signal,
+  );
+  if (revalidated.kind === "invalid_preview") {
+    return { kind: "invalid_preview" };
+  }
+  return revalidated.kind === "checkout"
+    ? { kind: "checkout", url: revalidated.url }
+    : { kind: "continue" };
+}
+
 const concurrencyCheckoutPreviewAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -98,6 +218,15 @@ const concurrencyCheckoutPreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
+    const { supportsInAppPreview, returnUrl } = bodyResult.data;
+    if (
+      supportsInAppPreview === true &&
+      (!returnUrl || !billingRedirectAllowed(returnUrl))
+    ) {
+      return badRequestMessage(
+        "returnUrl must match the platform origin for in-app billing",
+      );
+    }
 
     const target = await loadConcurrencyPurchaseTarget(
       get(db$),
@@ -106,6 +235,23 @@ const concurrencyCheckoutPreviewAuthed$ = command(
     );
     if (!target.ok) {
       return badRequestMessage(target.message);
+    }
+
+    const paymentPreview = await loadConcurrencyPaymentPreview(
+      {
+        db: get(db$),
+        orgId: auth.orgId,
+        target,
+        quantity: bodyResult.data.quantity,
+        supportsInAppPreview: supportsInAppPreview === true,
+        returnUrl,
+      },
+      signal,
+    );
+    if (paymentPreview.kind === "missing_subscription") {
+      return badRequestMessage(
+        "An active Plan subscription is required to buy concurrency",
+      );
     }
 
     const result = target.existingSubscription
@@ -158,7 +304,21 @@ const concurrencyCheckoutPreviewAuthed$ = command(
       }
     }
 
-    return { status: 200 as const, body: result.preview };
+    return {
+      status: 200 as const,
+      body: {
+        ...result.preview,
+        ...(paymentPreview.paymentMethodPreviewToken
+          ? {
+              paymentMethodPreviewToken:
+                paymentPreview.paymentMethodPreviewToken,
+            }
+          : {}),
+        ...(paymentPreview.checkoutUrl
+          ? { checkoutUrl: paymentPreview.checkoutUrl }
+          : {}),
+      },
+    };
   },
 );
 
@@ -196,7 +356,8 @@ const concurrencyCheckoutAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const { quantity, successUrl, cancelUrl } = bodyResult.data;
+    const { quantity, paymentMethodPreviewToken, successUrl, cancelUrl } =
+      bodyResult.data;
 
     const db = get(db$);
     if (
@@ -211,6 +372,25 @@ const concurrencyCheckoutAuthed$ = command(
     const target = await loadConcurrencyPurchaseTarget(db, auth.orgId, signal);
     if (!target.ok) {
       return badRequestMessage(target.message);
+    }
+
+    if (paymentMethodPreviewToken) {
+      const revalidated = await revalidateConcurrencyPaymentPreview(
+        {
+          db,
+          orgId: auth.orgId,
+          target,
+          quantity,
+          paymentMethodPreviewToken,
+        },
+        signal,
+      );
+      if (revalidated.kind === "invalid_preview") {
+        return conflict("Concurrency purchase preview is no longer valid");
+      }
+      if (revalidated.kind === "checkout") {
+        return { status: 200 as const, body: { url: revalidated.url } };
+      }
     }
 
     const purchase = await set(

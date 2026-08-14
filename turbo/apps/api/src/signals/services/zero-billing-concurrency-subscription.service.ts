@@ -32,6 +32,7 @@ import {
   activeConcurrencySubscriptions,
   isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
+import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
 
 const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
@@ -415,22 +416,26 @@ function expandedLatestInvoice(
     : null;
 }
 
-function appliedConcurrencyChangeResponse(
+async function appliedConcurrencyChangeResponse(
+  stripe: StripeClient,
   subscription: StripeSubscription,
-): ConcurrencySubscriptionChangeResponse {
-  if (!subscription.pending_update) {
+  targetQuantity: number,
+  signal: AbortSignal,
+): Promise<ConcurrencySubscriptionChangeResponse> {
+  const invoice = expandedLatestInvoice(subscription);
+  if (!invoice) {
     return { status: "processing", hostedInvoiceUrl: null };
   }
-  const invoice = expandedLatestInvoice(subscription);
-  if (!invoice?.hosted_invoice_url) {
-    throw new Error(
-      "Pending concurrency subscription update has no hosted invoice URL",
-    );
+  const result = await completeBillingOperationInvoice(
+    stripe,
+    invoice,
+    `concurrency:${subscription.id}:${targetQuantity}`,
+    signal,
+  );
+  if (result.status === "pending_payment") {
+    return result;
   }
-  return {
-    status: "pending_payment",
-    hostedInvoiceUrl: invoice.hosted_invoice_url,
-  };
+  return { status: "processing", hostedInvoiceUrl: null };
 }
 
 export const addStripeConcurrencySubscriptionItem$ = command(
@@ -461,7 +466,12 @@ export const addStripeConcurrencySubscriptionItem$ = command(
       return pendingItem?.quantity === args.quantity
         ? {
             ok: true,
-            response: appliedConcurrencyChangeResponse(subscription),
+            response: await appliedConcurrencyChangeResponse(
+              stripe,
+              subscription,
+              args.quantity,
+              signal,
+            ),
             subscription,
           }
         : { ok: false, reason: "pending_update" };
@@ -503,7 +513,12 @@ export const addStripeConcurrencySubscriptionItem$ = command(
     signal.throwIfAborted();
     return {
       ok: true,
-      response: appliedConcurrencyChangeResponse(updatedSubscription),
+      response: await appliedConcurrencyChangeResponse(
+        stripe,
+        updatedSubscription,
+        args.quantity,
+        signal,
+      ),
       subscription: updatedSubscription,
     };
   },
@@ -902,7 +917,12 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       return pendingItem?.quantity === targetQuantity
         ? {
             ok: true,
-            response: appliedConcurrencyChangeResponse(subscription),
+            response: await appliedConcurrencyChangeResponse(
+              stripe,
+              subscription,
+              targetQuantity,
+              signal,
+            ),
             subscription,
           }
         : { ok: false, reason: "pending_update" };
@@ -966,7 +986,12 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
     signal.throwIfAborted();
     return {
       ok: true,
-      response: appliedConcurrencyChangeResponse(updatedSubscription),
+      response: await appliedConcurrencyChangeResponse(
+        stripe,
+        updatedSubscription,
+        targetQuantity,
+        signal,
+      ),
       subscription: updatedSubscription,
     };
   },
@@ -1029,6 +1054,11 @@ export const changeConcurrencySubscription$ = command(
       signal,
     );
     if (result.ok) {
+      if (result.response.status === "checkout_required") {
+        throw new Error(
+          "Stripe concurrency change unexpectedly required Checkout",
+        );
+      }
       const scheduled =
         args.quantity < subscription.quantity &&
         result.response.effectiveAt !== undefined;
@@ -1158,6 +1188,11 @@ export const reduceConcurrencySubscription$ = command(
             ? "pending_update"
             : "not_reduction",
       };
+    }
+    if (result.response.status === "checkout_required") {
+      throw new Error(
+        "Stripe concurrency reduction unexpectedly required Checkout",
+      );
     }
     await writeScheduledConcurrencyChange(set(writeDb$), {
       orgId: args.orgId,

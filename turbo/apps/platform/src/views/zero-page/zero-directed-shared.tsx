@@ -8,6 +8,7 @@ import {
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { Link } from "../router/link.tsx";
 import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
+import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./zero-sidebar-account";
 
@@ -27,6 +28,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
         }}
       />
       <CreditPurchaseConfirmDialog />
+      <SubscriptionPurchaseConfirmDialog />
       <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
         <div className="flex-1" />
         <div className="p-2">

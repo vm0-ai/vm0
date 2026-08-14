@@ -68,6 +68,7 @@ export interface StripeSubscription {
   readonly schedule?: StripeRef;
   readonly discounts?: readonly StripeRef[];
   readonly default_payment_method?: StripeRef;
+  readonly default_source?: StripeRef;
   readonly latest_invoice: string | StripeInvoice | null;
   readonly pending_update?: {
     readonly expires_at: number;
@@ -145,6 +146,7 @@ export interface StripeSubscriptionUpdateParams {
   readonly cancel_at?: number | null;
   readonly cancel_at_period_end?: boolean;
   readonly metadata?: StripeMetadataParam;
+  readonly default_payment_method?: string;
   readonly items?: StripeSubscriptionUpdateItemParam[];
   readonly payment_behavior?:
     | "allow_incomplete"
@@ -152,6 +154,20 @@ export interface StripeSubscriptionUpdateParams {
     | "pending_if_incomplete";
   readonly proration_behavior?: "always_invoice" | "create_prorations" | "none";
   readonly proration_date?: number;
+  readonly expand?: string[];
+}
+
+export interface StripeSubscriptionCreateParams {
+  readonly customer: string;
+  readonly items: {
+    readonly price: string;
+    readonly quantity?: number;
+  }[];
+  readonly default_payment_method?: string;
+  readonly default_source?: string;
+  readonly metadata: StripeMetadataParam;
+  readonly payment_behavior: "default_incomplete";
+  readonly trial_period_days?: number;
   readonly expand?: string[];
 }
 
@@ -169,6 +185,7 @@ export interface StripeCustomer {
   readonly invoice_settings?: {
     readonly default_payment_method?: StripeRef;
   } | null;
+  readonly default_source?: StripeRef;
 }
 
 export interface StripeDeletedCustomer {
@@ -379,6 +396,10 @@ export type StripeSubscriptionListStatus =
   | "unpaid";
 
 export interface StripeSubscriptionsApi {
+  create(
+    params: StripeSubscriptionCreateParams,
+    options?: StripeRequestOptions,
+  ): Promise<StripeSubscription>;
   retrieve(
     id: string,
     params?: { expand?: string[] },
@@ -458,6 +479,7 @@ export interface StripeInvoicesApi {
       customer: string;
       auto_advance?: boolean;
       default_payment_method?: string;
+      default_source?: string;
       discounts?: "" | { readonly coupon: string }[];
       metadata?: StripeMetadataParam;
     },

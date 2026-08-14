@@ -55,6 +55,7 @@ const creditCheckoutAuthed$ = command(
       cancelUrl,
       autoRecharge,
       previewExistingBilling,
+      supportsInAppPreview,
     } = bodyResult.data;
 
     const capabilities = await loadOrgPlanCapabilities(get(db$), auth.orgId);
@@ -112,10 +113,10 @@ const creditCheckoutAuthed$ = command(
     // hosted Checkout, while old app builds can omit this opt-in for about two
     // days during rollout. Remove the rollout compatibility after #26842; keep
     // an explicit hosted-checkout contract for CLI before narrowing this field.
-    if (previewExistingBilling === true) {
+    if (supportsInAppPreview === true || previewExistingBilling === true) {
       const preview = await set(
         previewExistingBillingCreditPurchase$,
-        { orgId: auth.orgId, credits },
+        { orgId: auth.orgId, credits, successUrl, cancelUrl },
         signal,
       );
       if (preview) {

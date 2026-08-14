@@ -1,6 +1,8 @@
 import {
+  type BillingPurchaseConfirmResponse,
   USAGE_PACKS_USD,
   type UsagePackCatalogItem,
+  type UsagePackPurchasePreviewResponse,
   type UsagePackUsd,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -11,6 +13,7 @@ import {
   usagePackSubscriptions,
 } from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
+import { z } from "zod";
 import {
   and,
   desc,
@@ -31,8 +34,10 @@ import { writeDb$, type Db } from "../external/db";
 import {
   getStripeClient,
   type StripeClient,
+  type StripeInvoice,
   type StripeMetadataParam,
   type StripePrice,
+  type StripeSubscription,
 } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
@@ -50,13 +55,24 @@ import {
   reconcileUsagePackSubscriptionChanges,
 } from "./usage-pack-plan-change.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
+import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import {
+  billingPreviewExpiresAt,
+  createBillingPreviewToken,
+  parseBillingPreviewToken,
+} from "./billing-purchase-preview-token.service";
+import {
+  activeUsagePackPlanPriceId,
   activeUsagePackPriceId,
   isUsagePackPlanPriceId,
   tierForKnownPriceId,
   type SubscriptionCheckoutTier,
   usagePackUsdForKnownPriceId,
 } from "./zero-billing-checkout.service";
+import {
+  resolveBillingPurchaseRoute,
+  stripeBillingPurchasePaymentParams,
+} from "./zero-billing-payment-method.service";
 
 export const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY = "usagePackSubscriptionId";
@@ -111,6 +127,47 @@ interface CreateUsagePackCheckoutSessionArgs {
   readonly cancelUrl: string;
   readonly adAttribution?: Readonly<Record<string, string | undefined>>;
 }
+
+interface StartUsagePackPurchaseArgs extends CreateUsagePackCheckoutSessionArgs {
+  readonly supportsInAppPreview: boolean;
+  readonly sourceSubscriptionId: string | null;
+}
+
+type StartUsagePackPurchaseResult =
+  | { readonly status: "checkout"; readonly url: string }
+  | {
+      readonly status: "preview";
+      readonly preview: UsagePackPurchasePreviewResponse;
+    };
+
+type ConfirmUsagePackPurchaseResult =
+  | {
+      readonly status: "confirmed";
+      readonly response: BillingPurchaseConfirmResponse;
+    }
+  | { readonly status: "invalid_preview" };
+
+const usagePackPurchasePreviewTokenSchema = z.object({
+  version: z.literal(1),
+  usagePackSubscriptionId: z.uuid(),
+  orgId: z.string().min(1),
+  customerId: z.string().min(1),
+  sourceSubscriptionId: z.string().min(1).nullable(),
+  paymentMethodId: z.string().min(1),
+  tier: z.enum(["pro", "team"]),
+  planPriceId: z.string().min(1),
+  immediateAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  successUrl: z.string().url(),
+  cancelUrl: z.string().url(),
+  adAttribution: z.record(z.string(), z.string()).optional(),
+  expiresAt: z.iso.datetime(),
+});
+
+type UsagePackPurchasePreviewToken = z.infer<
+  typeof usagePackPurchasePreviewTokenSchema
+>;
 
 type StripeObjectReference = string | { readonly id: string };
 
@@ -390,6 +447,41 @@ export async function usagePackSubscriptionSchemaAvailable(
   return state?.available ?? false;
 }
 
+export async function activeUsagePackBillingContext(
+  db: Pick<Db, "select">,
+  orgId: string,
+): Promise<{
+  readonly usagePackSubscriptionId: string;
+  readonly stripeCustomerId: string;
+  readonly stripeSubscriptionId: string;
+} | null> {
+  const [subscription] = await db
+    .select({
+      usagePackSubscriptionId: usagePackSubscriptions.id,
+      stripeCustomerId: usagePackSubscriptions.stripeCustomerId,
+      stripeSubscriptionId: usagePackSubscriptions.stripeSubscriptionId,
+    })
+    .from(usagePackSubscriptions)
+    .where(
+      and(
+        eq(usagePackSubscriptions.orgId, orgId),
+        isNotNull(usagePackSubscriptions.stripeSubscriptionId),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+        ]),
+      ),
+    )
+    .orderBy(desc(usagePackSubscriptions.updatedAt))
+    .limit(1);
+  return subscription?.stripeSubscriptionId
+    ? {
+        usagePackSubscriptionId: subscription.usagePackSubscriptionId,
+        stripeCustomerId: subscription.stripeCustomerId,
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+      }
+    : null;
+}
+
 export function usagePackSubscriptionMetadata(args: {
   readonly orgId: string;
   readonly tier: SubscriptionCheckoutTier;
@@ -590,7 +682,100 @@ async function resolvePendingUsagePackCheckout(
   return { kind: "create" };
 }
 
-export const createUsagePackCheckoutSession$ = command(
+function definedAttribution(
+  attribution: Readonly<Record<string, string | undefined>> | undefined,
+): Record<string, string> | undefined {
+  const entries = Object.entries(attribution ?? {}).filter(
+    (entry): entry is [string, string] => {
+      return entry[1] !== undefined;
+    },
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+async function createUsagePackPurchaseSnapshot(
+  db: Db,
+  args: CreateUsagePackCheckoutSessionArgs,
+  customerId: string,
+): Promise<string> {
+  return await db.transaction(async (tx) => {
+    const [subscription] = await tx
+      .insert(usagePackSubscriptions)
+      .values({
+        orgId: args.orgId,
+        tier: args.tier,
+        stripePlanPriceId: args.planPriceId,
+        stripeCustomerId: customerId,
+      })
+      .returning({ id: usagePackSubscriptions.id });
+    if (!subscription) {
+      throw new Error("Failed to create usage pack subscription snapshot");
+    }
+    await tx.insert(usagePackAllocations).values(
+      args.allocations.map((allocation) => {
+        return {
+          usagePackSubscriptionId: subscription.id,
+          orgId: args.orgId,
+          usagePackUsd: allocation.usagePackUsd,
+          stripePriceId: allocation.stripePriceId,
+          ...("userId" in allocation
+            ? { userId: allocation.userId }
+            : { invitationId: allocation.invitationId }),
+        };
+      }),
+    );
+    return subscription.id;
+  });
+}
+
+async function createUsagePackCheckoutForSnapshot(
+  args: {
+    readonly db: Db;
+    readonly stripe: StripeClient;
+    readonly purchase: CreateUsagePackCheckoutSessionArgs;
+    readonly customerId: string;
+    readonly usagePackSubscriptionId: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
+  const metadata = usagePackCheckoutMetadata({
+    orgId: args.purchase.orgId,
+    tier: args.purchase.tier,
+    planPriceId: args.purchase.planPriceId,
+    usagePackSubscriptionId: args.usagePackSubscriptionId,
+    adAttribution: args.purchase.adAttribution,
+  });
+  const session = await args.stripe.checkout.sessions.create(
+    {
+      mode: "subscription",
+      customer: args.customerId,
+      line_items: [
+        { price: args.purchase.planPriceId, quantity: 1 },
+        ...usagePackLineItems(args.purchase.allocations),
+      ],
+      allow_promotion_codes: true,
+      success_url: args.purchase.successUrl,
+      cancel_url: args.purchase.cancelUrl,
+      metadata,
+      subscription_data: { metadata },
+    },
+    {
+      idempotencyKey: `usage-pack-checkout:${args.usagePackSubscriptionId}`,
+    },
+  );
+  signal.throwIfAborted();
+  await args.db
+    .update(usagePackSubscriptions)
+    .set({ stripeCheckoutSessionId: session.id, updatedAt: nowDate() })
+    .where(eq(usagePackSubscriptions.id, args.usagePackSubscriptionId));
+  signal.throwIfAborted();
+  if (!session.url) {
+    throw new Error("Stripe checkout session did not return a URL");
+  }
+  return session.url;
+}
+
+const createUsagePackCheckoutSession$ = command(
   async (
     { set },
     args: CreateUsagePackCheckoutSessionArgs,
@@ -599,21 +784,17 @@ export const createUsagePackCheckoutSession$ = command(
     if (args.allocations.length === 0) {
       throw new Error("Usage pack checkout requires at least one allocation");
     }
-
     await set(
       persistOrgAcquisitionAttribution$,
       { orgId: args.orgId, attribution: args.adAttribution },
       signal,
     );
-    signal.throwIfAborted();
-
     const customerId = await set(
       getOrCreateStripeCustomer$,
       { orgId: args.orgId, metadata: args.adAttribution },
       signal,
     );
     signal.throwIfAborted();
-
     const db = set(writeDb$);
     const pending = await resolvePendingUsagePackCheckout(
       db,
@@ -627,75 +808,377 @@ export const createUsagePackCheckoutSession$ = command(
     const usagePackSubscriptionId =
       pending.kind === "reuse"
         ? pending.usagePackSubscriptionId
-        : await db.transaction(async (tx) => {
-            const [subscription] = await tx
-              .insert(usagePackSubscriptions)
-              .values({
-                orgId: args.orgId,
-                tier: args.tier,
-                stripePlanPriceId: args.planPriceId,
-                stripeCustomerId: customerId,
-              })
-              .returning({ id: usagePackSubscriptions.id });
-            if (!subscription) {
-              throw new Error(
-                "Failed to create usage pack subscription snapshot",
-              );
-            }
-
-            await tx.insert(usagePackAllocations).values(
-              args.allocations.map((allocation) => {
-                return {
-                  usagePackSubscriptionId: subscription.id,
-                  orgId: args.orgId,
-                  usagePackUsd: allocation.usagePackUsd,
-                  stripePriceId: allocation.stripePriceId,
-                  ...("userId" in allocation
-                    ? { userId: allocation.userId }
-                    : { invitationId: allocation.invitationId }),
-                };
-              }),
-            );
-            return subscription.id;
-          });
+        : await createUsagePackPurchaseSnapshot(db, args, customerId);
     signal.throwIfAborted();
+    return await createUsagePackCheckoutForSnapshot(
+      {
+        db,
+        stripe: getStripeClient(),
+        purchase: args,
+        customerId,
+        usagePackSubscriptionId,
+      },
+      signal,
+    );
+  },
+);
 
-    const metadata = usagePackCheckoutMetadata({
+export const startUsagePackPurchase$ = command(
+  async (
+    { set },
+    args: StartUsagePackPurchaseArgs,
+    signal: AbortSignal,
+  ): Promise<StartUsagePackPurchaseResult> => {
+    if (!args.supportsInAppPreview) {
+      return {
+        status: "checkout",
+        url: await set(createUsagePackCheckoutSession$, args, signal),
+      };
+    }
+    if (args.allocations.length === 0) {
+      throw new Error("Usage pack checkout requires at least one allocation");
+    }
+    await set(
+      persistOrgAcquisitionAttribution$,
+      { orgId: args.orgId, attribution: args.adAttribution },
+      signal,
+    );
+    const customerId = await set(
+      getOrCreateStripeCustomer$,
+      { orgId: args.orgId, metadata: args.adAttribution },
+      signal,
+    );
+    signal.throwIfAborted();
+    const db = set(writeDb$);
+    const usagePackSubscriptionId = await createUsagePackPurchaseSnapshot(
+      db,
+      args,
+      customerId,
+    );
+    signal.throwIfAborted();
+    const stripe = getStripeClient();
+    const route = await resolveBillingPurchaseRoute(
+      {
+        stripe,
+        supportsInAppPreview: true,
+        customerId,
+        subscriptionId: args.sourceSubscriptionId,
+      },
+      signal,
+    );
+    if (route.kind === "checkout") {
+      return {
+        status: "checkout",
+        url: await createUsagePackCheckoutForSnapshot(
+          {
+            db,
+            stripe,
+            purchase: args,
+            customerId,
+            usagePackSubscriptionId,
+          },
+          signal,
+        ),
+      };
+    }
+    const items = [
+      { price: args.planPriceId, quantity: 1 },
+      ...usagePackLineItems(args.allocations),
+    ];
+    const invoice = await stripe.invoices.createPreview({
+      customer: route.customerId,
+      preview_mode: "next",
+      subscription_details: { items },
+    });
+    signal.throwIfAborted();
+    if (
+      !Number.isSafeInteger(invoice.amount_due) ||
+      invoice.amount_due < 0 ||
+      invoice.currency.length !== 3
+    ) {
+      throw new Error("Stripe usage pack purchase preview is invalid");
+    }
+    const expiresAt = billingPreviewExpiresAt();
+    const attribution = definedAttribution(args.adAttribution);
+    const payload: UsagePackPurchasePreviewToken = {
+      version: 1,
+      usagePackSubscriptionId,
       orgId: args.orgId,
+      customerId: route.customerId,
+      sourceSubscriptionId: args.sourceSubscriptionId,
+      paymentMethodId: route.paymentMethodId,
       tier: args.tier,
       planPriceId: args.planPriceId,
-      usagePackSubscriptionId,
-      adAttribution: args.adAttribution,
-    });
-    const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      line_items: [
-        { price: args.planPriceId, quantity: 1 },
-        ...usagePackLineItems(args.allocations),
-      ],
-      allow_promotion_codes: true,
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      metadata,
-      subscription_data: { metadata },
-    });
-    signal.throwIfAborted();
+      immediateAmountCents: invoice.amount_due,
+      nextRecurringAmountCents: invoice.amount_due,
+      currency: invoice.currency,
+      successUrl: args.successUrl,
+      cancelUrl: args.cancelUrl,
+      ...(attribution ? { adAttribution: attribution } : {}),
+      expiresAt,
+    };
+    return {
+      status: "preview",
+      preview: {
+        status: "preview",
+        purchaseType: "usage_pack",
+        tier: args.tier,
+        immediateAmountCents: invoice.amount_due,
+        nextRecurringAmountCents: invoice.amount_due,
+        currency: invoice.currency,
+        expiresAt,
+        previewToken: createBillingPreviewToken(payload),
+      },
+    };
+  },
+);
 
-    await db
-      .update(usagePackSubscriptions)
-      .set({
-        stripeCheckoutSessionId: session.id,
-        updatedAt: nowDate(),
-      })
-      .where(eq(usagePackSubscriptions.id, usagePackSubscriptionId));
-    signal.throwIfAborted();
+function expandedLatestInvoice(
+  subscription: StripeSubscription,
+): StripeInvoice | null {
+  return subscription.latest_invoice &&
+    typeof subscription.latest_invoice !== "string"
+    ? subscription.latest_invoice
+    : null;
+}
 
-    if (!session.url) {
-      throw new Error("Stripe checkout session did not return a URL");
+function checkoutAllocationsFromRows(
+  rows: readonly {
+    readonly usagePackUsd: number;
+    readonly stripePriceId: string;
+    readonly userId: string | null;
+    readonly invitationId: string | null;
+  }[],
+): readonly UsagePackCheckoutAllocation[] | null {
+  const allocations: UsagePackCheckoutAllocation[] = [];
+  for (const row of rows) {
+    if (!USAGE_PACKS_USD.includes(row.usagePackUsd as UsagePackUsd)) {
+      return null;
     }
-    return session.url;
+    const common = {
+      usagePackUsd: row.usagePackUsd as UsagePackUsd,
+      stripePriceId: row.stripePriceId,
+    };
+    if (row.userId && !row.invitationId) {
+      allocations.push({ ...common, userId: row.userId });
+      continue;
+    }
+    if (row.invitationId && !row.userId) {
+      allocations.push({ ...common, invitationId: row.invitationId });
+      continue;
+    }
+    return null;
+  }
+  return allocations;
+}
+
+async function loadUsagePackPurchaseSnapshot(
+  db: Db,
+  orgId: string,
+  preview: UsagePackPurchasePreviewToken,
+  signal: AbortSignal,
+): Promise<{
+  readonly subscription: UsagePackSubscriptionRow;
+  readonly allocations: readonly UsagePackCheckoutAllocation[];
+} | null> {
+  const [subscription] = await db
+    .select()
+    .from(usagePackSubscriptions)
+    .where(eq(usagePackSubscriptions.id, preview.usagePackSubscriptionId))
+    .limit(1);
+  const allocationRows = await db
+    .select({
+      usagePackUsd: usagePackAllocations.usagePackUsd,
+      stripePriceId: usagePackAllocations.stripePriceId,
+      userId: usagePackAllocations.userId,
+      invitationId: usagePackAllocations.invitationId,
+    })
+    .from(usagePackAllocations)
+    .where(
+      eq(
+        usagePackAllocations.usagePackSubscriptionId,
+        preview.usagePackSubscriptionId,
+      ),
+    );
+  signal.throwIfAborted();
+  const allocations = checkoutAllocationsFromRows(allocationRows);
+  if (
+    !subscription ||
+    subscription.orgId !== orgId ||
+    subscription.stripeCustomerId !== preview.customerId ||
+    subscription.tier !== preview.tier ||
+    subscription.stripePlanPriceId !== preview.planPriceId ||
+    !allocations ||
+    allocations.length === 0
+  ) {
+    return null;
+  }
+  return { subscription, allocations };
+}
+
+async function confirmUsagePackPurchaseSnapshot(
+  db: Db,
+  orgId: string,
+  preview: UsagePackPurchasePreviewToken,
+  snapshot: {
+    readonly subscription: UsagePackSubscriptionRow;
+    readonly allocations: readonly UsagePackCheckoutAllocation[];
+  },
+  signal: AbortSignal,
+): Promise<ConfirmUsagePackPurchaseResult> {
+  const { subscription, allocations } = snapshot;
+  const stripe = getStripeClient();
+  if (subscription.stripeSubscriptionId) {
+    const existing = await stripe.subscriptions.retrieve(
+      subscription.stripeSubscriptionId,
+      { expand: ["latest_invoice"] },
+    );
+    signal.throwIfAborted();
+    return {
+      status: "confirmed",
+      response: await completeBillingOperationInvoice(
+        stripe,
+        expandedLatestInvoice(existing),
+        `usage-pack:${preview.usagePackSubscriptionId}`,
+        signal,
+      ),
+    };
+  }
+  const purchase: CreateUsagePackCheckoutSessionArgs = {
+    orgId,
+    tier: preview.tier,
+    planPriceId: preview.planPriceId,
+    allocations,
+    successUrl: preview.successUrl,
+    cancelUrl: preview.cancelUrl,
+    adAttribution: preview.adAttribution,
+  };
+  const route = await resolveBillingPurchaseRoute(
+    {
+      stripe,
+      supportsInAppPreview: true,
+      customerId: preview.customerId,
+      subscriptionId: preview.sourceSubscriptionId,
+    },
+    signal,
+  );
+  if (route.kind === "checkout") {
+    return {
+      status: "confirmed",
+      response: {
+        status: "checkout_required",
+        checkoutUrl: await createUsagePackCheckoutForSnapshot(
+          {
+            db,
+            stripe,
+            purchase,
+            customerId: preview.customerId,
+            usagePackSubscriptionId: preview.usagePackSubscriptionId,
+          },
+          signal,
+        ),
+      },
+    };
+  }
+  if (
+    route.customerId !== preview.customerId ||
+    route.paymentMethodId !== preview.paymentMethodId
+  ) {
+    return { status: "invalid_preview" };
+  }
+  const items = [
+    { price: preview.planPriceId, quantity: 1 },
+    ...usagePackLineItems(allocations),
+  ];
+  const currentPreview = await stripe.invoices.createPreview({
+    customer: preview.customerId,
+    preview_mode: "next",
+    subscription_details: { items },
+  });
+  signal.throwIfAborted();
+  if (
+    currentPreview.amount_due !== preview.immediateAmountCents ||
+    currentPreview.currency !== preview.currency
+  ) {
+    return { status: "invalid_preview" };
+  }
+  const metadata = usagePackCheckoutMetadata({
+    orgId,
+    tier: preview.tier,
+    planPriceId: preview.planPriceId,
+    usagePackSubscriptionId: preview.usagePackSubscriptionId,
+    adAttribution: preview.adAttribution,
+  });
+  const created = await stripe.subscriptions.create(
+    {
+      customer: preview.customerId,
+      items,
+      ...stripeBillingPurchasePaymentParams(route),
+      metadata,
+      payment_behavior: "default_incomplete",
+      expand: ["latest_invoice"],
+    },
+    {
+      idempotencyKey: `usage-pack:${preview.usagePackSubscriptionId}:subscription`,
+    },
+  );
+  signal.throwIfAborted();
+  await db
+    .update(usagePackSubscriptions)
+    .set({
+      stripeSubscriptionId: created.id,
+      subscriptionStatus: created.status,
+      updatedAt: nowDate(),
+    })
+    .where(eq(usagePackSubscriptions.id, preview.usagePackSubscriptionId));
+  signal.throwIfAborted();
+  return {
+    status: "confirmed",
+    response: await completeBillingOperationInvoice(
+      stripe,
+      expandedLatestInvoice(created),
+      `usage-pack:${preview.usagePackSubscriptionId}`,
+      signal,
+    ),
+  };
+}
+
+export const confirmUsagePackPurchase$ = command(
+  async (
+    { set },
+    orgId: string,
+    previewToken: string,
+    signal: AbortSignal,
+  ): Promise<ConfirmUsagePackPurchaseResult> => {
+    const preview = parseBillingPreviewToken(
+      previewToken,
+      usagePackPurchasePreviewTokenSchema,
+    );
+    if (
+      !preview ||
+      preview.orgId !== orgId ||
+      preview.planPriceId !== activeUsagePackPlanPriceId(preview.tier) ||
+      new Date(preview.expiresAt) <= nowDate()
+    ) {
+      return { status: "invalid_preview" };
+    }
+    const db = set(writeDb$);
+    const snapshot = await loadUsagePackPurchaseSnapshot(
+      db,
+      orgId,
+      preview,
+      signal,
+    );
+    if (!snapshot) {
+      return { status: "invalid_preview" };
+    }
+    return await confirmUsagePackPurchaseSnapshot(
+      db,
+      orgId,
+      preview,
+      snapshot,
+      signal,
+    );
   },
 );
 

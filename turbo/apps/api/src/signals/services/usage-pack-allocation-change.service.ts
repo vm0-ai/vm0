@@ -47,6 +47,7 @@ import {
   prepareUsagePackMemberCreditRefunds,
 } from "./usage-pack-credit-refund.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
+import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
   activeUsagePackPriceId,
@@ -960,6 +961,28 @@ export async function previewUsagePackAllocationChange(
       expiresAt: preview.expiresAt.toISOString(),
     },
   };
+}
+
+export async function discardUsagePackAllocationChangePreviewForPaymentSetup(
+  db: Db,
+  args: { readonly orgId: string; readonly changeId: string },
+): Promise<void> {
+  const discardedAt = nowDate();
+  await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: "payment_method_setup_required",
+      completedAt: discardedAt,
+      updatedAt: discardedAt,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.id, args.changeId),
+        eq(usagePackAllocationChanges.orgId, args.orgId),
+        eq(usagePackAllocationChanges.status, "previewed"),
+      ),
+    );
 }
 
 function subscriptionPhaseItems(
@@ -3636,14 +3659,23 @@ async function confirmUsagePackUpgrade(
   );
   signal.throwIfAborted();
   const invoice = latestInvoice(updatedSubscription);
+  if (!invoice) {
+    throw new Error("Stripe did not create a usage pack change invoice");
+  }
+  const payment = await completeBillingOperationInvoice(
+    getStripeClient(),
+    invoice,
+    `usage-pack-allocation:${change.id}`,
+    signal,
+  );
   const pendingExpiry = pendingUpdateExpiry(updatedSubscription);
-  const pending = Boolean(updatedSubscription.pending_update);
+  const pending = payment.status === "pending_payment";
   const updatedAt = nowDate();
   await db
     .update(usagePackAllocationChanges)
     .set({
       status: pending ? "pending_payment" : "applying",
-      stripeInvoiceId: invoice?.id ?? null,
+      stripeInvoiceId: invoice.id,
       stripePendingUpdateExpiresAt: pendingExpiry,
       effectiveAt:
         change.effectiveAt ?? new Date(change.prorationTimestamp * 1000),
@@ -3663,7 +3695,7 @@ async function confirmUsagePackUpgrade(
       updatedSubscription,
     );
     signal.throwIfAborted();
-    if (invoice?.status === "paid") {
+    if (invoice.status === "paid") {
       await handleUsagePackAllocationChangeInvoicePaid(
         db,
         invoice as UsagePackChangeInvoiceInput,
@@ -3688,7 +3720,8 @@ async function confirmUsagePackUpgrade(
       effectiveAt:
         change.effectiveAt?.toISOString() ??
         new Date(change.prorationTimestamp * 1000).toISOString(),
-      hostedInvoiceUrl: invoice?.hosted_invoice_url ?? null,
+      hostedInvoiceUrl:
+        payment.status === "pending_payment" ? payment.hostedInvoiceUrl : null,
     },
   };
 }

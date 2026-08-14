@@ -1,7 +1,13 @@
 import { getStripeClient } from "../external/stripe-client";
+import {
+  billingPreviewExpiresAt,
+  createBillingPaymentMethodPreviewToken,
+  type BillingPaymentMethodPreviewToken,
+} from "./billing-purchase-preview-token.service";
 
 export const BILLING_RESTORE_PURPOSE = "billing_restore";
 export const BILLING_DOWNGRADE_PURPOSE = "billing_downgrade";
+export const BILLING_PURCHASE_PURPOSE = "billing_purchase";
 
 interface BillingSubscriptionOrg {
   readonly stripeCustomerId: string | null;
@@ -20,28 +26,32 @@ function stripeObjectId(value: unknown): string | null {
   return typeof record.id === "string" ? record.id : null;
 }
 
-function subscriptionDefaultPaymentMethodId(
-  subscription: unknown,
-): string | null {
+function subscriptionPaymentMethods(subscription: unknown): {
+  readonly defaultPaymentMethodId: string | null;
+  readonly defaultSourceId: string | null;
+} {
   if (typeof subscription !== "object" || subscription === null) {
-    return null;
+    return { defaultPaymentMethodId: null, defaultSourceId: null };
   }
   const record = subscription as {
     readonly default_payment_method?: unknown;
     readonly default_source?: unknown;
   };
-  return (
-    stripeObjectId(record.default_payment_method) ??
-    stripeObjectId(record.default_source)
-  );
+  return {
+    defaultPaymentMethodId: stripeObjectId(record.default_payment_method),
+    defaultSourceId: stripeObjectId(record.default_source),
+  };
 }
 
-function customerDefaultPaymentMethodId(customer: unknown): string | null {
+function customerPaymentMethods(customer: unknown): {
+  readonly defaultPaymentMethodId: string | null;
+  readonly defaultSourceId: string | null;
+} {
   if (typeof customer !== "object" || customer === null) {
-    return null;
+    return { defaultPaymentMethodId: null, defaultSourceId: null };
   }
   if ("deleted" in customer && customer.deleted === true) {
-    return null;
+    return { defaultPaymentMethodId: null, defaultSourceId: null };
   }
 
   const record = customer as {
@@ -50,10 +60,12 @@ function customerDefaultPaymentMethodId(customer: unknown): string | null {
     } | null;
     readonly default_source?: unknown;
   };
-  return (
-    stripeObjectId(record.invoice_settings?.default_payment_method) ??
-    stripeObjectId(record.default_source)
-  );
+  return {
+    defaultPaymentMethodId: stripeObjectId(
+      record.invoice_settings?.default_payment_method,
+    ),
+    defaultSourceId: stripeObjectId(record.default_source),
+  };
 }
 
 function subscriptionCustomerId(
@@ -75,42 +87,242 @@ export async function billingDefaultPaymentMethodStatus(args: {
   readonly org: BillingSubscriptionOrg;
   readonly subscription?: unknown;
 }): Promise<{ readonly ready: boolean; readonly customerId: string | null }> {
-  if (!args.org.stripeSubscriptionId) {
-    return { ready: false, customerId: args.org.stripeCustomerId };
+  const route = await resolveBillingPurchaseRoute({
+    stripe: args.stripe,
+    supportsInAppPreview: true,
+    customerId: args.org.stripeCustomerId,
+    subscriptionId: args.org.stripeSubscriptionId,
+    subscription: args.subscription,
+  });
+  return {
+    ready: route.kind === "preview",
+    customerId: route.customerId,
+  };
+}
+
+type BillingPurchaseRoute =
+  | {
+      readonly kind: "checkout";
+      readonly customerId: string | null;
+    }
+  | {
+      readonly kind: "preview";
+      readonly customerId: string;
+      readonly paymentMethodId: string;
+      readonly paymentMethodType: "payment_method" | "source";
+    };
+
+export function stripeBillingPurchasePaymentParams(
+  route: Extract<BillingPurchaseRoute, { readonly kind: "preview" }>,
+):
+  | { readonly default_payment_method: string }
+  | { readonly default_source: string } {
+  return route.paymentMethodType === "payment_method"
+    ? { default_payment_method: route.paymentMethodId }
+    : { default_source: route.paymentMethodId };
+}
+
+type BillingPurchasePreviewRoute =
+  | { readonly kind: "checkout"; readonly url: string }
+  | { readonly kind: "preview"; readonly paymentMethodPreviewToken: string };
+
+export async function resolveBillingPurchaseRoute(
+  args: {
+    readonly stripe: ReturnType<typeof getStripeClient>;
+    readonly supportsInAppPreview: boolean;
+    readonly customerId: string | null;
+    readonly subscriptionId?: string | null;
+    readonly subscription?: unknown;
+  },
+  signal?: AbortSignal,
+): Promise<BillingPurchaseRoute> {
+  if (!args.supportsInAppPreview) {
+    return { kind: "checkout", customerId: args.customerId };
   }
 
-  const subscription =
-    args.subscription ??
-    (await args.stripe.subscriptions.retrieve(args.org.stripeSubscriptionId));
-  if (subscriptionDefaultPaymentMethodId(subscription)) {
+  const subscription = args.subscriptionId
+    ? (args.subscription ??
+      (await args.stripe.subscriptions.retrieve(args.subscriptionId)))
+    : undefined;
+  signal?.throwIfAborted();
+  const subscriptionMethods = subscriptionPaymentMethods(subscription);
+  const customerId = subscription
+    ? subscriptionCustomerId(
+        {
+          stripeCustomerId: args.customerId,
+          stripeSubscriptionId: args.subscriptionId ?? null,
+        },
+        subscription,
+      )
+    : args.customerId;
+  if (subscriptionMethods.defaultPaymentMethodId && customerId) {
     return {
-      ready: true,
-      customerId: subscriptionCustomerId(args.org, subscription),
+      kind: "preview",
+      customerId,
+      paymentMethodId: subscriptionMethods.defaultPaymentMethodId,
+      paymentMethodType: "payment_method",
     };
   }
 
-  const customerId = subscriptionCustomerId(args.org, subscription);
   if (!customerId) {
-    return { ready: false, customerId: null };
+    return { kind: "checkout", customerId: null };
   }
 
   const customer = await args.stripe.customers.retrieve(customerId);
+  signal?.throwIfAborted();
+  const customerMethods = customerPaymentMethods(customer);
+  if (customerMethods.defaultPaymentMethodId) {
+    return {
+      kind: "preview",
+      customerId,
+      paymentMethodId: customerMethods.defaultPaymentMethodId,
+      paymentMethodType: "payment_method",
+    };
+  }
+
+  const paymentMethods = await args.stripe.paymentMethods.list({
+    customer: customerId,
+    type: "card",
+    limit: 1,
+  });
+  signal?.throwIfAborted();
+  const attachedCardId = paymentMethods.data[0]?.id;
+  if (attachedCardId) {
+    return {
+      kind: "preview",
+      customerId,
+      paymentMethodId: attachedCardId,
+      paymentMethodType: "payment_method",
+    };
+  }
+
+  const legacySourceId =
+    subscriptionMethods.defaultSourceId ?? customerMethods.defaultSourceId;
+  return legacySourceId
+    ? {
+        kind: "preview",
+        customerId,
+        paymentMethodId: legacySourceId,
+        paymentMethodType: "source",
+      }
+    : { kind: "checkout", customerId };
+}
+
+export async function routeBillingPurchasePreview(
+  args: {
+    readonly stripe: ReturnType<typeof getStripeClient>;
+    readonly orgId: string;
+    readonly customerId: string | null;
+    readonly subscriptionId: string;
+    readonly operation: BillingPaymentMethodPreviewToken["operation"];
+    readonly operationId: string;
+    readonly returnUrl: string;
+  },
+  signal: AbortSignal,
+): Promise<BillingPurchasePreviewRoute> {
+  const route = await resolveBillingPurchaseRoute(
+    {
+      stripe: args.stripe,
+      supportsInAppPreview: true,
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    },
+    signal,
+  );
+  if (route.kind === "checkout") {
+    if (!route.customerId) {
+      throw new Error("Stripe billing purchase has no customer");
+    }
+    return {
+      kind: "checkout",
+      url: await createBillingSetupCheckout({
+        stripe: args.stripe,
+        purpose: BILLING_PURCHASE_PURPOSE,
+        orgId: args.orgId,
+        customerId: route.customerId,
+        subscriptionId: args.subscriptionId,
+        returnUrl: args.returnUrl,
+        idempotencyKey: `billing-purchase-setup:${args.operation}:${args.operationId}`,
+      }),
+    };
+  }
   return {
-    ready: customerDefaultPaymentMethodId(customer) !== null,
-    customerId,
+    kind: "preview",
+    paymentMethodPreviewToken: createBillingPaymentMethodPreviewToken({
+      version: 1,
+      operation: args.operation,
+      operationId: args.operationId,
+      orgId: args.orgId,
+      customerId: route.customerId,
+      subscriptionId: args.subscriptionId,
+      paymentMethodId: route.paymentMethodId,
+      returnUrl: args.returnUrl,
+      expiresAt: billingPreviewExpiresAt(),
+    }),
   };
+}
+
+type RevalidatedBillingPurchase =
+  | { readonly kind: "preview"; readonly paymentMethodId: string }
+  | { readonly kind: "checkout"; readonly url: string }
+  | { readonly kind: "invalid_preview" };
+
+export async function revalidateBillingPurchase(
+  args: {
+    readonly stripe: ReturnType<typeof getStripeClient>;
+    readonly orgId: string;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly paymentMethodId: string;
+    readonly operation: BillingPaymentMethodPreviewToken["operation"];
+    readonly operationId: string;
+    readonly returnUrl: string;
+  },
+  signal: AbortSignal,
+): Promise<RevalidatedBillingPurchase> {
+  const route = await resolveBillingPurchaseRoute(
+    {
+      stripe: args.stripe,
+      supportsInAppPreview: true,
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    },
+    signal,
+  );
+  if (route.customerId !== args.customerId) {
+    return { kind: "invalid_preview" };
+  }
+  if (route.kind === "checkout") {
+    return {
+      kind: "checkout",
+      url: await createBillingSetupCheckout({
+        stripe: args.stripe,
+        purpose: BILLING_PURCHASE_PURPOSE,
+        orgId: args.orgId,
+        customerId: args.customerId,
+        subscriptionId: args.subscriptionId,
+        returnUrl: args.returnUrl,
+        idempotencyKey: `billing-purchase-setup:${args.operation}:${args.operationId}`,
+      }),
+    };
+  }
+  return route.paymentMethodId === args.paymentMethodId
+    ? { kind: "preview", paymentMethodId: route.paymentMethodId }
+    : { kind: "invalid_preview" };
 }
 
 export async function createBillingSetupCheckout(args: {
   readonly stripe: ReturnType<typeof getStripeClient>;
   readonly purpose:
     | typeof BILLING_RESTORE_PURPOSE
-    | typeof BILLING_DOWNGRADE_PURPOSE;
+    | typeof BILLING_DOWNGRADE_PURPOSE
+    | typeof BILLING_PURCHASE_PURPOSE;
   readonly orgId: string;
   readonly customerId: string;
   readonly subscriptionId: string;
   readonly returnUrl: string;
   readonly metadata?: Readonly<Record<string, string>>;
+  readonly idempotencyKey?: string;
 }): Promise<string> {
   const metadata = {
     purpose: args.purpose,
@@ -118,7 +330,7 @@ export async function createBillingSetupCheckout(args: {
     subscriptionId: args.subscriptionId,
     ...args.metadata,
   };
-  const session = await args.stripe.checkout.sessions.create({
+  const params = {
     mode: "setup",
     customer: args.customerId,
     currency: "usd",
@@ -126,7 +338,12 @@ export async function createBillingSetupCheckout(args: {
     cancel_url: args.returnUrl,
     metadata,
     setup_intent_data: { metadata },
-  });
+  } as const;
+  const session = args.idempotencyKey
+    ? await args.stripe.checkout.sessions.create(params, {
+        idempotencyKey: args.idempotencyKey,
+      })
+    : await args.stripe.checkout.sessions.create(params);
 
   if (!session.url) {
     throw new Error("Stripe checkout session did not return a URL");

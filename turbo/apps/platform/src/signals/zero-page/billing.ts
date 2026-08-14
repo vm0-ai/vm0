@@ -19,7 +19,9 @@ import {
   type ConcurrencySubscriptionChangePreviewResponse,
   type CreditPurchasePreviewResponse,
   type MemberUsagePack,
+  type PlanPurchasePreviewResponse,
   type UsagePackCreditsResponse,
+  type UsagePackPurchasePreviewResponse,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core";
@@ -279,6 +281,15 @@ const internalConcurrencyConfirmDialog$ =
 const internalCreditPurchasePreview$ = state<CreditPurchasePreviewState | null>(
   null,
 );
+type SubscriptionPurchasePreview =
+  | PlanPurchasePreviewResponse
+  | UsagePackPurchasePreviewResponse;
+interface SubscriptionPurchasePreviewState {
+  readonly preview: SubscriptionPurchasePreview;
+  readonly newTab: boolean;
+}
+const internalSubscriptionPurchasePreview$ =
+  state<SubscriptionPurchasePreviewState | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -307,6 +318,9 @@ export const creditPurchasePreview$ = computed((get) => {
 });
 export const creditPurchaseOrigin$ = computed((get) => {
   return get(internalCreditPurchasePreview$)?.origin ?? null;
+});
+export const subscriptionPurchasePreview$ = computed((get) => {
+  return get(internalSubscriptionPurchasePreview$);
 });
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
@@ -364,6 +378,9 @@ export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
 });
 export const closeCreditPurchasePreview$ = command(({ set }) => {
   set(internalCreditPurchasePreview$, null);
+});
+export const closeSubscriptionPurchasePreview$ = command(({ set }) => {
+  set(internalSubscriptionPurchasePreview$, null);
 });
 export const setConcurrencyChangeMode$ = command(
   ({ set }, mode: ConcurrencyChangeMode) => {
@@ -771,6 +788,8 @@ export const startCheckout$ = command(
     cancelUrl.searchParams.set("billing", "canceled");
     set(applyStoredAdAttribution$, cancelUrl);
     const adAttribution = set(readStoredAdAttributionMetadata$);
+    const supportsInAppPreview =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCheckoutContract);
@@ -778,6 +797,7 @@ export const startCheckout$ = command(
       client.create({
         body: {
           tier,
+          ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
           ...(options?.trialDays === undefined
@@ -791,6 +811,13 @@ export const startCheckout$ = command(
     );
     signal.throwIfAborted();
     set(capturePaidOnboardingCheckoutCreated$, "paywall");
+    if (!("url" in result.body)) {
+      set(internalSubscriptionPurchasePreview$, {
+        preview: result.body,
+        newTab,
+      });
+      return;
+    }
     set(capturePaidOnboardingRedirectToStripe$, "paywall");
     if (newTab) {
       window.open(result.body.url, "_blank");
@@ -826,6 +853,8 @@ export const startUsagePackCheckout$ = command(
     cancelUrl.searchParams.set("billing", "canceled");
     set(applyStoredAdAttribution$, cancelUrl);
     const adAttribution = set(readStoredAdAttributionMetadata$);
+    const supportsInAppPreview =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingUsagePackCheckoutContract);
@@ -833,6 +862,7 @@ export const startUsagePackCheckout$ = command(
       client.create({
         body: {
           tier: args.tier,
+          ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
           memberUsagePacks: [...args.memberUsagePacks],
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
@@ -843,11 +873,68 @@ export const startUsagePackCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (!("url" in result.body)) {
+      set(internalSubscriptionPurchasePreview$, {
+        preview: result.body,
+        newTab,
+      });
+      return;
+    }
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const confirmSubscriptionPurchase$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const state = get(internalSubscriptionPurchasePreview$);
+    if (!state) {
+      throw new Error("Subscription purchase preview is not available");
+    }
+    const createClient = get(zeroClient$);
+    const response =
+      state.preview.purchaseType === "plan"
+        ? await accept(
+            createClient(zeroBillingCheckoutContract).confirm({
+              body: { previewToken: state.preview.previewToken },
+              fetchOptions: { signal },
+            }),
+            [200],
+          )
+        : await accept(
+            createClient(zeroBillingUsagePackCheckoutContract).confirm({
+              body: { previewToken: state.preview.previewToken },
+              fetchOptions: { signal },
+            }),
+            [200],
+          );
+    signal.throwIfAborted();
+    if (response.body.status === "pending_payment") {
+      if (state.newTab) {
+        window.open(response.body.hostedInvoiceUrl, "_blank");
+      } else {
+        window.location.href = response.body.hostedInvoiceUrl;
+      }
+      return;
+    }
+    if (response.body.status === "checkout_required") {
+      if (state.newTab) {
+        window.open(response.body.checkoutUrl, "_blank");
+      } else {
+        window.location.href = response.body.checkoutUrl;
+      }
+      return;
+    }
+    set(internalSubscriptionPurchasePreview$, null);
+    set(reloadBillingStatus$);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
   },
 );
 
@@ -984,17 +1071,29 @@ export const previewUsagePackSubscriptionChange$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingUsagePackManagementContract);
+    const supportsInAppPreview =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const preview = await accept(
       client.previewSubscriptionChange({
         body: {
           targetTier: args.targetTier,
           memberUsagePacks: [...args.memberUsagePacks],
+          ...(supportsInAppPreview
+            ? {
+                supportsInAppPreview: true,
+                returnUrl: checkoutReturnUrl().toString(),
+              }
+            : {}),
         },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
+    if (preview.body.checkoutUrl) {
+      window.location.href = preview.body.checkoutUrl;
+      return null;
+    }
     set(setUsagePackSubscriptionChangePreview$, preview.body);
     return preview.body;
   },
@@ -1014,12 +1113,30 @@ export const confirmUsagePackSubscriptionChange$ = command(
     const client = createClient(zeroBillingUsagePackManagementContract);
     const result = await accept(
       client.confirmSubscriptionChange({
-        body: { changeId: preview.changeId },
+        body: {
+          changeId: preview.changeId,
+          ...(preview.paymentMethodPreviewToken
+            ? {
+                paymentMethodPreviewToken: preview.paymentMethodPreviewToken,
+              }
+            : {}),
+        },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
+    if (result.body.status === "pending_payment") {
+      if (result.body.hostedInvoiceUrl) {
+        window.location.href = result.body.hostedInvoiceUrl;
+        return result.body;
+      }
+      throw new Error("Pending usage pack invoice has no hosted payment URL");
+    }
+    if (result.body.status === "checkout_required") {
+      window.location.href = result.body.checkoutUrl;
+      return result.body;
+    }
     toast.success(
       i18n.t(($) => {
         return $.billing.toasts.subscriptionChangeConfirmed;
@@ -1065,7 +1182,7 @@ export const startCreditCheckout$ = command(
           credits: selection.credits,
           ...(selection.customAmount === true ? { customAmount: true } : {}),
           ...(savedBillingCreditPurchaseEnabled
-            ? { previewExistingBilling: true }
+            ? { supportsInAppPreview: true }
             : {}),
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
@@ -1115,6 +1232,10 @@ export const confirmCreditPurchase$ = command(
       window.location.href = result.body.hostedInvoiceUrl;
       return;
     }
+    if (result.body.status === "checkout_required") {
+      window.location.href = result.body.checkoutUrl;
+      return;
+    }
     set(internalCreditPurchasePreview$, null);
     set(reloadBillingStatus$);
     toast.success(
@@ -1139,10 +1260,16 @@ export const startConcurrencyCheckout$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const dialog = get(internalConcurrencyConfirmDialog$);
+    const paymentMethodPreviewToken =
+      dialog?.action === "purchase" && dialog.quantity === quantity
+        ? dialog.preview.paymentMethodPreviewToken
+        : undefined;
     const result = await accept(
       client.create({
         body: {
           quantity,
+          ...(paymentMethodPreviewToken ? { paymentMethodPreviewToken } : {}),
           successUrl: successUrl.toString(),
           cancelUrl: cancelUrl.toString(),
         },
@@ -1182,15 +1309,31 @@ export const openConcurrencyPurchaseReview$ = command(
   ): Promise<void> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const supportsInAppPreview =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
+    const returnUrl = checkoutReturnUrl().toString();
     const result = await accept(
       client.preview({
-        body: { quantity },
+        body: {
+          quantity,
+          ...(supportsInAppPreview
+            ? { supportsInAppPreview: true, returnUrl }
+            : {}),
+        },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
     set(internalConcurrencyPurchaseDialogOpen$, false);
+    if (result.body.checkoutUrl) {
+      if (newTab) {
+        window.open(result.body.checkoutUrl, "_blank");
+      } else {
+        window.location.href = result.body.checkoutUrl;
+      }
+      return;
+    }
     set(internalConcurrencyConfirmDialog$, {
       action: "purchase",
       newTab,
@@ -1211,18 +1354,32 @@ const loadConcurrencySubscriptionChangePreview$ = command(
     { get },
     args: ConcurrencySubscriptionChangePreviewArgs,
     signal: AbortSignal,
-  ) => {
+  ): Promise<ConcurrencySubscriptionChangePreviewResponse | null> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const supportsInAppPreview =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
       client.previewChange({
         params: { subscriptionId: args.subscriptionId },
-        body: { quantity: args.quantity },
+        body: {
+          quantity: args.quantity,
+          ...(supportsInAppPreview
+            ? {
+                supportsInAppPreview: true,
+                returnUrl: checkoutReturnUrl().toString(),
+              }
+            : {}),
+        },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
+    if (result.body.checkoutUrl) {
+      window.location.href = result.body.checkoutUrl;
+      return null;
+    }
     return result.body;
   },
 );
@@ -1239,6 +1396,9 @@ export const previewConcurrencySubscriptionChange$ = command(
       signal,
     );
     signal.throwIfAborted();
+    if (!preview) {
+      return;
+    }
     set(internalConcurrencyConfirmDialog$, (dialog) => {
       if (
         !dialog ||
@@ -1273,6 +1433,9 @@ export const openConcurrencyChangeReview$ = command(
       signal,
     );
     signal.throwIfAborted();
+    if (!preview) {
+      return;
+    }
     set(internalConcurrencyConfirmDialog$, {
       action: "change",
       subscriptionId: args.subscriptionId,
@@ -1297,7 +1460,15 @@ export const confirmConcurrencySubscriptionChange$ = command(
     const result = await accept(
       client.confirmChange({
         params: { subscriptionId: dialog.subscriptionId },
-        body: { quantity: dialog.preview.targetQuantity },
+        body: {
+          quantity: dialog.preview.targetQuantity,
+          ...(dialog.preview.paymentMethodPreviewToken
+            ? {
+                paymentMethodPreviewToken:
+                  dialog.preview.paymentMethodPreviewToken,
+              }
+            : {}),
+        },
         fetchOptions: { signal },
       }),
       [200],
@@ -1307,13 +1478,18 @@ export const confirmConcurrencySubscriptionChange$ = command(
       window.location.href = result.body.hostedInvoiceUrl;
       return;
     }
+    if (result.body.status === "checkout_required") {
+      window.location.href = result.body.checkoutUrl;
+      return;
+    }
     set(billingReload$, (x) => {
       return x + 1;
     });
     set(internalConcurrencyConfirmDialog$, null);
+    const effectiveAt = result.body.effectiveAt;
     toast.success(
       i18n.t(($) => {
-        return result.body.effectiveAt
+        return effectiveAt
           ? $.billing.toasts.concurrencyReduced
           : $.billing.toasts.concurrencyChanged;
       }),

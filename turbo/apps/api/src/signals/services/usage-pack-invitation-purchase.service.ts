@@ -34,7 +34,6 @@ import type { ClerkClient } from "../external/clerk";
 import type { Db } from "../external/db";
 import {
   getStripeClient,
-  type StripeClient,
   type StripeInvoice,
   type StripePaymentIntent,
   type StripeRefund,
@@ -48,12 +47,17 @@ import {
 } from "./usage-pack-allocation-change.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
+import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import { loadUsagePackCatalog } from "./usage-pack-subscription.service";
 import {
   isCurrentStripePreviewMetadata,
   stripePreviewMetadata,
 } from "./stripe-preview-metadata.service";
 import { activeUsagePackPriceId } from "./zero-billing-checkout.service";
+import {
+  resolveBillingPurchaseRoute,
+  stripeBillingPurchasePaymentParams,
+} from "./zero-billing-payment-method.service";
 
 const PURPOSE = "usage_pack_invitation_purchase";
 const PURCHASE_ID_METADATA_KEY = "usagePackInvitationPurchaseId";
@@ -137,6 +141,7 @@ type CreateUsagePackInvitationPreviewResult =
 
 type ConfirmUsagePackInvitationPurchaseResult =
   | { readonly status: "confirmed" }
+  | { readonly status: "pending_payment"; readonly hostedInvoiceUrl: string }
   | { readonly status: "not_found" }
   | { readonly status: "expired" }
   | { readonly status: "conflict" };
@@ -1252,62 +1257,6 @@ export async function handleUsagePackInvitationInvoicePaid(
   return { handled: true, orgId: purchase.orgId };
 }
 
-async function invitationPaymentMethodId(
-  stripe: StripeClient,
-  subscription: UsagePackSubscriptionRow,
-): Promise<string | null> {
-  if (!subscription.stripeSubscriptionId) {
-    return null;
-  }
-  const stripeSubscription = await stripe.subscriptions.retrieve(
-    subscription.stripeSubscriptionId,
-  );
-  const subscriptionPaymentMethod = stripeObjectId(
-    stripeSubscription.default_payment_method,
-  );
-  if (subscriptionPaymentMethod) {
-    return subscriptionPaymentMethod;
-  }
-  const customer = await stripe.customers.retrieve(
-    subscription.stripeCustomerId,
-  );
-  if (!("deleted" in customer) || !customer.deleted) {
-    const customerPaymentMethod = stripeObjectId(
-      customer.invoice_settings?.default_payment_method,
-    );
-    if (customerPaymentMethod) {
-      return customerPaymentMethod;
-    }
-  }
-  const paymentMethods = await stripe.paymentMethods.list({
-    customer: subscription.stripeCustomerId,
-    type: "card",
-    limit: 1,
-  });
-  return paymentMethods.data[0]?.id ?? null;
-}
-
-async function payInvitationInvoice(
-  stripe: StripeClient,
-  invoiceId: string,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const invoice = await stripe.invoices.retrieve(invoiceId);
-  if (invoice.status === "draft") {
-    await stripe.invoices.finalizeInvoice(invoiceId);
-    signal.throwIfAborted();
-    await stripe.invoices.pay(invoiceId);
-    signal.throwIfAborted();
-    return true;
-  }
-  if (invoice.status === "open") {
-    await stripe.invoices.pay(invoiceId);
-    signal.throwIfAborted();
-    return true;
-  }
-  return invoice.status === "paid";
-}
-
 export async function confirmUsagePackInvitationPurchase(
   db: Db,
   clerk: ClerkClient,
@@ -1371,9 +1320,16 @@ export async function confirmUsagePackInvitationPurchase(
     return { status: "conflict" };
   }
   const stripe = getStripeClient();
-  const paymentMethodId = await invitationPaymentMethodId(stripe, subscription);
-  signal.throwIfAborted();
-  if (!paymentMethodId) {
+  const route = await resolveBillingPurchaseRoute(
+    {
+      stripe,
+      supportsInAppPreview: true,
+      customerId: subscription.stripeCustomerId,
+      subscriptionId: subscription.stripeSubscriptionId,
+    },
+    signal,
+  );
+  if (route.kind === "checkout") {
     return { status: "conflict" };
   }
   const metadata = checkoutMetadata(purchase.id);
@@ -1381,7 +1337,7 @@ export async function confirmUsagePackInvitationPurchase(
     {
       customer: subscription.stripeCustomerId,
       auto_advance: false,
-      default_payment_method: paymentMethodId,
+      ...stripeBillingPurchasePaymentParams(route),
       metadata,
     },
     { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice` },
@@ -1398,8 +1354,15 @@ export async function confirmUsagePackInvitationPurchase(
     { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice-item` },
   );
   signal.throwIfAborted();
-  if (!(await payInvitationInvoice(stripe, invoice.id, signal))) {
-    return { status: "conflict" };
+  const payment = await completeBillingOperationInvoice(
+    stripe,
+    invoice,
+    `usage-pack-invitation:${purchase.id}`,
+    signal,
+    { payOpenInvoice: true },
+  );
+  if (payment.status === "pending_payment") {
+    return payment;
   }
   const handled = await handleUsagePackInvitationInvoicePaid(db, clerk, {
     id: invoice.id,
