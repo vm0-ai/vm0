@@ -1002,7 +1002,15 @@ function PlanSelectionCard({
   );
 }
 
-function PricingBackButton({ onBack }: { readonly onBack: () => void }) {
+function PricingBackButton({
+  inDialogHeader = false,
+  onBack,
+}: {
+  // The dialog header pairs back with close, so it draws both at the same
+  // 36px box and 20px glyph. The page header carries back on its own.
+  readonly inDialogHeader?: boolean;
+  readonly onBack: () => void;
+}) {
   const { t } = useTranslation();
   return (
     <TooltipProvider delayDuration={200}>
@@ -1012,12 +1020,13 @@ function PricingBackButton({ onBack }: { readonly onBack: () => void }) {
             type="button"
             onClick={onBack}
             variant="quiet"
-            size="icon-xs"
+            size={inDialogHeader ? "icon" : "icon-xs"}
+            iconSize={inDialogHeader ? "lg" : "sm"}
             aria-label={t(($) => {
               return $.billing.common.back;
             })}
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={inDialogHeader ? 20 : 16} />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -1149,7 +1158,7 @@ function PricingStepDialog({
             the frame, so the title, the step counter and the close glyph share
             one centre line and one right inset. */}
         <DialogHeader className="h-14 flex-row shrink-0 items-center gap-3 space-y-0 border-b-[0.7px] border-[hsl(var(--gray-200))] py-0 pl-6 pr-4 text-left">
-          {onBack && <PricingBackButton onBack={onBack} />}
+          {onBack && <PricingBackButton inDialogHeader onBack={onBack} />}
           <DialogTitle className="min-w-0 flex-1 text-base font-medium leading-none">
             {pricingStepTitle(step)}
           </DialogTitle>
