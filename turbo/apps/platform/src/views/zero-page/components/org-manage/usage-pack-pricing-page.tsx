@@ -1,4 +1,4 @@
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -1016,14 +1016,26 @@ function UsagePackPageHeader({
   );
 }
 
-function PricingStepIndicator({ current }: { readonly current: 1 | 2 }) {
+/* A checkout hands off to Stripe after the packages are configured, so it ends
+   at step 2. Changing an existing subscription has one more step: the charges
+   this change makes today have to be reviewed before they are confirmed. */
+type PricingStep = 1 | 2 | 3;
+type PricingStepTotal = 2 | 3;
+
+function PricingStepIndicator({
+  current,
+  total,
+}: {
+  readonly current: PricingStep;
+  readonly total: PricingStepTotal;
+}) {
   return (
     <span className="shrink-0 text-sm text-muted-foreground">
       {i18n.t(
         ($) => {
           return $.billing.plans.usagePacks.stepOfTotal;
         },
-        { current, total: 2 },
+        { current, total },
       )}
     </span>
   );
@@ -1049,29 +1061,37 @@ function PricingPageHeader({
               return $.billing.plans.usagePacks.configurePackages;
             })
       }
-      trailing={<PricingStepIndicator current={step} />}
+      trailing={<PricingStepIndicator current={step} total={2} />}
     />
   );
 }
 
-function pricingStepTitle(step: 1 | 2): string {
-  return step === 1
-    ? i18n.t(($) => {
-        return $.billing.plans.usagePacks.choosePlan;
-      })
-    : i18n.t(($) => {
-        return $.billing.plans.usagePacks.configurePackages;
-      });
+function pricingStepTitle(step: PricingStep): string {
+  if (step === 1) {
+    return i18n.t(($) => {
+      return $.billing.plans.usagePacks.choosePlan;
+    });
+  }
+  if (step === 2) {
+    return i18n.t(($) => {
+      return $.billing.plans.usagePacks.configurePackages;
+    });
+  }
+  return i18n.t(($) => {
+    return $.billing.plans.usagePacks.management.reviewTitle;
+  });
 }
 
-/* Both pricing steps are their own modal rather than a page inside Settings:
+/* The pricing steps are their own modal rather than a page inside Settings:
    picking a plan is a decision the workspace makes in one sitting, and a
    dialog keeps the billing overview it is decided against in place behind it.
-   The two steps share one dialog frame at one fixed width and height, so
-   moving between them only changes the body -- the header band, the step
-   counter and the outer edges hold still. The height is the taller step's
-   (plan selection), and the body insets its content so no rule, tint or column
-   runs into the frame.
+   Every step shares one dialog frame at one fixed width and height, so moving
+   between them only changes the body -- the header band, the step counter and
+   the outer edges hold still. That is also why the review is a step and not a
+   dialog of its own: stacking a third modal on the flow would bury both the
+   billing tab and the packages the review is about. The height is the tallest
+   step's (plan selection), and the body insets its content so no rule, tint or
+   column runs into the frame.
 
    The dialog is mounted only while the flow is open, so the plan catalog and
    the subscription it loads stay owned by the flow rather than by every visit
@@ -1082,12 +1102,14 @@ function PricingStepDialog({
   onBack,
   onClose,
   step,
+  total,
 }: {
   readonly children: ReactNode;
   readonly flush?: boolean;
   readonly onBack?: () => void;
   readonly onClose: () => void;
-  readonly step: 1 | 2;
+  readonly step: PricingStep;
+  readonly total: PricingStepTotal;
 }) {
   const { t } = useTranslation();
   return (
@@ -1112,7 +1134,7 @@ function PricingStepDialog({
           <DialogTitle className="min-w-0 flex-1 text-base font-medium leading-none">
             {pricingStepTitle(step)}
           </DialogTitle>
-          <PricingStepIndicator current={step} />
+          <PricingStepIndicator current={step} total={total} />
           <DialogClose
             className="icon-button -ml-1 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label={t(($) => {
@@ -1122,11 +1144,15 @@ function PricingStepDialog({
             <X size={20} />
           </DialogClose>
         </DialogHeader>
+        {/* No bottom inset on the scrolling body: a step that ends in an action
+            bar lets the bar sit on the frame's edge. Otherwise the bar would
+            float a padding's width above the frame whenever the body is short
+            enough not to scroll. */}
         <div
           className={
             flush
               ? "flex min-h-0 flex-1 flex-col"
-              : "dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto p-5"
+              : "dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-5"
           }
         >
           {children}
@@ -1154,9 +1180,10 @@ function OrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
+      className={STEP_ACTION_BAR}
     >
       {checkoutError && (
-        <p className="mb-3 text-sm text-destructive">{checkoutError}</p>
+        <p className="text-sm text-destructive">{checkoutError}</p>
       )}
       <Button
         className="h-10 w-full text-sm font-medium"
@@ -1347,6 +1374,13 @@ function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
 const REVIEW_ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3";
 const REVIEW_HAIRLINE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
 const REVIEW_RULE = "border-t-[0.7px] border-border";
+
+/* A step's action stays on the frame's foot instead of scrolling away with the
+   body it belongs to: a long member list must never put the decision out of
+   reach. The bar spans the full frame width, so it cancels the body's inset and
+   restores it inside, and it carries the frame's own surface so the rows pass
+   underneath it rather than through it. */
+const STEP_ACTION_BAR = `sticky bottom-0 -mx-5 mt-auto flex flex-col gap-3 bg-card px-5 py-4 ${REVIEW_RULE}`;
 
 function ReviewSectionLabel({ label }: { readonly label: string }) {
   return (
@@ -1606,8 +1640,35 @@ function ManagedSubscriptionComparison({
     plan,
     totals,
   });
+  const monthlyTotal = rows.at(-1);
 
-  return <SubscriptionComparisonTable rows={rows} />;
+  /* The ledger above this already states what the workspace will pay, so the
+     row-by-row comparison opens on demand and keeps only the number that
+     decides the change on screen. The migration screens keep theirs open --
+     there the comparison is the whole point of the page. */
+  return (
+    <details className="group mt-4">
+      <summary
+        className={`flex cursor-pointer list-none items-center gap-3 py-2.5 ${REVIEW_RULE}`}
+      >
+        <ChevronRight
+          size={14}
+          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
+        <span className="min-w-0 flex-1 text-[13px] text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.comparison;
+          })}
+        </span>
+        {monthlyTotal && (
+          <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+            {monthlyTotal.current} → {monthlyTotal.next}
+          </span>
+        )}
+      </summary>
+      <SubscriptionComparisonTable rows={rows} />
+    </details>
+  );
 }
 
 function SubscriptionComparisonTable({
@@ -1657,8 +1718,10 @@ function SubscriptionComparisonTable({
                 >
                   {row.current}
                 </td>
+                {/* Weight alone marks what changed: the numerals are ink, and
+                    the brand colour stays on the action. */}
                 <td
-                  className={`px-3 py-2.5 text-right font-medium ${row.changed ? "text-primary" : "text-foreground"}`}
+                  className={`px-3 py-2.5 text-right text-foreground ${monthlyTotal || row.changed ? "font-semibold" : "font-medium"}`}
                 >
                   {row.next}
                 </td>
@@ -1847,71 +1910,65 @@ function UsagePackChangeCharges({
   );
 }
 
-function UsagePackSubscriptionChangeDialog({
-  confirming,
-  error,
-  onCancel,
-  onConfirm,
+/* The last step of a subscription change. It repeats the monthly ledger the
+   configuration step already showed and adds what the change costs today, so
+   it reads as that step's conclusion rather than a separate decision. The
+   frame's back arrow discards the preview, which is what this screen's Cancel
+   button used to do, and the confirm keeps the configuration step's place and
+   shape at the foot of the dialog. */
+function PackageReviewStep({
   plan,
   preview,
   totals,
 }: {
-  readonly confirming: boolean;
-  readonly error: string | null;
-  readonly onCancel: () => void;
-  readonly onConfirm: () => void;
   readonly plan: UsagePackPlan;
-  readonly preview: UsagePackSubscriptionChangePreviewResponse | null;
+  readonly preview: UsagePackSubscriptionChangePreviewResponse;
   readonly totals: MemberUsageTotals;
 }) {
+  const pageSignal = useGet(pageSignal$);
+  const [confirmationLoadable, confirmChange] = useLoadableSet(
+    confirmUsagePackSubscriptionChange$,
+  );
+  const confirming = confirmationLoadable.state === "loading";
+  const error =
+    confirmationLoadable.state === "hasError"
+      ? i18n.t(($) => {
+          return $.billing.plans.usagePacks.planChangeError;
+        })
+      : null;
+  const submitChange = async (): Promise<void> => {
+    await confirmChange(pageSignal);
+  };
+
   return (
-    <Dialog
-      open={preview !== null}
-      onOpenChange={(open) => {
-        if (!open && !confirming) {
-          onCancel();
-        }
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.management.reviewTitle;
-            })}
-          </DialogTitle>
-          <DialogDescription>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.management.reviewDescription;
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        {preview && <UsagePackChangeCharges preview={preview} />}
-        <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
+    <div className="flex flex-1 flex-col gap-5">
+      <p className="text-[13px] text-muted-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.management.reviewDescription;
+        })}
+      </p>
+      <UsagePackChangeCharges preview={preview} />
+      <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
+      <div className={STEP_ACTION_BAR}>
         {error && <p className="text-xs text-destructive">{error}</p>}
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={confirming}
-            onClick={onCancel}
-          >
-            {i18n.t(($) => {
-              return $.billing.common.cancel;
-            })}
-          </Button>
-          <Button type="button" disabled={confirming} onClick={onConfirm}>
-            {confirming
-              ? i18n.t(($) => {
-                  return $.billing.common.updating;
-                })
-              : i18n.t(($) => {
-                  return $.billing.common.confirm;
-                })}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <Button
+          type="button"
+          className="h-10 w-full text-sm font-medium"
+          disabled={confirming}
+          onClick={() => {
+            detach(submitChange(), Reason.DomCallback);
+          }}
+        >
+          {confirming
+            ? i18n.t(($) => {
+                return $.billing.common.updating;
+              })
+            : i18n.t(($) => {
+                return $.billing.common.confirm;
+              })}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -2134,19 +2191,12 @@ function ManagedSubscriptionOrderSummary({
   totals,
 }: ManagedSubscriptionOrderSummaryProps) {
   const pageSignal = useGet(pageSignal$);
-  const preview = useGet(usagePackSubscriptionChangePreview$);
-  const closePreview = useSet(closeUsagePackSubscriptionChangePreview$);
   const [previewLoadable, previewChange] = useLoadableSet(
     previewUsagePackSubscriptionChange$,
   );
-  const [confirmationLoadable, confirmChange] = useLoadableSet(
-    confirmUsagePackSubscriptionChange$,
-  );
-  const previewing = previewLoadable.state === "loading" || preview !== null;
-  const confirming = confirmationLoadable.state === "loading";
+  const previewing = previewLoadable.state === "loading";
   const error =
-    previewLoadable.state === "hasError" ||
-    confirmationLoadable.state === "hasError"
+    previewLoadable.state === "hasError"
       ? i18n.t(($) => {
           return $.billing.plans.usagePacks.planChangeError;
         })
@@ -2170,10 +2220,6 @@ function ManagedSubscriptionOrderSummary({
       pageSignal,
     );
   };
-  const submitChange = async (): Promise<void> => {
-    await confirmChange(pageSignal);
-  };
-
   return (
     <section
       aria-label={i18n.t(($) => {
@@ -2205,38 +2251,28 @@ function ManagedSubscriptionOrderSummary({
           })}
         </p>
       )}
-      {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-      <Button
-        type="button"
-        className="mt-4 h-10 w-full text-sm font-medium"
-        disabled={
-          !members ||
-          (hasPendingChange && !hasScheduledDowngrade) ||
-          (!hasConfigurationChange && !restoresScheduledDowngrade) ||
-          previewing ||
-          confirming
-        }
-        onClick={() => {
-          detach(openPreview(), Reason.DomCallback);
-        }}
-      >
-        {managedSubscriptionActionLabel({
-          hasConfigurationChange,
-          previewing,
-          restoresScheduledDowngrade,
-        })}
-      </Button>
-      <UsagePackSubscriptionChangeDialog
-        confirming={confirming}
-        error={error}
-        onCancel={closePreview}
-        onConfirm={() => {
-          detach(submitChange(), Reason.DomCallback);
-        }}
-        plan={plan}
-        preview={preview}
-        totals={totals}
-      />
+      <div className={STEP_ACTION_BAR}>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button
+          type="button"
+          className="h-10 w-full text-sm font-medium"
+          disabled={
+            !members ||
+            (hasPendingChange && !hasScheduledDowngrade) ||
+            (!hasConfigurationChange && !restoresScheduledDowngrade) ||
+            previewing
+          }
+          onClick={() => {
+            detach(openPreview(), Reason.DomCallback);
+          }}
+        >
+          {managedSubscriptionActionLabel({
+            hasConfigurationChange,
+            previewing,
+            restoresScheduledDowngrade,
+          })}
+        </Button>
+      </div>
     </section>
   );
 }
@@ -2245,10 +2281,12 @@ function PackageConfigurationStep({
   catalog,
   management,
   plan,
+  preview,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly management: UsagePackManagementResponse | null;
   readonly plan: UsagePackPlan;
+  readonly preview: UsagePackSubscriptionChangePreviewResponse | null;
 }) {
   const selections = useGet(memberUsageSelections$);
   const allMembers = useUsagePackMembers();
@@ -2275,6 +2313,13 @@ function PackageConfigurationStep({
         : undefined
     : allMembers;
   const totals = memberUsageTotals(members ?? [], selections, catalog);
+
+  /* The review reads the packages configured here, so it stays in this step's
+     component and reuses the totals rather than resolving the member list a
+     second time. */
+  if (preview) {
+    return <PackageReviewStep plan={plan} preview={preview} totals={totals} />;
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-5">
@@ -2965,6 +3010,8 @@ export function UsagePackPricingDialogs({
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
   const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
   const setMemberUsageSelections = useSet(setMemberUsageSelections$);
+  const changePreview = useGet(usagePackSubscriptionChangePreview$);
+  const closePreview = useSet(closeUsagePackSubscriptionChangePreview$);
   const catalogLoadable = useLoadable(usagePackCatalogAsync$);
   const managementLoadable = useLoadable(usagePackManagementAsync$);
   const catalog =
@@ -2981,18 +3028,26 @@ export function UsagePackPricingDialogs({
         canCheckoutUsagePackPlan(checkoutAllowed, currentTier, plan.tier))
     );
   });
+  /* Only a managed subscription reviews its change here; a checkout leaves for
+     Stripe from the configuration step, so it has no third step to count. */
+  const preview = management === null ? null : changePreview;
+  const reviewing = selectedPlan !== undefined && preview !== null;
   return (
     <PricingStepDialog
       flush={!selectedPlan}
-      step={selectedPlan ? 2 : 1}
+      step={reviewing ? 3 : selectedPlan ? 2 : 1}
+      total={management === null ? 2 : 3}
       onBack={
-        selectedPlan
-          ? () => {
-              setSelectedPlan(null);
-            }
-          : undefined
+        reviewing
+          ? closePreview
+          : selectedPlan
+            ? () => {
+                setSelectedPlan(null);
+              }
+            : undefined
       }
       onClose={() => {
+        closePreview();
         setSelectedPlan(null);
         onClose();
       }}
@@ -3000,7 +3055,7 @@ export function UsagePackPricingDialogs({
       {!catalog || !managementLoaded ? (
         <div
           className={`flex-1 animate-pulse rounded-xl bg-muted/40 ${
-            selectedPlan ? "" : "m-5"
+            selectedPlan ? "mb-5" : "m-5"
           }`}
         />
       ) : selectedPlan ? (
@@ -3008,6 +3063,7 @@ export function UsagePackPricingDialogs({
           catalog={catalog}
           management={management}
           plan={selectedPlan}
+          preview={preview}
         />
       ) : (
         <PlanSelectionStep
