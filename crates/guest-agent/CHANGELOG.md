@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.73.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.5...guest-agent-v0.73.6) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+
 ## [0.73.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.4...guest-agent-v0.73.5) (2026-08-14)
 
 
