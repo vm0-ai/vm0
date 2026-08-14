@@ -19,7 +19,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   readBankingAuditEventsState,
   seedBankingState,
-} from "./helpers/zero-banking-state";
+} from "./helpers/banking-state";
 import { zeroBankingRoutes } from "../zero-banking";
 
 const context = testContext();

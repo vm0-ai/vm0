@@ -47,7 +47,7 @@ import {
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { postUsageAllowanceInvoicePaid } from "./helpers/stripe-billing-webhook";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   deleteFeatureSwitchesForUser,

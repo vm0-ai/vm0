@@ -27,7 +27,7 @@ import { zeroAvatarVideoRoutes } from "../zero-avatar-video";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 

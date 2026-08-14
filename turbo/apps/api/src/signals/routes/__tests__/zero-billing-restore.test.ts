@@ -13,7 +13,7 @@ import {
   deleteInvoicesOrg$,
   seedInvoicesOrg$,
   type InvoicesOrgFixture,
-} from "./helpers/zero-billing-invoices";
+} from "./helpers/billing-invoices";
 import {
   createFixtureTracker,
   createZeroRouteMocks,

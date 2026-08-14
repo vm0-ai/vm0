@@ -23,7 +23,7 @@ import {
   deleteBillingStatusOrg$,
   seedBillingStatusOrg$,
   type BillingStatusFixture,
-} from "./helpers/zero-billing-status";
+} from "./helpers/billing-status";
 import {
   createFixtureTracker,
   createZeroRouteMocks,

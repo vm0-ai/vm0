@@ -9,7 +9,7 @@ import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { webDownloadRoutes } from "../web-download";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 
 const context = testContext();
 const store = createStore();
