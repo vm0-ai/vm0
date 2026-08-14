@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.451.2](https://github.com/vm0-ai/vm0/compare/api-v1.451.1...api-v1.451.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* retain chat events independently ([#27292](https://github.com/vm0-ai/vm0/issues/27292)) ([b03013e](https://github.com/vm0-ai/vm0/commit/b03013e501f94890cdf6c13f58e79b6571ce66aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.2
+    * @okouai/core bumped to 8.561.1
+    * @okouai/db bumped to 1.200.2
+
 ## [1.451.1](https://github.com/vm0-ai/vm0/compare/api-v1.451.0...api-v1.451.1) (2026-08-14)
 
 
