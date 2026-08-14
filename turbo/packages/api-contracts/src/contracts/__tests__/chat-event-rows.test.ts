@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
-import { chatEventRowV4Schema, type ChatEventRowV4 } from "../chat-event-rows";
+import { chatEventRowSchema, type ChatEventRow } from "../chat-event-rows";
 
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
 
-function v4Row(overrides: Partial<ChatEventRowV4>): ChatEventRowV4 {
+function v4Row(overrides: Partial<ChatEventRow>): ChatEventRow {
   return {
     id: "00000000-0000-4000-8000-000000000003",
     chatThreadId: "00000000-0000-4000-8000-000000000002",
@@ -23,14 +23,14 @@ function v4Row(overrides: Partial<ChatEventRowV4>): ChatEventRowV4 {
   };
 }
 
-function projectableV4Row(eventType: ChatEventType): ChatEventRowV4 {
+function projectableV4Row(eventType: ChatEventType): ChatEventRow {
   const runId = "00000000-0000-4000-8000-000000000013";
   const revokesEventId = "00000000-0000-4000-8000-000000000014";
   const userMessage = {
     version: 1,
     parts: [{ type: "text", text: eventType }],
   };
-  const variants: Record<ChatEventType, Partial<ChatEventRowV4>> = {
+  const variants: Record<ChatEventType, Partial<ChatEventRow>> = {
     "input.prompt": { payload: { userMessage }, contextType: "web" },
     "input.automation": {
       payload: { userMessage },
@@ -86,7 +86,7 @@ describe("canonical chat event row schema", () => {
   it("accepts v4 rows", () => {
     const v4 = v4Row({ payload: { content: "canonical" } });
     expect(
-      chatEventRowV4Schema.parse(JSON.parse(JSON.stringify(v4))),
+      chatEventRowSchema.parse(JSON.parse(JSON.stringify(v4))),
     ).toStrictEqual(v4);
   });
 
@@ -109,7 +109,7 @@ describe("canonical chat event row schema", () => {
         },
       },
     });
-    const parsed = chatEventRowV4Schema.parse(JSON.parse(JSON.stringify(row)));
+    const parsed = chatEventRowSchema.parse(JSON.parse(JSON.stringify(row)));
     expect(parsed).toStrictEqual(row);
     expect(parsed.payload).toHaveProperty(
       "userMessage.nestedProbe.value",
@@ -128,7 +128,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
         const wireRow = JSON.parse(
           JSON.stringify(projectableV4Row(eventType)),
         ) as unknown;
-        return chatEventFromRow(chatEventRowV4Schema.parse(wireRow)).eventType;
+        return chatEventFromRow(chatEventRowSchema.parse(wireRow)).eventType;
       }),
     ).toStrictEqual([...CHAT_EVENT_TYPES]);
   });

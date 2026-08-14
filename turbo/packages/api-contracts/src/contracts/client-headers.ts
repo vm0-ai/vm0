@@ -1,8 +1,11 @@
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
+
 export const CLIENT_VERSION_HEADER = "X-Client-Version";
 export const CLIENT_TYPE_HEADER = "X-Client-Type";
 export const CLIENT_PRODUCT_HEADER = "X-Client-Product";
 export const CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
 export const CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
+export { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
 export const CLIENT_FORCE_UPGRADE_STATUS = 426;
 
 // Canonical X-Client-Type wire values emitted by first-party clients.
@@ -35,4 +38,5 @@ export const CLIENT_HEADER_NAMES = [
   CLIENT_PRODUCT_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_REQUEST_ID_HEADER,
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
 ] as const;

@@ -13,6 +13,7 @@ import {
   CLIENT_TYPE_MITM_ADDON,
   CLIENT_TYPE_RUNNER,
   CLIENT_VERSION_HEADER,
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
   DESKTOP_PRODUCT_OKOU,
   DESKTOP_PRODUCT_ZERO,
   desktopProductFromClientHeader,
@@ -44,6 +45,7 @@ describe("client header contract", () => {
       CLIENT_PRODUCT_HEADER,
       CLIENT_SESSION_ID_HEADER,
       CLIENT_REQUEST_ID_HEADER,
+      CHAT_EVENT_SCHEMA_VERSION_HEADER,
     ]);
     expect(CLIENT_HEADER_NAMES).toStrictEqual([
       "X-Client-Version",
@@ -51,6 +53,7 @@ describe("client header contract", () => {
       "X-Client-Product",
       "X-Client-Session-Id",
       "X-Client-Request-Id",
+      "X-Chat-Event-Schema-Version",
     ]);
   });
 

@@ -1,30 +1,40 @@
 import type { IDBPDatabase } from "idb";
 import {
-  chatEventRowV4Schema,
-  type ChatEventRowV4,
+  chatEventRowSchema,
+  type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { logger } from "../log.ts";
 import { onRejection } from "../utils.ts";
 import {
   CHAT_EVENT_ROWS_ORDER_INDEX,
   CHAT_EVENT_ROWS_STORE,
+  CHAT_EVENT_CURSOR_STORE,
 } from "./chat-idb-schema.ts";
 import { disabledChatIdbError, logChatIdbDisabled } from "./chat-idb-safe.ts";
 
 const L = logger("ChatEventRowIndexedDb");
 
 interface ChatEventRowReadStore {
-  readLastSeqId(threadId: string, signal?: AbortSignal): Promise<number | null>;
+  readCursor(
+    threadId: string,
+    signal?: AbortSignal,
+  ): Promise<ChatEventCursor | null>;
   readRowsAfter(
     threadId: string,
     afterSeqId: number | null,
     signal?: AbortSignal,
-  ): Promise<ChatEventRowV4[]>;
+  ): Promise<ChatEventRow[]>;
 }
 
 interface ChatEventRowWriteStore {
-  upsertRows(
-    rows: readonly ChatEventRowV4[],
+  upsertRowsAndCursor(
+    threadId: string,
+    rows: readonly ChatEventRow[],
+    cursor: ChatEventCursor,
     signal?: AbortSignal,
   ): Promise<void>;
   clearThread(threadId: string, signal?: AbortSignal): Promise<void>;
@@ -32,8 +42,29 @@ interface ChatEventRowWriteStore {
 
 // The store persists only strict canonical rows. Its introducing schema
 // upgrade dropped the previous raw-row cache before rebuilding it.
-function storedChatEventRow(raw: unknown): ChatEventRowV4 {
-  return chatEventRowV4Schema.parse(raw);
+function storedChatEventRow(raw: unknown): ChatEventRow {
+  return chatEventRowSchema.parse(raw);
+}
+
+function storedChatEventCursor(raw: unknown): ChatEventCursor {
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    !("schemaVersion" in raw) ||
+    raw.schemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
+    !("lastEventId" in raw) ||
+    !(raw.lastEventId === null || typeof raw.lastEventId === "string") ||
+    !("lastSeqId" in raw) ||
+    typeof raw.lastSeqId !== "number" ||
+    !Number.isSafeInteger(raw.lastSeqId) ||
+    raw.lastSeqId < 0
+  ) {
+    throw new Error("Invalid cached Chat Event cursor");
+  }
+  return {
+    lastEventId: raw.lastEventId,
+    lastSeqId: raw.lastSeqId,
+  };
 }
 
 function threadRowRange(
@@ -50,20 +81,17 @@ type GetDb = () => Promise<IDBPDatabase>;
 
 function createRowReadStore(
   storeName: string,
+  cursorStoreName: string,
   getDb: GetDb,
 ): ChatEventRowReadStore {
   return {
-    async readLastSeqId(threadId, signal) {
+    async readCursor(threadId, signal) {
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readonly");
-      const index = tx.store.index(CHAT_EVENT_ROWS_ORDER_INDEX);
-      const cursor = await index.openCursor(
-        threadRowRange(threadId, null),
-        "prev",
-      );
+      const tx = db.transaction(cursorStoreName, "readonly");
+      const cursor = await tx.store.get(threadId);
       signal?.throwIfAborted();
-      return cursor ? storedChatEventRow(cursor.value).seqId : null;
+      return cursor === undefined ? null : storedChatEventCursor(cursor);
     },
     async readRowsAfter(threadId, afterSeqId, signal) {
       L.debug("readRowsAfter:start", { threadId, afterSeqId });
@@ -84,31 +112,43 @@ function createRowReadStore(
 
 function createRowWriteStore(
   storeName: string,
+  cursorStoreName: string,
   getDb: GetDb,
 ): ChatEventRowWriteStore {
   return {
-    async upsertRows(rows, signal) {
+    async upsertRowsAndCursor(threadId, rows, cursor, signal) {
       L.debug("upsertRows:start", { count: rows.length });
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readwrite");
+      const tx = db.transaction([storeName, cursorStoreName], "readwrite");
+      const rowStore = tx.objectStore(storeName);
       const requests = rows.map((row) => {
         signal?.throwIfAborted();
-        return tx.store.put(row);
+        return rowStore.put(row);
       });
+      requests.push(
+        tx.objectStore(cursorStoreName).put({
+          threadId,
+          schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          lastEventId: cursor.lastEventId,
+          lastSeqId: cursor.lastSeqId,
+        }),
+      );
       await Promise.all([...requests, tx.done]);
       L.debug("upsertRows:done", { count: rows.length });
     },
     async clearThread(threadId, signal) {
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readwrite");
-      const index = tx.store.index(CHAT_EVENT_ROWS_ORDER_INDEX);
+      const tx = db.transaction([storeName, cursorStoreName], "readwrite");
+      const rowStore = tx.objectStore(storeName);
+      const index = rowStore.index(CHAT_EVENT_ROWS_ORDER_INDEX);
       const keys = await index.getAllKeys(threadRowRange(threadId, null));
       signal?.throwIfAborted();
       const requests = keys.map((key) => {
-        return tx.store.delete(key);
+        return rowStore.delete(key);
       });
+      requests.push(tx.objectStore(cursorStoreName).delete(threadId));
       await Promise.all([...requests, tx.done]);
       L.debug("clearThread:done", { threadId, count: keys.length });
     },
@@ -118,6 +158,7 @@ function createRowWriteStore(
 function createIdbEventRowStores(getChatIdb: GetDb) {
   const dbName = "current chat IndexedDB";
   const storeName = CHAT_EVENT_ROWS_STORE;
+  const cursorStoreName = CHAT_EVENT_CURSOR_STORE;
 
   let disabled = false;
 
@@ -139,8 +180,8 @@ function createIdbEventRowStores(getChatIdb: GetDb) {
   }
 
   return Object.freeze({
-    readStore: createRowReadStore(storeName, getDb),
-    writeStore: createRowWriteStore(storeName, getDb),
+    readStore: createRowReadStore(storeName, cursorStoreName, getDb),
+    writeStore: createRowWriteStore(storeName, cursorStoreName, getDb),
   });
 }
 

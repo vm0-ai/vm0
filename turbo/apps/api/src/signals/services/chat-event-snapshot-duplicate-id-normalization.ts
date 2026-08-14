@@ -1,6 +1,6 @@
 import {
-  chatEventRowV4Schema,
-  type ChatEventRowV4,
+  chatEventRowSchema,
+  type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { v5 as uuidv5 } from "uuid";
 
@@ -25,7 +25,7 @@ export const NO_DUPLICATE_EVENT_ID_NORMALIZATION = {
   remappedEventReferences: 0,
 } as const satisfies DuplicateEventIdNormalizationStats;
 
-function encodeArchiveLine(line: ChatEventRowV4): Buffer {
+function encodeArchiveLine(line: ChatEventRow): Buffer {
   return Buffer.from(`${JSON.stringify(line)}\n`);
 }
 
@@ -49,7 +49,7 @@ function archiveEventIds(body: Buffer): readonly string[] {
     });
 }
 
-function decodeArchiveLines(body: Buffer): readonly ChatEventRowV4[] {
+function decodeArchiveLines(body: Buffer): readonly ChatEventRow[] {
   const raw = body.toString("utf8");
   if (!raw.endsWith("\n")) {
     throw new Error("chat event snapshot archive must end with a newline");
@@ -58,7 +58,7 @@ function decodeArchiveLines(body: Buffer): readonly ChatEventRowV4[] {
     .slice(0, -1)
     .split("\n")
     .map((line) => {
-      return chatEventRowV4Schema.parse(JSON.parse(line));
+      return chatEventRowSchema.parse(JSON.parse(line));
     });
 }
 

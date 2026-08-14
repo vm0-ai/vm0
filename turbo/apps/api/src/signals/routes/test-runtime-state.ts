@@ -52,6 +52,10 @@ import {
 } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
 import {
+  chatEventSnapshotCursorSchemaAvailable,
+  chatEventSnapshotLastEventId,
+} from "../services/chat-event-snapshot-schema.service";
+import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
@@ -1329,7 +1333,9 @@ type ChatEventFixtureAction = Extract<
     action:
       | "advance-chat-event-sequence-as-previous-api"
       | "read-chat-event-snapshot-head"
-      | "set-chat-event-snapshot-head-version";
+      | "replace-chat-event-snapshot-head-as-previous-api"
+      | "set-chat-event-snapshot-head-version"
+      | "validate-chat-event-snapshot-rollout";
   }
 >;
 
@@ -1339,8 +1345,260 @@ function isChatEventFixtureAction(
   return (
     body.action === "advance-chat-event-sequence-as-previous-api" ||
     body.action === "read-chat-event-snapshot-head" ||
-    body.action === "set-chat-event-snapshot-head-version"
+    body.action === "replace-chat-event-snapshot-head-as-previous-api" ||
+    body.action === "set-chat-event-snapshot-head-version" ||
+    body.action === "validate-chat-event-snapshot-rollout"
   );
+}
+
+type ChatEventSnapshotRolloutAction = Extract<
+  ChatEventFixtureAction,
+  { readonly action: "validate-chat-event-snapshot-rollout" }
+>;
+
+interface ChatEventSnapshotRolloutState {
+  readonly lastEventId: string;
+  readonly snapshotCount: number;
+}
+
+async function validatePreMigrationChatEventSnapshotRollout(
+  db: Db,
+  body: ChatEventSnapshotRolloutAction,
+): Promise<
+  ChatEventSnapshotRolloutState & { readonly schemaAvailable: boolean }
+> {
+  const initialObjectKey = `rollout-initial-${body.thread_id}`;
+  const replacementObjectKey = `rollout-replacement-${body.thread_id}`;
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE chat_event_snapshots
+      (LIKE public.chat_event_snapshots INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    await tx.execute(
+      sql`ALTER TABLE chat_event_snapshots DROP COLUMN last_event_id`,
+    );
+    await tx.execute(sql`
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      ) VALUES (
+        ${body.thread_id},
+        NULL,
+        ${body.last_seq_id},
+        ${body.archive_schema_version},
+        ${initialObjectKey},
+        true
+      )
+    `);
+    await tx.execute(sql`
+      WITH previous_head AS (
+        UPDATE chat_event_snapshots
+        SET is_head = false
+        WHERE chat_thread_id = ${body.thread_id}
+          AND archive_schema_version = ${body.archive_schema_version}
+          AND is_head = true
+        RETURNING id
+      )
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      )
+      SELECT
+        ${body.thread_id},
+        previous_head.id,
+        ${body.last_seq_id},
+        ${body.archive_schema_version},
+        ${replacementObjectKey},
+        true
+      FROM previous_head
+    `);
+    const schemaAvailable = await chatEventSnapshotCursorSchemaAvailable(tx);
+    const [head] = await tx
+      .select({ lastEventId: chatEventSnapshotLastEventId })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .limit(1);
+    const [snapshotCount] = await tx
+      .select({ value: count() })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id));
+    if (!head?.lastEventId || !snapshotCount) {
+      throw new Error("Pre-migration Snapshot rollout fixture is incomplete");
+    }
+    return {
+      schemaAvailable,
+      lastEventId: head.lastEventId,
+      snapshotCount: snapshotCount.value,
+    };
+  });
+}
+
+async function validateMigratedChatEventSnapshotRollout(
+  db: Db,
+  body: ChatEventSnapshotRolloutAction,
+): Promise<ChatEventSnapshotRolloutState> {
+  const initialObjectKey = `rollout-initial-${body.thread_id}`;
+  const replacementObjectKey = `rollout-replacement-${body.thread_id}`;
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE chat_event_snapshots
+      (LIKE public.chat_event_snapshots INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    await tx.execute(sql`
+      CREATE TRIGGER chat_event_snapshots_fill_last_event_id
+      BEFORE INSERT OR UPDATE OF last_seq_id ON chat_event_snapshots
+      FOR EACH ROW
+      EXECUTE FUNCTION public.set_chat_event_snapshot_last_event_id()
+    `);
+    await tx.execute(sql`
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        last_event_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      ) VALUES (
+        ${body.thread_id},
+        NULL,
+        ${body.last_seq_id},
+        ${body.last_event_id},
+        ${body.archive_schema_version},
+        ${initialObjectKey},
+        true
+      )
+    `);
+    await tx.execute(sql`
+      WITH previous_head AS (
+        UPDATE chat_event_snapshots
+        SET is_head = false
+        WHERE chat_thread_id = ${body.thread_id}
+          AND archive_schema_version = ${body.archive_schema_version}
+          AND is_head = true
+        RETURNING id
+      )
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      )
+      SELECT
+        ${body.thread_id},
+        previous_head.id,
+        ${body.last_seq_id},
+        ${body.archive_schema_version},
+        ${replacementObjectKey},
+        true
+      FROM previous_head
+    `);
+    const [head] = await tx
+      .select({ lastEventId: chatEventSnapshots.lastEventId })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .limit(1);
+    const [snapshotCount] = await tx
+      .select({ value: count() })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id));
+    if (!head?.lastEventId || !snapshotCount) {
+      throw new Error("Migrated Snapshot rollout fixture is incomplete");
+    }
+    return {
+      lastEventId: head.lastEventId,
+      snapshotCount: snapshotCount.value,
+    };
+  });
+}
+
+async function validateChatEventSnapshotRollout(
+  db: Db,
+  body: ChatEventSnapshotRolloutAction,
+  signal: AbortSignal,
+) {
+  const preMigration = await validatePreMigrationChatEventSnapshotRollout(
+    db,
+    body,
+  );
+  signal.throwIfAborted();
+  const migrated = await validateMigratedChatEventSnapshotRollout(db, body);
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      chat_event_snapshot_rollout: {
+        pre_migration_schema_available: preMigration.schemaAvailable,
+        pre_migration_last_event_id: preMigration.lastEventId,
+        pre_migration_snapshot_count: preMigration.snapshotCount,
+        migrated_last_event_id: migrated.lastEventId,
+        migrated_snapshot_count: migrated.snapshotCount,
+      },
+    },
+  };
+}
+
+async function replaceChatEventSnapshotHeadAsPreviousApi(
+  db: Db,
+  body: Extract<
+    ChatEventFixtureAction,
+    { action: "replace-chat-event-snapshot-head-as-previous-api" }
+  >,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    const [previousHead] = await tx
+      .update(chatEventSnapshots)
+      .set({ isHead: false })
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    if (previousHead === undefined) {
+      throw new Error(
+        "replace-chat-event-snapshot-head-as-previous-api missing head",
+      );
+    }
+    await tx.insert(chatEventSnapshots).values({
+      chatThreadId: body.thread_id,
+      parentSnapshotId: previousHead.id,
+      lastSeqId: body.last_seq_id,
+      archiveSchemaVersion: body.archive_schema_version,
+      objectKey: body.object_key,
+      isHead: true,
+    });
+  });
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
 }
 
 async function chatEventFixtureActionResponse(
@@ -1348,6 +1606,9 @@ async function chatEventFixtureActionResponse(
   body: ChatEventFixtureAction,
   signal: AbortSignal,
 ) {
+  if (body.action === "validate-chat-event-snapshot-rollout") {
+    return await validateChatEventSnapshotRollout(db, body, signal);
+  }
   if (body.action === "advance-chat-event-sequence-as-previous-api") {
     const [updated] = await db
       .update(chatThreads)
@@ -1364,7 +1625,24 @@ async function chatEventFixtureActionResponse(
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
+  if (body.action === "replace-chat-event-snapshot-head-as-previous-api") {
+    return await replaceChatEventSnapshotHeadAsPreviousApi(db, body, signal);
+  }
   if (body.action === "set-chat-event-snapshot-head-version") {
+    const [pointer] = await db
+      .select({ id: chatEventSnapshots.id })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .orderBy(
+        desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.createdAt),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!pointer) {
+      throw new Error("set-chat-event-snapshot-head-version missing pointer");
+    }
     const updated = await db
       .update(chatEventSnapshots)
       .set({
@@ -1373,16 +1651,11 @@ async function chatEventFixtureActionResponse(
           ? {}
           : { objectKey: body.object_key }),
       })
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, body.thread_id),
-          eq(chatEventSnapshots.isHead, true),
-        ),
-      )
+      .where(eq(chatEventSnapshots.id, pointer.id))
       .returning({ id: chatEventSnapshots.id });
     signal.throwIfAborted();
     if (updated.length === 0) {
-      throw new Error("set-chat-event-snapshot-head-version missing head");
+      throw new Error("set-chat-event-snapshot-head-version missing pointer");
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
@@ -1390,6 +1663,7 @@ async function chatEventFixtureActionResponse(
     db
       .select({
         archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        lastEventId: chatEventSnapshotLastEventId,
         lastSeqId: chatEventSnapshots.lastSeqId,
         objectKey: chatEventSnapshots.objectKey,
       })
@@ -1399,6 +1673,11 @@ async function chatEventFixtureActionResponse(
           eq(chatEventSnapshots.chatThreadId, body.thread_id),
           eq(chatEventSnapshots.isHead, true),
         ),
+      )
+      .orderBy(
+        desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.createdAt),
       )
       .limit(1),
     db
@@ -1410,6 +1689,9 @@ async function chatEventFixtureActionResponse(
   if (!snapshotCount) {
     throw new Error("read-chat-event-snapshot-head missing snapshot count");
   }
+  if (head?.lastEventId === null) {
+    throw new Error("read-chat-event-snapshot-head missing terminal event ID");
+  }
   return {
     status: 200 as const,
     body: {
@@ -1417,6 +1699,7 @@ async function chatEventFixtureActionResponse(
       chat_event_snapshot_head: head
         ? {
             archive_schema_version: head.archiveSchemaVersion,
+            last_event_id: head.lastEventId,
             last_seq_id: head.lastSeqId,
             object_key: head.objectKey,
             snapshot_count: snapshotCount.value,

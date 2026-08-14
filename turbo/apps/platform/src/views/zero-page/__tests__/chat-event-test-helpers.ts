@@ -5,7 +5,7 @@ import {
   type ChatRecommendedFollowup,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown
@@ -356,7 +356,7 @@ const NULL_PAYLOAD_EVENT_TYPES = [
   "goal.close",
 ] as const satisfies readonly ChatEvent["eventType"][];
 
-function mockChatEventRowPayload(event: ChatEvent): ChatEventRowV4["payload"] {
+function mockChatEventRowPayload(event: ChatEvent): ChatEventRow["payload"] {
   if (
     NULL_PAYLOAD_EVENT_TYPES.some((eventType) => {
       return eventType === event.eventType;
@@ -401,7 +401,7 @@ function mockChatEventRowPayload(event: ChatEvent): ChatEventRowV4["payload"] {
 
 export function mockChatEventRows(
   events: readonly ChatEvent[],
-): ChatEventRowV4[] {
+): ChatEventRow[] {
   return events.map((event) => {
     const goalContextId = event.runGroupId ?? null;
     return {

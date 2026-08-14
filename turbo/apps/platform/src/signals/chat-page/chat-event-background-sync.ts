@@ -1,12 +1,13 @@
 import { command } from "ccstate";
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
   clearIndexedDbChatEventRows$,
-  loadIndexedDbChatEventRowLastSeqId$,
+  loadIndexedDbChatEventCursor$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
@@ -68,18 +69,38 @@ const coldStartChatThreadRows$ = command(
     signal: AbortSignal,
   ): Promise<{
     readonly events: readonly ChatEvent[];
-    readonly lastSeqId: number;
+    readonly cursor: {
+      readonly lastEventId: string | null;
+      readonly lastSeqId: number;
+    };
   }> => {
     const snapshot = await set(fetchChatEventSnapshotRows$, threadId, signal);
     if (snapshot === null) {
-      return { events: [], lastSeqId: THREAD_START_SEQ_ID };
+      return {
+        events: [],
+        cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
+      };
     }
-    await set(writeIndexedDbChatEventRows$, snapshot.rows, signal);
+    await set(
+      writeIndexedDbChatEventRows$,
+      {
+        threadId,
+        rows: snapshot.rows,
+        cursor: {
+          lastEventId: snapshot.lastEventId,
+          lastSeqId: snapshot.lastSeqId,
+        },
+      },
+      signal,
+    );
     return {
       events: snapshot.rows.map((row) => {
         return chatEventFromRow(row);
       }),
-      lastSeqId: snapshot.lastSeqId,
+      cursor: {
+        lastEventId: snapshot.lastEventId,
+        lastSeqId: snapshot.lastSeqId,
+      },
     };
   },
 );
@@ -101,16 +122,16 @@ const syncChatThreadRowsToIndexedDb$ = command(
     },
     signal: AbortSignal,
   ): Promise<ChatEvent[]> => {
-    const lastSeqId = await set(
-      loadIndexedDbChatEventRowLastSeqId$,
+    const cachedCursor = await set(
+      loadIndexedDbChatEventCursor$,
       threadId,
       signal,
     );
     signal.throwIfAborted();
     if (
-      lastSeqId !== null &&
+      cachedCursor !== null &&
       syncThroughSeqId !== null &&
-      lastSeqId >= syncThroughSeqId
+      cachedCursor.lastSeqId >= syncThroughSeqId
     ) {
       L.debug("skipped background row sync: seq watermark already cached", {
         threadId,
@@ -121,19 +142,19 @@ const syncChatThreadRowsToIndexedDb$ = command(
 
     const syncedEvents: ChatEvent[] = [];
     let cursorFromServer = false;
-    let sinceSeqId: number;
-    if (lastSeqId === null) {
+    let cursor: ChatEventCursor;
+    if (cachedCursor === null) {
       const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
       syncedEvents.push(...coldStart.events);
-      sinceSeqId = coldStart.lastSeqId;
+      cursor = coldStart.cursor;
       cursorFromServer = true;
     } else {
-      sinceSeqId = lastSeqId;
+      cursor = cachedCursor;
     }
 
     let shouldLoadNextPage = true;
     while (shouldLoadNextPage) {
-      const page = await set(listRowsAfter$, { threadId, sinceSeqId }, signal);
+      const page = await set(listRowsAfter$, { threadId, cursor }, signal);
       signal.throwIfAborted();
       if (page.kind === "expired") {
         if (cursorFromServer) {
@@ -144,21 +165,28 @@ const syncChatThreadRowsToIndexedDb$ = command(
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
         syncedEvents.push(...coldStart.events);
-        sinceSeqId = coldStart.lastSeqId;
+        cursor = coldStart.cursor;
         cursorFromServer = true;
         continue;
       }
       if (page.rows.length === 0) {
         return syncedEvents;
       }
-      await set(writeIndexedDbChatEventRows$, page.rows, signal);
-      signal.throwIfAborted();
+      const lastRow = page.rows.at(-1);
+      if (lastRow === undefined) {
+        return syncedEvents;
+      }
+      cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
+      await set(
+        writeIndexedDbChatEventRows$,
+        { threadId, rows: page.rows, cursor },
+        signal,
+      );
       syncedEvents.push(
         ...page.rows.map((row) => {
           return chatEventFromRow(row);
         }),
       );
-      sinceSeqId = page.rows.at(-1)!.seqId;
       shouldLoadNextPage = page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
     }
     return syncedEvents;

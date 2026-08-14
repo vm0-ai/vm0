@@ -3,23 +3,26 @@ import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
 
 import {
-  chatEventRowV4Schema,
-  type ChatEventRowV4,
+  chatEventRowSchema,
+  type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, type Computed } from "ccstate";
 import {
   and,
   asc,
   count,
+  desc,
   eq,
+  exists,
   gt,
   inArray,
-  isNull,
   lt,
   lte,
-  or,
+  ne,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
@@ -43,6 +46,9 @@ import {
   prepareChatEventArchiveWithNormalizedIds,
   type DuplicateEventIdNormalizationStats,
 } from "./chat-event-snapshot-duplicate-id-normalization";
+import { decodeChatEventSnapshotBody } from "./chat-event-row-downgrade.service";
+import { chatEventSnapshotCursorSchemaAvailable } from "./chat-event-snapshot-schema.service";
+import { upgradeChatEventSnapshotBody } from "./chat-event-snapshot-upgrade.service";
 
 const log = logger("api:cron:snapshot-chat-events");
 
@@ -93,23 +99,16 @@ interface SnapshotCandidate {
   readonly indexedSeqId: number;
   readonly headId: string | null;
   readonly headLastSeqId: number | null;
+  readonly headLastEventId: string | null;
   readonly headObjectKey: string | null;
   readonly headArchiveSchemaVersion: number | null;
 }
 
 /**
- * Version of the archive object contract. Bump it whenever the NDJSON line
- * shape (chatEventRowV4Schema) or the object encoding changes. v4 is the
- * canonical payload/run/context row shape and retains gzip content metadata
- * so browser downloads are transparently decompressed.
+ * Version of the Chat Event row contract stored in Snapshot NDJSON. Bump it
+ * whenever the row schema changes; object encoding remains gzip NDJSON.
  */
-export const ARCHIVE_SCHEMA_VERSION = 5;
-/**
- * Old archive contracts below this version are no longer supported. Raise
- * this only after the App force-upgrade floor requires a reader that supports
- * the new minimum; changing the constant intentionally starts reclamation.
- */
-const MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION = 4;
+const ARCHIVE_SCHEMA_VERSION = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 const gzipAsync = promisify(gzip);
@@ -132,6 +131,10 @@ const SNAPSHOT_GC_DELETE_QUOTA = 1000;
  */
 const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const HEX_DIGITS = "0123456789abcdef";
+const currentSnapshot = alias(
+  chatEventSnapshots,
+  "current_chat_event_snapshot",
+);
 
 type ArchiveEventRow = Pick<
   typeof chatEvents.$inferSelect,
@@ -167,8 +170,36 @@ function hoursBefore(now: Date, hours: number): Date {
   return new Date(now.getTime() - hours * 60 * 60 * 1000);
 }
 
-function encodeArchiveLine(line: ChatEventRowV4): Buffer {
+function encodeArchiveLine(line: ChatEventRow): Buffer {
   return Buffer.from(`${JSON.stringify(line)}\n`);
+}
+
+async function snapshotStatsBeforeCursorMigration(
+  db: Db,
+  chatThreadIds: readonly string[] | null,
+  signal: AbortSignal,
+): Promise<ChatEventSnapshotStats> {
+  signal.throwIfAborted();
+  const convergence = await chatEventSnapshotConvergence(db, chatThreadIds);
+  signal.throwIfAborted();
+  return {
+    snapshots: 0,
+    archivedEvents: 0,
+    unreadableParents: 0,
+    duplicateEventIdConflictThreads: 0,
+    duplicateEventIdConflicts: 0,
+    duplicateEventIdsRemapped: 0,
+    duplicateEventReferencesRemapped: 0,
+    retiredSnapshotReferencesDeleted: 0,
+    r2ObjectsScanned: 0,
+    r2ObjectsMeasured: 0,
+    r2ObjectsDeleted: 0,
+    r2BytesMeasured: 0,
+    r2BytesDeleted: 0,
+    r2GcShardsScanned: 0,
+    r2GcSubpartitionedShards: 0,
+    ...convergence,
+  };
 }
 
 /**
@@ -176,8 +207,8 @@ function encodeArchiveLine(line: ChatEventRowV4): Buffer {
  * explicitly so a chat_events schema change cannot silently alter the durable
  * wire shape.
  */
-export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRowV4 {
-  return chatEventRowV4Schema.parse({
+export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
+  return chatEventRowSchema.parse({
     id: row.id,
     chatThreadId: row.chatThreadId,
     runId: row.runId,
@@ -216,11 +247,13 @@ async function readCanonicalEvents(
 ): Promise<{
   readonly lines: readonly Buffer[];
   readonly count: number;
+  readonly lastEventId: string | null;
   readonly lastSeqId: number;
 }> {
   const lines: Buffer[] = [];
   let cursor = fromSeqId;
   let count = 0;
+  let lastEventId: string | null = null;
   for (;;) {
     const rows = await db
       .select({
@@ -248,6 +281,7 @@ async function readCanonicalEvents(
       .orderBy(asc(chatEvents.seqId))
       .limit(EVENT_PAGE_SIZE);
     for (const row of rows) {
+      lastEventId = row.id;
       lines.push(archiveLine(row));
     }
     count += rows.length;
@@ -259,149 +293,254 @@ async function readCanonicalEvents(
       return {
         lines,
         count,
+        lastEventId,
         lastSeqId: candidate.indexedSeqId,
       };
     }
   }
 }
 
-/**
- * Atomically replaces the thread's head snapshot row. Returns false without
- * writing anything when another writer already advanced the head past the
- * expected parent; the freshly uploaded object then stays orphaned in R2.
- */
-async function publishSnapshotHead(
+interface SnapshotSource {
+  readonly id: string;
+  readonly lastSeqId: number;
+  readonly lastEventId: string;
+  readonly objectKey: string;
+  readonly schemaVersion: number;
+}
+
+function candidateCurrentSource(
+  candidate: SnapshotCandidate,
+): SnapshotSource | null {
+  if (candidate.headId === null) {
+    return null;
+  }
+  if (
+    candidate.headLastSeqId === null ||
+    candidate.headLastEventId === null ||
+    candidate.headObjectKey === null ||
+    candidate.headArchiveSchemaVersion === null
+  ) {
+    throw new Error("Chat Event Snapshot pointer metadata is incomplete");
+  }
+  return {
+    id: candidate.headId,
+    lastSeqId: candidate.headLastSeqId,
+    lastEventId: candidate.headLastEventId,
+    objectKey: candidate.headObjectKey,
+    schemaVersion: candidate.headArchiveSchemaVersion,
+  };
+}
+
+async function storedSnapshotSource(
   db: Db,
   candidate: SnapshotCandidate,
-  lastSeqId: number,
-  objectKey: string,
+): Promise<SnapshotSource | null> {
+  const current = candidateCurrentSource(candidate);
+  if (current !== null) {
+    return current;
+  }
+  const sources = await db
+    .select({
+      id: chatEventSnapshots.id,
+      lastSeqId: chatEventSnapshots.lastSeqId,
+      lastEventId: chatEventSnapshots.lastEventId,
+      objectKey: chatEventSnapshots.objectKey,
+      schemaVersion: chatEventSnapshots.archiveSchemaVersion,
+    })
+    .from(chatEventSnapshots)
+    .where(eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId))
+    .orderBy(
+      desc(chatEventSnapshots.isHead),
+      desc(chatEventSnapshots.lastSeqId),
+      desc(chatEventSnapshots.archiveSchemaVersion),
+      desc(chatEventSnapshots.createdAt),
+      desc(chatEventSnapshots.id),
+    );
+  const source = sources[0];
+  if (source === undefined) {
+    return null;
+  }
+  if (source.lastEventId === null) {
+    throw new Error("Chat Event Snapshot pointer has no terminal event ID");
+  }
+  return { ...source, lastEventId: source.lastEventId };
+}
+
+async function readSnapshotPrefix(
+  get: ComputedGetter,
+  bucket: string,
+  chatThreadId: string,
+  source: SnapshotSource,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  const downloaded = await get(downloadS3Buffer(bucket, source.objectKey));
+  signal.throwIfAborted();
+  const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(source.objectKey)?.[1];
+  if (digest === undefined || sha256Hex(downloaded) !== digest) {
+    throw new Error(
+      "Chat Event Snapshot object checksum does not match its key",
+    );
+  }
+  const decompressed = await gunzipAsync(downloaded);
+  signal.throwIfAborted();
+  const upgraded = upgradeChatEventSnapshotBody(
+    decompressed,
+    source.schemaVersion,
+    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  );
+  const rows = decodeChatEventSnapshotBody(upgraded);
+  const last = rows.at(-1);
+  if (
+    last === undefined ||
+    last.id !== source.lastEventId ||
+    last.seqId > source.lastSeqId
+  ) {
+    throw new Error("Chat Event Snapshot body does not match its cursor");
+  }
+  for (const [index, row] of rows.entries()) {
+    if (
+      row.chatThreadId !== chatThreadId ||
+      (index > 0 && row.seqId <= (rows[index - 1]?.seqId ?? 0))
+    ) {
+      throw new Error("Chat Event Snapshot body violates prefix ordering");
+    }
+  }
+  return upgraded;
+}
+
+function exactSnapshotPointer(source: SnapshotSource) {
+  return and(
+    eq(chatEventSnapshots.id, source.id),
+    eq(chatEventSnapshots.isHead, true),
+    eq(chatEventSnapshots.lastSeqId, source.lastSeqId),
+    eq(chatEventSnapshots.lastEventId, source.lastEventId),
+    eq(chatEventSnapshots.objectKey, source.objectKey),
+    eq(chatEventSnapshots.archiveSchemaVersion, source.schemaVersion),
+  );
+}
+
+/** Publish one version pointer only if its exact source is still current. */
+async function publishSnapshotVersion(
+  db: Db,
+  candidate: SnapshotCandidate,
+  source: SnapshotSource | null,
+  pointer: {
+    readonly lastSeqId: number;
+    readonly lastEventId: string;
+    readonly objectKey: string;
+  },
 ): Promise<boolean> {
+  const { lastSeqId, lastEventId, objectKey } = pointer;
   return await db.transaction(async (tx) => {
-    if (candidate.headId !== null) {
-      if (
-        candidate.headLastSeqId === null ||
-        candidate.headObjectKey === null ||
-        candidate.headArchiveSchemaVersion === null
-      ) {
-        throw new Error("chat event snapshot head metadata is incomplete");
+    const current = candidateCurrentSource(candidate);
+    if (current !== null) {
+      const updated = await tx
+        .update(chatEventSnapshots)
+        .set({
+          lastSeqId,
+          lastEventId,
+          objectKey,
+          parentSnapshotId: null,
+          createdAt: nowDate(),
+        })
+        .where(exactSnapshotPointer(current))
+        .returning({ id: chatEventSnapshots.id });
+      if (updated.length === 0) {
+        return false;
       }
-      const demoted = await tx
+      await tx
         .update(chatEventSnapshots)
         .set({ isHead: false })
         .where(
           and(
-            eq(chatEventSnapshots.id, candidate.headId),
             eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
-            eq(chatEventSnapshots.isHead, true),
-            eq(
-              chatEventSnapshots.archiveSchemaVersion,
-              candidate.headArchiveSchemaVersion,
-            ),
-            eq(chatEventSnapshots.lastSeqId, candidate.headLastSeqId),
-            eq(chatEventSnapshots.objectKey, candidate.headObjectKey),
+            ne(chatEventSnapshots.id, current.id),
           ),
-        )
+        );
+      await tx
+        .update(chatEventSnapshots)
+        .set({ isHead: true })
+        .where(eq(chatEventSnapshots.id, current.id));
+      return true;
+    }
+
+    if (source !== null && source.objectKey === objectKey) {
+      const upgraded = await tx
+        .update(chatEventSnapshots)
+        .set({
+          archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          lastSeqId,
+          lastEventId,
+          parentSnapshotId: null,
+          createdAt: nowDate(),
+        })
+        .where(exactSnapshotPointer(source))
         .returning({ id: chatEventSnapshots.id });
-      if (demoted.length === 0) {
+      if (upgraded.length === 0) {
+        return false;
+      }
+      await tx
+        .update(chatEventSnapshots)
+        .set({ isHead: false })
+        .where(
+          and(
+            eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
+            ne(chatEventSnapshots.id, source.id),
+          ),
+        );
+      await tx
+        .update(chatEventSnapshots)
+        .set({ isHead: true })
+        .where(eq(chatEventSnapshots.id, source.id));
+      return true;
+    }
+
+    if (source !== null) {
+      const matched = await tx
+        .update(chatEventSnapshots)
+        .set({ isHead: false })
+        .where(exactSnapshotPointer(source))
+        .returning({ id: chatEventSnapshots.id });
+      if (matched.length === 0) {
         return false;
       }
     }
+    await tx
+      .update(chatEventSnapshots)
+      .set({ isHead: false })
+      .where(eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId));
     await tx.insert(chatEventSnapshots).values({
       chatThreadId: candidate.chatThreadId,
-      parentSnapshotId: candidate.headId,
+      parentSnapshotId: null,
       lastSeqId,
-      archiveSchemaVersion: ARCHIVE_SCHEMA_VERSION,
+      lastEventId,
+      archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       objectKey,
       isHead: true,
     });
+    if (source !== null) {
+      await tx
+        .delete(chatEventSnapshots)
+        .where(eq(chatEventSnapshots.id, source.id));
+    }
     return true;
   });
 }
 
-/**
- * Advances an exact existing head to the current schema when rebuilding it
- * produced the same immutable object. This is expected for threads without
- * located feedback, where the v4 and v5 bytes are identical.
- */
-async function stampSnapshotHeadVersion(
-  db: Db,
-  candidate: SnapshotCandidate,
-): Promise<boolean> {
-  if (
-    candidate.headId === null ||
-    candidate.headLastSeqId === null ||
-    candidate.headObjectKey === null ||
-    candidate.headArchiveSchemaVersion === null
-  ) {
-    throw new Error("chat event snapshot head metadata is incomplete");
-  }
-  const stamped = await db
-    .update(chatEventSnapshots)
-    .set({ archiveSchemaVersion: ARCHIVE_SCHEMA_VERSION })
-    .where(
-      and(
-        eq(chatEventSnapshots.id, candidate.headId),
-        eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
-        eq(chatEventSnapshots.isHead, true),
-        eq(
-          chatEventSnapshots.archiveSchemaVersion,
-          candidate.headArchiveSchemaVersion,
-        ),
-        eq(chatEventSnapshots.lastSeqId, candidate.headLastSeqId),
-        eq(chatEventSnapshots.objectKey, candidate.headObjectKey),
-      ),
-    )
-    .returning({ id: chatEventSnapshots.id });
-  return stamped.length > 0;
-}
-
-/**
- * The head object's decompressed body when it can seed the next generation.
- *
- * `absent` is the expected shape for a first archive and for a retired-version
- * head, which the migration path must rewrite from canonical rows.
- * `unreadable` means the head row points at an object that could not be
- * fetched or decoded. Rebuilding is the recovery path, so a damaged archive
- * repairs itself on the next pass instead of wedging the thread forever, but
- * the pass reports the count so a storage outage or a systematic decode
- * failure does not degrade every thread back to a full rebuild silently.
- */
-type ParentArchive =
-  | { readonly kind: "reusable"; readonly body: Buffer }
-  | { readonly kind: "absent" }
-  | { readonly kind: "unreadable" };
-
-async function readParentArchive(
-  get: ComputedGetter,
-  bucket: string,
-  candidate: SnapshotCandidate,
-  signal: AbortSignal,
-): Promise<ParentArchive> {
-  if (
-    candidate.headObjectKey === null ||
-    candidate.headLastSeqId === null ||
-    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION
-  ) {
-    return { kind: "absent" };
-  }
-  const downloaded = await settle(
-    get(downloadS3Buffer(bucket, candidate.headObjectKey)),
-    signal,
-  );
-  if (!downloaded.ok) {
-    return { kind: "unreadable" };
-  }
-  const decompressed = await settle(gunzipAsync(downloaded.value), signal);
-  if (!decompressed.ok) {
-    return { kind: "unreadable" };
-  }
-  return { kind: "reusable", body: decompressed.value };
-}
-
 interface ArchivedThread {
   readonly archivedEvents: number | null;
-  readonly unreadableParent: boolean;
   readonly normalization: DuplicateEventIdNormalizationStats;
+}
+
+function terminalSnapshotEventId(
+  archiveLastEventId: string | null,
+  source: SnapshotSource | null,
+): string {
+  const lastEventId = archiveLastEventId ?? source?.lastEventId;
+  if (lastEventId === undefined) {
+    throw new Error("Chat Event Snapshot has no terminal event ID");
+  }
+  return lastEventId;
 }
 
 async function archiveThread(
@@ -411,40 +550,51 @@ async function archiveThread(
   candidate: SnapshotCandidate,
   signal: AbortSignal,
 ): Promise<ArchivedThread> {
-  const parent = await readParentArchive(get, bucket, candidate, signal);
+  const source = await storedSnapshotSource(db, candidate);
   signal.throwIfAborted();
-  const unreadableParent = parent.kind === "unreadable";
-  // The head object carries the prefix, so a generation only reads the rows
-  // past it. A thread without a reusable head falls back to the full canonical
-  // history.
-  const fromSeqId =
-    parent.kind === "reusable" ? (candidate.headLastSeqId ?? 0) : 0;
-  const archive = await readCanonicalEvents(db, candidate, fromSeqId);
+  const prefix =
+    source === null
+      ? null
+      : await readSnapshotPrefix(
+          get,
+          bucket,
+          candidate.chatThreadId,
+          source,
+          signal,
+        );
+  const targetSeqId = Math.max(candidate.indexedSeqId, source?.lastSeqId ?? 0);
+  const archive = await readCanonicalEvents(
+    db,
+    { ...candidate, indexedSeqId: targetSeqId },
+    source?.lastSeqId ?? 0,
+  );
   signal.throwIfAborted();
-  if (archive.count === 0) {
-    if (parent.kind === "reusable") {
-      // The indexed tail was already archived by a concurrent pass.
-      return {
-        archivedEvents: null,
-        unreadableParent,
-        normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
-      };
-    }
+  if (
+    archive.count === 0 &&
+    source?.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
+  ) {
+    return {
+      archivedEvents: null,
+      normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+    };
+  }
+  if (archive.count === 0 && source === null) {
     throw new Error(
       `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
     );
   }
+  const lastEventId = terminalSnapshotEventId(archive.lastEventId, source);
   const prepared =
-    parent.kind === "reusable"
-      ? prepareChatEventArchiveWithNormalizedIds(
-          candidate.chatThreadId,
-          parent.body,
-          archive.lines,
-        )
-      : {
+    prefix === null
+      ? {
           body: Buffer.concat(archive.lines),
           normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
-        };
+        }
+      : prepareChatEventArchiveWithNormalizedIds(
+          candidate.chatThreadId,
+          prefix,
+          archive.lines,
+        );
   if (prepared.normalization.conflictingEventIds > 0) {
     log.warn("Normalized duplicate chat event IDs in snapshot", {
       type: "chat_event_snapshot_duplicate_ids_normalized",
@@ -457,7 +607,7 @@ async function archiveThread(
   const compressed = await gzipAsync(prepared.body);
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
-    archive.lastSeqId,
+    targetSeqId,
     sha256Hex(compressed),
   );
   await get(
@@ -468,20 +618,12 @@ async function archiveThread(
   );
   signal.throwIfAborted();
 
-  if (objectKey === candidate.headObjectKey) {
-    const stamped = await stampSnapshotHeadVersion(db, candidate);
-    return {
-      archivedEvents: stamped ? archive.count : null,
-      unreadableParent,
-      normalization: prepared.normalization,
-    };
-  }
-
-  // A deleted thread (foreign key) or a concurrent writer that already
-  // published this thread's next head (unique head/object key) are expected
-  // races: skip the thread and leave the uploaded object orphaned.
   const published = await settle(
-    publishSnapshotHead(db, candidate, archive.lastSeqId, objectKey),
+    publishSnapshotVersion(db, candidate, source, {
+      lastSeqId: targetSeqId,
+      lastEventId,
+      objectKey,
+    }),
   );
   if (!published.ok) {
     if (
@@ -492,16 +634,92 @@ async function archiveThread(
     }
     return {
       archivedEvents: null,
-      unreadableParent,
       normalization: prepared.normalization,
     };
   }
   return {
     archivedEvents: published.value ? archive.count : null,
-    unreadableParent,
     normalization: prepared.normalization,
   };
 }
+
+/**
+ * Persist the current-version pointer on demand from an existing Snapshot plus
+ * its latest Raw Event tail. A thread with no Snapshot remains a normal cold
+ * start and is left for the bounded cron.
+ */
+export const migrateCurrentChatEventSnapshot$ = command(
+  async (
+    { get, set },
+    chatThreadId: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const db = set(writeDb$);
+    if (!(await chatEventSnapshotCursorSchemaAvailable(db))) {
+      signal.throwIfAborted();
+      return false;
+    }
+    const [thread] = await db
+      .select({ indexedSeqId: chatThreads.lastChatEventSeqId })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, chatThreadId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (thread === undefined) {
+      return false;
+    }
+    const [head] = await db
+      .select({
+        headId: chatEventSnapshots.id,
+        headLastSeqId: chatEventSnapshots.lastSeqId,
+        headLastEventId: chatEventSnapshots.lastEventId,
+        headObjectKey: chatEventSnapshots.objectKey,
+        headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+      })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, chatThreadId),
+          eq(chatEventSnapshots.isHead, true),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (head !== undefined) {
+      return true;
+    }
+    const [stored] = await db
+      .select({ id: chatEventSnapshots.id })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, chatThreadId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (stored === undefined) {
+      return false;
+    }
+    await archiveThread(
+      get,
+      db,
+      env("R2_USER_STORAGES_BUCKET_NAME"),
+      {
+        chatThreadId,
+        indexedSeqId: thread.indexedSeqId,
+        headId: null,
+        headLastSeqId: null,
+        headLastEventId: null,
+        headObjectKey: null,
+        headArchiveSchemaVersion: null,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return true;
+  },
+);
 
 async function chatEventSnapshotConvergence(
   db: Db,
@@ -565,23 +783,41 @@ interface RetiredSnapshotVersionGcOptions {
 
 const deleteRetiredSnapshotVersions$ = command(
   async (
-    { get },
+    _,
     db: Db,
-    bucket: string,
     options: RetiredSnapshotVersionGcOptions,
     signal: AbortSignal,
   ): Promise<RetiredSnapshotVersionGcStats> => {
     const candidates = await db
       .select({
         id: chatEventSnapshots.id,
-        objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
       .where(
         and(
           lt(
             chatEventSnapshots.archiveSchemaVersion,
-            MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+          // Never discard the only durable historical prefix. Once a current
+          // pointer exists, older versions are transient read projections and
+          // their stored pointers are superseded.
+          exists(
+            db
+              .select({ id: currentSnapshot.id })
+              .from(currentSnapshot)
+              .where(
+                and(
+                  eq(
+                    currentSnapshot.chatThreadId,
+                    chatEventSnapshots.chatThreadId,
+                  ),
+                  eq(
+                    currentSnapshot.archiveSchemaVersion,
+                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+                  ),
+                ),
+              ),
           ),
           options.chatThreadIds === null
             ? undefined
@@ -597,30 +833,39 @@ const deleteRetiredSnapshotVersions$ = command(
     const candidateIds = candidates.map((candidate) => {
       return candidate.id;
     });
-    const objectKeys = candidates.map((candidate) => {
-      return candidate.objectKey;
-    });
-    const referenceDeletion = db
+    const deletedReferences = await db
       .delete(chatEventSnapshots)
       .where(
         and(
           inArray(chatEventSnapshots.id, candidateIds),
           lt(
             chatEventSnapshots.archiveSchemaVersion,
-            MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+          exists(
+            db
+              .select({ id: currentSnapshot.id })
+              .from(currentSnapshot)
+              .where(
+                and(
+                  eq(
+                    currentSnapshot.chatThreadId,
+                    chatEventSnapshots.chatThreadId,
+                  ),
+                  eq(
+                    currentSnapshot.archiveSchemaVersion,
+                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+                  ),
+                ),
+              ),
           ),
         ),
       )
       .returning({ id: chatEventSnapshots.id });
-    // R2 cleanup is deliberately best-effort. Running it beside the database
-    // delete keeps either system's failure from preventing the other attempt;
-    // failed object deletes become ordinary unreferenced-object GC candidates.
-    const objectDeletion = settle(get(deleteS3Objects(bucket, objectKeys)));
-    const [deletedReferences] = await Promise.all([
-      referenceDeletion,
-      objectDeletion,
-    ]);
     signal.throwIfAborted();
+    // Object deletion belongs to the reference-aware R2 GC below. A historical
+    // and current version may share one content-addressed key, so deleting the
+    // key alongside just one pointer would be unsafe.
     return {
       selected: candidates.length,
       referencesDeleted: deletedReferences.length,
@@ -719,8 +964,6 @@ async function collectR2SnapshotGarbage(
       const references = await db
         .select({
           objectKey: chatEventSnapshots.objectKey,
-          isHead: chatEventSnapshots.isHead,
-          createdAt: chatEventSnapshots.createdAt,
         })
         .from(chatEventSnapshots)
         .where(inArray(chatEventSnapshots.objectKey, keys));
@@ -731,11 +974,7 @@ async function collectR2SnapshotGarbage(
         }),
       );
       const garbage = oldObjects.filter((object) => {
-        const reference = referencesByKey.get(object.key);
-        return (
-          reference === undefined ||
-          (!reference.isHead && reference.createdAt < olderThan)
-        );
+        return referencesByKey.get(object.key) === undefined;
       });
       measured += garbage.length;
       bytesMeasured += garbage.reduce((total, object) => {
@@ -749,20 +988,8 @@ async function collectR2SnapshotGarbage(
       const garbageKeys = deletionBatch.map((object) => {
         return object.key;
       });
-      const referenceDeletion = db
-        .delete(chatEventSnapshots)
-        .where(
-          and(
-            inArray(chatEventSnapshots.objectKey, garbageKeys),
-            eq(chatEventSnapshots.isHead, false),
-            lt(chatEventSnapshots.createdAt, olderThan),
-          ),
-        );
       const objectDeletion = settle(get(deleteS3Objects(bucket, garbageKeys)));
-      const [, objectDeletionResult] = await Promise.all([
-        referenceDeletion,
-        objectDeletion,
-      ]);
+      const objectDeletionResult = await objectDeletion;
       signal.throwIfAborted();
       remainingDeleteQuota -= deletionBatch.length;
       if (objectDeletionResult.ok) {
@@ -788,14 +1015,14 @@ async function collectR2SnapshotGarbage(
 }
 
 /**
- * Archives chat_events into immutable canonical full-thread R2 snapshots.
- * Each bounded pass picks both retired-version heads and threads whose search
- * watermark advanced. A current-version head seeds the next generation, so a
- * pass reads only the rows past it and falls back to the full canonical
- * history when no reusable head exists. Every generation uploads
- * content-addressed v4 bytes and publishes with an exact parent CAS. Prior
- * objects remain immutable. Repeated or interrupted ticks are idempotent; a
- * lost race can only leave a collectable orphan object.
+ * Archives Chat Events into immutable, content-addressed R2 Snapshots. The
+ * first Snapshot may bootstrap from the currently available Raw Event prefix,
+ * whose sequence positions may start above 1 and contain gaps. Every later
+ * refresh or schema upgrade must reuse a stored Snapshot prefix and append only
+ * the Raw Event tail after its paired cursor. Missing objects and missing
+ * migrations fail closed because older Raw Events may be reclaimed. Publication
+ * uses an exact pointer CAS, so a lost race can only leave a collectable orphan
+ * object.
  */
 export const snapshotChatEvents$ = command(
   async (
@@ -804,8 +1031,15 @@ export const snapshotChatEvents$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventSnapshotStats> => {
     const db = set(writeDb$);
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const chatThreadIds = scope.kind === "global" ? null : scope.chatThreadIds;
+    if (!(await chatEventSnapshotCursorSchemaAvailable(db))) {
+      return await snapshotStatsBeforeCursorMigration(
+        db,
+        chatThreadIds,
+        signal,
+      );
+    }
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const ownedObjectKeys =
       scope.kind === "global" ? null : new Set(scope.r2ObjectKeys);
     const candidates = await db
@@ -814,6 +1048,7 @@ export const snapshotChatEvents$ = command(
         indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
         headId: chatEventSnapshots.id,
         headLastSeqId: chatEventSnapshots.lastSeqId,
+        headLastEventId: chatEventSnapshots.lastEventId,
         headObjectKey: chatEventSnapshots.objectKey,
         headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
       })
@@ -827,29 +1062,22 @@ export const snapshotChatEvents$ = command(
         and(
           eq(chatEventSnapshots.chatThreadId, chatThreads.id),
           eq(chatEventSnapshots.isHead, true),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
         ),
       )
-      // Retired heads are rebuilt even when idle; current v4 heads are picked
-      // only when the indexed tail advanced. Future versions fail closed and
-      // are reported by the convergence check instead of being overwritten.
+      // A missing current-version pointer is an upgrade candidate. An existing
+      // pointer is refreshed only when its PostgreSQL tail advances.
       .where(
         and(
           chatThreadIds === null
             ? undefined
             : inArray(chatThreads.id, chatThreadIds),
-          or(
-            isNull(chatEventSnapshots.archiveSchemaVersion),
-            lte(
-              chatEventSnapshots.archiveSchemaVersion,
-              ARCHIVE_SCHEMA_VERSION,
-            ),
-          ),
-          or(
-            lt(chatEventSnapshots.archiveSchemaVersion, ARCHIVE_SCHEMA_VERSION),
-            gt(
-              chatEventSearchMessageWatermarks.indexedSeqId,
-              sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
-            ),
+          gt(
+            chatEventSearchMessageWatermarks.indexedSeqId,
+            sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
           ),
         ),
       )
@@ -863,7 +1091,7 @@ export const snapshotChatEvents$ = command(
 
     let snapshots = 0;
     let archivedEvents = 0;
-    let unreadableParents = 0;
+    const unreadableParents = 0;
     let duplicateEventIdConflictThreads = 0;
     let duplicateEventIdConflicts = 0;
     let duplicateEventIdsRemapped = 0;
@@ -871,9 +1099,6 @@ export const snapshotChatEvents$ = command(
     for (const candidate of candidates) {
       const archived = await archiveThread(get, db, bucket, candidate, signal);
       signal.throwIfAborted();
-      if (archived.unreadableParent) {
-        unreadableParents += 1;
-      }
       if (archived.archivedEvents !== null) {
         snapshots += 1;
         archivedEvents += archived.archivedEvents;
@@ -889,7 +1114,6 @@ export const snapshotChatEvents$ = command(
     const retiredSnapshots = await set(
       deleteRetiredSnapshotVersions$,
       db,
-      bucket,
       {
         deleteQuota: SNAPSHOT_GC_DELETE_QUOTA,
         chatThreadIds,

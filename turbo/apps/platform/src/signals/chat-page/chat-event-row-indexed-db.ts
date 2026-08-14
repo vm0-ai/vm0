@@ -1,5 +1,6 @@
 import { command, computed } from "ccstate";
-import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatIdbReadOr,
   chatIdbWriteBestEffort,
@@ -28,7 +29,7 @@ export const loadIndexedDbChatEventRowsAfter$ = command(
   ) => {
     const stores = await get(chatEventRowStores$);
     signal.throwIfAborted();
-    const rows = await chatIdbReadOr<ChatEventRowV4[]>(
+    const rows = await chatIdbReadOr<ChatEventRow[]>(
       "indexedDbEventRows:readRowsAfter",
       () => {
         return stores.readStore.readRowsAfter(threadId, afterSeqId, signal);
@@ -46,38 +47,48 @@ export const loadIndexedDbChatEventRowsAfter$ = command(
   },
 );
 
-export const loadIndexedDbChatEventRowLastSeqId$ = command(
+export const loadIndexedDbChatEventCursor$ = command(
   async ({ get }, threadId: string, signal: AbortSignal) => {
     const stores = await get(chatEventRowStores$);
     signal.throwIfAborted();
-    const lastSeqId = await chatIdbReadOr<number | null>(
-      "indexedDbEventRows:readLastSeqId",
+    const cursor = await chatIdbReadOr<ChatEventCursor | null>(
+      "indexedDbEventRows:readCursor",
       () => {
-        return stores.readStore.readLastSeqId(threadId, signal);
+        return stores.readStore.readCursor(threadId, signal);
       },
       null,
       signal,
     );
     signal.throwIfAborted();
-    return lastSeqId;
+    return cursor;
   },
 );
 
 export const writeIndexedDbChatEventRows$ = command(
   async (
     { get },
-    rows: readonly ChatEventRowV4[],
+    {
+      threadId,
+      rows,
+      cursor,
+    }: {
+      readonly threadId: string;
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
-    if (rows.length === 0) {
-      return;
-    }
     const stores = await get(chatEventRowStores$);
     signal.throwIfAborted();
     await chatIdbWriteBestEffort(
       "indexedDbEventRows:upsert",
       () => {
-        return stores.writeStore.upsertRows(rows, signal);
+        return stores.writeStore.upsertRowsAndCursor(
+          threadId,
+          rows,
+          cursor,
+          signal,
+        );
       },
       signal,
     );

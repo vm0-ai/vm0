@@ -1,7 +1,10 @@
-import type { IDBPDatabase } from "idb";
-import { describe, expect, it, vi } from "vitest";
+import { deleteDB, openDB, type IDBPDatabase } from "idb";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { setupPage } from "../../__tests__/page-helper.ts";
+import { testContext } from "../__tests__/test-helpers.ts";
 import {
+  CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_ORDER_INDEX,
   CHAT_EVENT_ROWS_STORE,
   CHAT_IDB_VERSION,
@@ -9,171 +12,99 @@ import {
   CHAT_THREAD_EVENTS_STORE,
   CHAT_THREAD_EVENT_SYNC_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
-  upgradeChatIdb,
 } from "./chat-idb-schema.ts";
+import { chatIdb$ } from "./chat-idb-store.ts";
 
-const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
-const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
-const LEGACY_CHAT_MESSAGES_STORE = "chat_messages";
-const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
+vi.mock("idb", async () => {
+  return await vi.importActual<typeof import("idb")>("idb-real");
+});
 
-interface FakeObjectStore {
-  readonly createIndex: ReturnType<typeof vi.fn>;
-}
+const context = testContext();
 
-function fakeDb(existingStores: readonly string[]) {
-  const stores = new Set(existingStores);
-  const createdStores = new Map<string, FakeObjectStore>();
-  const deleteObjectStore = vi.fn((name: string) => {
-    stores.delete(name);
-  });
-  const createObjectStore = vi.fn((name: string) => {
-    stores.add(name);
-    const store = { createIndex: vi.fn() };
-    createdStores.set(name, store);
-    return store;
+function testDatabase() {
+  const suffix = crypto.randomUUID();
+  const userId = `schema-user-${suffix}`;
+  const orgId = `schema-org-${suffix}`;
+  const databaseName = `vm0-chat-${userId}-${orgId}`;
+  const openedDatabases: IDBPDatabase[] = [];
+  onTestFinished(async () => {
+    for (const db of openedDatabases) {
+      db.close();
+    }
+    await deleteDB(databaseName);
   });
   return {
-    db: {
-      objectStoreNames: {
-        contains: (name: string) => {
-          return stores.has(name);
+    databaseName,
+    async openProduction() {
+      await setupPage({
+        context,
+        path: "/error",
+        withoutRender: true,
+        user: { id: userId, fullName: "Chat IDB Schema User" },
+        session: { token: "test-token" },
+        org: {
+          activeOrg: { id: orgId, name: "Chat IDB Schema Org" },
+          memberships: [{ id: orgId }],
         },
-      },
-      deleteObjectStore,
-      createObjectStore,
-    } as unknown as IDBPDatabase,
-    createdStores,
-    createObjectStore,
-    deleteObjectStore,
+      });
+      const db = await context.store.get(chatIdb$);
+      openedDatabases.push(db);
+      return db;
+    },
   };
 }
 
-function currentStores(): string[] {
+function currentStoreNames(): string[] {
   return [
+    CHAT_EVENT_CURSOR_STORE,
     CHAT_EVENT_ROWS_STORE,
-    CHAT_THREAD_SNAPSHOT_STORE,
     CHAT_THREAD_EVENTS_STORE,
     CHAT_THREAD_EVENT_SYNC_STORE,
-  ];
+    CHAT_THREAD_SNAPSHOT_STORE,
+  ].sort();
 }
 
-function expectCurrentStoresCreated(
-  createdStores: ReturnType<typeof fakeDb>["createdStores"],
-  createObjectStore: ReturnType<typeof fakeDb>["createObjectStore"],
-): void {
-  expect(createObjectStore).toHaveBeenCalledTimes(4);
-  expect(createObjectStore).toHaveBeenCalledWith(CHAT_EVENT_ROWS_STORE, {
-    keyPath: "id",
-  });
-  expect(
-    createdStores.get(CHAT_EVENT_ROWS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(
-    CHAT_EVENT_ROWS_ORDER_INDEX,
-    ["chatThreadId", "seqId"],
-    { unique: true },
-  );
-  expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
-    keyPath: "id",
-  });
-  expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
-    keyPath: "id",
-  });
-  expect(
-    createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, "seqId", {
-    unique: true,
-  });
-  expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENT_SYNC_STORE, {
-    keyPath: "id",
-  });
-}
+describe("Chat IndexedDB production bootstrap", () => {
+  it("opens a new database at the current version with every production store", async () => {
+    const database = testDatabase();
 
-describe("upgradeChatIdb", () => {
-  it("creates only canonical event-row and thread-list stores for a new database", () => {
-    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb(
-      [],
+    const db = await database.openProduction();
+
+    expect(db.version).toBe(CHAT_IDB_VERSION);
+    expect(Array.from(db.objectStoreNames).sort()).toStrictEqual(
+      currentStoreNames(),
     );
 
-    upgradeChatIdb(db, 0);
+    const rowsTransaction = db.transaction(CHAT_EVENT_ROWS_STORE);
+    const rowsIndex = rowsTransaction.store.index(CHAT_EVENT_ROWS_ORDER_INDEX);
+    expect(rowsIndex.keyPath).toStrictEqual(["chatThreadId", "seqId"]);
+    expect(rowsIndex.unique).toBe(true);
+    await rowsTransaction.done;
 
-    expect(deleteObjectStore).not.toHaveBeenCalled();
-    expectCurrentStoresCreated(createdStores, createObjectStore);
+    const threadEventsTransaction = db.transaction(CHAT_THREAD_EVENTS_STORE);
+    const threadEventsIndex = threadEventsTransaction.store.index(
+      CHAT_THREAD_EVENTS_ORDER_INDEX,
+    );
+    expect(threadEventsIndex.keyPath).toBe("seqId");
+    expect(threadEventsIndex.unique).toBe(true);
+    await threadEventsTransaction.done;
   });
 
-  it("removes the projected chat-event cache when upgrading from v30", () => {
-    const { db, createObjectStore, deleteObjectStore } = fakeDb([
-      LEGACY_CHAT_MESSAGES_STORE,
-      ...currentStores(),
-    ]);
-
-    upgradeChatIdb(db, 30);
-
-    expect(deleteObjectStore).toHaveBeenCalledTimes(1);
-    expect(deleteObjectStore).toHaveBeenCalledWith(LEGACY_CHAT_MESSAGES_STORE);
-    expect(createObjectStore).not.toHaveBeenCalled();
-  });
-
-  it("rebuilds pre-canonical raw rows and drops the projected cache from v29", () => {
-    const unrelatedStore = "unrelated_local_data";
-    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
-      LEGACY_CHAT_MESSAGES_STORE,
-      ...currentStores(),
-      unrelatedStore,
-    ]);
-
-    upgradeChatIdb(db, 29);
-
-    expect(deleteObjectStore).toHaveBeenCalledTimes(2);
-    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_EVENT_ROWS_STORE);
-    expect(deleteObjectStore).toHaveBeenCalledWith(LEGACY_CHAT_MESSAGES_STORE);
-    expect(deleteObjectStore).not.toHaveBeenCalledWith(unrelatedStore);
-    expect(createObjectStore).toHaveBeenCalledTimes(1);
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_EVENT_ROWS_STORE, {
-      keyPath: "id",
+  it("deletes an older cache generation through the real version upgrade", async () => {
+    const database = testDatabase();
+    const previous = await openDB(database.databaseName, CHAT_IDB_VERSION - 1, {
+      upgrade(db) {
+        db.createObjectStore("retired_cache", { keyPath: "id" });
+      },
     });
-    expect(
-      createdStores.get(CHAT_EVENT_ROWS_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(
-      CHAT_EVENT_ROWS_ORDER_INDEX,
-      ["chatThreadId", "seqId"],
-      { unique: true },
+    previous.close();
+
+    const db = await database.openProduction();
+
+    expect(db.version).toBe(CHAT_IDB_VERSION);
+    expect(Array.from(db.objectStoreNames).sort()).toStrictEqual(
+      currentStoreNames(),
     );
-  });
-
-  it("drops legacy caches during an old-schema upgrade without recreating them", () => {
-    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
-      LEGACY_CHAT_MESSAGES_STORE,
-      LEGACY_CHAT_THREAD_META_STORE,
-      LEGACY_ARTIFACT_ITEMS_STORE,
-      LEGACY_ARTIFACT_SYNC_STORE,
-      ...currentStores(),
-    ]);
-
-    upgradeChatIdb(db, 17);
-
-    for (const legacyStore of [
-      LEGACY_CHAT_MESSAGES_STORE,
-      LEGACY_CHAT_THREAD_META_STORE,
-      LEGACY_ARTIFACT_ITEMS_STORE,
-      LEGACY_ARTIFACT_SYNC_STORE,
-    ]) {
-      expect(deleteObjectStore).toHaveBeenCalledWith(legacyStore);
-      expect(createObjectStore).not.toHaveBeenCalledWith(
-        legacyStore,
-        expect.anything(),
-      );
-    }
-    expectCurrentStoresCreated(createdStores, createObjectStore);
-  });
-
-  it("does not mutate a database already at the current schema version", () => {
-    const { db, createObjectStore, deleteObjectStore } =
-      fakeDb(currentStores());
-
-    upgradeChatIdb(db, CHAT_IDB_VERSION);
-
-    expect(deleteObjectStore).not.toHaveBeenCalled();
-    expect(createObjectStore).not.toHaveBeenCalled();
+    expect(db.objectStoreNames.contains("retired_cache")).toBe(false);
   });
 });

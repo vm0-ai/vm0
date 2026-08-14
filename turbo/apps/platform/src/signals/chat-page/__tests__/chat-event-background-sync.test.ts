@@ -1,5 +1,5 @@
 import { waitFor } from "@testing-library/react";
-import type { ChatEventRowV4 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadEventsContract,
   chatThreadsContract,
@@ -64,7 +64,7 @@ function assistantRow(
   content: string,
   createdAt: string,
   seqId: number,
-): ChatEventRowV4 {
+): ChatEventRow {
   return {
     id,
     chatThreadId: threadId,
@@ -244,7 +244,14 @@ describe("chat event background sync", () => {
     const appDb = await openTestChatDb();
     await context.store.set(
       writeIndexedDbChatEventRows$,
-      [firstCachedRow, lastCachedRow],
+      {
+        threadId: THREAD_ID,
+        rows: [firstCachedRow, lastCachedRow],
+        cursor: {
+          lastEventId: lastCachedRow.id,
+          lastSeqId: lastCachedRow.seqId,
+        },
+      },
       context.signal,
     );
 
@@ -291,7 +298,14 @@ describe("chat event background sync", () => {
     mockSignedInUser();
     await context.store.set(
       writeIndexedDbChatEventRows$,
-      [firstCachedRow, lastCachedRow],
+      {
+        threadId: THREAD_ID,
+        rows: [firstCachedRow, lastCachedRow],
+        cursor: {
+          lastEventId: lastCachedRow.id,
+          lastSeqId: lastCachedRow.seqId,
+        },
+      },
       context.signal,
     );
 
