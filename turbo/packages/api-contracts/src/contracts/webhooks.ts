@@ -679,7 +679,7 @@ export const webhookCheckpointsContract = c.router({
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema.optional(),
         cliAgentSessionHistoryDisposition: z
-          .enum(["discarded_oversized"])
+          .enum(["discarded_oversized", "unavailable"])
           .optional(),
         // Multi-artifact snapshots are folded into canonical checkpoint mounts
         // and projected back into the legacy response shape.

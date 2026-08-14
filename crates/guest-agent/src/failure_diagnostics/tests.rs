@@ -1400,20 +1400,3 @@ fn cli_observed_exit_is_attached_without_changing_failure_reason() {
     assert_eq!(with_observed_exit.cli_observed_exit, Some(observed_exit));
     assert_eq!(unchanged, diagnostic);
 }
-
-#[test]
-fn history_target_unavailable_detects_missing_and_empty_files() {
-    let tmp = tempfile::tempdir().unwrap();
-    let missing = tmp.path().join("missing.jsonl");
-    assert!(history_target_unavailable(&missing));
-
-    let empty = tmp.path().join("empty.jsonl");
-    std::fs::write(&empty, "").unwrap();
-    assert!(history_target_unavailable(&empty));
-
-    let non_empty = tmp.path().join("history.jsonl");
-    std::fs::write(&non_empty, r#"{"type":"system"}"#).unwrap();
-    assert!(!history_target_unavailable(&non_empty));
-
-    assert!(!history_target_unavailable(tmp.path()));
-}

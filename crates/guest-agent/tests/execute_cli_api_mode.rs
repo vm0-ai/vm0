@@ -152,11 +152,6 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
 
     let captured_session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert_eq!(captured_session_id, session_id);
-    let history_path = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
-    assert!(
-        history_path.contains(session_id),
-        "history path should contain the captured session id, got {history_path}"
-    );
 
     Ok(())
 }

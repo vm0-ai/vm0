@@ -23,7 +23,7 @@ use super::{
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::agent_run_tests::support::{
-    assert_no_action, assert_successful_action_once, claude_history_path,
+    assert_no_action, assert_successful_action_once, claude_history_path, claude_history_source,
     final_identity_runtime_paths,
 };
 use crate::executor::tests::support::{
@@ -69,7 +69,7 @@ fn context_with_checkpointed_session_identity(
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
-        claude_history_path(session_id),
+        claude_history_source(session_id),
     )
     .unwrap();
     let identity =
@@ -115,7 +115,7 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
-        claude_history_path(session_id),
+        claude_history_source(session_id),
     )
     .unwrap();
     let idle_identity =
@@ -195,7 +195,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(&history)),
         history.len() as u64,
-        claude_history_path(session_id),
+        claude_history_source(session_id),
     )
     .unwrap();
     let idle_identity = RestoredSessionIdentity::from_final_metadata(
@@ -488,7 +488,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
-        claude_history_path(session_id),
+        claude_history_source(session_id),
     )
     .unwrap();
     let idle_identity =
@@ -583,7 +583,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
-        claude_history_path(session_id),
+        claude_history_source(session_id),
     )
     .unwrap();
     let idle_identity =

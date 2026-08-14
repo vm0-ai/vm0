@@ -180,6 +180,10 @@ impl SessionHistoryIdentityReason {
             | FinalSessionHistoryIdentityError::InvalidSessionIdHash
             | FinalSessionHistoryIdentityError::InvalidHistoryHash
             | FinalSessionHistoryIdentityError::InvalidHistorySize
+            | FinalSessionHistoryIdentityError::MissingHistorySource
+            | FinalSessionHistoryIdentityError::InvalidHistorySource
+            | FinalSessionHistoryIdentityError::UnexpectedHistorySource
+            | FinalSessionHistoryIdentityError::UnexpectedHistoryMarker
             | FinalSessionHistoryIdentityError::MissingHistoryMarker => {
                 Self::FinalizeInvalidMetadata
             }

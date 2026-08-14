@@ -9,7 +9,8 @@ use crate::cli;
 use crate::env;
 use crate::failure_patterns;
 use crate::paths;
-use crate::session_metadata;
+use crate::session_history;
+use crate::session_metadata::CapturedSessionMetadata;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
@@ -17,8 +18,6 @@ use guest_contracts::diagnostics::{
     SessionHistoryStatus,
 };
 use serde_json::Value;
-use std::io::ErrorKind;
-use std::path::Path;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const MAX_LOGGED_CLI_STDERR_LINES: usize = 20;
@@ -59,12 +58,12 @@ pub fn base_failure_diagnostic_for_config(
 /// Build the diagnostic for a CLI control-path failure.
 pub fn cli_control_failure_for_config(
     config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
+    session_metadata: Option<&CapturedSessionMetadata>,
     cli_result: &cli::CliExecutionResult,
 ) -> FailureDiagnostic {
     let diagnostic = cli_result_failure_diagnostic_for_config(
         config,
-        runtime_paths,
+        session_metadata,
         FailureClass::CliExecutionError,
         cli_result.exit_code,
         cli_result.claude_result,
@@ -77,13 +76,13 @@ pub fn cli_control_failure_for_config(
 /// Build the primary diagnostic for terminal event delivery after a CLI result.
 pub fn event_delivery_failure_for_config(
     config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
+    session_metadata: Option<&CapturedSessionMetadata>,
     cli_result: &cli::CliExecutionResult,
     event_delivery: EventDeliveryDiagnostic,
 ) -> FailureDiagnostic {
     let diagnostic = cli_result_failure_diagnostic_for_config(
         config,
-        runtime_paths,
+        session_metadata,
         FailureClass::EventUploadFailed,
         cli_result.exit_code,
         cli_result.claude_result,
@@ -97,7 +96,7 @@ pub fn event_delivery_failure_for_config(
 /// Select the final message and build the diagnostic for a nonzero CLI result.
 pub fn cli_nonzero_failure_for_config(
     config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
+    session_metadata: Option<&CapturedSessionMetadata>,
     cli_result: &cli::CliExecutionResult,
 ) -> CliNonzeroFailure {
     let failure_message = cli_failure_message(
@@ -107,7 +106,7 @@ pub fn cli_nonzero_failure_for_config(
     );
     let diagnostic = cli_result_failure_diagnostic_for_config(
         config,
-        runtime_paths,
+        session_metadata,
         FailureClass::CliNonzero,
         cli_result.exit_code,
         cli_result.claude_result,
@@ -124,75 +123,42 @@ pub fn cli_nonzero_failure_for_config(
     }
 }
 
-/// Build the diagnostic for a Claude zero-turn result without session history.
-pub fn claude_zero_turn_failure_for_config(
-    config: &env::GuestConfig,
-    cli_result: &cli::CliExecutionResult,
-    session_history_status: SessionHistoryStatus,
-) -> FailureDiagnostic {
-    let diagnostic =
-        base_failure_diagnostic_for_config(config, FailureClass::ClaudeZeroTurnNoHistory)
-            .with_cli_exit_code(cli_result.exit_code)
-            .with_claude_num_turns(Some(0))
-            .with_session_history_status(session_history_status);
-    with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned())
-}
-
 /// Return the conservative session-history target probe for failure diagnostics.
 ///
-/// For Claude Code, an existing nonempty history marker supplies the target.
-/// Otherwise, the target is derived from a nonempty, valid session ID. If
-/// neither source resolves a target, this returns `Missing`; errors reading
-/// either source return `Unknown`.
+/// For Claude Code, guest-owned captured metadata supplies the target. If no
+/// valid session identity was captured, this returns `Missing`; an invalid
+/// launch source or unreadable target returns `Unknown`.
 ///
-/// A resolved target is `Empty` only when metadata identifies a zero-byte
-/// regular file. Any other successful metadata result is `Present`, including
-/// a non-regular target, while `NotFound` maps to `Missing` and other metadata
-/// errors map to `Unknown`. The probe does not open or validate history content.
-/// Codex returns `NotApplicable` because this probe does not apply to it.
+/// A safely opened regular target is `Empty` only when it has zero bytes and is
+/// otherwise `Present`. Resolution errors are `Unknown`. Codex returns
+/// `NotApplicable` because this diagnostic probe does not apply to it.
 pub fn diagnostic_session_history_status_for_config(
     config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
+    session_metadata: Option<&CapturedSessionMetadata>,
 ) -> SessionHistoryStatus {
     match config.framework {
-        env::Framework::ClaudeCode => {
-            claude_history_target_status_for_config(config, runtime_paths)
-        }
+        env::Framework::ClaudeCode => claude_history_target_status(session_metadata),
         env::Framework::Codex => SessionHistoryStatus::NotApplicable,
         env::Framework::Pi => SessionHistoryStatus::NotApplicable,
     }
 }
 
-/// Return whether the zero-turn path has definitive evidence of no history.
-///
-/// Only `Missing` and `Empty` select the `ClaudeZeroTurnNoHistory` shortcut and
-/// skip recovery checkpointing. A false result, including `Present` or
-/// `Unknown`, does not prove that the target is readable or checkpointable; it
-/// lets the real checkpoint attempt determine the outcome. A later checkpoint
-/// failure is classified as `CheckpointFailed`, while success follows normal
-/// completion.
-pub fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
-    matches!(
-        status,
-        SessionHistoryStatus::Missing | SessionHistoryStatus::Empty
-    )
-}
-
-fn claude_history_target_status_for_config(
-    config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
+fn claude_history_target_status(
+    session_metadata: Option<&CapturedSessionMetadata>,
 ) -> SessionHistoryStatus {
-    let marker = match session_metadata::resolve_history_marker_payload_for_diagnostics_from(
-        config.framework,
-        &config.home_dir,
-        runtime_paths.session_id_file(),
-        runtime_paths.session_history_path_file(),
-    ) {
-        Ok(Some(marker)) => marker,
-        Ok(None) => return SessionHistoryStatus::Missing,
-        Err(_) => return SessionHistoryStatus::Unknown,
+    let Some(session_metadata) = session_metadata else {
+        return SessionHistoryStatus::Missing;
     };
-    history_target_status(Path::new(&marker))
+    let Some(source) = session_metadata.history_source() else {
+        return SessionHistoryStatus::Unknown;
+    };
+    match session_history::resolve_session_history_from_source(source) {
+        Ok(history) if history.encoded_len().is_ok_and(|size| size == 0) => {
+            SessionHistoryStatus::Empty
+        }
+        Ok(_) => SessionHistoryStatus::Present,
+        Err(_) => SessionHistoryStatus::Unknown,
+    }
 }
 
 /// Persist a nonempty guest error message with private file permissions.
@@ -252,7 +218,7 @@ fn with_cli_observed_exit(
 
 fn cli_result_failure_diagnostic_for_config(
     config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
+    session_metadata: Option<&CapturedSessionMetadata>,
     failure_class: FailureClass,
     cli_exit_code: i32,
     claude_result: Option<cli::ClaudeResultSummary>,
@@ -261,7 +227,7 @@ fn cli_result_failure_diagnostic_for_config(
         .with_cli_exit_code(cli_exit_code)
         .with_session_history_status(diagnostic_session_history_status_for_config(
             config,
-            runtime_paths,
+            session_metadata,
         ));
     if let Some(result) = claude_result {
         diagnostic = diagnostic.with_claude_num_turns(result.num_turns);
@@ -573,20 +539,6 @@ fn is_codex_oauth_reconnect_required_envelope(value: &Value) -> bool {
 fn has_reconnect_required_payload(value: &Value) -> bool {
     value.get("failureReason").and_then(Value::as_str) == Some("reconnect_required")
         && failure_patterns::has_exact_codex_oauth_connector(value)
-}
-
-#[cfg(test)]
-fn history_target_unavailable(path: &Path) -> bool {
-    session_history_unavailable(history_target_status(path))
-}
-
-fn history_target_status(path: &Path) -> SessionHistoryStatus {
-    match path.metadata() {
-        Ok(metadata) if metadata.is_file() && metadata.len() == 0 => SessionHistoryStatus::Empty,
-        Ok(_) => SessionHistoryStatus::Present,
-        Err(e) if e.kind() == ErrorKind::NotFound => SessionHistoryStatus::Missing,
-        Err(_) => SessionHistoryStatus::Unknown,
-    }
 }
 
 struct CliFailureMessage {

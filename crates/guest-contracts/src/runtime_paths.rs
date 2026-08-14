@@ -142,11 +142,6 @@ pub fn session_id_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "session-id")
 }
 
-/// Return the run-root `session-history-marker` file.
-pub fn session_history_marker_file(run_dir: impl AsRef<Path>) -> PathBuf {
-    file(run_dir, "session-history-marker")
-}
-
 /// Return the run-root `checkpoint-error` file.
 pub fn checkpoint_error_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "checkpoint-error")
@@ -737,7 +732,7 @@ fn parent_dir(path: &Path) -> io::Result<&Path> {
 }
 
 #[cfg(unix)]
-fn open_private_file(path: &Path, append: bool) -> io::Result<File> {
+fn open_private_file(path: &Path, append: bool, create_new: bool) -> io::Result<File> {
     let name = file_name(path)?;
     let name_c = component_cstring(name, path)?;
     let parent = parent_dir(path)?;
@@ -748,6 +743,9 @@ fn open_private_file(path: &Path, append: bool) -> io::Result<File> {
         flags |= libc::O_APPEND;
     } else {
         flags |= libc::O_TRUNC;
+    }
+    if create_new {
+        flags |= libc::O_EXCL;
     }
 
     // SAFETY: `name_c` is NUL-terminated and `parent` owns a verified directory fd.
@@ -1105,7 +1103,7 @@ pub fn replace_private_atomic(
 /// symlinked parent components are rejected. The final path must be a regular
 /// file rather than a symlink, and its permissions are tightened to `0600`.
 pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
-    open_private_file(path.as_ref(), false)
+    open_private_file(path.as_ref(), false, false)
 }
 
 #[cfg(not(unix))]
@@ -1142,6 +1140,24 @@ pub fn write_private(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Res
     std::io::Write::write_all(&mut file, bytes.as_ref())
 }
 
+/// Exclusively create and write a runtime-private file.
+///
+/// Returns [`io::ErrorKind::AlreadyExists`] without changing an existing final
+/// entry. Parent and file safety guarantees otherwise match [`write_private`].
+pub fn write_private_new(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
+    let path = path.as_ref();
+    #[cfg(unix)]
+    let mut file = open_private_file(path, false, true)?;
+    #[cfg(not(unix))]
+    let mut file = {
+        ensure_parent_dir(path)?;
+        let file = OpenOptions::new().write(true).create_new(true).open(path)?;
+        set_file_private(&file)?;
+        file
+    };
+    std::io::Write::write_all(&mut file, bytes.as_ref())
+}
+
 #[cfg(not(unix))]
 fn private_append_options() -> OpenOptions {
     let mut options = OpenOptions::new();
@@ -1157,7 +1173,7 @@ fn private_append_options() -> OpenOptions {
 /// symlinked parent components are rejected. The final path must be a regular
 /// file rather than a symlink, and its permissions are tightened to `0600`.
 pub fn open_private_append(path: impl AsRef<Path>) -> io::Result<File> {
-    open_private_file(path.as_ref(), true)
+    open_private_file(path.as_ref(), true, false)
 }
 
 #[cfg(not(unix))]
@@ -1204,7 +1220,6 @@ mod tests {
             run_dir_for_home("/home/user", "00000000-0000-0000-0000-000000000001").unwrap();
         let files = [
             session_id_file(&run_dir),
-            session_history_marker_file(&run_dir),
             checkpoint_error_file(&run_dir),
             final_session_history_identity_file(&run_dir),
             failure_diagnostic_file(&run_dir),
@@ -1221,6 +1236,18 @@ mod tests {
             assert!(!path_is_under(&path, Path::new("/tmp")));
             assert!(path.starts_with("/home/user/.vm0/guest-agent/runs/"));
         }
+    }
+
+    #[test]
+    fn write_private_new_preserves_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session-id");
+
+        write_private_new(&path, "first").unwrap();
+        let error = write_private_new(&path, "second").unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "first");
     }
 
     #[test]

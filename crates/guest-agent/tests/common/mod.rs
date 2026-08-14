@@ -494,7 +494,6 @@ impl Drop for RunFilesGuard {
 fn cleanup_run_files_for_paths(paths: &guest_agent::paths::GuestPaths) {
     let _ = std::fs::remove_file(paths.agent_log_file());
     let _ = std::fs::remove_file(paths.session_id_file());
-    let _ = std::fs::remove_file(paths.session_history_path_file());
     let _ = std::fs::remove_file(paths.sandbox_ops_file());
 }
 
@@ -1156,17 +1155,39 @@ pub fn active_input_runtime(
     .map_err(guest_agent::error::AgentError::Io)
 }
 
-pub fn read_codex_session_history_events_for_paths(
-    paths: &guest_agent::paths::GuestPaths,
+pub fn read_codex_session_history_events_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
 ) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    read_codex_session_history_events_for_path(paths.session_history_path_file())
-}
-
-fn read_codex_session_history_events_for_path(
-    session_history_path_file: &str,
-) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    let history = guest_agent::session_history::read_session_history(session_history_path_file)?;
-    let history = String::from_utf8(history)?;
+    let thread_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
+    let filename_key =
+        guest_contracts::codex_thread_id::codex_thread_id_filename_key(thread_id.trim())
+            .ok_or("invalid captured Codex thread ID")?;
+    let sessions_dir = Path::new(&runtime.config.home_dir).join(".codex/sessions");
+    let mut matches = Vec::new();
+    let mut pending = vec![sessions_dir];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.replace('-', "").contains(&filename_key))
+            {
+                matches.push(path);
+            }
+        }
+    }
+    let [history_path] = matches.as_slice() else {
+        return Err(format!(
+            "expected one Codex session history for captured thread, found {}",
+            matches.len()
+        )
+        .into());
+    };
+    let history = std::fs::read_to_string(history_path)?;
     history
         .lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
@@ -1257,6 +1278,13 @@ pub unsafe fn setup_env(
     ensure_canonical_workspace_for_test()?;
     std::env::set_current_dir(workdir).map_err(|e| format!("set_current_dir: {e}"))?;
     Ok(())
+}
+
+pub fn claude_history_path_for_home(home: &Path, session_id: &str) -> PathBuf {
+    home.join(".claude")
+        .join("projects")
+        .join("-home-user-workspace")
+        .join(format!("{session_id}.jsonl"))
 }
 
 pub fn spawn_heartbeat_monitor<F>(future: F) -> guest_agent::cli::HeartbeatMonitor

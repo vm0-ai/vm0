@@ -50,6 +50,7 @@ use crate::failure_patterns;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
+use crate::session_metadata::{SessionHistoryLaunchSource, SessionMetadataStore};
 use crate::timing;
 use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use guest_common::telemetry::record_sandbox_op;
@@ -338,7 +339,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     post_result_cleanup_policy: PostResultCleanupPolicy,
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
-    session_history_path_file: Cow<'a, str>,
+    session_history_launch_source: SessionHistoryLaunchSource,
     pi_session_id: Cow<'a, str>,
     pi_launch_config: Cow<'a, str>,
     pi_launch_payload_file: Cow<'a, str>,
@@ -415,7 +416,7 @@ impl<'a> CliRuntimeConfig<'a> {
             ),
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
-            session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
+            session_history_launch_source: SessionHistoryLaunchSource::for_config(config),
             pi_session_id: Cow::Borrowed(&config.pi_session_id),
             pi_launch_config: Cow::Borrowed(&config.pi_launch_config),
             pi_launch_payload_file: Cow::Borrowed(paths.pi_launch_payload_file()),
@@ -642,17 +643,20 @@ struct CliEventIngestor<'a> {
 }
 
 impl<'a> CliEventIngestor<'a> {
-    fn new(runtime: &CliRuntimeConfig<'_>, codex_startup: Option<&'a CodexStartupTiming>) -> Self {
+    fn new_with_session_metadata(
+        runtime: &CliRuntimeConfig<'_>,
+        codex_startup: Option<&'a CodexStartupTiming>,
+        session_metadata: SessionMetadataStore,
+    ) -> Self {
         Self {
             framework: runtime.framework,
             seq: 0,
             api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
-            session_metadata_capture: events::SessionMetadataCapture::from_values(
-                runtime.framework,
-                runtime.home_dir.as_ref(),
+            session_metadata_capture: events::SessionMetadataCapture::new(
+                runtime.session_history_launch_source.clone(),
+                session_metadata,
                 runtime.session_id_file.as_ref(),
-                runtime.session_history_path_file.as_ref(),
             ),
             failure_diagnostic: None,
             codex_startup,
@@ -824,6 +828,7 @@ pub struct CliExecutionControls<'a> {
     user_cancellation: CancellationToken,
     codex_startup: Option<&'a CodexStartupTiming>,
     workload_containment: Option<&'a crate::workload_containment::WorkloadContainment>,
+    session_metadata: SessionMetadataStore,
 }
 
 impl<'a> CliExecutionControls<'a> {
@@ -839,6 +844,7 @@ impl<'a> CliExecutionControls<'a> {
             user_cancellation,
             codex_startup,
             workload_containment: None,
+            session_metadata: SessionMetadataStore::default(),
         }
     }
     /// Supply the production workload placement capability for CLI children.
@@ -848,6 +854,13 @@ impl<'a> CliExecutionControls<'a> {
         containment: Option<&'a crate::workload_containment::WorkloadContainment>,
     ) -> Self {
         self.workload_containment = containment;
+        self
+    }
+
+    /// Supply the guest-owned store used to retain first-event session metadata.
+    #[must_use]
+    pub fn with_session_metadata_store(mut self, store: SessionMetadataStore) -> Self {
+        self.session_metadata = store;
         self
     }
 }
@@ -890,6 +903,7 @@ async fn execute_cli_inner(
         user_cancellation,
         codex_startup: _,
         workload_containment,
+        session_metadata,
     } = controls;
 
     let replay_user_messages =
@@ -1098,7 +1112,8 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new(runtime, None);
+    let mut event_ingestor =
+        CliEventIngestor::new_with_session_metadata(runtime, None, session_metadata);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1937,6 +1952,8 @@ mod tests {
         write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
+    use crate::paths;
+    use crate::session_metadata::SessionHistoryLaunchSource;
     use crate::{constants, env};
     use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
     use std::borrow::Cow;
@@ -2027,7 +2044,16 @@ mod tests {
             ),
             agent_log_file: Cow::Borrowed("/tmp/agent.log"),
             session_id_file: Cow::Borrowed("/tmp/session-id"),
-            session_history_path_file: Cow::Borrowed("/tmp/session-history-path"),
+            session_history_launch_source: match framework {
+                env::Framework::ClaudeCode => SessionHistoryLaunchSource::ClaudeCode {
+                    config_dir: Some("/tmp/home/.claude".to_string()),
+                    working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
+                },
+                env::Framework::Codex => SessionHistoryLaunchSource::Codex {
+                    sessions_dir: Some("/tmp/home/.codex/sessions".to_string()),
+                },
+                env::Framework::Pi => SessionHistoryLaunchSource::Pi,
+            },
             pi_session_id: Cow::Borrowed(""),
             pi_launch_config: Cow::Borrowed(""),
             pi_launch_payload_file: Cow::Borrowed("/tmp/pi-launch-payload/payload.json"),

@@ -8,9 +8,9 @@
 //!
 //! # Coverage
 //!
-//! - End-to-end `send_event` -> session metadata capture -> marker write for the
-//!   Codex `thread.started` event shape.
-//! - Checkpoint metadata remains repairable after a partial metadata write.
+//! - End-to-end `send_event` -> session metadata capture for the Codex
+//!   `thread.started` event shape.
+//! - Checkpoint history is resolved from the launch-owned Codex sessions root.
 //! - Invalid/non-Codex events do not persist Codex session metadata.
 
 mod common;
@@ -98,11 +98,8 @@ impl CodexResumeFixture {
         Ok(())
     }
 
-    fn session_file_paths(&self) -> (&str, &str) {
-        (
-            self.paths.session_id_file(),
-            self.paths.session_history_path_file(),
-        )
+    fn session_id_file(&self) -> &str {
+        self.paths.session_id_file()
     }
 
     fn write_codex_session_file(&self, thread_id: &str, history: &str) -> TestResult {
@@ -138,7 +135,7 @@ fn checkpoint_http_client(
 }
 
 #[test]
-fn send_event_extracts_codex_thread_id_and_writes_marker() -> TestResult {
+fn send_event_extracts_codex_thread_id() -> TestResult {
     let fixture = CodexResumeFixture::new()?;
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     let masker = SecretMasker::from_raw("");
@@ -151,29 +148,14 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() -> TestResult {
     // session metadata, which is the part we want to assert.
     fixture.send_event(event, 1, &masker)?;
 
-    let (session_id_file, session_history_path_file) = fixture.session_file_paths();
-    let stored_id = std::fs::read_to_string(session_id_file)?;
+    let stored_id = std::fs::read_to_string(fixture.session_id_file())?;
     assert_eq!(stored_id, thread_id);
-
-    let marker = std::fs::read_to_string(session_history_path_file)?;
-    assert!(
-        marker.starts_with("CODEX_SEARCH:"),
-        "codex framework should write a marker, got: {marker}"
-    );
-    assert!(
-        marker.contains("/.codex/sessions:"),
-        "marker should embed the codex sessions dir, got: {marker}"
-    );
-    assert!(
-        marker.ends_with(&format!(":{thread_id}")),
-        "marker should end with the thread id, got: {marker}"
-    );
     assert_eq!(masker.mask_string(thread_id), thread_id);
     Ok(())
 }
 
 #[test]
-fn send_event_canonicalizes_codex_thread_id_before_writing_marker() -> TestResult {
+fn send_event_canonicalizes_codex_thread_id_before_persisting_it() -> TestResult {
     let fixture = CodexResumeFixture::new()?;
     let masker = SecretMasker::from_raw("");
     let event = json!({
@@ -184,65 +166,33 @@ fn send_event_canonicalizes_codex_thread_id_before_writing_marker() -> TestResul
 
     fixture.send_event(event, 1, &masker)?;
 
-    let (session_id_file, session_history_path_file) = fixture.session_file_paths();
-    let stored_id = std::fs::read_to_string(session_id_file)?;
+    let stored_id = std::fs::read_to_string(fixture.session_id_file())?;
     assert_eq!(stored_id, expected);
-
-    let marker = std::fs::read_to_string(session_history_path_file)?;
-    assert!(
-        marker.ends_with(&format!(":{expected}")),
-        "marker should use canonical thread id, got: {marker}"
-    );
     Ok(())
 }
 
 #[test]
-fn send_event_keeps_existing_codex_thread_id_without_repairing_history_marker() -> TestResult {
+fn send_event_keeps_existing_codex_thread_id_for_ordinary_events() -> TestResult {
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
-    for seed_empty_marker in [false, true] {
-        let fixture = CodexResumeFixture::new()?;
-        let (session_id_file, session_history_path_file) = fixture.session_file_paths();
-        guest_agent::paths::write_private(session_id_file, thread_id)?;
-        if seed_empty_marker {
-            guest_agent::paths::write_private(session_history_path_file, "")?;
-        } else {
-            assert!(
-                !Path::new(session_history_path_file).exists(),
-                "history marker should start missing"
-            );
-        }
+    let fixture = CodexResumeFixture::new()?;
+    guest_agent::paths::write_private(fixture.session_id_file(), thread_id)?;
+    let masker = SecretMasker::from_raw("");
+    let event = json!({"type": "turn.completed"});
 
-        let masker = SecretMasker::from_raw("");
-        let event = json!({"type": "turn.completed"});
+    fixture.send_event(event, 1, &masker)?;
 
-        fixture.send_event(event, 1, &masker)?;
-
-        let stored_id = std::fs::read_to_string(session_id_file)?;
-        assert_eq!(stored_id, thread_id);
-        if seed_empty_marker {
-            assert_eq!(
-                std::fs::read_to_string(session_history_path_file)?,
-                "",
-                "ordinary events must not repair empty history markers"
-            );
-        } else {
-            assert!(
-                !Path::new(session_history_path_file).exists(),
-                "ordinary events must not create missing history markers"
-            );
-        }
-        assert_eq!(masker.mask_string(thread_id), thread_id);
-    }
+    let stored_id = std::fs::read_to_string(fixture.session_id_file())?;
+    assert_eq!(stored_id, thread_id);
+    assert_eq!(masker.mask_string(thread_id), thread_id);
     Ok(())
 }
 
 #[test]
-fn recovery_checkpoint_derives_missing_codex_history_marker() -> TestResult {
+fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult {
     let fixture = CodexResumeFixture::new()?;
     let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     let history = r#"{"type":"thread.started"}"#.to_string() + "\n";
-    let (session_id_file, _) = fixture.session_file_paths();
-    guest_agent::paths::write_private(session_id_file, thread_id)?;
+    guest_agent::paths::write_private(fixture.session_id_file(), thread_id)?;
     fixture.write_codex_session_file(thread_id, &history)?;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -282,8 +232,23 @@ fn recovery_checkpoint_derives_missing_codex_history_marker() -> TestResult {
         http,
         workload_containment: None,
     };
+    let session_metadata = guest_agent::session_metadata::CapturedSessionMetadata::for_test(
+        thread_id,
+        Some(
+            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
+                sessions_dir: Path::new(&guest_runtime.config.home_dir)
+                    .join(".codex/sessions")
+                    .to_string_lossy()
+                    .into_owned(),
+                thread_id: thread_id.to_string(),
+            },
+        ),
+    );
     runtime.block_on(
-        guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&guest_runtime),
+        guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(
+            &guest_runtime,
+            &session_metadata,
+        ),
     )?;
     prepare_mock.assert_calls(1);
     upload_mock.assert_calls(1);
@@ -298,9 +263,8 @@ fn send_event_codex_ignores_non_thread_started_event() -> TestResult {
     let event = json!({"type": "turn.completed"});
     fixture.send_event(event, 1, &masker)?;
 
-    let (session_id_file, _) = fixture.session_file_paths();
     assert!(
-        !Path::new(session_id_file).exists(),
+        !Path::new(fixture.session_id_file()).exists(),
         "session id file must not be written for non-thread.started events"
     );
     Ok(())
@@ -313,9 +277,8 @@ fn send_event_codex_ignores_empty_thread_id() -> TestResult {
     let event = json!({"type": "thread.started", "thread_id": ""});
     fixture.send_event(event, 1, &masker)?;
 
-    let (session_id_file, _) = fixture.session_file_paths();
     assert!(
-        !Path::new(session_id_file).exists(),
+        !Path::new(fixture.session_id_file()).exists(),
         "empty thread_id must not be persisted"
     );
     Ok(())
@@ -334,9 +297,8 @@ fn send_event_codex_ignores_malformed_thread_id() -> TestResult {
         let event = json!({"type": "thread.started", "thread_id": thread_id});
         fixture.send_event(event, 1, &masker)?;
 
-        let (session_id_file, _) = fixture.session_file_paths();
         assert!(
-            !Path::new(session_id_file).exists(),
+            !Path::new(fixture.session_id_file()).exists(),
             "malformed thread_id must not be persisted: {thread_id}"
         );
         assert_eq!(masker.mask_string(thread_id), thread_id);

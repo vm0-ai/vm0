@@ -142,6 +142,9 @@ pub mod webhooks {
                 /// The native history was oversized and had no safe bounded generation.
                 #[serde(rename = "discarded_oversized")]
                 DiscardedOversized,
+                /// The native history was missing, unsafe, ambiguous, or otherwise unusable.
+                #[serde(rename = "unavailable")]
+                Unavailable,
             }
 
             /// Artifact version captured by an agent checkpoint.

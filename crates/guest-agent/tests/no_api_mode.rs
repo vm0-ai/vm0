@@ -85,7 +85,6 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "session-no-api"
     );
     let _ = std::fs::remove_file(runtime.paths.session_id_file());
-    let _ = std::fs::remove_file(runtime.paths.session_history_path_file());
 
     let complete_log_path = tmp.path().join("complete-system.log");
     let complete_log_guard = SystemLogOverrideGuard::set(&complete_log_path);
@@ -167,14 +166,19 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         cli_session_id.starts_with("mock-"),
         "no-API execute_cli should capture session metadata from stdout events, got {cli_session_id}"
     );
-    let cli_history_path = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
-    assert!(
-        cli_history_path.contains(cli_session_id.trim()),
-        "history path should contain the captured CLI session id, got {cli_history_path}"
+    let cli_history_path = common::claude_history_path_for_home(
+        std::path::Path::new(&runtime.config.home_dir),
+        cli_session_id.trim(),
     );
     assert!(
-        cli_history_path.trim_end().ends_with(".jsonl"),
-        "history path should be the Claude JSONL path captured from stdout events, got {cli_history_path}"
+        cli_history_path.exists(),
+        "CLI history should exist at the path derived from launch metadata: {}",
+        cli_history_path.display()
+    );
+    assert!(
+        cli_history_path.ends_with(format!("{}.jsonl", cli_session_id.trim())),
+        "derived history path should use the captured CLI session id: {}",
+        cli_history_path.display()
     );
     let ops = std::fs::read_to_string(ops_file)?;
     let cli_exit_metric_count = ops

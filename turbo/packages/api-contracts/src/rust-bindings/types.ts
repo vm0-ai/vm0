@@ -241,6 +241,9 @@ export const rustTypeBindings = [
           discarded_oversized: [
             "The native history was oversized and had no safe bounded generation.",
           ],
+          unavailable: [
+            "The native history was missing, unsafe, ambiguous, or otherwise unusable.",
+          ],
         },
       },
       {

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use guest_contracts::reuse_preparation::ReusePreparationRequest;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    FinalSessionHistorySourceRef,
 };
 use sandbox::{ResourceLimits, SandboxConfig, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandboxFactory, MockSandboxOverrides};
@@ -146,7 +147,11 @@ async fn idle_park_request_protects_retained_identity_runtime_directory() {
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(b"history")),
         b"history".len() as u64,
-        "/home/user/.claude/projects/session.jsonl",
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: "/home/user/.claude".to_string(),
+            working_dir: "/home/user/workspace".to_string(),
+            session_id: session_id.to_string(),
+        },
     )
     .unwrap();
     request.parts.restored_session_identity = Some(

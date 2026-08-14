@@ -977,7 +977,7 @@ mod tests {
     use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use guest_contracts::session_history_identity::{
         FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-        SessionHistorySidecarExportMetadata,
+        FinalSessionHistorySourceRef, SessionHistorySidecarExportMetadata,
     };
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -1253,21 +1253,31 @@ mod tests {
         session_id: &str,
         history: &[u8],
     ) -> RestoredSessionIdentity {
-        let (final_framework, history_path) = match framework {
+        let (final_framework, history_source) = match framework {
             RestoredSessionFramework::ClaudeCode => (
                 FinalSessionHistoryFramework::ClaudeCode,
-                format!("/home/user/.claude/projects/-home-user-workspace/{session_id}.jsonl"),
+                FinalSessionHistorySourceRef::ClaudeCode {
+                    config_dir: "/home/user/.claude".to_string(),
+                    working_dir: CANONICAL_WORKING_DIR.to_string(),
+                    session_id: session_id.to_string(),
+                },
             ),
             RestoredSessionFramework::Codex => (
                 FinalSessionHistoryFramework::Codex,
-                format!("CODEX_SEARCH:26:/home/user/.codex/sessions:{session_id}"),
+                FinalSessionHistorySourceRef::Codex {
+                    sessions_dir: "/home/user/.codex/sessions".to_string(),
+                    thread_id: session_id.to_string(),
+                },
             ),
             RestoredSessionFramework::Pi => (
                 FinalSessionHistoryFramework::Pi,
-                format!(
-                    "{}/restored-{session_id}.jsonl",
-                    api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
-                ),
+                FinalSessionHistorySourceRef::Pi {
+                    session_path: format!(
+                        "{}/restored-{session_id}.jsonl",
+                        api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+                    ),
+                    session_id: Some(session_id.to_string()),
+                },
             ),
         };
         let metadata = FinalSessionHistoryIdentity::new(
@@ -1276,7 +1286,7 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
-            history_path,
+            history_source,
         )
         .unwrap();
         RestoredSessionIdentity::from_final_metadata(

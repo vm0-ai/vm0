@@ -16,6 +16,7 @@ use guest_agent::paths;
 use guest_agent::reuse_preparation;
 use guest_agent::run_context::GuestRuntime;
 use guest_agent::session_history_identity;
+use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
@@ -482,12 +483,14 @@ async fn execute(
     let mut last_event_sequence = None;
     let mut active_input_delivery_ids = Vec::new();
     let mut event_delivery_failure = None;
+    let session_metadata = session_metadata::SessionMetadataStore::default();
     let cli_result = cli::execute_cli_with_controls_for_config_started_at(
         masker,
         heartbeat_monitor,
         http.clone(),
         cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref())
-            .with_workload_containment(runtime.workload_containment.as_ref()),
+            .with_workload_containment(runtime.workload_containment.as_ref())
+            .with_session_metadata_store(session_metadata.clone()),
         config,
         runtime_paths,
         start,
@@ -500,7 +503,6 @@ async fn execute(
         cli_exit_code,
         mut exit_code,
         mut error_message,
-        skip_recovery_checkpoint_for_no_history,
         mut failure_diagnostic,
         cli_execution_succeeded,
     ) = match cli_result {
@@ -510,7 +512,7 @@ async fn execute(
             if let Some(event_delivery) = cli_result.event_delivery.clone() {
                 let diagnostic = failure_diagnostics::event_delivery_failure_for_config(
                     config,
-                    runtime_paths,
+                    session_metadata.captured(),
                     &cli_result,
                     event_delivery.clone(),
                 );
@@ -521,7 +523,7 @@ async fn execute(
                 let msg = control_error.to_string();
                 let diagnostic = failure_diagnostics::cli_control_failure_for_config(
                     config,
-                    runtime_paths,
+                    session_metadata.captured(),
                     &cli_result,
                 );
                 let exit_code = if cli_result
@@ -534,64 +536,24 @@ async fn execute(
                 } else {
                     1
                 };
-                (
-                    cli_exit_code,
-                    exit_code,
-                    msg,
-                    false,
-                    Some(diagnostic),
-                    false,
-                )
+                (cli_exit_code, exit_code, msg, Some(diagnostic), false)
             } else if preserves_successful_post_result_cleanup(config.framework, &cli_result) {
-                (cli_exit_code, 0, String::new(), false, None, true)
+                (cli_exit_code, 0, String::new(), None, true)
             } else if cli_exit_code != 0 {
                 let failure = failure_diagnostics::cli_nonzero_failure_for_config(
                     config,
-                    runtime_paths,
+                    session_metadata.captured(),
                     &cli_result,
                 );
                 (
                     cli_exit_code,
                     cli_exit_code,
                     failure.message,
-                    false,
                     Some(failure.diagnostic),
                     false,
                 )
-            } else if http.has_api() && is_claude_zero_turn_result(config.framework, &cli_result) {
-                let history_check_start = Instant::now();
-                let session_history_status =
-                    failure_diagnostics::diagnostic_session_history_status_for_config(
-                        config,
-                        runtime_paths,
-                    );
-                if failure_diagnostics::session_history_unavailable(session_history_status) {
-                    let msg = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
-                    record_sandbox_op(
-                        "session_history_available",
-                        history_check_start.elapsed(),
-                        false,
-                        Some(msg),
-                    );
-                    log_info!(LOG_TAG, "{msg}");
-                    let diagnostic = failure_diagnostics::claude_zero_turn_failure_for_config(
-                        config,
-                        &cli_result,
-                        session_history_status,
-                    );
-                    (
-                        cli_exit_code,
-                        1,
-                        msg.to_string(),
-                        true,
-                        Some(diagnostic),
-                        true,
-                    )
-                } else {
-                    (0, 0, String::new(), false, None, true)
-                }
             } else {
-                (0, 0, String::new(), false, None, true)
+                (0, 0, String::new(), None, true)
             }
         }
         Err(e) => {
@@ -601,7 +563,6 @@ async fn execute(
                 1,
                 1,
                 msg,
-                false,
                 Some(failure_diagnostics::base_failure_diagnostic_for_config(
                     config,
                     FailureClass::CliExecutionError,
@@ -668,8 +629,8 @@ async fn execute(
             last_event_sequence,
             failure_message: (exit_code != 0).then_some(error_message.as_str()),
             failure_diagnostic,
-            skip_recovery_checkpoint_for_no_history,
             active_input_delivery_ids: &active_input_delivery_ids,
+            session_metadata: session_metadata.captured(),
         },
         telemetry,
         runtime,
@@ -742,17 +703,6 @@ fn event_delivery_failure_message(diagnostic: &EventDeliveryDiagnostic) -> Strin
     }
 }
 
-fn is_claude_zero_turn_result(
-    framework: env::Framework,
-    cli_result: &cli::CliExecutionResult,
-) -> bool {
-    matches!(framework, env::Framework::ClaudeCode)
-        && cli_result.exit_code == 0
-        && cli_result.claude_result.is_some_and(|result| {
-            result.status == cli::ClaudeResultStatus::Success && result.num_turns == Some(0)
-        })
-}
-
 fn preserves_successful_post_result_cleanup(
     framework: env::Framework,
     cli_result: &cli::CliExecutionResult,
@@ -788,7 +738,11 @@ struct PersistenceFailure<'a> {
 /// Both the checkpoint and the Pi artifact snapshot must fail the run: settling
 /// as successful would silently discard the writeback Storage mutations the
 /// sandbox just made.
-fn record_persistence_failure(failure: PersistenceFailure<'_>, runtime: &GuestRuntime) {
+fn record_persistence_failure(
+    failure: PersistenceFailure<'_>,
+    runtime: &GuestRuntime,
+    session_metadata: Option<&session_metadata::CapturedSessionMetadata>,
+) {
     let config = &runtime.config;
     let runtime_paths = &runtime.paths;
     let msg = format!("{} failed: {}", failure.label, failure.error);
@@ -812,7 +766,7 @@ fn record_persistence_failure(failure: PersistenceFailure<'_>, runtime: &GuestRu
         diagnostic = diagnostic.with_failure_reason(reason);
     }
     let diagnostic = diagnostic.with_session_history_status(
-        failure_diagnostics::diagnostic_session_history_status_for_config(config, runtime_paths),
+        failure_diagnostics::diagnostic_session_history_status_for_config(config, session_metadata),
     );
     failure_diagnostics::write_guest_failure_diagnostic(
         runtime_paths.failure_diagnostic_file(),
@@ -824,8 +778,8 @@ struct CompletionState<'a> {
     last_event_sequence: Option<u32>,
     failure_message: Option<&'a str>,
     failure_diagnostic: Option<FailureDiagnostic>,
-    skip_recovery_checkpoint_for_no_history: bool,
     active_input_delivery_ids: &'a [String],
+    session_metadata: Option<&'a session_metadata::CapturedSessionMetadata>,
 }
 
 async fn complete_execution(
@@ -868,10 +822,13 @@ async fn complete_execution(
 
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
-        let (cp_result, _) = tokio::join!(
-            checkpoint::create_checkpoint_for_runtime(runtime),
-            telemetry.flush(UploadMode::Live),
-        );
+        let checkpoint = async {
+            let session_metadata = state.session_metadata.ok_or_else(|| {
+                AgentError::Checkpoint("No valid CLI session ID was captured".to_string())
+            })?;
+            checkpoint::create_checkpoint_for_runtime(runtime, session_metadata).await
+        };
+        let (cp_result, _) = tokio::join!(checkpoint, telemetry.flush(UploadMode::Live),);
         match cp_result {
             Ok(()) => {
                 log_info!(
@@ -915,6 +872,7 @@ async fn complete_execution(
                         wrote_failure_diagnostic,
                     },
                     runtime,
+                    state.session_metadata,
                 );
                 exit_code = 1;
 
@@ -927,11 +885,6 @@ async fn complete_execution(
     } else {
         if exit_code == 0 {
             log_info!(LOG_TAG, "{agent_type} completed successfully");
-        } else if state.skip_recovery_checkpoint_for_no_history {
-            log_info!(
-                LOG_TAG,
-                "{agent_type} completed without resumable session history; marking run as failed"
-            );
         } else if cli_exit_code != 0 {
             log_info!(
                 LOG_TAG,
@@ -940,17 +893,19 @@ async fn complete_execution(
         }
 
         if http.has_api() {
-            if state.skip_recovery_checkpoint_for_no_history {
-                log_info!(
-                    LOG_TAG,
-                    "Skipping recovery checkpoint because no session history was created"
-                );
-            } else {
+            if let Some(session_metadata) = state.session_metadata {
                 log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
-                match checkpoint::create_recovery_checkpoint_for_runtime(runtime).await {
+                match checkpoint::create_recovery_checkpoint_for_runtime(runtime, session_metadata)
+                    .await
+                {
                     Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
                     Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
                 }
+            } else {
+                log_warn!(
+                    LOG_TAG,
+                    "Recovery checkpoint skipped because no valid CLI session ID was captured"
+                );
             }
         }
 
@@ -1176,7 +1131,6 @@ mod tests {
         let mut cleanup_paths = Vec::new();
         if include_session {
             cleanup_paths.push(paths.session_id_file().to_string());
-            cleanup_paths.push(paths.session_history_path_file().to_string());
         }
         cleanup_paths.extend([
             paths.checkpoint_error_file().to_string(),
@@ -1292,95 +1246,6 @@ mod tests {
         fn drop(&mut self) {
             guest_common::telemetry::clear_sandbox_ops_log_file();
         }
-    }
-
-    #[test]
-    fn is_claude_zero_turn_result_requires_all_guards() {
-        let zero_turn = cli::CliExecutionResult {
-            exit_code: 0,
-            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
-            stderr_lines: Vec::new(),
-            last_event_sequence: None,
-            event_delivery: None,
-            claude_result: Some(cli::ClaudeResultSummary {
-                num_turns: Some(0),
-                status: cli::ClaudeResultStatus::Success,
-            }),
-            post_result_cleanup_result: None,
-            failure_diagnostic: None,
-            control_error: None,
-            cli_termination: None,
-            active_input_delivery_ids: Vec::new(),
-        };
-        let one_turn = cli::CliExecutionResult {
-            exit_code: 0,
-            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
-            stderr_lines: Vec::new(),
-            last_event_sequence: None,
-            event_delivery: None,
-            claude_result: Some(cli::ClaudeResultSummary {
-                num_turns: Some(1),
-                status: cli::ClaudeResultStatus::Success,
-            }),
-            post_result_cleanup_result: None,
-            failure_diagnostic: None,
-            control_error: None,
-            cli_termination: None,
-            active_input_delivery_ids: Vec::new(),
-        };
-        let failed_zero_turn = cli::CliExecutionResult {
-            exit_code: 1,
-            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(1)),
-            stderr_lines: Vec::new(),
-            last_event_sequence: None,
-            event_delivery: None,
-            claude_result: Some(cli::ClaudeResultSummary {
-                num_turns: Some(0),
-                status: cli::ClaudeResultStatus::Success,
-            }),
-            post_result_cleanup_result: None,
-            failure_diagnostic: None,
-            control_error: None,
-            cli_termination: None,
-            active_input_delivery_ids: Vec::new(),
-        };
-        let unknown_zero_turn = cli::CliExecutionResult {
-            exit_code: 0,
-            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
-            stderr_lines: Vec::new(),
-            last_event_sequence: None,
-            event_delivery: None,
-            claude_result: Some(cli::ClaudeResultSummary {
-                num_turns: Some(0),
-                status: cli::ClaudeResultStatus::Unknown,
-            }),
-            post_result_cleanup_result: None,
-            failure_diagnostic: None,
-            control_error: None,
-            cli_termination: None,
-            active_input_delivery_ids: Vec::new(),
-        };
-
-        assert!(is_claude_zero_turn_result(
-            env::Framework::ClaudeCode,
-            &zero_turn,
-        ));
-        assert!(!is_claude_zero_turn_result(
-            env::Framework::Codex,
-            &zero_turn,
-        ));
-        assert!(!is_claude_zero_turn_result(
-            env::Framework::ClaudeCode,
-            &one_turn,
-        ));
-        assert!(!is_claude_zero_turn_result(
-            env::Framework::ClaudeCode,
-            &failed_zero_turn,
-        ));
-        assert!(!is_claude_zero_turn_result(
-            env::Framework::ClaudeCode,
-            &unknown_zero_turn,
-        ));
     }
 
     #[test]
@@ -1651,13 +1516,13 @@ mod tests {
     }
 
     #[test]
-    fn complete_execution_skips_recovery_checkpoint_for_no_history() {
+    fn complete_execution_keeps_success_when_history_is_unavailable() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(complete_execution_skips_recovery_checkpoint_for_no_history_inner());
+            .block_on(complete_execution_keeps_success_when_history_is_unavailable_inner());
     }
 
     #[test]
@@ -1849,8 +1714,8 @@ mod tests {
                 last_event_sequence: None,
                 failure_message: None,
                 failure_diagnostic: None,
-                skip_recovery_checkpoint_for_no_history: false,
                 active_input_delivery_ids: &[],
+                session_metadata: None,
             },
             &telemetry,
             &runtime,
@@ -1875,7 +1740,7 @@ mod tests {
         }
     }
 
-    async fn complete_execution_skips_recovery_checkpoint_for_no_history_inner() {
+    async fn complete_execution_keeps_success_when_history_is_unavailable_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("/help")) };
@@ -1892,8 +1757,18 @@ mod tests {
             then.status(500);
         });
         let checkpoint_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/checkpoints");
-            then.status(500);
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({"checkpointId": "historyless-checkpoint"}));
+        });
+        let complete_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/complete");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
         });
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -1908,25 +1783,18 @@ mod tests {
         let telemetry =
             Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
-        let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
-        let failure_diagnostic = FailureDiagnostic::new(
-            FailureClass::ClaudeZeroTurnNoHistory,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("/help"),
-        )
-        .with_cli_exit_code(0)
-        .with_claude_num_turns(Some(0))
-        .with_session_history_status(SessionHistoryStatus::Missing);
+        let session_metadata =
+            session_metadata::CapturedSessionMetadata::for_test("zero-turn-session", None);
         let exit_code = complete_execution(
             0,
-            1,
+            0,
             Duration::ZERO,
             CompletionState {
                 last_event_sequence: None,
-                failure_message: Some(failure_message),
-                failure_diagnostic: Some(failure_diagnostic.clone()),
-                skip_recovery_checkpoint_for_no_history: true,
+                failure_message: None,
+                failure_diagnostic: None,
                 active_input_delivery_ids: &[],
+                session_metadata: Some(&session_metadata),
             },
             &telemetry,
             &runtime,
@@ -1934,17 +1802,10 @@ mod tests {
         .await;
         telemetry.shutdown().await;
 
-        assert_eq!(exit_code, 1);
-        assert_eq!(
-            std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
-            failure_message
-        );
-        let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
-                .unwrap();
-        assert_eq!(diagnostic, failure_diagnostic);
+        assert_eq!(exit_code, 0);
         assert_eq!(prepare_mock.calls_async().await, 0);
-        assert_eq!(checkpoint_mock.calls_async().await, 0);
+        assert_eq!(checkpoint_mock.calls_async().await, 1);
+        assert_eq!(complete_mock.calls_async().await, 1);
 
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
@@ -1963,15 +1824,25 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
+        let session_id = "recovery-session-from-main";
+        let config_dir = dir.path().join("claude-config");
+        let history_path = config_dir
+            .join("projects")
+            .join("-home-user-workspace")
+            .join(format!("{session_id}.jsonl"));
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
+        std::fs::create_dir_all(history_path.parent().unwrap()).unwrap();
         std::fs::write(&history_path, &history).unwrap();
-        paths::write_private(guest_paths.session_id_file(), "recovery-session-from-main").unwrap();
-        paths::write_private(
-            guest_paths.session_history_path_file(),
-            history_path.to_string_lossy().as_ref(),
-        )
-        .unwrap();
+        let session_metadata = session_metadata::CapturedSessionMetadata::for_test(
+            session_id,
+            Some(
+                guest_contracts::session_history_identity::FinalSessionHistorySourceRef::ClaudeCode {
+                    config_dir: config_dir.to_string_lossy().into_owned(),
+                    working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
+                    session_id: session_id.to_string(),
+                },
+            ),
+        );
 
         let prepare_mock = server.mock(|when, then| {
             when.method(POST)
@@ -2027,8 +1898,8 @@ mod tests {
                 last_event_sequence: None,
                 failure_message: Some(failure_message),
                 failure_diagnostic: Some(failure_diagnostic.clone()),
-                skip_recovery_checkpoint_for_no_history: false,
                 active_input_delivery_ids: &[],
+                session_metadata: Some(&session_metadata),
             },
             &telemetry,
             &runtime,

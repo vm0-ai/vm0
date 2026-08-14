@@ -285,6 +285,7 @@ mod tests {
         codex_thread_id::canonical_codex_thread_id,
         session_history_identity::{
             FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+            FinalSessionHistorySourceRef,
         },
     };
     use sha2::{Digest, Sha256};
@@ -339,7 +340,11 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             history_hash,
             size,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+            FinalSessionHistorySourceRef::ClaudeCode {
+                config_dir: "/home/user/.claude".to_string(),
+                working_dir: "/home/user/workspace".to_string(),
+                session_id: "sess-restore-plan".to_string(),
+            },
         )
         .unwrap();
         RestoredSessionIdentity::from_final_metadata(
@@ -441,7 +446,10 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             history_hash,
             12,
-            format!("CODEX_SEARCH:26:/home/user/.codex/sessions:{canonical_thread_id}"),
+            FinalSessionHistorySourceRef::Codex {
+                sessions_dir: "/home/user/.codex/sessions".to_string(),
+                thread_id: canonical_thread_id,
+            },
         )
         .unwrap();
         let restored_identity =

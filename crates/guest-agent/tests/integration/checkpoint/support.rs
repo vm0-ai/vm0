@@ -1,8 +1,6 @@
 use crate::support::*;
 use httpmock::prelude::*;
 use serde_json::json;
-#[cfg(target_os = "linux")]
-use std::{ffi::CString, os::unix::ffi::OsStrExt};
 use std::{
     ffi::OsString,
     io::{Seek, SeekFrom, Write},
@@ -20,8 +18,10 @@ pub(super) fn runtime_from_process_env() -> Result<guest_agent::run_context::Gue
 pub(super) async fn create_bounded_checkpoint(
     runtime: &guest_agent::run_context::GuestRuntime,
 ) -> Result<(), guest_agent::error::AgentError> {
+    let session_metadata = checkpoint_session_metadata(runtime);
     guest_agent::checkpoint::create_checkpoint_for_runtime_with_history_limits_for_test(
         runtime,
+        &session_metadata,
         CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
         CHECKPOINT_TEST_MAX_BYTES,
     )
@@ -31,20 +31,66 @@ pub(super) async fn create_bounded_checkpoint(
 pub(super) async fn create_bounded_recovery_checkpoint(
     runtime: &guest_agent::run_context::GuestRuntime,
 ) -> Result<(), guest_agent::error::AgentError> {
+    let session_metadata = checkpoint_session_metadata(runtime);
     guest_agent::checkpoint::create_recovery_checkpoint_for_runtime_with_history_limits_for_test(
         runtime,
+        &session_metadata,
         CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
         CHECKPOINT_TEST_MAX_BYTES,
     )
     .await
 }
 
-pub(super) fn session_file_paths() -> (String, String) {
-    let paths = shared_guest_paths();
-    (
-        paths.session_id_file().to_string(),
-        paths.session_history_path_file().to_string(),
-    )
+pub(super) fn checkpoint_session_metadata(
+    runtime: &guest_agent::run_context::GuestRuntime,
+) -> guest_agent::session_metadata::CapturedSessionMetadata {
+    let session_id = std::fs::read_to_string(runtime.paths.session_id_file())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let source = match runtime.config.framework {
+        guest_agent::env::Framework::ClaudeCode => Some(
+            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::ClaudeCode {
+                config_dir: runtime
+                    .config
+                    .user_env
+                    .get("CLAUDE_CONFIG_DIR")
+                    .filter(|value| !value.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        std::path::Path::new(&runtime.config.home_dir)
+                            .join(".claude")
+                            .to_string_lossy()
+                            .into_owned()
+                    }),
+                working_dir: guest_agent::paths::CANONICAL_WORKING_DIR.to_string(),
+                session_id: session_id.clone(),
+            },
+        ),
+        guest_agent::env::Framework::Codex => Some(
+            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
+                sessions_dir: std::path::Path::new(&runtime.config.home_dir)
+                    .join(".codex/sessions")
+                    .to_string_lossy()
+                    .into_owned(),
+                thread_id: session_id.clone(),
+            },
+        ),
+        guest_agent::env::Framework::Pi => Some(
+            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Pi {
+                session_path: format!(
+                    "{}/restored-{session_id}.jsonl",
+                    api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+                ),
+                session_id: Some(session_id.clone()),
+            },
+        ),
+    };
+    guest_agent::session_metadata::CapturedSessionMetadata::for_test(session_id, source)
+}
+
+pub(super) fn session_id_file() -> String {
+    shared_guest_paths().session_id_file().to_string()
 }
 
 pub(super) struct EnvVarRestore {
@@ -72,65 +118,32 @@ impl Drop for EnvVarRestore {
     }
 }
 
-pub(super) fn write_derived_claude_history(
-    home_dir: &str,
-    session_id: &str,
-    history: &str,
-) -> Result<(), String> {
-    let (session_id_file, _) = session_file_paths();
-    guest_agent::paths::write_private(&session_id_file, session_id)
-        .map_err(|e| format!("write session id: {e}"))?;
-    let project_name = guest_agent::paths::CANONICAL_WORKING_DIR
-        .strip_prefix('/')
-        .unwrap_or(guest_agent::paths::CANONICAL_WORKING_DIR)
-        .replace('/', "-");
-    let history_path = std::path::Path::new(home_dir)
-        .join(".claude")
-        .join("projects")
-        .join(format!("-{project_name}"))
-        .join(format!("{session_id}.jsonl"));
-    let parent = history_path
-        .parent()
-        .ok_or_else(|| format!("history path has no parent: {}", history_path.display()))?;
-    std::fs::create_dir_all(parent)
-        .map_err(|e| format!("create history dir {}: {e}", parent.display()))?;
-    std::fs::write(&history_path, history)
-        .map_err(|e| format!("write history {}: {e}", history_path.display()))?;
-    Ok(())
-}
-
 pub(super) fn write_literal_session_history(
+    runtime: &mut guest_agent::run_context::GuestRuntime,
     session_id: &str,
     history: &[u8],
 ) -> Result<tempfile::TempDir, String> {
-    let (session_id_file, session_history_path_file) = session_file_paths();
+    let session_id_file = session_id_file();
     let dir = tempfile::tempdir().map_err(|e| format!("create temp history dir: {e}"))?;
-    let history_path = dir.path().join(format!("{session_id}.jsonl"));
+    runtime.config.user_env.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        dir.path().to_string_lossy().into_owned(),
+    );
+    let history_path = claude_history_path(dir.path(), session_id);
+    let history_parent = history_path
+        .parent()
+        .ok_or_else(|| "Claude history has no parent".to_string())?;
+    std::fs::create_dir_all(history_parent)
+        .map_err(|e| format!("create history directory: {e}"))?;
     std::fs::write(&history_path, history)
         .map_err(|e| format!("write history {}: {e}", history_path.display()))?;
     guest_agent::paths::write_private(&session_id_file, session_id)
         .map_err(|e| format!("write session id: {e}"))?;
-    guest_agent::paths::write_private(
-        &session_history_path_file,
-        history_path.to_string_lossy().as_ref(),
-    )
-    .map_err(|e| format!("write session history marker: {e}"))?;
     Ok(dir)
 }
 
-#[cfg(target_os = "linux")]
-pub(super) fn create_fifo(path: &std::path::Path) -> std::io::Result<()> {
-    let path = CString::new(path.as_os_str().as_bytes())
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
-    let result = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
 pub(super) fn write_prunable_claude_history(
+    runtime: &mut guest_agent::run_context::GuestRuntime,
     session_id: &str,
 ) -> Result<(tempfile::TempDir, Vec<u8>), String> {
     let boundary_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -165,7 +178,16 @@ pub(super) fn write_prunable_claude_history(
 
     let history_dir =
         tempfile::tempdir().map_err(|error| format!("create history dir: {error}"))?;
-    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+    runtime.config.user_env.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        history_dir.path().to_string_lossy().into_owned(),
+    );
+    let history_path = claude_history_path(history_dir.path(), session_id);
+    let history_parent = history_path
+        .parent()
+        .ok_or_else(|| "Claude history has no parent".to_string())?;
+    std::fs::create_dir_all(history_parent)
+        .map_err(|error| format!("create history parent: {error}"))?;
     let mut history_file =
         std::fs::File::create(&history_path).map_err(|error| format!("create history: {error}"))?;
     history_file
@@ -180,15 +202,20 @@ pub(super) fn write_prunable_claude_history(
         .and_then(|()| history_file.flush())
         .map_err(|error| format!("write history: {error}"))?;
 
-    let (session_id_file, session_history_path_file) = session_file_paths();
+    let session_id_file = session_id_file();
     guest_agent::paths::write_private(&session_id_file, session_id)
         .map_err(|error| format!("write session id: {error}"))?;
-    guest_agent::paths::write_private(
-        &session_history_path_file,
-        history_path.to_string_lossy().as_ref(),
-    )
-    .map_err(|error| format!("write history marker: {error}"))?;
     Ok((history_dir, candidate))
+}
+
+pub(super) fn claude_history_path(
+    config_dir: &std::path::Path,
+    session_id: &str,
+) -> std::path::PathBuf {
+    config_dir
+        .join("projects")
+        .join("-home-user-workspace")
+        .join(format!("{session_id}.jsonl"))
 }
 
 pub(super) fn write_prunable_codex_history(
@@ -318,7 +345,7 @@ pub(super) fn write_prunable_codex_history(
         })
         .map_err(|error| format!("write retained Codex history: {error}"))?;
 
-    let (session_id_file, _) = session_file_paths();
+    let session_id_file = session_id_file();
     guest_agent::paths::write_private(&session_id_file, session_id)
         .map_err(|error| format!("write Codex session id: {error}"))?;
     Ok((history_dir, history_path, candidate))
@@ -397,7 +424,7 @@ pub(super) fn write_codex_history_without_compact(
     }
     std::fs::write(&history_path, &history)
         .map_err(|error| format!("write Codex history: {error}"))?;
-    let (session_id_file, _) = session_file_paths();
+    let session_id_file = session_id_file();
     guest_agent::paths::write_private(&session_id_file, session_id)
         .map_err(|error| format!("write Codex session id: {error}"))?;
     Ok((history_dir, history_path, history))
