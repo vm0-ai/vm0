@@ -1671,7 +1671,6 @@
       "empty": "Send a message to start the conversation",
       "frequentlyUsed": "Frequently used",
       "icon": "Chat thread icon",
-      "loadingEarlier": "Loading earlier messages",
       "locator": {
         "you": "You"
       },
