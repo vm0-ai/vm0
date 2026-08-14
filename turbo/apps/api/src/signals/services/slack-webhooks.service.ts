@@ -67,7 +67,7 @@ import {
 import { processCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
 import { onRejection, safeJsonParse, tapError } from "../utils";
 
-const L = logger("ZeroSlackWebhooks");
+const L = logger("SlackWebhooks");
 const AGENT_PICKER_MAX_OPTIONS = 100;
 const MODEL_PICKER_MAX_OPTIONS = 100;
 
@@ -1273,7 +1273,7 @@ const commandModelResponse$ = command(
   },
 );
 
-export const handleZeroSlackCommands$ = command(
+export const handleSlackCommands$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
     const verified = await verifiedSlackBody(request.raw);
@@ -1637,7 +1637,7 @@ const handleEventCallback$ = command(
   },
 );
 
-export const handleZeroSlackEvents$ = command(
+export const handleSlackEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
     const verified = await verifiedSlackBody(request.raw);
@@ -2052,7 +2052,7 @@ const handleHomeDisconnect$ = command(
   },
 );
 
-export const handleZeroSlackInteractive$ = command(
+export const handleSlackInteractive$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
     const verified = await verifiedSlackBody(request.raw);
