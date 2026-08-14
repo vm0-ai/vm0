@@ -6,7 +6,7 @@ import {
   type JSONObject,
   type Tool,
 } from "@modelcontextprotocol/client";
-import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 
 declare const __CLI_VERSION__: string;
 
@@ -179,7 +179,7 @@ function safeMcpError(
 }
 
 async function runMcpOperation<T>(
-  connector: ZeroMcpConnector,
+  connector: McpConnector,
   timeoutSeconds: number,
   operation: (
     client: Client,
@@ -317,7 +317,7 @@ async function discoverMcpTools(
 }
 
 export async function listMcpTools(
-  connector: ZeroMcpConnector,
+  connector: McpConnector,
   timeoutSeconds: number,
 ): Promise<McpOperationResult<Tool[]>> {
   return runMcpOperation(
@@ -330,7 +330,7 @@ export async function listMcpTools(
 }
 
 export async function callMcpTool(
-  connector: ZeroMcpConnector,
+  connector: McpConnector,
   toolName: string,
   input: JSONObject,
   timeoutSeconds: number,

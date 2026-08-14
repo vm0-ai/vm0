@@ -30,10 +30,10 @@ import {
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
-  zeroMcpConnectorListResponseSchema,
-  zeroMcpConnectorsContract,
-  type ZeroMcpConnector,
-} from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+  mcpConnectorListResponseSchema,
+  mcpConnectorsContract,
+  type McpConnector,
+} from "@okouai/api-contracts/contracts/mcp-connectors";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
@@ -199,13 +199,13 @@ export async function listZeroCustomConnectors(): Promise<
   handleError(result, "Failed to list custom connectors");
 }
 
-export async function listZeroRunMcpConnectors(): Promise<ZeroMcpConnector[]> {
+export async function listZeroRunMcpConnectors(): Promise<McpConnector[]> {
   const config = await getClientConfig();
-  const client = initClient(zeroMcpConnectorsContract, config);
+  const client = initClient(mcpConnectorsContract, config);
 
   const result = await client.list({ headers: {} });
   if (result.status === 200) {
-    return zeroMcpConnectorListResponseSchema.parse(result.body).connectors;
+    return mcpConnectorListResponseSchema.parse(result.body).connectors;
   }
 
   handleError(result, "Failed to list MCP connectors for this run");

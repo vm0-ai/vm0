@@ -1,14 +1,14 @@
-import type { ZeroMcpConnector } from "@okouai/api-contracts/contracts/zero-mcp-connectors";
+import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 
 import { listZeroRunMcpConnectors } from "../../../lib/api/domains/zero-connectors";
 
-export function listRunMcpConnectors(): Promise<ZeroMcpConnector[]> {
+export function listRunMcpConnectors(): Promise<McpConnector[]> {
   return listZeroRunMcpConnectors();
 }
 
 export async function resolveRunMcpConnector(
   connectorSlug: string,
-): Promise<ZeroMcpConnector> {
+): Promise<McpConnector> {
   const connectors = await listRunMcpConnectors();
   const connector = connectors.find((candidate) => {
     return candidate.slug === connectorSlug;
