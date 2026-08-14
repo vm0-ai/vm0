@@ -246,6 +246,9 @@ describe("okou chat messages command", () => {
         if (seqId === null) {
           throw new Error("Expected a rows cursor");
         }
+        expect(request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+        );
         cursors.push({
           eventId: url.searchParams.get("sinceEventId"),
           seqId,

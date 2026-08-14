@@ -878,6 +878,20 @@ describe("cron snapshot chat events", () => {
       expect(row.seqId).toBeGreaterThan(previousSeqId);
       previousSeqId = row.seqId;
     }
+
+    const lastTailRow = tail.at(-1);
+    if (lastTailRow === undefined) {
+      throw new Error("Expected a sparse tail event");
+    }
+    await projectChatEventSearch(threadId);
+    const extension = await runSnapshotCron([threadId]);
+    expect(extension.success).toBeTruthy();
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toMatchObject({
+      last_event_id: lastTailRow.id,
+      last_seq_id: lastTailRow.seqId,
+    });
   }, 60_000);
 
   it("refuses V4 to V5 when no lossless Snapshot migration exists", async () => {
