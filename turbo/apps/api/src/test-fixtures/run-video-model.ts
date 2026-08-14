@@ -43,9 +43,11 @@ export async function setRunVideoModelFixture(args: {
   readonly selectedVideoModel: string | null;
 }): Promise<void> {
   await db()
-    .update(zeroRuns)
+    .update(agentRuns)
     .set({ selectedVideoModel: args.selectedVideoModel })
-    .where(eq(zeroRuns.id, args.runId));
+    .where(
+      and(eq(agentRuns.id, args.runId), isNotNull(agentRuns.triggerSource)),
+    );
 }
 
 /** Confirms a run really is threadless before asserting how it resolved. */
