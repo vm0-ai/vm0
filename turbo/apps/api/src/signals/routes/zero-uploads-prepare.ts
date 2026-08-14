@@ -19,7 +19,7 @@ import {
   s3MetadataHeaders,
 } from "../external/s3";
 import { allocateArtifactObject$ } from "../services/artifact-storage.service";
-import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
+import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 import { onRejection, tapError } from "../utils";
 
