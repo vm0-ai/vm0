@@ -18,6 +18,10 @@ import {
 import { receiveActiveChatEvents$ } from "./chat-event-signal-registry.ts";
 import { allUnreadThreadIds$ } from "./chat-thread-indicators.ts";
 import {
+  currentLeftThread$,
+  currentRightThread$,
+} from "./chat-thread-pane-state.ts";
+import {
   chatEventDebugSummaries,
   chatEventTraceTime,
 } from "./chat-event-debug.ts";
@@ -225,19 +229,28 @@ const handleUserChannelMessage$ = command(
   },
 );
 
-const catchUpUnreadChatThreadEvents$ = command(
+const catchUpOpenAndUnreadChatThreadEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
     const foregroundReady = get(foregroundReady$);
     await foregroundReady.promise;
     signal.throwIfAborted();
 
-    const unreadThreadIds = Array.from(await get(allUnreadThreadIds$)).slice(
-      0,
-      BACKGROUND_UNREAD_THREAD_LIMIT,
-    );
+    const allUnreadThreadIds = await get(allUnreadThreadIds$);
     signal.throwIfAborted();
+    const openThreadIds = new Set<string>();
+    for (const thread of [get(currentLeftThread$), get(currentRightThread$)]) {
+      if (thread !== null) {
+        openThreadIds.add(thread.threadId);
+      }
+    }
+    const unreadThreadIds = Array.from(allUnreadThreadIds)
+      .filter((threadId) => {
+        return !openThreadIds.has(threadId);
+      })
+      .slice(0, BACKGROUND_UNREAD_THREAD_LIMIT);
+    const threadIds = [...openThreadIds, ...unreadThreadIds];
     await Promise.all(
-      unreadThreadIds.map((threadId) => {
+      threadIds.map((threadId) => {
         return set(
           handleUserChannelMessage$,
           { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
@@ -256,7 +269,7 @@ const subscribeChatEventBackgroundSync$ = command(
       setAblyMessageLoop$,
       {
         loopCommand$: handleUserChannelMessage$,
-        catchUpCommand$: catchUpUnreadChatThreadEvents$,
+        catchUpCommand$: catchUpOpenAndUnreadChatThreadEvents$,
       },
       signal,
     );
