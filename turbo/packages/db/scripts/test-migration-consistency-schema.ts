@@ -40,6 +40,14 @@ import {
   chatEvents,
 } from "../src/schema/chat-event";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
+import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { validateAgentRunMetadataStage2Index } from "./test-agent-run-metadata-stage-2-index";
+import {
+  validateAgentRunMetadataStage2Final,
+  validateAgentRunMetadataStage2Runner,
+} from "./test-agent-run-metadata-stage-2-final";
+import { validateAgentRunMetadataStage2Lock } from "./test-agent-run-metadata-stage-2-lock";
+import { validateAgentRunMetadataStage2Preflight } from "./test-agent-run-metadata-stage-2-preflight";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -133,64 +141,7 @@ async function applyMigrationsUpToTag(
   client: Client,
   upToTag: string,
 ): Promise<void> {
-  // Create drizzle migrations table
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
-      id SERIAL PRIMARY KEY,
-      hash text NOT NULL,
-      created_at bigint
-    )
-  `);
-
-  // Read journal to get migration order
-  const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
-  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
-  const entries = journal.entries as Array<{ idx: number; tag: string }>;
-  const upToEntry = entries.find((entry) => {
-    return entry.tag === upToTag;
-  });
-  if (!upToEntry) {
-    throw new Error(
-      `Migration tag "${upToTag}" is absent from meta/_journal.json because that migration has been squashed. This transition validator is expired and should be deleted.`,
-    );
-  }
-
-  // Apply migrations up to the specified tag
-  for (const entry of entries) {
-    if (entry.idx > upToEntry.idx) break;
-
-    const sqlFile = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
-    const sql = await fs.readFile(sqlFile, "utf-8");
-
-    // Check if already applied
-    const result = await client.query(
-      `SELECT 1 FROM "__drizzle_migrations" WHERE hash = $1`,
-      [entry.tag],
-    );
-
-    if (result.rows.length === 0) {
-      if (sql.includes(NON_TRANSACTIONAL_MIGRATION_MARKER)) {
-        const statements = sql
-          .split("--> statement-breakpoint")
-          .map((statement) => {
-            return statement.trim();
-          })
-          .filter((statement) => {
-            return statement.length > 0;
-          });
-        for (const statement of statements) {
-          await client.query(statement);
-        }
-      } else {
-        await client.query(sql);
-      }
-      // Record in migrations table
-      await client.query(
-        `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
-        [entry.tag, Date.now()],
-      );
-    }
-  }
+  await applyMigrationsFromDirectoryUpToTag(client, MIGRATIONS_DIR, upToTag);
 }
 
 async function runMigrationsUpToTag(
@@ -10045,6 +9996,11 @@ async function main(): Promise<void> {
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateAgentRunMetadataExpansion();
+    await validateAgentRunMetadataStage2Preflight();
+    await validateAgentRunMetadataStage2Lock();
+    await validateAgentRunMetadataStage2Index();
+    await validateAgentRunMetadataStage2Final();
+    await validateAgentRunMetadataStage2Runner();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

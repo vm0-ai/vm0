@@ -1,6 +1,6 @@
 {
-  "id": "3bcb2699-b343-4a2e-bcf2-81d0259ebffe",
-  "prevId": "ef3284a9-b24b-4db1-92cd-167c20a1c3f6",
+  "id": "52fd7f20-4a30-4454-8f51-cacb8f6f5df6",
+  "prevId": "8b90f82f-59ce-4fcd-b07e-9308e378bc08",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1133,6 +1133,54 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_agent_runs_chat_thread_id": {
+          "name": "idx_agent_runs_chat_thread_id",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"agent_runs\".\"chat_thread_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_agent_runs_workflow_automation": {
+          "name": "idx_agent_runs_workflow_automation",
+          "columns": [
+            {
+              "expression": "workflow_automation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"agent_runs\".\"workflow_automation_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_agent_runs_goal": {
+          "name": "idx_agent_runs_goal",
+          "columns": [
+            {
+              "expression": "goal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"agent_runs\".\"goal_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1161,12 +1209,56 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "agent_runs_workflow_automation_id_zero_workflow_automations_id_fk": {
+          "name": "agent_runs_workflow_automation_id_zero_workflow_automations_id_fk",
+          "tableFrom": "agent_runs",
+          "tableTo": "zero_workflow_automations",
+          "columnsFrom": [
+            "workflow_automation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_runs_goal_id_thread_goals_id_fk": {
+          "name": "agent_runs_goal_id_thread_goals_id_fk",
+          "tableFrom": "agent_runs",
+          "tableTo": "thread_goals",
+          "columnsFrom": [
+            "goal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_runs_chat_thread_id_chat_threads_id_fk": {
+          "name": "agent_runs_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "agent_runs",
+          "tableTo": "chat_threads",
+          "columnsFrom": [
+            "chat_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "agent_runs_autonomy_budget_check": {
+          "name": "agent_runs_autonomy_budget_check",
+          "value": "\"agent_runs\".\"autonomy_budget\" >= 0 AND \"agent_runs\".\"autonomy_budget\" <= 10"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.agent_sessions": {
@@ -4902,12 +4994,6 @@
         "last_seq_id": {
           "name": "last_seq_id",
           "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_event_id": {
-          "name": "last_event_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },

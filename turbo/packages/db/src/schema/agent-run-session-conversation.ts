@@ -9,11 +9,16 @@ import {
   boolean,
   bigint,
   index,
+  check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes, agentComposeVersions } from "./agent-compose";
+import { registerAgentRunReferences } from "./agent-run-reference";
+import { chatThreads } from "./chat-thread";
+import { threadGoals } from "./thread-goal";
+import { workflowAutomations } from "./workflow";
 import type {
   AgentRunResult,
   AgentRunSecretNames,
@@ -92,8 +97,18 @@ export const agentRuns = pgTable(
     // Nullable while legacy binaries still write run metadata to zero_runs.
     triggerSource: varchar("trigger_source", { length: 20 }),
     autonomyBudget: integer("autonomy_budget"),
-    workflowAutomationId: uuid("workflow_automation_id"),
-    goalId: uuid("goal_id"),
+    workflowAutomationId: uuid("workflow_automation_id").references(
+      (): AnyPgColumn => {
+        return workflowAutomations.id;
+      },
+      { onDelete: "set null" },
+    ),
+    goalId: uuid("goal_id").references(
+      (): AnyPgColumn => {
+        return threadGoals.id;
+      },
+      { onDelete: "set null" },
+    ),
     modelProvider: varchar("model_provider", { length: 100 }),
     modelProviderId: uuid("model_provider_id"),
     modelProviderCredentialScope: varchar("model_provider_credential_scope", {
@@ -104,7 +119,12 @@ export const agentRuns = pgTable(
       length: 20,
     }).$type<CodexServiceTier>(),
     selectedVideoModel: varchar("selected_video_model", { length: 255 }),
-    chatThreadId: uuid("chat_thread_id"),
+    chatThreadId: uuid("chat_thread_id").references(
+      (): AnyPgColumn => {
+        return chatThreads.id;
+      },
+      { onDelete: "set null" },
+    ),
     apiStartedAt: timestamp("api_started_at"),
     firstAssistantEventAcknowledgedAt: timestamp(
       "first_assistant_event_acknowledged_at",
@@ -136,6 +156,19 @@ export const agentRuns = pgTable(
         table.createdAt.desc(),
       ),
       index("idx_agent_runs_session").on(table.sessionId),
+      index("idx_agent_runs_chat_thread_id")
+        .on(table.chatThreadId)
+        .where(sql`${table.chatThreadId} IS NOT NULL`),
+      index("idx_agent_runs_workflow_automation")
+        .on(table.workflowAutomationId)
+        .where(sql`${table.workflowAutomationId} IS NOT NULL`),
+      index("idx_agent_runs_goal")
+        .on(table.goalId)
+        .where(sql`${table.goalId} IS NOT NULL`),
+      check(
+        "agent_runs_autonomy_budget_check",
+        sql`${table.autonomyBudget} >= 0 AND ${table.autonomyBudget} <= 10`,
+      ),
     ];
   },
 );
@@ -214,4 +247,9 @@ export const conversations = pgTable("conversations", {
     length: 64,
   }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+registerAgentRunReferences({
+  agentRunId: agentRuns.id,
+  agentSessionId: agentSessions.id,
 });
