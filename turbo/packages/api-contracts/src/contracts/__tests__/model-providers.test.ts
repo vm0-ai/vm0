@@ -17,6 +17,7 @@ import {
   getDefaultOrgModelPolicySeed,
   getProviderRuntimeModel,
   getProvidersForModel,
+  getVm0ApiModel,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ModelPriceTier,
@@ -503,6 +504,22 @@ describe("model-first canonical catalog", () => {
       "custom/model",
     );
   });
+
+  it.each([
+    ["claude-fable-5", "anthropic/claude-fable-5"],
+    ["claude-opus-5", "anthropic/claude-opus-5"],
+    ["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    ["claude-sonnet-5", "anthropic/claude-sonnet-5"],
+    ["claude-sonnet-4-6", "anthropic/claude-sonnet-4.6"],
+  ] as const)(
+    "routes vm0 managed %s through OpenRouter as %s",
+    (model, apiModel) => {
+      expect(getVm0ConcreteProviderType(model)).toBe("openrouter-api-key");
+      expect(getVm0Vendor(model)).toBe("openrouter");
+      expect(getVm0ApiModel(model)).toBe(apiModel);
+      expect(getProviderRuntimeModel("vm0", model)).toBe(apiModel);
+    },
+  );
 
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([

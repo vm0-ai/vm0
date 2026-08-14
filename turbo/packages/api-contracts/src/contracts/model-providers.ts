@@ -239,24 +239,29 @@ interface Vm0ModelConfig {
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "claude-fable-5": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "anthropic/claude-fable-5",
   },
   "claude-opus-5": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "anthropic/claude-opus-5",
   },
   "claude-opus-4-8": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "anthropic/claude-opus-4.8",
   },
   "claude-sonnet-5": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "anthropic/claude-sonnet-5",
   },
   "claude-sonnet-4-6": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "anthropic/claude-sonnet-4.6",
   },
   "deepseek-v4-flash": {
     concreteType: "deepseek",
