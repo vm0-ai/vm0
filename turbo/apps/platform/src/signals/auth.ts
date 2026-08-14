@@ -291,9 +291,16 @@ function readAuthRedirectParams(
   }
 
   const hashQueryIndex = authHash.indexOf("?");
-  return hashQueryIndex === -1
-    ? searchParams
-    : new URLSearchParams(authHash.slice(hashQueryIndex + 1));
+  if (hashQueryIndex === -1) {
+    return searchParams;
+  }
+
+  const hashParams = new URLSearchParams(authHash.slice(hashQueryIndex + 1));
+  const hashRedirectUrl = hashParams.get("redirect_url");
+  if (hashRedirectUrl) {
+    searchParams.set("redirect_url", hashRedirectUrl);
+  }
+  return searchParams;
 }
 
 export function resolveAuthBrandContext(

@@ -12,7 +12,6 @@ import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { i18n } from "../../../i18n/index.ts";
-import { getClerkAppearance } from "../auth-clerk-appearance.ts";
 import { getClerkLocalization } from "../clerk-localization.ts";
 
 const context = testContext();
@@ -406,12 +405,19 @@ describe("app auth pages", () => {
       redirectUrl,
     );
 
-    const appearance = getClerkAppearance("light", "Okou");
-    expect(appearance.options).toStrictEqual({ logoPlacement: "none" });
-
-    const localization = getClerkLocalization("Okou", "en-US", i18n.t);
-    expect(localization.signIn?.start?.title).toBe("Sign in to Okou");
-    expect(localization.signIn?.emailCode?.subtitle).toBe(
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-logo-placement",
+      "none",
+    );
+    expect(screen.getByTestId("clerk-sign-in")).not.toHaveAttribute(
+      "data-clerk-logo-image-url",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-title",
+      "Sign in to Okou",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-email-code-subtitle",
       "to continue to Okou",
     );
   });
@@ -561,6 +567,26 @@ describe("app auth pages", () => {
   it("routes ad-attributed sign-up visits through onboarding", async () => {
     const path = "/sign-up?gclid=click-123&utm_campaign=summer";
     setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+    });
+
+    const redirectUrl = new URL(
+      screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
+    );
+    expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(redirectUrl.pathname).toBe("/onboarding");
+    expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
+    expect(redirectUrl.searchParams.get("vm0_source")).toBe("homepage");
+  });
+
+  it("keeps sign-up attribution when the Clerk hash has no redirect", async () => {
+    const path = "/sign-up?gclid=click-123&utm_campaign=summer";
+    setBrowserUrl(`https://app.vm0.ai${path}#/verify?step=code`);
 
     detachedSetupPage({ context, path });
 
