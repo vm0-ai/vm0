@@ -8,7 +8,7 @@ import {
   type MemberUsagePack,
   type UsagePackCatalogItem,
 } from "@okouai/api-contracts/contracts/zero-billing";
-import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/zero-attribution";
+import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";

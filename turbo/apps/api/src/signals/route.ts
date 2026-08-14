@@ -60,7 +60,7 @@ import { agentDraftRoutes } from "./routes/agent-draft";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { artifactCatalogRoutes } from "./routes/artifact-catalog";
-import { zeroAttributionRoutes } from "./routes/zero-attribution";
+import { acquisitionAttributionRoutes } from "./routes/acquisition-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
 import { zeroBillingConcurrencyCheckoutRoutes } from "./routes/zero-billing-concurrency-checkout";
@@ -251,7 +251,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...artifactCatalogRoutes,
-  ...zeroAttributionRoutes,
+  ...acquisitionAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,
   ...zeroBillingConcurrencyCheckoutRoutes,

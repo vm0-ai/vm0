@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import {
-  zeroAttributionContract,
+  acquisitionAttributionContract,
   type AdAttributionMetadata,
-} from "@okouai/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/acquisition-attribution";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -21,7 +21,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const recordSignupBody$ = bodyResultOf(zeroAttributionContract.recordSignup);
+const recordSignupBody$ = bodyResultOf(
+  acquisitionAttributionContract.recordSignup,
+);
 
 const recordSignupInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -95,9 +97,9 @@ const recordSignupInner$ = command(
   },
 );
 
-export const zeroAttributionRoutes: readonly RouteEntry[] = [
+export const acquisitionAttributionRoutes: readonly RouteEntry[] = [
   {
-    route: zeroAttributionContract.recordSignup,
+    route: acquisitionAttributionContract.recordSignup,
     handler: authRoute({ accept: ["session"] }, recordSignupInner$),
   },
 ];
