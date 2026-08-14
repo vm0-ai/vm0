@@ -622,45 +622,81 @@ async fn codex_app_server_child_exit_before_response_fails_pending_request() -> 
 #[tokio::test]
 async fn codex_app_server_unexpected_exit_kills_stdio_holding_descendant_before_reap()
 -> Result<(), String> {
-    let mut client = spawn_client(Some("exit-on-turn-start-with-stderr-holder"))?;
+    assert_unexpected_exit_kills_stdio_holding_descendant(spawn_client(Some(
+        "exit-on-turn-start-with-stderr-holder",
+    ))?)
+    .await
+}
+
+#[tokio::test]
+async fn codex_app_server_pidfd_fallback_kills_stdio_holding_descendant_before_reap()
+-> Result<(), String> {
+    let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
+    let config = new_config(mock_codex_path()?, codex_home.path())
+        .with_env(
+            "MOCK_CODEX_APP_SERVER_SCENARIO",
+            "exit-on-turn-start-with-stderr-holder",
+        )
+        .without_pidfd_exit_notification();
+    let client = CodexAppServerClient::spawn(config).map_err(|error| format!("{error:?}"))?;
+
+    assert_unexpected_exit_kills_stdio_holding_descendant(ClientFixture {
+        client,
+        _codex_home: codex_home,
+    })
+    .await
+}
+
+async fn assert_unexpected_exit_kills_stdio_holding_descendant(
+    mut client: ClientFixture,
+) -> Result<(), String> {
     let pid = client
         .process_id()
         .ok_or_else(|| "app-server child missing pid".to_string())?;
     let process_group = wait_for_child_process_group(pid).await?;
-    wait_result(client.initialize(), "initialize").await?;
+    let test_result = async {
+        wait_result(client.initialize(), "initialize").await?;
 
-    let started = wait_result(
-        client.request_value("thread/start", json!({})),
-        "thread/start",
-    )
-    .await?;
-    let thread_id = started["thread"]["id"]
-        .as_str()
-        .ok_or_else(|| "missing thread id".to_string())?;
+        let started = wait_result(
+            client.request_value("thread/start", json!({})),
+            "thread/start",
+        )
+        .await?;
+        let thread_id = started
+            .get("thread")
+            .and_then(|thread| thread.get("id"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| "missing thread id".to_string())?;
 
-    let result = wait_result_allow_error(
-        client.request_value(
+        let result = wait_result_allow_error(
+            client.request_value(
+                "turn/start",
+                json!({
+                    "threadId": thread_id,
+                    "input": [text_input("initial prompt")]
+                }),
+            ),
             "turn/start",
-            json!({
-                "threadId": thread_id,
-                "input": [text_input("initial prompt")]
-            }),
-        ),
-        "turn/start",
-    )
-    .await;
-    match result {
-        Err(CodexAppServerError::ChildExited { .. }) => {}
-        other => return Err(format!("expected child exit, got {other:?}")),
-    }
-    assert!(client.process_id().is_none());
+        )
+        .await;
+        match result {
+            Err(CodexAppServerError::ChildExited { .. }) => {}
+            other => return Err(format!("expected child exit, got {other:?}")),
+        }
+        assert!(client.process_id().is_none());
 
-    match tokio::time::timeout(Duration::from_millis(1500), client.shutdown()).await {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => return Err(format!("shutdown failed: {error:?}")),
-        Err(_) => return Err("shutdown waited for stderr drain timeout".to_string()),
+        match tokio::time::timeout(Duration::from_millis(1500), client.shutdown()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => return Err(format!("shutdown failed: {error:?}")),
+            Err(_) => return Err("shutdown waited for stderr drain timeout".to_string()),
+        }
+        Ok(())
     }
-    wait_for_process_group_exit(process_group).await
+    .await;
+    drop(client);
+    let cleanup_result = wait_for_process_group_exit(process_group).await;
+    test_result?;
+    cleanup_result
 }
 
 #[tokio::test]
