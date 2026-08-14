@@ -26,7 +26,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function mintZeroToken(args: {
+function mintOkouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly ZeroCapability[];
@@ -54,7 +54,7 @@ async function mintFileReadToken(): Promise<{
   return {
     orgId,
     userId,
-    token: mintZeroToken({
+    token: mintOkouToken({
       userId,
       orgId,
       capabilities: ["file:read"],
@@ -162,7 +162,7 @@ describe("GET /api/zero/web/download-file", () => {
   });
 
   it("returns 403 for a zero token without file:read capability", async () => {
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       capabilities: ["agent:read"],

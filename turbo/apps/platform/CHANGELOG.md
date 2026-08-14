@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.751.0](https://github.com/vm0-ai/vm0/compare/app-v0.750.1...app-v0.751.0) (2026-08-14)
+
+
+### Features
+
+* **app:** seed new chats from the member default video model ([#27151](https://github.com/vm0-ai/vm0/issues/27151)) ([c3e3236](https://github.com/vm0-ai/vm0/commit/c3e32367d57e7fce5f04d958ea5eb0fe6576a59a))
+
+
+### Bug Fixes
+
+* **chat:** allow sparse event sequences ([#27204](https://github.com/vm0-ai/vm0/issues/27204)) ([8914528](https://github.com/vm0-ai/vm0/commit/8914528927834320f56ed2d084f1e63b772172bd))
+
+
+### Refactoring
+
+* **platform:** use durable chat search identity ([#27215](https://github.com/vm0-ai/vm0/issues/27215)) ([9c4c233](https://github.com/vm0-ai/vm0/commit/9c4c233e1280088243affb048eb98aa03c68b520))
+* **usage-record:** neutralize source naming ([#27207](https://github.com/vm0-ai/vm0/issues/27207)) ([e740534](https://github.com/vm0-ai/vm0/commit/e7405348093d0ac62b8545618f7dacd276ce9e07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.0
+    * @okouai/core bumped to 8.560.1
+
 ## [0.750.1](https://github.com/vm0-ai/vm0/compare/app-v0.750.0...app-v0.750.1) (2026-08-14)
 
 

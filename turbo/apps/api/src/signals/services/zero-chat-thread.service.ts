@@ -718,15 +718,16 @@ interface ThreadRunToCancel {
 /**
  * Delete a chat thread after winding down everything attached to it. Deleting a
  * thread on its own leaves the linked automations firing and any in-flight runs
- * executing: both metadata copies use `ON DELETE SET NULL`, so a running run
- * simply loses its thread reference and keeps consuming credits.
+ * executing: the canonical run metadata uses `ON DELETE SET NULL`, so a running
+ * run simply loses its thread reference and keeps consuming credits.
  *
  * Lock the thread row while deleting it and collecting active runs. Inserts into
- * either `agent_runs.chatThreadId` or the rollback copy in
- * `zero_runs.chatThreadId` take a FK lock on the same parent row, so this closes
+ * `agent_runs.chatThreadId` take a FK lock on the same parent row, so this closes
  * the race where a new run attaches after the active-run scan but before the
- * thread delete. Cancellation still happens after the delete transaction
- * because it has runner notifications and queue-drain side effects.
+ * thread delete. Older binaries may also write the retained `zero_runs` rollback
+ * row during a rolling deployment; its foreign key takes the same parent lock.
+ * Cancellation still happens after the delete transaction because it has runner
+ * notifications and queue-drain side effects.
  *
  * Run cancellation has side effects that cannot participate in the thread's
  * delete transaction (`cancelRun$` opens its own transaction and the runner
@@ -795,7 +796,8 @@ export const deleteChatThread$ = command(
         );
 
       // Delete the thread last inside the lock. Cascades chat_events; captured
-      // active runs will have both metadata copies' chatThreadId set to NULL.
+      // active runs lose their canonical chatThreadId, while any retained legacy
+      // row is independently nulled by its own foreign key.
       const [deletedThread] = await tx
         .delete(chatThreads)
         .where(eq(chatThreads.id, ownedThread.id))

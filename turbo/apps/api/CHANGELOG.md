@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.449.0](https://github.com/vm0-ai/vm0/compare/api-v1.448.0...api-v1.449.0) (2026-08-14)
+
+
+### Features
+
+* **app:** seed new chats from the member default video model ([#27151](https://github.com/vm0-ai/vm0/issues/27151)) ([c3e3236](https://github.com/vm0-ai/vm0/commit/c3e32367d57e7fce5f04d958ea5eb0fe6576a59a))
+
+
+### Bug Fixes
+
+* **chat:** allow sparse event sequences ([#27204](https://github.com/vm0-ai/vm0/issues/27204)) ([8914528](https://github.com/vm0-ai/vm0/commit/8914528927834320f56ed2d084f1e63b772172bd))
+
+
+### Refactoring
+
+* **agentphone:** neutralize file download route naming ([#27199](https://github.com/vm0-ai/vm0/issues/27199)) ([c47930d](https://github.com/vm0-ai/vm0/commit/c47930d29136801e5a53a301a9b9b6846d0f03a9))
+* **feishu:** neutralize file route naming ([#27222](https://github.com/vm0-ai/vm0/issues/27222)) ([694442d](https://github.com/vm0-ai/vm0/commit/694442d4abbee80a480cca52da1f8e93f47436b6))
+* **github:** neutralize file route naming ([#27223](https://github.com/vm0-ai/vm0/issues/27223)) ([837ea54](https://github.com/vm0-ai/vm0/commit/837ea540c5c07954516f2ec991ad88115c42783f))
+* **slack:** neutralize outbound message route naming ([#27212](https://github.com/vm0-ai/vm0/issues/27212)) ([fd0c7f2](https://github.com/vm0-ai/vm0/commit/fd0c7f2ef4547e80db6fe4b8a39d991089464e39))
+* **slack:** neutralize upload pipeline naming ([#27224](https://github.com/vm0-ai/vm0/issues/27224)) ([2ad92f9](https://github.com/vm0-ai/vm0/commit/2ad92f9a10603f085ba1af0980b060cb67a91549))
+* **teams:** neutralize outbound message route naming ([#27211](https://github.com/vm0-ai/vm0/issues/27211)) ([67c39c1](https://github.com/vm0-ai/vm0/commit/67c39c13121d9d366ef2e4b21b8986eb3378ef0d))
+* **telegram:** neutralize upload-complete route naming ([#27205](https://github.com/vm0-ai/vm0/issues/27205)) ([43d552a](https://github.com/vm0-ai/vm0/commit/43d552af005f79dfd2f424b24d5eefe40d18e0db))
+* **usage-record:** neutralize source naming ([#27207](https://github.com/vm0-ai/vm0/issues/27207)) ([e740534](https://github.com/vm0-ai/vm0/commit/e7405348093d0ac62b8545618f7dacd276ce9e07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.0
+    * @okouai/core bumped to 8.560.1
+    * @okouai/db bumped to 1.198.23
+    * @okouai/pi-agent-runtime bumped to 1.4.28
+
 ## [1.448.0](https://github.com/vm0-ai/vm0/compare/api-v1.447.9...api-v1.448.0) (2026-08-14)
 
 
