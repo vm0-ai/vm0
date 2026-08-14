@@ -3418,7 +3418,7 @@ describe("chat composer video model", () => {
       updatedAt: "2026-08-14T00:00:00Z",
     });
     context.mocks.api(
-      zeroUserModelPreferenceContract.update,
+      userModelPreferenceContract.update,
       ({ body, respond }) => {
         updates.push(body);
         return respond(200, {
@@ -3463,6 +3463,54 @@ describe("chat composer video model", () => {
     await waitFor(() => {
       expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
     });
+  });
+
+  it("leaves new-chat video defaults disabled while the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    let preferenceUpdateCount = 0;
+    let createdThreadBody: { readonly videoModel?: string } | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        preferenceUpdateCount += 1;
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-14T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdThreadBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "Keep video model defaults disabled",
+    );
+
+    await waitFor(() => {
+      expect(createdThreadBody).toBeDefined();
+    });
+    expect(createdThreadBody?.videoModel).toBeUndefined();
+    expect(preferenceUpdateCount).toBe(0);
   });
 
   it("pins a video model on the thread from the model picker", async () => {

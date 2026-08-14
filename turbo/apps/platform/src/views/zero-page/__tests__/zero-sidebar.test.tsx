@@ -416,6 +416,7 @@ describe("zero sidebar", () => {
   it("keeps known threads visible while creating a new chat", async () => {
     prepareDefaultAgent();
     const createDeferred = context.mocks.deferred<void>();
+    let createdThreadBody: { readonly videoModel?: string } | undefined;
     const threads = [
       {
         id: EXISTING_THREAD_ID,
@@ -429,6 +430,7 @@ describe("zero sidebar", () => {
       return threads;
     });
     context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
+      createdThreadBody = body;
       await createDeferred.promise;
       return respond(201, {
         id: body.clientThreadId ?? "created-thread-id",
@@ -445,7 +447,11 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const newChatButton = await waitFor(() => {
       expect(screen.getByText("Existing conversation")).toBeInTheDocument();
@@ -464,7 +470,9 @@ describe("zero sidebar", () => {
       expect(
         sidebar.querySelectorAll('[data-testid="sidebar-skeleton"]'),
       ).toHaveLength(0);
+      expect(createdThreadBody).toBeDefined();
     });
+    expect(createdThreadBody?.videoModel).toBeUndefined();
 
     createDeferred.resolve();
   });

@@ -42,6 +42,7 @@ import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   featureSwitch$,
   imageRecognitionAvailable$,
+  videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
@@ -425,7 +426,10 @@ const startNewChatThreadCreate$ = command(
     if (!modelSelection) {
       throw new Error("A model selection is required");
     }
-    const videoModel = userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+    const videoModel =
+      (featureSwitches[FeatureSwitchKey.VideoModelSelection] ?? false)
+        ? (userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL)
+        : undefined;
     await set(
       mintOptimisticThreadWithEvent$,
       {
@@ -437,7 +441,7 @@ const startNewChatThreadCreate$ = command(
           modelSelection.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
-        selectedVideoModel: videoModel,
+        selectedVideoModel: videoModel ?? null,
       },
       signal,
     );
@@ -520,6 +524,9 @@ const sendNewThreadMessage$ = command(
       return null;
     }
     const features = get(featureSwitch$);
+    const videoModel = get(videoModelSelectionEnabled$)
+      ? request.videoModel
+      : undefined;
     const userMessage = userMessageForNewThread(request, prepared);
     const annotatedUserMessage = withSelectedModelAnnotation(
       userMessage,
@@ -557,7 +564,7 @@ const sendNewThreadMessage$ = command(
             : null,
         computerUseHostId: computerUseHostId ?? null,
         cloudBrowserEnabled: cloudBrowserEnabled ?? false,
-        selectedVideoModel: request.videoModel ?? null,
+        selectedVideoModel: videoModel ?? null,
       },
       signal,
     );
@@ -577,7 +584,7 @@ const sendNewThreadMessage$ = command(
           clientThreadId: threadId,
           eventId: chatThreadEventId,
           modelSelection: resolvedModelSelection,
-          videoModel: request.videoModel,
+          videoModel,
         },
         signal,
       );
