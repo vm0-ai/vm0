@@ -6,6 +6,7 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
+use crate::firewall_hostname_policy::{raw_host_from_authority, raw_url_authority};
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 
@@ -590,9 +591,10 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     if raw_authority_has_empty_port(raw_syntax_target) {
         return Err("base URL authority must not include an empty port".to_string());
     }
-    crate::firewall_hostname_policy::validate_base_host_for_cache(raw_host_from_authority(
-        authority,
-    ))?;
+    crate::firewall_hostname_policy::validate_raw_url_host(
+        raw_host_from_authority(authority),
+        "base URL",
+    )?;
 
     let scheme = parsed.scheme();
     if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
@@ -836,7 +838,7 @@ fn validate_parameterized_firewall_base_authority(
     materialized_host: &str,
     port_suffix: &str,
 ) -> Result<(), String> {
-    crate::firewall_hostname_policy::validate_base_host_for_cache(materialized_host)?;
+    crate::firewall_hostname_policy::validate_raw_url_host(materialized_host, "base URL")?;
     let syntax_target = format!("{scheme}://{materialized_host}{port_suffix}");
     let parsed = url::Url::parse(&syntax_target)
         .map_err(|_| "parameterized base URL authority is invalid".to_string())?;
@@ -1211,26 +1213,6 @@ fn raw_authority_has_empty_port(value: &str) -> bool {
         return false;
     };
     authority.ends_with(':')
-}
-
-fn raw_url_authority(value: &str) -> Option<&str> {
-    let rest = value.split_once("://").map(|(_, rest)| rest)?;
-    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    Some(&rest[..authority_end])
-}
-
-fn raw_host_from_authority(authority: &str) -> &str {
-    let without_userinfo = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_, host)| host);
-    if without_userinfo.starts_with('[') {
-        return without_userinfo
-            .find(']')
-            .map_or(without_userinfo, |end| &without_userinfo[..=end]);
-    }
-    without_userinfo
-        .rsplit_once(':')
-        .map_or(without_userinfo, |(host, _)| host)
 }
 
 fn raw_url_path(value: &str) -> &str {

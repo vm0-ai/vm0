@@ -1,13 +1,21 @@
-//! The guest-agent process receives the process-control bootstrap endpoint, but
-//! the child CLI must not inherit it.
+//! Process-control bootstrap integration coverage.
 //!
-//! This test lives in its own binary to isolate process env, working directory,
-//! and guest runtime path overrides used during setup.
+//! The CLI environment scenario runs its process-global setup in one exact
+//! ignored child process so default-harness sibling tests can run safely.
 
 mod common;
 
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
+
+const ISOLATED_CHILD_TEST: &str = "process_control_endpoint_is_not_inherited_by_cli_child_isolated";
+const ISOLATED_CHILD_GUARD: &str = "VM0_PROCESS_CONTROL_ENV_ISOLATED_CHILD";
+const ISOLATED_CHILD_GUARD_VALUE: &str = "1";
+const ISOLATED_CHILD_MOCK_PATH: &str = "VM0_PROCESS_CONTROL_ENV_ISOLATED_MOCK_PATH";
+const ISOLATED_CHILD_MARKER: &str = "vm0 process-control env isolated child active";
+const ISOLATED_CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+const ISOLATED_CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[test]
 fn process_control_endpoint_without_workload_capability_fails_closed() {
@@ -73,6 +81,52 @@ fn workload_capability_is_received_over_scm_rights_and_validated() {
 async fn process_control_endpoint_is_not_inherited_by_cli_child()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
+    let mut command = tokio::process::Command::new(std::env::current_exe()?);
+    command
+        .arg("--exact")
+        .arg(ISOLATED_CHILD_TEST)
+        .arg("--ignored")
+        .arg("--nocapture")
+        .env_clear()
+        .env("PATH", ISOLATED_CHILD_PATH)
+        .env(ISOLATED_CHILD_GUARD, ISOLATED_CHILD_GUARD_VALUE)
+        .env(ISOLATED_CHILD_MOCK_PATH, mock);
+    if let Some(llvm_profile_file) = std::env::var_os("LLVM_PROFILE_FILE") {
+        command.env("LLVM_PROFILE_FILE", llvm_profile_file);
+    }
+
+    let output = common::command_output_with_timeout(
+        &mut command,
+        ISOLATED_CHILD_TIMEOUT,
+        "isolated process-control environment test did not finish",
+    )
+    .await?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "isolated process-control environment test failed with {}; stdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status
+    );
+    assert!(
+        stdout.lines().any(|line| line == ISOLATED_CHILD_MARKER),
+        "isolated process-control environment test did not activate; stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "spawned exactly by the process-control environment parent test"]
+async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
+-> Result<(), Box<dyn std::error::Error>> {
+    if std::env::var(ISOLATED_CHILD_GUARD).ok().as_deref() != Some(ISOLATED_CHILD_GUARD_VALUE) {
+        return Ok(());
+    }
+    println!("{ISOLATED_CHILD_MARKER}");
+
+    let mock = std::env::var_os(ISOLATED_CHILD_MOCK_PATH)
+        .map(PathBuf::from)
+        .ok_or("isolated process-control environment mock path is required")?;
     let tmp = tempfile::tempdir()?;
     unsafe {
         common::setup_env(
@@ -82,14 +136,15 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child()
             3,
             1,
         )?;
+    }
+
+    let runtime = common::guest_runtime_from_process_env()?;
+    unsafe {
         std::env::set_var(
             process_control_ipc::BOOTSTRAP_ENV,
             "stale-process-control-endpoint",
         );
-        std::env::set_var("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");
     }
-
-    let runtime = common::guest_runtime_from_process_env()?;
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();

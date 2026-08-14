@@ -18,9 +18,9 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { animationFrame } from "signal-timers";
+import { animationFrame, timeout } from "signal-timers";
 import { logger } from "../log.ts";
-import { onRef } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 
 const L = logger("ConversationLocator");
 
@@ -509,8 +509,11 @@ function createJump(
   store: LocatorStore,
   threadId: string,
   scrollContainer$: Computed<HTMLElement | null>,
+  signal: AbortSignal,
 ) {
-  return command(({ get }, turnIndex: number) => {
+  const resetLandedSignal$ = resetSignal();
+
+  return command(({ get, set }, turnIndex: number) => {
     const container = get(scrollContainer$);
     const turn = store.turns[turnIndex];
     if (!container || !turn) {
@@ -521,10 +524,20 @@ function createJump(
       top: Math.max(0, turn.top - container.clientHeight * JUMP_VIEWPORT_RATIO),
       behavior: "smooth",
     });
+    const landedSignal = set(resetLandedSignal$, signal);
     turn.element.dataset.locatorLanded = "";
-    turn.element.ownerDocument.defaultView?.setTimeout(() => {
+    const clearLanded = () => {
       delete turn.element.dataset.locatorLanded;
-    }, LANDED_MARK_MS);
+    };
+    landedSignal.addEventListener("abort", clearLanded, { once: true });
+    timeout(
+      () => {
+        landedSignal.removeEventListener("abort", clearLanded);
+        clearLanded();
+      },
+      LANDED_MARK_MS,
+      { signal: landedSignal },
+    );
   });
 }
 
@@ -867,17 +880,20 @@ function createPreviewOnRef(store: LocatorStore) {
   );
 }
 
-export function createChatConversationLocatorSignals({
-  threadId,
-  scrollContainer$,
-}: {
-  threadId: string;
-  scrollContainer$: Computed<HTMLElement | null>;
-}): ChatConversationLocatorSignals {
+export function createChatConversationLocatorSignals(
+  {
+    threadId,
+    scrollContainer$,
+  }: {
+    threadId: string;
+    scrollContainer$: Computed<HTMLElement | null>;
+  },
+  signal: AbortSignal,
+): ChatConversationLocatorSignals {
   const store = createStore();
   const recompute$ = createRecompute(store, scrollContainer$);
   const paint$ = createPaint(store);
-  const jumpToTurn$ = createJump(store, threadId, scrollContainer$);
+  const jumpToTurn$ = createJump(store, threadId, scrollContainer$, signal);
   const railOnRef$ = createRailOnRef(store, threadId, scrollContainer$, {
     recompute$,
     paint$,

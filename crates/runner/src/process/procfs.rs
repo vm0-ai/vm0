@@ -1,10 +1,13 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use tokio_util::sync::CancellationToken;
 
 use super::types::{ProcessStat, process_stat_is_live};
 
 #[derive(Debug, Eq, PartialEq)]
 enum CmdlineRead {
     Args(Vec<String>),
+    Cancelled,
     Ignored,
     Missing,
     Unreadable(String),
@@ -32,23 +35,38 @@ pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
     parse_cmdline_bytes(&bytes)
 }
 
-async fn read_cmdline_for_scan(pid: u32) -> CmdlineRead {
-    let path = format!("/proc/{pid}/cmdline");
-    match tokio::fs::read(&path).await {
+fn read_cmdline_for_scan(proc_root: &Path, pid: u32, cancel: &CancellationToken) -> CmdlineRead {
+    let path = proc_root.join(pid.to_string()).join("cmdline");
+    let result = match std::fs::read(&path) {
         Ok(bytes) => match parse_cmdline_bytes(&bytes) {
             Some(argv) => CmdlineRead::Args(argv),
-            None => cmdline_problem_for_scan(pid, "cmdline is empty or NUL-free").await,
+            None => {
+                cmdline_problem_for_scan(proc_root, pid, "cmdline is empty or NUL-free", cancel)
+            }
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => CmdlineRead::Missing,
         Err(e) => {
             let problem = format!("cmdline read failed: {e}");
-            cmdline_problem_for_scan(pid, &problem).await
+            cmdline_problem_for_scan(proc_root, pid, &problem, cancel)
         }
+    };
+    if cancel.is_cancelled() {
+        CmdlineRead::Cancelled
+    } else {
+        result
     }
 }
 
-async fn cmdline_problem_for_scan(pid: u32, problem: &str) -> CmdlineRead {
-    cmdline_problem_for_comm(read_process_comm_for_scan(pid).await, problem)
+fn cmdline_problem_for_scan(
+    proc_root: &Path,
+    pid: u32,
+    problem: &str,
+    cancel: &CancellationToken,
+) -> CmdlineRead {
+    if cancel.is_cancelled() {
+        return CmdlineRead::Cancelled;
+    }
+    cmdline_problem_for_comm(read_process_comm_for_scan(proc_root, pid), problem)
 }
 
 fn cmdline_problem_for_comm(comm_read: ProcessCommRead, problem: &str) -> CmdlineRead {
@@ -109,9 +127,9 @@ enum ProcessCommRead {
     Invalid,
 }
 
-async fn read_process_comm_for_scan(pid: u32) -> ProcessCommRead {
-    let path = format!("/proc/{pid}/stat");
-    match tokio::fs::read(&path).await {
+fn read_process_comm_for_scan(proc_root: &Path, pid: u32) -> ProcessCommRead {
+    let path = proc_root.join(pid.to_string()).join("stat");
+    match std::fs::read(&path) {
         Ok(content) => {
             let Some(comm) = process_comm(&content) else {
                 return ProcessCommRead::Invalid;
@@ -325,13 +343,99 @@ pub(super) struct ProcCmdlineScan {
     pub(super) complete: bool,
 }
 
+struct ProcDirEntryReader {
+    #[cfg(test)]
+    after_entry: Option<Box<dyn FnMut() -> std::io::Result<()> + Send>>,
+}
+
+impl ProcDirEntryReader {
+    const fn new() -> Self {
+        Self {
+            #[cfg(test)]
+            after_entry: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn after_entry(after_entry: impl FnMut() -> std::io::Result<()> + Send + 'static) -> Self {
+        Self {
+            after_entry: Some(Box::new(after_entry)),
+        }
+    }
+
+    fn next_entry(
+        &mut self,
+        entries: &mut std::fs::ReadDir,
+    ) -> std::io::Result<Option<std::fs::DirEntry>> {
+        let entry = entries.next().transpose()?;
+
+        #[cfg(test)]
+        if entry.is_some()
+            && let Some(after_entry) = &mut self.after_entry
+        {
+            after_entry()?;
+        }
+
+        Ok(entry)
+    }
+}
+
 pub(super) async fn scan_proc_cmdlines() -> ProcCmdlineScan {
+    scan_proc_cmdlines_with_reader(
+        Path::new("/proc"),
+        ProcDirEntryReader::new(),
+        CancellationToken::new(),
+        #[cfg(test)]
+        None,
+    )
+    .await
+}
+
+async fn scan_proc_cmdlines_with_reader(
+    proc_root: &Path,
+    entry_reader: ProcDirEntryReader,
+    cancel: CancellationToken,
+    #[cfg(test)] task_submissions: Option<&std::sync::atomic::AtomicUsize>,
+) -> ProcCmdlineScan {
+    let proc_root = proc_root.to_path_buf();
+    let cancel_on_drop = cancel.clone().drop_guard();
+
+    #[cfg(test)]
+    if let Some(task_submissions) = task_submissions {
+        task_submissions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    let result = tokio::task::spawn_blocking(move || {
+        scan_proc_cmdlines_blocking(&proc_root, entry_reader, &cancel)
+    })
+    .await;
+    let _cancel = cancel_on_drop.disarm();
+    match result {
+        Ok(scan) => scan,
+        Err(error) => std::panic::resume_unwind(error.into_panic()),
+    }
+}
+
+fn scan_proc_cmdlines_blocking(
+    proc_root: &Path,
+    mut entry_reader: ProcDirEntryReader,
+    cancel: &CancellationToken,
+) -> ProcCmdlineScan {
     let mut result = Vec::new();
     let mut complete = true;
-    let mut entries = match tokio::fs::read_dir("/proc").await {
+    if cancel.is_cancelled() {
+        return ProcCmdlineScan {
+            entries: result,
+            complete: false,
+        };
+    }
+    let mut entries = match std::fs::read_dir(proc_root) {
         Ok(e) => e,
         Err(e) => {
-            tracing::warn!("scan_proc_cmdlines: cannot read /proc: {e}");
+            tracing::warn!(
+                "scan_proc_cmdlines: cannot read {}: {e}",
+                proc_root.display()
+            );
             return ProcCmdlineScan {
                 entries: result,
                 complete: false,
@@ -339,15 +443,26 @@ pub(super) async fn scan_proc_cmdlines() -> ProcCmdlineScan {
         }
     };
     loop {
-        let entry = match entries.next_entry().await {
+        if cancel.is_cancelled() {
+            complete = false;
+            break;
+        }
+        let entry = match entry_reader.next_entry(&mut entries) {
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(e) => {
-                tracing::warn!("scan_proc_cmdlines: read entry in /proc: {e}");
+                tracing::warn!(
+                    "scan_proc_cmdlines: read entry in {}: {e}",
+                    proc_root.display()
+                );
                 complete = false;
                 continue;
             }
         };
+        if cancel.is_cancelled() {
+            complete = false;
+            break;
+        }
         let name = entry.file_name();
         let Some(name_str) = name.to_str() else {
             continue;
@@ -355,11 +470,18 @@ pub(super) async fn scan_proc_cmdlines() -> ProcCmdlineScan {
         let Ok(pid) = name_str.parse::<u32>() else {
             continue;
         };
-        match read_cmdline_for_scan(pid).await {
+        match read_cmdline_for_scan(proc_root, pid, cancel) {
             CmdlineRead::Args(argv) => result.push((pid, argv)),
+            CmdlineRead::Cancelled => {
+                complete = false;
+                break;
+            }
             CmdlineRead::Ignored | CmdlineRead::Missing => {}
             CmdlineRead::Unreadable(e) => {
-                tracing::warn!("scan_proc_cmdlines: cannot read /proc/{pid}/cmdline: {e}");
+                tracing::warn!(
+                    "scan_proc_cmdlines: cannot read {}/{pid}/cmdline: {e}",
+                    proc_root.display()
+                );
                 complete = false;
             }
         }
@@ -396,6 +518,33 @@ mod tests {
 
     fn service_unit(unit: &str) -> Option<String> {
         Some(unit.to_string())
+    }
+
+    fn create_proc_entry(
+        proc_root: &Path,
+        pid: u32,
+        cmdline: Option<&[u8]>,
+        stat: Option<&[u8]>,
+    ) -> PathBuf {
+        let pid_dir = proc_root.join(pid.to_string());
+        std::fs::create_dir_all(&pid_dir).unwrap();
+        if let Some(cmdline) = cmdline {
+            std::fs::write(pid_dir.join("cmdline"), cmdline).unwrap();
+        }
+        if let Some(stat) = stat {
+            std::fs::write(pid_dir.join("stat"), stat).unwrap();
+        }
+        pid_dir
+    }
+
+    async fn scan_test_proc_root(proc_root: &Path) -> ProcCmdlineScan {
+        scan_proc_cmdlines_with_reader(
+            proc_root,
+            ProcDirEntryReader::new(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
     }
 
     #[test]
@@ -534,6 +683,186 @@ mod tests {
     #[test]
     fn parse_cmdline_bytes_rejects_all_empty_segments() {
         assert_eq!(parse_cmdline_bytes(b"\0\0"), None);
+    }
+
+    #[tokio::test]
+    async fn proc_scan_submits_one_blocking_task_for_many_pids() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        const PROCESS_COUNT: u32 = 256;
+
+        let dir = tempfile::tempdir().unwrap();
+        let proc_root = dir.path().join("proc");
+        std::fs::create_dir(&proc_root).unwrap();
+        std::fs::create_dir(proc_root.join("not-a-pid")).unwrap();
+        for pid in 1..=PROCESS_COUNT {
+            create_proc_entry(&proc_root, pid, Some(b"bash\0-c\0true\0"), None);
+        }
+        let task_submissions = AtomicUsize::new(0);
+
+        let mut scan = scan_proc_cmdlines_with_reader(
+            &proc_root,
+            ProcDirEntryReader::new(),
+            CancellationToken::new(),
+            Some(&task_submissions),
+        )
+        .await;
+        scan.entries.sort_by_key(|(pid, _)| *pid);
+
+        assert_eq!(task_submissions.load(Ordering::Relaxed), 1);
+        assert!(scan.complete);
+        assert_eq!(scan.entries.len(), PROCESS_COUNT as usize);
+        assert_eq!(scan.entries.first().unwrap().0, 1);
+        assert_eq!(scan.entries.last().unwrap().0, PROCESS_COUNT);
+        assert!(
+            scan.entries
+                .iter()
+                .all(|(_, argv)| argv == &["bash", "-c", "true"])
+        );
+    }
+
+    #[tokio::test]
+    async fn proc_scan_ignores_benign_cmdline_fallbacks() {
+        let dir = tempfile::tempdir().unwrap();
+        let proc_root = dir.path().join("proc");
+        std::fs::create_dir(&proc_root).unwrap();
+        create_proc_entry(&proc_root, 10, Some(b"bash\0-c\0true\0"), None);
+        let bash_stat = stat_with_comm("bash", "S", "1100", "123456");
+        create_proc_entry(&proc_root, 11, Some(b""), Some(bash_stat.as_bytes()));
+        let zombie_firecracker_stat = stat_with_comm("firecracker", "Z", "1100", "123456");
+        create_proc_entry(
+            &proc_root,
+            12,
+            Some(b""),
+            Some(zombie_firecracker_stat.as_bytes()),
+        );
+        create_proc_entry(&proc_root, 13, None, None);
+
+        let scan = scan_test_proc_root(&proc_root).await;
+
+        assert!(scan.complete);
+        assert_eq!(
+            scan.entries,
+            vec![(
+                10,
+                vec!["bash".to_string(), "-c".to_string(), "true".to_string()]
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn proc_scan_marks_possible_live_firecracker_facts_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        let proc_root = dir.path().join("live-firecracker");
+        std::fs::create_dir(&proc_root).unwrap();
+        let live_firecracker_stat = stat_with_comm("firecracker", "S", "1100", "123456");
+        create_proc_entry(
+            &proc_root,
+            20,
+            Some(b""),
+            Some(live_firecracker_stat.as_bytes()),
+        );
+
+        assert!(!scan_test_proc_root(&proc_root).await.complete);
+
+        let malformed_root = dir.path().join("malformed-stat");
+        std::fs::create_dir(&malformed_root).unwrap();
+        let malformed_pid = create_proc_entry(&malformed_root, 21, None, Some(b"malformed"));
+        std::fs::create_dir(malformed_pid.join("cmdline")).unwrap();
+
+        assert!(!scan_test_proc_root(&malformed_root).await.complete);
+
+        let unreadable_root = dir.path().join("unreadable-stat");
+        std::fs::create_dir(&unreadable_root).unwrap();
+        let unreadable_pid = create_proc_entry(&unreadable_root, 22, None, None);
+        std::fs::create_dir(unreadable_pid.join("cmdline")).unwrap();
+        std::fs::create_dir(unreadable_pid.join("stat")).unwrap();
+
+        assert!(!scan_test_proc_root(&unreadable_root).await.complete);
+    }
+
+    #[tokio::test]
+    async fn proc_scan_marks_directory_iteration_failures_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        let proc_root = dir.path().join("proc");
+        std::fs::create_dir(&proc_root).unwrap();
+        create_proc_entry(&proc_root, 30, Some(b"bash\0"), None);
+        let entry_reader = ProcDirEntryReader::after_entry(|| {
+            Err(std::io::Error::other(
+                "injected proc directory iteration failure",
+            ))
+        });
+
+        let scan = scan_proc_cmdlines_with_reader(
+            &proc_root,
+            entry_reader,
+            CancellationToken::new(),
+            None,
+        )
+        .await;
+
+        assert!(!scan.complete);
+        assert!(scan.entries.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dropping_proc_scan_stops_the_blocking_traversal() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        struct Completion {
+            entry_count: Arc<AtomicUsize>,
+            finished: mpsc::Sender<usize>,
+        }
+
+        impl Drop for Completion {
+            fn drop(&mut self) {
+                let _ = self.finished.send(self.entry_count.load(Ordering::Relaxed));
+            }
+        }
+
+        const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+        let dir = tempfile::tempdir().unwrap();
+        let proc_root = dir.path().join("proc");
+        std::fs::create_dir(&proc_root).unwrap();
+        create_proc_entry(&proc_root, 40, Some(b"bash\0"), None);
+        create_proc_entry(&proc_root, 41, Some(b"bash\0"), None);
+
+        let (reached_tx, reached_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let entry_count = Arc::new(AtomicUsize::new(0));
+        let observed_entry_count = Arc::clone(&entry_count);
+        let completion = Completion {
+            entry_count,
+            finished: finished_tx,
+        };
+        let mut pause = Some((reached_tx, resume_rx));
+        let entry_reader = ProcDirEntryReader::after_entry(move || {
+            let _completion = &completion;
+            if observed_entry_count.fetch_add(1, Ordering::Relaxed) == 0
+                && let Some((reached, resume)) = pause.take()
+            {
+                reached.send(()).unwrap();
+                resume.recv().unwrap();
+            }
+            Ok(())
+        });
+        let cancel = CancellationToken::new();
+        let task_cancel = cancel.clone();
+        let task = tokio::spawn(async move {
+            scan_proc_cmdlines_with_reader(&proc_root, entry_reader, task_cancel, None).await
+        });
+
+        reached_rx.recv_timeout(WAIT_TIMEOUT).unwrap();
+        task.abort();
+        assert!(matches!(task.await, Err(error) if error.is_cancelled()));
+        assert!(cancel.is_cancelled());
+        resume_tx.send(()).unwrap();
+        assert_eq!(finished_rx.recv_timeout(WAIT_TIMEOUT).unwrap(), 1);
     }
 
     #[test]

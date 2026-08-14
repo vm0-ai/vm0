@@ -3,7 +3,7 @@ import { createDecipheriv, createHash, timingSafeEqual } from "node:crypto";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { zeroFeishuEventsContract } from "@okouai/api-contracts/contracts/zero-feishu-events";
+import { feishuEventsContract } from "@okouai/api-contracts/contracts/feishu-events";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { logger } from "../../lib/log";
@@ -31,7 +31,7 @@ import {
 } from "./zero-feishu-dispatch.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 
-const L = logger("ZeroFeishuWebhooks");
+const L = logger("FeishuWebhooks");
 
 const encryptedBodySchema = z.object({ encrypt: z.string() });
 const challengeSchema = z.object({
@@ -342,10 +342,10 @@ async function admitInboundFeishuMessage(
   );
 }
 
-export const handleZeroFeishuEvents$ = command(
+export const handleFeishuEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
-    const params = get(pathParamsOf(zeroFeishuEventsContract.post));
+    const params = get(pathParamsOf(feishuEventsContract.post));
     const db = set(writeDb$);
     const config = await loadFeishuInstallationConfig(
       db,

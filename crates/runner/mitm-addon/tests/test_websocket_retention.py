@@ -315,6 +315,8 @@ class TestRegisteredWebSocketRetention:
     ):
         flow = real_flow(with_response=False, host="example.com")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://example.com/"
         flow.error = Error("connection reset by peer")
         append_websocket_message(flow, from_client=True, content=b"client")
 

@@ -4,7 +4,7 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const zeroFeishuEventsContract = c.router({
+export const feishuEventsContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/feishu/events/:installationId",
@@ -21,4 +21,4 @@ export const zeroFeishuEventsContract = c.router({
   },
 });
 
-export type ZeroFeishuEventsContract = typeof zeroFeishuEventsContract;
+export type FeishuEventsContract = typeof feishuEventsContract;

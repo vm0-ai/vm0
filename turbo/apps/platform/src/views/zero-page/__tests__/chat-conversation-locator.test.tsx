@@ -431,4 +431,36 @@ describe("chat conversation locator", () => {
       );
     });
   });
+
+  it("moves the landed mark when a later jump replaces it", async () => {
+    const { rail } = await renderLongThread();
+
+    const firstTarget = ticksOf(rail)[8] as HTMLElement;
+    const secondTarget = ticksOf(rail)[12] as HTMLElement;
+    pointerAt(rail, 0, "pointerenter");
+    pointerAt(rail, Number.parseFloat(firstTarget.style.top), "pointermove");
+    await waitFor(() => {
+      expect(firstTarget.dataset.locatorHot).toBe("");
+    });
+    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const firstLanded = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        "[data-locator-landed]",
+      );
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+
+    pointerAt(rail, Number.parseFloat(secondTarget.style.top), "pointermove");
+    await waitFor(() => {
+      expect(secondTarget.dataset.locatorHot).toBe("");
+    });
+    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await waitFor(() => {
+      const landed = document.querySelectorAll("[data-locator-landed]");
+      expect(landed).toHaveLength(1);
+      expect(landed[0]).not.toBe(firstLanded);
+    });
+  });
 });

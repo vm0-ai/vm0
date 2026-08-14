@@ -6,8 +6,8 @@ import {
 import {
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
-  zeroUserModelPreferenceContract,
-} from "@okouai/api-contracts/contracts/zero-user-model-preference";
+  userModelPreferenceContract,
+} from "@okouai/api-contracts/contracts/user-model-preference";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
@@ -17,7 +17,7 @@ const internalReloadUserModelPreference$ = state(0);
 export const userModelPreference$ = computed(async (get) => {
   get(internalReloadUserModelPreference$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUserModelPreferenceContract, {
+  const client = createClient(userModelPreferenceContract, {
     apiBase: "api",
   });
   const result = await accept(client.get(), [200]);
@@ -37,7 +37,7 @@ export const updateUserModelPreference$ = command(
     signal: AbortSignal,
   ): Promise<UserModelPreferenceResponse> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroUserModelPreferenceContract, {
+    const client = createClient(userModelPreferenceContract, {
       apiBase: "api",
     });
     const result = await accept(

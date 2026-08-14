@@ -96,7 +96,7 @@ const telegramWriteAuth = {
   requiredCapability: "telegram:write",
 } as const;
 
-export const zeroIntegrationsTelegramMessageRoutes: readonly RouteEntry[] = [
+export const integrationsTelegramMessageRoutes: readonly RouteEntry[] = [
   {
     route: integrationsTelegramMessageContract.sendMessage,
     handler: authRoute(telegramWriteAuth, sendMessageInner$),

@@ -222,13 +222,15 @@ suites before committing the upgrade.
 | `model_provider_sse_usage_helpers.py`                   | Shared model-provider SSE flow, hook-driving, compression, and warning test mechanics                               |
 | `test_model_provider_sse_usage_openai_responses.py`     | OpenAI Responses-shaped model-provider SSE usage pipeline                                                            |
 | `test_model_provider_sse_usage_anthropic.py`            | Anthropic Messages SSE recovery, usage, accounting, retention, and diagnostics pipeline                              |
-| `test_model_provider_websocket_usage.py`                | Model provider WebSocket usage reporting and source reconciliation                                                   |
+| `test_model_provider_websocket_prewarm.py`              | Model provider WebSocket prewarm intent, response correlation, and ignored-source diagnostics                        |
+| `test_model_provider_websocket_source_reporting.py`     | Model provider WebSocket source reporting, admission, and frame parsing                                              |
+| `test_model_provider_websocket_usage_aggregation.py`    | Model provider WebSocket source reconciliation, aggregation, and billing tier state                                  |
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
 | `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
 | `test_claude_output_timing.py`                          | Claude Code provider-output lifecycle timing over Anthropic SSE                                                      |
 | `test_provider_output_timing.py`                        | Cross-provider output-timing store capacity and lifecycle independence                                               |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
-| `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
+| `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing and valid-frame recovery                                              |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |
 | `x_connector_usage/`                                    | Direct X connector usage billing, write refinement, unparseable fallback, and skip gates                             |
 | `test_connector_usage.py`                               | Connector usage reporter and stream-path detection                                                                   |

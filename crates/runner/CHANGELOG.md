@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.168.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.9...runner-rs-v0.168.10) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** canonicalize credential endpoint hostnames ([#27140](https://github.com/vm0-ai/vm0/issues/27140)) ([735a12a](https://github.com/vm0-ai/vm0/commit/735a12a73e6bfa2b137cde1a0a4c8a6b618ca7a7))
+
+
+### Performance Improvements
+
+* **runner:** scan procfs in one blocking task ([#27164](https://github.com/vm0-ai/vm0/issues/27164)) ([dc83f3d](https://github.com/vm0-ai/vm0/commit/dc83f3dbcaa6aad572258cb34dad52cf1ddeb5ee))
+
+## [0.168.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.8...runner-rs-v0.168.9) (2026-08-14)
+
+
+### Bug Fixes
+
+* **python:** require platform api scheme match ([#27134](https://github.com/vm0-ai/vm0/issues/27134)) ([2e1bd6f](https://github.com/vm0-ai/vm0/commit/2e1bd6fc6d7c476af46bbab85fc51136af811efd))
+
+
+### Refactoring
+
+* **mitm-addon:** split sse usage tests by provider lifecycle ([#27123](https://github.com/vm0-ai/vm0/issues/27123)) ([080ee37](https://github.com/vm0-ai/vm0/commit/080ee3729eea2d5aea2403689da99f1fd1bc003b))
+
 ## [0.168.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.7...runner-rs-v0.168.8) (2026-08-14)
 
 

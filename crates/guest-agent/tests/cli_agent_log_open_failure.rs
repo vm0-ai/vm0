@@ -1,17 +1,18 @@
-//! CLI setup should fail before spawning the agent when local log setup fails.
+//! Agent-log setup is best-effort and must not block CLI execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
 
 mod common;
 
-use guest_agent::error::AgentError;
-use std::io::ErrorKind;
 use std::time::Duration;
 
+const AGENT_LOG_WARNING: &str = "Agent log open failed; continuing without local transcript";
+
 #[tokio::test]
-async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn agent_log_open_failure_warns_and_keeps_cli_run_successful()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let run_id = format!("cli-log-parent-file-{}", std::process::id());
     let runtime_dir = tmp.path().join("guest-runtime");
@@ -37,37 +38,30 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("USE_MOCK_CLAUDE", "true");
-        std::env::set_var(
-            "VM0_MOCK_CLAUDE_PATH",
-            "/definitely/missing/guest-mock-claude",
-        );
+        std::env::set_var("VM0_MOCK_CLAUDE_PATH", &mock);
         std::env::set_var("HOME", tmp.path());
     }
     common::ensure_canonical_workspace_for_test()?;
 
     let runtime = common::guest_runtime_from_process_env()?;
-
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log = common::SystemLogOverrideGuard::set(&system_log_path);
     let masker = guest_agent::masker::SecretMasker::from_raw("");
-    let heartbeat = common::spawn_heartbeat_monitor(async { Ok::<(), AgentError>(()) });
 
-    let result = tokio::time::timeout(
-        Duration::from_secs(1),
-        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+    let execution = tokio::time::timeout(
+        Duration::from_secs(5),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
-    .expect("log setup failure should return promptly");
+    .expect("CLI run should complete promptly without its local agent log")?;
 
-    match result {
-        Err(AgentError::Io(err)) => assert!(
-            matches!(
-                err.kind(),
-                ErrorKind::AlreadyExists | ErrorKind::NotADirectory
-            ),
-            "unexpected IO error: {err:?}",
-        ),
-        Err(err) => return Err(format!("expected IO error from agent log setup, got {err}").into()),
-        Ok(_) => return Err("expected execute_cli to fail before spawning CLI".into()),
-    }
+    assert_eq!(execution.exit_code, common::CLEAN_EXIT);
+    assert!(execution.control_error.is_none());
+    assert!(execution.cli_termination.is_none());
+    assert!(execution.claude_result.is_some());
+    let system_log = std::fs::read_to_string(system_log_path)?;
+    assert_eq!(system_log.matches(AGENT_LOG_WARNING).count(), 1);
 
     Ok(())
 }

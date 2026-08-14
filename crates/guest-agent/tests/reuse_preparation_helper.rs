@@ -414,6 +414,33 @@ fn prepare_for_reuse_rejects_stale_workload_pid_limit() -> TestResult {
 }
 
 #[test]
+fn prepare_for_reuse_rejects_stale_workload_memory_high() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    let policy =
+        guest_contracts::process_containment::WorkloadResourcePolicy::for_current_guest_capacity()
+            .map_err(std::io::Error::other)?;
+    let legacy_memory_high = policy
+        .memory_max_bytes
+        .checked_sub(256 * 1024 * 1024)
+        .ok_or_else(|| {
+            std::io::Error::other("test Guest is below the retired memory.high policy")
+        })?;
+    std::fs::write(
+        containment.base.join("exec-current/workload/memory.high"),
+        legacy_memory_high.to_string(),
+    )?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
 fn prepare_for_reuse_rejects_helper_in_control_leaf() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
@@ -491,7 +518,7 @@ impl ContainmentFixture {
                 "cpu.max",
                 format!("{} {}", policy.cpu_quota_us, policy.cpu_period_us),
             ),
-            ("memory.high", policy.memory_high_bytes.to_string()),
+            ("memory.high", policy.memory_high.to_string()),
             ("memory.max", policy.memory_max_bytes.to_string()),
             ("memory.oom.group", "1".to_string()),
             ("pids.max", policy.pids_max.to_string()),

@@ -1,6 +1,5 @@
 """Tests for usage webhook delivery admission and accounting."""
 
-import contextlib
 import json
 import time
 import urllib.request
@@ -102,8 +101,7 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage
     with patch.object(
         urllib.request.OpenerDirector,
         "open",
-        return_value=contextlib.nullcontext(),
-    ):
+    ) as mock_open:
         assert usage.webhook.enqueue_webhook_delivery(
             SENSITIVE_WEBHOOK_URL,
             "tok",
@@ -111,6 +109,10 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage
             str(proxy_log),
             "usage_event",
         )
+        with pytest.raises(ValueError, match="user information"):
+            sync_usage_executor.shutdown(wait=True)
+
+    mock_open.assert_not_called()
 
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
     assert_current_pending(

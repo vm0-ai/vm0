@@ -23,7 +23,7 @@ import {
 import {
   adAttributionMetadataSchema,
   type AdAttributionMetadata,
-} from "@okouai/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";

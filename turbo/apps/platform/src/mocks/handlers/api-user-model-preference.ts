@@ -1,7 +1,7 @@
 import {
   type UserModelPreferenceResponse,
-  zeroUserModelPreferenceContract,
-} from "@okouai/api-contracts/contracts/zero-user-model-preference";
+  userModelPreferenceContract,
+} from "@okouai/api-contracts/contracts/user-model-preference";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
@@ -28,10 +28,10 @@ export function setMockUserModelPreference(
 }
 
 export const apiUserModelPreferenceHandlers = [
-  mockApi(zeroUserModelPreferenceContract.get, ({ respond }) => {
+  mockApi(userModelPreferenceContract.get, ({ respond }) => {
     return respond(200, mockUserModelPreference);
   }),
-  mockApi(zeroUserModelPreferenceContract.update, ({ body, respond }) => {
+  mockApi(userModelPreferenceContract.update, ({ body, respond }) => {
     mockUserModelPreference = {
       selectedModel: body.selectedModel,
       serviceTier: body.serviceTier,

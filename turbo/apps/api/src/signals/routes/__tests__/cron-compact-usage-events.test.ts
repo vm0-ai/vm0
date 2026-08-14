@@ -257,15 +257,15 @@ describe("usage event compaction cron", () => {
     ).resolves.not.toBe(usageEventId);
   });
 
-  it("retains seven days of processed events and explicit diagnostic holds", async () => {
+  it("retains four days of processed events and explicit diagnostic holds", async () => {
     const heldFixture = await seedFixture();
     const startedHour = nowDate();
     startedHour.setUTCMinutes(0, 0, 0);
     const expectedCutoffAtStart = new Date(
-      startedHour.getTime() - 7 * 24 * 60 * 60 * 1000,
+      startedHour.getTime() - 4 * 24 * 60 * 60 * 1000,
     );
     const retainedProcessedAt = new Date(
-      startedHour.getTime() - 6 * 24 * 60 * 60 * 1000,
+      startedHour.getTime() - 3 * 24 * 60 * 60 * 1000,
     );
     const eligibleProcessedAt = new Date("0400-01-01T00:30:00.000Z");
 
@@ -316,7 +316,7 @@ describe("usage event compaction cron", () => {
     const completedHour = nowDate();
     completedHour.setUTCMinutes(0, 0, 0);
     const expectedCutoffAtCompletion = new Date(
-      completedHour.getTime() - 7 * 24 * 60 * 60 * 1000,
+      completedHour.getTime() - 4 * 24 * 60 * 60 * 1000,
     );
 
     expect(response.body).toMatchObject({

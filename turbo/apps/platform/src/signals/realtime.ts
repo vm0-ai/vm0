@@ -1,4 +1,4 @@
-import { command, state, type Command } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import {
   Realtime,
@@ -39,6 +39,9 @@ const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
   1000, 2000, 5000, 10_000, 30_000,
 ] as const;
 const MAX_TRANSIENT_RETRIES = 3;
+
+type RealtimeConnectionState = ConnectionStateChange["current"];
+type RealtimeChannelState = ChannelStateChange["current"];
 
 function connectionStateDetails(
   stateChange: ConnectionStateChange,
@@ -82,6 +85,7 @@ const notifyRealtimeDegraded$ = command(({ get, set }) => {
 type ChannelCallback = (message: InboundMessage) => void;
 
 interface StableRealtimeChannel {
+  readonly state: () => RealtimeChannelState | null;
   readonly subscribe: (
     topic: string | null,
     callback: ChannelCallback,
@@ -101,6 +105,23 @@ interface RealtimeSession {
 }
 
 const internalRealtimeSession$ = state<RealtimeSession | null>(null);
+const realtimeStateRevision$ = state(0);
+
+interface RealtimeSubscriptionSnapshot {
+  readonly channelState: RealtimeChannelState | null;
+  readonly connectionState: RealtimeConnectionState | null;
+}
+
+export const realtimeSubscriptionSnapshot$ = computed(
+  (get): RealtimeSubscriptionSnapshot => {
+    get(realtimeStateRevision$);
+    const session = get(internalRealtimeSession$);
+    return {
+      channelState: session?.channel.state() ?? null,
+      connectionState: session?.ably.connection.state ?? null,
+    };
+  },
+);
 
 const subscriberPokeTarget$ = state(new EventTarget());
 const SUBSCRIBER_POKE_EVENT = "poke";
@@ -677,6 +698,17 @@ async function trackRealtimeSubscription(
   });
 }
 
+function unsubscribeRealtimeSubscriptionChannels(
+  subscriptions: Iterable<ActiveChannelSubscription>,
+): void {
+  for (const subscription of subscriptions) {
+    for (const channel of subscription.channels) {
+      unsubscribeFromRealtimeChannel(channel, subscription);
+    }
+    subscription.channels.clear();
+  }
+}
+
 function createStableRealtimeChannel(
   initialChannel: RealtimeChannel,
 ): StableRealtimeChannel {
@@ -711,6 +743,9 @@ function createStableRealtimeChannel(
   };
 
   return {
+    state: () => {
+      return currentChannel?.state ?? null;
+    },
     subscribe: async (topic, callback) => {
       const subscription: ActiveChannelSubscription = {
         topic,
@@ -758,12 +793,7 @@ function createStableRealtimeChannel(
     },
     suspend: () => {
       currentChannel = null;
-      for (const subscription of subscriptions.values()) {
-        for (const channel of subscription.channels) {
-          unsubscribeFromRealtimeChannel(channel, subscription);
-        }
-        subscription.channels.clear();
-      }
+      unsubscribeRealtimeSubscriptionChannels(subscriptions.values());
     },
     replace: async (channel) => {
       const activeReplacement = replacement;
@@ -840,6 +870,9 @@ const connectRealtimeClient$ = command(
     const handleConnectionStateChange = (
       stateChange: ConnectionStateChange,
     ): void => {
+      set(realtimeStateRevision$, (revision) => {
+        return revision + 1;
+      });
       publishConnectionDiagnostic({
         details: connectionStateDetails(stateChange),
         event: "realtime.connection",
@@ -917,6 +950,9 @@ const connectRealtimeClient$ = command(
     const handleChannelStateChange = (
       stateChange: ChannelStateChange,
     ): void => {
+      set(realtimeStateRevision$, (revision) => {
+        return revision + 1;
+      });
       publishConnectionDiagnostic({
         details: channelStateDetails(stateChange),
         event: "realtime.channel",
@@ -944,7 +980,7 @@ const connectRealtimeClient$ = command(
   },
 );
 
-const closeRealtimeWhileHidden$ = command(({ get }) => {
+const closeRealtimeWhileHidden$ = command(({ get, set }) => {
   if (document.visibilityState === "visible") {
     return;
   }
@@ -955,6 +991,9 @@ const closeRealtimeWhileHidden$ = command(({ get }) => {
   L.debug("page hidden, closing realtime connection");
   session.channel.suspend();
   session.close();
+  set(realtimeStateRevision$, (revision) => {
+    return revision + 1;
+  });
 });
 
 const foregroundRealtimeCatchUp$ = command(
