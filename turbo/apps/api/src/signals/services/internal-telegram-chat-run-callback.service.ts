@@ -39,7 +39,7 @@ import {
 } from "./telegram-chat-ingress.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
-import { storeTelegramBotMessage } from "./zero-telegram-callback-persistence.service";
+import { storeTelegramBotMessage } from "./telegram-callback-persistence.service";
 import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
 
 const L = logger("InternalCallbacksTelegramChat");
