@@ -10,10 +10,10 @@ const slackChannelSchema = z.object({
 });
 
 /**
- * Zero Slack channels contract (GET /api/okou/slack/channels)
+ * Slack channels contract (GET /api/okou/slack/channels)
  * Lists Slack channels where the bot is a member.
  */
-export const zeroSlackChannelsContract = c.router({
+export const slackChannelsContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/slack/channels",
@@ -27,6 +27,6 @@ export const zeroSlackChannelsContract = c.router({
   },
 });
 
-export type ZeroSlackChannelsContract = typeof zeroSlackChannelsContract;
+export type SlackChannelsContract = typeof slackChannelsContract;
 export type SlackChannel = z.infer<typeof slackChannelSchema>;
 export { slackChannelSchema };

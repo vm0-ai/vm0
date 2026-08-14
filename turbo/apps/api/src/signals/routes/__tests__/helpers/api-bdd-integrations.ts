@@ -43,7 +43,7 @@ import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zer
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroSlackChannelsContract } from "@okouai/api-contracts/contracts/zero-slack-channels";
+import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
 import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
@@ -78,7 +78,7 @@ import { integrationsTelegramUploadCompleteRoutes } from "../../integrations-tel
 import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroSlackChannelsRoutes } from "../../zero-slack-channels";
+import { slackChannelsRoutes } from "../../slack-channels";
 import { slackCommandsRoutes } from "../../slack-commands";
 import { zeroSlackConnectRoutes } from "../../zero-slack-connect";
 import { slackEventsRoutes } from "../../slack-events";
@@ -108,7 +108,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroIntegrationsTelegramRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroSlackChannelsRoutes,
+  ...slackChannelsRoutes,
   ...slackCommandsRoutes,
   ...zeroSlackConnectRoutes,
   ...slackEventsRoutes,
@@ -726,8 +726,8 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 404)[],
     ) {
-      const client = setupApp({ context, routes: zeroSlackChannelsRoutes })(
-        zeroSlackChannelsContract,
+      const client = setupApp({ context, routes: slackChannelsRoutes })(
+        slackChannelsContract,
       );
       return await accept(
         client.list({ headers: authenticate(context, routeMocks, actor) }),

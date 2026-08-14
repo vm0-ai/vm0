@@ -1483,11 +1483,11 @@ export {
   type ZeroSlackOauthCallbackQuery,
 } from "./zero-slack-oauth";
 export {
-  zeroSlackChannelsContract,
+  slackChannelsContract,
   slackChannelSchema,
-  type ZeroSlackChannelsContract,
+  type SlackChannelsContract,
   type SlackChannel,
-} from "./zero-slack-channels";
+} from "./slack-channels";
 export {
   queuePositionContract,
   type QueuePositionContract,

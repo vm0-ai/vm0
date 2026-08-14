@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 
 import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";
@@ -141,7 +141,7 @@ export async function saveRunSummary(
 
       await writeRunMetadata(db, {
         patch: { summary },
-        where: eq(zeroRuns.id, args.runId),
+        where: eq(agentRuns.id, args.runId),
       });
       signal?.throwIfAborted();
     })(),
