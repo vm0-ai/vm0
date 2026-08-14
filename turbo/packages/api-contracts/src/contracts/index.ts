@@ -1563,7 +1563,7 @@ export {
   type ComputerUsePluginCallBody,
   type ComputerUsePluginCallPayload,
   type ComputerUsePluginName,
-} from "./zero-computer-use-plugins";
+} from "./computer-use-plugins";
 export {
   pushSubscriptionsContract,
   type PushSubscriptionsContract,

@@ -40,7 +40,7 @@ import {
   computerUsePluginCallRequiredCapabilities,
   isComputerUseMcpPluginCallPayload,
   isComputerUsePluginCallPayload,
-} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   computerUseCommandAuditEvents,
   computerUseCommands,

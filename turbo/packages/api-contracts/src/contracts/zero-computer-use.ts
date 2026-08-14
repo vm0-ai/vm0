@@ -5,7 +5,7 @@ import { apiErrorSchema } from "./errors";
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
   computerUseAnyPluginCallBodySchema,
-} from "./zero-computer-use-plugins";
+} from "./computer-use-plugins";
 
 const c = initContract();
 

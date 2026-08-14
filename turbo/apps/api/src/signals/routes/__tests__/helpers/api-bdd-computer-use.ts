@@ -27,7 +27,7 @@ import {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
 } from "@okouai/api-contracts/contracts/zero-computer-use";
-import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
+import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/computer-use-plugins";
 
 import { now } from "../../../../lib/time";
 import { accept, type TestContext } from "../../../../__tests__/test-context";

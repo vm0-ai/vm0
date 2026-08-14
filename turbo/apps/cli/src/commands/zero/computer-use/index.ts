@@ -13,7 +13,7 @@ import {
   type ComputerUseMcpPluginCallBody,
   type ComputerUseFilesystemTool,
   type ComputerUsePluginCallBody,
-} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
 import { ApiRequestError } from "../../../lib/api/core/client-factory";
 import {
   createComputerUsePluginCommand,
