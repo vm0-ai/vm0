@@ -430,6 +430,9 @@ describe("organization billing settings", () => {
       name: "Choose a plan",
     });
     expect(choosePlanHeading).toBeInTheDocument();
+    // The plan steps are a dialog over the billing tab, not a page that
+    // replaces it, so the plan the workspace is deciding against stays visible.
+    expect(screen.getByText("No active plan")).toBeInTheDocument();
     const proPlan = await screen.findByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
     expect(proPlan).toHaveTextContent("Plan$0/month");
@@ -592,6 +595,9 @@ describe("organization billing settings", () => {
         screen.queryByRole("dialog", { name: "Configure member packages" }),
       ).not.toBeInTheDocument();
     });
+    // Closing the flow lands back on the billing overview it was opened from.
+    expect(screen.getByText("No active plan")).toBeInTheDocument();
+    expect(buttonByText("Upgrade")).toBeInTheDocument();
 
     const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
     click(within(settingsDialog).getByLabelText("Close"));

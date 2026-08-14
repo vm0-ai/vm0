@@ -1062,24 +1062,26 @@ function pricingStepTitle(step: 1 | 2): string {
    moving between them only changes the body -- the header band, the step
    counter and the outer edges hold still. The height is the taller step's
    (plan selection), and the body insets its content so no rule, tint or column
-   runs into the frame. */
+   runs into the frame.
+
+   The dialog is mounted only while the flow is open, so the plan catalog and
+   the subscription it loads stay owned by the flow rather than by every visit
+   to the billing tab. */
 function PricingStepDialog({
   children,
   onBack,
   onClose,
-  open,
   step,
 }: {
   readonly children: ReactNode;
   readonly onBack?: () => void;
   readonly onClose: () => void;
-  readonly open: boolean;
   readonly step: 1 | 2;
 }) {
   const { t } = useTranslation();
   return (
     <Dialog
-      open={open}
+      open
       onOpenChange={(next) => {
         if (!next) {
           onClose();
@@ -2923,12 +2925,10 @@ export function UsagePackPricingDialogs({
   checkoutAllowed,
   currentTier,
   onClose,
-  open,
 }: {
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly onClose: () => void;
-  readonly open: boolean;
 }) {
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
   const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
@@ -2951,7 +2951,6 @@ export function UsagePackPricingDialogs({
   });
   return (
     <PricingStepDialog
-      open={open}
       step={selectedPlan ? 2 : 1}
       onBack={
         selectedPlan

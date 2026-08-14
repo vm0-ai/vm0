@@ -2836,11 +2836,13 @@ export function OrgBillingTab() {
 
       {showConcurrency && <ConcurrencyBillingSection status={status} />}
 
-      {usagePackPlanDialogs && (
+      {/* Past the early return above, an open billing sub-page can only be the
+          usage pack plan flow. Mount it only while it is open so its catalog
+          and subscription load with the flow, not with every tab visit. */}
+      {pricingOpen && (
         <UsagePackPricingDialogs
           checkoutAllowed={canStartUsagePackCheckout(status)}
           currentTier={currentTier}
-          open={pricingOpen}
           onClose={closeBillingSubPage}
         />
       )}
