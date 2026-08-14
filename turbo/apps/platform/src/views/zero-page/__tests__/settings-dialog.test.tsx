@@ -3,8 +3,8 @@ import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/ze
 import {
   type UserLocale,
   type UserPreferencesResponse,
-  zeroUserPreferencesContract,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+  userPreferencesContract,
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { describe, expect, it } from "vitest";
@@ -114,19 +114,16 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = null;
     context.mocks.browser.language("id-ID");
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(serverLocale));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(serverLocale));
+    });
 
     await openDialog("admin", "preference");
 
@@ -164,18 +161,15 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     document.documentElement.lang = "id-ID";
     context.store.set(setCachedLocale$, "id-ID");
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(body.locale ?? null));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(body.locale ?? null));
+    });
 
     await openDialog("admin", "preference");
 
@@ -201,19 +195,16 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = null;
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "de-DE"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(serverLocale, supportedLocales));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
 
     await openDialog("admin", "preference");
 
@@ -242,7 +233,7 @@ describe("settings dialog", () => {
     let serverLocale: UserLocale | null = "en-US";
     const supportedLocales: UserLocale[] = ["en-US", "de-DE"];
     context.mocks.api(
-      zeroUserPreferencesContract.get,
+      userPreferencesContract.get,
       async ({ respond, withSignal }) => {
         if (holdPreferenceReload) {
           preferenceReloadStarted.resolve();
@@ -252,15 +243,12 @@ describe("settings dialog", () => {
         return respond(200, createPreferences(serverLocale, supportedLocales));
       },
     );
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-        }
-        return respond(200, createPreferences(serverLocale, supportedLocales));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+      }
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
 
     await openDialog("admin", "preference");
 
@@ -299,19 +287,16 @@ describe("settings dialog", () => {
         supportedLocales: ["en-US", "it-IT"],
       };
     };
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createItalianPreferences(serverLocale));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createItalianPreferences(serverLocale));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createItalianPreferences(serverLocale));
+    });
 
     await openDialog("admin", "preference");
 
@@ -339,19 +324,16 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = "en-US";
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "fr-FR"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(serverLocale, supportedLocales));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
 
     await openDialog("admin", "preference");
 
@@ -372,19 +354,16 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = "en-US";
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "hi-IN"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(serverLocale, supportedLocales));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
 
     await openDialog("admin", "preference");
 
@@ -439,7 +418,7 @@ describe("settings dialog", () => {
     let preferenceRequestCount = 0;
     let serverLocale: UserLocale | null = "en-US";
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "ja-JP"];
-    context.mocks.api(zeroUserPreferencesContract.get, async ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
       preferenceRequestCount += 1;
       if (preferenceRequestCount > 1) {
         reloadStarted.resolve();
@@ -447,16 +426,13 @@ describe("settings dialog", () => {
       }
       return respond(200, createPreferences(serverLocale, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(serverLocale, supportedLocales));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
 
     await openDialog("admin", "preference");
 
@@ -493,19 +469,16 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = "en-US";
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "ja-JP", "ko-KR"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(serverLocale, supportedLocales));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
 
     await openDialog("admin", "preference");
 
@@ -536,19 +509,16 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = "en-US";
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "ja-JP", "es-ES"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          serverLocale = body.locale;
-          submittedLocales.push(body.locale);
-        }
-        return respond(200, createPreferences(serverLocale, supportedLocales));
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
 
     await openDialog("admin", "preference");
 
@@ -666,21 +636,18 @@ describe("settings dialog", () => {
     const submittedLocales: UserLocale[] = [];
     document.documentElement.lang = "ja-JP";
     context.store.set(setCachedLocale$, "ja-JP");
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null, ["en-US", "pt-BR"]));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          submittedLocales.push(body.locale);
-        }
-        return respond(
-          200,
-          createPreferences(body.locale ?? null, ["en-US", "pt-BR"]),
-        );
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        submittedLocales.push(body.locale);
+      }
+      return respond(
+        200,
+        createPreferences(body.locale ?? null, ["en-US", "pt-BR"]),
+      );
+    });
 
     await openDialog("admin", "preference");
 
@@ -697,21 +664,18 @@ describe("settings dialog", () => {
     document.documentElement.lang = "ko-KR";
     context.store.set(setCachedLocale$, "ko-KR");
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "ja-JP"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          submittedLocales.push(body.locale);
-        }
-        return respond(
-          200,
-          createPreferences(body.locale ?? null, supportedLocales),
-        );
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        submittedLocales.push(body.locale);
+      }
+      return respond(
+        200,
+        createPreferences(body.locale ?? null, supportedLocales),
+      );
+    });
 
     await openDialog("admin", "preference");
 
@@ -734,21 +698,18 @@ describe("settings dialog", () => {
     document.documentElement.lang = "es-ES";
     context.store.set(setCachedLocale$, "es-ES");
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null, supportedLocales));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          submittedLocales.push(body.locale);
-        }
-        return respond(
-          200,
-          createPreferences(body.locale ?? null, supportedLocales),
-        );
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        submittedLocales.push(body.locale);
+      }
+      return respond(
+        200,
+        createPreferences(body.locale ?? null, supportedLocales),
+      );
+    });
 
     await openDialog("admin", "preference");
 
@@ -829,21 +790,18 @@ describe("settings dialog", () => {
       },
       { once: true },
     );
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null, ["en-US", "pt-BR"]));
     });
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        if (body.locale !== undefined) {
-          submittedLocales.push(body.locale);
-        }
-        return respond(
-          200,
-          createPreferences(body.locale ?? null, ["en-US", "pt-BR"]),
-        );
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        submittedLocales.push(body.locale);
+      }
+      return respond(
+        200,
+        createPreferences(body.locale ?? null, ["en-US", "pt-BR"]),
+      );
+    });
 
     await openDialog("admin", "preference");
 

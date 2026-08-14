@@ -181,7 +181,7 @@ import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
-import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
+import { userPreferencesRoutes } from "./routes/user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
 import { zeroAvatarVideoRoutes } from "./routes/zero-avatar-video";
@@ -331,7 +331,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroOrgReadRoutes,
   ...pushSubscriptionsRoutes,
   ...zeroUserPermissionGrantsRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...userPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,

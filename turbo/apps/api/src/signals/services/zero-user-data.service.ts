@@ -5,7 +5,7 @@ import {
   type UserLocale,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,

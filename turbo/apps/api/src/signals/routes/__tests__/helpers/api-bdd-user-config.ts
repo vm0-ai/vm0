@@ -11,9 +11,9 @@ import {
   type UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/zero-user-model-preference";
 import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   type UpdateUserPreferencesRequest,
-} from "@okouai/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -27,7 +27,7 @@ import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import {
   healthAuthProbeContract,
   healthAuthProbeRoutes,
@@ -107,7 +107,7 @@ const userConfigRoutes = [
   ...zeroAgentsRoutes,
   ...zeroUserModelPreferenceRoutes,
   ...pushSubscriptionsRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...userPreferencesRoutes,
 ] as const;
 
 function isBearerCredential(
@@ -419,7 +419,7 @@ export function createUserConfigBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
