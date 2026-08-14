@@ -55,6 +55,7 @@ test("creates and parses generation-scoped test identities", () => {
         runner: "pr-123+clerk_test+31500000000-2+runner@vm0-e2e.ai",
         codex: "pr-123+clerk_test+31500000000-2+runner-real-codex@vm0-e2e.ai",
         claude: "pr-123+clerk_test+31500000000-2+runner-real-claude@vm0-e2e.ai",
+        pi: "pr-123+clerk_test+31500000000-2+runner-real-pi@vm0-e2e.ai",
         mockClaude:
           "pr-123+clerk_test+31500000000-2+runner-mock-claude@vm0-e2e.ai",
       });

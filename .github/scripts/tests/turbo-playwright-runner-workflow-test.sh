@@ -46,8 +46,8 @@ grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
 if [[ "$(grep -Fc 'upgradeToPro: true' "$RUNNER_TOKEN")" -ne 3 ]]; then
   fail "real Codex, real Claude, and mock Claude runner accounts must upgrade to Pro"
 fi
-if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 1 ]]; then
-  fail "the default mock runner account must remain on limited-free"
+if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 2 ]]; then
+  fail "the default and real Pi runner accounts must remain on limited-free"
 fi
 
 ruby -ryaml -ropen3 -rtempfile - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
@@ -160,6 +160,7 @@ expected_organization_outputs = {
   "runner-organization-id" => "runner-organization-id",
   "codex-organization-id" => "codex-organization-id",
   "claude-organization-id" => "claude-organization-id",
+  "pi-organization-id" => "pi-organization-id",
   "mock-claude-organization-id" => "mock-claude-organization-id",
 }
 expected_organization_outputs.each do |job_output, step_output|
@@ -200,6 +201,10 @@ unless token_step.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID") ==
     "${{ steps.account.outputs.mock-claude-organization-id }}"
   raise "runner E2E token generation must receive the mock Claude organization"
 end
+unless token_step.dig("env", "E2E_RUNNER_PI_ORGANIZATION_ID") ==
+    "${{ steps.account.outputs.pi-organization-id }}"
+  raise "runner E2E token generation must receive the Pi organization"
+end
 
 diagnostic_upload_step = account_prepare.fetch("steps").find do |step|
   step["name"] == "Upload runner E2E Checkout diagnostics"
@@ -227,6 +232,7 @@ end
   e2e-api-credentials-runner.json
   e2e-api-credentials-runner-real-codex.json
   e2e-api-credentials-runner-real-claude.json
+  e2e-api-credentials-runner-real-pi.json
   e2e-api-credentials-runner-mock-claude.json
 ].each do |file_name|
   unless upload_step.dig("with", "path").include?(file_name)
@@ -349,6 +355,28 @@ unless claude_script.include?('defaultProviderType: "vm0"') &&
     claude_script.include?("modelProviderId: null")
   raise "real Claude bootstrap must use the VM0-managed provider"
 end
+pi_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap real Pi account"
+end
+raise "missing real Pi account bootstrap" unless pi_step
+pi_script = pi_step.fetch("run")
+%w[
+  /api/okou/model-policies
+  /api/okou/user-model-preference
+  /api/okou/feature-switches
+  deepseek-v4-flash
+  realAgentInPreview
+  piLoop
+].each do |required_fragment|
+  unless pi_script.include?(required_fragment)
+    raise "real Pi bootstrap must include #{required_fragment}"
+  end
+end
+unless pi_script.include?('defaultProviderType: "vm0"') &&
+    pi_script.include?("modelProviderId: null") &&
+    pi_script.include?(".effectiveSwitches.piLoop == true")
+  raise "real Pi bootstrap must select VM0 DeepSeek and enable Pi loop"
+end
 
 shard_step = runner.fetch("steps").find do |step|
   step["name"] == "Initialize runner E2E shard"
@@ -363,6 +391,12 @@ unless runner.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORG_ID") ==
     runner.dig("env", "E2E_RUNNER_MOCK_CLAUDE_EMAIL") ==
       "${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-email }}"
   raise "runner E2E shards must receive the mock Claude identity"
+end
+unless runner.dig("env", "E2E_RUNNER_PI_ORG_ID") ==
+    "${{ needs.cli-e2e-03-runner-prepare.outputs.pi-organization-id }}" &&
+    runner.dig("env", "E2E_RUNNER_PI_EMAIL") ==
+      "${{ needs.cli-e2e-03-runner-prepare.outputs.pi-email }}"
+  raise "runner E2E shards must receive the Pi identity"
 end
 
 run_step = runner.fetch("steps").find do |step|
@@ -495,6 +529,7 @@ end
   E2E_RUNNER_ORGANIZATION_ID
   E2E_RUNNER_CODEX_ORGANIZATION_ID
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
+  E2E_RUNNER_PI_ORGANIZATION_ID
   E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID
 ].each do |environment_name|
   if [generation_cleanup_step, run_cleanup_step].any? do |step|

@@ -469,7 +469,7 @@ jobs:
       - name: Delete stale runner Clerk test resources
         run: >-
           cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
-          cleanup-stale runner,runner-real-codex,runner-real-claude,runner-mock-claude
+          cleanup-stale runner,runner-real-codex,runner-real-claude,runner-real-pi,runner-mock-claude
           --older-than-hours 30
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}

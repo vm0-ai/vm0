@@ -2388,10 +2388,12 @@ jobs:
       runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
       codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}
       claude-organization-id: ${{ steps.account.outputs.claude-organization-id }}
+      pi-organization-id: ${{ steps.account.outputs.pi-organization-id }}
       mock-claude-organization-id: ${{ steps.account.outputs.mock-claude-organization-id }}
       runner-email: ${{ steps.account.outputs.runner-email }}
       codex-email: ${{ steps.account.outputs.codex-email }}
       claude-email: ${{ steps.account.outputs.claude-email }}
+      pi-email: ${{ steps.account.outputs.pi-email }}
       mock-claude-email: ${{ steps.account.outputs.mock-claude-email }}
       runner-shard-matrix: ${{ steps.shards.outputs.matrix }}
     steps:
@@ -2435,6 +2437,7 @@ jobs:
           E2E_RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
           E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
           E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
+          E2E_RUNNER_PI_ORGANIZATION_ID: ${{ steps.account.outputs.pi-organization-id }}
           E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Upload runner E2E Checkout diagnostics
@@ -2453,6 +2456,7 @@ jobs:
             /tmp/e2e-api-credentials-runner.json
             /tmp/e2e-api-credentials-runner-real-codex.json
             /tmp/e2e-api-credentials-runner-real-claude.json
+            /tmp/e2e-api-credentials-runner-real-pi.json
             /tmp/e2e-api-credentials-runner-mock-claude.json
           retention-days: 1
 
@@ -2644,6 +2648,52 @@ jobs:
             >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap real Pi account
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-pi.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-pi.json)
+          echo "::add-mask::$token"
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          policy_payload=$(jq -nc '{
+            policies: [
+              {
+                model: "deepseek-v4-flash",
+                isDefault: true,
+                defaultProviderType: "vm0",
+                credentialScope: "org",
+                modelProviderId: null
+              }
+            ]
+          }')
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d "$policy_payload" \
+            "${api_url}/api/okou/model-policies" \
+            >/dev/null
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d '{"selectedModel":null,"serviceTier":null}' \
+            "${api_url}/api/okou/user-model-preference" \
+            >/dev/null
+
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"realAgentInPreview":true,"piLoop":true}}' \
+            "${api_url}/api/okou/feature-switches" \
+            | jq -e '
+                .effectiveSwitches.realAgentInPreview == true and
+                .effectiveSwitches.piLoop == true
+              ' \
+            >/dev/null
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
@@ -2676,10 +2726,12 @@ jobs:
       E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
       E2E_RUNNER_CODEX_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
       E2E_RUNNER_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-organization-id }}
+      E2E_RUNNER_PI_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.pi-organization-id }}
       E2E_RUNNER_MOCK_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-organization-id }}
       E2E_RUNNER_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-email }}
       E2E_RUNNER_CODEX_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-email }}
       E2E_RUNNER_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-email }}
+      E2E_RUNNER_PI_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.pi-email }}
       E2E_RUNNER_MOCK_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-email }}
       E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
       E2E_RUNNER_SHARD_TOTAL: ${{ strategy.job-total }}
@@ -2708,6 +2760,7 @@ jobs:
             /tmp/e2e-api-credentials-runner.json \
             /tmp/e2e-api-credentials-runner-real-codex.json \
             /tmp/e2e-api-credentials-runner-real-claude.json \
+            /tmp/e2e-api-credentials-runner-real-pi.json \
             /tmp/e2e-api-credentials-runner-mock-claude.json; do
             jq -er '.token | select(type == "string" and length > 0)' "$credential_file" >/dev/null
             jq -er '.apiUrl | select(type == "string" and length > 0)' "$credential_file" >/dev/null
@@ -2724,10 +2777,12 @@ jobs:
           : "${E2E_CLERK_ORG_ID:?runner E2E organization is required}"
           : "${E2E_RUNNER_CODEX_ORG_ID:?runner Codex E2E organization is required}"
           : "${E2E_RUNNER_CLAUDE_ORG_ID:?runner Claude E2E organization is required}"
+          : "${E2E_RUNNER_PI_ORG_ID:?runner Pi E2E organization is required}"
           : "${E2E_RUNNER_MOCK_CLAUDE_ORG_ID:?runner mock Claude E2E organization is required}"
           : "${E2E_RUNNER_EMAIL:?runner E2E account is required}"
           : "${E2E_RUNNER_CODEX_EMAIL:?runner Codex E2E account is required}"
           : "${E2E_RUNNER_CLAUDE_EMAIL:?runner Claude E2E account is required}"
+          : "${E2E_RUNNER_PI_EMAIL:?runner Pi E2E account is required}"
           : "${E2E_RUNNER_MOCK_CLAUDE_EMAIL:?runner mock Claude E2E account is required}"
           : "${E2E_API_TOKEN:?runner E2E API token is required}"
           : "${E2E_API_URL:?runner E2E API URL is required}"
