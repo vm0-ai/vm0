@@ -26,7 +26,7 @@ import {
 } from "../external/teams-bot-client";
 import { nowDate } from "../../lib/time";
 import { zeroConnectorList } from "./zero-connector-data.service";
-import { userSecrets, userVariables } from "./zero-user-data.service";
+import { userSecrets, userVariables } from "./user-data.service";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 

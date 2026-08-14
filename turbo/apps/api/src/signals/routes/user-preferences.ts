@@ -9,7 +9,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   updateUserPreferences$,
   userPreferences,
-} from "../services/zero-user-data.service";
+} from "../services/user-data.service";
 
 const updateUserPreferencesBody$ = bodyResultOf(userPreferencesContract.update);
 

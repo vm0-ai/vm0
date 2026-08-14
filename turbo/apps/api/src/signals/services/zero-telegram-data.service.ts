@@ -31,7 +31,7 @@ import { safeUrlParse, settle } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
-import { userSecrets, userVariables } from "./zero-user-data.service";
+import { userSecrets, userVariables } from "./user-data.service";
 
 type TelegramBotListItem = TelegramBot;
 type TelegramInstallationRow = typeof telegramInstallations.$inferSelect;

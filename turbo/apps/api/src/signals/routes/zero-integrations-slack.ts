@@ -37,7 +37,7 @@ import { createSlackClient } from "../external/slack-message-client";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { zeroConnectorList } from "../services/zero-connector-data.service";
-import { userSecrets, userVariables } from "../services/zero-user-data.service";
+import { userSecrets, userVariables } from "../services/user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";

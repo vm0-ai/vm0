@@ -56,7 +56,7 @@ import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
   updateUserModelPreference$,
   userModelPreference,
-} from "./zero-user-data.service";
+} from "./user-data.service";
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import {
   admitCanonicalSlackChatEvent,

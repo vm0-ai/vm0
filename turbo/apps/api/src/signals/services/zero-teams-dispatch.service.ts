@@ -63,7 +63,7 @@ import type { TeamsFileTokenPayload } from "./teams-file-token";
 import {
   updateUserModelPreference$,
   userModelPreference,
-} from "./zero-user-data.service";
+} from "./user-data.service";
 import {
   buildTeamsConnectUrlForActivity,
   disconnectTeamsConnection$,

@@ -89,7 +89,7 @@ import {
 import {
   updateUserModelPreference$,
   userModelPreference,
-} from "./zero-user-data.service";
+} from "./user-data.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import type { ApiOrgRole, AuthTokenType } from "../../types/auth";
 
