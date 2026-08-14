@@ -23,6 +23,7 @@ import {
   insertChatEvent,
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
+import { normalizeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
 import { monitorChatEventQueueForEvents$ } from "../services/cron-monitor-chat-event-queue.service";
 import {
@@ -121,6 +122,10 @@ async function seedActiveRun(
     throw new Error("Failed to seed orphan monitor session");
   }
 
+  const metadata = normalizeRunMetadata({
+    triggerSource: "web",
+    chatThreadId: fixture.threadId,
+  });
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -129,6 +134,7 @@ async function seedActiveRun(
       sessionId: session.id,
       status: "pending",
       prompt: "orphan monitor active run fixture",
+      ...metadata,
     })
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
@@ -138,8 +144,7 @@ async function seedActiveRun(
 
   await db.insert(zeroRuns).values({
     id: run.id,
-    triggerSource: "web",
-    chatThreadId: fixture.threadId,
+    ...metadata,
   });
   signal.throwIfAborted();
 }

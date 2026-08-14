@@ -28,6 +28,7 @@ import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
+import type { Tx } from "../../lib/db-types";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -37,6 +38,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   createDeferredPromise,
   onRejection,
+  settle,
   settleIncludingAbort,
 } from "../utils";
 import {
@@ -46,6 +48,12 @@ import {
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  type RunMetadataValues,
+  writeRunMetadata,
+  writeRunMetadataInTransaction,
+} from "../services/agent-run-metadata-write.service";
+import { saveRunSummary } from "../services/run-summary.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -71,6 +79,130 @@ const orgAdmissionLockStateRowSchema = z.object({
   held: z.boolean(),
   waiting: z.boolean(),
 });
+const transactionUpdateCountRowSchema = z.object({
+  updatedRows: z.int().nonnegative(),
+});
+
+async function transactionAgentRunUpdateCount(tx: Tx): Promise<number> {
+  const [row] = await executeRawRows(
+    tx,
+    sql`
+      SELECT n_tup_upd::integer AS "updatedRows"
+      FROM pg_stat_xact_user_tables
+      WHERE relname = 'agent_runs'
+    `,
+    transactionUpdateCountRowSchema,
+  );
+  return row?.updatedRows ?? 0;
+}
+
+function postgresErrorCode(error: unknown): string | null {
+  let current = error;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (typeof current !== "object" || current === null) {
+      return null;
+    }
+    if ("code" in current && typeof current.code === "string") {
+      return current.code;
+    }
+    if (!("cause" in current)) {
+      return null;
+    }
+    current = current.cause;
+  }
+  return null;
+}
+
+type StoredRunMetadata = Pick<
+  typeof agentRuns.$inferSelect,
+  keyof RunMetadataValues
+>;
+
+function serializeRunMetadata(row: StoredRunMetadata) {
+  return {
+    trigger_source: row.triggerSource,
+    autonomy_budget: row.autonomyBudget,
+    workflow_automation_id: row.workflowAutomationId,
+    goal_id: row.goalId,
+    model_provider: row.modelProvider,
+    model_provider_id: row.modelProviderId,
+    model_provider_credential_scope: row.modelProviderCredentialScope,
+    selected_model: row.selectedModel,
+    codex_service_tier: row.codexServiceTier,
+    selected_video_model: row.selectedVideoModel,
+    chat_thread_id: row.chatThreadId,
+    api_started_at: row.apiStartedAt?.toISOString() ?? null,
+    first_assistant_event_acknowledged_at:
+      row.firstAssistantEventAcknowledgedAt?.toISOString() ?? null,
+    summary: row.summary,
+    trigger_brief: row.triggerBrief,
+  };
+}
+
+type RunMetadataReadFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-run-metadata-pair" }
+>;
+
+function isRunMetadataReadFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is RunMetadataReadFixtureAction {
+  return body.action === "read-run-metadata-pair";
+}
+
+async function runMetadataReadFixtureActionResponse(
+  db: Db,
+  body: RunMetadataReadFixtureAction,
+  signal: AbortSignal,
+) {
+  const [agentRows, zeroRows] = await Promise.all([
+    db.select().from(agentRuns).where(eq(agentRuns.id, body.run_id)).limit(1),
+    db.select().from(zeroRuns).where(eq(zeroRuns.id, body.run_id)).limit(1),
+  ]);
+  signal.throwIfAborted();
+  const agentRun = agentRows[0];
+  const zeroRun = zeroRows[0];
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      run_metadata_pair: {
+        agent_run: agentRun ? serializeRunMetadata(agentRun) : null,
+        zero_run: zeroRun ? serializeRunMetadata(zeroRun) : null,
+      },
+    },
+  };
+}
+
+type RunSummaryFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "save-run-summary" }
+>;
+
+function isRunSummaryFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is RunSummaryFixtureAction {
+  return body.action === "save-run-summary";
+}
+
+async function runSummaryFixtureActionResponse(
+  db: Db,
+  body: RunSummaryFixtureAction,
+  signal: AbortSignal,
+) {
+  await saveRunSummary(
+    db,
+    {
+      runId: body.run_id,
+      triggerSource: body.trigger_source,
+      prompt: body.prompt,
+      resultText: body.result_text,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
 
 function createOrgAdmissionLockGate(signal: AbortSignal): OrgAdmissionLockGate {
   const released = createDeferredPromise<void>(signal);
@@ -276,11 +408,10 @@ async function clearRunApiStart(
   runId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const [cleared] = await db
-    .update(zeroRuns)
-    .set({ apiStartedAt: null })
-    .where(eq(zeroRuns.id, runId))
-    .returning({ id: zeroRuns.id });
+  const [cleared] = await writeRunMetadata(db, {
+    patch: { apiStartedAt: null },
+    where: eq(zeroRuns.id, runId),
+  });
   signal.throwIfAborted();
   if (!cleared) {
     throw new Error("Expected a Zero run timing row");
@@ -350,6 +481,97 @@ async function clearThreadSessionBinding(
   }
 }
 
+type RunMetadataWriterFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "measure-run-metadata-bridge-target-updates"
+      | "verify-run-metadata-target-failure-rollback";
+  }
+>;
+
+function isRunMetadataWriterFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is RunMetadataWriterFixtureAction {
+  return (
+    body.action === "measure-run-metadata-bridge-target-updates" ||
+    body.action === "verify-run-metadata-target-failure-rollback"
+  );
+}
+
+async function runMetadataWriterFixtureActionResponse(
+  db: Db,
+  body: RunMetadataWriterFixtureAction,
+  signal: AbortSignal,
+) {
+  if (body.action === "measure-run-metadata-bridge-target-updates") {
+    return await db.transaction(async (tx) => {
+      const before = await transactionAgentRunUpdateCount(tx);
+      const rows = await writeRunMetadataInTransaction(tx, {
+        patch: { autonomyBudget: body.autonomy_budget },
+        where: eq(zeroRuns.id, body.run_id),
+      });
+      signal.throwIfAborted();
+      if (rows.length === 0) {
+        throw new Error("Expected the bridge target-update run fixture");
+      }
+      const after = await transactionAgentRunUpdateCount(tx);
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          agent_run_update_count: after - before,
+        },
+      };
+    });
+  }
+
+  const outcome = await db.transaction(async (lockingTx) => {
+    await lockingTx.execute(sql`
+      SELECT ${agentRuns.id}
+      FROM ${agentRuns}
+      WHERE ${agentRuns.id} = ${body.run_id}
+      FOR UPDATE
+    `);
+    signal.throwIfAborted();
+    return await settle(
+      db.transaction(async (writerTx) => {
+        await writerTx.execute(
+          sql`SET LOCAL session_replication_role = replica`,
+        );
+        await writerTx.execute(sql`SET LOCAL lock_timeout = '100ms'`);
+        return await writeRunMetadataInTransaction(writerTx, {
+          patch: { autonomyBudget: body.autonomy_budget },
+          where: eq(zeroRuns.id, body.run_id),
+        });
+      }),
+      signal,
+    );
+  });
+  signal.throwIfAborted();
+  const [run] = await db
+    .select({
+      autonomyBudget: zeroRuns.autonomyBudget,
+      agentAutonomyBudget: agentRuns.autonomyBudget,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.id, body.run_id))
+    .limit(1);
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      target_write_failed: !outcome.ok,
+      target_write_error_code: outcome.ok
+        ? null
+        : postgresErrorCode(outcome.error),
+      autonomy_budget: run?.autonomyBudget ?? null,
+      agent_autonomy_budget: run?.agentAutonomyBudget ?? null,
+    },
+  };
+}
+
 type AutonomyBudgetFixtureAction = Extract<
   TestRuntimeStateActionBody,
   {
@@ -383,21 +605,30 @@ async function autonomyBudgetFixtureActionResponse(
 ) {
   switch (body.action) {
     case "set-run-autonomy-budget": {
-      const [run] = await db
-        .update(zeroRuns)
-        .set({ autonomyBudget: body.autonomy_budget })
-        .where(eq(zeroRuns.id, body.run_id))
-        .returning({ id: zeroRuns.id });
+      const writeArgs = {
+        patch: { autonomyBudget: body.autonomy_budget },
+        where: eq(zeroRuns.id, body.run_id),
+      };
+      const rows = body.disable_bridge
+        ? await db.transaction(async (tx) => {
+            await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+            return await writeRunMetadataInTransaction(tx, writeArgs);
+          })
+        : await writeRunMetadata(db, writeArgs);
       signal.throwIfAborted();
-      if (!run) {
+      if (rows.length === 0) {
         throw new Error("Expected the autonomy-budget run fixture");
       }
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "read-run-autonomy-budget": {
       const [run] = await db
-        .select({ autonomyBudget: zeroRuns.autonomyBudget })
+        .select({
+          autonomyBudget: zeroRuns.autonomyBudget,
+          agentAutonomyBudget: agentRuns.autonomyBudget,
+        })
         .from(zeroRuns)
+        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
         .where(eq(zeroRuns.id, body.run_id))
         .limit(1);
       signal.throwIfAborted();
@@ -406,6 +637,7 @@ async function autonomyBudgetFixtureActionResponse(
         body: {
           ok: true as const,
           autonomy_budget: run?.autonomyBudget ?? null,
+          agent_autonomy_budget: run?.agentAutonomyBudget ?? null,
         },
       };
     }
@@ -1181,6 +1413,7 @@ async function setRunnerJobContextProfileAsPreviousApi(
 }
 
 type CompatibilityFixtureAction =
+  | RunMetadataWriterFixtureAction
   | AutonomyBudgetFixtureAction
   | LegacyArtifactCatalogFileAction
   | PreviousApiHostedSiteAction
@@ -1334,6 +1567,8 @@ function isCompatibilityFixtureAction(
   return [
     "set-run-autonomy-budget",
     "read-run-autonomy-budget",
+    "measure-run-metadata-bridge-target-updates",
+    "verify-run-metadata-target-failure-rollback",
     "set-workflow-automation-autonomy-budget",
     "read-workflow-automation-autonomy-state",
     "read-latest-workflow-automation-run",
@@ -1353,6 +1588,9 @@ async function compatibilityFixtureActionResponse(
   body: CompatibilityFixtureAction,
   signal: AbortSignal,
 ) {
+  if (isRunMetadataWriterFixtureAction(body)) {
+    return await runMetadataWriterFixtureActionResponse(db, body, signal);
+  }
   if (isAutonomyBudgetFixtureAction(body)) {
     return await autonomyBudgetFixtureActionResponse(db, body, signal);
   }
@@ -1407,6 +1645,12 @@ const postRuntimeStateAction$ = command(
     }
     if (isChatEventFixtureAction(body)) {
       return await chatEventFixtureActionResponse(db, body, signal);
+    }
+    if (isRunMetadataReadFixtureAction(body)) {
+      return await runMetadataReadFixtureActionResponse(db, body, signal);
+    }
+    if (isRunSummaryFixtureAction(body)) {
+      return await runSummaryFixtureActionResponse(db, body, signal);
     }
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);

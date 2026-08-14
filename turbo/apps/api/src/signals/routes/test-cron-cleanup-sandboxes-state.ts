@@ -37,6 +37,10 @@ import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
 } from "../services/agent-run-queue-payload.service";
+import {
+  normalizeRunMetadata,
+  writeRunMetadata,
+} from "../services/agent-run-metadata-write.service";
 import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
 import { insertChatEvent } from "../services/zero-chat-event.service";
 import {
@@ -175,6 +179,10 @@ async function seedRunForAction(
     return actionBadRequest("failed to seed session");
   }
 
+  const threadless = readOptionalBoolean(body, "threadless") === true;
+  const pairedMetadata = threadless
+    ? normalizeRunMetadata({ triggerSource: triggerSource.data })
+    : null;
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -193,6 +201,7 @@ async function seedRunForAction(
         body,
         "cancellation_recovery_completed",
       ),
+      ...pairedMetadata,
     })
     .returning({ id: agentRuns.id, sandboxId: agentRuns.sandboxId });
   signal.throwIfAborted();
@@ -200,10 +209,8 @@ async function seedRunForAction(
     return actionBadRequest("failed to seed run");
   }
 
-  if (readOptionalBoolean(body, "threadless") === true) {
-    await db
-      .insert(zeroRuns)
-      .values({ id: run.id, triggerSource: triggerSource.data });
+  if (pairedMetadata) {
+    await db.insert(zeroRuns).values({ id: run.id, ...pairedMetadata });
     signal.throwIfAborted();
   }
 
@@ -779,10 +786,10 @@ async function attachRunThreadForAction(
   if (!thread) {
     return actionBadRequest("failed to seed chat thread");
   }
-  await db
-    .update(zeroRuns)
-    .set({ chatThreadId: thread.id })
-    .where(eq(zeroRuns.id, runId));
+  await writeRunMetadata(db, {
+    patch: { chatThreadId: thread.id },
+    where: eq(zeroRuns.id, runId),
+  });
   signal.throwIfAborted();
   return actionOk({ thread_id: thread.id });
 }

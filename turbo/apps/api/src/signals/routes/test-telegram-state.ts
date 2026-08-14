@@ -40,6 +40,10 @@ import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  normalizeRunMetadata,
+  writeRunMetadata,
+} from "../services/agent-run-metadata-write.service";
 import { tapError } from "../utils";
 import {
   isTestEndpointAllowed,
@@ -696,10 +700,12 @@ async function updateRunForAction(
   if (!runId) {
     return actionBadRequest("run_id is required");
   }
-  await db
-    .update(zeroRuns)
-    .set({ selectedModel: readActionNullableString(body, "selected_model") })
-    .where(eq(zeroRuns.id, runId));
+  await writeRunMetadata(db, {
+    patch: {
+      selectedModel: readActionNullableString(body, "selected_model") ?? null,
+    },
+    where: eq(zeroRuns.id, runId),
+  });
   signal.throwIfAborted();
   return actionOk();
 }
@@ -1367,6 +1373,11 @@ async function seedCompletedRunForAction(
   if (!sessionId) {
     return actionBadRequest("failed to seed agent session");
   }
+  const metadata = normalizeRunMetadata({
+    triggerSource: "telegram",
+    modelProvider: readActionNullableString(body, "model_provider"),
+    selectedModel: required.selected_model!,
+  });
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -1379,6 +1390,7 @@ async function seedCompletedRunForAction(
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       startedAt: new Date("2026-01-01T00:00:00.000Z"),
       completedAt: new Date("2026-01-01T00:01:00.000Z"),
+      ...metadata,
     })
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
@@ -1387,9 +1399,7 @@ async function seedCompletedRunForAction(
   }
   await db.insert(zeroRuns).values({
     id: run.id,
-    triggerSource: "telegram",
-    modelProvider: readActionNullableString(body, "model_provider") ?? null,
-    selectedModel: required.selected_model!,
+    ...metadata,
   });
   signal.throwIfAborted();
   return actionOk({ agent_session_id: sessionId, run_id: run.id });

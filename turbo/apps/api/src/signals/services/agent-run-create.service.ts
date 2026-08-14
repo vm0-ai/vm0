@@ -303,6 +303,10 @@ import {
   activatePendingRun$,
   type PendingRunActivation,
 } from "./agent-run-activation.service";
+import {
+  normalizeRunMetadata,
+  type RunMetadataValues,
+} from "./agent-run-metadata-write.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -5606,19 +5610,24 @@ function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
 ): Pick<
-  typeof zeroRuns.$inferInsert,
-  "modelProvider" | "modelProviderId" | "selectedModel"
+  RunMetadataValues,
+  | "modelProvider"
+  | "modelProviderId"
+  | "modelProviderCredentialScope"
+  | "selectedModel"
 > {
   if (!modelProvider) {
     return {
       modelProvider: null,
       modelProviderId: null,
+      modelProviderCredentialScope: null,
       selectedModel: null,
     };
   }
   return {
     modelProvider: modelProvider.type,
     modelProviderId: modelProvider.id,
+    modelProviderCredentialScope: null,
     selectedModel: modelProvider.selectedModel,
   };
 }
@@ -5736,6 +5745,7 @@ function launchSessionValues(
 function launchRunValues(
   args: LaunchRunRowsArgs,
   createdAt: Date,
+  metadata: RunMetadataValues,
 ): typeof agentRuns.$inferInsert {
   return {
     id: args.identity.runId,
@@ -5755,30 +5765,31 @@ function launchRunValues(
     runnerGroup: args.runnerGroup ?? null,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
+    ...metadata,
   };
 }
 
-function launchZeroRunValues(
-  args: LaunchRunRowsArgs,
-): typeof zeroRuns.$inferInsert {
+function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
-  return {
-    id: args.identity.runId,
+  const modelPin =
+    args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider);
+  return normalizeRunMetadata({
     triggerSource: args.body.triggerSource,
+    autonomyBudget: metadata.autonomyBudget,
     workflowAutomationId: metadata.workflowAutomationId ?? null,
-    triggerBrief: metadata.triggerBrief ?? null,
     goalId: metadata.goalId ?? null,
-    ...(metadata.autonomyBudget === undefined
-      ? {}
-      : { autonomyBudget: metadata.autonomyBudget }),
-    ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
-    ...(metadata.codexServiceTier === undefined
-      ? {}
-      : { codexServiceTier: metadata.codexServiceTier }),
+    modelProvider: modelPin.modelProvider,
+    modelProviderId: modelPin.modelProviderId,
+    modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+    selectedModel: modelPin.selectedModel,
+    codexServiceTier: metadata.codexServiceTier ?? null,
     selectedVideoModel: args.selectedVideoModel,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
-  };
+    firstAssistantEventAcknowledgedAt: null,
+    summary: null,
+    triggerBrief: metadata.triggerBrief ?? null,
+  });
 }
 
 async function insertLaunchRunRows(
@@ -5790,8 +5801,9 @@ async function insertLaunchRunRows(
   }
 
   const createdAt = nowDate();
-  await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
+  const metadata = launchRunMetadataValues(args);
+  await tx.insert(agentRuns).values(launchRunValues(args, createdAt, metadata));
+  await tx.insert(zeroRuns).values({ id: args.identity.runId, ...metadata });
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -6716,11 +6728,12 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     ctes.push(insertedSession);
   }
 
+  const metadata = launchRunMetadataValues(rowsArgs);
   const insertedRun = args.tx.$with("inserted_launch_run").as(
     args.tx
       .insert(agentRuns)
       .values({
-        ...launchRunValues(rowsArgs, createdAt),
+        ...launchRunValues(rowsArgs, createdAt, metadata),
         sessionId: insertedSession
           ? returnedCteId(insertedSession)
           : rowsArgs.identity.sessionId,
@@ -6730,7 +6743,7 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
   ctes.push(insertedRun);
 
   const zeroRunValues = {
-    ...launchZeroRunValues(rowsArgs),
+    ...metadata,
     id: returnedCteId(insertedRun),
   };
   const insertedZeroRun = args.tx

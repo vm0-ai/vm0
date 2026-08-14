@@ -13,6 +13,7 @@ import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { normalizeRunMetadata } from "../services/agent-run-metadata-write.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -85,6 +86,10 @@ async function seedBaseComputerUseRun(args: {
   const runId = randomUUID();
   const threadId =
     args.triggerSource === "web" || args.canonicalThread ? randomUUID() : null;
+  const metadata = normalizeRunMetadata({
+    triggerSource: args.triggerSource,
+    chatThreadId: threadId,
+  });
 
   await args.db.insert(agentComposes).values({
     id: composeId,
@@ -119,13 +124,13 @@ async function seedBaseComputerUseRun(args: {
     sessionId,
     status: "running",
     prompt: "Need Computer Use",
+    ...metadata,
   });
   args.signal.throwIfAborted();
 
   await args.db.insert(zeroRuns).values({
     id: runId,
-    triggerSource: args.triggerSource,
-    chatThreadId: threadId,
+    ...metadata,
   });
   args.signal.throwIfAborted();
 
