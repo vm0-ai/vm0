@@ -179,6 +179,7 @@ import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
+import { zeroPresentationTemplatesRoutes } from "./routes/zero-presentation-templates";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
@@ -379,6 +380,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
+  ...zeroPresentationTemplatesRoutes,
   ...registryResourceDownloadRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,
