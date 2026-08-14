@@ -8,10 +8,6 @@ import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
 } from "@okouai/db/schema/org-usage-allowance";
-import {
-  usagePackInvoiceFulfillments,
-  usagePackSubscriptions,
-} from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
 import { and, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 
@@ -255,8 +251,7 @@ interface AtomUsagePackCreditGrantInvoiceDetails {
   readonly kind: "usagePackCredits";
   readonly orgId: string;
   readonly userId: string;
-  readonly usagePackSubscriptionId: string;
-  readonly stripeSubscriptionId: string;
+  readonly atomPlanInvoiceId: string;
   readonly currentPeriodStart: Date;
   readonly currentPeriodEnd: Date;
   readonly customerId: string;
@@ -739,17 +734,13 @@ function atomUsagePackCreditGrantInvoiceDetails(
   const orgId = metadata.orgId;
   const customerId = customerIdFromInvoice(invoice);
   const credits = Number(metadata.creditsAmount);
-  const usagePackSubscriptionId = metadata.usagePackSubscriptionId;
+  const atomPlanInvoiceId = metadata.atomPlanInvoiceId;
   const period = atomUsagePackGrantPeriod(metadata, line);
   if (
     metadata.source !== "atom_usage_pack_credits" ||
     !orgId ||
     !metadata.userId ||
-    !metadata.stripeSubscriptionId ||
-    !usagePackSubscriptionId ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      usagePackSubscriptionId,
-    ) ||
+    !atomPlanInvoiceId ||
     !customerId ||
     !Number.isSafeInteger(credits) ||
     credits <= 0 ||
@@ -760,8 +751,7 @@ function atomUsagePackCreditGrantInvoiceDetails(
       hasOrgId: Boolean(orgId),
       hasUserId: Boolean(metadata.userId),
       creditsAmount: metadata.creditsAmount ?? null,
-      stripeSubscriptionId: metadata.stripeSubscriptionId ?? null,
-      usagePackSubscriptionId: usagePackSubscriptionId ?? null,
+      atomPlanInvoiceId: atomPlanInvoiceId ?? null,
     });
     return null;
   }
@@ -770,8 +760,7 @@ function atomUsagePackCreditGrantInvoiceDetails(
     kind: "usagePackCredits",
     orgId,
     userId: metadata.userId,
-    usagePackSubscriptionId,
-    stripeSubscriptionId: metadata.stripeSubscriptionId,
+    atomPlanInvoiceId,
     currentPeriodStart: period.currentPeriodStart,
     currentPeriodEnd: period.currentPeriodEnd,
     customerId,
@@ -1531,96 +1520,52 @@ async function processAtomUsagePackCreditGrantInvoicePaid(
   details: AtomUsagePackCreditGrantInvoiceDetails,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const [mainSubscription] = await tx
+    const [planGrant] = await tx
       .select({
-        id: usagePackSubscriptions.id,
-        currentPeriodStart: usagePackSubscriptions.currentPeriodStart,
-        currentPeriodEnd: usagePackSubscriptions.currentPeriodEnd,
+        currentPeriodStart: orgPlanEntitlements.currentPeriodStart,
+        currentPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
+        expiresAt: orgPlanEntitlements.expiresAt,
+        sourceMetadata: orgPlanEntitlements.sourceMetadata,
+        memberInviteUsagePackRequired:
+          orgPlanEntitlements.memberInviteUsagePackRequired,
+        stripeCustomerId: orgMetadata.stripeCustomerId,
       })
-      .from(usagePackSubscriptions)
-      .innerJoin(
-        orgPlanEntitlements,
-        and(
-          eq(orgPlanEntitlements.orgId, usagePackSubscriptions.orgId),
-          eq(
-            orgPlanEntitlements.stripeSubscriptionId,
-            usagePackSubscriptions.stripeSubscriptionId,
-          ),
-        ),
-      )
+      .from(orgPlanEntitlements)
+      .innerJoin(orgMetadata, eq(orgMetadata.orgId, orgPlanEntitlements.orgId))
       .where(
         and(
-          eq(usagePackSubscriptions.id, details.usagePackSubscriptionId),
-          eq(usagePackSubscriptions.orgId, details.orgId),
-          eq(usagePackSubscriptions.stripeCustomerId, details.customerId),
-          eq(
-            usagePackSubscriptions.stripeSubscriptionId,
-            details.stripeSubscriptionId,
-          ),
-          inArray(usagePackSubscriptions.subscriptionStatus, [
-            "active",
-            "trialing",
-          ]),
+          eq(orgPlanEntitlements.orgId, details.orgId),
+          eq(orgPlanEntitlements.source, "stripe_atom_grant"),
           inArray(orgPlanEntitlements.planKey, ["pro", "team"]),
-          inArray(orgPlanEntitlements.status, ["active", "trialing"]),
+          eq(orgPlanEntitlements.status, "active"),
           eq(
             orgPlanEntitlements.currentPeriodStart,
             details.currentPeriodStart,
           ),
           eq(orgPlanEntitlements.currentPeriodEnd, details.currentPeriodEnd),
+          eq(orgPlanEntitlements.expiresAt, details.currentPeriodEnd),
+          gt(orgPlanEntitlements.expiresAt, nowDate()),
         ),
       )
+      .for("update")
       .limit(1);
     if (
-      !mainSubscription?.currentPeriodStart ||
-      !mainSubscription.currentPeriodEnd ||
-      mainSubscription.currentPeriodStart.getTime() !==
+      !planGrant?.currentPeriodStart ||
+      !planGrant.currentPeriodEnd ||
+      !planGrant.expiresAt ||
+      planGrant.currentPeriodStart.getTime() !==
         details.currentPeriodStart.getTime() ||
-      mainSubscription.currentPeriodEnd.getTime() !==
-        details.currentPeriodEnd.getTime()
+      planGrant.currentPeriodEnd.getTime() !==
+        details.currentPeriodEnd.getTime() ||
+      planGrant.expiresAt.getTime() !== details.currentPeriodEnd.getTime() ||
+      planGrant.stripeCustomerId !== details.customerId ||
+      !planGrant.memberInviteUsagePackRequired ||
+      planGrant.sourceMetadata.planVersion !== "usagePack" ||
+      planGrant.sourceMetadata.atomPlanInvoiceId !== details.atomPlanInvoiceId
     ) {
       throw new Error(
-        `Atom usage pack grant ${invoice.id} does not match an active Pro or Team subscription period`,
+        `Atom usage pack grant ${invoice.id} does not match an active one-time Pro or Team usage-pack plan grant`,
       );
-    }
-
-    const [fulfillment] = await tx
-      .insert(usagePackInvoiceFulfillments)
-      .values({
-        stripeInvoiceId: invoice.id,
-        usagePackSubscriptionId: mainSubscription.id,
-        periodStart: details.currentPeriodStart,
-        periodEnd: details.currentPeriodEnd,
-      })
-      .onConflictDoNothing({
-        target: usagePackInvoiceFulfillments.stripeInvoiceId,
-      })
-      .returning({
-        stripeInvoiceId: usagePackInvoiceFulfillments.stripeInvoiceId,
-      });
-    if (!fulfillment) {
-      const [existing] = await tx
-        .select({
-          usagePackSubscriptionId:
-            usagePackInvoiceFulfillments.usagePackSubscriptionId,
-          periodStart: usagePackInvoiceFulfillments.periodStart,
-          periodEnd: usagePackInvoiceFulfillments.periodEnd,
-        })
-        .from(usagePackInvoiceFulfillments)
-        .where(eq(usagePackInvoiceFulfillments.stripeInvoiceId, invoice.id))
-        .limit(1);
-      if (
-        !existing ||
-        existing.usagePackSubscriptionId !== mainSubscription.id ||
-        existing.periodStart?.getTime() !==
-          details.currentPeriodStart.getTime() ||
-        existing.periodEnd.getTime() !== details.currentPeriodEnd.getTime()
-      ) {
-        throw new Error(
-          `Atom usage pack grant invoice ${invoice.id} is already bound to a different subscription period`,
-        );
-      }
-      return;
     }
 
     await createUsagePackCreditGrant(tx, {
@@ -1775,7 +1720,12 @@ async function upsertAtomGrantPlanEntitlement(
     currentPeriodEnd: details.grantExpiresAt,
     expiresAt: details.grantExpiresAt,
     stripePriceId: grantLine ? invoiceLinePriceId(grantLine) : null,
-    sourceMetadata: invoice.metadata ?? {},
+    memberInviteUsagePackRequired:
+      invoice.metadata?.planVersion === "usagePack",
+    sourceMetadata: {
+      ...invoice.metadata,
+      atomPlanInvoiceId: invoice.id,
+    },
   });
 }
 
@@ -1810,7 +1760,7 @@ async function handleAtomGrantInvoicePaid(
       orgId: details.orgId,
       userId: details.userId,
       credits: details.credits,
-      stripeSubscriptionId: details.stripeSubscriptionId,
+      atomPlanInvoiceId: details.atomPlanInvoiceId,
       currentPeriodEnd: details.currentPeriodEnd.toISOString(),
     });
     return { handled: true, drainOrgId: details.orgId };

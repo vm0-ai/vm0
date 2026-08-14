@@ -59,7 +59,6 @@ import {
 
 export const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY = "usagePackSubscriptionId";
-const ATOM_USAGE_PACK_PLAN_SOURCE = "atom_usage_pack_plan";
 
 const CREDITS_PER_DOLLAR = 1000;
 const PAYABLE_USAGE_PACK_ALLOCATION_STATUSES = [
@@ -618,138 +617,12 @@ async function loadUsagePackContext(
     .where(
       eq(usagePackAllocations.usagePackSubscriptionId, usagePackSubscriptionId),
     );
+  if (allocations.length === 0) {
+    throw new Error(
+      `Usage pack subscription ${usagePackSubscriptionId} has no allocations`,
+    );
+  }
   return { subscription, allocations };
-}
-
-function isAtomUsagePackPlanMetadata(
-  metadata: Readonly<Record<string, string>> | null | undefined,
-): boolean {
-  return (
-    metadata?.purpose === USAGE_PACK_SUBSCRIPTION_PURPOSE &&
-    metadata.source === ATOM_USAGE_PACK_PLAN_SOURCE &&
-    metadata.planVersion === "usagePack"
-  );
-}
-
-function isAtomUsagePackPlanSubscription(
-  subscription: UsagePackSubscriptionInput,
-): boolean {
-  return isAtomUsagePackPlanMetadata(subscription.metadata);
-}
-
-function inspectAtomUsagePackPlanShape(
-  subscription: UsagePackSubscriptionInput,
-): InspectedSubscriptionShape {
-  const basePlan = inspectUsagePackBasePlan(subscription);
-  if (!basePlan.valid) {
-    return basePlan;
-  }
-  const planItem = subscription.items.data.find((item) => {
-    return item.price.id === basePlan.value.priceId;
-  });
-  const periodStart = unixDate(planItem?.current_period_start);
-  const itemPeriodEnd = unixDate(planItem?.current_period_end);
-  const cancelAt = unixDate(subscription.cancel_at);
-  const periodEnd =
-    itemPeriodEnd && cancelAt && cancelAt < itemPeriodEnd
-      ? cancelAt
-      : itemPeriodEnd;
-  if (!periodStart || !periodEnd || periodEnd <= periodStart) {
-    return {
-      valid: false,
-      reason: "Atom usage pack plan has an invalid current period",
-    };
-  }
-  return {
-    valid: true,
-    shape: {
-      tier: basePlan.value.tier,
-      planPriceId: basePlan.value.priceId,
-      periodStart,
-      periodEnd,
-      packageQuantities: new Map(),
-    },
-  };
-}
-
-async function ensureAtomUsagePackSubscription(
-  db: Db,
-  subscription: UsagePackSubscriptionInput,
-  usagePackSubscriptionId: string,
-): Promise<UsagePackContext> {
-  if (!isAtomUsagePackPlanSubscription(subscription)) {
-    return await loadUsagePackContext(db, usagePackSubscriptionId);
-  }
-  const orgId = subscription.metadata?.orgId;
-  const customerId = stripeObjectId(subscription.customer);
-  const inspected = inspectAtomUsagePackPlanShape(subscription);
-  if (!orgId || !customerId || !inspected.valid) {
-    throw new Error(
-      `Invalid Atom usage pack subscription ${subscription.id}: ${
-        inspected.valid ? "missing organization or customer" : inspected.reason
-      }`,
-    );
-  }
-  await db.transaction(async (tx) => {
-    const [organization] = await tx
-      .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .for("update")
-      .limit(1);
-    if (
-      !organization ||
-      (organization.stripeCustomerId !== null &&
-        organization.stripeCustomerId !== customerId)
-    ) {
-      throw new Error(
-        `Atom usage pack subscription ${subscription.id} has no matching organization billing record`,
-      );
-    }
-    await tx
-      .insert(usagePackSubscriptions)
-      .values({
-        id: usagePackSubscriptionId,
-        orgId,
-        tier: inspected.shape.tier,
-        stripePlanPriceId: inspected.shape.planPriceId,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscription.id,
-        subscriptionStatus: subscription.status,
-        currentPeriodStart: inspected.shape.periodStart,
-        currentPeriodEnd: inspected.shape.periodEnd,
-        cancelAtPeriodEnd: usagePackSubscriptionWillCancel(subscription),
-      })
-      .onConflictDoNothing();
-    await tx
-      .update(orgMetadata)
-      .set({ stripeCustomerId: customerId, updatedAt: nowDate() })
-      .where(
-        and(
-          eq(orgMetadata.orgId, orgId),
-          or(
-            isNull(orgMetadata.stripeCustomerId),
-            eq(orgMetadata.stripeCustomerId, customerId),
-          ),
-        ),
-      );
-  });
-  const context = await loadUsagePackContext(db, usagePackSubscriptionId);
-  validateUsagePackSubscriptionCorrelation(
-    context,
-    subscription,
-    usagePackSubscriptionId,
-  );
-  if (
-    context.subscription.orgId !== orgId ||
-    context.subscription.tier !== inspected.shape.tier ||
-    context.subscription.stripePlanPriceId !== inspected.shape.planPriceId
-  ) {
-    throw new Error(
-      `Atom usage pack subscription ${subscription.id} does not match its local snapshot`,
-    );
-  }
-  return context;
 }
 
 function payableUsagePackAllocations(
@@ -1198,11 +1071,6 @@ async function handleUsagePackSubscriptionChanged(
   const currentSubscription = (await getStripeClient().subscriptions.retrieve(
     eventSubscription.id,
   )) as UsagePackSubscriptionInput;
-  await ensureAtomUsagePackSubscription(
-    db,
-    currentSubscription,
-    usagePackSubscriptionId,
-  );
   await reconcileUsagePackAllocationChangeSubscription(db, currentSubscription);
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   validateUsagePackSubscriptionCorrelation(
@@ -1232,13 +1100,6 @@ async function handleUsagePackSubscriptionChanged(
       orgId: context.subscription.orgId,
       subscription: currentSubscription,
     };
-  }
-  if (
-    isAtomUsagePackPlanSubscription(currentSubscription) &&
-    !subscriptionHasUsagePackItem(currentSubscription) &&
-    payableUsagePackAllocations(context).length === 0
-  ) {
-    return await activateUsagePackPlanFromSubscription(db, currentSubscription);
   }
   if (!inspected.valid) {
     if (invalidShape === "throw") {
@@ -1360,14 +1221,6 @@ function invoiceHasUsagePackLine(invoice: UsagePackInvoiceInput): boolean {
   return invoice.lines.data.some((line) => {
     const priceId = invoiceLinePriceId(line);
     return priceId !== null && usagePackUsdForKnownPriceId(priceId) !== null;
-  });
-}
-
-function subscriptionHasUsagePackItem(
-  subscription: UsagePackSubscriptionInput,
-): boolean {
-  return subscription.items.data.some((item) => {
-    return usagePackUsdForKnownPriceId(item.price.id) !== null;
   });
 }
 
@@ -1859,30 +1712,13 @@ async function activateUsagePackPlanFromSubscription(
     return { handled: false, orgId: null };
   }
   await requireUsagePackSubscriptionSchema(db);
-  const context = await ensureAtomUsagePackSubscription(
-    db,
-    subscription,
-    usagePackSubscriptionId,
-  );
+  const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   validateUsagePackSubscriptionCorrelation(
     context,
     subscription,
     usagePackSubscriptionId,
   );
-  const shape =
-    isAtomUsagePackPlanSubscription(subscription) &&
-    !subscriptionHasUsagePackItem(subscription) &&
-    payableUsagePackAllocations(context).length === 0
-      ? (() => {
-          const inspected = inspectAtomUsagePackPlanShape(subscription);
-          if (!inspected.valid) {
-            throw new Error(
-              `Invalid Atom usage pack subscription ${subscription.id}: ${inspected.reason}`,
-            );
-          }
-          return inspected.shape;
-        })()
-      : requireUsagePackSubscriptionShape(context, subscription);
+  const shape = requireUsagePackSubscriptionShape(context, subscription);
   if (!shape.periodStart) {
     throw new Error(
       `Usage pack subscription ${subscription.id} has no current period start`,
@@ -1964,76 +1800,6 @@ async function commitUsagePackFulfillment(
   });
 }
 
-async function bootstrapAtomUsagePackPlanInvoice(
-  db: Db,
-  invoice: UsagePackInvoiceInput,
-  usagePackSubscriptionId: string,
-): Promise<UsagePackSubscriptionInput | null> {
-  if (
-    !isAtomUsagePackPlanMetadata(invoice.metadata) &&
-    !isAtomUsagePackPlanMetadata(invoice.parent?.subscription_details?.metadata)
-  ) {
-    return null;
-  }
-  const subscriptionId = invoiceSubscriptionId(invoice);
-  if (!subscriptionId) {
-    throw new Error(
-      `Atom usage pack invoice ${invoice.id} is missing its Stripe subscription`,
-    );
-  }
-  const subscription = (await getStripeClient().subscriptions.retrieve(
-    subscriptionId,
-  )) as UsagePackSubscriptionInput;
-  await ensureAtomUsagePackSubscription(
-    db,
-    subscription,
-    usagePackSubscriptionId,
-  );
-  return subscription;
-}
-
-async function handleAtomUsagePackPlanOnlyInvoice(
-  db: Db,
-  invoice: UsagePackInvoiceInput,
-  usagePackSubscriptionId: string,
-  bootstrappedSubscription: UsagePackSubscriptionInput | null,
-): Promise<UsagePackLifecycleOutcome | null> {
-  if (invoiceHasUsagePackLine(invoice)) {
-    return null;
-  }
-  const subscriptionId = invoiceSubscriptionId(invoice);
-  if (!subscriptionId) {
-    return null;
-  }
-  const subscription =
-    bootstrappedSubscription ??
-    ((await getStripeClient().subscriptions.retrieve(
-      subscriptionId,
-    )) as UsagePackSubscriptionInput);
-  if (!isAtomUsagePackPlanSubscription(subscription)) {
-    return null;
-  }
-  const outcome = await activateUsagePackPlanFromSubscription(db, subscription);
-  const inspected = inspectAtomUsagePackPlanShape(subscription);
-  if (!inspected.valid || !inspected.shape.periodStart) {
-    throw new Error(
-      `Invalid Atom usage pack subscription ${subscription.id}: ${
-        inspected.valid ? "missing current period start" : inspected.reason
-      }`,
-    );
-  }
-  await db
-    .insert(usagePackInvoiceFulfillments)
-    .values({
-      stripeInvoiceId: invoice.id,
-      usagePackSubscriptionId,
-      periodStart: inspected.shape.periodStart,
-      periodEnd: inspected.shape.periodEnd,
-    })
-    .onConflictDoNothing();
-  return outcome;
-}
-
 export async function handleUsagePackInvoicePaid(
   db: Db,
   invoice: UsagePackInvoiceInput,
@@ -2046,11 +1812,6 @@ export async function handleUsagePackInvoicePaid(
     return { handled: false, orgId: null };
   }
   await requireUsagePackSubscriptionSchema(db);
-  const atomPlanSubscription = await bootstrapAtomUsagePackPlanInvoice(
-    db,
-    invoice,
-    usagePackSubscriptionId,
-  );
   const subscriptionChangeOutcome =
     await handleUsagePackSubscriptionChangeInvoicePaid(db, invoice);
   if (subscriptionChangeOutcome.handled) {
@@ -2070,15 +1831,6 @@ export async function handleUsagePackInvoicePaid(
   );
   if (changeOutcome.handled) {
     return changeOutcome;
-  }
-  const atomPlanOutcome = await handleAtomUsagePackPlanOnlyInvoice(
-    db,
-    invoice,
-    usagePackSubscriptionId,
-    atomPlanSubscription,
-  );
-  if (atomPlanOutcome) {
-    return atomPlanOutcome;
   }
   if (!invoiceHasUsagePackLine(invoice)) {
     return { handled: false, orgId: null };
