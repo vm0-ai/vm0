@@ -27,7 +27,7 @@ import {
   type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
 import { setRunVideoModelFixture } from "../../../test-fixtures/run-video-model";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";

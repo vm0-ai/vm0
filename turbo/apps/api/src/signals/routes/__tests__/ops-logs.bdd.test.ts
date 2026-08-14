@@ -38,7 +38,7 @@ import {
   type ModelStatsObservationFixture,
   type ModelStatsStatKey,
 } from "./helpers/model-stats-state";
-import { commitMemoryVersion } from "./helpers/zero-memory";
+import { commitMemoryVersion } from "./helpers/memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
 

@@ -11,7 +11,7 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { webFileUrlRoutes } from "../web-file-url";
 import { expectApiError } from "./helpers/api-bdd";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 
 const context = testContext();
 const store = createStore();

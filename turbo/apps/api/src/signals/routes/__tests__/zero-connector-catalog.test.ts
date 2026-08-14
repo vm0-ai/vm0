@@ -18,7 +18,7 @@ import {
   deleteOrgMembership$,
   seedOrgMembership$,
   type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+} from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { createBddApi } from "./helpers/api-bdd";

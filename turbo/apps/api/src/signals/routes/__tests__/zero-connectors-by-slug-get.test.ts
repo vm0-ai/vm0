@@ -17,7 +17,7 @@ import {
 } from "../../../test-fixtures/connector-catalog";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 

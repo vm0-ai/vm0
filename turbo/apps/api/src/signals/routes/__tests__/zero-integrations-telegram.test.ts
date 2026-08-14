@@ -19,7 +19,7 @@ import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { buildTelegramBotAvatarUrl } from "../../external/telegram-avatar";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
   deleteTelegramFixture$,
   freezeTelegramFixture,

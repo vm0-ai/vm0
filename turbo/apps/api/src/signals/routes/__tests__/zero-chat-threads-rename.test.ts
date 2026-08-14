@@ -13,7 +13,7 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 import { zeroChatThreadRenameRoutes } from "../zero-chat-threads-rename";
 

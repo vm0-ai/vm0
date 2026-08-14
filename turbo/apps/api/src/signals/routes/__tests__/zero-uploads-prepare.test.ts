@@ -17,7 +17,7 @@ import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org"
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { zeroUploadsCompleteRoutes } from "../zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "../zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";

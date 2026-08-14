@@ -90,7 +90,7 @@ import {
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
+import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {

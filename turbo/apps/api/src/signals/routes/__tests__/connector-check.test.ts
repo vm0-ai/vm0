@@ -25,7 +25,7 @@ import {
   deleteOrgMembership$,
   seedOrgMembership$,
   type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+} from "./helpers/org-membership";
 import {
   createFixtureTracker,
   createZeroRouteMocks,

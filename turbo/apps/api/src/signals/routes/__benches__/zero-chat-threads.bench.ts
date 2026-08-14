@@ -52,8 +52,8 @@ import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog
 import { connectorCatalogSource } from "../../services/connector-catalog-source";
 import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
 import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";
-import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
-import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
+import { seedUserModelProvider$ } from "./helpers/model-providers";
+import { seedOrgMembership$ } from "../__tests__/helpers/org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
