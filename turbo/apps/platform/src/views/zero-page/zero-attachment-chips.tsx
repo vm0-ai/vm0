@@ -24,6 +24,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ZeroChatAttachment } from "../../signals/zero-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
@@ -83,6 +84,8 @@ import {
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
+import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -331,10 +334,16 @@ function artifactDialogSyncTarget(
 function findArtifactDialogItemForUrl(
   runs: ChatThreadArtifactRun[],
   url: string,
+  includeAliasUrl: boolean,
 ): ArtifactDialogItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
-      return artifactPreviewUrlsMatch(candidate.url, url);
+      return (
+        artifactPreviewUrlsMatch(candidate.url, url) ||
+        (includeAliasUrl &&
+          candidate.aliasUrl !== undefined &&
+          artifactPreviewUrlsMatch(candidate.aliasUrl, url))
+      );
     });
     if (file) {
       return { runId: run.runId, file };
@@ -909,9 +918,11 @@ function ArtifactDialogDocumentFrameBody({
 }
 
 function ArtifactDialogBody({
+  artifact,
   imageNavigation,
   preview,
 }: {
+  artifact: AttachmentArtifactMetadata | undefined;
   imageNavigation?: ArtifactImageNavigationActions;
   preview: AttachmentLightboxState;
 }) {
@@ -947,7 +958,13 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "html") {
-    return <ArtifactDialogHtmlBody filename={filename} preview={preview} />;
+    return (
+      <ArtifactDialogHtmlBody
+        artifact={artifact}
+        filename={filename}
+        preview={preview}
+      />
+    );
   }
 
   return (
@@ -956,17 +973,23 @@ function ArtifactDialogBody({
 }
 
 function ArtifactDialogHtmlBody({
+  artifact,
   filename,
   preview,
 }: {
+  artifact: AttachmentArtifactMetadata | undefined;
   filename: string;
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
+  const presentationArtifactViewportEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
+    false;
   const src = useResolvedAttachmentUrl(preview.url);
   const isPresentationHtml =
-    preview.artifact?.artifactKind === "presentation-html";
+    presentationArtifactViewportEnabled &&
+    artifact?.artifactKind === "presentation-html";
 
   if (src === null) {
     return (
@@ -977,27 +1000,35 @@ function ArtifactDialogHtmlBody({
     );
   }
 
+  const frame = (
+    <AutoFocusedArtifactIframe
+      focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
+      focusOnMount={!isPresentationHtml}
+      src={src}
+      title={t(
+        ($) => {
+          return $.artifacts.preview.dialogLabel;
+        },
+        { filename },
+      )}
+      sandbox="allow-same-origin allow-scripts"
+      tabIndex={isPresentationHtml ? -1 : undefined}
+      scrolling="yes"
+      className="block h-full w-full border-0 bg-background"
+      data-testid="artifact-dialog-body-html"
+    />
+  );
+
   return (
     <div
       className="h-full w-full bg-background"
       data-testid="artifact-dialog-site-frame"
     >
-      <AutoFocusedArtifactIframe
-        focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
-        focusOnMount={!isPresentationHtml}
-        src={src}
-        title={t(
-          ($) => {
-            return $.artifacts.preview.dialogLabel;
-          },
-          { filename },
-        )}
-        sandbox="allow-same-origin allow-scripts"
-        tabIndex={isPresentationHtml ? -1 : undefined}
-        scrolling="yes"
-        className="block h-full w-full border-0 bg-background"
-        data-testid="artifact-dialog-body-html"
-      />
+      {isPresentationHtml ? (
+        <PresentationArtifactViewport>{frame}</PresentationArtifactViewport>
+      ) : (
+        frame
+      )}
     </div>
   );
 }
@@ -1082,11 +1113,18 @@ function ArtifactPreviewDialogThreadResolver({
   const eventGroups = useLastResolved(thread.eventImageGroups$, {
     equalityFn: equalEventImageGroups,
   });
+  const presentationArtifactViewportEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
+    false;
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     loadable.state === "hasData"
-      ? findArtifactDialogItemForUrl(loadable.data, preview.url)
+      ? findArtifactDialogItemForUrl(
+          loadable.data,
+          preview.url,
+          presentationArtifactViewportEnabled,
+        )
       : undefined;
   const resolvedImageNavigation =
     preview.kind === "image"
@@ -1365,6 +1403,7 @@ function ArtifactPreviewDialogContent({
           </div>
           <div className="min-h-0 flex-1 bg-background">
             <ArtifactDialogBody
+              artifact={artifact}
               imageNavigation={imageNavigation}
               preview={preview}
             />
