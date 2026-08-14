@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.447.5](https://github.com/vm0-ai/vm0/compare/api-v1.447.4...api-v1.447.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* **connectors:** isolate unavailable stored runtimes ([#27051](https://github.com/vm0-ai/vm0/issues/27051)) ([2f7b116](https://github.com/vm0-ai/vm0/commit/2f7b116b0ad45fc18721664b98569ca5731baef1))
+
+
+### Refactoring
+
+* **slack:** neutralize inbound webhook naming ([#27098](https://github.com/vm0-ai/vm0/issues/27098)) ([bfd0c00](https://github.com/vm0-ai/vm0/commit/bfd0c00f1ddce4a5b95006ffefe59a605f1bcd68))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.5
+    * @okouai/core bumped to 8.559.9
+    * @okouai/db bumped to 1.198.17
+    * @okouai/pi-agent-runtime bumped to 1.4.23
+
 ## [1.447.4](https://github.com/vm0-ai/vm0/compare/api-v1.447.3...api-v1.447.4) (2026-08-14)
 
 
