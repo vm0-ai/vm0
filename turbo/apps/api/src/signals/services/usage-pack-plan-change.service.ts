@@ -102,6 +102,8 @@ interface UsagePackSubscriptionChangeContext {
     readonly id: string;
     readonly status: UsagePackSubscriptionChangeRow["status"];
   }[];
+  readonly pendingPlanScheduleId: string | null;
+  readonly pendingPlanTargetTier: string | null;
 }
 
 type PreparedAllocationChange =
@@ -226,7 +228,7 @@ async function loadUsagePackSubscriptionChangeContext(
   if (!subscription) {
     return null;
   }
-  const [allocations, openAllocationChanges, openSubscriptionChanges] =
+  const [allocations, openAllocationChanges, openSubscriptionChanges, orgs] =
     await Promise.all([
       db
         .select()
@@ -270,12 +272,26 @@ async function loadUsagePackSubscriptionChangeContext(
           ),
         )
         .limit(1),
+      db
+        .select({
+          pendingPlanScheduleId: orgMetadata.pendingSubscriptionScheduleId,
+          pendingPlanTargetTier: orgMetadata.pendingSubscriptionTargetTier,
+        })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, orgId))
+        .limit(1),
     ]);
+  const org = orgs[0];
+  if (!org) {
+    throw new Error("Usage pack subscription lost its organization");
+  }
   return {
     subscription,
     allocations,
     openAllocationChanges,
     openSubscriptionChanges,
+    pendingPlanScheduleId: org.pendingPlanScheduleId,
+    pendingPlanTargetTier: org.pendingPlanTargetTier,
   };
 }
 
@@ -690,6 +706,7 @@ function restorableScheduleId(
 }
 
 function replacementScheduleId(
+  root: UsagePackSubscriptionChangeRow,
   changes: readonly UsagePackAllocationChangeRow[],
 ): string | null {
   const scheduleId = changes[0]?.stripeScheduleId;
@@ -705,16 +722,45 @@ function replacementScheduleId(
     }
     return null;
   }
+  const replacesPlanDowngrade = planIsDowngrade(
+    root.sourceTier,
+    root.targetTier,
+  );
   if (
     !changes.every((change) => {
       return (
-        change.kind === "downgrade" && change.stripeScheduleId === scheduleId
+        change.stripeScheduleId === scheduleId &&
+        (replacesPlanDowngrade || change.kind === "downgrade")
       );
     })
   ) {
     throw new Error("Usage pack replacement has inconsistent Stripe schedules");
   }
   return scheduleId;
+}
+
+async function pendingPlanReplacementScheduleId(
+  db: Pick<Db, "select">,
+  root: UsagePackSubscriptionChangeRow,
+): Promise<string | null> {
+  if (!planIsDowngrade(root.sourceTier, root.targetTier)) {
+    return null;
+  }
+  const [org] = await db
+    .select({
+      tier: orgMetadata.tier,
+      scheduleId: orgMetadata.pendingSubscriptionScheduleId,
+      targetTier: orgMetadata.pendingSubscriptionTargetTier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, root.orgId))
+    .limit(1);
+  if (!org) {
+    throw new Error("Usage pack subscription lost its organization");
+  }
+  return org.tier === root.sourceTier && org.targetTier === root.targetTier
+    ? org.scheduleId
+    : null;
 }
 
 type ExistingSchedulePreparation =
@@ -739,8 +785,20 @@ function prepareExistingSchedule(args: {
   readonly allocationChanges: readonly PreparedAllocationChange[];
   readonly hasImmediateChanges: boolean;
   readonly openAllocationChanges: readonly UsagePackAllocationChangeRow[];
+  readonly ownedPlanScheduleId: string | null;
   readonly sameConfiguration: boolean;
 }): ExistingSchedulePreparation {
+  if (args.ownedPlanScheduleId) {
+    const ownsOpenChanges = args.openAllocationChanges.every((change) => {
+      return (
+        change.status === "scheduled" &&
+        change.stripeScheduleId === args.ownedPlanScheduleId
+      );
+    });
+    return ownsOpenChanges
+      ? { status: "ready", scheduleId: args.ownedPlanScheduleId }
+      : { status: "conflict" };
+  }
   if (args.openAllocationChanges.length === 0) {
     return args.sameConfiguration
       ? { status: "same_configuration" }
@@ -837,10 +895,16 @@ async function prepareSubscriptionChange(
     allocationChanges.some((change) => {
       return change.kind === "addition" || change.kind === "upgrade";
     });
+  const ownedPlanScheduleId =
+    planIsDowngrade(context.subscription.tier, args.targetTier) &&
+    context.pendingPlanTargetTier === args.targetTier
+      ? context.pendingPlanScheduleId
+      : null;
   const existingSchedule = prepareExistingSchedule({
     allocationChanges,
     hasImmediateChanges,
     openAllocationChanges: context.openAllocationChanges,
+    ownedPlanScheduleId,
     sameConfiguration,
   });
   if (existingSchedule.status !== "ready") {
@@ -1033,7 +1097,7 @@ async function subscriptionChangeSnapshotMatches(
   ) {
     return false;
   }
-  const [openAllocation, openSubscription] = await Promise.all([
+  const [openAllocation, openSubscription, orgs] = await Promise.all([
     tx
       .select()
       .from(usagePackAllocationChanges)
@@ -1063,7 +1127,26 @@ async function subscriptionChangeSnapshotMatches(
         ),
       )
       .limit(1),
+    tx
+      .select({
+        tier: orgMetadata.tier,
+        pendingPlanScheduleId: orgMetadata.pendingSubscriptionScheduleId,
+        pendingPlanTargetTier: orgMetadata.pendingSubscriptionTargetTier,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, context.subscription.orgId))
+      .for("update")
+      .limit(1),
   ]);
+  const org = orgs[0];
+  if (
+    !org ||
+    org.tier !== context.subscription.tier ||
+    org.pendingPlanScheduleId !== context.pendingPlanScheduleId ||
+    org.pendingPlanTargetTier !== context.pendingPlanTargetTier
+  ) {
+    return false;
+  }
   const expectedOpenAllocationIds = new Set(
     context.openAllocationChanges.map((change) => {
       return change.id;
@@ -1592,9 +1675,27 @@ async function persistDeferredSubscriptionChangeSchedule(
   effectiveAt: Date,
 ): Promise<void> {
   const updatedAt = nowDate();
-  const supersededScheduleId = replacementScheduleId(stored.allocationChanges);
+  const allocationReplacementScheduleId = replacementScheduleId(
+    stored.root,
+    stored.allocationChanges,
+  );
   await db.transaction(async (tx) => {
     await lockUsagePackBillingOrg(tx, stored.root.orgId);
+    const planReplacementScheduleId = await pendingPlanReplacementScheduleId(
+      tx,
+      stored.root,
+    );
+    if (
+      allocationReplacementScheduleId &&
+      planReplacementScheduleId &&
+      allocationReplacementScheduleId !== planReplacementScheduleId
+    ) {
+      throw new Error(
+        "Usage pack replacement has inconsistent Stripe schedules",
+      );
+    }
+    const supersededScheduleId =
+      allocationReplacementScheduleId ?? planReplacementScheduleId;
     if (supersededScheduleId) {
       const superseded = await tx
         .update(usagePackAllocationChanges)
@@ -1618,7 +1719,10 @@ async function persistDeferredSubscriptionChangeSchedule(
           ),
         )
         .returning({ id: usagePackAllocationChanges.id });
-      if (superseded.length === 0) {
+      if (
+        superseded.length === 0 &&
+        planReplacementScheduleId !== supersededScheduleId
+      ) {
         throw new Error("Scheduled usage pack replacement lost its source");
       }
     }
@@ -2278,6 +2382,8 @@ async function applyStoredSubscriptionChange(
     allocations: stored.allocations,
     openAllocationChanges: [],
     openSubscriptionChanges: [],
+    pendingPlanScheduleId: null,
+    pendingPlanTargetTier: null,
   };
   const planItem = validateStripeSubscription(context, subscription);
   if (isScheduledSubscriptionRestore(stored)) {
@@ -2288,7 +2394,29 @@ async function applyStoredSubscriptionChange(
       signal,
     );
   }
-  const supersededScheduleId = replacementScheduleId(stored.allocationChanges);
+  const allocationReplacementScheduleId = replacementScheduleId(
+    stored.root,
+    stored.allocationChanges,
+  );
+  const planReplacementScheduleId = await pendingPlanReplacementScheduleId(
+    db,
+    stored.root,
+  );
+  signal.throwIfAborted();
+  if (
+    allocationReplacementScheduleId &&
+    planReplacementScheduleId &&
+    allocationReplacementScheduleId !== planReplacementScheduleId
+  ) {
+    await failApplyingSubscriptionChange(
+      db,
+      stored.root,
+      "scheduled_replacement_conflict",
+    );
+    return { status: "conflict" };
+  }
+  const supersededScheduleId =
+    allocationReplacementScheduleId ?? planReplacementScheduleId;
   if (supersededScheduleId) {
     const scheduledChanges = await db
       .select()
@@ -2303,9 +2431,12 @@ async function applyStoredSubscriptionChange(
         ),
       );
     signal.throwIfAborted();
+    const ownsPlanSchedule = planReplacementScheduleId === supersededScheduleId;
+    const ownsPackageSchedule =
+      restorableScheduleId(scheduledChanges) === supersededScheduleId;
     if (
       stripeObjectId(subscription.schedule) !== supersededScheduleId ||
-      restorableScheduleId(scheduledChanges) !== supersededScheduleId
+      (!ownsPlanSchedule && !ownsPackageSchedule)
     ) {
       await failApplyingSubscriptionChange(
         db,
