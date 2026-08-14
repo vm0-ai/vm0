@@ -243,6 +243,59 @@ class TestForwardRequestAsyncWrapper:
         with forwarder._forward_request_active_handles_lock:
             assert not forwarder._forward_request_active_handles
 
+    async def test_shutdown_before_active_handle_tracking_releases_capacity(self):
+        loop = asyncio.get_running_loop()
+        with patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1):
+            semaphore = forwarder._get_forward_request_admission_semaphore()
+            with (
+                patch.object(
+                    forwarder,
+                    "_track_active_forward_request_handle",
+                    return_value=False,
+                ) as track_active_handle,
+                patch.object(
+                    transport,
+                    "prepare_forward_request",
+                    wraps=transport.prepare_forward_request,
+                ) as prepare_forward_request,
+                patch.object(loop, "call_later") as schedule_deadline,
+                patch.object(forwarder, "_start_forward_request_worker") as start_worker,
+                fake_forwarder_upstream() as upstream,
+            ):
+                with pytest.raises(RuntimeError, match="workers are shut down"):
+                    await forwarder.forward_request(
+                        "https://example.com",
+                        "POST",
+                        [],
+                        b"payload",
+                    )
+
+                track_active_handle.assert_called_once()
+                prepare_forward_request.assert_not_called()
+                schedule_deadline.assert_not_called()
+                start_worker.assert_not_called()
+                assert upstream.resolve_calls == []
+                assert upstream.sockets == []
+
+            assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+            with forwarder._forward_request_active_handles_lock:
+                assert not forwarder._forward_request_active_handles
+            assert forwarder._get_forward_request_admission_semaphore() is semaphore
+
+            with fake_forwarder_upstream():
+                status, body, _headers = await asyncio.wait_for(
+                    forwarder.forward_request(
+                        "https://example.com",
+                        "GET",
+                        [],
+                        None,
+                    ),
+                    timeout=2,
+                )
+
+        assert status == 200
+        assert body == b"ok"
+
     async def test_shutdown_cancels_dns_before_socket_registration(self):
         lookup_entered = asyncio.Event()
         lookup_cancelled = asyncio.Event()
