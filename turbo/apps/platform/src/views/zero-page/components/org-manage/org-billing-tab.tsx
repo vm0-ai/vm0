@@ -1372,8 +1372,8 @@ function ConcurrencyQuantityControl({
 }: {
   disabled: boolean;
   label: string;
-  onQuantityChange: (quantity: number) => void;
-  quantity: number;
+  onQuantityChange: (quantity: number | null) => void;
+  quantity: number | null;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
@@ -1385,33 +1385,67 @@ function ConcurrencyQuantityControl({
             return $.billing.concurrency.decreaseAria;
           })}
           disabled={
-            quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN || disabled
+            quantity === null ||
+            quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN ||
+            disabled
           }
           variant="quiet"
           size="icon-sm"
           className="rounded-l-lg disabled:opacity-40"
           onClick={() => {
-            onQuantityChange(quantity - 1);
+            if (quantity !== null) {
+              onQuantityChange(quantity - 1);
+            }
           }}
         >
           <Minus size={13} />
         </Button>
-        <span className="flex h-8 w-11 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
-          {formatLocalizedNumber(quantity)}
-        </span>
+        <Input
+          type="text"
+          inputMode="numeric"
+          pattern="[1-9][0-9]*"
+          value={quantity ?? ""}
+          disabled={disabled}
+          aria-label={label}
+          className="h-8 w-11 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus:border-border focus:ring-0"
+          onChange={(event) => {
+            const nextValue = event.currentTarget.value;
+            if (nextValue === "") {
+              onQuantityChange(null);
+              return;
+            }
+            if (!/^[1-9]\d*$/.test(nextValue)) {
+              return;
+            }
+            const nextQuantity = Number(nextValue);
+            if (
+              Number.isInteger(nextQuantity) &&
+              nextQuantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN &&
+              nextQuantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX
+            ) {
+              onQuantityChange(nextQuantity);
+            }
+          }}
+        />
         <Button
           type="button"
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.increaseAria;
           })}
           disabled={
-            quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX || disabled
+            (quantity !== null &&
+              quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX) ||
+            disabled
           }
           variant="quiet"
           size="icon-sm"
           className="rounded-r-lg disabled:opacity-40"
           onClick={() => {
-            onQuantityChange(quantity + 1);
+            onQuantityChange(
+              quantity === null
+                ? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN
+                : quantity + 1,
+            );
           }}
         >
           <Plus size={13} />
@@ -2105,7 +2139,8 @@ function ConcurrencyPurchaseDialog({
     reviewLoadable.state === "loading" ||
     (confirmDialog?.action === "purchase" &&
       confirmDialog.origin === "billing");
-  const quantity = quantityOverride ?? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN;
+  const quantity = quantityOverride;
+  const effectiveQuantity = quantity ?? 0;
   const actionLabel = checkoutLoading
     ? i18n.t(($) => {
         return reviewAvailable
@@ -2116,7 +2151,7 @@ function ConcurrencyPurchaseDialog({
         ($) => {
           return $.billing.concurrency.buyAmount;
         },
-        { amount: concurrencyMonthlyPrice(quantity) },
+        { amount: concurrencyMonthlyPrice(effectiveQuantity) },
       );
 
   return (
@@ -2150,7 +2185,7 @@ function ConcurrencyPurchaseDialog({
             quantity={quantity}
           />
           <p className="text-sm font-medium text-foreground">
-            {concurrencyMonthlyPrice(quantity)}
+            {concurrencyMonthlyPrice(effectiveQuantity)}
           </p>
         </div>
 
@@ -2167,8 +2202,11 @@ function ConcurrencyPurchaseDialog({
             })}
           </Button>
           <Button
-            disabled={checkoutLoading}
+            disabled={checkoutLoading || quantity === null}
             onClick={(e) => {
+              if (quantity === null) {
+                return;
+              }
               detach(
                 reviewAvailable
                   ? review(
