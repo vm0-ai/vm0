@@ -167,12 +167,37 @@ export async function setRunAutonomyBudgetFixture(
   context: TestContext,
   runId: string,
   autonomyBudget: number,
+  options?: { readonly disableBridge?: boolean },
 ): Promise<void> {
   await postAction(context, {
     action: "set-run-autonomy-budget",
     run_id: runId,
     autonomy_budget: autonomyBudget,
+    ...(options?.disableBridge === true ? { disable_bridge: true } : {}),
   });
+}
+
+export async function readPairedRunAutonomyBudgets(
+  context: TestContext,
+  runId: string,
+): Promise<{
+  readonly zeroRun: number | null;
+  readonly agentRun: number | null;
+}> {
+  const response = await postAction(context, {
+    action: "read-run-autonomy-budget",
+    run_id: runId,
+  });
+  if (
+    !("autonomy_budget" in response) ||
+    !("agent_autonomy_budget" in response)
+  ) {
+    throw new Error("readPairedRunAutonomyBudgets missing paired budgets");
+  }
+  return {
+    zeroRun: response.autonomy_budget ?? null,
+    agentRun: response.agent_autonomy_budget ?? null,
+  };
 }
 
 export async function readWorkflowAutomationAutonomyFixture(

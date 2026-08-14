@@ -47,6 +47,10 @@ import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
+  writeRunMetadata,
+  writeRunMetadataInTransaction,
+} from "../services/agent-run-metadata-write.service";
+import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
@@ -383,21 +387,30 @@ async function autonomyBudgetFixtureActionResponse(
 ) {
   switch (body.action) {
     case "set-run-autonomy-budget": {
-      const [run] = await db
-        .update(zeroRuns)
-        .set({ autonomyBudget: body.autonomy_budget })
-        .where(eq(zeroRuns.id, body.run_id))
-        .returning({ id: zeroRuns.id });
+      const writeArgs = {
+        patch: { autonomyBudget: body.autonomy_budget },
+        where: eq(zeroRuns.id, body.run_id),
+      };
+      const rows = body.disable_bridge
+        ? await db.transaction(async (tx) => {
+            await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+            return await writeRunMetadataInTransaction(tx, writeArgs);
+          })
+        : await writeRunMetadata(db, writeArgs);
       signal.throwIfAborted();
-      if (!run) {
+      if (rows.length === 0) {
         throw new Error("Expected the autonomy-budget run fixture");
       }
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "read-run-autonomy-budget": {
       const [run] = await db
-        .select({ autonomyBudget: zeroRuns.autonomyBudget })
+        .select({
+          autonomyBudget: zeroRuns.autonomyBudget,
+          agentAutonomyBudget: agentRuns.autonomyBudget,
+        })
         .from(zeroRuns)
+        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
         .where(eq(zeroRuns.id, body.run_id))
         .limit(1);
       signal.throwIfAborted();
@@ -406,6 +419,7 @@ async function autonomyBudgetFixtureActionResponse(
         body: {
           ok: true as const,
           autonomy_budget: run?.autonomyBudget ?? null,
+          agent_autonomy_budget: run?.agentAutonomyBudget ?? null,
         },
       };
     }

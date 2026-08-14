@@ -32,6 +32,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("set-run-autonomy-budget"),
     run_id: z.uuid(),
     autonomy_budget: z.int().min(0).max(10),
+    disable_bridge: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("read-run-autonomy-budget"),
@@ -188,6 +189,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
+  agent_autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   workflow_automation_state: z
     .object({
       autonomy_budget: z.int().min(0).max(10),
