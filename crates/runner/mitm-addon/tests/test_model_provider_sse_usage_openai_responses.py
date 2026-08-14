@@ -13,7 +13,6 @@ from mitmproxy.flow import Error
 import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-import usage
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -29,7 +28,7 @@ from tests.model_provider_sse_usage_helpers import (
     run_response,
 )
 from tests.usage_helpers import compact_observation_quantities
-from usage import openai_responses
+from usage import flush_usage_events, openai_responses
 
 
 def _openai_responses_sse_flow(
@@ -468,7 +467,7 @@ class TestOpenAIResponsesSseUsage:
             mitm_addon.response(flow)
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
-            usage.flush_usage_events(trigger="test")
+            flush_usage_events(trigger="test")
 
         assert [(event["category"], event["quantity"]) for event in webhook.usage_events()] == [
             ("tokens.input", 11),
