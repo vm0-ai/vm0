@@ -11,7 +11,7 @@ import type { SupportedLocale } from "../../i18n/resources.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { locale$ } from "../locale.ts";
-import { onRejection } from "../utils.ts";
+import { onRejection, resetSignal } from "../utils.ts";
 
 const AVATAR_TEMPLATE_PAGE_SIZE = 24;
 const AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE = 100;
@@ -550,13 +550,68 @@ export function createAvatarTemplatePickerSignals() {
     set(voiceCatalog.resetAvatarTemplateVoiceCatalog$);
     set(internalSelectedAvatar$, null);
   });
+  const internalQuickSelectingAvatarId$ = state<number | null>(null);
+  const avatarTemplateQuickSelectingId$ = computed((get) => {
+    return get(internalQuickSelectingAvatarId$);
+  });
+  const quickSelectAttempt$ = resetSignal();
+  // Resolves the recommended voice without entering the voice-picker step, so
+  // it derives the voice filters itself instead of writing them to the
+  // voice-catalog state the way selectAvatarTemplateForVoice$ does.
+  const quickSelectAvatarTemplateVoice$ = command(
+    async (
+      { get, set },
+      avatar: ZeroAvatarVideoAvatar,
+      parentSignal: AbortSignal,
+    ): Promise<ZeroAvatarVideoVoice | null> => {
+      const signal = set(quickSelectAttempt$, parentSignal);
+      set(internalQuickSelectingAvatarId$, avatar.id);
+      // A superseding click owns the pending state now; clearing on an
+      // aborted attempt would drop the newer card's spinner.
+      const clearPending = () => {
+        if (!signal.aborted) {
+          set(internalQuickSelectingAvatarId$, null);
+        }
+      };
+      const avatarFilters = get(avatarCatalog.avatarTemplateFilters$);
+      const locale = get(locale$);
+      const voiceFilters = voiceFiltersForAvatar(avatar, avatarFilters, locale);
+      const client = get(zeroClient$)(zeroAvatarVideoContract, {
+        apiBase: "api",
+      });
+      const result = await onRejection(
+        accept(
+          client.voices({
+            query: recommendedVoiceQuery(
+              avatar,
+              avatarFilters,
+              voiceFilters,
+              locale,
+            ),
+            fetchOptions: { signal },
+          }),
+          [200],
+          signal,
+        ),
+        clearPending,
+      );
+      signal.throwIfAborted();
+      clearPending();
+      return recommendedVoiceFromCandidates(
+        result.body.voices,
+        avatarFilters.ethnicity,
+      );
+    },
+  );
 
   return {
     ...avatarCatalog,
     ...voiceCatalog,
     selectedAvatarTemplateForVoice$,
     avatarTemplateRecommendedVoice$,
+    avatarTemplateQuickSelectingId$,
     selectAvatarTemplateForVoice$,
     clearAvatarTemplateVoiceSelection$,
+    quickSelectAvatarTemplateVoice$,
   };
 }

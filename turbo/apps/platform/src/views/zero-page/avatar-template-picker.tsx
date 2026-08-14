@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  AudioLines,
   Check,
   Loader2,
   Pause,
@@ -44,9 +45,21 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isSelectedAvatarTemplate } from "../../signals/zero-page/avatar-template-selection.ts";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
+import {
+  TEMPLATE_TILE_CAPTION,
+  TEMPLATE_TILE_MEDIA,
+  TEMPLATE_TILE_NAME,
+  TEMPLATE_TILE_RING,
+  TEMPLATE_TILE_RING_SELECTED,
+  TEMPLATE_TILE_SCRIM,
+  TEMPLATE_TILE_USE,
+  TEMPLATE_TILE_WRAPPER,
+} from "./template-tile.ts";
 
-const AVATAR_CARD_SHADOW =
-  "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
+// Mirrors TEMPLATE_TILE_USE's reveal rules on the opposite corner, styled as a
+// neutral overlay so the primary Use pill keeps the visual lead.
+const AVATAR_TILE_VOICE =
+  "absolute bottom-2 left-2 z-20 flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-lg bg-background/85 text-foreground backdrop-blur-sm transition-opacity duration-150 hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
 const ALL_FILTER_VALUE = "__all__";
 const CATALOG_AUTO_LOAD_THRESHOLD_PX = 320;
 
@@ -365,58 +378,29 @@ function AvatarTemplateMedia({
   );
 }
 
-function avatarTemplateCardClass(selected: boolean): string {
-  return cn(
-    "group relative flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-    AVATAR_CARD_SHADOW,
-    selected ? "border-primary" : "border-border",
-  );
-}
-
-function AvatarTemplateCardContent({
-  avatar,
-  aspectRatio,
-  selected,
-}: {
-  readonly avatar: ZeroAvatarVideoAvatar;
-  readonly aspectRatio: "portrait" | "landscape";
-  readonly selected: boolean;
-}) {
-  return (
-    <>
-      <AvatarTemplateMedia avatar={avatar} aspectRatio={aspectRatio} />
-      <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
-        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-          {avatar.name}
-        </p>
-        {selected && (
-          <span
-            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-            aria-hidden="true"
-          >
-            <Check size={13} />
-          </span>
-        )}
-      </div>
-    </>
-  );
-}
-
 function AvatarTemplateCard({
   avatar,
   aspectRatio,
   selected,
-  onSelect,
+  quickSelecting,
+  onUse,
+  onChooseVoice,
 }: {
   readonly avatar: ZeroAvatarVideoAvatar;
   readonly aspectRatio: "portrait" | "landscape";
   readonly selected: boolean;
-  readonly onSelect: (avatar: ZeroAvatarVideoAvatar) => void;
+  readonly quickSelecting: boolean;
+  readonly onUse: (avatar: ZeroAvatarVideoAvatar) => void;
+  readonly onChooseVoice: (avatar: ZeroAvatarVideoAvatar) => void;
 }) {
   const { t } = useTranslation();
+  const use = () => {
+    onUse(avatar);
+  };
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       aria-label={t(
         ($) => {
           return $.artifacts.templates.selectTemplate;
@@ -424,21 +408,78 @@ function AvatarTemplateCard({
         { title: avatar.name },
       )}
       aria-pressed={selected}
-      onClick={() => {
-        onSelect(avatar);
+      aria-busy={quickSelecting || undefined}
+      onClick={use}
+      onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          use();
+        }
       }}
-      className={avatarTemplateCardClass(selected)}
       onFocus={playAvatarTemplatePreview}
       onBlur={resetAvatarTemplatePreview}
       onMouseEnter={playAvatarTemplatePreview}
       onMouseLeave={resetAvatarTemplatePreview}
+      className={cn(TEMPLATE_TILE_WRAPPER, "focus-visible:outline-none")}
     >
-      <AvatarTemplateCardContent
-        avatar={avatar}
-        aspectRatio={aspectRatio}
-        selected={selected}
-      />
-    </button>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          avatarMediaAspectClass(aspectRatio),
+          "group-focus-visible/tile:ring-1 group-focus-visible/tile:ring-ring",
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
+        <AvatarTemplateMedia avatar={avatar} aspectRatio={aspectRatio} />
+        <div className={TEMPLATE_TILE_SCRIM} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check size={14} />
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.chooseVoice;
+            },
+            { title: avatar.name },
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            onChooseVoice(avatar);
+          }}
+          className={AVATAR_TILE_VOICE}
+        >
+          <AudioLines size={15} />
+        </button>
+        {/* The wrapper owns the click and the accessible name; the pill is a
+            visual affordance only, so the card exposes a single button. */}
+        <span
+          aria-hidden="true"
+          className={cn(
+            TEMPLATE_TILE_USE,
+            "pointer-events-none inline-flex items-center group-focus-visible/tile:opacity-100",
+            quickSelecting && "[@media(hover:hover)]:opacity-100",
+          )}
+        >
+          {quickSelecting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            t(($) => {
+              return $.artifacts.templates.use;
+            })
+          )}
+        </span>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{avatar.name}</p>
+      </div>
+    </div>
   );
 }
 
@@ -901,13 +942,8 @@ function AvatarVoiceCard({
         }
       }}
       className={cn(
-        "group/voice flex cursor-pointer items-center gap-3 rounded-xl border bg-card p-3 transition-colors duration-200 hover:border-foreground/20 hover:bg-card-hover hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        AVATAR_CARD_SHADOW,
-        selected
-          ? "border-primary bg-primary/[0.04]"
-          : recommended
-            ? "border-primary/40 bg-primary/[0.025]"
-            : "border-border",
+        "group/voice flex cursor-pointer items-center gap-3 rounded-xl border bg-card p-3 transition-colors duration-200 hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected ? "border-primary bg-primary/[0.04]" : "border-border",
       )}
     >
       <VoicePreviewControl voice={voice} />
@@ -1001,17 +1037,18 @@ function SelectedAvatarCard({
             )
           : undefined
       }
-      className={avatarTemplateCardClass(false)}
+      className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card"
       onFocus={playAvatarTemplatePreview}
       onBlur={resetAvatarTemplatePreview}
       onMouseEnter={playAvatarTemplatePreview}
       onMouseLeave={resetAvatarTemplatePreview}
     >
-      <AvatarTemplateCardContent
-        avatar={avatar}
-        aspectRatio={aspectRatio}
-        selected={false}
-      />
+      <AvatarTemplateMedia avatar={avatar} aspectRatio={aspectRatio} />
+      <div className="flex min-h-11 items-center px-3 py-2.5">
+        <p className="min-w-0 truncate text-sm font-medium text-foreground">
+          {avatar.name}
+        </p>
+      </div>
     </div>
   );
 }
@@ -1153,11 +1190,16 @@ function AvatarCatalogPickerContent({
   signals,
   value,
   onUse,
+  onChooseVoice,
 }: {
   readonly signals: ComposerSignals;
   readonly value: GenerationTemplateRequest | undefined;
   readonly onUse: (avatar: ZeroAvatarVideoAvatar) => void;
+  readonly onChooseVoice: (avatar: ZeroAvatarVideoAvatar) => void;
 }) {
+  const quickSelectingId = useGet(
+    signals.template.avatarTemplateQuickSelectingId$,
+  );
   const catalog = useLoadable(signals.template.avatarTemplateCatalogPage$);
   const lastCatalog = useLastResolved(
     signals.template.avatarTemplateCatalogPage$,
@@ -1214,7 +1256,9 @@ function AvatarCatalogPickerContent({
                     avatar={avatar}
                     aspectRatio={filters.aspectRatio}
                     selected={isSelectedAvatarTemplate(avatar, value)}
-                    onSelect={onUse}
+                    quickSelecting={quickSelectingId === avatar.id}
+                    onUse={onUse}
+                    onChooseVoice={onChooseVoice}
                   />
                 );
               })}
@@ -1269,9 +1313,11 @@ export function AvatarTemplatePickerContent({
   const clearVoiceSelection = useSet(
     signals.template.clearAvatarTemplateVoiceSelection$,
   );
+  const quickSelect = useSet(signals.template.quickSelectAvatarTemplateVoice$);
   const aspectRatio = useGet(
     signals.template.avatarTemplateFilters$,
   ).aspectRatio;
+  const pageSignal = useGet(pageSignal$);
 
   if (selectedAvatar) {
     return (
@@ -1292,6 +1338,23 @@ export function AvatarTemplatePickerContent({
       signals={signals}
       value={value}
       onUse={(avatar) => {
+        const applyWithRecommendedVoice = async () => {
+          const voice = await quickSelect(avatar, pageSignal);
+          if (voice) {
+            onSelect(avatar, voice, aspectRatio);
+            return;
+          }
+          // No voice matched the recommendation query, so the user has to
+          // pick one manually.
+          selectAvatar(avatar);
+        };
+        detach(
+          applyWithRecommendedVoice(),
+          Reason.DomCallback,
+          "avatar quick select",
+        );
+      }}
+      onChooseVoice={(avatar) => {
         selectAvatar(avatar);
       }}
     />

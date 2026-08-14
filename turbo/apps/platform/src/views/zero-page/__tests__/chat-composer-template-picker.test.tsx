@@ -168,14 +168,34 @@ function mockVoiceCatalog({
   observedQueries = [],
   filterReady,
   pageTwoReady,
+  emptyRecommendation = false,
 }: {
   readonly observedQueries?: ZeroAvatarVideoVoicesQuery[];
   readonly filterReady?: TestDeferred;
   readonly pageTwoReady?: TestDeferred;
+  readonly emptyRecommendation?: boolean;
 } = {}): void {
   const alternateVoice = createAlternateVoice();
   const selectedVoice = createSelectedVoice();
   const secondVoice = createSecondVoice();
+  function voicesFor(
+    query: ZeroAvatarVideoVoicesQuery,
+    loadingFilterOptions: boolean,
+  ) {
+    if (loadingFilterOptions) {
+      return [alternateVoice, selectedVoice];
+    }
+    if (query.pageSize === 100) {
+      return emptyRecommendation ? [] : [alternateVoice, selectedVoice];
+    }
+    if (query.page === 2) {
+      return [secondVoice];
+    }
+    if (query.language === "english") {
+      return [selectedVoice];
+    }
+    return [alternateVoice, selectedVoice];
+  }
   context.mocks.api(
     zeroAvatarVideoContract.voices,
     async ({ query, respond }) => {
@@ -197,19 +217,8 @@ function mockVoiceCatalog({
         query.gender === undefined &&
         query.age === undefined &&
         query.useCase === undefined;
-      const loadingRecommendation =
-        query.pageSize === 100 && query.language !== undefined;
-      const voices = loadingFilterOptions
-        ? [alternateVoice, selectedVoice]
-        : loadingRecommendation
-          ? [alternateVoice, selectedVoice]
-          : query.page === 2
-            ? [secondVoice]
-            : query.language === "english"
-              ? [selectedVoice]
-              : [alternateVoice, selectedVoice];
       return respond(200, {
-        voices,
+        voices: voicesFor(query, loadingFilterOptions),
         hasMore:
           query.page === 1 && (query.pageSize === 24 || loadingFilterOptions),
         filterOptions: loadingFilterOptions
@@ -760,6 +769,7 @@ describe("chat composer templates", () => {
     const avatarFirstPage = createAvatarFirstPage();
     const selectedAvatar = createSelectedAvatar();
     const observedQueries: ZeroAvatarVideoAvatarsQuery[] = [];
+    const observedVoiceQueries: ZeroAvatarVideoVoicesQuery[] = [];
     const avatarFilterReady = context.mocks.deferred<void>();
     const avatarPageTwoReady = context.mocks.deferred<void>();
     const playSpy = vi
@@ -774,7 +784,7 @@ describe("chat composer templates", () => {
       filterReady: avatarFilterReady,
       pageTwoReady: avatarPageTwoReady,
     });
-    mockVoiceCatalog();
+    mockVoiceCatalog({ observedQueries: observedVoiceQueries });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     const dialog = await openAvatarPicker(user);
@@ -877,10 +887,20 @@ describe("chat composer templates", () => {
     );
     await user.click(selectAvatar);
 
-    await within(dialog).findByText("Choose a voice for Ada");
-    await expect(
-      within(dialog).findByLabelText("Preview avatar video Ada"),
-    ).resolves.toBeInTheDocument();
+    // Selecting an avatar resolves the recommended voice and completes the
+    // template in one step; the voice picker never opens.
+    await expectInlineTemplateInComposer("Ada");
+    expect(
+      screen.queryByText("Choose a voice for Ada"),
+    ).not.toBeInTheDocument();
+    expect(observedVoiceQueries).toContainEqual({
+      page: 1,
+      pageSize: 100,
+      language: "english",
+      gender: "male",
+      age: "young",
+      useCase: "advertisement",
+    });
     expect(observedQueries).toStrictEqual([
       { page: 1, pageSize: 24, aspectRatio: "portrait" },
       { page: 1, pageSize: 24, aspectRatio: "landscape" },
@@ -936,11 +956,14 @@ describe("chat composer templates", () => {
 
     const dialog = await openAvatarPicker(user);
     await selectAvatarRecommendationFilters(user, dialog);
+    // The voice picker is an optional path behind the card's voice entry;
+    // reaching it must not commit a template.
     await user.click(
-      await within(dialog).findByLabelText("Select template Ada"),
+      await within(dialog).findByLabelText("Choose a voice for Ada"),
     );
 
     await within(dialog).findByText("Choose a voice for Ada");
+    expect(composerInlineTemplates()).toHaveLength(0);
     await expect(
       within(dialog).findByLabelText("Preview avatar video Ada"),
     ).resolves.toBeInTheDocument();
@@ -1113,16 +1136,17 @@ describe("chat composer templates", () => {
     ).toStrictEqual([{ page: 1, pageSize: 100 }]);
   });
 
-  it("sends the selected avatar and voice", async () => {
+  it("sends the selected avatar with the recommended voice", async () => {
     const user = userEvent.setup({ delay: null });
     const selectedAvatar = createSelectedAvatar();
-    const selectedVoice = createSelectedVoice();
+    const recommendedVoice = createAlternateVoice();
     const observedQueries: ZeroAvatarVideoAvatarsQuery[] = [];
+    const observedVoiceQueries: ZeroAvatarVideoVoicesQuery[] = [];
     mockAvatarCatalog({
       observedQueries,
       firstPage: [selectedAvatar],
     });
-    mockVoiceCatalog();
+    mockVoiceCatalog({ observedQueries: observedVoiceQueries });
     let submittedTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -1142,12 +1166,17 @@ describe("chat composer templates", () => {
       });
     });
     await user.click(within(dialog).getByLabelText("Select template Ada"));
-    await within(dialog).findByText("Choose a voice for Ada");
-    await user.click(
-      await within(dialog).findByLabelText("Select voice Christopher"),
-    );
 
     await expectInlineTemplateInComposer("Ada");
+    // Without an ethnicity filter the first recommendation candidate wins.
+    expect(observedVoiceQueries).toContainEqual({
+      page: 1,
+      pageSize: 100,
+      language: "english",
+      gender: "male",
+      age: "young",
+      useCase: "informative_educational",
+    });
     await appendAndSend(user, "Introduce our new product");
 
     await waitFor(() => {
@@ -1158,7 +1187,7 @@ describe("chat composer templates", () => {
           avatarOptions: {
             titleSnapshot: selectedAvatar.name,
             previewUrl: selectedAvatar.coverUrl,
-            voiceId: selectedVoice.id,
+            voiceId: recommendedVoice.id,
             aspectRatio: "landscape" as const,
           },
         },
@@ -1177,7 +1206,7 @@ describe("chat composer templates", () => {
 
     const dialog = await openAvatarPicker(user);
     await user.click(
-      await within(dialog).findByLabelText("Select template Ada"),
+      await within(dialog).findByLabelText("Choose a voice for Ada"),
     );
     await within(dialog).findByText("Choose a voice for Ada");
     await user.click(
@@ -1188,11 +1217,16 @@ describe("chat composer templates", () => {
     await expectInlineTemplateInComposer("Ada");
 
     // Reopening from the inline chip hands the stored template back to the
-    // picker, so the voice it carries must still read as the chosen one.
+    // picker, so the card and the voice it carries must still read as chosen.
     await user.click(await screen.findByLabelText("Preview template Ada"));
     const reopened = await screen.findByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(reopened).getByLabelText("Select template Ada"),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
     await user.click(
-      await within(reopened).findByLabelText("Select template Ada"),
+      await within(reopened).findByLabelText("Choose a voice for Ada"),
     );
 
     await waitFor(() => {
@@ -1203,6 +1237,31 @@ describe("chat composer templates", () => {
     expect(
       within(reopened).getByLabelText(`Select voice ${alternateVoice.name}`),
     ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("opens the voice picker when no recommendation matches", async () => {
+    const user = userEvent.setup({ delay: null });
+    const selectedAvatar = createSelectedAvatar();
+    const selectedVoice = createSelectedVoice();
+    mockAvatarCatalog({ firstPage: [selectedAvatar] });
+    mockVoiceCatalog({ emptyRecommendation: true });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    const dialog = await openAvatarPicker(user);
+    await user.click(
+      await within(dialog).findByLabelText("Select template Ada"),
+    );
+
+    // With no recommendable voice the one-step path cannot complete, so the
+    // picker falls through to the manual voice step instead of selecting.
+    await within(dialog).findByText("Choose a voice for Ada");
+    expect(composerInlineTemplates()).toHaveLength(0);
+    await user.click(
+      await within(dialog).findByLabelText(
+        `Select voice ${selectedVoice.name}`,
+      ),
+    );
+    await expectInlineTemplateInComposer("Ada");
   });
 
   it("disables send while a template draft attachment is uploading", async () => {
