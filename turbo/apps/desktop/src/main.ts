@@ -24,7 +24,7 @@ import {
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
   isComputerUseMcpPluginCallPayload,
-} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
   createAutomationPermissionDeniedPrompt,

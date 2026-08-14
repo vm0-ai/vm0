@@ -11,7 +11,7 @@ import {
   computerUseMcpServerCapability,
   computerUsePluginCapability,
   computerUsePluginToolCapability,
-} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";

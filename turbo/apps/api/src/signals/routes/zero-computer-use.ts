@@ -12,7 +12,7 @@ import {
 import {
   COMPUTER_USE_MCP_PLUGIN,
   COMPUTER_USE_PLUGIN_CALL_KIND,
-} from "@okouai/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
