@@ -120,6 +120,16 @@ class TestMakeApiRequest:
         with pytest.raises(ValueError, match=message):
             platform_api.make_api_request(url, b"{}", "tok-xyz")
 
+    def test_malformed_platform_authority_does_not_expose_credentials(self):
+        password = "sensitive-platform-password"
+        url = f"https://platform-user:{password}@api\uff1avm0.ai/base"
+
+        with pytest.raises(ValueError, match="Platform API URL is invalid") as exc_info:
+            platform_api.make_api_request(url, b"{}", "tok-xyz")
+
+        assert password not in str(exc_info.value)
+        assert url not in str(exc_info.value)
+
     @pytest.mark.parametrize(
         "url",
         [

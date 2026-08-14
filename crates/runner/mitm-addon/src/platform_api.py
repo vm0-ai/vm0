@@ -45,8 +45,19 @@ def _parsed_port(parsed_url: urllib.parse.SplitResult, *, subject: str) -> int |
         raise ValueError(f"{subject} has an invalid port") from exc
 
 
+def _split_url_without_value_diagnostics(
+    value: str,
+    *,
+    subject: str,
+) -> urllib.parse.SplitResult:
+    try:
+        return urllib.parse.urlsplit(value)
+    except ValueError:
+        raise ValueError(f"{subject} is invalid") from None
+
+
 def _canonical_platform_url(url: str) -> str:
-    parsed_url = urllib.parse.urlsplit(url)
+    parsed_url = _split_url_without_value_diagnostics(url, subject="Platform API URL")
     scheme = parsed_url.scheme.lower()
     if scheme not in {"http", "https"} or not parsed_url.netloc or parsed_url.hostname is None:
         raise ValueError("Platform API URL must be an absolute http(s) URL")
@@ -66,8 +77,9 @@ def normalize_proxy_url(proxy_url: str) -> str:
     """Canonicalize the hostname in a URL or authority-form proxy setting."""
     has_scheme = "://" in proxy_url
     has_authority_prefix = proxy_url.startswith("//")
-    parsed_url = urllib.parse.urlsplit(
-        proxy_url if has_scheme or has_authority_prefix else f"//{proxy_url}"
+    parsed_url = _split_url_without_value_diagnostics(
+        proxy_url if has_scheme or has_authority_prefix else f"//{proxy_url}",
+        subject="Proxy URL",
     )
     if not parsed_url.netloc or parsed_url.hostname is None:
         raise ValueError("Proxy URL must include a host")

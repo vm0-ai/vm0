@@ -249,6 +249,38 @@ def test_environment_proxy_uses_canonical_hostname_and_credentials(
     assert request.header("authorization") == "Bearer tok"
 
 
+def test_environment_proxy_respects_no_proxy(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    proxy_environment = {
+        "http_proxy": "http://proxy-user:proxy-password@127.0.0.1:1",
+        "HTTP_PROXY": "",
+        "all_proxy": "",
+        "ALL_PROXY": "",
+        "no_proxy": "127.0.0.1",
+        "NO_PROXY": "127.0.0.1",
+    }
+    with (
+        patch.dict(os.environ, proxy_environment),
+        patch.object(usage.webhook, "_opener", platform_api.build_api_opener()),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(tmp_path / "proxy.jsonl"),
+            "usage_event",
+        )
+        sync_usage_executor.shutdown(wait=True)
+
+    assert usage_webhook_server.request_count == 1
+    request = usage_webhook_server.requests[0]
+    assert request.path == "/usage"
+    assert request.header("proxy-authorization") is None
+
+
 def test_environment_proxy_rejects_unsafe_hostname_before_dns(
     tmp_path,
     sync_usage_executor,
@@ -276,6 +308,38 @@ def test_environment_proxy_rejects_unsafe_hostname_before_dns(
         with pytest.raises(UnicodeError, match="unsafe IDNA compatibility mapping"):
             sync_usage_executor.shutdown(wait=True)
 
+    mock_getaddrinfo.assert_not_called()
+
+
+def test_malformed_environment_proxy_does_not_expose_credentials_before_dns(
+    tmp_path,
+    sync_usage_executor,
+):
+    password = "sensitive-proxy-password"
+    proxy_environment = {
+        "http_proxy": f"http://proxy-user:{password}@proxy\uff1ahost:8123",
+        "HTTP_PROXY": "",
+        "all_proxy": "",
+        "ALL_PROXY": "",
+        "no_proxy": "",
+        "NO_PROXY": "",
+    }
+    with (
+        patch.dict(os.environ, proxy_environment),
+        patch.object(socket, "getaddrinfo") as mock_getaddrinfo,
+        patch.object(usage.webhook, "_opener", platform_api.build_api_opener()),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            "http://platform.example:8123/usage",
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(tmp_path / "proxy.jsonl"),
+            "usage_event",
+        )
+        with pytest.raises(ValueError, match="Proxy URL is invalid") as exc_info:
+            sync_usage_executor.shutdown(wait=True)
+
+    assert password not in str(exc_info.value)
     mock_getaddrinfo.assert_not_called()
 
 
