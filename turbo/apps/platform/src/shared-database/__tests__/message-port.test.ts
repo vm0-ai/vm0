@@ -338,9 +338,9 @@ describe("shared database MessagePort protocol", () => {
 
       const key = dataKey(crypto.randomUUID());
       const canonicalRow = row(key.threadId, 1);
-      const topic = `chatThreadMessageCreated:${key.threadId}`;
       const requestedSeqIds: number[] = [];
       let appends = 0;
+      const initialAttach = context.mocks.ably.deferNextSubscribe();
       await staleTab.on(
         key,
         () => {
@@ -348,6 +348,7 @@ describe("shared database MessagePort protocol", () => {
         },
         subscription.signal,
       );
+      await initialAttach.started;
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
         expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
@@ -374,16 +375,17 @@ describe("shared database MessagePort protocol", () => {
 
       expect(firstTabTransports).toBe(1);
       expect(staleTabTransports).toBe(1);
+      expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
+      initialAttach.attach();
+      const recoveredAttach = context.mocks.ably.deferNextSubscribe();
       await staleTab.heartbeat(heartbeat(), staleOwner.signal);
+      await recoveredAttach.started;
       expect(staleTabTransports).toBe(2);
+      recoveredAttach.attach();
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
         expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
         expect(staleTabStatuses.at(-1)).toBe("connected");
-      });
-
-      context.mocks.ably.trigger(topic);
-      await vi.waitFor(() => {
         expect(requestedSeqIds).toStrictEqual([0, 1]);
         expect(appends).toBe(1);
       });
