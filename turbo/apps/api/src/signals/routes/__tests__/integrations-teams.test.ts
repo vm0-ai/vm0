@@ -26,7 +26,7 @@ import {
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
 import { integrationsTeamsMessageRoutes } from "../integrations-teams-message";
-import { zeroIntegrationsTeamsUploadCompleteRoutes } from "../zero-integrations-teams-upload-complete";
+import { integrationsTeamsUploadCompleteRoutes } from "../integrations-teams-upload-complete";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
@@ -47,7 +47,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -193,7 +193,7 @@ describe("Microsoft Teams integration CLI routes", () => {
           text: "Hello from Teams CLI",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: `run_${randomUUID()}`,
@@ -247,7 +247,7 @@ describe("Microsoft Teams integration CLI routes", () => {
           },
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: `run_${randomUUID()}`,
@@ -303,7 +303,7 @@ describe("Microsoft Teams integration CLI routes", () => {
 
     const client = setupApp({
       context,
-      routes: zeroIntegrationsTeamsUploadCompleteRoutes,
+      routes: integrationsTeamsUploadCompleteRoutes,
     })(integrationsTeamsUploadCompleteContract);
     const response = await accept(
       client.complete({

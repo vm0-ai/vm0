@@ -1,11 +1,11 @@
 import type {
-  ZeroSeoBacklinksSummaryRequest,
-  ZeroSeoEngine,
-  ZeroSeoKeywordIdeasRequest,
-  ZeroSeoRankedKeywordsRequest,
-  ZeroSeoResponse,
-  ZeroSeoSerpRequest,
-} from "@okouai/api-contracts/contracts/zero-seo";
+  SeoBacklinksSummaryRequest,
+  SeoEngine,
+  SeoKeywordIdeasRequest,
+  SeoRankedKeywordsRequest,
+  SeoResponse,
+  SeoSerpRequest,
+} from "@okouai/api-contracts/contracts/seo";
 import { command } from "ccstate";
 import { z } from "zod";
 
@@ -28,24 +28,24 @@ const PROVIDER_TIMEOUT_MS = 30_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_PROVIDER_ERROR_MESSAGE_CHARS = 4096;
 const MICRO_USD_PER_USD = 1_000_000;
-const L = logger("ZeroSeo");
+const L = logger("Seo");
 
 type SeoRequest =
-  | { readonly operation: "serp"; readonly body: ZeroSeoSerpRequest }
+  | { readonly operation: "serp"; readonly body: SeoSerpRequest }
   | {
       readonly operation: "keyword-ideas";
-      readonly body: ZeroSeoKeywordIdeasRequest;
+      readonly body: SeoKeywordIdeasRequest;
     }
   | {
       readonly operation: "ranked-keywords";
-      readonly body: ZeroSeoRankedKeywordsRequest;
+      readonly body: SeoRankedKeywordsRequest;
     }
   | {
       readonly operation: "backlinks-summary";
-      readonly body: ZeroSeoBacklinksSummaryRequest;
+      readonly body: SeoBacklinksSummaryRequest;
     };
 
-const DATAFORSEO_SERP_PATHS: Readonly<Record<ZeroSeoEngine, string>> = {
+const DATAFORSEO_SERP_PATHS: Readonly<Record<SeoEngine, string>> = {
   google: "/v3/serp/google/organic/live/advanced",
   bing: "/v3/serp/bing/organic/live/advanced",
   google_maps: "/v3/serp/google/maps/live/advanced",
@@ -93,8 +93,8 @@ type DataForSeoAttemptResult =
   | DataForSeoBodyResult
   | { readonly kind: "empty" };
 
-type ZeroSeoCommandResponse =
-  | { readonly status: 200; readonly body: ZeroSeoResponse }
+type SeoCommandResponse =
+  | { readonly status: 200; readonly body: SeoResponse }
   | SeoErrorResponse
   | ManagedUsageErrorResponse;
 
@@ -589,12 +589,12 @@ const runDataForSeo$ = command(
     { get, set },
     args: AuthedSeoArgs,
     signal: AbortSignal,
-  ): Promise<ZeroSeoCommandResponse> => {
+  ): Promise<SeoCommandResponse> => {
     const login = env("OKOU_SEO_DATAFORSEO_LOGIN");
     const password = env("OKOU_SEO_DATAFORSEO_PASSWORD");
     if (!login || !password) {
       return serviceUnavailable(
-        "Zero SEO DataForSEO provider is not configured",
+        "Okou SEO DataForSEO provider is not configured",
       );
     }
 
@@ -611,7 +611,7 @@ const runDataForSeo$ = command(
           category: DATAFORSEO_BILLING_CATEGORY,
           quantity: dataForSeoPreflightQuantity(args.request),
         },
-        label: "Zero SEO DataForSEO",
+        label: "Okou SEO DataForSEO",
       },
       providerSignal,
     );
@@ -664,12 +664,12 @@ const runDataForSeo$ = command(
   },
 );
 
-export const zeroSeo$ = command(
+export const seo$ = command(
   async (
     { set },
     args: AuthedSeoArgs,
     signal: AbortSignal,
-  ): Promise<ZeroSeoCommandResponse> => {
+  ): Promise<SeoCommandResponse> => {
     return await set(runDataForSeo$, args, signal);
   },
 );

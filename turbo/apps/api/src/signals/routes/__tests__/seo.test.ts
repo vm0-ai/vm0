@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
-import { zeroSeoContract } from "@okouai/api-contracts/contracts/zero-seo";
+import { seoContract } from "@okouai/api-contracts/contracts/seo";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -25,13 +25,10 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroSeoRoutes } from "../zero-seo";
+import { seoRoutes } from "../seo";
 
 const context = testContext();
-const SEO_ROUTES = Object.freeze([
-  ...zeroBillingStatusRoutes,
-  ...zeroSeoRoutes,
-]);
+const SEO_ROUTES = Object.freeze([...zeroBillingStatusRoutes, ...seoRoutes]);
 const DATAFORSEO_BASE_URL = "https://api.dataforseo.com";
 
 type OrgApiTestUser = ApiTestUser & {
@@ -73,7 +70,7 @@ async function seedSeoPricing(): Promise<UsagePricingFixture> {
 async function seedActor(): Promise<OrgApiTestUser> {
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
-    throw new Error("Zero SEO test actor must belong to an organization");
+    throw new Error("SEO test actor must belong to an organization");
   }
   const orgActor = { ...actor, orgId: actor.orgId };
   await createRunsApi(context).grantProEntitlement(orgActor);
@@ -84,7 +81,7 @@ async function seedActor(): Promise<OrgApiTestUser> {
 async function seedUnfundedActor(): Promise<OrgApiTestUser> {
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
-    throw new Error("Zero SEO test actor must belong to an organization");
+    throw new Error("SEO test actor must belong to an organization");
   }
   const orgActor = { ...actor, orgId: actor.orgId };
   const onboarding = await createBddApi(context).completeOnboarding(orgActor);
@@ -145,25 +142,25 @@ function emptyDataForSeoResponse() {
   };
 }
 
-describe("zero SEO routes", () => {
+describe("SEO routes", () => {
   it("rejects zero tokens without the seo capability", async () => {
     const actor = await seedActor();
     if (!actor.orgId) {
-      throw new Error("Zero SEO test actor must belong to an organization");
+      throw new Error("SEO test actor must belong to an organization");
     }
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",
       userId: actor.userId,
       orgId: actor.orgId,
-      runId: "run_zero_seo_missing_capability",
+      runId: "run_seo_missing_capability",
       capabilities: [],
       iat: seconds,
       exp: seconds + 60,
     });
 
     const response = await accept(
-      client(actor.usagePricingResolution)(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(seoContract).serp({
         headers: { authorization: `Bearer ${token}` },
         body: {
           query: "technical seo",
@@ -199,7 +196,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client(actor.usagePricingResolution)(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(seoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -241,7 +238,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client(actor.usagePricingResolution)(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(seoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -305,7 +302,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client(actor.usagePricingResolution)(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(seoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -347,7 +344,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client(actor.usagePricingResolution)(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(seoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -387,7 +384,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client(actor.usagePricingResolution)(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(seoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "technical seo",
@@ -443,7 +440,7 @@ describe("zero SEO routes", () => {
     );
 
     const response = await accept(
-      client(actor.usagePricingResolution)(zeroSeoContract).serp({
+      client(actor.usagePricingResolution)(seoContract).serp({
         headers: authenticate(actor),
         body: {
           query: "coffee shops",
@@ -513,7 +510,7 @@ describe("zero SEO routes", () => {
       ),
     );
     const headers = authenticate(actor);
-    const seoClient = client(actor.usagePricingResolution)(zeroSeoContract);
+    const seoClient = client(actor.usagePricingResolution)(seoContract);
 
     const serp = await accept(
       seoClient.serp({
@@ -637,7 +634,7 @@ describe("zero SEO routes", () => {
         },
       ),
     );
-    const seoClient = client(actor.usagePricingResolution)(zeroSeoContract);
+    const seoClient = client(actor.usagePricingResolution)(seoContract);
     const headers = authenticate(actor);
 
     const bing = await accept(
