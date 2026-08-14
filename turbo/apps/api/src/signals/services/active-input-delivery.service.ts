@@ -10,8 +10,7 @@ import {
 } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
@@ -123,18 +122,18 @@ async function loadActiveInputDeliveryScope(
   const [row] = await db
     .select({
       runId: agentRuns.id,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       status: agentRuns.status,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
         eq(agentRuns.id, args.runId),
         eq(agentRuns.userId, args.userId),
         eq(agentRuns.orgId, args.orgId),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);

@@ -10,8 +10,7 @@ import {
   threadGoals,
   type ThreadGoalStatus,
 } from "@okouai/db/schema/thread-goal";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
@@ -106,24 +105,33 @@ async function currentGoalContext(
 ): Promise<CurrentGoalContext | null> {
   const [row] = await db
     .select({
-      threadId: zeroRuns.chatThreadId,
+      threadId: agentRuns.chatThreadId,
       agentId: agentSessions.agentComposeId,
-      runGoalId: zeroRuns.goalId,
-      autonomyBudget: zeroRuns.autonomyBudget,
+      runGoalId: agentRuns.goalId,
+      autonomyBudget: agentRuns.autonomyBudget,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(
       and(
         eq(agentRuns.id, auth.runId),
         eq(agentRuns.orgId, auth.orgId),
         eq(agentRuns.userId, auth.userId),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);
 
-  return row ?? null;
+  if (!row) {
+    return null;
+  }
+
+  const autonomyBudget = row.autonomyBudget;
+  if (autonomyBudget === null) {
+    return null;
+  }
+
+  return { ...row, autonomyBudget };
 }
 
 async function loadGoalForThread(

@@ -79,6 +79,7 @@ interface SeedRunArgs {
   readonly error?: string | null;
   readonly lastEventSequence?: number | null;
   readonly selectedModel?: string | null;
+  readonly lifecycleOnly?: boolean;
 }
 
 interface ModelUsageEventArgs {
@@ -381,11 +382,13 @@ async function seedRun(
   if (!session) {
     throw new Error("seedRun: session insert returned no row");
   }
-  const metadata = normalizeRunMetadata({
-    triggerSource: args.triggerSource ?? "test",
-    chatThreadId: args.chatThreadId,
-    selectedModel: args.selectedModel,
-  });
+  const metadata = args.lifecycleOnly
+    ? null
+    : normalizeRunMetadata({
+        triggerSource: args.triggerSource ?? "test",
+        chatThreadId: args.chatThreadId,
+        selectedModel: args.selectedModel,
+      });
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -411,10 +414,12 @@ async function seedRun(
   if (!run) {
     throw new Error("seedRun: run insert returned no row");
   }
-  await db.insert(zeroRuns).values({
-    id: run.id,
-    ...metadata,
-  });
+  if (metadata) {
+    await db.insert(zeroRuns).values({
+      id: run.id,
+      ...metadata,
+    });
+  }
   signal.throwIfAborted();
   return { runId: run.id };
 }
@@ -1037,6 +1042,7 @@ async function mutateUsageStateRunState(
           error: body.error,
           lastEventSequence: body.last_event_sequence,
           selectedModel: body.selected_model,
+          lifecycleOnly: body.lifecycle_only,
         },
         signal,
       );

@@ -21,7 +21,6 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   asc,
@@ -159,11 +158,10 @@ function queuedRunRows(db: ReadDb, orgId: string): Promise<QueuedRunRow[]> {
       agentName: agentComposes.name,
       agentDisplayName: zeroAgents.displayName,
       prompt: agentRuns.prompt,
-      triggerSource: zeroRuns.triggerSource,
+      triggerSource: agentRuns.triggerSource,
       continuedFromSessionId: agentRuns.continuedFromSessionId,
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))

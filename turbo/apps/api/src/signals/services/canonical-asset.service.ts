@@ -7,9 +7,9 @@ import {
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
 } from "@okouai/db/schema/run-uploaded-file";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import type { ChatEventAttachFileMetadata } from "@okouai/db/schema/chat-event";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import type { SlackFile } from "../../lib/slack-webhook-context";
 import { env } from "../../lib/env";
@@ -871,9 +871,11 @@ export const prepareCanonicalPublishedAsset$ = command(
     const scope = `run:${args.runId}`;
     const source = await sourceForRun(db, args.runId, "slack", signal);
     const [run] = await db
-      .select({ chatThreadId: zeroRuns.chatThreadId })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, args.runId))
+      .select({ chatThreadId: agentRuns.chatThreadId })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, args.runId), isNotNull(agentRuns.triggerSource)),
+      )
       .limit(1);
     signal.throwIfAborted();
     if (!run) {

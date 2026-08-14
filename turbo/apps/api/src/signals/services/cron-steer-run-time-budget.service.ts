@@ -1,8 +1,7 @@
 import { command } from "ccstate";
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -45,12 +44,12 @@ async function loadRunTimeBudgetCandidates(
       chatThreadId: chatThreads.id,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.status, "running"),
         lte(agentRuns.startedAt, startedBefore),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .orderBy(agentRuns.startedAt)
@@ -75,18 +74,18 @@ async function persistRunTimeBudgetInput(
     }
     const [run] = await tx
       .select({
-        chatThreadId: zeroRuns.chatThreadId,
+        chatThreadId: agentRuns.chatThreadId,
         agentId: chatThreads.agentComposeId,
       })
       .from(agentRuns)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-      .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+      .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
       .where(
         and(
           eq(agentRuns.id, args.candidate.runId),
           eq(agentRuns.status, "running"),
-          eq(zeroRuns.chatThreadId, args.candidate.chatThreadId),
+          eq(agentRuns.chatThreadId, args.candidate.chatThreadId),
           lte(agentRuns.startedAt, args.startedBefore),
+          isNotNull(agentRuns.triggerSource),
         ),
       )
       .for("update")

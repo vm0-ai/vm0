@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type {
   ComputerUseAuthorizationSource,
   ComputerUseHostListResponse,
@@ -15,7 +15,6 @@ import {
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -115,15 +114,15 @@ async function resolveRequestScope(args: {
 
   const [run] = await args.db
     .select({
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
         eq(agentRuns.id, args.runId),
         eq(agentRuns.orgId, args.orgId),
         eq(agentRuns.userId, args.userId),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);

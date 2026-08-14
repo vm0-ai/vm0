@@ -1,9 +1,8 @@
 import { command } from "ccstate";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -67,11 +66,11 @@ export async function notifyRunningChatRunOfPendingInput(
       runnerGroup: agentRuns.runnerGroup,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
-        eq(zeroRuns.chatThreadId, chatThreadId),
+        eq(agentRuns.chatThreadId, chatThreadId),
         eq(agentRuns.status, "running"),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);
@@ -183,9 +182,11 @@ export const drainChatThreadQueueForRun$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     const [run] = await db
-      .select({ chatThreadId: zeroRuns.chatThreadId })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, input.runId))
+      .select({ chatThreadId: agentRuns.chatThreadId })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, input.runId), isNotNull(agentRuns.triggerSource)),
+      )
       .limit(1);
     signal.throwIfAborted();
     if (!run?.chatThreadId) {

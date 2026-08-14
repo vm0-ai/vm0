@@ -1,7 +1,7 @@
 import { command } from "ccstate";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
 import {
   and,
   eq,
@@ -147,9 +147,9 @@ export async function goalIdForRun(
   runId: string,
 ): Promise<string | undefined> {
   const [run] = await db
-    .select({ goalId: zeroRuns.goalId })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ goalId: agentRuns.goalId })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return run?.goalId ?? undefined;
 }
@@ -163,13 +163,13 @@ async function assistantEventRunContextForRun(
 }> {
   const [run] = await db
     .select({
-      goalId: zeroRuns.goalId,
-      apiStartedAt: zeroRuns.apiStartedAt,
+      goalId: agentRuns.goalId,
+      apiStartedAt: agentRuns.apiStartedAt,
       firstAssistantEventAcknowledgedAt:
-        zeroRuns.firstAssistantEventAcknowledgedAt,
+        agentRuns.firstAssistantEventAcknowledgedAt,
     })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return {
     goalId: run?.goalId ?? undefined,

@@ -4,11 +4,11 @@ import {
   modelProviderTypeSchema,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { zeroRuns } from "@okouai/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -95,9 +95,9 @@ async function resolveRunSelectedModel(
   runId: string,
 ): Promise<string | undefined> {
   const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ selectedModel: agentRuns.selectedModel })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return row?.selectedModel ?? undefined;
 }

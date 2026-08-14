@@ -790,10 +790,10 @@ async function logPlannerDiagnostic(
     db,
     sql`
       EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
-      SELECT zero_runs.id, agent_runs.status
-      FROM zero_runs
-      INNER JOIN agent_runs ON zero_runs.id = agent_runs.id
-      WHERE zero_runs.chat_thread_id = ${fixture.threadId}
+      SELECT agent_runs.id, agent_runs.status
+      FROM agent_runs
+      WHERE agent_runs.chat_thread_id = ${fixture.threadId}
+        AND agent_runs.trigger_source IS NOT NULL
     `,
     queryPlanRowSchema,
   );
@@ -801,7 +801,7 @@ async function logPlannerDiagnostic(
     return row["QUERY PLAN"];
   });
   process.stdout.write(
-    `\n[bench-explain] zero_runs JOIN agent_runs WHERE chat_thread_id\n${lines.join("\n")}\n\n`,
+    `\n[bench-explain] agent_runs WHERE chat_thread_id AND metadata present\n${lines.join("\n")}\n\n`,
   );
 }
 

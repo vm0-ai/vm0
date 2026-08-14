@@ -94,7 +94,8 @@ export const agentRuns = pgTable(
       .default(false)
       .notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }),
-    // Nullable while legacy binaries still write run metadata to zero_runs.
+    // Null discriminators identify accepted lifecycle-only history where all
+    // product metadata is absent. Product runs write both fields together.
     triggerSource: varchar("trigger_source", { length: 20 }),
     autonomyBudget: integer("autonomy_budget"),
     workflowAutomationId: uuid("workflow_automation_id").references(
@@ -168,6 +169,31 @@ export const agentRuns = pgTable(
       check(
         "agent_runs_autonomy_budget_check",
         sql`${table.autonomyBudget} >= 0 AND ${table.autonomyBudget} <= 10`,
+      ),
+      check(
+        "agent_runs_metadata_presence_check",
+        sql`(
+          (
+            ${table.triggerSource} IS NULL AND
+            ${table.autonomyBudget} IS NULL AND
+            ${table.workflowAutomationId} IS NULL AND
+            ${table.goalId} IS NULL AND
+            ${table.modelProvider} IS NULL AND
+            ${table.modelProviderId} IS NULL AND
+            ${table.modelProviderCredentialScope} IS NULL AND
+            ${table.selectedModel} IS NULL AND
+            ${table.codexServiceTier} IS NULL AND
+            ${table.selectedVideoModel} IS NULL AND
+            ${table.chatThreadId} IS NULL AND
+            ${table.apiStartedAt} IS NULL AND
+            ${table.firstAssistantEventAcknowledgedAt} IS NULL AND
+            ${table.summary} IS NULL AND
+            ${table.triggerBrief} IS NULL
+          ) OR (
+            ${table.triggerSource} IS NOT NULL AND
+            ${table.autonomyBudget} IS NOT NULL
+          )
+        )`,
       ),
     ];
   },
