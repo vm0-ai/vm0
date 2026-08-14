@@ -130,6 +130,35 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage
         assert_sensitive_webhook_url_parts_absent(entry)
 
 
+def test_enqueue_log_failure_releases_delivery_capacity(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    executor = QueuedUsageExecutor()
+    errors = [OSError("disk full"), OSError("disk full")]
+    usage.set_pending_path(str(pending_path))
+
+    with (
+        patch.object(usage.webhook, "usage_executor", executor),
+        patch.object(usage.webhook, "_log_webhook_entry", side_effect=errors),
+    ):
+        for error in errors:
+            with pytest.raises(OSError, match="disk full") as exc_info:
+                usage.webhook.enqueue_webhook_delivery(
+                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                    "tok",
+                    {"runId": "run-1", "events": []},
+                    str(tmp_path / "proxy.jsonl"),
+                    "usage_event",
+                )
+
+            assert exc_info.value is error
+            assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+
+    assert not executor.submissions
+    assert_current_pending(
+        pending_path, flows=0, buffered=0, reports=0, flush_request_id="enqueue-log-failed"
+    )
+
+
 def test_submit_failure_rolls_back_pending_report(tmp_path):
     pending_path = tmp_path / "usage-pending"
     usage.set_pending_path(str(pending_path))
