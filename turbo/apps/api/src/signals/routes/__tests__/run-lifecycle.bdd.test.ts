@@ -4661,6 +4661,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "runner_notification_queue_to_entry",
       "runner_notification_affinity_lookup",
       "runner_notification_queue_to_publish_start",
+      "runner_notification_realtime_publish",
     ]) {
       const events = sandboxOperationEventsForRunByAction(
         protectedFollowUp.runId,
@@ -4677,12 +4678,50 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runner_group: runnerGroup,
           profile: "vm0/default",
           notification_target: "broadcast",
+          activation_origin: "direct",
+          same_thread_markers: "recorded",
           runner_preference_resolution: "exact_history_generation",
           reuse_key_kind: "thread",
           history_generation_run_id: first.runId,
         }),
       );
     }
+    for (const actionType of [
+      "runner_notification_queue_to_commit_return",
+      "runner_notification_queue_to_run_context_registered",
+      "runner_notification_queue_to_dispatch_timings_registered",
+      "runner_notification_queue_to_activation_scheduled",
+      "runner_notification_queue_to_activation_entry",
+      "runner_notification_queue_to_same_thread_markers_complete",
+      "runner_notification_queue_to_database_ready",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          activation_origin: "direct",
+          same_thread_markers: "recorded",
+        }),
+      );
+      expect(events[0]).not.toHaveProperty("history_generation_run_id");
+    }
+    expect(
+      sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        "runner_notification_queue_to_promotion_side_effects_registered",
+      ),
+    ).toHaveLength(0);
     expect(
       sandboxOperationEventsForRunByAction(
         protectedFollowUp.runId,
@@ -5495,6 +5534,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       "runner_notification_queue_to_entry",
       "runner_notification_affinity_lookup",
       "runner_notification_queue_to_publish_start",
+      "runner_notification_realtime_publish",
     ]) {
       const events = sandboxOperationEventsForRunByAction(
         third.runId,
@@ -5511,6 +5551,8 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           runner_group: runnerGroup,
           profile: "vm0/default",
           notification_target: "broadcast",
+          activation_origin: "promotion",
+          same_thread_markers: "not_applicable",
           runner_preference_resolution: "no_reuse_key",
           runner_preference_decision_kind: "noPreference",
           runner_preference_no_preference_reason: "noReuseKey",
@@ -5518,6 +5560,43 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         }),
       );
       expect(events[0]).not.toHaveProperty("history_generation_run_id");
+    }
+    for (const actionType of [
+      "runner_notification_queue_to_commit_return",
+      "runner_notification_queue_to_promotion_side_effects_registered",
+      "runner_notification_queue_to_activation_scheduled",
+      "runner_notification_queue_to_activation_entry",
+      "runner_notification_queue_to_same_thread_markers_complete",
+      "runner_notification_queue_to_database_ready",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        third.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          activation_origin: "promotion",
+          same_thread_markers: "not_applicable",
+        }),
+      );
+      expect(events[0]).not.toHaveProperty("history_generation_run_id");
+    }
+    for (const actionType of [
+      "runner_notification_queue_to_run_context_registered",
+      "runner_notification_queue_to_dispatch_timings_registered",
+    ]) {
+      expect(
+        sandboxOperationEventsForRunByAction(third.runId, actionType),
+      ).toHaveLength(0);
     }
     expect(
       sandboxOperationEventsForRunByAction(

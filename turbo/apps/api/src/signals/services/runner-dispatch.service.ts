@@ -23,9 +23,113 @@ export interface RunnerJobNotification {
   readonly createdAt: Date;
 }
 
+export type RunnerJobPreActivationTiming =
+  | {
+      readonly activationOrigin: "direct";
+      readonly commitReturnedAt: number;
+      readonly runContextRegisteredAt: number;
+      readonly dispatchTimingsRegisteredAt: number;
+    }
+  | {
+      readonly activationOrigin: "promotion";
+      readonly commitReturnedAt: number;
+      readonly promotionSideEffectsRegisteredAt: number;
+    };
+
+interface RunnerJobNotificationTiming {
+  readonly preActivation: RunnerJobPreActivationTiming;
+  readonly activationScheduledAt: number;
+  readonly activationEnteredAt: number;
+  readonly sameThreadMarkersCompletedAt: number;
+  readonly databaseReadyAt: number;
+  readonly sameThreadMarkers: "recorded" | "not_applicable";
+}
+
+interface RunnerNotificationAttributionMilestone {
+  readonly actionType: string;
+  readonly completedAt: number;
+}
+
+interface RunnerNotificationAttributionEvent {
+  readonly sandboxType: "runner";
+  readonly actionType: string;
+  readonly durationMs: number;
+  readonly success: true;
+  readonly runId: string;
+  readonly dimensions: Record<string, string>;
+}
+
+function runnerNotificationAttributionEvents(
+  notification: RunnerJobNotification,
+  timing: RunnerJobNotificationTiming,
+  dimensions: Record<string, string>,
+): readonly RunnerNotificationAttributionEvent[] {
+  const preActivationMilestones: readonly RunnerNotificationAttributionMilestone[] =
+    timing.preActivation.activationOrigin === "direct"
+      ? [
+          {
+            actionType: "runner_notification_queue_to_commit_return",
+            completedAt: timing.preActivation.commitReturnedAt,
+          },
+          {
+            actionType: "runner_notification_queue_to_run_context_registered",
+            completedAt: timing.preActivation.runContextRegisteredAt,
+          },
+          {
+            actionType:
+              "runner_notification_queue_to_dispatch_timings_registered",
+            completedAt: timing.preActivation.dispatchTimingsRegisteredAt,
+          },
+        ]
+      : [
+          {
+            actionType: "runner_notification_queue_to_commit_return",
+            completedAt: timing.preActivation.commitReturnedAt,
+          },
+          {
+            actionType:
+              "runner_notification_queue_to_promotion_side_effects_registered",
+            completedAt: timing.preActivation.promotionSideEffectsRegisteredAt,
+          },
+        ];
+  const milestones: readonly RunnerNotificationAttributionMilestone[] = [
+    ...preActivationMilestones,
+    {
+      actionType: "runner_notification_queue_to_activation_scheduled",
+      completedAt: timing.activationScheduledAt,
+    },
+    {
+      actionType: "runner_notification_queue_to_activation_entry",
+      completedAt: timing.activationEnteredAt,
+    },
+    {
+      actionType: "runner_notification_queue_to_same_thread_markers_complete",
+      completedAt: timing.sameThreadMarkersCompletedAt,
+    },
+    {
+      actionType: "runner_notification_queue_to_database_ready",
+      completedAt: timing.databaseReadyAt,
+    },
+  ];
+  return milestones.map((milestone): RunnerNotificationAttributionEvent => {
+    return {
+      sandboxType: "runner",
+      actionType: milestone.actionType,
+      durationMs: Math.max(
+        0,
+        milestone.completedAt - notification.createdAt.getTime(),
+      ),
+      success: true,
+      runId: notification.runId,
+      dimensions,
+    };
+  });
+}
+
 export async function notifyRunnerJob(
   db: Pick<Db, "select">,
   args: RunnerJobNotification,
+  timing: RunnerJobNotificationTiming,
 ): Promise<boolean> {
   const notificationEnteredAt = now();
   const currentDate = new Date(notificationEnteredAt);
@@ -69,10 +173,15 @@ export async function notifyRunnerJob(
   });
   const publishFinishedAt = now();
 
-  const dimensions: Record<string, string> = {
+  const attributionDimensions: Record<string, string> = {
     runner_group: args.runnerGroup,
     profile: args.profile,
     notification_target: "broadcast",
+    activation_origin: timing.preActivation.activationOrigin,
+    same_thread_markers: timing.sameThreadMarkers,
+  };
+  const dimensions: Record<string, string> = {
+    ...attributionDimensions,
     reuse_key_kind: runnerReuseKeyTelemetryKind(args.reuseKey),
     ...runnerPreferenceTelemetryDimensions(runnerPreference),
   };
@@ -82,6 +191,7 @@ export async function notifyRunnerJob(
   // Queue-relative actions are cumulative boundaries. Preference lookup and
   // publish durations are nested children and must not be added to them.
   recordSandboxOperations([
+    ...runnerNotificationAttributionEvents(args, timing, attributionDimensions),
     {
       sandboxType: "runner",
       actionType: "runner_notification_queue_to_entry",
