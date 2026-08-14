@@ -28,7 +28,6 @@ mod user;
 mod wait;
 mod writer;
 
-#[cfg(any(debug_assertions, feature = "test-support"))]
 pub use connection::handle_connection_with_test_dns_readiness_program;
 pub use connection::{
     connect_unix, connect_vsock, handle_connection,

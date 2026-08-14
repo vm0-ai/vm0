@@ -656,7 +656,9 @@ pub fn handle_connection_with_test_process_containment_and_exec_drain_deadline(
 }
 
 /// Handles a host-side test connection with a test DNS readiness executable.
-#[cfg(any(debug_assertions, feature = "test-support"))]
+///
+/// This remains available without `test-support` so integration tests can
+/// compile against the normal production library configuration.
 #[doc(hidden)]
 pub fn handle_connection_with_test_dns_readiness_program(
     stream: UnixStream,

@@ -1,8 +1,6 @@
 use std::io;
 use std::os::fd::OwnedFd;
-use std::path::Path;
-#[cfg(any(test, debug_assertions, feature = "test-support"))]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, SyncSender, TrySendError};
@@ -37,7 +35,6 @@ const THREAD_STDERR: &str = "vsock-guest-dns-stderr";
 #[derive(Clone)]
 pub(crate) enum GuestDnsReadinessProgram {
     Production,
-    #[cfg(any(test, debug_assertions, feature = "test-support"))]
     Test(PathBuf),
 }
 
@@ -46,7 +43,6 @@ impl GuestDnsReadinessProgram {
         Self::Production
     }
 
-    #[cfg(any(test, debug_assertions, feature = "test-support"))]
     pub(crate) fn for_test(path: PathBuf) -> Self {
         Self::Test(path)
     }
@@ -54,7 +50,6 @@ impl GuestDnsReadinessProgram {
     fn path(&self) -> &Path {
         match self {
             Self::Production => Path::new(PRODUCTION_PROGRAM),
-            #[cfg(any(test, debug_assertions, feature = "test-support"))]
             Self::Test(path) => path,
         }
     }
