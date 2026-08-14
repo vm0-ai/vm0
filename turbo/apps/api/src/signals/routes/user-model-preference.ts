@@ -16,7 +16,7 @@ import { isCodexFastServiceTierSupported } from "../services/zero-model-selectio
 import {
   updateUserModelPreference$,
   userModelPreference,
-} from "../services/zero-user-data.service";
+} from "../services/user-data.service";
 
 const updateBody$ = bodyResultOf(userModelPreferenceContract.update);
 

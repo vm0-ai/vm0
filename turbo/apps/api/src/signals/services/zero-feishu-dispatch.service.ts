@@ -36,7 +36,7 @@ import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
   updateUserModelPreference$,
   userModelPreference,
-} from "./zero-user-data.service";
+} from "./user-data.service";
 
 const L = logger("ZeroFeishuDispatch");
 const FEISHU_THINKING_EMOJI = "Typing";
