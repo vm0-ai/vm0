@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.750.0](https://github.com/vm0-ai/vm0/compare/app-v0.749.1...app-v0.750.0) (2026-08-14)
+
+
+### Features
+
+* **platform:** add browser-native pptx renderer ([#26915](https://github.com/vm0-ai/vm0/issues/26915)) ([fabca5b](https://github.com/vm0-ai/vm0/commit/fabca5b24e8d10c455c2189ef6ac2182d8700a52))
+
+
+### Bug Fixes
+
+* **auth:** preserve okou brand through primary clerk handoff ([#27101](https://github.com/vm0-ai/vm0/issues/27101)) ([b1f8ea1](https://github.com/vm0-ai/vm0/commit/b1f8ea1a7b4c604f0773b91400d5c3e864b905db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.9
+    * @okouai/connectors bumped to 1.206.1
+    * @okouai/core bumped to 8.559.13
+
 ## [0.749.1](https://github.com/vm0-ai/vm0/compare/app-v0.749.0...app-v0.749.1) (2026-08-14)
 
 
