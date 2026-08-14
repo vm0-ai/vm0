@@ -24,7 +24,7 @@ import {
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
-import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { buildWorkflowScheduleAutomationBrief } from "./workflow-automation-brief.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:zero-workflow-automation-poller");

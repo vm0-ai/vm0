@@ -11,7 +11,7 @@ import {
   prepareVolumeServerSide$,
   type PreparedServerSideVolume,
 } from "./storage-volume-publication.service";
-import { SKILL_FILENAME } from "./zero-workflow-volume.service";
+import { SKILL_FILENAME } from "./workflow-volume.service";
 
 interface CustomConnectorSkillContentInput {
   readonly connectorId: string;
