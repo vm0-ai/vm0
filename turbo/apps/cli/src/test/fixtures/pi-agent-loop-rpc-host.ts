@@ -1,18 +1,18 @@
 import {
-  createPiNodeExecutionEnv,
   piSandboxAgentConfigFromEnv,
   runPiSandboxAgentLoop,
 } from "../../lib/pi-agent-loop";
 
-const databasePath = process.argv[2];
-if (!databasePath) {
-  throw new Error("The Pi RPC fixture requires a database path argument");
+const agentDir = process.argv[2];
+const sessionDir = process.argv[3];
+if (!agentDir || !sessionDir) {
+  throw new Error("The Pi RPC fixture requires agent and session directories");
 }
 
-const executionEnv = await createPiNodeExecutionEnv();
 const config = await piSandboxAgentConfigFromEnv();
 
 await runPiSandboxAgentLoop({
-  config: { ...config, databasePath },
-  executionEnv,
+  config,
+  agentDir,
+  sessionDir,
 });

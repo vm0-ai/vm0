@@ -1,31 +1,21 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
-import { createInterface, type Interface } from "node:readline";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
+import { createInterface, type Interface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import {
-  CANONICAL_PI_SESSION_DATABASE_PATH,
-  PI_SKILLS_ROOT,
-} from "@okouai/api-contracts/contracts/runners";
-import {
-  createNodeSqliteFactory,
-  SqliteSessionRepository,
-} from "@earendil-works/pi-session-backend-sqlite-node";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  createPiNodeExecutionEnv,
   piSandboxAgentConfigFromEnv,
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
 
 const RUN_ID = "00000000-0000-4000-8000-000000000123";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
-const SHA256_ZERO = `sha256:${"0".repeat(64)}`;
 const RPC_FIXTURE = fileURLToPath(
   new URL("../test/fixtures/pi-agent-loop-rpc-host.ts", import.meta.url),
 );
@@ -36,19 +26,7 @@ const CONFIG: PiSandboxAgentConfig = {
   launchPayload: {
     schemaVersion: 1,
     appendSystemPrompt: "exact immutable Pi append prompt",
-    launchConfig: {
-      schemaVersion: 1,
-      agentName: "Sandbox Test Agent",
-      skillSnapshot: {
-        schemaVersion: 1,
-        policyVersion: 1,
-        root: PI_SKILLS_ROOT,
-        digest: `sha256:${"0".repeat(64)}`,
-        entries: [],
-      },
-      agentInstructionsPath: null,
-      memory: null,
-    },
+    launchConfig: { schemaVersion: 2 },
   },
   model: {
     provider: "deepseek",
@@ -56,7 +34,6 @@ const CONFIG: PiSandboxAgentConfig = {
     model: "deepseek-v4-flash",
     apiKey: "test-api-key",
   },
-  databasePath: CANONICAL_PI_SESSION_DATABASE_PATH,
 };
 
 let launchPayloadDirectory = "";
@@ -157,6 +134,27 @@ function responsesTextSse(text: string, sequence: number): string {
     .join("");
 }
 
+function writeSseResponse(response: ServerResponse, body: string): void {
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  response.end(body);
+}
+
+async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`${label} timed out`));
+        }, 10_000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 class ProviderHarness {
   readonly requests: ProviderRequest[] = [];
   readonly #waiters: Array<Deferred<ProviderRequest>> = [];
@@ -240,42 +238,6 @@ class ProviderHarness {
   }
 }
 
-function writeSseResponse(response: ServerResponse, body: string): void {
-  response.writeHead(200, { "content-type": "text/event-stream" });
-  response.end(body);
-}
-
-async function installFailingEntryTrigger(databasePath: string): Promise<void> {
-  const database = await createNodeSqliteFactory().open(databasePath);
-  try {
-    database.exec(`
-      CREATE TRIGGER vm0_test_fail_pi_checkpoint
-      BEFORE INSERT ON entries
-      BEGIN
-        SELECT RAISE(FAIL, 'forced SQLite checkpoint failure');
-      END;
-    `);
-  } finally {
-    database.close();
-  }
-}
-
-async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  let timeout: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error(`${label} timed out`));
-        }, 10_000);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 class RpcHost {
   readonly records: Array<Record<string, unknown>> = [];
   readonly #child: ChildProcessWithoutNullStreams;
@@ -285,12 +247,13 @@ class RpcHost {
 
   constructor(args: {
     readonly cwd: string;
-    readonly databasePath: string;
+    readonly agentDir: string;
+    readonly sessionDir: string;
     readonly env: NodeJS.ProcessEnv;
   }) {
     this.#child = spawn(
       process.execPath,
-      ["--import", TSX_IMPORT, RPC_FIXTURE, args.databasePath],
+      ["--import", TSX_IMPORT, RPC_FIXTURE, args.agentDir, args.sessionDir],
       {
         cwd: args.cwd,
         env: args.env,
@@ -329,6 +292,14 @@ class RpcHost {
         return record;
       }
     }
+  }
+
+  async state(id: string): Promise<Record<string, unknown>> {
+    this.send({ id, type: "get_state" });
+    const response = await this.waitFor((record) => {
+      return record.type === "response" && record.id === id;
+    });
+    return response.data as Record<string, unknown>;
   }
 
   async close(): Promise<void> {
@@ -378,130 +349,116 @@ function piEnv(runIdEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   };
 }
 
+function toolNames(body: unknown): string[] {
+  const tools = (body as { tools?: unknown }).tools;
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+  return tools.flatMap((tool) => {
+    if (!tool || typeof tool !== "object") {
+      return [];
+    }
+    const candidate = tool as {
+      name?: unknown;
+      function?: { name?: unknown };
+    };
+    const name = candidate.name ?? candidate.function?.name;
+    return typeof name === "string" ? [name] : [];
+  });
+}
+
 describe("sandbox Pi agent loop", () => {
   it("resolves the Pi session, launch payload file, and model credential", async () => {
     await expect(
-      piSandboxAgentConfigFromEnv(
-        piEnv({
-          OKOU_RUN_ID: RUN_ID,
-        }),
-      ),
+      piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),
     ).resolves.toEqual(CONFIG);
   });
 
-  it("uses the canonical name when the run id is missing", async () => {
+  it("requires the run id", async () => {
     await expect(piSandboxAgentConfigFromEnv(piEnv({}))).rejects.toThrowError(
       "OKOU_RUN_ID is required for Pi execution",
     );
   });
 
-  it("requires the launch payload file instead of an inline launch config", async () => {
+  it("requires the private launch payload file", async () => {
     const env = piEnv({ OKOU_RUN_ID: RUN_ID });
     delete env.OKOU_PI_LAUNCH_PAYLOAD_FILE;
-
     await expect(piSandboxAgentConfigFromEnv(env)).rejects.toThrowError(
       "OKOU_PI_LAUNCH_PAYLOAD_FILE is required for Pi execution",
     );
   });
 
-  it("names the canonical variable without exposing invalid model config", async () => {
+  it("does not echo malformed model config", async () => {
     const invalidModelConfig = "credential-like-model-config{";
     const env = piEnv({ OKOU_RUN_ID: RUN_ID });
     env.OKOU_PI_MODEL_CONFIG = invalidModelConfig;
 
-    await expect(piSandboxAgentConfigFromEnv(env)).rejects.toThrowError(
-      "OKOU_PI_MODEL_CONFIG must contain valid JSON",
-    );
     try {
       await piSandboxAgentConfigFromEnv(env);
+      throw new Error("Expected malformed Pi model config to fail");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      expect(message).toContain("OKOU_PI_MODEL_CONFIG must contain valid JSON");
       expect(message).not.toContain(invalidModelConfig);
     }
   });
 
-  it("runs the official RPC host with mounted resources, steer, persistence, and EOF shutdown", async () => {
+  it("uses official discovery, tools, steer, compaction defaults, and JSONL resume", async () => {
     const root = await mkdtemp(join(tmpdir(), "vm0-pi-rpc-host-"));
-    const sessionDirectory = join(root, "sessions");
-    const databasePath = join(sessionDirectory, "sessions.sqlite");
-    const instructionsPath = join(root, "AGENTS.md");
-    const memoryDirectory = join(root, "memory");
-    const memoryPath = join(memoryDirectory, "MEMORY.md");
-    await mkdir(PI_SKILLS_ROOT, { recursive: true });
-    const skillDirectory = await mkdtemp(join(PI_SKILLS_ROOT, "rpc-host-"));
-    const skillName = basename(skillDirectory);
-    const skillFile = join(skillDirectory, "SKILL.md");
+    const agentDir = join(root, ".pi", "agent");
+    const sessionDir = join(agentDir, "sessions", "--test--");
+    const skillName = "rpc-integration";
+    const skillDirectory = join(agentDir, "skills", skillName);
     const provider = await ProviderHarness.start();
     let host: RpcHost | undefined;
+    let resumedHost: RpcHost | undefined;
 
     try {
-      await mkdir(sessionDirectory, { recursive: true });
-      await mkdir(memoryDirectory, { recursive: true });
+      await mkdir(skillDirectory, { recursive: true });
       await writeFile(
-        skillFile,
-        `---\nname: ${skillName}\ndescription: Mounted RPC integration Skill.\n---\nRead the mounted RPC skill body before answering.\n`,
+        join(agentDir, "AGENTS.md"),
+        "Mounted official Pi agent instructions.",
       );
-      await writeFile(instructionsPath, "Mounted RPC agent instructions.");
-      await writeFile(memoryPath, "Mounted RPC memory prefix.\n");
+      await writeFile(
+        join(skillDirectory, "SKILL.md"),
+        `---\nname: ${skillName}\ndescription: Mounted official Pi integration skill.\n---\nRead the official Pi skill body before answering.\n`,
+      );
       const payloadFile = join(root, "launch-payload.json");
       await writeFile(
         payloadFile,
         JSON.stringify({
           schemaVersion: 1,
-          appendSystemPrompt: "Mounted RPC append prompt.",
-          launchConfig: {
-            schemaVersion: 1,
-            agentName: "RPC Integration Agent",
-            skillSnapshot: {
-              schemaVersion: 1,
-              policyVersion: 1,
-              root: PI_SKILLS_ROOT,
-              digest: SHA256_ZERO,
-              entries: [
-                {
-                  logicalDir: skillDirectory,
-                  skillFile,
-                  orgId: "org_rpc_test",
-                  userId: "user_rpc_test",
-                  storageName: skillName,
-                  storageId: "storage_rpc_test",
-                  versionId: "version_rpc_test",
-                },
-              ],
-            },
-            agentInstructionsPath: instructionsPath,
-            memory: { directory: memoryDirectory, primaryFile: memoryPath },
-          },
+          appendSystemPrompt: "Mounted official Pi append prompt.",
+          launchConfig: { schemaVersion: 2 },
         }),
         { mode: 0o600 },
       );
-      host = new RpcHost({
-        cwd: root,
-        databasePath,
-        env: {
-          ...process.env,
-          OKOU_RUN_ID: RUN_ID,
-          OKOU_PI_SESSION_ID: SESSION_ID,
-          OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
-          OKOU_PI_MODEL_CONFIG: JSON.stringify({
-            provider: "deepseek",
-            baseUrl: provider.baseUrl,
-            model: "deepseek-v4-flash",
-            apiKeyEnv: "OPENAI_API_KEY",
-          }),
-          OPENAI_API_KEY: "pi-rpc-test-key",
-        },
-      });
+      const env = {
+        ...process.env,
+        OKOU_RUN_ID: RUN_ID,
+        OKOU_PI_SESSION_ID: SESSION_ID,
+        OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
+        OKOU_PI_MODEL_CONFIG: JSON.stringify({
+          provider: "deepseek",
+          baseUrl: provider.baseUrl,
+          model: "deepseek-v4-flash",
+          apiKeyEnv: "OPENAI_API_KEY",
+        }),
+        OPENAI_API_KEY: "pi-rpc-test-key",
+      };
 
-      host.send({ id: "state", type: "get_state" });
-      const state = await host.waitFor((record) => {
-        return record.type === "response" && record.id === "state";
+      host = new RpcHost({ cwd: root, agentDir, sessionDir, env });
+      const initialState = await host.state("initial-state");
+      expect(initialState).toMatchObject({
+        sessionId: SESSION_ID,
+        autoCompactionEnabled: true,
+        messageCount: 0,
       });
-      expect(state).toMatchObject({
-        command: "get_state",
-        success: true,
-        data: { sessionId: SESSION_ID },
-      });
+      const sessionFile = initialState.sessionFile;
+      expect(typeof sessionFile).toBe("string");
+      expect(String(sessionFile).startsWith(`${sessionDir}/`)).toBe(true);
+      expect(String(sessionFile)).toContain(SESSION_ID);
+      expect(String(sessionFile).endsWith(".jsonl")).toBe(true);
 
       host.send({
         id: "initial",
@@ -515,161 +472,65 @@ describe("sandbox Pi agent loop", () => {
 
       host.send({
         id: "steer",
-        type: "prompt",
+        type: "steer",
         message: "steer this official turn",
-        streamingBehavior: "steer",
       });
       const steerResponse = await host.waitFor((record) => {
         return record.type === "response" && record.id === "steer";
       });
       expect(steerResponse).toMatchObject({
-        command: "prompt",
+        command: "steer",
         success: true,
       });
       initialRequest.respond("first official answer");
       const steeredRequest = await provider.nextRequest();
       steeredRequest.respond("steered official answer");
-
       await host.waitFor((record) => {
         return record.type === "agent_settled";
       });
-      expect(host.records).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "message_end",
-            message: expect.objectContaining({
-              role: "assistant",
-              content: expect.arrayContaining([
-                expect.objectContaining({
-                  type: "text",
-                  text: "steered official answer",
-                }),
-              ]),
-            }),
-          }),
-        ]),
-      );
       await host.close();
       host = undefined;
 
       const initialBody = JSON.stringify(initialRequest.body);
-      expect(initialBody).toContain("Mounted RPC append prompt.");
-      expect(initialBody).toContain("Mounted RPC agent instructions.");
-      expect(initialBody).toContain("Mounted RPC memory prefix.");
-      expect(initialBody).toContain("Mounted RPC integration Skill.");
+      expect(initialBody).toContain("Mounted official Pi append prompt.");
+      expect(initialBody).toContain("Mounted official Pi agent instructions.");
+      expect(initialBody).toContain("Mounted official Pi integration skill.");
       expect(initialBody).toContain(
-        "Read the mounted RPC skill body before answering.",
+        "Read the official Pi skill body before answering.",
+      );
+      expect(toolNames(initialRequest.body).sort()).toEqual(
+        ["bash", "edit", "read", "write"].sort(),
       );
       expect(JSON.stringify(steeredRequest.body)).toContain(
         "steer this official turn",
       );
 
-      const repositoryEnv = await createPiNodeExecutionEnv();
-      const repository = new SqliteSessionRepository({
-        env: repositoryEnv,
-        sqlite: createNodeSqliteFactory(),
-        databasePath,
+      const persisted = await readFile(String(sessionFile), "utf8");
+      const entries = persisted
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as Record<string, unknown>;
+        });
+      expect(entries[0]).toMatchObject({
+        type: "session",
+        id: SESSION_ID,
+        cwd: root,
       });
-      try {
-        const metadata = (await repository.list()).find((entry) => {
-          return entry.id === SESSION_ID;
-        });
-        expect(metadata).toBeDefined();
-        if (!metadata) {
-          throw new Error("Pi RPC integration session was not persisted");
-        }
-        const session = await repository.open(metadata);
-        const entries = await session.findEntriesOnBranch({
-          type: "message",
-          order: "oldestFirst",
-        });
-        const persisted = JSON.stringify(entries);
-        expect(persisted).toContain("complete the initial turn");
-        expect(persisted).toContain("steer this official turn");
-        expect(persisted).toContain("steered official answer");
-      } finally {
-        await repository.close();
-        await repositoryEnv.cleanup();
-      }
+      expect(persisted).toContain("complete the initial turn");
+      expect(persisted).toContain("steer this official turn");
+      expect(persisted).toContain("steered official answer");
+
+      resumedHost = new RpcHost({ cwd: root, agentDir, sessionDir, env });
+      const resumedState = await resumedHost.state("resumed-state");
+      expect(resumedState.sessionFile).toBe(sessionFile);
+      expect(Number(resumedState.messageCount)).toBeGreaterThan(0);
+      expect(resumedState.autoCompactionEnabled).toBe(true);
+      await resumedHost.close();
+      resumedHost = undefined;
     } finally {
       await host?.terminate();
-      await provider.close();
-      await rm(root, { recursive: true, force: true });
-      await rm(skillDirectory, { recursive: true, force: true });
-    }
-  }, 20_000);
-
-  it("reports a real SQLite checkpoint failure before the buffered message event", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-rpc-checkpoint-"));
-    const sessionDirectory = join(root, "sessions");
-    const databasePath = join(sessionDirectory, "sessions.sqlite");
-    const provider = await ProviderHarness.start();
-    let host: RpcHost | undefined;
-
-    try {
-      await mkdir(sessionDirectory, { recursive: true });
-      const env = piEnv({ OKOU_RUN_ID: RUN_ID });
-      env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
-        provider: "deepseek",
-        baseUrl: provider.baseUrl,
-        model: "deepseek-v4-flash",
-        apiKeyEnv: "OPENAI_API_KEY",
-      });
-      host = new RpcHost({ cwd: root, databasePath, env });
-
-      host.send({ id: "state", type: "get_state" });
-      await host.waitFor((record) => {
-        return record.type === "response" && record.id === "state";
-      });
-      await installFailingEntryTrigger(databasePath);
-
-      host.send({
-        id: "checkpoint-failure",
-        type: "prompt",
-        message: "force the native SQLite checkpoint failure",
-      });
-      await host.waitFor((record) => {
-        return record.type === "response" && record.id === "checkpoint-failure";
-      });
-      const checkpointError = await host.waitFor((record) => {
-        return (
-          record.type === "extension_error" && record.event === "message_end"
-        );
-      });
-      expect(String(checkpointError.error)).toContain(
-        "forced SQLite checkpoint failure",
-      );
-      const bufferedMessage = await host.waitFor((record) => {
-        return record.type === "message_end";
-      });
-      expect(bufferedMessage).toMatchObject({
-        message: { role: "user" },
-      });
-
-      const request = await provider.nextRequest();
-      request.respond("uncheckpointed provider answer");
-      await host.waitFor((record) => {
-        return record.type === "agent_settled";
-      });
-      const checkpointErrorIndex = host.records.indexOf(checkpointError);
-      const bufferedMessageIndex = host.records.indexOf(bufferedMessage);
-      expect(checkpointErrorIndex).toBeGreaterThanOrEqual(0);
-      expect(bufferedMessageIndex).toBeGreaterThan(checkpointErrorIndex);
-
-      await host.close();
-      host = undefined;
-
-      const database = await createNodeSqliteFactory().open(databasePath);
-      try {
-        const row = database
-          .prepare("SELECT COUNT(*) AS count FROM entries")
-          .get<{ count: number }>();
-        expect(row?.count).toBe(0);
-      } finally {
-        database.close();
-      }
-    } finally {
-      await host?.terminate();
+      await resumedHost?.terminate();
       await provider.close();
       await rm(root, { recursive: true, force: true });
     }

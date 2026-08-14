@@ -138,7 +138,6 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_insert_run_with_concurrency"
   | "api_dispatch_build_runner_job_payload"
   | "api_dispatch_prepare_pi_launch_resources"
-  | "api_dispatch_prepare_pi_launch_agent_name"
   | "api_dispatch_prepare_pi_launch_resume_session"
   | "api_dispatch_persist_atomic_launch"
   | "api_dispatch_admission_lock_wait"

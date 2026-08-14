@@ -46,7 +46,7 @@ pub enum FinalSessionHistoryFramework {
     ClaudeCode,
     /// Codex session history.
     Codex,
-    /// Pi native SQLite session history.
+    /// Pi official JSONL session history.
     Pi,
 }
 
