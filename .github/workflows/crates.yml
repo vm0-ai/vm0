@@ -96,7 +96,7 @@ jobs:
           BASE_REF=$(.github/scripts/changed-base-ref.sh)
           echo "${{ github.event_name }} mode: comparing against base $BASE_REF"
           # Check if the workflow file or ansible playbooks changed
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/|^ansible/"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision|report-memory-peak)/|^\.github/scripts/|^ansible/"; then
             echo "ci-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "ci-changed=false" >> "$GITHUB_OUTPUT"
@@ -401,7 +401,7 @@ jobs:
       - name: Report peak memory
         if: always()
         continue-on-error: true
-        run: bash .github/scripts/report-cgroup-memory-peak.sh
+        uses: ./.github/actions/report-memory-peak
 
   coverage:
     runs-on: ubuntu-latest-8-cores
@@ -463,7 +463,7 @@ jobs:
       - name: Report peak memory
         if: always()
         continue-on-error: true
-        run: bash .github/scripts/report-cgroup-memory-peak.sh
+        uses: ./.github/actions/report-memory-peak
 
   api-contracts-rust-bindings:
     runs-on: ubuntu-latest
@@ -511,7 +511,7 @@ jobs:
       - name: Report peak memory
         if: always()
         continue-on-error: true
-        run: bash .github/scripts/report-cgroup-memory-peak.sh
+        uses: ./.github/actions/report-memory-peak
 
   mitm-addon-test:
     runs-on: ubuntu-latest
@@ -628,7 +628,7 @@ jobs:
       - name: Report peak memory
         if: always()
         continue-on-error: true
-        run: bash .github/scripts/report-cgroup-memory-peak.sh
+        uses: ./.github/actions/report-memory-peak
 
   runner-build:
     runs-on: ubuntu-latest

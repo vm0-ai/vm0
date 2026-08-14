@@ -225,6 +225,7 @@ jobs:
         run: |
           shopt -s nullglob
           script_files=(
+            .github/actions/report-memory-peak/*.sh
             .github/scripts/*.sh
             .github/scripts/tests/*.sh
           )
@@ -246,7 +247,7 @@ jobs:
             .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
-            .github/scripts/report-cgroup-memory-peak.sh \
+            .github/actions/report-memory-peak/report.sh \
             .github/scripts/resolve-desktop-version-change.sh \
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \

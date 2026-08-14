@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPORTER="${SCRIPT_DIR}/report-cgroup-memory-peak.sh"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPORTER="${REPO_ROOT}/.github/actions/report-memory-peak/report.sh"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 

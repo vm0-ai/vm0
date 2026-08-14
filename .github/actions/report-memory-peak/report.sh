@@ -3,7 +3,7 @@ set -euo pipefail
 
 cgroup_root=${VM0_CGROUP_ROOT:-/sys/fs/cgroup}
 proc_cgroup=${VM0_PROC_CGROUP:-/proc/self/cgroup}
-job_label=${VM0_MEMORY_REPORT_LABEL:-${GITHUB_JOB:-Rust CI}}
+job_label=${VM0_MEMORY_REPORT_LABEL:-${GITHUB_JOB:-CI}}
 
 peak_bytes=""
 peak_source=""
@@ -59,7 +59,7 @@ append_summary() {
   [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
 
   if ! {
-    printf '### Rust CI peak memory\n\n'
+    printf '### CI peak memory\n\n'
     printf -- '- Job: \140%s\140\n' "$job_label"
     if [ -n "$peak_bytes" ]; then
       printf -- '- Peak memory: **%s MiB** (\140%s bytes\140)\n' "$peak_mib" "$peak_bytes"
