@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.82](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.81...vsock-guest-v0.19.82) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** disable workload memory.high reclaim ([#27126](https://github.com/vm0-ai/vm0/issues/27126)) ([24743ab](https://github.com/vm0-ai/vm0/commit/24743ab1a9901f769ee07a40cffea63c2a516e37))
+
 ## [0.19.81](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.80...vsock-guest-v0.19.81) (2026-08-14)
 
 ## [0.19.80](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.79...vsock-guest-v0.19.80) (2026-08-13)

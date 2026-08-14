@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.447.7](https://github.com/vm0-ai/vm0/compare/api-v1.447.6...api-v1.447.7) (2026-08-14)
+
+
+### Refactoring
+
+* **attribution:** neutralize acquisition attribution api naming ([#27137](https://github.com/vm0-ai/vm0/issues/27137)) ([3fb152c](https://github.com/vm0-ai/vm0/commit/3fb152c18d8434a59d819cb4abaa008781eb7a7d))
+* **mcp:** neutralize connector discovery api naming ([#27114](https://github.com/vm0-ai/vm0/issues/27114)) ([add4476](https://github.com/vm0-ai/vm0/commit/add4476b509ce0794dc1bfa988be176de0461663))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.7
+    * @okouai/core bumped to 8.559.11
+    * @okouai/db bumped to 1.198.19
+    * @okouai/pi-agent-runtime bumped to 1.4.25
+
 ## [1.447.6](https://github.com/vm0-ai/vm0/compare/api-v1.447.5...api-v1.447.6) (2026-08-14)
 
 
