@@ -3,7 +3,6 @@ import {
   type AgentEvent,
   type AgentMessage,
   type ExecutionEnv,
-  type StreamFn,
 } from "@earendil-works/pi-agent-core";
 import { streamSimple as streamSimpleCodex } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
@@ -14,7 +13,14 @@ import { moonshotaiProvider } from "@earendil-works/pi-ai/providers/moonshotai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { vercelAIGatewayProvider } from "@earendil-works/pi-ai/providers/vercel-ai-gateway";
-import type { Api, Message, Model } from "@earendil-works/pi-ai";
+import type {
+  Api,
+  AssistantMessageEventStream,
+  Context,
+  Message,
+  Model,
+  SimpleStreamOptions,
+} from "@earendil-works/pi-ai";
 
 import {
   createPiExecutionTools,
@@ -142,7 +148,11 @@ function codexJwtShape(accountId: string): string {
   return `${header}.${payload}.vm0-placeholder`;
 }
 
-const piAgentStream: StreamFn = (model, context, options) => {
+export const piAgentStream = (
+  model: Model<Api>,
+  context: Context,
+  options?: SimpleStreamOptions,
+): AssistantMessageEventStream => {
   if (model.api === "openai-codex-responses") {
     const apiKey = options?.apiKey;
     const jwtApiKey =

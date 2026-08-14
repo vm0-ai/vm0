@@ -380,7 +380,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
 fn framework_supports_active_input(framework: env::Framework) -> bool {
     matches!(
         framework,
-        env::Framework::ClaudeCode | env::Framework::Codex
+        env::Framework::ClaudeCode | env::Framework::Codex | env::Framework::Pi
     )
 }
 
@@ -1187,10 +1187,10 @@ mod tests {
     }
 
     #[test]
-    fn framework_supports_active_input_for_claude_and_codex() {
+    fn framework_supports_active_input_for_all_cli_frameworks() {
         assert!(framework_supports_active_input(env::Framework::ClaudeCode));
         assert!(framework_supports_active_input(env::Framework::Codex));
-        assert!(!framework_supports_active_input(env::Framework::Pi));
+        assert!(framework_supports_active_input(env::Framework::Pi));
     }
 
     struct TestEnvGuard;
