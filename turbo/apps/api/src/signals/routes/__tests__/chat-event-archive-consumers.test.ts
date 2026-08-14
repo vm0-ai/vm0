@@ -7,7 +7,7 @@ import { testChatEventRetentionContract } from "@okouai/api-contracts/contracts/
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import { createStore } from "ccstate";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -19,6 +19,10 @@ import {
   seedRetentionOutputEvent$,
   seedRetentionRun$,
 } from "../../../test-fixtures/chat-event-retention";
+import {
+  holdChatEventReadsFixture,
+  queueChatEventPhysicalDeletionFixture,
+} from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { sharedThreadRoutes } from "../shared-threads";
 import { testChatEventRetentionRoutes } from "../test-chat-event-retention";
@@ -345,6 +349,67 @@ describe("archived chat event consumers", () => {
       [400],
     );
     expect(excluded.body.error.code).toBe("NO_SHAREABLE_MESSAGES");
+  }, 60_000);
+
+  it("shares one hot-table snapshot when physical deletion queues behind its read", async () => {
+    const fixture = await createArchiveFixture("sharing-race");
+    const hotText = `share-hot-race-${randomUUID()}`;
+    const hotEventId = await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: fixture.threadId, content: hotText },
+      context.signal,
+    );
+
+    mockOptionalEnv("OPENROUTER_API_KEY", "hot-sharing-race-key");
+    chatCallbacks.mockOpenRouterCompletions(() => {
+      return "Hot selection";
+    });
+    const heldReads = await holdChatEventReadsFixture({
+      signal: context.signal,
+    });
+    const createRequest = sharedThreadClient().create({
+      params: { threadId: fixture.threadId },
+      headers: authenticate(fixture.actor),
+      body: { eventIds: [hotEventId] },
+    });
+    let deletionDone: Promise<void> = Promise.resolve();
+    onTestFinished(async () => {
+      heldReads.release();
+      await Promise.allSettled([heldReads.done, deletionDone, createRequest]);
+    });
+
+    await expect.poll(heldReads.blockedWaiterCount).toBe(1);
+    const deletion = await queueChatEventPhysicalDeletionFixture({
+      eventId: hotEventId,
+      signal: context.signal,
+    });
+    deletionDone = deletion.done;
+    await expect.poll(heldReads.blockedWaiterCount).toBe(2);
+
+    heldReads.release();
+    const [created] = await Promise.all([
+      accept(createRequest, [201]),
+      heldReads.done,
+      deletionDone,
+    ]);
+    await expect(
+      store.set(readRetentionEvents$, [hotEventId], context.signal),
+    ).resolves.toHaveLength(0);
+    const shared = await accept(
+      sharedThreadClient().get({ params: { id: created.body.id } }),
+      [200],
+    );
+    expect(shared.body).toStrictEqual({
+      id: created.body.id,
+      title: "Hot selection",
+      messages: [
+        {
+          messageIndex: 0,
+          role: "assistant",
+          content: hotText,
+        },
+      ],
+    });
   }, 60_000);
 
   it("keeps automatic session rotation best effort when old hot events are missing", async () => {

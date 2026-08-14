@@ -5,9 +5,10 @@ import { artifacts } from "@okouai/db/schema/artifact";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { sharedThreads } from "@okouai/db/schema/shared-thread";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { command, type Computed } from "ccstate";
 
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import {
@@ -17,7 +18,6 @@ import {
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
-import { chatEventTypeIn } from "./chat-event-type.service";
 import { generateSharedThreadTitle } from "./zero-chat-title.service";
 import { projectUserMessageForPublicShare } from "./chat-user-message.service";
 import {
@@ -140,14 +140,26 @@ async function loadSharedThreadSourceRows(
   signal: AbortSignal,
 ): Promise<readonly SharedThreadSourceRow[]> {
   const hotSelectedRows = await database
-    .select({ id: chatEvents.id })
+    .select({
+      id: chatEvents.id,
+      eventType: chatEvents.eventType,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
+      runId: chatEvents.runId,
+      runGroupId: canonicalChatEventGoalId(),
+      isVisible: sql`COALESCE(
+        ${visibleChatEventCondition(database)},
+        false
+      )`.mapWith(pgBooleanDecoder),
+    })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
         inArray(chatEvents.id, [...selectedEventIds]),
       ),
-    );
+    )
+    .orderBy(asc(chatEvents.seqId));
   signal.throwIfAborted();
 
   if (hotSelectedRows.length !== selectedEventIds.length) {
@@ -163,26 +175,25 @@ async function loadSharedThreadSourceRows(
     return archivedSharedThreadRows(history, new Set(selectedEventIds));
   }
 
-  const rows = await database
-    .select({
-      eventType: chatEvents.eventType,
-      content: canonicalChatEventContent(),
-      userMessage: canonicalChatEventUserMessage(),
-      runId: chatEvents.runId,
-      runGroupId: canonicalChatEventGoalId(),
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, threadId),
-        inArray(chatEvents.id, [...selectedEventIds]),
-        chatEventTypeIn(["input.prompt", "input.automation", "output.message"]),
-        visibleChatEventCondition(database),
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId));
-  signal.throwIfAborted();
-  return rows;
+  return hotSelectedRows.flatMap((row) => {
+    if (
+      !row.isVisible ||
+      (row.eventType !== "input.prompt" &&
+        row.eventType !== "input.automation" &&
+        row.eventType !== "output.message")
+    ) {
+      return [];
+    }
+    return [
+      {
+        eventType: row.eventType,
+        content: row.content,
+        userMessage: row.userMessage,
+        runId: row.runId,
+        runGroupId: row.runGroupId,
+      },
+    ];
+  });
 }
 
 export const createSharedThread$ = command(
