@@ -3391,10 +3391,12 @@ export function UsagePackPricingDialogs({
   checkoutAllowed,
   currentTier,
   onClose,
+  onReplaceCancellationWithPro,
 }: {
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly onClose: () => void;
+  readonly onReplaceCancellationWithPro?: () => void;
 }) {
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
   const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
@@ -3459,6 +3461,14 @@ export function UsagePackPricingDialogs({
           catalog={catalog}
           onAction={(plan, action) => {
             if (action === "disabled") {
+              return;
+            }
+            if (
+              plan === "pro" &&
+              action === "downgrade" &&
+              onReplaceCancellationWithPro
+            ) {
+              onReplaceCancellationWithPro();
               return;
             }
             setMemberUsageSelections(
