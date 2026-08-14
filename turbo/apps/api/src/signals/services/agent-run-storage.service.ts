@@ -1,4 +1,7 @@
-import type { StoredStorageMountEntry } from "@okouai/api-contracts/contracts/runners";
+import {
+  PI_AGENT_DIR,
+  type StoredStorageMountEntry,
+} from "@okouai/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
 import { expandVariablesInString } from "@okouai/core/variable-expander";
 import {
@@ -122,7 +125,7 @@ interface PrepareAgentRunStorageManifestArgs {
   readonly additionalVolumeSources:
     | readonly StorageManifestSource[]
     | undefined;
-  readonly framework: SupportedFramework;
+  readonly framework: SupportedFramework | "pi";
   /** Canonical session persistence replaces matching request writeback artifacts. */
   readonly persistedStorageMounts?: readonly PersistedStorageMount[];
   readonly timing?: ApiDispatchTimingCollector;
@@ -965,8 +968,15 @@ class StorageManifestEntryPhaseTiming {
   }
 }
 
-function instructionsMountPath(framework: SupportedFramework): string {
+function instructionsMountPath(framework: SupportedFramework | "pi"): string {
+  if (framework === "pi") {
+    return PI_AGENT_DIR;
+  }
   return framework === "codex" ? "/home/user/.codex" : "/home/user/.claude";
+}
+
+function instructionsFilename(framework: SupportedFramework | "pi"): string {
+  return framework === "pi" ? "AGENTS.md" : getInstructionsFilename(framework);
 }
 
 function firstAgentEntry(
@@ -1020,7 +1030,7 @@ function resolveComposeVolumes(args: {
   readonly content: AgentComposeContent;
   readonly vars: Record<string, string> | undefined;
   readonly volumeVersionOverrides: Record<string, string> | undefined;
-  readonly framework: SupportedFramework;
+  readonly framework: SupportedFramework | "pi";
 }): readonly ResolvedVolume[] {
   const entry = firstAgentEntry(args.content);
   if (!entry) {
@@ -1063,7 +1073,7 @@ function resolveComposeVolumes(args: {
       mountPath: instructionsMountPath(args.framework),
       vasStorageName: storageName,
       vasVersion: "latest",
-      instructionsTargetFilename: getInstructionsFilename(args.framework),
+      instructionsTargetFilename: instructionsFilename(args.framework),
     });
   }
 

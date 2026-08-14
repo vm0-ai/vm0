@@ -712,13 +712,8 @@ fn prepare_session_history(
     };
     match source {
         history::SessionHistoryCheckpointSource::Decoded(history_bytes) => {
-            prepare_raw_session_history(
-                mode,
-                history_read_start,
-                history_bytes,
-                framework != env::Framework::Pi,
-            )
-            .map(PreparedSessionHistoryOutcome::Upload)
+            prepare_raw_session_history(mode, history_read_start, history_bytes, true)
+                .map(PreparedSessionHistoryOutcome::Upload)
         }
         history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
             prepare_reused_zstd_session_history(
@@ -1303,34 +1298,35 @@ mod tests {
     }
 
     #[test]
-    fn pi_recovery_checkpoint_preserves_raw_sqlite_bytes() {
+    fn pi_recovery_checkpoint_validates_official_jsonl() {
         let dir = tempfile::tempdir().unwrap();
-        let database_path = dir.path().join("sessions.sqlite");
-        let database = b"SQLite format 3\0\xff\x00native-pi-session";
-        std::fs::write(&database_path, database).unwrap();
+        let session_path = dir.path().join("session.jsonl");
+        let history = br#"{"type":"session","id":"00000000-0000-4000-8000-000000000001"}
+{"type":"message","id":"message-1","parentId":null}"#;
+        std::fs::write(&session_path, history).unwrap();
 
         let prepared = match prepare_session_history(
             CheckpointMode::Recovery,
             env::Framework::Pi,
             CheckpointSessionHistoryLimits::Production,
             "00000000-0000-4000-8000-000000000001",
-            database_path.to_str().unwrap(),
+            session_path.to_str().unwrap(),
             std::time::Instant::now(),
         )
-        .expect("Pi SQLite bytes should not be validated as JSONL")
+        .expect("Pi JSONL should pass recovery validation")
         {
             PreparedSessionHistoryOutcome::Upload(prepared) => prepared,
             PreparedSessionHistoryOutcome::DiscardedOversized => {
-                panic!("Pi SQLite history must not use native history pruning")
+                panic!("Pi JSONL history must not use native history pruning")
             }
         };
 
-        assert_eq!(prepared.raw_size, database.len() as u64);
-        assert_eq!(prepared.hash, hex::encode(Sha256::digest(database)));
+        assert_eq!(prepared.raw_size, history.len() as u64);
+        assert_eq!(prepared.hash, hex::encode(Sha256::digest(history)));
         match prepared.upload_source {
-            PreparedSessionHistoryUploadSource::Raw(bytes) => assert_eq!(bytes, database),
+            PreparedSessionHistoryUploadSource::Raw(bytes) => assert_eq!(bytes, history),
             PreparedSessionHistoryUploadSource::ReusedCodexZstd(_) => {
-                panic!("Pi history must remain raw SQLite bytes")
+                panic!("Pi history must remain raw JSONL bytes")
             }
         }
     }

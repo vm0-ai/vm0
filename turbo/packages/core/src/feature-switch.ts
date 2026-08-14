@@ -303,7 +303,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Run web chat jobs with the sandbox-owned Pi agent loop and native SQLite session persistence.",
+      "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

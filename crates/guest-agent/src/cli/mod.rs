@@ -479,8 +479,6 @@ fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a s
     user_env.get(key).map(String::as_str).unwrap_or("")
 }
 
-const PI_NODE_OPTIONS: &str = "--disable-warning=ExperimentalWarning";
-
 fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<String>, AgentError> {
     for (name, value) in [
         ("Pi session id", runtime.pi_session_id.as_ref()),
@@ -535,7 +533,7 @@ fn write_pi_launch_payload_file(runtime: &CliRuntimeConfig<'_>) -> Result<(), Ag
     Ok(())
 }
 
-fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] {
+fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 4] {
     [
         (
             guest_contracts::env::RUN_ID_ENV.to_string(),
@@ -553,10 +551,6 @@ fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] 
             guest_contracts::env::PI_MODEL_CONFIG_ENV.to_string(),
             runtime.pi_model_config.to_string(),
         ),
-        // Pi 0.84.1 uses node:sqlite, which emits an experimental warning on
-        // the sandbox's Node 22 runtime. Keep stderr available for actionable
-        // diagnostics while suppressing only that warning category.
-        ("NODE_OPTIONS".to_string(), PI_NODE_OPTIONS.to_string()),
     ]
 }
 
@@ -1936,7 +1930,7 @@ fn with_carried_failure_reason(
 mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
-        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, PI_NODE_OPTIONS, child_env,
+        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
         codex_runtime_config, command, exec_boundary, pi_child_env_values, record_cli_exit,
         select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
@@ -2063,33 +2057,16 @@ mod tests {
     }
 
     #[test]
-    fn pi_child_env_uses_canonical_run_id_and_controls_node_warnings() {
-        let user_env = HashMap::from([(
-            "NODE_OPTIONS".to_string(),
-            "--require /tmp/user-script.js".to_string(),
-        )]);
+    fn pi_child_env_uses_canonical_run_id() {
+        let user_env = HashMap::new();
         let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
         runtime.pi_session_id = Cow::Borrowed("22222222-2222-4222-8222-222222222222");
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1}"#);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
         runtime.pi_model_config = Cow::Borrowed(r#"{"provider":"deepseek"}"#);
         let mut values = child_env::values_for_runtime(&runtime);
         values.extend(pi_child_env_values(&runtime));
         let values = child_env::normalize_values(values);
 
-        assert_eq!(
-            values
-                .iter()
-                .find(|(key, _)| key == "NODE_OPTIONS")
-                .map(|(_, value)| value.as_str()),
-            Some(PI_NODE_OPTIONS)
-        );
-        assert_eq!(
-            values
-                .iter()
-                .filter(|(key, _)| key == "NODE_OPTIONS")
-                .count(),
-            1
-        );
         let canonical_run_id = values
             .iter()
             .find(|(key, _)| key == guest_contracts::env::RUN_ID_ENV)
@@ -2123,7 +2100,7 @@ mod tests {
     fn pi_child_env_omits_launch_config_value() {
         let user_env = HashMap::new();
         let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1}"#);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
         let mut values = child_env::values_for_runtime(&runtime);
         values.extend(pi_child_env_values(&runtime));
         let values = child_env::normalize_values(values);
@@ -2151,7 +2128,7 @@ mod tests {
             "Your name is Okou.",
             &user_env,
         );
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1,"agentName":"Okou"}"#);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
         runtime.pi_launch_payload_file = Cow::Borrowed(paths.pi_launch_payload_file());
 
         write_pi_launch_payload_file(&runtime).unwrap();
@@ -2161,7 +2138,7 @@ mod tests {
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         assert_eq!(payload["schemaVersion"], 1);
         assert_eq!(payload["appendSystemPrompt"], "Your name is Okou.");
-        assert_eq!(payload["launchConfig"]["agentName"], "Okou");
+        assert_eq!(payload["launchConfig"]["schemaVersion"], 2);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -2176,7 +2153,7 @@ mod tests {
         let paths = crate::paths::GuestPaths::from_runtime_dir(dir.path());
         let user_env = HashMap::new();
         let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":1,"agentName":"Okou"}"#);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
         runtime.pi_launch_payload_file = Cow::Borrowed(paths.pi_launch_payload_file());
 
         write_pi_launch_payload_file(&runtime).unwrap();

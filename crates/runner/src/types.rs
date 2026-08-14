@@ -144,7 +144,7 @@ pub struct ExecutionContext {
     /// Non-secret model metadata for the Pi Sandbox runtime.
     #[serde(default)]
     pub pi_model_config: Option<PiModelConfig>,
-    /// Chat Thread id used as Pi's native SQLite session id.
+    /// Chat Thread id used as Pi's official JSONL session id.
     #[serde(default)]
     pub pi_session_id: Option<String>,
 }
@@ -1829,8 +1829,7 @@ mod tests {
             "cliAgentType": "pi",
             "piSessionId": "22222222-2222-4222-8222-222222222222",
             "piLaunchConfig": {
-                "schemaVersion": 1,
-                "agentName": "Okou"
+                "schemaVersion": 2
             },
             "piModelConfig": {
                 "provider": "deepseek",
@@ -1851,8 +1850,8 @@ mod tests {
             context
                 .pi_launch_config
                 .as_ref()
-                .and_then(|config| config["agentName"].as_str()),
-            Some("Okou")
+                .and_then(|config| config["schemaVersion"].as_u64()),
+            Some(2)
         );
         assert_eq!(
             context

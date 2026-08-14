@@ -3700,8 +3700,7 @@ mod tests {
                 "cliAgentType": "pi",
                 "connectorRuntimeTargets": [],
                 "piLaunchConfig": {
-                    "schemaVersion": 1,
-                    "agentName": "Okou"
+                    "schemaVersion": 2
                 },
                 "piSessionId": "00000000-0000-0000-0000-000000000001",
                 "piModelConfig": {

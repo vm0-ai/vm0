@@ -170,7 +170,7 @@ pub(super) async fn restore_session(
     }
 }
 
-/// Restore Pi's native SQLite session database at its versioned canonical path.
+/// Restore Pi's official JSONL session into its canonical workspace directory.
 async fn restore_pi_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -178,9 +178,9 @@ async fn restore_pi_session(
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let session_history = session.history_bytes();
     let session_id = session.cli_agent_session_id();
-    let session_path =
-        api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH;
-    write_session_history_file(sandbox, session_path, session_history).await?;
+    let session_dir = api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR;
+    let session_path = format!("{session_dir}/restored-{session_id}.jsonl");
+    write_session_history_file(sandbox, &session_path, session_history).await?;
     let diagnostics = SessionRestoreDiagnostics {
         framework: "pi",
         session_id: session_id.to_string(),

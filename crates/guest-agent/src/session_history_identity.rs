@@ -195,9 +195,9 @@ fn verify_final_session_history_identity_constraints(
             }
         }
         FinalSessionHistoryFramework::Pi => {
-            if identity.history_marker_payload
-                != api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
-            {
+            if !crate::session_metadata::is_pi_session_history_path(
+                &identity.history_marker_payload,
+            ) {
                 return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
             }
         }
@@ -437,17 +437,19 @@ mod tests {
     }
 
     #[test]
-    fn builds_pi_sqlite_history_identity() {
+    fn builds_pi_jsonl_history_identity() {
         let session_id = "00000000-0000-4000-8000-000000000001";
-        let history = b"SQLite format 3\0\xff\x00native-pi-session";
-        let history_path =
-            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH;
+        let history = br#"{"type":"session","id":"00000000-0000-4000-8000-000000000001"}"#;
+        let history_path = format!(
+            "{}/restored-{session_id}.jsonl",
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+        );
         let identity = build_final_session_history_identity(
             env::Framework::Pi,
             session_id,
             &hex::encode(Sha256::digest(history)),
             history.len() as u64,
-            history_path,
+            &history_path,
         )
         .unwrap();
 

@@ -156,17 +156,7 @@ describe("Pi sandbox execution contract", () => {
   const piStoredContext = {
     piSessionId: "22222222-2222-4222-8222-222222222222",
     piLaunchConfig: {
-      schemaVersion: 1 as const,
-      agentName: "Okou",
-      skillSnapshot: {
-        schemaVersion: 1 as const,
-        policyVersion: 1 as const,
-        root: "/home/user/.pi/agent/skills" as const,
-        digest: `sha256:${"0".repeat(64)}`,
-        entries: [],
-      },
-      agentInstructionsPath: null,
-      memory: null,
+      schemaVersion: 2 as const,
     },
     piModelConfig: {
       provider: "deepseek",

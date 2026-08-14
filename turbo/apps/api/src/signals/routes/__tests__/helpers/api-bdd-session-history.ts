@@ -24,7 +24,7 @@ function knownSessionHistoryBodies(runId: string): readonly string[] {
     `bdd snapshot history ${runId}`,
     `bdd zero detail ${runId}`,
     `morning brief history ${runId}`,
-    `pi sqlite checkpoint ${runId}`,
+    `pi jsonl checkpoint ${runId}`,
     `slack dispatch probe ${runId}`,
     `workflow automation history ${runId}`,
     `workflow queue api history ${runId}`,

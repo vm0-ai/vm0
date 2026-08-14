@@ -83,11 +83,20 @@ impl PiRpcProjection {
                     "Pi RPC reported an unexpected session id".to_string(),
                 ));
             }
+            let session_file = response
+                .pointer("/data/sessionFile")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    AgentError::Execution(
+                        "Pi RPC get_state response omitted the session file".to_string(),
+                    )
+                })?;
             self.emitted_session_init = true;
             Some(json!({
                 "type": "system",
                 "subtype": "init",
                 "session_id": session_id,
+                "session_file": session_file,
             }))
         } else {
             None
@@ -253,31 +262,47 @@ async fn request_prompt(
     responses: &mut mpsc::UnboundedReceiver<Value>,
     id: &str,
     message: &str,
-    streaming_behavior: Option<&str>,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    let command = streaming_behavior.map_or_else(
-        || {
-            json!({
-                "id": id,
-                "type": "prompt",
-                "message": message,
-            })
-        },
-        |streaming_behavior| {
-            json!({
-                "id": id,
-                "type": "prompt",
-                "message": message,
-                "streamingBehavior": streaming_behavior,
-            })
-        },
-    );
-    write_command(stdin, &command).await?;
+    write_command(
+        stdin,
+        &json!({
+            "id": id,
+            "type": "prompt",
+            "message": message,
+        }),
+    )
+    .await?;
     tokio::select! {
         biased;
         () = cancellation.cancelled() => Ok(false),
         response = wait_for_response(responses, id, "prompt", false) => {
+            response?;
+            Ok(true)
+        }
+    }
+}
+
+async fn request_steer(
+    stdin: &mut tokio::process::ChildStdin,
+    responses: &mut mpsc::UnboundedReceiver<Value>,
+    id: &str,
+    message: &str,
+    cancellation: &CancellationToken,
+) -> Result<bool, AgentError> {
+    write_command(
+        stdin,
+        &json!({
+            "id": id,
+            "type": "steer",
+            "message": message,
+        }),
+    )
+    .await?;
+    tokio::select! {
+        biased;
+        () = cancellation.cancelled() => Ok(false),
+        response = wait_for_response(responses, id, "steer", false) => {
             response?;
             Ok(true)
         }
@@ -292,16 +317,7 @@ async fn deliver_active_input(
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
     active_input.mark_writing(&frame.uuid);
-    match request_prompt(
-        stdin,
-        responses,
-        &frame.uuid,
-        &frame.text,
-        Some("steer"),
-        cancellation,
-    )
-    .await
-    {
+    match request_steer(stdin, responses, &frame.uuid, &frame.text, cancellation).await {
         Ok(true) => {
             active_input.mark_backend_accepted_without_replay(frame)?;
             Ok(true)
@@ -345,7 +361,6 @@ pub(super) async fn write_commands(
         &mut responses,
         &prompt_id,
         prompt,
-        None,
         &cancellation,
     )
     .await?
@@ -447,13 +462,20 @@ mod tests {
                     "type": "response",
                     "command": "get_state",
                     "success": true,
-                    "data": { "sessionId": "session" },
+                    "data": {
+                        "sessionId": "session",
+                        "sessionFile": "/home/user/.pi/agent/sessions/--home-user-workspace--/session.jsonl",
+                    },
                 }),
                 &responses,
             )
             .expect("state should project")
             .expect("state should emit init");
         assert_eq!(event["session_id"], "session");
+        assert_eq!(
+            event["session_file"],
+            "/home/user/.pi/agent/sessions/--home-user-workspace--/session.jsonl"
+        );
         assert_eq!(
             rx.try_recv().expect("response should be routed")["id"],
             "state"
@@ -469,16 +491,12 @@ mod tests {
                 json!({
                     "type": "extension_error",
                     "event": "message_end",
-                    "error": "forced SQLite checkpoint failure",
+                    "error": "forced extension failure",
                 }),
                 &responses,
             )
             .expect_err("checkpoint failure should terminate projection");
-        assert!(
-            error
-                .to_string()
-                .contains("forced SQLite checkpoint failure")
-        );
+        assert!(error.to_string().contains("forced extension failure"));
 
         assert!(
             projection
@@ -508,7 +526,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn writer_uses_official_prompt_ack_for_active_input_receipts() {
+    async fn writer_uses_official_steer_ack_for_active_input_receipts() {
         let mut child = tokio::process::Command::new("cat")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -547,7 +565,10 @@ mod tests {
                 "type": "response",
                 "command": "get_state",
                 "success": true,
-                "data": { "sessionId": "session" },
+                "data": {
+                    "sessionId": "session",
+                    "sessionFile": "/home/user/.pi/agent/sessions/--home-user-workspace--/session.jsonl",
+                },
             }))
             .expect("state response should route");
 
@@ -566,14 +587,14 @@ mod tests {
 
         let steer = next_command(&mut stdout).await;
         assert_eq!(steer["id"], delivery_id);
-        assert_eq!(steer["type"], "prompt");
+        assert_eq!(steer["type"], "steer");
         assert_eq!(steer["message"], "steer this turn");
-        assert_eq!(steer["streamingBehavior"], "steer");
+        assert!(steer.get("streamingBehavior").is_none());
         response_tx
             .send(json!({
                 "id": delivery_id,
                 "type": "response",
-                "command": "prompt",
+                "command": "steer",
                 "success": true,
             }))
             .expect("steer response should route");

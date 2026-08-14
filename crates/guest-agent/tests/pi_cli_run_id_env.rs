@@ -32,7 +32,7 @@ case "$state_command" in
   *'"type":"get_state"'*) ;;
   *) exit 21 ;;
 esac
-printf '%s\n' '{"id":"00000000-0000-4000-8000-000000000123:pi:get-state","type":"response","command":"get_state","success":true,"data":{"sessionId":"11111111-1111-4111-8111-111111111111"}}'
+printf '%s\n' '{"id":"00000000-0000-4000-8000-000000000123:pi:get-state","type":"response","command":"get_state","success":true,"data":{"sessionId":"11111111-1111-4111-8111-111111111111","sessionFile":"/home/user/.pi/agent/sessions/--home-user-workspace--/2026-08-14T00-00-00_11111111-1111-4111-8111-111111111111.jsonl"}}'
 IFS= read -r prompt_command
 case "$prompt_command" in
   *'"type":"prompt"'*) ;;
@@ -78,7 +78,7 @@ fi
             &guest_contracts::env::RunPayload {
                 prompt: "verify canonical Pi run identity".to_string(),
                 append_system_prompt: "Your name is Okou.".to_string(),
-                pi_launch_config: r#"{"schemaVersion":1,"agentName":"Okou"}"#.to_string(),
+                pi_launch_config: r#"{"schemaVersion":2}"#.to_string(),
                 pi_model_config: "{}".to_string(),
                 pi_session_id: "11111111-1111-4111-8111-111111111111".to_string(),
                 ..guest_contracts::env::RunPayload::default()
@@ -167,7 +167,7 @@ fi
     let payload: serde_json::Value = serde_json::from_slice(&std::fs::read(&payload_path)?)?;
     assert_eq!(payload["schemaVersion"], 1);
     assert_eq!(payload["appendSystemPrompt"], "Your name is Okou.");
-    assert_eq!(payload["launchConfig"]["agentName"], "Okou");
+    assert_eq!(payload["launchConfig"]["schemaVersion"], 2);
     assert_eq!(
         std::fs::metadata(&payload_path)?.permissions().mode() & 0o777,
         0o600

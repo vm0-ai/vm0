@@ -28,7 +28,7 @@ import {
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANONICAL_GUEST_HOME_DIR,
-  CANONICAL_PI_SESSION_DATABASE_PATH,
+  CANONICAL_PI_SESSION_DIR,
   CANONICAL_WORKING_DIR,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
@@ -61,9 +61,9 @@ const canonicalWorkingDirDoc = [
   "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
 ] as const;
 
-const canonicalPiSessionDatabasePathDoc = [
-  "Versioned path to Pi's native SQLite session database inside runner guests.",
-  "Guest checkpointing and runner restore treat this file as Pi's complete session history.",
+const canonicalPiSessionDirDoc = [
+  "Official Pi JSONL session directory for the canonical guest workspace.",
+  "Guest checkpointing validates Pi session files under this directory and runner restore materializes resume history here.",
 ] as const;
 
 const storageManifestMaxFilesDoc = [
@@ -309,9 +309,9 @@ const expectedBindings = [
   },
   {
     rustModulePath: ["runners", "paths"],
-    rustConstName: "CANONICAL_PI_SESSION_DATABASE_PATH",
-    value: rustString(CANONICAL_PI_SESSION_DATABASE_PATH),
-    rustDoc: canonicalPiSessionDatabasePathDoc,
+    rustConstName: "CANONICAL_PI_SESSION_DIR",
+    value: rustString(CANONICAL_PI_SESSION_DIR),
+    rustDoc: canonicalPiSessionDirDoc,
   },
   {
     rustModulePath: ["storages"],

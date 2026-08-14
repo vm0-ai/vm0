@@ -1,15 +1,14 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  CANONICAL_PI_SESSION_DATABASE_PATH,
+  CANONICAL_PI_SESSION_DIR,
+  PI_AGENT_DIR,
   piLaunchPayloadSchema,
   piModelConfigSchema,
   type PiLaunchPayload,
 } from "@okouai/api-contracts/contracts/runners";
 import {
-  createPiNodeExecutionEnv as createNodeExecutionEnv,
   runPiOfficialRpcMode,
-  type ExecutionEnv,
   type PiAgentModelConfig,
 } from "@okouai/pi-agent-runtime/node";
 
@@ -23,7 +22,6 @@ export interface PiSandboxAgentConfig {
   readonly sessionId: string;
   readonly launchPayload: PiLaunchPayload;
   readonly model: PiAgentModelConfig;
-  readonly databasePath: string;
 }
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
@@ -71,28 +69,22 @@ export async function piSandboxAgentConfigFromEnv(
     sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
     launchPayload: await readLaunchPayload(env),
     model: { ...model, apiKey },
-    databasePath: CANONICAL_PI_SESSION_DATABASE_PATH,
   };
 }
 
 /** Run the official sandbox-owned Pi RPC host until guest-agent closes stdin. */
 export async function runPiSandboxAgentLoop(args: {
   readonly config: PiSandboxAgentConfig;
-  readonly executionEnv: ExecutionEnv;
+  readonly cwd?: string;
+  readonly agentDir?: string;
+  readonly sessionDir?: string;
 }): Promise<never> {
   return await runPiOfficialRpcMode({
     sessionId: args.config.sessionId,
-    databasePath: args.config.databasePath,
+    sessionDir: args.sessionDir ?? CANONICAL_PI_SESSION_DIR,
+    cwd: args.cwd ?? process.cwd(),
+    agentDir: args.agentDir ?? PI_AGENT_DIR,
     model: args.config.model,
-    launchConfig: args.config.launchPayload.launchConfig,
     appendSystemPrompt: args.config.launchPayload.appendSystemPrompt,
-    executionEnv: args.executionEnv,
-  });
-}
-
-export async function createPiNodeExecutionEnv(): Promise<ExecutionEnv> {
-  return createNodeExecutionEnv({
-    cwd: process.cwd(),
-    shellEnv: process.env,
   });
 }

@@ -26,8 +26,8 @@ const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
 ).replace(/\//g, "-");
 export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
 export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.codex/memories`;
-export const PI_SESSION_VERSION = 1;
-export const CANONICAL_PI_SESSION_DATABASE_PATH = `${CANONICAL_GUEST_HOME_DIR}/.pi/agent/sessions/v${PI_SESSION_VERSION}/sessions.sqlite`;
+export const PI_AGENT_DIR = `${CANONICAL_GUEST_HOME_DIR}/.pi/agent`;
+export const CANONICAL_PI_SESSION_DIR = `${PI_AGENT_DIR}/sessions/--home-user-workspace--`;
 // Shared resume history size contract. Rust consumers import the generated
 // binding from `api_contracts::generated::constants`.
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
@@ -702,35 +702,8 @@ export const secretConnectorMetadataMapSchema = z.record(
   secretConnectorMetadataSchema,
 );
 
-export const PI_MEMORY_ROOT = "/home/user/.pi/agent/memory";
-export const PI_SKILLS_ROOT = "/home/user/.pi/agent/skills";
-
-export const runSkillSnapshotEntrySchema = z
-  .object({
-    logicalDir: z.string().min(1),
-    skillFile: z.string().min(1),
-    orgId: z.string().min(1),
-    userId: z.string().min(1),
-    storageName: z.string().min(1),
-    storageId: z.string().min(1),
-    versionId: z.string().min(1),
-  })
-  .readonly();
-
-/**
- * Immutable, exact-version Skill view resolved once for a Pi run. The ordered
- * entries are a typed projection of the run's persisted Storage mounts; the
- * digest deliberately excludes expiring archive URLs.
- */
-export const runSkillSnapshotSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    policyVersion: z.literal(1),
-    root: z.literal(PI_SKILLS_ROOT),
-    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-    entries: z.array(runSkillSnapshotEntrySchema).readonly(),
-  })
-  .readonly();
+export const PI_MEMORY_ROOT = `${PI_AGENT_DIR}/memory`;
+export const PI_SKILLS_ROOT = `${PI_AGENT_DIR}/skills`;
 
 /**
  * Non-secret Pi model metadata forwarded to the Sandbox. The API key remains
@@ -758,26 +731,12 @@ export const piModelConfigSchema = z
   .readonly();
 
 /**
- * Non-secret inputs used by the Pi runtime after the runner has mounted the
- * exact Storage versions for this run inside the Sandbox.
- *
- * This carries filesystem references only. The run's prompt and
- * `appendSystemPrompt` stay on the ordinary run fields shared with Claude Code
- * and Codex, so no prompt text is duplicated into a Pi-specific wire field.
+ * Version marker for the sandbox Pi launch contract. Runtime resources are
+ * discovered from Pi's canonical filesystem locations by the official loader.
  */
 export const piLaunchConfigSchema = z
   .object({
-    schemaVersion: z.literal(1),
-    agentName: z.string().min(1),
-    skillSnapshot: runSkillSnapshotSchema,
-    agentInstructionsPath: z.string().min(1).nullable(),
-    memory: z
-      .object({
-        directory: z.string().min(1),
-        primaryFile: z.string().min(1),
-      })
-      .readonly()
-      .nullable(),
+    schemaVersion: z.literal(2),
   })
   .readonly();
 
@@ -1255,8 +1214,6 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
-export type RunSkillSnapshot = z.infer<typeof runSkillSnapshotSchema>;
-export type RunSkillSnapshotEntry = z.infer<typeof runSkillSnapshotEntrySchema>;
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
 export type PiLaunchPayload = z.infer<typeof piLaunchPayloadSchema>;

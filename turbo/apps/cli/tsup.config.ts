@@ -1,30 +1,13 @@
 import { defineConfig } from "tsup";
-import { copyFileSync, mkdirSync, readFileSync } from "fs";
+import { readFileSync } from "fs";
 import { execSync } from "child_process";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
+import { resolve } from "path";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
   version: string;
 };
 
 const isWatchMode = process.argv.includes("--watch");
-const piSqliteBackendEntryPath = fileURLToPath(
-  import.meta.resolve("@earendil-works/pi-session-backend-sqlite-node"),
-);
-const piSqliteMigrationSourcePath = resolve(
-  dirname(piSqliteBackendEntryPath),
-  "sqlite/migrations/001_initial.sql",
-);
-
-function copyPiSqliteMigration(): void {
-  const migrationDirectory = resolve("dist/migrations");
-  mkdirSync(migrationDirectory, { recursive: true });
-  copyFileSync(
-    piSqliteMigrationSourcePath,
-    resolve(migrationDirectory, "001_initial.sql"),
-  );
-}
 
 export default defineConfig({
   entry: ["src/okou.ts"],
@@ -58,7 +41,6 @@ export default defineConfig({
     ),
   },
   onSuccess: async () => {
-    copyPiSqliteMigration();
     if (!isWatchMode) {
       return;
     }
