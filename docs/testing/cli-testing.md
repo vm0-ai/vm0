@@ -20,12 +20,11 @@ Place command tests in a neighboring `__tests__/` directory. A command file and
 its test should have matching names:
 
 ```text
-src/commands/zero/
-├── logs/
-│   ├── index.ts
-│   └── __tests__/
-│       └── view.test.ts
-└── whoami.ts
+src/commands/
+└── search/
+    ├── index.ts
+    └── __tests__/
+        └── index.test.ts
 ```
 
 ## Authentication and routing
@@ -54,13 +53,13 @@ the resulting guidance. Keep focused protocol coverage that sets only
 
 ```typescript
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { zeroSearchCommand } from "../index";
+import { searchCommand } from "../index";
 
 describe("okou search --source agent-session", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
@@ -68,7 +67,7 @@ describe("okou search --source agent-session", () => {
   });
 
   it("prints both local agent session locations", async () => {
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "okou",
       "find the failed tool call",

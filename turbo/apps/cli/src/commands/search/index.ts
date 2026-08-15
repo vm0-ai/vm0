@@ -1,16 +1,16 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { searchZeroChat } from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { searchZeroChat } from "../../lib/api/domains/zero-chat";
 import type {
   ChatSearchMessage,
   ChatSearchResponse,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { parseTime } from "../../../lib/utils/time-parser";
-import { formatIsoTimestamp } from "../../../lib/utils/time-format";
-import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
-import { parseSearchQuery } from "../../../lib/utils/search-query";
-import { isUuid } from "../../../lib/utils/uuid";
+import { parseTime } from "../../lib/utils/time-parser";
+import { formatIsoTimestamp } from "../../lib/utils/time-format";
+import { parseBoundedLogCount } from "../../lib/utils/log-pagination";
+import { parseSearchQuery } from "../../lib/utils/search-query";
+import { isUuid } from "../../lib/utils/uuid";
 
 const SUPPORTED_SOURCES = ["agent-session", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
@@ -191,7 +191,7 @@ async function runAgentSessionSource(
   console.log(buildAgentSessionGuidance(query));
 }
 
-export const zeroSearchCommand = new Command()
+export const searchCommand = new Command()
   .name("search")
   .description("Search chat or locate sources for direct analysis")
   .argument("<query>", "Search query")

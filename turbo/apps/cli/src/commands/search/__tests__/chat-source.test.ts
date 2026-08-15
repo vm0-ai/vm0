@@ -1,15 +1,15 @@
 /**
  * Tests for `okou search --source chat`.
  *
- * Entry point: zeroSearchCommand.parseAsync()
+ * Entry point: searchCommand.parseAsync()
  * Mock (external): Web API via MSW
  * Real (internal): flag parsing, time parsing, renderers, error mapping
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
-import { zeroSearchCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { searchCommand } from "../index";
 
 function makeMessage(params: {
   content: string;
@@ -45,7 +45,7 @@ describe("okou search --source chat", () => {
     vi.stubEnv("OKOU_TOKEN", "test-token");
     // Commander retains collector state across parseAsync calls on the
     // same command instance. Reset before each case.
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
@@ -55,7 +55,7 @@ describe("okou search --source chat", () => {
 
   it("rejects whitespace-only queries", async () => {
     await expect(
-      zeroSearchCommand.parseAsync(["node", "cli", "   ", "--source", "chat"]),
+      searchCommand.parseAsync(["node", "cli", "   ", "--source", "chat"]),
     ).rejects.toThrow("process.exit called");
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
@@ -82,13 +82,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
-      "node",
-      "cli",
-      "OOM",
-      "--source",
-      "chat",
-    ]);
+    await searchCommand.parseAsync(["node", "cli", "OOM", "--source", "chat"]);
 
     const logs = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logs).toContain("thread-abc");
@@ -117,13 +111,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
-      "node",
-      "cli",
-      "OOM",
-      "--source",
-      "chat",
-    ]);
+    await searchCommand.parseAsync(["node", "cli", "OOM", "--source", "chat"]);
 
     const logs = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logs).toContain("invalid-date");
@@ -137,7 +125,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "cli",
       "nothing",
@@ -159,7 +147,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "cli",
       "error",
@@ -183,7 +171,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "cli",
       "error",
@@ -205,7 +193,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "cli",
       "error",
@@ -231,7 +219,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "cli",
       "hello",
@@ -246,7 +234,7 @@ describe("okou search --source chat", () => {
 
   it("rejects non-UUID --agent values", async () => {
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -261,10 +249,10 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("Invalid agent ID");
 
     mockConsoleError.mockClear();
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
 
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -281,7 +269,7 @@ describe("okou search --source chat", () => {
 
   it("rejects --limit outside the 1..50 range", async () => {
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -298,7 +286,7 @@ describe("okou search --source chat", () => {
 
   it("rejects --before-context outside the 0..10 range", async () => {
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -315,7 +303,7 @@ describe("okou search --source chat", () => {
 
   it("rejects partial numeric context and limit values", async () => {
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -330,10 +318,10 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("--context must be between 0 and 10");
 
     mockConsoleError.mockClear();
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
 
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -348,10 +336,10 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("--limit must be between 1 and 50");
 
     mockConsoleError.mockClear();
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
 
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -366,10 +354,10 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("--context must be between 0 and 10");
 
     mockConsoleError.mockClear();
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
 
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -402,7 +390,7 @@ describe("okou search --source chat", () => {
       }),
     );
 
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "cli",
       "match",
@@ -425,13 +413,7 @@ describe("okou search --source chat", () => {
     );
 
     await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
-        "error",
-        "--source",
-        "chat",
-      ]),
+      searchCommand.parseAsync(["node", "cli", "error", "--source", "chat"]),
     ).rejects.toThrow();
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");

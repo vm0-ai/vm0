@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { zeroSearchCommand } from "../index";
+import { searchCommand } from "../index";
 
 describe("okou search --source agent-session", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
@@ -14,7 +14,7 @@ describe("okou search --source agent-session", () => {
   });
 
   it("prints both agent session locations and the analysis query", async () => {
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "okou",
       "find the failed tool call",
