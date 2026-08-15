@@ -5,8 +5,11 @@ import {
   type InboundMessage,
   type TokenRequest,
 } from "ably";
+import { logger } from "../signals/log.ts";
 import { createChildAbortController } from "../signals/utils.ts";
 import type { SharedDatabaseConnectionStatus } from "./protocol.ts";
+
+const L = logger("SharedDatabaseWorker");
 
 interface SharedDatabaseRealtimeOptions {
   readonly userId: string;
@@ -43,19 +46,26 @@ export function createSharedDatabaseRealtimeSession(
 ): SharedDatabaseRealtimeSession {
   const controller = createChildAbortController(signal);
   const pendingAuthTasks = new Set<Promise<void>>();
+  L.debug("realtime.create", { userId: options.userId });
   const authCallback: NonNullable<AuthOptions["authCallback"]> = (
     _params,
     callback,
   ) => {
     const authenticate = async (): Promise<void> => {
+      L.debug("realtime.auth.start", { userId: options.userId });
       const [result] = await Promise.allSettled([options.getTokenRequest()]);
       if (controller.signal.aborted) {
         return;
       }
       if (result?.status === "fulfilled") {
+        L.debug("realtime.auth.finish", { userId: options.userId });
         callback(null, result.value);
         return;
       }
+      L.debug("realtime.auth.error", {
+        error: result?.reason,
+        userId: options.userId,
+      });
       callback(
         result?.reason instanceof Error
           ? result.reason.message
@@ -78,6 +88,13 @@ export function createSharedDatabaseRealtimeSession(
   const handleConnectionStateChange = (
     stateChange: ConnectionStateChange,
   ): void => {
+    L.debug("realtime.connection", {
+      current: stateChange.current,
+      previous: stateChange.previous,
+      reason: stateChange.reason,
+      retryIn: stateChange.retryIn,
+      userId: options.userId,
+    });
     const status = connectionStatus(stateChange.current);
     options.onStatus(
       status !== "connected"
@@ -93,10 +110,15 @@ export function createSharedDatabaseRealtimeSession(
 
   const handleMessage = (message: InboundMessage): void => {
     if (!controller.signal.aborted) {
+      L.debug("realtime.message", {
+        name: message.name,
+        userId: options.userId,
+      });
       options.onMessage(message);
     }
   };
   const subscribe = async (): Promise<boolean> => {
+    L.debug("realtime.channel.start", { userId: options.userId });
     const [result] = await Promise.allSettled([
       channel.subscribe(handleMessage),
     ]);
@@ -105,6 +127,10 @@ export function createSharedDatabaseRealtimeSession(
     }
     const attached = result?.status === "fulfilled";
     channelState = attached ? "attached" : "failed";
+    L.debug(attached ? "realtime.channel.finish" : "realtime.channel.error", {
+      error: result?.status === "rejected" ? result.reason : undefined,
+      userId: options.userId,
+    });
     options.onStatus(attached ? "connected" : "disconnected");
     return attached;
   };
@@ -118,6 +144,7 @@ export function createSharedDatabaseRealtimeSession(
         return;
       }
       closed = true;
+      L.debug("realtime.close", { userId: options.userId });
       controller.abort(
         new DOMException("Shared database realtime closed", "AbortError"),
       );

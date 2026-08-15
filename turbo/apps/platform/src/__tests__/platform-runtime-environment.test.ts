@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isOkouProductionHostname } from "../lib/platform-host.ts";
+import { sentryLogContext } from "../lib/sentry-config.ts";
+import { initSharedDatabaseWorkerSentry } from "../shared-database/worker-sentry.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
+import { logger, resetLoggerForTest } from "../signals/log.ts";
 
 const PREVIEW_PLAUSIBLE_URL = "https://preview.plausible.example/js/script.js";
 const PRODUCTION_PLAUSIBLE_URL =
@@ -12,8 +15,17 @@ const PRODUCTION_CLERK_KEY = "pk_live_production";
 const PREVIEW_VAPID_KEY = "preview_vapid_key";
 const PRODUCTION_VAPID_KEY = "production_vapid_key";
 
-const { posthogInit, sentryInit } = vi.hoisted(() => {
+const {
+  browserSentryCaptureException,
+  browserSentryCaptureMessage,
+  browserSentryInit,
+  posthogInit,
+  sentryInit,
+} = vi.hoisted(() => {
   return {
+    browserSentryCaptureException: vi.fn(),
+    browserSentryCaptureMessage: vi.fn(),
+    browserSentryInit: vi.fn(),
     posthogInit: vi.fn(),
     sentryInit: vi.fn(),
   };
@@ -34,6 +46,14 @@ vi.mock("@sentry/react", () => {
   return {
     init: sentryInit,
     setUser: vi.fn(),
+  };
+});
+
+vi.mock("@sentry/browser", () => {
+  return {
+    captureException: browserSentryCaptureException,
+    captureMessage: browserSentryCaptureMessage,
+    init: browserSentryInit,
   };
 });
 
@@ -238,6 +258,66 @@ describe("portable platform runtime environment", () => {
         environment: "preview",
       }),
     );
+  });
+
+  it("initializes shared worker Sentry and only reports error logs", () => {
+    setBrowserUrl("https://app.okou.ai/agents");
+    initSharedDatabaseWorkerSentry();
+    context.signal.addEventListener("abort", resetLoggerForTest, {
+      once: true,
+    });
+
+    expect(browserSentryInit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dsn: SENTRY_DSN,
+        enabled: true,
+        initialScope: {
+          tags: {
+            app: "platform",
+            runtime: "shared-worker",
+            worker: "shared-database",
+          },
+        },
+      }),
+    );
+
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const workerLogger = logger("SharedDatabaseWorkerTest");
+    const warning = new Error("recoverable worker warning");
+    workerLogger.warn(warning);
+
+    expect(consoleWarn).toHaveBeenCalledWith(
+      "[W][SharedDatabaseWorkerTest]",
+      warning,
+    );
+    expect(browserSentryCaptureException).not.toHaveBeenCalled();
+    expect(browserSentryCaptureMessage).not.toHaveBeenCalled();
+
+    const error = new Error("terminal worker error");
+    const sentryContext = sentryLogContext({
+      contexts: { shared_database: { org_id: "org_test" } },
+      tags: { "shared_database.operation": "sync.error" },
+      user: { id: "user_test" },
+    });
+    workerLogger.error(error, sentryContext);
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "[E][SharedDatabaseWorkerTest]",
+      error,
+      sentryContext,
+    );
+    expect(browserSentryCaptureException).toHaveBeenCalledWith(error, {
+      contexts: { shared_database: { org_id: "org_test" } },
+      tags: {
+        logger: "SharedDatabaseWorkerTest",
+        "shared_database.operation": "sync.error",
+      },
+      user: { id: "user_test" },
+    });
+    expect(browserSentryCaptureMessage).not.toHaveBeenCalled();
   });
 
   it("keeps preview WWW on omby.ai while routing API through vm6.ai", async () => {

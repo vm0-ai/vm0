@@ -1,20 +1,9 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { isAbortError, onRejection } from "../signals/utils.ts";
+import { ApiError } from "./api-error.ts";
 import { isNetworkRequestError } from "./network-error.ts";
 import { i18n } from "../i18n/index.ts";
-
-class ApiError extends Error {
-  readonly code: string;
-  readonly status: number;
-
-  constructor(message: string, code: string, status: number) {
-    super(message);
-    this.name = "ApiError";
-    this.code = code;
-    this.status = status;
-  }
-}
 
 function extractError(
   body: unknown,
@@ -106,4 +95,4 @@ async function accept<
   throw new ApiError(message, code, result.status);
 }
 
-export { ApiError, accept };
+export { accept };
