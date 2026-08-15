@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use nix::fcntl::Flock;
 use tracing::{info, warn};
 
+use crate::byte_size::human_bytes;
 use crate::error::RunnerResult;
 use crate::paths::HomePaths;
 
@@ -14,7 +15,7 @@ use super::filesystem::{
     next_entry_warn_or_stop, read_dir_or_missing,
 };
 use super::lock_file::{LockProbe, probe_lock};
-use super::report::{GcReport, human_bytes};
+use super::report::GcReport;
 
 /// Per-host storage archive cache size cap. Enforced by `gc_storage_cache`
 /// as an LRU by `<version>/` dir mtime.

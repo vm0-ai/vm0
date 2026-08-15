@@ -2,6 +2,7 @@
 mod active_input;
 mod axiom_layer;
 mod bounded_command;
+mod byte_size;
 mod ca;
 mod child_cleanup;
 mod cmd;
