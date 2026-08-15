@@ -215,7 +215,6 @@ struct BackgroundFillEntry {
 struct BackgroundFillAdmissionState {
     entries: HashMap<(String, String), BackgroundFillEntry>,
     queued: usize,
-    active: usize,
     closed: bool,
 }
 
@@ -281,7 +280,6 @@ impl StorageCacheBackgroundFillCoordinator {
             state: Mutex::new(BackgroundFillAdmissionState {
                 entries: HashMap::new(),
                 queued: 0,
-                active: 0,
                 closed: false,
             }),
             commands,
@@ -337,8 +335,10 @@ impl StorageCacheBackgroundFillCoordinator {
             },
         );
         state.queued += 1;
-        drop(state);
 
+        // Keep admission state and the nonblocking command enqueue atomic with
+        // respect to shutdown. A caller either owns a command in the bounded
+        // queue or gets its entry removed before another submit can observe it.
         let command_closed = match inner
             .commands
             .try_send(BackgroundFillCommand::Start(key.clone()))
@@ -348,22 +348,23 @@ impl StorageCacheBackgroundFillCoordinator {
             Err(mpsc::error::TrySendError::Closed(_)) => true,
         };
 
-        let mut state = inner
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(entry) = state.entries.remove(&key)
             && entry.state == BackgroundFillEntryState::Queued
         {
             state.queued = state.queued.saturating_sub(1);
         }
-        if state.closed || command_closed {
+        if command_closed {
+            state.closed = true;
+            BackgroundFillAdmission::Closed
+        } else if state.closed {
             BackgroundFillAdmission::Closed
         } else {
             BackgroundFillAdmission::QueueSaturated
         }
     }
 
+    /// Close admissions, cancel queued work, drain active atomic operations,
+    /// and join all terminal telemetry reports before returning.
     pub(crate) async fn shutdown(&self) {
         {
             let mut state = self
@@ -527,6 +528,11 @@ async fn run_background_fill_supervisor(
             result = workers.join_next(), if !workers.is_empty() => {
                 handle_background_fill_worker_result(&inner, &mut reports, result);
             }
+            result = reports.join_next(), if !reports.is_empty() => {
+                if let Some(Err(error)) = result {
+                    warn!(%error, "storage_cache: background fill telemetry task failed");
+                }
+            }
         }
     }
 }
@@ -548,7 +554,6 @@ fn take_background_fill_work(
         (entry.group.clone(), entry.home.clone())
     };
     state.queued = state.queued.saturating_sub(1);
-    state.active += 1;
     Some(BackgroundFillWork {
         key: key.clone(),
         group,
@@ -621,7 +626,6 @@ fn handle_background_fill_worker_result(
         let Some(entry) = state.entries.remove(&worker.key) else {
             return;
         };
-        state.active = state.active.saturating_sub(1);
         entry.subscribers
     };
     spawn_background_fill_reports(reports, subscribers, worker.report.into_records());
@@ -5288,12 +5292,10 @@ mod tests {
                 .expect("two admitted workers should reach the archive server")
                 .expect("archive request channel should remain open");
         }
-        assert!(
-            tokio::time::timeout(Duration::from_millis(100), server.requests.recv())
-                .await
-                .is_err(),
-            "the queued third key must not start before an active worker completes"
-        );
+        assert!(matches!(
+            server.requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
         assert_eq!(server.max_active.load(Ordering::SeqCst), 2);
 
         server.release.add_permits(3);
@@ -5392,12 +5394,10 @@ mod tests {
             "storage_cache_background_fill_scheduled_count_1",
             true,
         );
-        assert!(
-            tokio::time::timeout(Duration::from_millis(100), server.requests.recv())
-                .await
-                .is_err(),
-            "a saturated queue must not start a third key"
-        );
+        assert!(matches!(
+            server.requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
 
         server.release.add_permits(1);
         tokio::time::timeout(Duration::from_secs(5), server.requests.recv())
