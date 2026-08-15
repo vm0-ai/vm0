@@ -4,8 +4,8 @@ import chalk from "chalk";
 import {
   callZeroBanking,
   type ZeroBankingResponse,
-} from "../../../lib/api/domains/zero-banking";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-banking";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface JsonOption {
   readonly json?: boolean;
@@ -132,7 +132,7 @@ const transactionsCommand = new Command()
     }),
   );
 
-export const zeroBankingCommand = new Command()
+export const bankingCommand = new Command()
   .name("banking")
   .description("Use managed Okou banking services")
   .addCommand(accountsCommand)
@@ -148,6 +148,6 @@ Examples:
 
 Notes:
   - Authenticates via OKOU_TOKEN (requires banking:read capability)
-  - Finicity credentials and app tokens stay on the vm0 API server
+  - Finicity credentials and app tokens stay on the Okou API server
   - Access is limited to accounts enabled for the current agent`,
   );

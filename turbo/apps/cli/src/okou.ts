@@ -353,7 +353,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "banking",
     description: "Use managed Okou banking services",
     load: async () => {
-      return (await import("./commands/zero/banking")).zeroBankingCommand;
+      return (await import("./commands/banking")).bankingCommand;
     },
   },
 ];

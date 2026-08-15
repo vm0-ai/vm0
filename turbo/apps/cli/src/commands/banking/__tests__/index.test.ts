@@ -5,10 +5,10 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
-import { zeroBankingCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { bankingCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-banking-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "banking-home-"));
 
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
@@ -33,7 +33,7 @@ describe("okou banking command", () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(async () => {
@@ -68,7 +68,7 @@ describe("okou banking command", () => {
       ),
     );
 
-    await zeroBankingCommand.parseAsync([
+    await bankingCommand.parseAsync([
       "node",
       "cli",
       "transactions",
@@ -123,7 +123,7 @@ describe("okou banking command", () => {
       }),
     );
 
-    await zeroBankingCommand.parseAsync(["node", "cli", "accounts"]);
+    await bankingCommand.parseAsync(["node", "cli", "accounts"]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Banking accounts loaded");
@@ -136,7 +136,7 @@ describe("okou banking command", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
 
     await expect(
-      zeroBankingCommand.parseAsync(["node", "cli", "accounts"]),
+      bankingCommand.parseAsync(["node", "cli", "accounts"]),
     ).rejects.toThrow("process.exit called");
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
