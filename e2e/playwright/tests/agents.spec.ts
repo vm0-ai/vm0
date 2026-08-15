@@ -247,6 +247,7 @@ test("reveal the default agent unread action from the whole row", async ({
     });
   });
   await page.reload();
+  await page.locator("#app-bootstrap-skeleton").waitFor({ state: "detached" });
 
   const defaultAgentRow = page.getByTestId("pinned-agent-card").filter({
     has: page.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
