@@ -31,11 +31,8 @@ pub(super) fn read_initial_user_frame(
     read_next_stream_json_user_frame(reader, StreamJsonFrameKind::First)
 }
 
-pub(super) fn invalid_active_input_count_message(count: &str) -> String {
-    format!(
-        "invalid @active-input-smoke follow-up count ({} bytes)",
-        count.len()
-    )
+pub(super) fn invalid_count_message(marker: &str, count: &str) -> String {
+    format!("invalid {marker} follow-up count ({} bytes)", count.len())
 }
 
 fn read_next_stream_json_user_frame(
@@ -111,6 +108,7 @@ pub(super) fn run_active_input_smoke_scenario(
     initial_frame: StreamJsonUserFrame,
     stdin: &mut impl BufRead,
     expected_follow_ups: usize,
+    ready_after_first_follow_up: bool,
 ) -> ExitCode {
     if output_format != "stream-json" {
         eprintln!("@active-input-smoke requires --output-format stream-json");
@@ -128,38 +126,44 @@ pub(super) fn run_active_input_smoke_scenario(
             &initial_frame.content,
         ));
     }
-    transcript.emit_value(result_event(&session_id, false, ACTIVE_INPUT_READY_RESULT));
-    let _ = std::io::stdout().flush();
-
     let mut follow_up_contents = Vec::new();
-    for index in 1..=expected_follow_ups {
-        let frame = match read_next_stream_json_user_frame(
-            stdin,
-            StreamJsonFrameKind::FollowUp { index },
-        ) {
-            Ok(Some(frame)) => frame,
-            Ok(None) => {
-                eprintln!(
-                    "active-input stdin closed after {} of {expected_follow_ups} follow-up user messages",
-                    follow_up_contents.len()
-                );
-                return ExitCode::from(1);
-            }
-            Err(message) => {
-                eprintln!("{message}");
-                return ExitCode::from(1);
-            }
-        };
+    let mut next_follow_up_index = 1;
+    if ready_after_first_follow_up {
+        let first_frame =
+            match read_follow_up_frame(stdin, 1, follow_up_contents.len(), expected_follow_ups) {
+                Ok(frame) => frame,
+                Err(exit_code) => return exit_code,
+            };
 
-        if replay_user_messages {
-            transcript.emit_value(replayed_user_event(
-                &session_id,
-                frame.uuid.as_deref(),
-                &frame.content,
-            ));
-            let _ = std::io::stdout().flush();
-        }
-        follow_up_contents.push(frame.content);
+        transcript.emit_value(result_event(&session_id, false, ACTIVE_INPUT_READY_RESULT));
+        let _ = std::io::stdout().flush();
+        emit_follow_up(
+            &mut transcript,
+            &session_id,
+            replay_user_messages,
+            first_frame,
+            &mut follow_up_contents,
+        );
+        next_follow_up_index = 2;
+    } else {
+        transcript.emit_value(result_event(&session_id, false, ACTIVE_INPUT_READY_RESULT));
+        let _ = std::io::stdout().flush();
+    }
+
+    for index in next_follow_up_index..=expected_follow_ups {
+        let frame =
+            match read_follow_up_frame(stdin, index, follow_up_contents.len(), expected_follow_ups)
+            {
+                Ok(frame) => frame,
+                Err(exit_code) => return exit_code,
+            };
+        emit_follow_up(
+            &mut transcript,
+            &session_id,
+            replay_user_messages,
+            frame,
+            &mut follow_up_contents,
+        );
     }
 
     transcript.emit_value(result_event(
@@ -170,4 +174,43 @@ pub(super) fn run_active_input_smoke_scenario(
     transcript.write_session_history(&session_id);
     let _ = std::io::stdout().flush();
     ExitCode::SUCCESS
+}
+
+fn read_follow_up_frame(
+    reader: &mut impl BufRead,
+    index: usize,
+    received_follow_ups: usize,
+    expected_follow_ups: usize,
+) -> Result<StreamJsonUserFrame, ExitCode> {
+    match read_next_stream_json_user_frame(reader, StreamJsonFrameKind::FollowUp { index }) {
+        Ok(Some(frame)) => Ok(frame),
+        Ok(None) => {
+            eprintln!(
+                "active-input stdin closed after {received_follow_ups} of {expected_follow_ups} follow-up user messages"
+            );
+            Err(ExitCode::from(1))
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
+fn emit_follow_up(
+    transcript: &mut JsonlTranscript,
+    session_id: &str,
+    replay_user_messages: bool,
+    frame: StreamJsonUserFrame,
+    follow_up_contents: &mut Vec<String>,
+) {
+    if replay_user_messages {
+        transcript.emit_value(replayed_user_event(
+            session_id,
+            frame.uuid.as_deref(),
+            &frame.content,
+        ));
+        let _ = std::io::stdout().flush();
+    }
+    follow_up_contents.push(frame.content);
 }

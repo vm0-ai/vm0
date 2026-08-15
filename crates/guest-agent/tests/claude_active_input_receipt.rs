@@ -23,7 +23,7 @@ async fn claude_receipts_delivery_only_after_follow_up_reaches_stdin()
     let server = MockServer::start();
 
     unsafe {
-        common::setup_env(&mock, tmp.path(), "@active-input-smoke:1", 3, 1)?;
+        common::setup_env(&mock, tmp.path(), "@active-input-smoke-ready:1", 3, 1)?;
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);

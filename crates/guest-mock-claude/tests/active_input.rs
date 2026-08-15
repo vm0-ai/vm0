@@ -142,6 +142,120 @@ fn active_input_stream_reads_followups_after_ready() -> Result<(), Box<dyn std::
 }
 
 #[test]
+fn active_input_ready_smoke_gates_readiness_on_first_followup()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke-ready:2", "active-initial")
+            .as_bytes(),
+    )?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+
+    let mut events = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        ["system/init", "result/success",]
+    );
+
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+    events.extend(recv_until_result(&stream.rx, "RESULT=first+second")?);
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(status.success(), "expected success, stderr: {stderr}");
+    assert!(stderr.is_empty());
+
+    let session_id = init_session_id(&events)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+    assert_eq!(parse_jsonl(history.as_bytes())?, events);
+    Ok(())
+}
+
+#[test]
+fn active_input_ready_smoke_replays_first_followup_after_readiness()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), true)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke-ready:2", "active-initial")
+            .as_bytes(),
+    )?;
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("first", "follow-up-1").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+
+    let mut events = recv_until_result(&stream.rx, ACTIVE_INPUT_READY_RESULT)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        ["system/init", "user/", "result/success"],
+    );
+
+    stream
+        .stdin_mut()?
+        .write_all(stream_json_user_frame_with_uuid("second", "follow-up-2").as_bytes())?;
+    stream.stdin_mut()?.flush()?;
+    events.extend(recv_until_result(&stream.rx, "RESULT=first+second")?);
+    stream.close_stdin();
+
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "user/",
+            "result/success",
+            "user/",
+            "user/",
+            "result/success",
+        ],
+    );
+    assert_eq!(
+        events[3]
+            .pointer("/message/content")
+            .and_then(Value::as_str),
+        Some("first")
+    );
+
+    let (status, stderr) = stream.wait()?;
+    assert!(status.success(), "expected success, stderr: {stderr}");
+    assert!(stderr.is_empty());
+
+    let session_id = init_session_id(&events)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+    assert_eq!(parse_jsonl(history.as_bytes())?, events);
+    Ok(())
+}
+
+#[test]
+fn active_input_ready_smoke_rejects_early_eof() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let mut stream = spawn_stream_json_child(home.path(), false)?;
+
+    stream.stdin_mut()?.write_all(
+        stream_json_user_frame_with_uuid("@active-input-smoke-ready:2", "active-initial")
+            .as_bytes(),
+    )?;
+    stream.close_stdin();
+
+    let (status, stderr) = stream.wait()?;
+    assert!(!status.success());
+    assert!(
+        stderr.contains("active-input stdin closed after 0 of 2 follow-up user messages"),
+        "unexpected stderr: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
 fn active_input_stream_replays_user_messages() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
     let mut stream = spawn_stream_json_child(home.path(), true)?;

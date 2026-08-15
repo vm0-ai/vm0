@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 const ACTIVE_INPUT_SMOKE_MARKER: &str = "@active-input-smoke:";
+const ACTIVE_INPUT_SMOKE_READY_MARKER: &str = "@active-input-smoke-ready:";
 const ECHO_HANG_MARKER: &str = "@ECHO-HANG@";
 const ECHO_MARKER: &str = "@ECHO@";
 const FAIL_NO_NEWLINE_MARKER: &str = "@fail-no-newline:";
@@ -26,7 +27,9 @@ const HANG_AFTER_RESULT_MARKER: &str = "@hang-after-result";
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum MockScenario<'a> {
     ActiveInputSmoke { expected_follow_ups: usize },
+    ActiveInputSmokeReady { expected_follow_ups: usize },
     InvalidActiveInputSmokeCount(&'a str),
+    InvalidActiveInputSmokeReadyCount(&'a str),
     EchoJsonl(&'a str),
     EchoJsonlAndHang(&'a str),
     FailNoNewline(&'a str),
@@ -58,6 +61,7 @@ enum ScenarioMatchKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ScenarioKind {
     ActiveInputSmoke,
+    ActiveInputSmokeReady,
     EchoJsonl,
     EchoJsonlAndHang,
     FailNoNewline,
@@ -94,6 +98,11 @@ const SCENARIO_RULES: &[ScenarioRule] = &[
         marker: ACTIVE_INPUT_SMOKE_MARKER,
         match_kind: ScenarioMatchKind::PrefixPayload,
         scenario_kind: ScenarioKind::ActiveInputSmoke,
+    },
+    ScenarioRule {
+        marker: ACTIVE_INPUT_SMOKE_READY_MARKER,
+        match_kind: ScenarioMatchKind::PrefixPayload,
+        scenario_kind: ScenarioKind::ActiveInputSmokeReady,
     },
     ScenarioRule {
         marker: ECHO_HANG_MARKER,
@@ -233,14 +242,10 @@ impl ScenarioKind {
     fn to_mock_scenario<'a>(self, scenario_match: ScenarioMatch<'a>) -> Option<MockScenario<'a>> {
         let scenario = match (self, scenario_match) {
             (Self::ActiveInputSmoke, ScenarioMatch::Payload(payload)) => {
-                match payload.parse::<usize>() {
-                    Ok(expected_follow_ups) if expected_follow_ups > 0 => {
-                        MockScenario::ActiveInputSmoke {
-                            expected_follow_ups,
-                        }
-                    }
-                    _ => MockScenario::InvalidActiveInputSmokeCount(payload),
-                }
+                parse_active_input_smoke(payload, false)
+            }
+            (Self::ActiveInputSmokeReady, ScenarioMatch::Payload(payload)) => {
+                parse_active_input_smoke(payload, true)
             }
             (Self::EchoJsonl, ScenarioMatch::Payload(payload)) => MockScenario::EchoJsonl(payload),
             (Self::EchoJsonlAndHang, ScenarioMatch::Payload(payload)) => {
@@ -279,6 +284,29 @@ impl ScenarioKind {
         };
 
         Some(scenario)
+    }
+}
+
+fn parse_active_input_smoke<'a>(
+    payload: &'a str,
+    ready_after_first_follow_up: bool,
+) -> MockScenario<'a> {
+    match payload.parse::<usize>() {
+        Ok(expected_follow_ups) if expected_follow_ups > 0 => {
+            if ready_after_first_follow_up {
+                MockScenario::ActiveInputSmokeReady {
+                    expected_follow_ups,
+                }
+            } else {
+                MockScenario::ActiveInputSmoke {
+                    expected_follow_ups,
+                }
+            }
+        }
+        _ if ready_after_first_follow_up => {
+            MockScenario::InvalidActiveInputSmokeReadyCount(payload)
+        }
+        _ => MockScenario::InvalidActiveInputSmokeCount(payload),
     }
 }
 
@@ -353,6 +381,12 @@ mod tests {
             (
                 "@active-input-smoke:2",
                 MockScenario::ActiveInputSmoke {
+                    expected_follow_ups: 2,
+                },
+            ),
+            (
+                "@active-input-smoke-ready:2",
+                MockScenario::ActiveInputSmokeReady {
                     expected_follow_ups: 2,
                 },
             ),
@@ -564,6 +598,14 @@ mod tests {
         assert_eq!(
             MockScenario::from_prompt("@active-input-smoke:0"),
             MockScenario::InvalidActiveInputSmokeCount("0")
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@active-input-smoke-ready:not-a-number"),
+            MockScenario::InvalidActiveInputSmokeReadyCount("not-a-number")
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@active-input-smoke-ready:0"),
+            MockScenario::InvalidActiveInputSmokeReadyCount("0")
         );
         assert_eq!(
             MockScenario::from_prompt("@fail-no-newline:"),

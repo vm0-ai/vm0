@@ -50,6 +50,10 @@
 //!   @active-input-smoke:<n>   - Stream-json stdin marker. Emit a first result,
 //!                               then read n later user frames from the same
 //!                               stdin stream and emit a deterministic final result.
+//!   @active-input-smoke-ready:<n>
+//!                             - Stream-json stdin marker. Read and buffer the
+//!                               first follow-up before emitting the readiness
+//!                               result, then consume the remaining frames.
 
 mod args;
 mod process;
