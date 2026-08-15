@@ -991,7 +991,6 @@
         "configurePackages": "Configurer les forfaits des membres",
         "credits": "Crédits",
         "currentMember": "Membre actuel",
-        "existingPackagesUnchanged": "Les forfaits actuels des membres restent inchangés.",
         "management": {
           "comparison": "Comparaison de l’abonnement actuel et du nouveau",
           "current": "Actuel",

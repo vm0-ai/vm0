@@ -970,7 +970,6 @@
         "configurePackages": "구성원 패키지 설정",
         "credits": "크레딧",
         "currentMember": "현재 구성원",
-        "existingPackagesUnchanged": "기존 멤버 패키지는 변경되지 않습니다.",
         "management": {
           "comparison": "현재 및 새 구독 비교",
           "current": "현재",
