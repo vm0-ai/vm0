@@ -3,9 +3,9 @@ import chalk from "chalk";
 import {
   getZeroAgent,
   deleteZeroAgent,
-} from "../../../lib/api/domains/zero-agents";
-import { isInteractive, promptConfirm } from "../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-agents";
+import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 export const deleteCommand = new Command()
   .name("delete")

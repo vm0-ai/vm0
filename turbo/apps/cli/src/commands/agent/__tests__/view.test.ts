@@ -9,11 +9,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import {
   catalogPermissionDetail,
   stubConnectorCatalogPermissions,
-} from "../../__tests__/helpers/connector-catalog";
+} from "../../zero/__tests__/helpers/connector-catalog";
 import { viewCommand } from "../view";
 import chalk from "chalk";
 

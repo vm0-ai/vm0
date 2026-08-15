@@ -101,7 +101,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "agent",
     description: "View or manage agents",
     load: async () => {
-      return (await import("./commands/zero/agent")).zeroAgentCommand;
+      return (await import("./commands/agent")).agentCommand;
     },
   },
   {

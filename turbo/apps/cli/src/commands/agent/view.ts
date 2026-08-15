@@ -5,17 +5,17 @@ import {
   getZeroAgentInstructions,
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
-} from "../../../lib/api/domains/zero-agents";
-import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import type { ZeroConnector } from "../../../lib/api/domains/zero-connectors";
-import { policyIcon } from "../../../lib/utils/format-utils";
+} from "../../lib/api/domains/zero-agents";
+import { listZeroConnectors } from "../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import type { ZeroConnector } from "../../lib/api/domains/zero-connectors";
+import { policyIcon } from "../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";
 import {
   loadConnectorPermissionInfos,
   connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
-} from "../../shared/firewall-permissions";
+} from "../shared/firewall-permissions";
 
 function printDetailedPermissions(info: ConnectorPermissionInfo): void {
   if (!info.policies) {

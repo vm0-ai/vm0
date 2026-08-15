@@ -5,8 +5,8 @@ import chalk from "chalk";
 import {
   createZeroAgent,
   updateZeroAgentInstructions,
-} from "../../../lib/api/domains/zero-agents";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-agents";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveAvatarUrl } from "./avatar";
 import { parseAgentVisibility } from "./visibility";
 

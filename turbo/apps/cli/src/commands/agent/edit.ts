@@ -6,8 +6,8 @@ import {
   getZeroAgent,
   updateZeroAgent,
   updateZeroAgentInstructions,
-} from "../../../lib/api/domains/zero-agents";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-agents";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { type AvatarOptions, resolveAvatarUrl } from "./avatar";
 import { parseAgentVisibility } from "./visibility";
 
