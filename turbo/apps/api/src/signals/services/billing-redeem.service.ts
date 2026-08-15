@@ -17,7 +17,7 @@ import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { getCampaign } from "./one-time-products";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
-const log = logger("zero-billing-redeem");
+const log = logger("billing-redeem");
 
 /**
  * Result of attempting to start or resume a one-time campaign redemption.
