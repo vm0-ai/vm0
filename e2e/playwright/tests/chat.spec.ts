@@ -3,6 +3,9 @@ import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const chatEventSchemaVersionHeaders = {
+  "X-Chat-Event-Schema-Version": "5",
+};
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
@@ -415,6 +418,7 @@ async function mockChatThread(
           return typeof row.seqId === "number" && row.seqId > sinceSeqId;
         });
       await route.fulfill({
+        headers: chatEventSchemaVersionHeaders,
         json: { rows },
       });
     },
@@ -443,6 +447,7 @@ async function mockChatThread(
       `/api/okou/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
       await route.fulfill({
+        headers: chatEventSchemaVersionHeaders,
         status: 404,
         json: { error: { code: "NOT_FOUND", message: "Not found" } },
       });
