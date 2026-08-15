@@ -233,7 +233,7 @@ struct DecodedSessionHistoryAnalysis {
     line_count: Option<usize>,
     invalid_utf8: Option<String>,
     is_empty: bool,
-    recovery_validation_error: Option<String>,
+    validation_error: Option<String>,
 }
 
 impl SessionHistoryUpload {
@@ -564,7 +564,7 @@ fn prepare_session_history(
                         None,
                     );
                     let mut prepared =
-                        prepare_raw_session_history(mode, history_read_start, candidate, true)?;
+                        prepare_raw_session_history(mode, history_read_start, candidate)?;
                     prepared.live_history = PreparedLiveHistory::NativeCandidate {
                         kind: NativeHistoryKind::ClaudeCode,
                         replacement,
@@ -629,7 +629,7 @@ fn prepare_session_history(
                         None,
                     );
                     let mut prepared =
-                        prepare_raw_session_history(mode, history_read_start, candidate, true)?;
+                        prepare_raw_session_history(mode, history_read_start, candidate)?;
                     prepared.live_history = PreparedLiveHistory::NativeCandidate {
                         kind: NativeHistoryKind::Codex,
                         replacement,
@@ -689,7 +689,7 @@ fn prepare_session_history(
         })?;
     match source {
         history::SessionHistoryCheckpointSource::Decoded(history_bytes) => {
-            prepare_raw_session_history(mode, history_read_start, history_bytes, true)
+            prepare_raw_session_history(mode, history_read_start, history_bytes)
                 .map(PreparedSessionHistoryOutcome::Upload)
         }
         history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
@@ -708,32 +708,19 @@ fn prepare_raw_session_history(
     mode: CheckpointMode,
     history_read_start: std::time::Instant,
     history_bytes: Vec<u8>,
-    validate_recovery: bool,
 ) -> Result<PreparedSessionHistory, AgentError> {
     let history_size = history_bytes.len() as u64;
 
-    let session_history_text = match std::str::from_utf8(&history_bytes) {
-        Ok(s) => Some(s),
-        Err(e) => {
-            let msg = format!("Session history is not valid UTF-8: {e}");
-            if mode.validate_history() && validate_recovery {
-                return Err(history_failure(
-                    mode,
-                    "session_history_read",
-                    history_read_start,
-                    msg,
-                ));
-            }
-            log_warn!(LOG_TAG, "{msg}; preserving raw bytes for checkpoint");
-            None
-        }
-    };
+    let session_history = std::str::from_utf8(&history_bytes).map_err(|error| {
+        history_failure(
+            mode,
+            "session_history_read",
+            history_read_start,
+            format!("Session history is not valid UTF-8: {error}"),
+        )
+    })?;
 
-    let history_is_empty = session_history_text.map_or_else(
-        || history_bytes.iter().all(|byte| byte.is_ascii_whitespace()),
-        |session_history| session_history.trim().is_empty(),
-    );
-    if history_is_empty {
+    if session_history.trim().is_empty() {
         return Err(history_failure(
             mode,
             "session_history_read",
@@ -742,22 +729,12 @@ fn prepare_raw_session_history(
         ));
     }
 
-    if let Some(session_history) = session_history_text {
-        if mode.validate_history() && validate_recovery {
-            validate_recoverable_session_history(session_history).map_err(|msg| {
-                history_failure(mode, "session_history_validate", history_read_start, msg)
-            })?;
-        }
+    validate_session_history(session_history).map_err(|msg| {
+        history_failure(mode, "session_history_validate", history_read_start, msg)
+    })?;
 
-        let line_count = session_history.lines().count();
-        log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
-    } else {
-        log_info!(
-            LOG_TAG,
-            "Session history loaded ({} raw bytes, invalid UTF-8)",
-            history_bytes.len()
-        );
-    }
+    let line_count = session_history.lines().count();
+    log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
     record_sandbox_op(
         "session_history_read",
         history_read_start.elapsed(),
@@ -785,22 +762,16 @@ fn prepare_reused_zstd_session_history(
     zstd_bytes: Vec<u8>,
     checkpoint_max_bytes: u64,
 ) -> Result<PreparedSessionHistory, AgentError> {
-    let analysis =
-        analyze_zstd_session_history(&zstd_bytes, checkpoint_max_bytes, mode.validate_history())
-            .map_err(|e| {
-                fail_preserving_error(mode, "session_history_read", history_read_start, e)
-            })?;
+    let analysis = analyze_zstd_session_history(&zstd_bytes, checkpoint_max_bytes)
+        .map_err(|e| fail_preserving_error(mode, "session_history_read", history_read_start, e))?;
 
     if let Some(msg) = &analysis.invalid_utf8 {
-        if mode.validate_history() {
-            return Err(history_failure(
-                mode,
-                "session_history_read",
-                history_read_start,
-                msg,
-            ));
-        }
-        log_warn!(LOG_TAG, "{msg}; preserving session history for checkpoint");
+        return Err(history_failure(
+            mode,
+            "session_history_read",
+            history_read_start,
+            msg,
+        ));
     }
 
     if analysis.is_empty {
@@ -812,9 +783,7 @@ fn prepare_reused_zstd_session_history(
         ));
     }
 
-    if mode.validate_history()
-        && let Some(msg) = analysis.recovery_validation_error
-    {
+    if let Some(msg) = analysis.validation_error {
         return Err(history_failure(
             mode,
             "session_history_validate",
@@ -856,7 +825,6 @@ fn prepare_reused_zstd_session_history(
 fn analyze_zstd_session_history(
     zstd_bytes: &[u8],
     max_bytes: u64,
-    validate_history: bool,
 ) -> Result<DecodedSessionHistoryAnalysis, AgentError> {
     let decoder = zstd::stream::read::Decoder::new(zstd_bytes).map_err(|error| {
         AgentError::Checkpoint(format!(
@@ -866,14 +834,12 @@ fn analyze_zstd_session_history(
     analyze_decoded_session_history_reader(
         BufReader::new(decoder.take(max_bytes.saturating_add(1))),
         max_bytes,
-        validate_history,
     )
 }
 
 fn analyze_decoded_session_history_reader(
     mut reader: impl BufRead,
     max_bytes: u64,
-    validate_history: bool,
 ) -> Result<DecodedSessionHistoryAnalysis, AgentError> {
     let mut hasher = Sha256::new();
     let mut raw_size = 0u64;
@@ -881,7 +847,7 @@ fn analyze_decoded_session_history_reader(
     let mut all_bytes_ascii_whitespace = true;
     let mut all_utf8_lines_trim_empty = true;
     let mut invalid_utf8 = None;
-    let mut recovery_validation_error = None;
+    let mut validation_error = None;
     let mut line = Vec::new();
 
     loop {
@@ -913,11 +879,10 @@ fn analyze_decoded_session_history_reader(
                 if !text.trim().is_empty() {
                     all_utf8_lines_trim_empty = false;
                 }
-                if validate_history
-                    && recovery_validation_error.is_none()
-                    && let Err(error) = validate_recoverable_session_history_line(line_count, text)
+                if validation_error.is_none()
+                    && let Err(error) = validate_session_history_line(line_count, text)
                 {
-                    recovery_validation_error = Some(error);
+                    validation_error = Some(error);
                 }
             }
             Err(error) => {
@@ -938,7 +903,7 @@ fn analyze_decoded_session_history_reader(
         line_count: invalid_utf8.is_none().then_some(line_count),
         invalid_utf8,
         is_empty,
-        recovery_validation_error,
+        validation_error,
     })
 }
 
@@ -1185,29 +1150,26 @@ pub(super) fn write_final_session_history_identity(
     }
 }
 
-fn validate_recoverable_session_history(session_history: &str) -> Result<(), String> {
+fn validate_session_history(session_history: &str) -> Result<(), String> {
     let mut line_count = 0usize;
     for (index, line) in session_history.lines().enumerate() {
-        validate_recoverable_session_history_line(index + 1, line)?;
+        validate_session_history_line(index + 1, line)?;
         line_count += 1;
     }
 
     if line_count == 0 {
-        return Err("Session history has no JSONL entries; recovery checkpoint skipped".into());
+        return Err("Session history has no JSONL entries".into());
     }
 
     Ok(())
 }
 
-fn validate_recoverable_session_history_line(index: usize, line: &str) -> Result<(), String> {
+fn validate_session_history_line(index: usize, line: &str) -> Result<(), String> {
     if line.trim().is_empty() {
-        return Err(format!(
-            "Session history line {index} is empty; recovery checkpoint skipped"
-        ));
+        return Err(format!("Session history line {index} is empty"));
     }
-    serde_json::from_str::<serde_json::Value>(line).map_err(|e| {
-        format!("Session history line {index} is not valid JSON; recovery checkpoint skipped: {e}")
-    })?;
+    serde_json::from_str::<serde_json::Value>(line)
+        .map_err(|e| format!("Session history line {index} is not valid JSON: {e}"))?;
     Ok(())
 }
 
@@ -1234,7 +1196,7 @@ mod tests {
     #[test]
     fn zstd_checkpoint_analysis_returns_typed_history_limit_error() {
         let encoded = zstd_session_history(b"{}\n").unwrap();
-        let error = match analyze_zstd_session_history(&encoded, 1, false) {
+        let error = match analyze_zstd_session_history(&encoded, 1) {
             Ok(_) => panic!("expected zstd history to exceed the decoded limit"),
             Err(error) => error,
         };
@@ -1245,26 +1207,26 @@ mod tests {
     }
 
     #[test]
-    fn recoverable_session_history_accepts_valid_jsonl() {
+    fn session_history_validation_accepts_valid_jsonl() {
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"#;
 
-        assert!(validate_recoverable_session_history(&history).is_ok());
+        assert!(validate_session_history(&history).is_ok());
     }
 
     #[test]
-    fn recoverable_session_history_rejects_partial_trailing_json() {
+    fn session_history_validation_rejects_partial_trailing_json() {
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant""#;
 
-        let err = validate_recoverable_session_history(&history).unwrap_err();
+        let err = validate_session_history(&history).unwrap_err();
 
         assert!(err.contains("line 2"));
     }
 
     #[test]
-    fn recoverable_session_history_rejects_blank_lines() {
+    fn session_history_validation_rejects_blank_lines() {
         let history = r#"{"type":"system"}"#.to_string() + "\n\n" + r#"{"type":"assistant"}"#;
 
-        let err = validate_recoverable_session_history(&history).unwrap_err();
+        let err = validate_session_history(&history).unwrap_err();
 
         assert!(err.contains("line 2"));
     }
@@ -1277,7 +1239,6 @@ mod tests {
             CheckpointMode::Recovery,
             std::time::Instant::now(),
             history.to_vec(),
-            true,
         )
         .expect("Pi JSONL should pass recovery validation");
 

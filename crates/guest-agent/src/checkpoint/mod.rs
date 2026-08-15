@@ -37,10 +37,6 @@ impl CheckpointMode {
         }
     }
 
-    fn validate_history(self) -> bool {
-        matches!(self, Self::Recovery)
-    }
-
     fn can_prune_history(self) -> bool {
         matches!(self, Self::Success)
     }

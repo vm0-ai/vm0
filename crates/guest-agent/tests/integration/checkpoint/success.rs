@@ -272,6 +272,93 @@ async fn checkpoint_continues_when_codex_history_is_missing() {
 }
 
 #[tokio::test]
+async fn success_checkpoint_reports_invalid_local_history_as_unavailable() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let mut runtime = runtime_from_process_env().unwrap();
+    let _files_guard = SessionCheckpointFilesGuard::new();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(400);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-invalid-local-history"}));
+    });
+
+    let cases: [(&str, &[u8]); 2] = [
+        (
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            b"{\"type\":\"assistant\"}\n\xff\n",
+        ),
+        (
+            "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            b"{\"type\":\"assistant\"\n",
+        ),
+    ];
+    for (session_id, history) in cases {
+        let _history_dir =
+            write_literal_session_history(&mut runtime, session_id, history).unwrap();
+
+        create_bounded_checkpoint(&runtime).await.unwrap();
+
+        assert!(
+            !std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists()
+        );
+    }
+
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(2).await;
+}
+
+#[tokio::test]
+async fn success_checkpoint_reports_invalid_reused_zstd_history_as_unavailable() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    let home = tempfile::tempdir().unwrap();
+    let day_dir = home.path().join(".codex/sessions/2026/08/15");
+    std::fs::create_dir_all(&day_dir).unwrap();
+    let encoded = zstd_session_history_for_test(b"{\"type\":\"assistant\"\n").unwrap();
+    std::fs::write(
+        day_dir.join(format!("rollout-{session_id}.jsonl.zst")),
+        encoded,
+    )
+    .unwrap();
+    runtime.config.home_dir = home.path().to_string_lossy().into_owned();
+    guest_agent::paths::write_private(session_id_file(), session_id).unwrap();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(400);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-invalid-zstd-history"}));
+    });
+
+    create_bounded_checkpoint(&runtime).await.unwrap();
+
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+}
+
+#[tokio::test]
 async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -555,86 +642,6 @@ async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
 }
 
 #[tokio::test]
-async fn success_checkpoint_uploads_non_utf8_session_history() {
-    let api = SharedApiMock::new().await;
-    let server = api.server();
-
-    let mut runtime = runtime_from_process_env().unwrap();
-    let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = b"{\"type\":\"system\"}\nnon-utf8:\xC3(\n".to_vec();
-    let _history_dir =
-        write_literal_session_history(&mut runtime, "success-non-utf8-session", &history).unwrap();
-
-    let history_hash = hex::encode(Sha256::digest(&history));
-    let history_size = history.len();
-    let prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"identity"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "presignedUrl": server.url("/test/success-non-utf8-history-upload"),
-                "existing": false
-            }));
-    });
-    let upload_len = history_size.to_string();
-    let upload_body = history.clone();
-    let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/success-non-utf8-history-upload")
-            .header("Content-Type", "application/octet-stream");
-        then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
-    });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"success-non-utf8-session"}"#)
-            .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
-            ));
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-success-non-utf8"}));
-    });
-
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
-        &runtime,
-        &checkpoint_session_metadata(&runtime),
-    )
-    .await;
-
-    assert!(result.is_ok());
-    prepare_mock.assert_calls_async(1).await;
-    upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
-
-    let identity_bytes =
-        std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
-    let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
-    assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
-    assert_eq!(identity.history_ref_kind, FinalSessionHistoryRefKind::Blob);
-    assert_eq!(
-        identity.session_id_hash,
-        hex::encode(Sha256::digest(b"success-non-utf8-session"))
-    );
-    assert_eq!(identity.history_hash, history_hash);
-    assert_eq!(identity.history_size_bytes, history_size as u64);
-    assert_eq!(
-        std::fs::read(claude_history_path(
-            _history_dir.path(),
-            "success-non-utf8-session",
-        ))
-        .unwrap(),
-        history
-    );
-}
-
-#[tokio::test]
 async fn success_checkpoint_writes_large_final_identity_metadata()
 -> Result<(), Box<dyn std::error::Error>> {
     let api = SharedApiMock::new().await;
@@ -642,7 +649,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata()
 
     let mut runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let history = large_session_history();
     let _history_dir =
         write_literal_session_history(&mut runtime, "success-large-session", &history).unwrap();
 
@@ -726,7 +733,7 @@ async fn success_checkpoint_propagates_zstd_prepare_bad_request()
 
     let mut runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let history = large_session_history();
     let _history_dir =
         write_literal_session_history(&mut runtime, "zstd-bad-request-session", &history).unwrap();
 
@@ -786,7 +793,7 @@ async fn success_checkpoint_rejects_missing_zstd_encoding_acknowledgement()
 
     let mut runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let history = large_session_history();
     let _history_dir =
         write_literal_session_history(&mut runtime, "zstd-unack-session", &history).unwrap();
 
@@ -845,7 +852,7 @@ async fn success_checkpoint_rejects_new_zstd_with_mismatched_encoding_acknowledg
 
     let mut runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let history = large_session_history();
     let _history_dir =
         write_literal_session_history(&mut runtime, "zstd-new-mismatched-ack-session", &history)
             .unwrap();
@@ -907,7 +914,7 @@ async fn success_checkpoint_accepts_existing_gzip_for_zstd_history()
 
     let mut runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let history = large_session_history();
     let _history_dir =
         write_literal_session_history(&mut runtime, "zstd-existing-gzip-session", &history)
             .unwrap();
@@ -967,7 +974,7 @@ async fn success_checkpoint_propagates_zstd_auth_failure() -> Result<(), Box<dyn
 
     let mut runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
+    let history = large_session_history();
     let _history_dir =
         write_literal_session_history(&mut runtime, "zstd-auth-failure-session", &history).unwrap();
 
@@ -1016,137 +1023,6 @@ async fn success_checkpoint_propagates_zstd_auth_failure() -> Result<(), Box<dyn
     zstd_prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn success_checkpoint_uploads_large_non_utf8_session_history_as_zstd_when_acknowledged()
--> Result<(), Box<dyn std::error::Error>> {
-    let api = SharedApiMock::new().await;
-    let server = api.server();
-
-    let mut runtime = runtime_from_process_env().unwrap();
-    let _files_guard = SessionCheckpointFilesGuard::new();
-    let mut history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
-    history.extend_from_slice(&[0xc3, 0x28, b'\n']);
-    let _history_dir =
-        write_literal_session_history(&mut runtime, "large-non-utf8-session", &history).unwrap();
-
-    let history_hash = hex::encode(Sha256::digest(&history));
-    let history_size = history.len();
-    let zstd_size = zstd_session_history_for_test(&history)?.len();
-    let prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(format!(r#"{{"encodedSize":{zstd_size}}}"#))
-            .json_body_includes(r#"{"encoding":"zstd"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "presignedUrl": server.url("/test/large-non-utf8-history-upload"),
-                "existing": false,
-                "encoding": "zstd"
-            }));
-    });
-    let upload_body = history.clone();
-    let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/large-non-utf8-history-upload")
-            .header("Content-Type", "application/octet-stream");
-        then.respond_with(move |req| upload_zstd_validation_response(req, &upload_body));
-    });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"large-non-utf8-session"}"#)
-            .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
-            ));
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-large-non-utf8"}));
-    });
-
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
-        &runtime,
-        &checkpoint_session_metadata(&runtime),
-    )
-    .await;
-
-    assert!(result.is_ok());
-    prepare_mock.assert_calls_async(1).await;
-    upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn success_checkpoint_uploads_large_uncompressible_session_history_as_identity()
--> Result<(), Box<dyn std::error::Error>> {
-    let api = SharedApiMock::new().await;
-    let server = api.server();
-
-    let mut runtime = runtime_from_process_env().unwrap();
-    let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = high_entropy_history(LARGE_SESSION_HISTORY_SIZE_BYTES);
-    let zstd_history = zstd_session_history_for_test(&history)?;
-    assert!(
-        zstd_history.len() >= history.len(),
-        "test fixture must not be zstd-compressible"
-    );
-    let _history_dir =
-        write_literal_session_history(&mut runtime, "large-identity-session", &history).unwrap();
-
-    let history_hash = hex::encode(Sha256::digest(&history));
-    let history_size = history.len();
-    let prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .json_body_includes(r#"{"runId":"test-run-001"}"#)
-            .json_body_includes(format!(r#"{{"hash":"{history_hash}"}}"#))
-            .json_body_includes(format!(r#"{{"rawSize":{history_size}}}"#))
-            .json_body_includes(format!(r#"{{"encodedSize":{history_size}}}"#))
-            .json_body_includes(r#"{"encoding":"identity"}"#);
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "presignedUrl": server.url("/test/large-identity-history-upload"),
-                "existing": false
-            }));
-    });
-    let upload_len = history_size.to_string();
-    let upload_body = history.clone();
-    let upload_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/test/large-identity-history-upload")
-            .header("Content-Type", "application/octet-stream");
-        then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
-    });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"large-identity-session"}"#)
-            .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
-            ));
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-large-identity"}));
-    });
-
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
-        &runtime,
-        &checkpoint_session_metadata(&runtime),
-    )
-    .await;
-
-    assert!(result.is_ok());
-    prepare_mock.assert_calls_async(1).await;
-    upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
     Ok(())
 }
 

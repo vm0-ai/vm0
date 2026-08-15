@@ -434,17 +434,14 @@ pub(super) fn zstd_session_history_for_test(history: &[u8]) -> std::io::Result<V
     zstd::stream::encode_all(history, 3)
 }
 
-pub(super) fn high_entropy_history(size: usize) -> Vec<u8> {
-    let mut state = 0x6a09e667f3bcc909_u64;
-    let mut bytes = Vec::with_capacity(size);
-    for _ in 0..size {
-        state ^= state >> 12;
-        state ^= state << 25;
-        state ^= state >> 27;
-        let value = state.wrapping_mul(0x2545f4914f6cdd1d);
-        bytes.push((value >> 56) as u8);
+pub(super) fn large_session_history() -> Vec<u8> {
+    let line =
+        b"{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"history\"}}\n";
+    let mut history = Vec::with_capacity(LARGE_SESSION_HISTORY_SIZE_BYTES + line.len());
+    while history.len() <= LARGE_SESSION_HISTORY_SIZE_BYTES {
+        history.extend_from_slice(line);
     }
-    bytes
+    history
 }
 
 pub(super) fn upload_zstd_validation_response(
