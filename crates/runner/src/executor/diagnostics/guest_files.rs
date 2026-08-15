@@ -1,5 +1,5 @@
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
-use guest_contracts::diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
+use guest_contracts::diagnostics::FailureDiagnostic;
 use sandbox::Sandbox;
 use tracing::warn;
 
@@ -54,19 +54,7 @@ pub(in crate::executor) async fn read_guest_failure_diagnostic_file(
     match sandbox.read_file(&path, SMALL_GUEST_FILE_MAX_BYTES).await {
         Ok(Some(bytes)) if !bytes.iter().all(|byte| byte.is_ascii_whitespace()) => {
             match serde_json::from_slice::<FailureDiagnostic>(&bytes) {
-                Ok(diagnostic)
-                    if diagnostic.schema_version == FAILURE_DIAGNOSTIC_SCHEMA_VERSION =>
-                {
-                    Some(diagnostic)
-                }
-                Ok(diagnostic) => {
-                    warn!(
-                        run_id = %run_id,
-                        schema_version = diagnostic.schema_version,
-                        "ignoring guest failure diagnostic with unsupported schema version"
-                    );
-                    None
-                }
+                Ok(diagnostic) => Some(diagnostic),
                 Err(e) => {
                     warn!(run_id = %run_id, error = %e, "failed to parse guest failure diagnostic");
                     None
