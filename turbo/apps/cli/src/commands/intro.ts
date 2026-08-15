@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-const ZERO_INTRO = `
+const INTRO = `
 # Okou Intro
 
 Okou is an AI agent that works from cloud computers to complete real work: deep research, polished artifacts, lightweight coding, connector-backed automation, and 24/7 recurring workflows.
@@ -78,9 +78,9 @@ When a user asks what Okou can do:
 - Give 2-4 starter tasks the user can choose from.
 `.trim();
 
-export const zeroIntroCommand = new Command()
+export const introCommand = new Command()
   .name("intro")
   .description("Print Okou's self-introduction and capability guide for agents")
   .action(() => {
-    console.log(ZERO_INTRO);
+    console.log(INTRO);
   });
