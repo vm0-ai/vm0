@@ -2223,7 +2223,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     });
 
     if let Some(background_fill) = deferred_background_fill {
-        background_fill.start(telemetry);
+        background_fill.start(&config.background_fill, telemetry);
     }
 
     // Supervise normal exit or cancellation. A user request first asks

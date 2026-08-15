@@ -1631,8 +1631,21 @@ echo "PASS: environment variables"
 # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
 echo "--- Test: HTTPS through proxy ---"
 TLS_URL="https://www.google.com"
+is_expected_cargo_proxy_502() {
+  local label=$1 status=$2 output=$3
+  [ "$label" = "cargo" ] || return 1
+  [ "$status" -eq 101 ] || return 1
+  printf '%s\n' "$output" \
+    | grep -F "failed to retrieve search results from the registry at https://crates.io" \
+    >/dev/null || return 1
+  printf '%s\n' "$output" \
+    | grep -F "got 502" >/dev/null || return 1
+  printf '%s\n' "$output" \
+    | grep -F "server: mitmproxy" >/dev/null
+}
+
 tls_check() {
-  local label=$1 cmd=$2 t=${3:-15}
+  local label=$1 cmd=$2 t=${3:-15} allow_cargo_proxy_502=${4:-false}
   local output status
 
   # Let the guest timeout finish its TERM/KILL cycle and return stderr before
@@ -1642,6 +1655,11 @@ tls_check() {
     echo "  HTTPS $label: ok"
   else
     status=$?
+    if [ "$allow_cargo_proxy_502" = true ] \
+      && is_expected_cargo_proxy_502 "$label" "$status" "$output"; then
+      echo "  HTTPS $label: accepted proxy 502 (crates.io unavailable)"
+      return 0
+    fi
     fail "HTTPS $label failed with exit code $status: ${output:-no output}"
   fi
 }
@@ -1652,7 +1670,10 @@ tls_check "python"    "python3 -c \"import urllib.request; urllib.request.urlope
 tls_check "node"      "node -e \"require('https').get('$TLS_URL',r=>{r.resume();r.on('end',()=>process.exit(0))}).on('error',e=>{console.error(e);process.exit(1)})\""
 tls_check "ruby"      "ruby -e \"require 'net/http'; Net::HTTP.get(URI('$TLS_URL'))\""
 tls_check "php"       "php -r \"file_get_contents('$TLS_URL');\""
-tls_check "cargo"     "env CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde" 30
+# A proxy-generated 502 from crates.io still proves the HTTPS/TLS path reached
+# the proxy. Accept only the exact cargo registry response above; other cargo
+# failures remain fatal.
+tls_check "cargo"     "env CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde" 30 true
 tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL >/dev/null" 30
 
 # Java and Go need multi-line scripts.

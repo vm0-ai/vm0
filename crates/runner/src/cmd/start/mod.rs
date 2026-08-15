@@ -475,6 +475,7 @@ async fn run_start_with_home(
         vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
         client_session_id: runner_client_session_id.clone(),
     })?;
+    let background_fill = crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()?;
     let name = runner_config.name;
     let group = runner_config.group;
     let cancel_tokens = RunCancellationRegistry::new();
@@ -753,6 +754,7 @@ async fn run_start_with_home(
         session_history_cpu: SessionHistoryCpuPool::for_host_cpus(host_cpus),
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
+        background_fill,
         home: home.clone(),
         workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),
@@ -2221,6 +2223,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         }
     }
     teardown.phase_complete("destroy_tasks_drain", phase);
+    let phase = teardown.phase_start("background_fill_shutdown");
+    exec_config.background_fill.shutdown().await;
+    teardown.phase_complete("background_fill_shutdown", phase);
     let phase = teardown.phase_start("finish_mitm_restart");
     finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
     teardown.phase_complete("finish_mitm_restart", phase);
