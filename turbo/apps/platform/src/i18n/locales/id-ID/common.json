@@ -4501,9 +4501,12 @@
           "invalidEmail": "Harap masukkan alamat email yang valid",
           "progress": "Mengirim...",
           "purchase": {
-            "description": "Tinjau biaya prorata di bawah ini. Konfirmasi akan menagih metode pembayaran tersimpan dan mengirim undangan.",
+            "dueToday": "Jatuh tempo hari ini",
             "error": "Paket anggota ini tidak dapat dibeli. Periksa detail penagihan Anda dan coba lagi.",
+            "inviteAs": "Undang sebagai",
+            "inviteAsSummary": "{{role}} · {{credits}}",
             "invitee": "Orang yang diundang",
+            "payAndInvite": "Bayar dan undang",
             "title": "Tinjau undangan"
           },
           "roleLabel": "Peran",

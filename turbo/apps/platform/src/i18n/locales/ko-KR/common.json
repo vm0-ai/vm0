@@ -4501,9 +4501,12 @@
           "invalidEmail": "유효한 이메일 주소를 입력하세요",
           "progress": "전송 중...",
           "purchase": {
-            "description": "아래의 일할 계산 금액을 확인하세요. 확인하면 저장된 결제 수단으로 청구되고 초대가 전송됩니다.",
+            "dueToday": "오늘 결제",
             "error": "이 멤버 패키지를 구매할 수 없습니다. 결제 정보를 확인하고 다시 시도하세요.",
+            "inviteAs": "다음 역할로 초대",
+            "inviteAsSummary": "{{role}} · {{credits}}",
             "invitee": "초대 대상",
+            "payAndInvite": "결제하고 초대",
             "title": "초대 검토"
           },
           "roleLabel": "역할",

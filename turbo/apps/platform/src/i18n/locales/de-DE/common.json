@@ -4502,9 +4502,12 @@
           "invalidEmail": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
           "progress": "Senden...",
           "purchase": {
-            "description": "Prüfen Sie die unten aufgeführte anteilige Gebühr. Mit der Bestätigung wird Ihre gespeicherte Zahlungsmethode belastet und die Einladung gesendet.",
+            "dueToday": "Heute fällig",
             "error": "Dieses Mitgliederpaket konnte nicht gekauft werden. Prüfen Sie Ihre Zahlungsdaten und versuchen Sie es erneut.",
+            "inviteAs": "Einladen als",
+            "inviteAsSummary": "{{role}} · {{credits}}",
             "invitee": "Eingeladene Person",
+            "payAndInvite": "Bezahlen und einladen",
             "title": "Einladung prüfen"
           },
           "roleLabel": "Rolle",

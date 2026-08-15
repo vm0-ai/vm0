@@ -4554,9 +4554,12 @@
           "invalidEmail": "Insira um endereço de e-mail válido",
           "progress": "Enviando...",
           "purchase": {
-            "description": "Revise a cobrança proporcional abaixo. Ao confirmar, o método de pagamento salvo será cobrado e o convite será enviado.",
+            "dueToday": "Valor devido hoje",
             "error": "Não foi possível comprar este pacote de membro. Revise os dados de cobrança e tente novamente.",
+            "inviteAs": "Convidar como",
+            "inviteAsSummary": "{{role}} · {{credits}}",
             "invitee": "Pessoa convidada",
+            "payAndInvite": "Pagar e convidar",
             "title": "Revisar convite"
           },
           "roleLabel": "Função",

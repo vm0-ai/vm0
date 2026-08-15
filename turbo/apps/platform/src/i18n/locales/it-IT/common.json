@@ -4554,9 +4554,12 @@
           "invalidEmail": "Inserisci un indirizzo email valido",
           "progress": "Invio...",
           "purchase": {
-            "description": "Controlla l’addebito proporzionale qui sotto. La conferma addebita il metodo di pagamento salvato e invia l’invito.",
+            "dueToday": "Da pagare oggi",
             "error": "Impossibile acquistare questo pacchetto membro. Controlla i dati di fatturazione e riprova.",
+            "inviteAs": "Invita come",
+            "inviteAsSummary": "{{role}} · {{credits}}",
             "invitee": "Persona invitata",
+            "payAndInvite": "Paga e invita",
             "title": "Controlla invito"
           },
           "roleLabel": "Ruolo",

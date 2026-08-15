@@ -4554,9 +4554,12 @@
           "invalidEmail": "Veuillez saisir une adresse e-mail valide",
           "progress": "Envoi...",
           "purchase": {
-            "description": "Vérifiez le montant calculé au prorata ci-dessous. La confirmation débite votre moyen de paiement enregistré et envoie l’invitation.",
+            "dueToday": "À payer aujourd’hui",
             "error": "Impossible d’acheter ce forfait membre. Vérifiez vos informations de facturation et réessayez.",
+            "inviteAs": "Inviter en tant que",
+            "inviteAsSummary": "{{role}} · {{credits}}",
             "invitee": "Personne invitée",
+            "payAndInvite": "Payer et inviter",
             "title": "Vérifier l’invitation"
           },
           "roleLabel": "Rôle",
