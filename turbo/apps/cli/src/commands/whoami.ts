@@ -5,21 +5,21 @@ import {
   getActiveOrg,
   getToken,
   decodeZeroTokenPayload,
-} from "../../lib/api/config";
-import { listZeroConnectors } from "../../lib/api/domains/zero-connectors";
+} from "../lib/api/config";
+import { listZeroConnectors } from "../lib/api/domains/zero-connectors";
 import {
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
-} from "../../lib/api/domains/zero-agents";
-import { getZeroOrg } from "../../lib/api/domains/zero-orgs";
-import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { getOkouAgentId } from "../../lib/okou-env";
-import { policyIcon } from "../../lib/utils/format-utils";
+} from "../lib/api/domains/zero-agents";
+import { getZeroOrg } from "../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../lib/command/with-error-handler";
+import { getOkouAgentId } from "../lib/okou-env";
+import { policyIcon } from "../lib/utils/format-utils";
 import {
   loadConnectorPermissionInfos,
   connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
-} from "../shared/firewall-permissions";
+} from "./shared/firewall-permissions";
 
 /**
  * Detect if running inside an agent sandbox.
@@ -222,7 +222,7 @@ async function showLocalInfo(): Promise<void> {
   }
 }
 
-export const zeroWhoamiCommand = new Command()
+export const whoamiCommand = new Command()
   .name("whoami")
   .description("Show agent identity, run ID, and capabilities")
   .option("--permissions", "Show full permission details for each connector")
