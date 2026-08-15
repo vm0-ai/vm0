@@ -106,6 +106,43 @@ async fn spawn_http_server_with_actions(
     (api_url, request_rx, server)
 }
 
+async fn receive_http_request_before(
+    deadline: tokio::time::Instant,
+    request_rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
+    description: &str,
+) -> Result<String, String> {
+    match tokio::time::timeout_at(deadline, request_rx.recv()).await {
+        Ok(Some(request)) => Ok(request),
+        Ok(None) => Err(format!(
+            "active-input request channel closed before {description}"
+        )),
+        Err(_) => Err(format!("timed out waiting for {description}")),
+    }
+}
+
+async fn reap_spawned_test_task<T>(
+    task: Option<tokio::task::JoinHandle<T>>,
+    description: &str,
+    abort_first: bool,
+) -> Option<String> {
+    let mut task = task?;
+    if abort_first {
+        task.abort();
+    }
+    match tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut task).await {
+        Ok(Ok(_)) => return None,
+        Ok(Err(error)) if error.is_cancelled() => return None,
+        Ok(Err(error)) => return Some(format!("{description} task cleanup failed: {error}")),
+        Err(_) => task.abort(),
+    }
+    match tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, task).await {
+        Ok(Ok(_)) => None,
+        Ok(Err(error)) if error.is_cancelled() => None,
+        Ok(Err(error)) => Some(format!("{description} task cleanup failed: {error}")),
+        Err(_) => Some(format!("timed out reaping {description} task after abort")),
+    }
+}
+
 fn api_active_input_source(
     api_url: String,
     run_id: crate::ids::RunId,
@@ -946,9 +983,10 @@ async fn run_in_sandbox_suppresses_possibly_written_delivery() {
         "active-input-possibly-written-test",
     );
     let cancel = tokio_util::sync::CancellationToken::new();
+    let run_cancel = cancel.clone();
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let run_task = tokio::spawn(async move {
+    let mut run_task = Some(tokio::spawn(async move {
         run_in_sandbox(
             &*sandbox,
             &ctx,
@@ -960,30 +998,87 @@ async fn run_in_sandbox_suppresses_possibly_written_delivery() {
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::new(cancel, Some(source)),
+            RunControls::new(run_cancel, Some(source)),
         )
         .await
-    });
+    }));
+    let mut server = Some(server);
+    let deadline = tokio::time::Instant::now() + RUN_IN_SANDBOX_TEST_TIMEOUT;
 
-    assert!(
-        overrides
-            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
-            .await
-    );
-    request_rx.recv().await.unwrap();
-    notifications.notify(run_id);
-    request_rx.recv().await.unwrap();
-    notifications.notify(run_id);
-    request_rx.recv().await.unwrap();
-    assert_eq!(overrides.process_control_calls().len(), 1);
-    wait_gate.notify_one();
-    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+    let scenario = async {
+        let process_control_observed = tokio::time::timeout_at(
+            deadline,
+            overrides.wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT),
+        )
         .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
+        .map_err(|_| {
+            "timed out waiting for the first process-control delivery attempt".to_string()
+        })?;
+        if !process_control_observed {
+            return Err("timed out waiting for the first process-control delivery attempt".into());
+        }
+        receive_http_request_before(deadline, &mut request_rx, "the first reserve request").await?;
+        notifications.notify(run_id);
+        receive_http_request_before(
+            deadline,
+            &mut request_rx,
+            "the second reserve request after the first notification",
+        )
+        .await?;
+        notifications.notify(run_id);
+        receive_http_request_before(
+            deadline,
+            &mut request_rx,
+            "the third reserve request after the second notification",
+        )
+        .await?;
+        wait_gate.notify_one();
+
+        let Some(run_handle) = run_task.as_mut() else {
+            return Err("runner task ownership was lost before completion".into());
+        };
+        let run_outcome = tokio::time::timeout_at(deadline, run_handle)
+            .await
+            .map_err(|_| "timed out waiting for the runner task to finish".to_string())?;
+        run_task.take();
+        let result = run_outcome
+            .map_err(|error| format!("runner task failed: {error}"))?
+            .map_err(|error| format!("run_in_sandbox failed: {error}"))?;
+
+        let Some(server_handle) = server.as_mut() else {
+            return Err("active-input server task ownership was lost before completion".into());
+        };
+        let server_outcome = tokio::time::timeout_at(deadline, server_handle)
+            .await
+            .map_err(|_| {
+                "timed out waiting for the active-input server task to finish".to_string()
+            })?;
+        server.take();
+        server_outcome.map_err(|error| format!("active-input server task failed: {error}"))?;
+        Ok::<_, String>(result)
+    }
+    .await;
+
+    let result = match scenario {
+        Ok(result) => result,
+        Err(error) => {
+            cancel.cancel();
+            wait_gate.notify_one();
+            let (run_cleanup, server_cleanup) = tokio::join!(
+                reap_spawned_test_task(run_task.take(), "runner", false),
+                reap_spawned_test_task(server.take(), "active-input server", true),
+            );
+            let cleanup_errors = [run_cleanup, server_cleanup]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+            if cleanup_errors.is_empty() {
+                panic!("{error}");
+            }
+            panic!("{error}; cleanup errors: {}", cleanup_errors.join("; "));
+        }
+    };
     assert!(result.failure.is_none());
-    server.await.unwrap();
     let calls = overrides.process_control_calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].message_id, DELIVERY_ID);
