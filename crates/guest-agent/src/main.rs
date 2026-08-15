@@ -1682,6 +1682,8 @@ mod tests {
 
     async fn complete_execution_preserves_workload_resource_failure_semantics_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
+        let _runtime_root_guard = TestEnvGuard;
         let hard_limit = WorkloadResourceLimitDiagnostic {
             memory_max_events: 1_882_956,
             memory_oom_events: 3,
