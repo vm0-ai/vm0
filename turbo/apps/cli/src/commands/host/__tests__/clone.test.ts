@@ -13,8 +13,8 @@ import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroHostCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { hostCommand } from "../index";
 
 const FILES_URL = "http://localhost:3000/api/okou/host/sites/:publicSlug/files";
 const HOSTED_SITE_URL =
@@ -42,7 +42,7 @@ describe("okou host clone command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
-    tempDir = join(tmpdir(), `zero-host-clone-${Date.now()}`);
+    tempDir = join(tmpdir(), `host-clone-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
   });
 
@@ -103,7 +103,7 @@ describe("okou host clone command", () => {
       }),
     );
 
-    await zeroHostCommand.parseAsync([
+    await hostCommand.parseAsync([
       "node",
       "cli",
       "clone",
@@ -163,7 +163,7 @@ describe("okou host clone command", () => {
     const originalCwd = process.cwd();
     process.chdir(tempDir);
     try {
-      await zeroHostCommand.parseAsync([
+      await hostCommand.parseAsync([
         "node",
         "cli",
         "clone",
@@ -185,7 +185,7 @@ describe("okou host clone command", () => {
     writeFileSync(join(destination, "file.txt"), "content");
 
     await expect(async () => {
-      await zeroHostCommand.parseAsync([
+      await hostCommand.parseAsync([
         "node",
         "cli",
         "clone",
@@ -216,7 +216,7 @@ describe("okou host clone command", () => {
     );
 
     await expect(async () => {
-      await zeroHostCommand.parseAsync([
+      await hostCommand.parseAsync([
         "node",
         "cli",
         "clone",

@@ -8,9 +8,9 @@ import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_HOSTED_SITE_ROBOTS_TXT } from "../../../../lib/host/static-site";
-import { server } from "../../../../mocks/server";
-import { zeroHostCommand } from "../index";
+import { DEFAULT_HOSTED_SITE_ROBOTS_TXT } from "../../../lib/host/static-site";
+import { server } from "../../../mocks/server";
+import { hostCommand } from "../index";
 
 const PREPARE_URL = "http://localhost:3000/api/okou/host/deployments/prepare";
 const COMPLETE_URL =
@@ -46,7 +46,7 @@ describe("okou host publish command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
-    tempDir = join(tmpdir(), `zero-host-publish-${Date.now()}`);
+    tempDir = join(tmpdir(), `host-publish-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
   });
 
@@ -139,7 +139,7 @@ describe("okou host publish command", () => {
       }),
     );
 
-    await zeroHostCommand.parseAsync([
+    await hostCommand.parseAsync([
       "node",
       "cli",
       tempDir,
@@ -172,9 +172,7 @@ describe("okou host publish command", () => {
     const legacyUrl = `https://${legacyPublicSlug}.sites.example.com`;
 
     writeFileSync(join(tempDir, "index.html"), index);
-    expect(zeroHostCommand.helpInformation()).toContain(
-      "--slug-suffix <suffix>",
-    );
+    expect(hostCommand.helpInformation()).toContain("--slug-suffix <suffix>");
 
     server.use(
       http.post(PREPARE_URL, async ({ request }) => {
@@ -208,7 +206,7 @@ describe("okou host publish command", () => {
       }),
     );
 
-    await zeroHostCommand.parseAsync([
+    await hostCommand.parseAsync([
       "node",
       "cli",
       tempDir,
@@ -260,7 +258,7 @@ describe("okou host publish command", () => {
       );
 
       await expect(
-        zeroHostCommand.parseAsync([
+        hostCommand.parseAsync([
           "node",
           "cli",
           tempDir,

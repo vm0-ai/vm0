@@ -2,8 +2,8 @@ import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroHostCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { hostCommand } from "../index";
 
 const DEPLOYMENTS_URL =
   "http://localhost:3000/api/okou/host/sites/:site/deployments";
@@ -61,7 +61,7 @@ describe("okou host versions command", () => {
       }),
     );
 
-    await zeroHostCommand.parseAsync([
+    await hostCommand.parseAsync([
       "node",
       "cli",
       "versions",
