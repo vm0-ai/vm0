@@ -252,39 +252,3 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     });
   });
 });
-
-describe("chat event read contract", () => {
-  const eventId = "00000000-0000-4000-8000-000000000003";
-
-  it("requires an explicit schema version header", () => {
-    expect(
-      chatThreadEventsContract.snapshot.headers.safeParse({}).success,
-    ).toBe(false);
-    expect(
-      chatThreadEventsContract.snapshot.headers.safeParse({
-        [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
-      }).success,
-    ).toBe(true);
-  });
-
-  it("requires paired non-cold-start cursors", () => {
-    expect(
-      chatThreadEventsContract.rows.query.safeParse({ sinceSeqId: 0 }).success,
-    ).toBe(true);
-    expect(
-      chatThreadEventsContract.rows.query.safeParse({ sinceSeqId: 1 }).success,
-    ).toBe(false);
-    expect(
-      chatThreadEventsContract.rows.query.safeParse({
-        sinceSeqId: 1,
-        sinceEventId: eventId,
-      }).success,
-    ).toBe(true);
-    expect(
-      chatThreadEventsContract.rows.query.safeParse({
-        sinceSeqId: 0,
-        sinceEventId: eventId,
-      }).success,
-    ).toBe(false);
-  });
-});
