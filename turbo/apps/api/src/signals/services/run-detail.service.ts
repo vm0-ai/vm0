@@ -64,7 +64,7 @@ type RunContextResult =
   | { readonly kind: "no-snapshot" }
   | { readonly kind: "ok"; readonly context: RunContextResponse };
 
-export function zeroRunContext(
+export function runContext(
   runId: string,
   userId: string,
   orgId: string,
@@ -152,7 +152,7 @@ interface AxiomAgentEvent {
   eventData: Record<string, unknown>;
 }
 
-export function zeroRunAgentEvents(
+export function runAgentEvents(
   params: AgentEventsParams,
 ): Computed<Promise<AgentEventsResponse | null>> {
   return computed(async (get): Promise<AgentEventsResponse | null> => {
@@ -223,7 +223,7 @@ ${paginationFilter}
   });
 }
 
-export function zeroRunNetworkLogs(
+export function runNetworkLogs(
   params: NetworkLogsParams,
 ): Computed<Promise<NetworkLogsResponse | null>> {
   return computed(async (get): Promise<NetworkLogsResponse | null> => {

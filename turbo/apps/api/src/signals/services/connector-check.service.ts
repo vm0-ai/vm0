@@ -34,7 +34,7 @@ import {
   type ParsedConnectorDiagnosticRequest,
 } from "./connector-diagnostic-runtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { zeroRunContext } from "./zero-run-detail.service";
+import { runContext } from "./run-detail.service";
 import {
   getConnectorRuntimeConnector,
   listConnectorRuntimeVisibleSlugs,
@@ -1240,20 +1240,20 @@ export const resolveConnectorCheck$ = command(
 
     let timeline: ConnectorCheckTimeline;
     if (args.stateSource.kind === "run") {
-      const runContext = await get(
-        zeroRunContext(args.stateSource.runId, args.userId, args.orgId),
+      const runContextResult = await get(
+        runContext(args.stateSource.runId, args.userId, args.orgId),
       );
       signal.throwIfAborted();
-      if (runContext.kind === "not-found") {
+      if (runContextResult.kind === "not-found") {
         return { kind: "not-found" };
       }
-      if (runContext.kind === "no-snapshot") {
+      if (runContextResult.kind === "no-snapshot") {
         return {
           kind: "ok",
           diagnostic: { outcome: "run-context-unavailable" },
         };
       }
-      timeline = { kind: "run", context: runContext.context };
+      timeline = { kind: "run", context: runContextResult.context };
     } else {
       const state =
         args.request.mode === "url"
