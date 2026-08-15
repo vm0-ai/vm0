@@ -184,20 +184,27 @@ function VisibilityIcon({
 }) {
   const isPublic = workflow.visibility === "public";
   const Icon = isPublic ? Globe : Lock;
+  const label = isPublic
+    ? i18n.t(($) => {
+        return $.workflows.common.public;
+      })
+    : i18n.t(($) => {
+        return $.workflows.common.private;
+      });
   return (
-    <Icon
-      size={15}
-      className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
-      aria-label={
-        isPublic
-          ? i18n.t(($) => {
-              return $.workflows.common.public;
-            })
-          : i18n.t(($) => {
-              return $.workflows.common.private;
-            })
-      }
-    />
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span aria-label={label} className="flex shrink-0">
+            <Icon
+              size={15}
+              className={isPublic ? "text-blue-500" : "text-[#45A7A8]"}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
