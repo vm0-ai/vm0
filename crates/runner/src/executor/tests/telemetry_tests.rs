@@ -12,8 +12,8 @@ use sandbox::{
 use sandbox_mock::MockSandboxFactory;
 
 use super::super::telemetry::{
-    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn,
-    record_queue_terminal_if_unspawned, record_queue_to_spawn, record_reuse_result,
+    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn, record_queue_to_spawn,
+    record_reuse_result,
 };
 use super::super::{
     ExactReuseSpeculationTiming, ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnOperationTiming,
@@ -27,6 +27,7 @@ use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
+use crate::telemetry::QueueToSpawnOutcome;
 use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
 
@@ -104,13 +105,25 @@ fn queue_to_spawn_records_once_at_the_real_spawn_boundary() {
         SandboxReuseResult::PoolMiss,
         WorkspaceReuseResult::CacheMiss,
     );
-    record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+    telemetry.record_queue_terminal_if_unspawned(
+        context.queue_enqueued_at,
+        QueueToSpawnOutcome::PreSpawnFailed,
+    );
 
     let operations = telemetry.pending_ops_with_duration_snapshot();
     assert_eq!(operations.len(), 1);
     assert_eq!(operations[0].0, "queue_to_spawn");
     assert!(operations[0].1 >= 1_000);
     assert!(operations[0].2);
+    assert_eq!(
+        telemetry.pending_queue_lifecycle_snapshot(),
+        vec![(
+            "queue_to_spawn".to_string(),
+            operations[0].1,
+            true,
+            Some("spawned".to_string()),
+        )]
+    );
 }
 
 #[test]
@@ -119,12 +132,24 @@ fn queue_terminal_records_when_spawn_never_happens() {
     context.queue_enqueued_at = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
     let mut telemetry = new_telemetry();
 
-    record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+    telemetry.record_queue_terminal_if_unspawned(
+        context.queue_enqueued_at,
+        QueueToSpawnOutcome::PreSpawnFailed,
+    );
 
     let operations = telemetry.pending_ops_with_duration_snapshot();
     assert_eq!(
         operations,
         vec![("queue_to_spawn".to_string(), 0, false, None)]
+    );
+    assert_eq!(
+        telemetry.pending_queue_lifecycle_snapshot(),
+        vec![(
+            "queue_to_spawn".to_string(),
+            0,
+            false,
+            Some("pre_spawn_failed".to_string()),
+        )]
     );
 }
 
@@ -140,11 +165,23 @@ fn invalid_queue_timestamp_is_missing_without_fabricating_terminal_failure() {
         SandboxReuseResult::PoolMiss,
         WorkspaceReuseResult::CacheMiss,
     );
-    record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+    telemetry.record_queue_terminal_if_unspawned(
+        context.queue_enqueued_at,
+        QueueToSpawnOutcome::PreSpawnFailed,
+    );
 
     assert_eq!(
         telemetry.pending_ops_with_duration_snapshot(),
         vec![("queue_to_spawn".to_string(), 0, false, None)]
+    );
+    assert_eq!(
+        telemetry.pending_queue_lifecycle_snapshot(),
+        vec![(
+            "queue_to_spawn".to_string(),
+            0,
+            false,
+            Some("missing_enqueue_boundary".to_string()),
+        )]
     );
 }
 

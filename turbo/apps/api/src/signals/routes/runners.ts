@@ -113,7 +113,11 @@ import {
   resolveRunnerReusePreference,
   type RunnerPreferenceTelemetryResolution,
 } from "../services/runner-reuse-preference";
-import { recordOrganizationQueueTerminal } from "../services/organization-queue-telemetry.service";
+import {
+  organizationQueueBoundaryFromExecutionContext,
+  recordOrganizationQueueTerminal,
+  type OrganizationQueueBoundary,
+} from "../services/organization-queue-telemetry.service";
 import type { RouteEntry } from "../route-entry";
 import { safeSync, settle, tapError } from "../utils";
 
@@ -1144,16 +1148,19 @@ function poisonJobErrorResponse(result: FailedPoisonJobResult) {
 
 function recordClaimQueueTerminalTelemetry(args: {
   readonly runId: string;
-  readonly queueEnqueuedAt: number | undefined;
+  readonly queueBoundary: OrganizationQueueBoundary;
 }): void {
   // Direct launches and old stored contexts do not carry a queue boundary.
   // Without a durable admission marker, emitting a missing-boundary event here
   // would misclassify every direct claim failure as an organization-queue run.
-  if (args.queueEnqueuedAt === undefined) {
+  if (args.queueBoundary.kind === "absent") {
     return;
   }
   const terminalAt = now();
-  const queueWaitMs = elapsedSinceApiStartMs(args.queueEnqueuedAt, terminalAt);
+  const queueWaitMs =
+    args.queueBoundary.kind === "present"
+      ? elapsedSinceApiStartMs(args.queueBoundary.enqueuedAt, terminalAt)
+      : undefined;
   const result = safeSync(() => {
     recordOrganizationQueueTerminal({
       runId: args.runId,
@@ -2301,7 +2308,7 @@ async function failClaimForResumeSessionHistoryLoad(
     readonly hash: string;
     readonly errorMessage: string;
     readonly cause: unknown;
-    readonly queueEnqueuedAt: number | undefined;
+    readonly queueBoundary: OrganizationQueueBoundary;
     readonly scheduleFailedSideEffects: (
       args: ClaimFailedSideEffectArgs,
     ) => void;
@@ -2325,7 +2332,7 @@ async function failClaimForResumeSessionHistoryLoad(
   }
   recordClaimQueueTerminalTelemetry({
     runId: args.runId,
-    queueEnqueuedAt: args.queueEnqueuedAt,
+    queueBoundary: args.queueBoundary,
   });
   args.scheduleFailedSideEffects({
     runId: args.runId,
@@ -2340,6 +2347,7 @@ async function failClaimForInvalidStoredExecutionContext(
     readonly db: Db;
     readonly runId: string;
     readonly orgId: string;
+    readonly queueBoundary: OrganizationQueueBoundary;
     readonly scheduleFailedSideEffects: (
       args: ClaimFailedSideEffectArgs,
     ) => void;
@@ -2355,6 +2363,10 @@ async function failClaimForInvalidStoredExecutionContext(
   if (poisonResult.status !== "failed") {
     return poisonJobErrorResponse(poisonResult);
   }
+  recordClaimQueueTerminalTelemetry({
+    runId: args.runId,
+    queueBoundary: args.queueBoundary,
+  });
   args.scheduleFailedSideEffects({
     runId: args.runId,
     orgId: args.orgId,
@@ -2369,7 +2381,7 @@ async function claimResponseBuildErrorResponse(
     readonly run: ClaimedRun;
     readonly runId: string;
     readonly error: unknown;
-    readonly queueEnqueuedAt: number | undefined;
+    readonly queueBoundary: OrganizationQueueBoundary;
     readonly scheduleFailedSideEffects: (
       args: ClaimFailedSideEffectArgs,
     ) => void;
@@ -2387,7 +2399,7 @@ async function claimResponseBuildErrorResponse(
       orgId: args.run.orgId,
       errorMessage: args.error.message,
       cause: args.error.cause,
-      queueEnqueuedAt: args.queueEnqueuedAt,
+      queueBoundary: args.queueBoundary,
       scheduleFailedSideEffects: args.scheduleFailedSideEffects,
     },
     signal,
@@ -2413,6 +2425,9 @@ const claimAuthorizedJob$ = command(
     const run = jobWithRun.run;
 
     const contextParseStartedAt = now();
+    const queueBoundary = organizationQueueBoundaryFromExecutionContext(
+      jobWithRun.job.executionContext,
+    );
     const storedContextResult =
       compatibleStoredExecutionContextSchema.safeParse(
         jobWithRun.job.executionContext,
@@ -2433,6 +2448,7 @@ const claimAuthorizedJob$ = command(
           db,
           runId,
           orgId: run.orgId,
+          queueBoundary,
           scheduleFailedSideEffects(failedArgs) {
             set(scheduleClaimFailedSideEffects$, failedArgs);
           },
@@ -2465,7 +2481,7 @@ const claimAuthorizedJob$ = command(
           run,
           runId,
           error: responseBodyResult.error,
-          queueEnqueuedAt: storedContext.queueEnqueuedAt,
+          queueBoundary,
           scheduleFailedSideEffects(failedArgs) {
             set(scheduleClaimFailedSideEffects$, failedArgs);
           },

@@ -604,6 +604,7 @@ export const cleanupExpiredQueueEntries$ = command(
   ): Promise<QueuedRunMaintenanceResult> => {
     const writeDb = set(writeDb$);
     const currentTime = nowDate();
+    let cancellationDeferred = false;
 
     const result = await writeDb.transaction(async (tx) => {
       const expiredRunIds = tx
@@ -707,14 +708,19 @@ export const cleanupExpiredQueueEntries$ = command(
         timedOutRuns,
       };
     });
-    signal.throwIfAborted();
-
+    if (signal.aborted) {
+      // Record committed terminal transitions before propagating cancellation.
+      cancellationDeferred = true;
+    }
     for (const run of result.timedOutRuns) {
       recordQueuedTerminalTelemetry(
         run,
         run.queueEnqueuedAt === null ? "missing_enqueue_boundary" : "expired",
         currentTime,
       );
+    }
+    if (cancellationDeferred || signal.aborted) {
+      signal.throwIfAborted();
     }
 
     if (result.deletedCount > 0 || result.timedOutRuns.length > 0) {
@@ -736,6 +742,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
   ): Promise<QueuedRunMaintenanceResult> => {
     const writeDb = set(writeDb$);
     const currentTime = nowDate();
+    let cancellationDeferred = false;
 
     const result = await writeDb.transaction(async (tx) => {
       const candidates = await tx
@@ -807,14 +814,19 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
 
       return { deletedCount: 0, timedOutRuns };
     });
-    signal.throwIfAborted();
-
+    if (signal.aborted) {
+      // Record committed terminal transitions before propagating cancellation.
+      cancellationDeferred = true;
+    }
     for (const run of result.timedOutRuns) {
       recordQueuedTerminalTelemetry(
         run,
         "missing_enqueue_boundary",
         currentTime,
       );
+    }
+    if (cancellationDeferred || signal.aborted) {
+      signal.throwIfAborted();
     }
 
     if (result.timedOutRuns.length > 0) {

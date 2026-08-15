@@ -14,6 +14,7 @@ import {
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
 import { now } from "../../lib/time";
+import type { Tx } from "../../lib/db-types";
 import { safeSync, tapError } from "../utils";
 import {
   chatCallbackIdForRun,
@@ -23,7 +24,11 @@ import {
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
-import { recordOrganizationQueueTerminal } from "./organization-queue-telemetry.service";
+import {
+  organizationQueueBoundaryFromExecutionContext,
+  recordOrganizationQueueTerminal,
+  type OrganizationQueueBoundary,
+} from "./organization-queue-telemetry.service";
 
 const L = logger("ZeroRunCancel");
 
@@ -39,7 +44,7 @@ export interface CancelRunResult {
   readonly cancellationRecoveryCompleted: boolean | null;
   readonly runnerCancellationMode: RunnerCancellationMode;
   readonly alreadyCancelled: boolean;
-  readonly queueEnqueuedAt: Date | null;
+  readonly organizationQueueBoundary: OrganizationQueueBoundary;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -52,12 +57,47 @@ function isActiveStatus(status: string): status is ActiveStatus {
   return (ACTIVE_STATUSES as readonly string[]).includes(status);
 }
 
+async function organizationQueueBoundaryForRun(
+  tx: Tx,
+  status: string,
+  runId: string,
+): Promise<OrganizationQueueBoundary> {
+  if (status === "queued") {
+    const [queueRow] = await tx
+      .select({ createdAt: agentRunQueue.createdAt })
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.runId, runId))
+      .limit(1);
+    return queueRow
+      ? { kind: "present", enqueuedAt: queueRow.createdAt.getTime() }
+      : { kind: "invalid" };
+  }
+  if (status === "pending") {
+    const [runnerJob] = await tx
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, runId))
+      .limit(1);
+    return organizationQueueBoundaryFromExecutionContext(
+      runnerJob?.executionContext,
+    );
+  }
+  return { kind: "absent" };
+}
+
 function recordCancelledQueueTelemetry(result: CancelRunResult): void {
-  if (result.alreadyCancelled || result.previousStatus !== "queued") {
+  if (
+    result.alreadyCancelled ||
+    (result.previousStatus !== "queued" &&
+      result.organizationQueueBoundary.kind === "absent")
+  ) {
     return;
   }
 
-  const queueEnqueuedAt = result.queueEnqueuedAt?.getTime();
+  const queueEnqueuedAt =
+    result.organizationQueueBoundary.kind === "present"
+      ? result.organizationQueueBoundary.enqueuedAt
+      : undefined;
   const timestamp = new Date(result.apiStartTime).toISOString();
   const telemetryResult = safeSync(() => {
     recordOrganizationQueueTerminal({
@@ -109,6 +149,7 @@ export const cancelRun$ = command(
   > => {
     const apiStartTime = args.apiStartTime ?? now();
     const writeDb = set(writeDb$);
+    let cancellationDeferred = false;
 
     const result = await writeDb.transaction(async (tx) => {
       const [run] = await tx
@@ -149,7 +190,8 @@ export const cancelRun$ = command(
           cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
           runnerCancellationMode: args.runnerCancellationMode,
           alreadyCancelled: true,
-          queueEnqueuedAt: null,
+          organizationQueueBoundary:
+            organizationQueueBoundaryFromExecutionContext(undefined),
         };
       }
 
@@ -159,14 +201,11 @@ export const cancelRun$ = command(
         );
       }
 
-      const [queueRow] =
-        run.status === "queued"
-          ? await tx
-              .select({ createdAt: agentRunQueue.createdAt })
-              .from(agentRunQueue)
-              .where(eq(agentRunQueue.runId, args.runId))
-              .limit(1)
-          : [];
+      const organizationQueueBoundary = await organizationQueueBoundaryForRun(
+        tx,
+        run.status,
+        args.runId,
+      );
 
       const [updated] = await tx
         .update(agentRuns)
@@ -199,12 +238,18 @@ export const cancelRun$ = command(
         cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
         runnerCancellationMode: args.runnerCancellationMode,
         alreadyCancelled: false,
-        queueEnqueuedAt: queueRow?.createdAt ?? null,
+        organizationQueueBoundary,
       };
     });
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      // Record the committed transition before propagating cancellation.
+      cancellationDeferred = true;
+    }
     if ("previousStatus" in result) {
       recordCancelledQueueTelemetry(result);
+    }
+    if (cancellationDeferred || signal.aborted) {
+      signal.throwIfAborted();
     }
 
     return result;

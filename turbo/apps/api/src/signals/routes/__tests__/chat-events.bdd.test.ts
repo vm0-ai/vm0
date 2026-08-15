@@ -2953,7 +2953,7 @@ describe("CHAT-02: org queue markers", () => {
     expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "enqueue_zero_run",
-        queue_depth: 1,
+        queue_depth_bucket: "1",
       }),
     );
     expect(

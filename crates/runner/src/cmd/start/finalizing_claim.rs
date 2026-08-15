@@ -15,7 +15,7 @@ use super::idle_lifecycle::{
 use super::job_discovery::{
     ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource, ReservedActivation,
     ReservedActivationRequest, activate_reserved_idle, build_spawn_job_request,
-    reserve_reusable_idle_for_spawn, rollback_reserved_idle_for_spawn,
+    complete_claimed_failure, reserve_reusable_idle_for_spawn, rollback_reserved_idle_for_spawn,
 };
 use super::job_spawn::{SpawnContext, run_job};
 #[cfg(test)]
@@ -28,7 +28,7 @@ use crate::ids::RunId;
 use crate::provider::ClaimedJob;
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::RunCancellationRegistration;
-use crate::types::{CompleteRequest, SandboxReuseResult};
+use crate::types::SandboxReuseResult;
 
 pub(super) struct FinalizingClaimRequest {
     pub(super) claimed: ClaimedJob,
@@ -119,24 +119,26 @@ async fn run_finalizing_claim(
             if let Some(reservation) = reserved_exact.take() {
                 rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
             }
-            return complete_claimed_without_sandbox(claimed, cancellation, failure, None, &ctx)
-                .await;
+            let completed =
+                complete_claimed_failure(claimed, cancellation, None, failure, &ctx).await;
+            completed.telemetry.flush().await;
+            return completed.cancellation;
         }
         Err(payload) => {
             if let Some(reservation) = reserved_exact.take() {
                 rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
             }
-            let cancellation = complete_claimed_without_sandbox(
+            let completed = complete_claimed_failure(
                 claimed,
                 cancellation,
+                None,
                 ExecutionFailure::from_error(
                     "runner panicked while preparing a claimed finalizing successor",
                 ),
-                None,
                 &ctx,
             )
             .await;
-            cancellation.unregister().await;
+            completed.telemetry.flush().await;
             std::panic::resume_unwind(payload);
         }
     };
@@ -184,16 +186,17 @@ async fn run_finalizing_claim(
                     error,
                 } => {
                     drop(active_run_guard);
-                    let cancellation = complete_claimed_without_sandbox(
+                    let completed = complete_claimed_failure(
                         claimed,
                         cancellation,
-                        ExecutionFailure::from_error(error),
                         Some(reuse_result),
+                        ExecutionFailure::from_error(error),
                         &ctx,
                     )
                     .await;
                     drop(budget_lease);
-                    return cancellation;
+                    completed.telemetry.flush().await;
+                    return completed.cancellation;
                 }
             }
         }
@@ -393,30 +396,4 @@ async fn acquire_fresh_capacity(
             }
         }
     }
-}
-
-async fn complete_claimed_without_sandbox(
-    claimed: ClaimedJob,
-    cancellation: RunCancellationRegistration,
-    failure: ExecutionFailure,
-    reuse_result: Option<SandboxReuseResult>,
-    ctx: &SpawnContext,
-) -> RunCancellationRegistration {
-    let (context, completion_auth, active_input_source) = claimed.into_parts();
-    drop(active_input_source);
-    ctx.provider
-        .complete(
-            CompleteRequest {
-                run_id: context.run_id,
-                exit_code: failure.exit_code,
-                error: Some(failure.error),
-                sandbox_id: None,
-                sandbox_reuse_result: reuse_result,
-                workspace_reuse_result: None,
-                active_input_delivery_ids: Vec::new(),
-            },
-            completion_auth,
-        )
-        .await;
-    cancellation
 }

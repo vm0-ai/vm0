@@ -1,4 +1,11 @@
+import { MIN_EPOCH_MS_TIMESTAMP } from "@okouai/api-contracts/contracts/runners";
+
 import { recordSandboxOperation } from "../external/sandbox-op-log";
+
+export type OrganizationQueueBoundary =
+  | { readonly kind: "absent" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "present"; readonly enqueuedAt: number };
 
 type OrganizationQueueTerminalOutcome =
   | "cancelled"
@@ -22,6 +29,29 @@ function organizationQueueDepthBucket(depth: number): string {
     return "4_7";
   }
   return "8_plus";
+}
+
+export function organizationQueueBoundaryFromExecutionContext(
+  context: unknown,
+): OrganizationQueueBoundary {
+  if (
+    typeof context !== "object" ||
+    context === null ||
+    Array.isArray(context) ||
+    !("queueEnqueuedAt" in context)
+  ) {
+    return { kind: "absent" };
+  }
+
+  const enqueuedAt = context.queueEnqueuedAt;
+  if (
+    typeof enqueuedAt !== "number" ||
+    !Number.isSafeInteger(enqueuedAt) ||
+    enqueuedAt < MIN_EPOCH_MS_TIMESTAMP
+  ) {
+    return { kind: "invalid" };
+  }
+  return { kind: "present", enqueuedAt };
 }
 
 export function recordOrganizationQueueEnqueued(args: {

@@ -34,6 +34,25 @@ pub(crate) enum RunnerStartupPath {
     Cold,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QueueToSpawnOutcome {
+    Spawned,
+    MissingEnqueueBoundary,
+    PreSpawnFailed,
+    CancelledBeforeSpawn,
+}
+
+impl QueueToSpawnOutcome {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Spawned => "spawned",
+            Self::MissingEnqueueBoundary => "missing_enqueue_boundary",
+            Self::PreSpawnFailed => "pre_spawn_failed",
+            Self::CancelledBeforeSpawn => "cancelled_before_spawn",
+        }
+    }
+}
+
 /// Per-job telemetry collector. Buffers sandbox operations and flushes them
 /// periodically (auto on 30 s threshold) and at job end.
 ///
@@ -141,7 +160,7 @@ impl JobTelemetry {
         sandbox_reuse_result: SandboxReuseResult,
     ) {
         let mut op = sandbox_op("queue_to_spawn", duration, true, None, None);
-        op.outcome = Some("spawned".to_string());
+        op.outcome = Some(QueueToSpawnOutcome::Spawned.as_str().to_string());
         op.runner_startup_path = Some(runner_startup_path);
         op.sandbox_reuse_result = Some(sandbox_reuse_result);
         self.queue_lifecycle_recorded = true;
@@ -154,22 +173,29 @@ impl JobTelemetry {
         sandbox_reuse_result: SandboxReuseResult,
     ) {
         let mut op = sandbox_op("queue_to_spawn", Duration::ZERO, false, None, None);
-        op.outcome = Some("missing_enqueue_boundary".to_string());
+        op.outcome = Some(
+            QueueToSpawnOutcome::MissingEnqueueBoundary
+                .as_str()
+                .to_string(),
+        );
         op.runner_startup_path = Some(runner_startup_path);
         op.sandbox_reuse_result = Some(sandbox_reuse_result);
         self.queue_lifecycle_recorded = true;
         self.push_operation(op);
     }
 
-    pub(crate) fn record_queue_terminal(&mut self, outcome: &str) {
+    pub(crate) fn record_queue_terminal_if_unspawned(
+        &mut self,
+        queue_enqueued_at: Option<u64>,
+        outcome: QueueToSpawnOutcome,
+    ) {
+        if queue_enqueued_at.is_none() || self.queue_lifecycle_recorded {
+            return;
+        }
         let mut op = sandbox_op("queue_to_spawn", Duration::ZERO, false, None, None);
-        op.outcome = Some(outcome.to_string());
+        op.outcome = Some(outcome.as_str().to_string());
         self.queue_lifecycle_recorded = true;
         self.push_operation(op);
-    }
-
-    pub(crate) fn queue_lifecycle_recorded(&self) -> bool {
-        self.queue_lifecycle_recorded
     }
 
     /// Record a timed operation with low-cardinality session-history transport
@@ -256,6 +282,24 @@ impl JobTelemetry {
                     op.duration_ms,
                     op.success,
                     op.error.clone(),
+                )
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_queue_lifecycle_snapshot(
+        &self,
+    ) -> Vec<(String, u64, bool, Option<String>)> {
+        self.pending_ops
+            .iter()
+            .filter(|op| op.action_type == "queue_to_spawn")
+            .map(|op| {
+                (
+                    op.action_type.clone(),
+                    op.duration_ms,
+                    op.success,
+                    op.outcome.clone(),
                 )
             })
             .collect()

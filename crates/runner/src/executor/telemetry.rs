@@ -371,16 +371,6 @@ pub(super) fn record_queue_to_spawn(
     telemetry.record_queue_to_spawn(duration, runner_startup_path, sandbox_reuse_result);
 }
 
-pub(super) fn record_queue_terminal_if_unspawned(
-    context: &ExecutionContext,
-    telemetry: &mut JobTelemetry,
-    outcome: &str,
-) {
-    if context.queue_enqueued_at.is_some() && !telemetry.queue_lifecycle_recorded() {
-        telemetry.record_queue_terminal(outcome);
-    }
-}
-
 fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option<Duration> {
     if let Some(api_start_ms) = context.api_start_time {
         let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;

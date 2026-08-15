@@ -67,9 +67,7 @@ pub(crate) use telemetry::{
     ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
     RunnerPreSpawnTiming,
 };
-use telemetry::{
-    RunnerSpawnTiming, record_api_latency, record_queue_terminal_if_unspawned, record_reuse_result,
-};
+use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
@@ -158,7 +156,7 @@ use crate::network_log_manager::NetworkLogManager;
 use crate::network_log_manager::NetworkLogSession;
 use crate::paths::{HomePaths, LogPaths};
 use crate::proxy::{MitmJsonlFlushHandle, ProxyRegistryHandle};
-use crate::telemetry::JobTelemetry;
+use crate::telemetry::{JobTelemetry, QueueToSpawnOutcome};
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCache, WorkspaceImageLease,
@@ -599,6 +597,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         session_history_restore_plan,
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
+    let cancellation_observed = cancellation.any();
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
@@ -659,14 +658,9 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         },
     };
 
-    record_queue_terminal_if_unspawned(
-        &context,
-        &mut telemetry,
-        if outcome.failure.is_some() {
-            "pre_spawn_failed"
-        } else {
-            "cancelled_before_spawn"
-        },
+    telemetry.record_queue_terminal_if_unspawned(
+        context.queue_enqueued_at,
+        pre_spawn_queue_outcome(cancellation_observed.is_cancelled()),
     );
 
     (outcome, telemetry)
@@ -713,6 +707,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         session_history_restore_plan,
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
+    let cancellation_observed = cancellation.any();
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
@@ -752,7 +747,10 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         Ok(workspace_image) => workspace_image,
         Err(failure) => {
             let outcome = ExecuteOutcome::reused_sandbox_failure(failure, sandbox, source_ip, None);
-            record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+            telemetry.record_queue_terminal_if_unspawned(
+                context.queue_enqueued_at,
+                pre_spawn_queue_outcome(cancellation_observed.is_cancelled()),
+            );
             return (outcome, telemetry);
         }
     };
@@ -764,7 +762,10 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             source_ip,
             workspace_image,
         );
-        record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+        telemetry.record_queue_terminal_if_unspawned(
+            context.queue_enqueued_at,
+            pre_spawn_queue_outcome(cancellation_observed.is_cancelled()),
+        );
         return (outcome, telemetry);
     }
 
@@ -825,17 +826,20 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         }
     };
 
-    record_queue_terminal_if_unspawned(
-        &context,
-        &mut telemetry,
-        if outcome.failure.is_some() {
-            "pre_spawn_failed"
-        } else {
-            "cancelled_before_spawn"
-        },
+    telemetry.record_queue_terminal_if_unspawned(
+        context.queue_enqueued_at,
+        pre_spawn_queue_outcome(cancellation_observed.is_cancelled()),
     );
 
     (outcome, telemetry)
+}
+
+fn pre_spawn_queue_outcome(cancelled: bool) -> QueueToSpawnOutcome {
+    if cancelled {
+        QueueToSpawnOutcome::CancelledBeforeSpawn
+    } else {
+        QueueToSpawnOutcome::PreSpawnFailed
+    }
 }
 
 async fn resolve_reused_workspace_promotion(
