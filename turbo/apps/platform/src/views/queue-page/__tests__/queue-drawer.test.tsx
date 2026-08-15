@@ -497,19 +497,19 @@ describe("queue drawer", () => {
 
     await screen.findByText("$70.00");
     const reviewDialog = screen.getByRole("dialog", {
-      name: "Buy concurrency",
+      name: "Review concurrency purchase",
     });
     expect(buyButton).toHaveTextContent("Updating...");
     expect(buyButton).toBeDisabled();
     expect(previewQuantity).toBe(5);
     expect(within(reviewDialog).getByText("5")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$220.00/month")).toBeInTheDocument();
-    click(within(reviewDialog).getByText("Confirm"));
+    click(within(reviewDialog).getByText("Pay and add slots"));
 
     await waitFor(() => {
       expect(checkoutQuantity).toBe(5);
       expect(
-        screen.queryByRole("dialog", { name: "Buy concurrency" }),
+        screen.queryByRole("dialog", { name: "Review concurrency purchase" }),
       ).toBeNull();
     });
     if (!checkoutSuccessUrl) {
@@ -627,7 +627,7 @@ describe("queue drawer", () => {
     expect(within(reviewDialog).getByText("$43.21")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$400.00/month")).toBeInTheDocument();
 
-    click(within(reviewDialog).getByText("Confirm"));
+    click(within(reviewDialog).getByText("Pay and update"));
 
     await waitFor(() => {
       expect(confirmedSubscriptionId).toBe("sub_concurrency_active");

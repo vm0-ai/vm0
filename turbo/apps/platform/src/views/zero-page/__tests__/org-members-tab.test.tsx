@@ -486,14 +486,18 @@ describe("organization members settings", () => {
     expect(
       within(confirmationDialog).getByText("paid.invitee@example.com"),
     ).toBeVisible();
-    expect(within(confirmationDialog).getByText("$50/month")).toBeVisible();
+    expect(within(confirmationDialog).getByText("Invite as")).toBeVisible();
+    expect(
+      within(confirmationDialog).getByText("Member · 26,300 credits"),
+    ).toBeVisible();
+    expect(within(confirmationDialog).getByText("Due today")).toBeVisible();
     expect(previewBody).toStrictEqual({
       email: "paid.invitee@example.com",
       role: "member",
       usagePackUsd: 50,
     });
     expect(window.location.href).toBe(initialHref);
-    click(buttonByText("Confirm", confirmationDialog));
+    click(buttonByText("Pay and invite", confirmationDialog));
 
     await waitFor(() => {
       expect(confirmedPurchaseId).toBe("c08a5fab-a05d-43f9-a1ee-10feaf27584c");
