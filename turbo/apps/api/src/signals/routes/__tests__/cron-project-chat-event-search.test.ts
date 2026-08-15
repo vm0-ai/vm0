@@ -196,7 +196,7 @@ describe("GET /api/cron/project-chat-event-search", () => {
     const tick = projectOwnedChatEventSearch([thread.id]);
     onTestFinished(async () => {
       heldDeletion.release();
-      await Promise.allSettled([heldDeletion.done, tick]);
+      await Promise.all([heldDeletion.done, tick]);
     });
 
     await expect
