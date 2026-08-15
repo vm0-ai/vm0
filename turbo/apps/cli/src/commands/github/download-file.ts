@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadGithubFile } from "../../../lib/api/domains/integrations-github";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { downloadGithubFile } from "../../lib/api/domains/integrations-github";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 function filenameFromUrl(fileUrl: string): string {
   if (URL.canParse(fileUrl)) {
@@ -64,7 +64,7 @@ How to read the downloaded file:
 
 Notes:
   - The URL comes from a [GitHub file] block
-  - Streams the GitHub file bytes through VM0 directly to disk`,
+  - Streams the GitHub file bytes through Okou directly to disk`,
   )
   .action(
     withErrorHandler(
