@@ -135,6 +135,10 @@ function getInternalAllowedLiterals() {
       "internal run event payload; the rendered cancellation message uses typed i18n",
     ],
     [
+      "src/signals/shared-database-browser.ts\u0000okou core service",
+      "SharedWorker browser identifier, not user-visible UI copy",
+    ],
+    [
       "src/signals/zero-page/tiptap-workflow-composer.ts\u0000paragraph+",
       "Tiptap document schema expression",
     ],

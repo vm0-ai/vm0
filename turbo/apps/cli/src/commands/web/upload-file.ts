@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { uploadWebFile } from "../../../lib/api/domains/web";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { uploadWebFile } from "../../lib/api/domains/web";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 export const uploadFileCommand = new Command()
   .name("upload-file")

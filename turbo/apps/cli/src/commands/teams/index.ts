@@ -1,14 +1,14 @@
 import { Command } from "commander";
-import { zeroTeamsMessageCommand } from "./message";
+import { teamsMessageCommand } from "./message";
 import { uploadFileCommand } from "./upload-file";
 import { downloadFileCommand } from "./download-file";
 
-export const zeroTeamsCommand = new Command()
+export const teamsCommand = new Command()
   .name("teams")
   .description(
     "Send messages, upload files, and download files from Microsoft Teams as the bot",
   )
-  .addCommand(zeroTeamsMessageCommand)
+  .addCommand(teamsMessageCommand)
   .addCommand(uploadFileCommand)
   .addCommand(downloadFileCommand)
   .addHelpText(

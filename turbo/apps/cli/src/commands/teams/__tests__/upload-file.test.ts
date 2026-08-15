@@ -7,7 +7,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 
 const UPLOAD_INIT_URL =

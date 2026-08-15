@@ -333,6 +333,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        lastEventId: assistantEventRow.id,
         lastSeqId: 2,
       });
     });
@@ -416,6 +417,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });
     });
@@ -526,6 +528,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });
     });

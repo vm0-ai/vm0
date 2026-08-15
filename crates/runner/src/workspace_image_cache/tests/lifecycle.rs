@@ -1,3 +1,8 @@
+use std::future::{Future as _, poll_fn};
+use std::sync::mpsc;
+use std::task::Poll;
+use std::time::Duration;
+
 use tokio::fs;
 
 use super::super::fs::{allocated_bytes, local_timestamp};
@@ -237,6 +242,68 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
             .unwrap()
     );
     assert!(!cache.entry_paths(&key).entry_dir().to_path_buf().exists());
+}
+
+#[test]
+fn prepare_waits_for_initial_lock_attempt_before_contention_timeout() {
+    const BLOCKER_WATCHDOG: Duration = Duration::from_secs(1);
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .max_blocking_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    runtime.block_on(async {
+        tokio::time::pause();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        std::fs::create_dir_all(paths.base_dir()).unwrap();
+        let cache = WorkspaceImageCache::new(paths);
+        let (blocker_started_tx, blocker_started_rx) = mpsc::channel();
+        let (release_blocker_tx, release_blocker_rx) = mpsc::channel();
+        let blocker = tokio::task::spawn_blocking(move || {
+            blocker_started_tx.send(()).unwrap();
+            release_blocker_rx.recv().unwrap();
+        });
+        blocker_started_rx
+            .recv_timeout(BLOCKER_WATCHDOG)
+            .expect("blocking-pool blocker should start");
+
+        let mut prepare = Box::pin(cache.prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-delayed-first-lock-attempt"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        }));
+        let initial_poll = poll_fn(|context| Poll::Ready(prepare.as_mut().poll(context))).await;
+        assert!(initial_poll.is_pending());
+
+        tokio::time::advance(Duration::from_secs(1)).await;
+        match poll_fn(|context| Poll::Ready(prepare.as_mut().poll(context))).await {
+            Poll::Pending => {}
+            Poll::Ready(lease) => {
+                release_blocker_tx.send(()).unwrap();
+                blocker.await.unwrap();
+                panic!(
+                    "pre-attempt blocking-pool delay completed prepare as {:?}",
+                    lease.result()
+                );
+            }
+        }
+
+        release_blocker_tx.send(()).unwrap();
+        blocker.await.unwrap();
+        let lease = prepare.await;
+
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+        assert!(lease.cache_key.is_some());
+    });
 }
 
 #[tokio::test]

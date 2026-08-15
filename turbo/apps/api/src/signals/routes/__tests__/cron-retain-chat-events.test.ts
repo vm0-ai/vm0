@@ -111,7 +111,7 @@ describe("chat event retention cron", () => {
     );
     const batchEventIds = await store.set(
       seedRetentionOutputEvents$,
-      { chatThreadId: threadId, count: 500, offsetMs: OLD_OFFSET_MS },
+      { chatThreadId: threadId, count: 2500, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
     const oldEventIds = [oldEventId, ...batchEventIds];
@@ -131,10 +131,10 @@ describe("chat event retention cron", () => {
     const cutoff = new Date(result.cutoff);
 
     expect(result).toMatchObject({
-      scanLimit: 1000,
-      deleteLimit: 500,
-      candidates: 501,
-      deleted: 500,
+      scanLimit: 5000,
+      deleteLimit: 2500,
+      candidates: 2501,
+      deleted: 2500,
       skippedBatchLimit: 1,
       overlapPrevented: false,
       hasMore: true,
@@ -178,10 +178,10 @@ describe("chat event retention cron", () => {
       context: "api:cron:retain-chat-events",
       deploymentCommitSha: DEPLOYMENT_SHA,
       cutoff: result.cutoff,
-      scanLimit: 1000,
+      scanLimit: 5000,
       scanned: result.scanned,
-      candidates: 501,
-      deleted: 500,
+      candidates: 2501,
+      deleted: 2500,
       skippedSnapshot: 0,
       skippedSearchWatermark: 0,
       skippedPendingRunless: 0,

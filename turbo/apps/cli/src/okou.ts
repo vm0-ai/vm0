@@ -176,7 +176,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Send Microsoft Teams messages, upload files, and download files",
     load: async () => {
-      return (await import("./commands/zero/teams")).zeroTeamsCommand;
+      return (await import("./commands/teams")).teamsCommand;
     },
   },
   {
@@ -226,7 +226,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "intro",
     description: "Print Okou's self-introduction and capability guide",
     load: async () => {
-      return (await import("./commands/zero/intro")).zeroIntroCommand;
+      return (await import("./commands/intro")).introCommand;
     },
   },
   {
@@ -270,7 +270,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "web",
     description: "Upload and download files via the web chat endpoint",
     load: async () => {
-      return (await import("./commands/zero/web")).zeroWebCommand;
+      return (await import("./commands/web")).webCommand;
     },
   },
   {

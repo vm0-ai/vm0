@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { downloadFileCommand } from "./download-file";
 import { uploadFileCommand } from "./upload-file";
 
-export const zeroWebCommand = new Command()
+export const webCommand = new Command()
   .name("web")
   .description("Upload and download files via the web chat endpoint")
   .addCommand(downloadFileCommand)
