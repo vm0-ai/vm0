@@ -2131,7 +2131,6 @@ function hasUsagePackDowngrade(
 }
 
 function managedSubscriptionActionLabel(args: {
-  readonly hasConfigurationChange: boolean;
   readonly previewing: boolean;
   readonly restoresScheduledDowngrade: boolean;
 }): string {
@@ -2145,13 +2144,9 @@ function managedSubscriptionActionLabel(args: {
       return $.billing.common.restore;
     });
   }
-  return args.hasConfigurationChange
-    ? i18n.t(($) => {
-        return $.billing.common.confirm;
-      })
-    : i18n.t(($) => {
-        return $.billing.plans.currentPlan;
-      });
+  return i18n.t(($) => {
+    return $.billing.common.confirm;
+  });
 }
 
 function managedSubscriptionChangeState({
@@ -2208,6 +2203,8 @@ function ManagedSubscriptionOrderSummary({
     hasScheduledDowngrade,
     restoresScheduledDowngrade,
   } = managedSubscriptionChangeState({ management, members, plan, selections });
+  const hasSubscriptionAction =
+    hasConfigurationChange || restoresScheduledDowngrade;
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -2251,28 +2248,28 @@ function ManagedSubscriptionOrderSummary({
           })}
         </p>
       )}
-      <div className={STEP_ACTION_BAR}>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button
-          type="button"
-          className="h-10 w-full text-sm font-medium"
-          disabled={
-            !members ||
-            (hasPendingChange && !hasScheduledDowngrade) ||
-            (!hasConfigurationChange && !restoresScheduledDowngrade) ||
-            previewing
-          }
-          onClick={() => {
-            detach(openPreview(), Reason.DomCallback);
-          }}
-        >
-          {managedSubscriptionActionLabel({
-            hasConfigurationChange,
-            previewing,
-            restoresScheduledDowngrade,
-          })}
-        </Button>
-      </div>
+      {hasSubscriptionAction && (
+        <div className={STEP_ACTION_BAR}>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button
+            type="button"
+            className="h-10 w-full text-sm font-medium"
+            disabled={
+              !members ||
+              (hasPendingChange && !hasScheduledDowngrade) ||
+              previewing
+            }
+            onClick={() => {
+              detach(openPreview(), Reason.DomCallback);
+            }}
+          >
+            {managedSubscriptionActionLabel({
+              previewing,
+              restoresScheduledDowngrade,
+            })}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

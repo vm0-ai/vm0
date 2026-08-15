@@ -1606,7 +1606,7 @@ describe("organization billing settings", () => {
     expect(
       within(orderSummary).queryByText("Concurrent slots"),
     ).not.toBeInTheDocument();
-    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
+    expect(within(orderSummary).queryByRole("button")).not.toBeInTheDocument();
     click(packageSelect);
     click(
       await screen.findByRole("option", {
@@ -1738,6 +1738,11 @@ describe("organization billing settings", () => {
       name: "Configure member packages",
     });
     await screen.findByText("Change is processing");
+    expect(
+      within(screen.getByRole("region", { name: "Order summary" })).queryByRole(
+        "button",
+      ),
+    ).not.toBeInTheDocument();
     expect(confirmationRequests).toBe(1);
     expect(successToast).toHaveBeenCalledWith("Subscription change confirmed.");
     expect(window.location.href).toBe(locationBeforeConfirmation);
@@ -1762,6 +1767,11 @@ describe("organization billing settings", () => {
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
     ).resolves.toHaveTextContent("54,321 credits · 8% off");
+    expect(
+      within(screen.getByRole("region", { name: "Order summary" })).queryByRole(
+        "button",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("hides a retained allocation after its member leaves the workspace", async () => {
@@ -1858,7 +1868,7 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
+    expect(within(orderSummary).queryByRole("button")).not.toBeInTheDocument();
 
     const packageSelect = within(memberUsage).getByRole("combobox", {
       name: "Usage for Alex Chen",
@@ -2004,7 +2014,7 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
-    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
+    expect(within(orderSummary).queryByRole("button")).not.toBeInTheDocument();
 
     click(packageSelect);
     click(
@@ -2039,11 +2049,10 @@ describe("organization billing settings", () => {
       screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
     ).not.toBeInTheDocument();
     expect(
-      buttonByText(
-        "Current plan",
-        screen.getByRole("region", { name: "Order summary" }),
+      within(screen.getByRole("region", { name: "Order summary" })).queryByRole(
+        "button",
       ),
-    ).toBeDisabled();
+    ).not.toBeInTheDocument();
   });
 
   it("allows replacing a scheduled member package downgrade", async () => {
