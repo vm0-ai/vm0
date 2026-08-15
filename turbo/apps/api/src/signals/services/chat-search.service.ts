@@ -284,7 +284,7 @@ async function loadChatSearchContexts(
   return contextsByMessageId;
 }
 
-export function zeroChatSearch(args: {
+export function chatSearch(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly keyword: string;
