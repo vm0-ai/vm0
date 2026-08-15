@@ -1,8 +1,9 @@
-import type { Locator, Page, Response } from "@playwright/test";
+import type { Locator, Page, Request, Response } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
@@ -33,6 +34,19 @@ interface ConnectorCatalogStatusResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+async function negotiatedChatEventHeaders(
+  request: Request,
+): Promise<Record<string, string>> {
+  const version = await request.headerValue(chatEventSchemaVersionHeader);
+  if (version === null) {
+    throw new Error("Chat Event request is missing its schema version");
+  }
+  return {
+    "Access-Control-Expose-Headers": chatEventSchemaVersionHeader,
+    [chatEventSchemaVersionHeader]: version,
+  };
 }
 
 function deferred(): { readonly promise: Promise<void>; resolve(): void } {
@@ -415,6 +429,7 @@ async function mockChatThread(
           return typeof row.seqId === "number" && row.seqId > sinceSeqId;
         });
       await route.fulfill({
+        headers: await negotiatedChatEventHeaders(route.request()),
         json: { rows },
       });
     },
@@ -443,6 +458,7 @@ async function mockChatThread(
       `/api/okou/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
       await route.fulfill({
+        headers: await negotiatedChatEventHeaders(route.request()),
         status: 404,
         json: { error: { code: "NOT_FOUND", message: "Not found" } },
       });
