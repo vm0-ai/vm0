@@ -217,7 +217,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "whoami",
     description: "Show agent identity, run ID, and capabilities",
     load: async () => {
-      return (await import("./commands/zero/whoami")).zeroWhoamiCommand;
+      return (await import("./commands/whoami")).whoamiCommand;
     },
   },
   {

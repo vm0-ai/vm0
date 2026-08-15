@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server";
+import { server } from "../../mocks/server";
 import {
   catalogPermissionDetail,
   stubConnectorCatalogPermissions,
-} from "./helpers/connector-catalog";
-import { zeroWhoamiCommand } from "../whoami";
+} from "../zero/__tests__/helpers/connector-catalog";
+import { whoamiCommand } from "../whoami";
 
 function buildJwt(payload: Record<string, unknown>, prefix: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -96,7 +96,7 @@ describe("okou whoami command", () => {
   }
 
   async function runWhoami(args: string[] = []): Promise<void> {
-    await zeroWhoamiCommand.parseAsync(["node", "cli", ...args]);
+    await whoamiCommand.parseAsync(["node", "cli", ...args]);
   }
 
   describe("sandbox mode (OKOU_AGENT_ID set)", () => {
