@@ -1366,13 +1366,19 @@ function concurrencySubscriptionPeriodLabel(
 }
 
 function ConcurrencyQuantityControl({
+  autoFocus = false,
   disabled,
   label,
+  maximum = CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
+  minimum = CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN,
   onQuantityChange,
   quantity,
 }: {
+  autoFocus?: boolean;
   disabled: boolean;
   label: string;
+  maximum?: number;
+  minimum?: number;
   onQuantityChange: (quantity: number | null) => void;
   quantity: number | null;
 }) {
@@ -1385,11 +1391,7 @@ function ConcurrencyQuantityControl({
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.decreaseAria;
           })}
-          disabled={
-            quantity === null ||
-            quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN ||
-            disabled
-          }
+          disabled={quantity === null || quantity <= minimum || disabled}
           variant="quiet"
           size="icon-sm"
           className="rounded-l-lg disabled:opacity-40"
@@ -1406,6 +1408,7 @@ function ConcurrencyQuantityControl({
           inputMode="numeric"
           pattern="[1-9][0-9]*"
           value={quantity ?? ""}
+          autoFocus={autoFocus}
           disabled={disabled}
           aria-label={label}
           className="h-8 w-11 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus:border-border focus:ring-0"
@@ -1421,8 +1424,8 @@ function ConcurrencyQuantityControl({
             const nextQuantity = Number(nextValue);
             if (
               Number.isInteger(nextQuantity) &&
-              nextQuantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN &&
-              nextQuantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX
+              nextQuantity >= minimum &&
+              nextQuantity <= maximum
             ) {
               onQuantityChange(nextQuantity);
             }
@@ -1433,20 +1436,12 @@ function ConcurrencyQuantityControl({
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.increaseAria;
           })}
-          disabled={
-            (quantity !== null &&
-              quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX) ||
-            disabled
-          }
+          disabled={(quantity !== null && quantity >= maximum) || disabled}
           variant="quiet"
           size="icon-sm"
           className="rounded-r-lg disabled:opacity-40"
           onClick={() => {
-            onQuantityChange(
-              quantity === null
-                ? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN
-                : quantity + 1,
-            );
+            onQuantityChange(quantity === null ? minimum : quantity + 1);
           }}
         >
           <Plus size={13} />
@@ -1760,53 +1755,29 @@ function ConcurrencyChangeOptions({
       </div>
 
       {changeMode === "quantity" ? (
-        <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
-          <label
-            htmlFor="concurrency-change-quantity"
-            className="text-sm font-medium text-foreground"
-          >
-            {i18n.t(($) => {
-              return $.billing.concurrency.newQuantity;
-            })}
-          </label>
-          <Input
-            id="concurrency-change-quantity"
-            type="text"
-            inputMode="numeric"
+        <div className="divide-y divide-border/70 border-y border-border/70 text-sm">
+          <ConcurrencyQuantityControl
             autoFocus
             disabled={loading}
-            value={targetQuantity ?? ""}
-            aria-invalid={
-              targetQuantity !== null && !quantityAllowed ? true : undefined
-            }
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-              if (value !== "" && !/^\d+$/.test(value)) {
-                return;
-              }
-              onQuantityChange(value === "" ? null : Number(value));
-            }}
-            className="mt-2 h-9"
+            label={i18n.t(($) => {
+              return $.billing.concurrency.slots;
+            })}
+            minimum={minimumChangeQuantity}
+            onQuantityChange={onQuantityChange}
+            quantity={targetQuantity}
           />
-          <p className="mt-2 text-[13px] text-muted-foreground">
-            {i18n.t(
-              ($) => {
-                return $.billing.concurrency.quantityRange;
-              },
-              {
-                current: formatLocalizedNumber(currentQuantity),
-                maximum: formatLocalizedNumber(
-                  CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
-                ),
-                minimum: formatLocalizedNumber(minimumChangeQuantity),
-              },
-            )}
-          </p>
-          {quantityAllowed && targetQuantity !== null ? (
-            <p className="mt-2 text-sm font-medium text-foreground">
-              {concurrencyMonthlyPrice(targetQuantity)}
-            </p>
-          ) : null}
+          <div className="flex items-center justify-between gap-4 py-3">
+            <span className="text-muted-foreground">
+              {i18n.t(($) => {
+                return $.billing.concurrency.monthlyTotal;
+              })}
+            </span>
+            <span className="font-medium tabular-nums text-foreground">
+              {quantityAllowed && targetQuantity !== null
+                ? concurrencyMonthlyPrice(targetQuantity)
+                : "—"}
+            </span>
+          </div>
         </div>
       ) : null}
     </div>

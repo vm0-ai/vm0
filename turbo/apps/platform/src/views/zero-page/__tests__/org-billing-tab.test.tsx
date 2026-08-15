@@ -3021,11 +3021,15 @@ describe("organization billing settings", () => {
     expect(
       within(changeDialog).getByRole("radio", { name: /Change slots/u }),
     ).toHaveAttribute("aria-checked", "true");
-    const quantityInput = within(changeDialog).getByLabelText(
-      "New total slot quantity",
-    );
+    const quantityInput = within(changeDialog).getByRole("textbox", {
+      name: "Slots",
+    });
     expect(quantityInput).toHaveValue("2");
-    await fill(quantityInput, "4");
+    const increaseQuantity = within(changeDialog).getByRole("button", {
+      name: "Increase additional concurrency quantity",
+    });
+    click(increaseQuantity);
+    click(increaseQuantity);
 
     await waitFor(() => {
       expect(within(changeDialog).getByText("$400/month")).toBeInTheDocument();
@@ -3189,7 +3193,7 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("lets an admin enter a lower concurrency subscription quantity", async () => {
+  it("lets an admin adjust to a lower concurrency subscription quantity", async () => {
     let previewedQuantity: number | null = null;
     let confirmedQuantity: number | null = null;
     let billingStatus: BillingStatusResponse = {
@@ -3264,11 +3268,16 @@ describe("organization billing settings", () => {
     expect(
       within(dialog).getByRole("radio", { name: /Change slots/u }),
     ).toHaveAttribute("aria-checked", "true");
-    const quantityInput = within(dialog).getByLabelText(
-      "New total slot quantity",
-    );
+    const quantityInput = within(dialog).getByRole("textbox", {
+      name: "Slots",
+    });
     expect(quantityInput).toHaveValue("5");
-    await fill(quantityInput, "3");
+    const decreaseQuantity = within(dialog).getByRole("button", {
+      name: "Decrease additional concurrency quantity",
+    });
+    click(decreaseQuantity);
+    click(decreaseQuantity);
+    expect(quantityInput).toHaveValue("3");
     expect(within(dialog).getByText("$300/month")).toBeInTheDocument();
 
     const locationBeforeChange = window.location.href;
@@ -3340,10 +3349,11 @@ describe("organization billing settings", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Change concurrency",
     });
-    const quantityInput = within(dialog).getByLabelText(
-      "New total slot quantity",
-    );
+    const quantityInput = within(dialog).getByRole("textbox", {
+      name: "Slots",
+    });
     await fill(quantityInput, "1");
+    expect(quantityInput).toHaveValue("2");
     expect(buttonByText("Continue to Stripe", dialog)).toBeDisabled();
     click(
       within(dialog).getByRole("radio", {
@@ -3352,7 +3362,11 @@ describe("organization billing settings", () => {
     );
     expect(buttonByText("Cancel subscription", dialog)).toBeEnabled();
     click(within(dialog).getByRole("radio", { name: /Change slots/u }));
-    await fill(within(dialog).getByLabelText("New total slot quantity"), "3");
+    click(
+      within(dialog).getByRole("button", {
+        name: "Increase additional concurrency quantity",
+      }),
+    );
     click(buttonByText("Continue to Stripe", dialog));
 
     await waitFor(() => {
