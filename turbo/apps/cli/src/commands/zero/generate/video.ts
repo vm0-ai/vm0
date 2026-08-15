@@ -1,4 +1,4 @@
-import { createVideoGenerateCommand } from "../shared/video-generate";
+import { createVideoGenerateCommand } from "../../shared/video-generate";
 
 export const videoCommand = createVideoGenerateCommand({
   name: "video",

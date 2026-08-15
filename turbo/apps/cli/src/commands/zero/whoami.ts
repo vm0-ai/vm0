@@ -19,7 +19,7 @@ import {
   loadConnectorPermissionInfos,
   connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
-} from "./shared/firewall-permissions";
+} from "../shared/firewall-permissions";
 
 /**
  * Detect if running inside an agent sandbox.

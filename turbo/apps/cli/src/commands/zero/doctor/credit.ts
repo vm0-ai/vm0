@@ -8,8 +8,8 @@ import { getPlatformOrigin } from "./platform-url";
 import {
   currentPlanAllowsVideo,
   currentPlanCanBuyCredits,
-} from "../shared/billing-capabilities";
-import { planUpgradeUrl } from "../shared/billing-links";
+} from "../../shared/billing-capabilities";
+import { planUpgradeUrl } from "../../shared/billing-links";
 
 export const creditCommand = new Command()
   .name("credit")

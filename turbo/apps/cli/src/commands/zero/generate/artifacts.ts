@@ -1,4 +1,4 @@
-import { createArtifactGenerateCommand } from "../shared/artifact-generate";
+import { createArtifactGenerateCommand } from "../../shared/artifact-generate";
 
 function standardDetails(kind: string) {
   return (options: { title?: string }) => {

@@ -1,9 +1,9 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
-import { ApiRequestError } from "../../../lib/api/core/client-factory";
-import { generateWebVideo } from "../../../lib/api/domains/web";
-import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
+import { generateWebVideo } from "../../lib/api/domains/web";
+import { getZeroBillingStatus } from "../../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   findVideoTemplate,
   listVideoTemplates,
@@ -14,8 +14,8 @@ import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
 } from "./billing-capabilities";
-import { dispatchGenerate } from "../generate/lib/dispatch";
-import type { GenerationType } from "../generate/lib/lister";
+import { dispatchGenerate } from "../zero/generate/lib/dispatch";
+import type { GenerationType } from "../zero/generate/lib/lister";
 
 interface VideoOptions {
   prompt?: string;

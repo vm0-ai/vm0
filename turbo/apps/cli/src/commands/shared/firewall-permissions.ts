@@ -9,8 +9,8 @@ import type {
 import {
   getZeroConnectorCatalogPermissions,
   type ZeroConnectorCatalogPermissionDetail,
-} from "../../../lib/api/domains/zero-connectors";
-import type { ZeroUserPermissionGrant } from "../../../lib/api/domains/zero-agents";
+} from "../../lib/api/domains/zero-connectors";
+import type { ZeroUserPermissionGrant } from "../../lib/api/domains/zero-agents";
 
 export interface ConnectorPermissionInfo {
   readonly connectorSlug: string;

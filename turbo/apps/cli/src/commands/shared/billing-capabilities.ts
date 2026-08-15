@@ -1,5 +1,5 @@
 import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
-import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
+import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
 
 export function currentPlanCanBuyCredits(
   billing: BillingStatusResponse,

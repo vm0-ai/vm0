@@ -12,7 +12,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
-} from "../shared/billing-capabilities";
+} from "../../shared/billing-capabilities";
 import { dispatchGenerate } from "./lib/dispatch";
 
 type AspectRatio = "portrait" | "landscape" | "square";

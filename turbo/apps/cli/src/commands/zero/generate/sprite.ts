@@ -3,7 +3,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   createSpriteAuthoringPacket,
   type SpritePlan,
-} from "../shared/sprite-authoring";
+} from "../../shared/sprite-authoring";
 import { dispatchGenerate } from "./lib/dispatch";
 
 const SPRITE_USAGE_COMMAND = "okou generate sprite";

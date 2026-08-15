@@ -22,7 +22,7 @@ import {
 
 import { getRegistryResourceDownload } from "../../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
+import { websiteTemplateArchiveVersionFromEnvironment } from "../../shared/website-template-archive-version";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 
