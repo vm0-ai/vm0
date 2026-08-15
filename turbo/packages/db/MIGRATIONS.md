@@ -10,13 +10,6 @@ default with a later `SET LOCAL` statement in that migration. Non-transactional
 migrations do not receive these defaults and must manage their own timeout
 requirements.
 
-If production smoke exposes a timeout only after a migration has shipped, keep
-the published SQL and snapshot unchanged. Add an exact-hash, exact-statement
-timeout recovery in `scripts/migration-runner.ts`, restore the normal timeout
-before any blocking DDL, and cover the published migration through the real
-PostgreSQL runner. This preserves the migration ledger hash while keeping the
-recovery narrower than a global timeout increase.
-
 ## Transition validators
 
 A transition validator protects an expand → contract rollout while old and new
