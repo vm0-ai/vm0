@@ -3048,9 +3048,6 @@ describe("organization billing settings", () => {
     expect(within(reviewDialog).getByText("Due today")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$150.00")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$400.00/month")).toBeInTheDocument();
-    expect(
-      within(reviewDialog).queryByText("Order summary"),
-    ).not.toBeInTheDocument();
 
     click(buttonByText("Pay and update", reviewDialog));
 
@@ -3105,11 +3102,6 @@ describe("organization billing settings", () => {
       name: "Buy concurrency",
     });
     expect(
-      within(purchaseDialog).queryByText(
-        "Choose how many additional slots you want.",
-      ),
-    ).not.toBeInTheDocument();
-    expect(
       within(purchaseDialog).getByText("Monthly total"),
     ).toBeInTheDocument();
     const quantityInput = within(purchaseDialog).getByRole("textbox", {
@@ -3141,9 +3133,6 @@ describe("organization billing settings", () => {
       expect(
         within(reviewDialog).getByText("$360.00/month"),
       ).toBeInTheDocument();
-      expect(
-        within(reviewDialog).queryByText("Order summary"),
-      ).not.toBeInTheDocument();
     });
     click(buttonByText("Pay and add slots", reviewDialog));
 

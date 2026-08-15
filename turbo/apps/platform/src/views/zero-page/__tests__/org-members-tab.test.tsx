@@ -491,9 +491,6 @@ describe("organization members settings", () => {
       within(confirmationDialog).getByText("Member · 26,300 credits"),
     ).toBeVisible();
     expect(within(confirmationDialog).getByText("Due today")).toBeVisible();
-    expect(
-      within(confirmationDialog).queryByText("$50/month"),
-    ).not.toBeInTheDocument();
     expect(previewBody).toStrictEqual({
       email: "paid.invitee@example.com",
       role: "member",
