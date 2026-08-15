@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { buildZeroHelpText, registerZeroCommands } from "../okou";
+import { buildHelpText, registerCommands } from "../okou";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
@@ -51,7 +51,7 @@ function buildCommands(): Command[] {
 
 function buildProgram(): Command {
   const prog = new Command();
-  registerZeroCommands(prog, buildCommands());
+  registerCommands(prog, buildCommands());
   return prog;
 }
 
@@ -155,7 +155,7 @@ describe("decodeZeroTokenPayload", () => {
   });
 });
 
-describe("registerZeroCommands", () => {
+describe("registerCommands", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -737,7 +737,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("upgrade");
-    expect(buildZeroHelpText()).toContain("Upgrade plan?");
+    expect(buildHelpText()).toContain("Upgrade plan?");
   });
 
   it("should expose browser when its capability is enabled", () => {
@@ -775,7 +775,7 @@ describe("registerZeroCommands", () => {
     });
     vi.stubEnv("OKOU_TOKEN", eligibleToken);
     expect(visibleCommandNames(buildProgram())).toContain("recognize");
-    expect(buildZeroHelpText(decodeZeroTokenPayload(eligibleToken))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(eligibleToken))).toContain(
       "Recognize an image?",
     );
   });
@@ -803,7 +803,7 @@ describe("registerZeroCommands", () => {
     });
     vi.stubEnv("OKOU_TOKEN", capableToken);
     expect(visibleCommandNames(buildProgram())).toContain("translate");
-    expect(buildZeroHelpText(decodeZeroTokenPayload(capableToken))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(capableToken))).toContain(
       "Translate text?",
     );
   });
@@ -813,7 +813,7 @@ describe("registerZeroCommands", () => {
       scope: "okou",
       capabilities: ["billing:read", "billing:write"],
     });
-    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
     expect(help).toContain("Buy credits?");
@@ -824,7 +824,7 @@ describe("registerZeroCommands", () => {
       scope: "okou",
       capabilities: ["billing:read"],
     });
-    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
     expect(help).toContain("okou credit");
@@ -837,7 +837,7 @@ describe("registerZeroCommands", () => {
       scope: "okou",
       capabilities: ["billing:write"],
     });
-    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeZeroTokenPayload(token));
 
     expect(help).not.toContain("Check credits?");
     expect(help).toContain("Buy credits?");
@@ -848,7 +848,7 @@ describe("registerZeroCommands", () => {
       scope: "okou",
       capabilities: ["agent:read"],
     });
-    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeZeroTokenPayload(token));
 
     expect(help).not.toContain("Check credits?");
     expect(help).not.toContain("Buy credits?");
@@ -860,7 +860,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["maps:read"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Get directions?",
     );
   });
@@ -871,7 +871,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Get directions?",
     );
   });
@@ -882,7 +882,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["weather:read"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Check weather?",
     );
   });
@@ -893,7 +893,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Check weather?",
     );
   });
@@ -904,7 +904,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["scrape:read"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Scrape a web page?",
     );
   });
@@ -915,7 +915,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Scrape a web page?",
     );
   });
@@ -926,7 +926,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["finance:read"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Get a market quote?",
     );
   });
@@ -937,7 +937,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Get a market quote?",
     );
   });
@@ -952,12 +952,12 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(visibleToken))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(visibleToken))).toContain(
       "Research SEO data?",
     );
-    expect(
-      buildZeroHelpText(decodeZeroTokenPayload(hiddenToken)),
-    ).not.toContain("Research SEO data?");
+    expect(buildHelpText(decodeZeroTokenPayload(hiddenToken))).not.toContain(
+      "Research SEO data?",
+    );
   });
 
   it("should show the people-search help example when people-search:read capability is present", () => {
@@ -966,7 +966,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["people-search:read"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Find a professional?",
     );
   });
@@ -977,7 +977,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Find a professional?",
     );
   });
@@ -988,7 +988,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["banking:read"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Read bank data?",
     );
   });
@@ -999,7 +999,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Read bank data?",
     );
   });
@@ -1010,7 +1010,7 @@ describe("registerZeroCommands", () => {
       capabilities: ["host:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Host a static site?",
     );
   });
@@ -1021,10 +1021,10 @@ describe("registerZeroCommands", () => {
       capabilities: ["host:read"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Clone hosted site?",
     );
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Host a static site?",
     );
   });
@@ -1035,7 +1035,7 @@ describe("registerZeroCommands", () => {
       capabilities: [],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Generate website?",
     );
   });
@@ -1058,10 +1058,10 @@ describe("registerZeroCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Host a static site?",
     );
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Clone hosted site?",
     );
   });
@@ -1072,10 +1072,10 @@ describe("registerZeroCommands", () => {
       capabilities: [],
     });
 
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "List models?",
     );
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Model routing?",
     );
   });
@@ -1104,10 +1104,10 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("teams");
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Send Teams?",
     );
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
       "Download Teams?",
     );
   });

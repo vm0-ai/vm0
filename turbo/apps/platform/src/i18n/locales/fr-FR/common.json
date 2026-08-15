@@ -1005,10 +1005,12 @@
           "processing": "Modification en cours",
           "reviewDescription": "La confirmation débite votre moyen de paiement enregistré.",
           "reviewTitle": "Vérifier la modification du forfait",
+          "scheduledDowngradeDescription": "Le forfait inférieur commence le {{date}} · Les crédits existants restent disponibles jusqu’à leur expiration",
+          "scheduledDowngradeTitle": "Rétrogradation programmée",
           "scheduledFor": "Prévu pour le {{date}}",
           "today": "Aujourd’hui"
         },
-        "memberExclusive": "Chaque forfait appartient à un membre et ne peut pas être partagé. Lorsqu’un forfait est épuisé, l’utilisation revient aux crédits à l’usage. Vous pourrez passer à un nouveau forfait ultérieurement.",
+        "memberExclusive": "Un forfait par membre. Tout dépassement utilise des crédits à l’usage.",
         "memberPackages": "Forfaits des membres",
         "memberUsage": "Utilisation du membre",
         "migration": {

@@ -1005,10 +1005,12 @@
           "processing": "Cambio en curso",
           "reviewDescription": "Al confirmar, se cobrará tu método de pago guardado.",
           "reviewTitle": "Revisar cambio de paquete",
+          "scheduledDowngradeDescription": "El paquete inferior comienza el {{date}} · Los créditos existentes seguirán disponibles hasta que caduquen",
+          "scheduledDowngradeTitle": "Cambio de plan programado",
           "scheduledFor": "Programado para el {{date}}",
           "today": "Hoy"
         },
-        "memberExclusive": "Cada paquete pertenece a un miembro y no se puede compartir. Cuando se agota, el uso vuelve a los créditos de pago por uso. Puedes actualizar a un paquete nuevo más adelante.",
+        "memberExclusive": "Un paquete por miembro. Cualquier uso adicional se cobra con créditos de pago por uso.",
         "memberPackages": "Paquetes de miembros",
         "memberUsage": "Uso del miembro",
         "migration": {

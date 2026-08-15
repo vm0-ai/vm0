@@ -10,7 +10,7 @@ import {
 } from "./lib/api/zero-token.js";
 import { getOkouToken } from "./lib/okou-env.js";
 
-interface ZeroCommandDefinition {
+interface CommandDefinition {
   name: string;
   description: string;
   load: () => Promise<Command>;
@@ -75,7 +75,7 @@ const COMMAND_CAPABILITY_MAP: Record<
 
 const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize", "translate"]);
 
-const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
+const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   {
     name: "__agent-loop",
     description: "Internal sandbox agent loop",
@@ -359,18 +359,18 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
 ];
 
-const ZERO_COMMAND_DEFINITION_BY_NAME = new Map(
-  ZERO_COMMAND_DEFINITIONS.map((definition) => {
+const COMMAND_DEFINITION_BY_NAME = new Map(
+  COMMAND_DEFINITIONS.map((definition) => {
     return [definition.name, definition];
   }),
 );
 
-function createZeroCommandStub(definition: ZeroCommandDefinition): Command {
+function createCommandStub(definition: CommandDefinition): Command {
   return new Command(definition.name).description(definition.description);
 }
 
 function buildDefaultCommands(): Command[] {
-  return ZERO_COMMAND_DEFINITIONS.map(createZeroCommandStub);
+  return COMMAND_DEFINITIONS.map(createCommandStub);
 }
 
 function shouldHideCommand(
@@ -390,7 +390,7 @@ function shouldHideCommand(
   return !payload.capabilities.includes(requiredCap);
 }
 
-function addZeroCommand(
+function addCommandWithVisibility(
   prog: Command,
   cmd: Command,
   payload: ZeroTokenPayload | undefined,
@@ -415,7 +415,7 @@ function getNonOptionArgs(argv: string[]): string[] {
   return args;
 }
 
-function getRequestedZeroCommandName(argv = process.argv): string | undefined {
+function getRequestedCommandName(argv = process.argv): string | undefined {
   const [firstArg, secondArg] = getNonOptionArgs(argv);
 
   if (!firstArg) {
@@ -429,14 +429,14 @@ function getRequestedZeroCommandName(argv = process.argv): string | undefined {
   return firstArg;
 }
 
-async function loadZeroCommand(
+async function loadRequestedCommand(
   name: string | undefined,
 ): Promise<Command | undefined> {
   if (!name) {
     return undefined;
   }
 
-  return ZERO_COMMAND_DEFINITION_BY_NAME.get(name)?.load();
+  return COMMAND_DEFINITION_BY_NAME.get(name)?.load();
 }
 
 function commandExampleIfVisible(
@@ -447,7 +447,7 @@ function commandExampleIfVisible(
   return shouldHideCommand(name, payload) ? [] : [example];
 }
 
-export function buildZeroHelpText(
+export function buildHelpText(
   payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
 ): string {
   const canReadHost = !payload || payload.capabilities.includes("host:read");
@@ -573,15 +573,12 @@ export function buildZeroHelpText(
  *
  * @param commands - override default commands (used in tests)
  */
-export function registerZeroCommands(
-  prog: Command,
-  commands?: Command[],
-): void {
+export function registerCommands(prog: Command, commands?: Command[]): void {
   const token = getOkouToken();
   const payload = token ? decodeZeroTokenPayload(token) : undefined;
 
   for (const cmd of commands ?? buildDefaultCommands()) {
-    addZeroCommand(prog, cmd, payload);
+    addCommandWithVisibility(prog, cmd, payload);
   }
 }
 
@@ -594,7 +591,7 @@ program
   .description("Okou CLI — interact with Okou from inside the sandbox")
   .version(__CLI_VERSION__)
   .addHelpText("after", () => {
-    return buildZeroHelpText();
+    return buildHelpText();
   });
 
 export { program };
@@ -605,10 +602,9 @@ if (
   process.argv[1]?.endsWith("okou")
 ) {
   await configureGlobalProxyFromEnv();
-  const requestedCommand = await loadZeroCommand(getRequestedZeroCommandName());
-  registerZeroCommands(
-    program,
-    requestedCommand ? [requestedCommand] : undefined,
+  const requestedCommand = await loadRequestedCommand(
+    getRequestedCommandName(),
   );
+  registerCommands(program, requestedCommand ? [requestedCommand] : undefined);
   program.parse();
 }

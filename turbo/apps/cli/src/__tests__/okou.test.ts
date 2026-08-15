@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { program, registerZeroCommands } from "../okou";
+import { program, registerCommands } from "../okou";
 
 describe("Okou CLI program", () => {
-  registerZeroCommands(program);
+  registerCommands(program);
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
   });
