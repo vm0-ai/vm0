@@ -211,7 +211,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "resource",
     description: "Pull registry resources from private R2-backed archives",
     load: async () => {
-      return (await import("./commands/zero/resource")).zeroResourceCommand;
+      return (await import("./commands/resource")).resourceCommand;
     },
   },
   {

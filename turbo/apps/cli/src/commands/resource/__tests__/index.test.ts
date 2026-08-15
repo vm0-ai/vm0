@@ -7,9 +7,9 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { findRegistryResourceForPull, zeroResourceCommand } from "../index";
-import { VM0_ILLUSTRATION_ARCHIVE } from "./fixtures/vm0-illustration-archive";
+import { server } from "../../../mocks/server";
+import { findRegistryResourceForPull, resourceCommand } from "../index";
+import { ILLUSTRATION_ARCHIVE } from "./fixtures/illustration-archive";
 
 const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
   "black-slabs":
@@ -171,7 +171,7 @@ describe("okou resource pull command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
-    outputDir = await mkdtemp(path.join(tmpdir(), "zero-resource-pull-test-"));
+    outputDir = await mkdtemp(path.join(tmpdir(), "resource-pull-test-"));
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -183,9 +183,9 @@ describe("okou resource pull command", () => {
   });
 
   it("downloads, verifies, and extracts an image style archive", async () => {
-    server.use(...registryDownload(VM0_ILLUSTRATION_ARCHIVE));
+    server.use(...registryDownload(ILLUSTRATION_ARCHIVE));
 
-    await zeroResourceCommand.parseAsync([
+    await resourceCommand.parseAsync([
       "node",
       "cli",
       "pull",
@@ -210,7 +210,7 @@ describe("okou resource pull command", () => {
     );
 
     await expect(
-      zeroResourceCommand.parseAsync([
+      resourceCommand.parseAsync([
         "node",
         "cli",
         "pull",

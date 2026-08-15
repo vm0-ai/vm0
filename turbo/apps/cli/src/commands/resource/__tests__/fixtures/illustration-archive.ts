@@ -2,7 +2,7 @@
  * Exact 2.6 KB archive manually published for image-style:vm0-illustration
  * from vm0-ai/vm0-skills@45e237a8311c36a67bf612feb4342b44dbb3c4f6.
  */
-export const VM0_ILLUSTRATION_ARCHIVE = Buffer.from(
+export const ILLUSTRATION_ARCHIVE = Buffer.from(
   `
 H4sIAAAAAAAAA+1ZbXPbuBG+z/oVmMt0ejcjypJlW7abZibOyzXTtM1MkulXgyQkoqYIHgBK1r/v
 swu+QLKSuG93ndb4EhoiFvvy7O6zjC7LxnkrvTZV4tW6LqVXJ5v1NNHRLycf5P0flMyVdScf//ju
