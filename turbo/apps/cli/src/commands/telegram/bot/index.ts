@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { listCommand } from "./list";
 
-export const zeroTelegramBotCommand = new Command()
+export const telegramBotCommand = new Command()
   .name("bot")
   .description("Inspect Telegram bots")
   .addCommand(listCommand)

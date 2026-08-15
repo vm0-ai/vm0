@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { downloadFileCommand } from "../download-file";
 import chalk from "chalk";
 

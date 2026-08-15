@@ -1,16 +1,16 @@
 import { Command } from "commander";
-import { zeroTelegramBotCommand } from "./bot";
+import { telegramBotCommand } from "./bot";
 import { downloadFileCommand } from "./download-file";
-import { zeroTelegramMessageCommand } from "./message";
+import { telegramMessageCommand } from "./message";
 import { uploadFileCommand } from "./upload-file";
 
-export const zeroTelegramCommand = new Command()
+export const telegramCommand = new Command()
   .name("telegram")
   .description(
     "Inspect bots, send messages, upload files, and download files from Telegram",
   )
-  .addCommand(zeroTelegramBotCommand)
-  .addCommand(zeroTelegramMessageCommand)
+  .addCommand(telegramBotCommand)
+  .addCommand(telegramMessageCommand)
   .addCommand(downloadFileCommand)
   .addCommand(uploadFileCommand)
   .addHelpText(
