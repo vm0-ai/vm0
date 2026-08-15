@@ -14,7 +14,7 @@ import {
   deleteModelProviderConnection$,
   modelProviderConnectionsForOrg,
   updateModelProviderConnection$,
-} from "../services/zero-model-provider-gateway.service";
+} from "../services/model-provider-gateway.service";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
