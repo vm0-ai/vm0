@@ -28,7 +28,7 @@ import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
-} from "./zero-chat-queue-marker.service";
+} from "./chat-queue-marker.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,

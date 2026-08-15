@@ -8,7 +8,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
+import { appendQueuedRunAssistantMarker } from "./chat-queue-marker.service";
 import {
   resolvePersistedChatThreadModel,
   type ResolvedPersistedChatThreadModel,

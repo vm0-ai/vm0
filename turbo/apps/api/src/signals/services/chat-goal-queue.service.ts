@@ -18,9 +18,9 @@ import {
   revokeChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
-import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
-import { appendGoalCloseMarker } from "./zero-chat-goal-marker.service";
+import { appendGoalCloseMarker } from "./chat-goal-marker.service";
 import { createUserMessageDocument } from "./chat-user-message.service";
 import { lockGoalThread } from "./goal-lock.service";
 import {

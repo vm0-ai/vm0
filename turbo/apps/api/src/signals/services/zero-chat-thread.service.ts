@@ -59,7 +59,7 @@ import {
 } from "./zero-chat-thread-event.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
-import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
+import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
 
 type ChatThreadRow = {
   readonly id: string;

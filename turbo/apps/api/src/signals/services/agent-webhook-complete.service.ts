@@ -35,7 +35,7 @@ import {
 } from "./active-input-delivery.service";
 import { lockChatQueueThread } from "./chat-event-queue.service";
 import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
-import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
+import { maybeEmitRunUsageEvent$ } from "./chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 

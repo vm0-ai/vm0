@@ -15,7 +15,7 @@ import {
   checkManagedCredits$,
   recordManagedUsage$,
   type ManagedUsageErrorResponse,
-} from "./zero-managed-usage.service";
+} from "./managed-usage.service";
 
 const PROVIDER = "google-weather";
 const USAGE_KIND = "weather";
