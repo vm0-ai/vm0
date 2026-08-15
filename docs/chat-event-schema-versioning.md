@@ -30,7 +30,15 @@ The database owns exactly one canonical pointer per
 `(chat_thread_id, archive_schema_version)`. The pair is unique, and each pointer
 contains a non-null `{lastEventId, lastSeqId}` terminal cursor plus the
 immutable, content-addressed R2 object key. Readers select the current-version
-pointer directly; there is no separate head flag or parent-pointer chain.
+pointer directly; neither a head flag nor a parent-pointer chain participates
+in current reader identity.
+
+The physical `is_head` and `parent_snapshot_id` columns, their index, and the
+current writer values remain for the DB-before-API rollout boundary only.
+Production migrations lead API promotion by about four seconds, so removing
+those columns in this release would make the outgoing API's SQL invalid. Remove
+them in a later release after this API version is fully promoted and previous
+instances have drained.
 
 The Snapshot endpoint serves only the current wire version. It never generates
 a transient object for a retired requested version and never substitutes a

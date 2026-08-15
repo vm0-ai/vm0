@@ -449,6 +449,8 @@ async function publishSnapshotVersion(
           lastSeqId,
           lastEventId,
           objectKey,
+          parentSnapshotId: null,
+          isHead: true,
           createdAt: nowDate(),
         })
         .where(exactSnapshotPointer(current))
@@ -466,6 +468,8 @@ async function publishSnapshotVersion(
           archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           lastSeqId,
           lastEventId,
+          parentSnapshotId: null,
+          isHead: true,
           createdAt: nowDate(),
         })
         .where(exactSnapshotPointer(source))
@@ -487,10 +491,12 @@ async function publishSnapshotVersion(
     }
     await tx.insert(chatEventSnapshots).values({
       chatThreadId: candidate.chatThreadId,
+      parentSnapshotId: null,
       lastSeqId,
       lastEventId,
       archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       objectKey,
+      isHead: true,
     });
     return true;
   });

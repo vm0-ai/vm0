@@ -9596,7 +9596,7 @@ const CHAT_EVENT_SNAPSHOT_POINTER_CONTRACTION_PREVIOUS_MIGRATION =
 const CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION =
   "0927_contract_chat_event_snapshot_pointers";
 const CHAT_EVENT_SNAPSHOT_POINTER_SCHEMA_CONTRACTION_MIGRATION =
-  "0928_contract_chat_event_snapshot_schema";
+  "0928_contract_chat_event_snapshot_cursor";
 
 async function validateChatEventSnapshotPointerContraction(): Promise<void> {
   console.log("=== Validate Chat Event Snapshot pointer contraction ===\n");
@@ -9710,7 +9710,9 @@ async function validateChatEventSnapshotPointerContraction(): Promise<void> {
       ORDER BY "column_name"
     `);
     assert.deepEqual(columns.rows, [
+      { columnName: "is_head", isNullable: "NO" },
       { columnName: "last_event_id", isNullable: "NO" },
+      { columnName: "parent_snapshot_id", isNullable: "YES" },
     ]);
 
     const versionIndex = await client.query<{ isUnique: boolean }>(`
@@ -9721,6 +9723,25 @@ async function validateChatEventSnapshotPointerContraction(): Promise<void> {
     `);
     assert.deepEqual(versionIndex.rows, [{ isUnique: true }]);
 
+    const outgoingApiObjects = await client.query<{
+      headIndexExists: boolean;
+      parentForeignKeyExists: boolean;
+    }>(`
+      SELECT
+        to_regclass(
+          'chat_event_snapshots_thread_head_unique'
+        ) IS NOT NULL AS "headIndexExists",
+        EXISTS (
+          SELECT 1
+          FROM "pg_constraint"
+          WHERE "conname" =
+            'chat_event_snapshots_parent_snapshot_id_chat_event_snapshots_id_fk'
+        ) AS "parentForeignKeyExists"
+    `);
+    assert.deepEqual(outgoingApiObjects.rows, [
+      { headIndexExists: true, parentForeignKeyExists: true },
+    ]);
+
     console.log("   ✅ greatest terminal watermarks are retained");
     console.log(
       "   ✅ equal watermarks follow head, creation time, and UUID order",
@@ -9728,7 +9749,10 @@ async function validateChatEventSnapshotPointerContraction(): Promise<void> {
     console.log("   ✅ temporary cursor writer objects are removed");
     console.log("   ✅ missing terminal identities fail closed");
     console.log(
-      "   ✅ terminal cursors and thread/version identity are contracted\n",
+      "   ✅ terminal cursors and thread/version identity are contracted",
+    );
+    console.log(
+      "   ✅ outgoing API Snapshot columns remain through DB-first promotion\n",
     );
   } finally {
     await client.end();

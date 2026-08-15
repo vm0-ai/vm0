@@ -845,8 +845,8 @@
     {
       "idx": 928,
       "version": "7",
-      "when": 1786778943405,
-      "tag": "0928_contract_chat_event_snapshot_schema",
+      "when": 1786784651845,
+      "tag": "0928_contract_chat_event_snapshot_cursor",
       "breakpoints": true
     }
   ]
