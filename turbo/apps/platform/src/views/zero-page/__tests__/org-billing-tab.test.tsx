@@ -2329,7 +2329,6 @@ describe("organization billing settings", () => {
         name: /Monthly total \$20\/month \$180\/month/u,
       }),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
     const confirmButton = buttonByText("Confirm", orderSummary);
 
     click(packageSelect);
@@ -2343,7 +2342,6 @@ describe("organization billing settings", () => {
         name: /Monthly total \$20\/month \$210\/month/u,
       }),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$210/month")).toBeInTheDocument();
     expect(confirmButton).not.toBeDisabled();
 
     click(packageSelect);
@@ -2352,7 +2350,11 @@ describe("organization billing settings", () => {
         name: "$20 · 21,234 credits · 6% off",
       }),
     );
-    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Monthly total \$20\/month \$180\/month/u,
+      }),
+    ).toBeInTheDocument();
 
     const locationBeforeConfirmation = window.location.href;
     click(confirmButton);
@@ -2462,7 +2464,14 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    expect(within(orderSummary).getByText("$20/month")).toBeInTheDocument();
+    const comparison = within(orderSummary).getByRole("table", {
+      name: "Current and new subscription comparison",
+    });
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Monthly total \$180\/month \$20\/month/u,
+      }),
+    ).toBeInTheDocument();
     expect(
       within(orderSummary).getByText(
         "The lower package starts at the next billing date. Existing credits remain available until they expire.",
