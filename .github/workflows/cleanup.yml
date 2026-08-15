@@ -2,7 +2,7 @@ name: Cleanup Resources
 
 on:
   pull_request_target:
-    types: [closed]
+    types: [closed, reopened]
 
 concurrency:
   group: cleanup-pr-${{ github.event.pull_request.number }}
@@ -10,6 +10,7 @@ concurrency:
 
 jobs:
   cleanup-app-pages-deployments:
+    if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -45,7 +46,7 @@ jobs:
 
   cleanup-runner:
     # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    if: "github.event.action == 'closed' && !startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -150,7 +151,7 @@ jobs:
 
   cleanup-database:
     # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    if: "github.event.action == 'closed' && !startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -167,7 +168,7 @@ jobs:
 
   cleanup-clerk-test-resources:
     # Delete generation-scoped Clerk test users and organizations for this PR.
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    if: "github.event.action == 'closed' && !startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -191,7 +192,7 @@ jobs:
 
   cleanup-deployments:
     # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    if: "github.event.action == 'closed' && !startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     permissions:
       deployments: write
