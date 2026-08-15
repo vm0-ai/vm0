@@ -40,10 +40,12 @@ use self::runtime::run_snapshot_workflow;
 /// discards the uncommitted artifacts and returns the original publish error;
 /// any discard error is intentionally suppressed.
 ///
-/// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
+/// The current Rust workflow spans orchestration in this module, live VM execution in
+/// `snapshot/runtime.rs`, resource ownership and cleanup in `snapshot/attempt/`, and stable
+/// artifact publication in `snapshot/publish.rs`:
 ///  1. Create work directory
 ///  2. Create NBD COW device backed by the rootfs image
-///  3. Create network namespace
+///  3. Initialize the pre-warmed network namespace pool and acquire a namespace lease
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready
 ///  6. Configure VM via API (ordered drives, then parallel remaining PUT calls)
@@ -141,7 +143,7 @@ async fn create_uncommitted_snapshot(
 
     info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
-    // 3. Create network namespace (pool of 1, index auto-allocated via flock).
+    // 3. Initialize a pre-warmed network namespace pool (index auto-allocated via flock).
     let netns_pool = match NetnsPool::create_checked(netns_config).await {
         Ok(pool) => pool,
         Err(e) => {

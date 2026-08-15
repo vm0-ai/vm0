@@ -64,6 +64,7 @@ pub(super) async fn run_snapshot_workflow(
     attempt: &mut SnapshotAttempt,
 ) -> Result<SnapshotConfig, SnapshotError> {
     attempt.prepare_firecracker_files(config).await?;
+    // 3. Acquire a namespace lease from the pre-warmed pool.
     attempt.acquire_network().await?;
     attempt.spawn_firecracker(config).await?;
 
@@ -124,9 +125,9 @@ async fn run_with_firecracker(
 
     info!("guest connected");
 
-    // 9.5. Pre-warm caches (PAM/nsswitch, CLI modules) so post-restore calls
-    //      are fast. The snapshot captures memory + disk state, so caches
-    //      populated here persist across restores.
+    // 10. Pre-warm caches (PAM/nsswitch, CLI modules) so post-restore calls
+    //     are fast. The snapshot captures memory + disk state, so caches
+    //     populated here persist across restores.
     let prewarm_result = guest
         .exec_operation_capture(vsock_host::ExecCaptureRequest {
             command: inv.prewarm_script,
@@ -145,12 +146,12 @@ async fn run_with_firecracker(
     validate_prewarm_exec_result(prewarm_result)?;
     info!("pre-warm complete");
 
-    // 10. Pause VM.
+    // 11. Pause VM.
     client.pause().await?;
 
     info!("VM paused");
 
-    // 11. Create snapshot — Firecracker writes directly to output_dir.
+    // 12. Create snapshot — Firecracker writes directly to output_dir.
     //
     // File content durability is guaranteed upstream: as of Firecracker
     // v1.15.1 (see `FIRECRACKER_VERSION` in `runner/src/deps.rs`), both
