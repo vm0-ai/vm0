@@ -138,7 +138,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "upgrade",
     description: "Create a workspace plan upgrade link",
     load: async () => {
-      return (await import("./commands/zero/upgrade")).zeroUpgradeCommand;
+      return (await import("./commands/upgrade")).upgradeCommand;
     },
   },
   {
@@ -146,7 +146,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Diagnose runtime issues (connector health, permission denials)",
     load: async () => {
-      return (await import("./commands/zero/doctor")).zeroDoctorCommand;
+      return (await import("./commands/doctor")).doctorCommand;
     },
   },
   {

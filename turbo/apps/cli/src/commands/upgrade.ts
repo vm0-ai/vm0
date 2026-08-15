@@ -1,9 +1,9 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { withErrorHandler } from "../lib/command/with-error-handler";
 import { getPlatformOrigin } from "./doctor/platform-url";
-import { planUpgradeUrl } from "../shared/billing-links";
+import { planUpgradeUrl } from "./shared/billing-links";
 
 type UpgradePlan = "pro";
 
@@ -14,7 +14,7 @@ function parseUpgradePlan(value: string): UpgradePlan {
   return value;
 }
 
-export const zeroUpgradeCommand = new Command()
+export const upgradeCommand = new Command()
   .name("upgrade")
   .description("Create a link to compare and upgrade workspace plans")
   .argument("[plan]", "Plan to upgrade to: pro", parseUpgradePlan, "pro")

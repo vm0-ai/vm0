@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { creditCommand } from "../credit";
 
 function stubOrg(overrides: { readonly name?: string } = {}) {

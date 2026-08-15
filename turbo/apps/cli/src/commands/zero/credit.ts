@@ -9,7 +9,7 @@ import {
 } from "../../lib/api/domains/zero-billing";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
-import { getPlatformOrigin } from "./doctor/platform-url";
+import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
   currentPlanCanBuyCredits,

@@ -1,15 +1,15 @@
 import { Command } from "commander";
 import chalk from "chalk";
 
-import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
-import { getZeroOrg } from "../../../lib/api/domains/zero-orgs";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getZeroBillingStatus } from "../../lib/api/domains/zero-billing";
+import { getZeroOrg } from "../../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "./platform-url";
 import {
   currentPlanAllowsVideo,
   currentPlanCanBuyCredits,
-} from "../../shared/billing-capabilities";
-import { planUpgradeUrl } from "../../shared/billing-links";
+} from "../shared/billing-capabilities";
+import { planUpgradeUrl } from "../shared/billing-links";
 
 export const creditCommand = new Command()
   .name("credit")
