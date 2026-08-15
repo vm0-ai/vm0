@@ -1,8 +1,8 @@
 import { Command, Option } from "commander";
 import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import type { ConnectorCheckPolicy } from "@okouai/api-contracts/contracts/connector-check";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { getPlatformOrigin } from "../../doctor/platform-url";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
   printComputerUsePermissionGuidance,
@@ -11,11 +11,11 @@ import {
   isBrowserPermissionTarget,
   printBrowserPermissionGuidance,
 } from "./browser-guidance";
-import { ApiRequestError } from "../../../lib/api/core/client-factory";
-import { createBrowserAuthorizationRequest } from "../../../lib/api/domains/zero-browser";
-import { createComputerUseAuthorizationRequest } from "../../../lib/api/domains/zero-computer-use";
-import { diagnoseConnectorCheck } from "../../../lib/api/domains/zero-connectors";
-import { getOkouAgentId, getOkouToken } from "../../../lib/okou-env";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
+import { createBrowserAuthorizationRequest } from "../../lib/api/domains/zero-browser";
+import { createComputerUseAuthorizationRequest } from "../../lib/api/domains/zero-computer-use";
+import { diagnoseConnectorCheck } from "../../lib/api/domains/zero-connectors";
+import { getOkouAgentId, getOkouToken } from "../../lib/okou-env";
 import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,

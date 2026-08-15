@@ -1,4 +1,4 @@
-import { getOkouAgentId, getOkouChatThreadId } from "../../../lib/okou-env";
+import { getOkouAgentId, getOkouChatThreadId } from "../../lib/okou-env";
 
 export const CALLBACK_PROMPT_PLACEHOLDER =
   "SOMETHING_AGENT_WANT_TO_BE_CALLBACK";

@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { listZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveAgentContext } from "./agent-context";
-import { getPlatformOrigin } from "../../doctor/platform-url";
+import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   availableConnectorSlugs,
   findConnectorStatusItem,

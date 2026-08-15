@@ -7,7 +7,7 @@ import {
   authCodeMethod,
   catalogStatusItem,
   stubConnectorCatalogStatus,
-} from "../../zero/__tests__/helpers/connector-catalog";
+} from "../../__tests__/helpers/connector-catalog";
 import { mailCommand } from "../index";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";

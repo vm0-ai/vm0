@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { connectCommand } from "../connect";
 import {
   catalogStatusItem,

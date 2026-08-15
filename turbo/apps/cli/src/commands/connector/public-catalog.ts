@@ -1,5 +1,5 @@
 import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/zero-connector-catalog";
-import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
+import type { ZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
 
 export type PublicConnectorStatus = ZeroConnectorCatalogStatus;
 

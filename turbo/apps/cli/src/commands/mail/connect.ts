@@ -4,8 +4,8 @@ import { Command } from "commander";
 import { listZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
-import { resolveAgentContext } from "../zero/connector/agent-context";
-import { findConnectorStatusItem } from "../zero/connector/public-catalog";
+import { resolveAgentContext } from "../connector/agent-context";
+import { findConnectorStatusItem } from "../connector/public-catalog";
 import {
   MAIL_CONNECTOR_SLUG_BY_PROVIDER,
   currentAgentId,

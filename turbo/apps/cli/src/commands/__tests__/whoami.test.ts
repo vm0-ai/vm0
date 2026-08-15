@@ -5,7 +5,7 @@ import { server } from "../../mocks/server";
 import {
   catalogPermissionDetail,
   stubConnectorCatalogPermissions,
-} from "../zero/__tests__/helpers/connector-catalog";
+} from "./helpers/connector-catalog";
 import { whoamiCommand } from "../whoami";
 
 function buildJwt(payload: Record<string, unknown>, prefix: string): string {

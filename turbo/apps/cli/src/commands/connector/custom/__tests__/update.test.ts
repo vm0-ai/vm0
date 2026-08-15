@@ -6,7 +6,7 @@ import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../../mocks/server";
+import { server } from "../../../../mocks/server";
 import { customConnectorCommand } from "../index";
 import { updateCustomConnectorCommand } from "../update";
 
@@ -112,7 +112,7 @@ describe("okou connector custom update", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    tempDir = mkdtempSync(join(tmpdir(), "zero-custom-connector-update-"));
+    tempDir = mkdtempSync(join(tmpdir(), "custom-connector-update-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", buildZeroToken());
   });
