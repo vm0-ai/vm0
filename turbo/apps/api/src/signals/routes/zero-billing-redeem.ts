@@ -8,7 +8,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { getCampaign } from "../services/one-time-products";
-import { startOrResumeRedemption$ } from "../services/zero-billing-redeem.service";
+import { startOrResumeRedemption$ } from "../services/billing-redeem.service";
 import type { RouteEntry } from "../route-entry";
 
 const billingUnavailable = Object.freeze({
