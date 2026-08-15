@@ -439,4 +439,36 @@ describe("okou chat messages command", () => {
     expect(stderr).toContain("OKOU_CHAT_THREAD_ID is not set");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
+
+  it("rejects a response without the schema version header", async () => {
+    const outputDirectory = await createOutputDirectory();
+    server.use(
+      http.get(SNAPSHOT_URL, () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+              message: "Chat event snapshot not found",
+            },
+          },
+          { status: 404 },
+        );
+      }),
+    );
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "messages",
+        "--output-dir",
+        outputDirectory,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Unexpected Chat Event schema version null",
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
 });

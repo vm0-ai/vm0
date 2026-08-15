@@ -100,6 +100,7 @@ function isChatThreadEventRowsResponse(
   const request = response.request();
   const url = new URL(response.url());
   const rawSinceSeqId = url.searchParams.get("sinceSeqId");
+  const sinceEventId = url.searchParams.get("sinceEventId");
   const sinceSeqId = Number(rawSinceSeqId);
   return (
     response.ok() &&
@@ -107,7 +108,8 @@ function isChatThreadEventRowsResponse(
     url.pathname === `/api/okou/chat-threads/${threadId}/event-rows` &&
     rawSinceSeqId !== null &&
     Number.isSafeInteger(sinceSeqId) &&
-    sinceSeqId >= 0
+    ((sinceSeqId === 0 && sinceEventId === null) ||
+      (sinceSeqId > 0 && sinceEventId !== null))
   );
 }
 
@@ -418,8 +420,15 @@ async function mockChatThread(
       const sinceSeqId = Number(
         requestUrl.searchParams.get("sinceSeqId") ?? "0",
       );
+      const sinceEventId = requestUrl.searchParams.get("sinceEventId");
       if (!Number.isSafeInteger(sinceSeqId) || sinceSeqId < 0) {
         throw new Error("Chat event row cursor is invalid");
+      }
+      if (
+        (sinceSeqId === 0 && sinceEventId !== null) ||
+        (sinceSeqId > 0 && sinceEventId === null)
+      ) {
+        throw new Error("Chat event row cursor is missing its event identity");
       }
       const rows = options.events
         .map((event) => {
