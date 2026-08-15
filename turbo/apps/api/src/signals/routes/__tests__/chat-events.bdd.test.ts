@@ -225,6 +225,13 @@ const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
 ] as const;
+const API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES = [
+  "api_dispatch_phase_pre_create",
+  "api_dispatch_phase_prepare_context",
+  "api_dispatch_phase_prepare_launch",
+] as const;
+const API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE =
+  "api_dispatch_phase_queue_insert";
 const API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES = [
   "api_dispatch_prepare_pi_launch_resources",
   "api_dispatch_prepare_pi_launch_resume_session",
@@ -5550,6 +5557,24 @@ describe("CHAT-02: run-level model overrides", () => {
         }),
       ).toHaveLength(1);
     }
+    for (const actionType of API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES) {
+      expect(
+        lostTimingEvents.filter((event) => {
+          return event.op_type === actionType;
+        }),
+      ).toStrictEqual([
+        expect.objectContaining({
+          api_start_source: "user_message",
+          queue_first_launch_outcome: "claim_lost",
+          run_preparation_retry_count: "0",
+        }),
+      ]);
+    }
+    expect(
+      lostTimingEvents.filter((event) => {
+        return event.op_type === API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE;
+      }),
+    ).toHaveLength(0);
     expect(
       sandboxOperationEvents().filter((event) => {
         return (
@@ -5667,6 +5692,23 @@ describe("CHAT-02: run-level model overrides", () => {
         }),
       ).toHaveLength(2);
     }
+    for (const actionType of API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES) {
+      expect(
+        retryTimingEvents.filter((event) => {
+          return event.op_type === actionType;
+        }),
+      ).toStrictEqual([
+        expect.objectContaining({
+          api_start_source: "user_message",
+          run_preparation_retry_count: "1",
+        }),
+      ]);
+    }
+    expect(
+      retryTimingEvents.filter((event) => {
+        return event.op_type === API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE;
+      }),
+    ).toHaveLength(1);
     expect(retryTimingEvents).toContainEqual(
       expect.objectContaining({
         op_type: "api_dispatch_resolve_queue_first_admission",

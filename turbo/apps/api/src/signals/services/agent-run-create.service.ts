@@ -276,6 +276,7 @@ import {
 } from "./zero-run-admission.service";
 import { activateUsageAllowanceWindowsForRun } from "./usage-allowance.service";
 import {
+  ApiDispatchPhaseCollector,
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
   type ApiDispatchTimingActionType,
@@ -871,6 +872,16 @@ export interface CreateAgentRunArgs {
   readonly zeroRunModelPin?: ZeroRunModelPin;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
+}
+
+function timingDimensionsForCreateArgs(
+  args: CreateAgentRunArgs,
+): ApiDispatchTimingDimensions {
+  return {
+    api_start_source: "request",
+    run_preparation_retry_count: "0",
+    ...args.timingDimensions,
+  };
 }
 
 function assertThreadBoundRunHasQueueAssociation(
@@ -8596,6 +8607,7 @@ function committedAtomicLaunchResponse(args: {
   readonly committed: CommittedAtomicLaunchResult;
   readonly transactionReturnedAt: number;
   readonly timing: ApiDispatchTimingCollector;
+  readonly phaseTiming: ApiDispatchPhaseCollector;
   readonly launch: PreparedRunnerLaunch;
 }): Extract<CreateRunRouteResult, { readonly status: 201 }> {
   if (args.committed.threadSessionBinding) {
@@ -8610,15 +8622,14 @@ function committedAtomicLaunchResponse(args: {
       queueDepth: args.committed.queueDepth,
       timestamp: args.committed.telemetryTimestamp,
     });
+    args.phaseTiming.appendTo(args.timing);
     ingestRunContextSnapshot(args.committed.runContextSnapshot);
     args.timing.flush({
       runId: args.committed.run.id,
       runnerGroup: args.committed.runnerJobPayload.runnerGroup,
       profile: args.committed.runnerJobPayload.profile,
       dispatchPath: "direct",
-      ...(args.createArgs.timingDimensions
-        ? { dimensions: args.createArgs.timingDimensions }
-        : {}),
+      dimensions: timingDimensionsForCreateArgs(args.createArgs),
       ...(args.createArgs.body.triggerSource
         ? { triggerSource: args.createArgs.body.triggerSource }
         : {}),
@@ -8631,6 +8642,11 @@ function committedAtomicLaunchResponse(args: {
       : response;
   }
 
+  args.phaseTiming.checkpoint(
+    "api_dispatch_phase_queue_insert",
+    args.committed.runnerJobCreatedAt.getTime(),
+  );
+  args.phaseTiming.appendTo(args.timing);
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
   const runContextRegisteredAt = now();
   const dispatchedProfile = args.committed.runnerJobPayload.profile;
@@ -8639,9 +8655,7 @@ function committedAtomicLaunchResponse(args: {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     profile: dispatchedProfile,
     dispatchPath: "direct",
-    ...(args.createArgs.timingDimensions
-      ? { dimensions: args.createArgs.timingDimensions }
-      : {}),
+    dimensions: timingDimensionsForCreateArgs(args.createArgs),
     ...(args.createArgs.body.triggerSource
       ? { triggerSource: args.createArgs.body.triggerSource }
       : {}),
@@ -8684,14 +8698,16 @@ function flushQueueFirstClaimLostTiming(args: {
   readonly identity: LaunchRunIdentity;
   readonly launch: PreparedRunnerLaunch;
   readonly timing: ApiDispatchTimingCollector;
+  readonly phaseTiming: ApiDispatchPhaseCollector;
 }): void {
+  args.phaseTiming.appendTo(args.timing);
   args.timing.flush({
     runId: args.identity.runId,
     runnerGroup: args.launch.runnerJobPayload.runnerGroup,
     profile: args.launch.runnerJobPayload.profile,
     dispatchPath: "direct",
     dimensions: {
-      ...args.createArgs.timingDimensions,
+      ...timingDimensionsForCreateArgs(args.createArgs),
       queue_first_launch_outcome: "claim_lost",
     },
     ...(args.createArgs.body.triggerSource
@@ -8705,6 +8721,7 @@ interface AtomicLaunchRunInput {
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
   readonly timing: ApiDispatchTimingCollector;
+  readonly phaseTiming: ApiDispatchPhaseCollector;
 }
 
 function isQueuePayloadRequiredResult(
@@ -8737,6 +8754,7 @@ function finalizeAtomicLaunchCommit(
       identity: args.identity,
       launch: args.launch,
       timing: args.input.timing,
+      phaseTiming: args.input.phaseTiming,
     });
     return committed;
   }
@@ -8751,6 +8769,7 @@ function finalizeAtomicLaunchCommit(
     committed,
     transactionReturnedAt: args.committed.transactionReturnedAt,
     timing: args.input.timing,
+    phaseTiming: args.input.phaseTiming,
     launch: args.launch,
   });
 }
@@ -8883,6 +8902,7 @@ function createAtomicLaunchRun(
     }
 
     const launch = launchResult.value;
+    input.phaseTiming.checkpoint("api_dispatch_phase_prepare_launch", now());
 
     const commitLaunch: CommitAtomicLaunch = async (
       encryptedQueuedParams: string | undefined,
@@ -8935,11 +8955,13 @@ interface PreparedAgentRun {
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
   readonly timing: ApiDispatchTimingCollector;
+  readonly phaseTiming: ApiDispatchPhaseCollector;
 }
 
 interface PrepareAgentRunArgs {
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
+  readonly phaseTiming: ApiDispatchPhaseCollector;
   readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
   // Undefined means not preloaded; null is an authoritative missing value.
@@ -9034,7 +9056,8 @@ export const prepareAgentRun$ = command(
       return context;
     }
 
-    return { args, context, timing };
+    input.phaseTiming.checkpoint("api_dispatch_phase_prepare_context", now());
+    return { args, context, timing, phaseTiming: input.phaseTiming };
   },
 );
 
@@ -9089,6 +9112,7 @@ export const completeAgentRun$ = command(
           args,
           context,
           timing,
+          phaseTiming: input.prepared.phaseTiming,
         },
         signal,
       ),
@@ -9131,14 +9155,21 @@ export const createAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<CreateRunRouteResult> => {
     const timing = args.timing ?? new ApiDispatchTimingCollector();
+    const phaseTiming = new ApiDispatchPhaseCollector(args.apiStartTime);
     timing.recordElapsed(
       "api_dispatch_pre_create_agent_run",
       "top_level",
       args.apiStartTime,
     );
+    phaseTiming.checkpoint("api_dispatch_phase_pre_create", now());
     const prepared = await set(
       prepareAgentRun$,
-      { args, timing, checkOrgPlanStatusBeforeContext: true },
+      {
+        args,
+        timing,
+        phaseTiming,
+        checkOrgPlanStatusBeforeContext: true,
+      },
       signal,
     );
     if (isRouteError(prepared)) {

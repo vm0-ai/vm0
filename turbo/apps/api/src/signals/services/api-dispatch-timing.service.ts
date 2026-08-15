@@ -2,6 +2,8 @@ import { performance } from "node:perf_hooks";
 
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 
+import { env } from "../../lib/env";
+import { normalizeBuildCommitSha } from "../../lib/build-info";
 import { now } from "../../lib/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { safeSync } from "../utils";
@@ -189,7 +191,56 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_connector_catalog_validate_compatibility"
   | "api_dispatch_connector_catalog_materialize_accepted_snapshot"
   | "api_dispatch_connector_catalog_materialize_runtime_snapshot"
-  | "api_dispatch_connector_catalog_materialize_server_firewalls";
+  | "api_dispatch_connector_catalog_materialize_server_firewalls"
+  | "api_dispatch_phase_pre_create"
+  | "api_dispatch_phase_prepare_context"
+  | "api_dispatch_phase_prepare_launch"
+  | "api_dispatch_phase_queue_insert";
+
+type ApiDispatchPhaseActionType =
+  | "api_dispatch_phase_pre_create"
+  | "api_dispatch_phase_prepare_context"
+  | "api_dispatch_phase_prepare_launch"
+  | "api_dispatch_phase_queue_insert";
+
+interface ApiDispatchPhaseRecord {
+  readonly actionType: ApiDispatchPhaseActionType;
+  readonly startedAt: number;
+  readonly finishedAt: number;
+}
+
+export class ApiDispatchPhaseCollector {
+  private readonly records: ApiDispatchPhaseRecord[] = [];
+  private previousBoundaryAt: number;
+
+  constructor(startedAt: number) {
+    this.previousBoundaryAt = startedAt;
+  }
+
+  checkpoint(
+    actionType: ApiDispatchPhaseActionType,
+    finishedAt: number = now(),
+  ): void {
+    const boundedFinishedAt = Math.max(this.previousBoundaryAt, finishedAt);
+    this.records.push({
+      actionType,
+      startedAt: this.previousBoundaryAt,
+      finishedAt: boundedFinishedAt,
+    });
+    this.previousBoundaryAt = boundedFinishedAt;
+  }
+
+  appendTo(timing: ApiDispatchTimingCollector): void {
+    for (const record of this.records.splice(0)) {
+      timing.recordElapsed(
+        record.actionType,
+        "top_level",
+        record.startedAt,
+        record.finishedAt,
+      );
+    }
+  }
+}
 
 interface ApiDispatchTimingRecord {
   readonly actionType: ApiDispatchTimingActionType;
@@ -284,6 +335,7 @@ export class ApiDispatchTimingCollector {
     readonly dimensions?: ApiDispatchTimingDimensions;
   }): void {
     const records = this.records.splice(0);
+    const apiCommitSha = normalizeBuildCommitSha(env("GIT_COMMIT_SHA"));
     recordSandboxOperations(
       records.map((record) => {
         return {
@@ -300,6 +352,7 @@ export class ApiDispatchTimingCollector {
             profile: args.profile,
             dispatch_path: args.dispatchPath,
             span_kind: record.spanKind,
+            ...(apiCommitSha ? { api_commit_sha: apiCommitSha } : {}),
             ...(args.triggerSource
               ? { trigger_source: args.triggerSource }
               : {}),
