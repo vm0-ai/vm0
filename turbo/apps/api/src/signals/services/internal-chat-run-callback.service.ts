@@ -128,7 +128,7 @@ import {
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
-import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   agentRunSourceAnnotation,
   type ChatAgentRunSourceAnnotation,
@@ -136,7 +136,7 @@ import {
   requiredUserMessageForEvent,
 } from "./chat-user-message.service";
 import { buildWebChatAppendSystemPrompt } from "./zero-web-chat-session-prompt.service";
-import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
+import { appendQueuedRunAssistantMarker } from "./chat-queue-marker.service";
 import {
   integrationCompletionFallbackEventIdForRun,
   followupsEventIdForRun,

@@ -81,7 +81,7 @@ import {
   type NewChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
-import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
+import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   agentRunSourceTitleSnapshot,
   hasAgentRunSourceAnnotation,
@@ -90,7 +90,7 @@ import {
   withAgentRunSourceAnnotation,
   type ChatAgentRunSourceAnnotation,
 } from "./chat-user-message.service";
-import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
+import { appendQueuedRunAssistantMarker } from "./chat-queue-marker.service";
 import {
   discardUnclaimedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
