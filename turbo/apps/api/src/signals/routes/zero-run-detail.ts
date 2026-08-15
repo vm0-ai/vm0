@@ -10,10 +10,10 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import {
-  zeroRunAgentEvents,
-  zeroRunContext,
-  zeroRunNetworkLogs,
-} from "../services/zero-run-detail.service";
+  runAgentEvents,
+  runContext,
+  runNetworkLogs,
+} from "../services/run-detail.service";
 import type { RouteEntry } from "../route-entry";
 
 const runReadAuth = {
@@ -27,7 +27,7 @@ const runNotFound = notFound("Agent run not found");
 const getContextInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroRunContextContract.getContext));
-  const result = await get(zeroRunContext(params.id, auth.userId, auth.orgId));
+  const result = await get(runContext(params.id, auth.userId, auth.orgId));
   if (result.kind === "not-found") {
     return runNotFound;
   }
@@ -42,7 +42,7 @@ const getNetworkLogsInner$ = computed(async (get) => {
   const params = get(pathParamsOf(zeroRunNetworkLogsContract.getNetworkLogs));
   const query = get(queryOf(zeroRunNetworkLogsContract.getNetworkLogs));
   const result = await get(
-    zeroRunNetworkLogs({
+    runNetworkLogs({
       runId: params.id,
       userId: auth.userId,
       orgId: auth.orgId,
@@ -64,7 +64,7 @@ const getAgentEventsInner$ = computed(async (get) => {
   const params = get(pathParamsOf(zeroRunAgentEventsContract.getAgentEvents));
   const query = get(queryOf(zeroRunAgentEventsContract.getAgentEvents));
   const result = await get(
-    zeroRunAgentEvents({
+    runAgentEvents({
       runId: params.id,
       userId: auth.userId,
       orgId: auth.orgId,
