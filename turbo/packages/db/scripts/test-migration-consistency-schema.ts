@@ -9679,8 +9679,7 @@ const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION =
   "0927_backfill_zero_agent_default_avatar";
 const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION =
   "0928_contract_chat_event_snapshots";
-const CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION =
-  "0929_cold_azazel";
+const CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION = "0929_cold_azazel";
 
 async function validateChatEventSnapshotContraction(): Promise<void> {
   console.log("=== Validate Chat Event Snapshot contraction ===\n");
