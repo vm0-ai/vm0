@@ -2,9 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Current JSON schema version for failure diagnostics.
-pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
-
 /// Process exit code used for the runner-owned agent execution timeout.
 pub const AGENT_EXECUTION_TIMEOUT_EXIT_CODE: i32 = 124;
 
@@ -21,8 +18,6 @@ const SHELL_SIGNAL_EXIT_CODE_OFFSET: i32 = 128;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FailureDiagnostic {
-    /// Version of the serialized diagnostic schema.
-    pub schema_version: u8,
     /// Coarse failure category used by runner-side handling.
     pub failure_class: FailureClass,
     /// CLI framework that produced the diagnostic.
@@ -64,7 +59,6 @@ impl FailureDiagnostic {
         prompt: PromptMetadata,
     ) -> Self {
         Self {
-            schema_version: FAILURE_DIAGNOSTIC_SCHEMA_VERSION,
             failure_class,
             framework,
             cli_exit_code: None,
@@ -856,7 +850,6 @@ mod tests {
         .with_session_history_status(SessionHistoryStatus::Missing);
 
         let json = serde_json::to_value(&diagnostic).unwrap();
-        assert_eq!(json["schemaVersion"], 1);
         assert_eq!(json["failureClass"], "claude_zero_turn_no_history");
         assert_eq!(json["framework"], "claude_code");
         assert_eq!(json["cliExitCode"], 0);
@@ -1077,7 +1070,6 @@ mod tests {
     #[test]
     fn failure_diagnostic_deserializes_without_observed_exit() {
         let json = serde_json::json!({
-            "schemaVersion": 1,
             "failureClass": "cli_nonzero",
             "framework": "claude_code",
             "cliExitCode": 137,
@@ -1475,23 +1467,11 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json.clone()).unwrap();
         assert_eq!(round_trip, diagnostic);
-
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct OldFailureDiagnostic {
-            schema_version: u8,
-            failure_class: FailureClass,
-        }
-
-        let old_shape: OldFailureDiagnostic = serde_json::from_value(json).unwrap();
-        assert_eq!(old_shape.schema_version, FAILURE_DIAGNOSTIC_SCHEMA_VERSION);
-        assert_eq!(old_shape.failure_class, FailureClass::EventUploadFailed);
     }
 
     #[test]
     fn failure_diagnostic_deserializes_without_optional_fields() {
         let json = serde_json::json!({
-            "schemaVersion": 1,
             "failureClass": "cli_nonzero",
             "framework": "claude_code",
             "cliExitCode": 1,
