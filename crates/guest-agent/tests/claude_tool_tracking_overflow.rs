@@ -1,9 +1,8 @@
-//! Claude tool tracking must terminate a stream that exceeds the bounded
-//! watchdog state instead of retaining unmatched calls until run completion.
+//! Claude tool tracking must keep the run alive when the bounded watchdog
+//! state cannot admit another unmatched call.
 
 mod common;
 
-use guest_contracts::diagnostics::{CliTerminationReason, CliTerminationSignal};
 use serde_json::json;
 use std::time::Duration;
 
@@ -13,11 +12,11 @@ use std::time::Duration;
 const TRACKED_TOOL_CAPACITY_PLUS_ONE: usize = 257;
 
 #[tokio::test]
-async fn claude_tool_tracking_overflow_terminates_promptly()
+async fn claude_tool_tracking_overflow_does_not_terminate_run()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
-    let mut prompt_lines = vec!["@ECHO-HANG@".to_string()];
+    let mut prompt_lines = vec!["@ECHO@".to_string()];
     prompt_lines.extend((0..TRACKED_TOOL_CAPACITY_PLUS_ONE).map(|index| {
         json!({
             "type": "assistant",
@@ -32,6 +31,15 @@ async fn claude_tool_tracking_overflow_terminates_promptly()
         })
         .to_string()
     }));
+    prompt_lines.push(
+        json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "result": "done"
+        })
+        .to_string(),
+    );
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt_lines.join("\n"), 1, 1)?;
@@ -45,24 +53,11 @@ async fn claude_tool_tracking_overflow_terminates_promptly()
         common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
-    .expect("tool tracking overflow should terminate promptly")?;
+    .expect("tool tracking overflow should not stall the run")?;
 
-    let result = execution;
-    let error = result
-        .control_error
-        .expect("tool tracking overflow should preserve a control error")
-        .to_string();
-    assert!(
-        error.contains("Claude tool tracking capacity exceeded"),
-        "unexpected tracking overflow error: {error}"
-    );
-    let termination = result
-        .cli_termination
-        .expect("tool tracking overflow should record process termination");
-    assert_eq!(termination.reason, CliTerminationReason::StdoutIngestion);
-    assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigterm));
-    assert!(!termination.escalated);
-    assert_eq!(termination.observed_exit_code, Some(common::SIGTERM_EXIT));
+    assert_eq!(execution.exit_code, common::CLEAN_EXIT);
+    assert!(execution.control_error.is_none());
+    assert!(execution.cli_termination.is_none());
 
     Ok(())
 }

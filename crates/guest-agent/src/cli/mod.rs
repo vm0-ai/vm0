@@ -1073,7 +1073,8 @@ async fn execute_cli_inner(
     // WebSearch/WebFetch hang indefinitely. Track bounded in-flight network
     // tool calls; if one exceeds STUCK_TOOL_TIMEOUT_SECS without producing a
     // tool_result, kill the process. Keyed by tool_use_id to handle parallel
-    // tool calls correctly.
+    // tool calls correctly. Tracker admission is best-effort: an oversized ID
+    // or a full tracker is ignored without affecting the run.
     // See: https://github.com/anthropics/claude-code/issues/11650
     let mut stuck_tool_tracker = claude::StuckToolTracker::new();
     let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
@@ -1372,21 +1373,9 @@ async fn execute_cli_inner(
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
-                            if let Err(error) =
-                                claude::track_claude_tool_events(&event, &mut stuck_tool_tracker)
-                            {
-                                let error = AgentError::Execution(error.to_string());
-                                let error_log = error.to_string();
-                                termination_runtime.begin_control_failure(
-                                    TerminationReason::StdoutIngestion,
-                                    error,
-                                    ControlTerminationLog::StdoutIngestionFailed {
-                                        error: error_log,
-                                    },
-                                    termination_deadline.as_mut(),
-                                );
-                                continue;
-                            }
+                            // Watchdog tracking is auxiliary state and must never make the
+                            // ordinary event stream or the run fail.
+                            claude::track_claude_tool_events(&event, &mut stuck_tool_tracker);
                             termination_runtime.record_post_result_activity(
                                 post_result_cleanup_was_armed,
                                 termination_deadline.as_mut(),

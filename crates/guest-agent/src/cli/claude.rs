@@ -2,7 +2,6 @@
 
 use crate::events;
 use std::collections::HashMap;
-use std::fmt;
 use tokio::time::Instant;
 
 /// Maximum number of network tool calls retained by the stuck-tool watchdog.
@@ -42,33 +41,6 @@ impl StuckToolName {
     }
 }
 
-/// An admission failure while adding a network tool call to the watchdog.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum StuckToolTrackingError {
-    /// The tool-use ID is too large to retain safely.
-    ToolUseIdTooLong { max_bytes: usize },
-
-    /// The tracker already contains its maximum number of calls.
-    CapacityExceeded { max_entries: usize },
-}
-
-impl fmt::Display for StuckToolTrackingError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ToolUseIdTooLong { max_bytes } => write!(
-                formatter,
-                "Claude tool tracking rejected a tool-use ID larger than {max_bytes} bytes"
-            ),
-            Self::CapacityExceeded { max_entries } => write!(
-                formatter,
-                "Claude tool tracking capacity exceeded at {max_entries} in-flight calls"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for StuckToolTrackingError {}
-
 /// Bounded in-flight state used by the stuck-tool watchdog.
 pub(super) struct StuckToolTracker {
     entries: HashMap<String, (StuckToolName, Instant)>,
@@ -81,46 +53,42 @@ impl StuckToolTracker {
         }
     }
 
-    pub(super) fn track_event(
-        &mut self,
-        event: &serde_json::Value,
-    ) -> Result<(), StuckToolTrackingError> {
+    pub(super) fn track_event(&mut self, event: &serde_json::Value) {
         for tool_event in events::extract_claude_tool_info(event) {
             match tool_event {
-                events::ClaudeToolEvent::Use { id, name } => self.track_use(id, name)?,
+                events::ClaudeToolEvent::Use { id, name } => self.track_use(id, name),
                 events::ClaudeToolEvent::Result { tool_use_id } => {
                     self.entries.remove(tool_use_id);
                 }
             }
         }
-        Ok(())
     }
 
-    fn track_use(&mut self, id: &str, name: &str) -> Result<(), StuckToolTrackingError> {
+    fn track_use(&mut self, id: &str, name: &str) {
         let Some(name) = StuckToolName::parse(name) else {
-            return Ok(());
+            return;
         };
 
         if id.len() > MAX_TRACKED_STUCK_TOOL_ID_BYTES {
-            return Err(StuckToolTrackingError::ToolUseIdTooLong {
-                max_bytes: MAX_TRACKED_STUCK_TOOL_ID_BYTES,
-            });
+            // Tracking is auxiliary state.  Keep the event stream alive when
+            // an ID cannot be retained within the watchdog bound.
+            return;
         }
 
         if let Some((tracked_name, started)) = self.entries.get_mut(id) {
             *tracked_name = name;
             *started = Instant::now();
-            return Ok(());
+            return;
         }
 
         if self.entries.len() >= MAX_TRACKED_STUCK_TOOLS {
-            return Err(StuckToolTrackingError::CapacityExceeded {
-                max_entries: MAX_TRACKED_STUCK_TOOLS,
-            });
+            // Do not evict an older call: eviction could hide a genuinely
+            // stuck network request.  Once a slot is freed by its result,
+            // later calls can be tracked normally again.
+            return;
         }
 
         self.entries.insert(id.to_owned(), (name, Instant::now()));
-        Ok(())
     }
 
     pub(super) fn oldest_expired(&self, timeout_secs: u64) -> Option<(StuckToolName, u64)> {
@@ -206,10 +174,7 @@ impl ClaudeResultStatus {
     }
 }
 
-pub(super) fn track_claude_tool_events(
-    event: &serde_json::Value,
-    tracker: &mut StuckToolTracker,
-) -> Result<(), StuckToolTrackingError> {
+pub(super) fn track_claude_tool_events(event: &serde_json::Value, tracker: &mut StuckToolTracker) {
     tracker.track_event(event)
 }
 
@@ -295,10 +260,10 @@ mod tests {
         });
         let mut tracker = StuckToolTracker::new();
 
-        track_claude_tool_events(&tool_use, &mut tracker).unwrap();
+        track_claude_tool_events(&tool_use, &mut tracker);
         assert!(tracker.contains_key("tool-1"));
 
-        track_claude_tool_events(&tool_result, &mut tracker).unwrap();
+        track_claude_tool_events(&tool_result, &mut tracker);
         assert_eq!(tracker.len(), 0);
     }
 }
