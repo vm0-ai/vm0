@@ -834,6 +834,13 @@
       "when": 1786729464438,
       "tag": "0926_cooing_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 927,
+      "version": "7",
+      "when": 1786769894774,
+      "tag": "0927_backfill_zero_agent_default_avatar",
+      "breakpoints": true
     }
   ]
 }
