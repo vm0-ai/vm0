@@ -230,7 +230,7 @@ impl PreparedSessionHistoryUploadSource {
 struct DecodedSessionHistoryAnalysis {
     raw_size: u64,
     sha256_hex: String,
-    line_count: Option<usize>,
+    line_count: usize,
     invalid_utf8: Option<String>,
     is_empty: bool,
     validation_error: Option<String>,
@@ -295,33 +295,18 @@ fn zstd_session_history(history_bytes: &[u8]) -> Result<Vec<u8>, AgentError> {
         .map_err(|error| AgentError::Checkpoint(format!("finish zstd session history: {error}")))
 }
 
-fn fail_preserving_error(
-    mode: CheckpointMode,
-    op: &str,
-    start: std::time::Instant,
-    error: AgentError,
-) -> AgentError {
-    record_history_failure(mode, op, start, &error.to_string());
+fn fail_preserving_error(op: &str, start: std::time::Instant, error: AgentError) -> AgentError {
+    record_history_failure(op, start, &error.to_string());
     error
 }
 
-fn history_failure(
-    mode: CheckpointMode,
-    op: &str,
-    start: std::time::Instant,
-    message: impl Into<String>,
-) -> AgentError {
+fn history_failure(op: &str, start: std::time::Instant, message: impl Into<String>) -> AgentError {
     let message = message.into();
-    record_history_failure(mode, op, start, &message);
+    record_history_failure(op, start, &message);
     AgentError::Checkpoint(message)
 }
 
-fn record_history_failure(
-    _mode: CheckpointMode,
-    op: &str,
-    start: std::time::Instant,
-    message: &str,
-) {
+fn record_history_failure(op: &str, start: std::time::Instant, message: &str) {
     log_warn!(LOG_TAG, "{message}");
     record_sandbox_op(op, start.elapsed(), false, Some(message));
 }
@@ -537,7 +522,7 @@ fn prepare_session_history(
 ) -> Result<PreparedSessionHistoryOutcome, AgentError> {
     let mut resolved =
         history::resolve_session_history_from_source(history_source).map_err(|error| {
-            fail_preserving_error(mode, "session_history_read", history_read_start, error)
+            fail_preserving_error("session_history_read", history_read_start, error)
         })?;
 
     if mode.can_prune_history() && framework == env::Framework::ClaudeCode {
@@ -563,8 +548,7 @@ fn prepare_session_history(
                         SessionHistoryPruneOutcome::Selected,
                         None,
                     );
-                    let mut prepared =
-                        prepare_raw_session_history(mode, history_read_start, candidate)?;
+                    let mut prepared = prepare_raw_session_history(history_read_start, candidate)?;
                     prepared.live_history = PreparedLiveHistory::NativeCandidate {
                         kind: NativeHistoryKind::ClaudeCode,
                         replacement,
@@ -628,8 +612,7 @@ fn prepare_session_history(
                         SessionHistoryPruneOutcome::Selected,
                         None,
                     );
-                    let mut prepared =
-                        prepare_raw_session_history(mode, history_read_start, candidate)?;
+                    let mut prepared = prepare_raw_session_history(history_read_start, candidate)?;
                     prepared.live_history = PreparedLiveHistory::NativeCandidate {
                         kind: NativeHistoryKind::Codex,
                         replacement,
@@ -685,27 +668,21 @@ fn prepare_session_history(
     let source = resolved
         .into_checkpoint_source_bounded(checkpoint_max_bytes)
         .map_err(|error| {
-            fail_preserving_error(mode, "session_history_read", history_read_start, error)
+            fail_preserving_error("session_history_read", history_read_start, error)
         })?;
     match source {
         history::SessionHistoryCheckpointSource::Decoded(history_bytes) => {
-            prepare_raw_session_history(mode, history_read_start, history_bytes)
+            prepare_raw_session_history(history_read_start, history_bytes)
                 .map(PreparedSessionHistoryOutcome::Upload)
         }
         history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
-            prepare_reused_zstd_session_history(
-                mode,
-                history_read_start,
-                encoded,
-                checkpoint_max_bytes,
-            )
-            .map(PreparedSessionHistoryOutcome::Upload)
+            prepare_reused_zstd_session_history(history_read_start, encoded, checkpoint_max_bytes)
+                .map(PreparedSessionHistoryOutcome::Upload)
         }
     }
 }
 
 fn prepare_raw_session_history(
-    mode: CheckpointMode,
     history_read_start: std::time::Instant,
     history_bytes: Vec<u8>,
 ) -> Result<PreparedSessionHistory, AgentError> {
@@ -713,7 +690,6 @@ fn prepare_raw_session_history(
 
     let session_history = std::str::from_utf8(&history_bytes).map_err(|error| {
         history_failure(
-            mode,
             "session_history_read",
             history_read_start,
             format!("Session history is not valid UTF-8: {error}"),
@@ -722,16 +698,14 @@ fn prepare_raw_session_history(
 
     if session_history.trim().is_empty() {
         return Err(history_failure(
-            mode,
             "session_history_read",
             history_read_start,
             "Session history is empty",
         ));
     }
 
-    validate_session_history(session_history).map_err(|msg| {
-        history_failure(mode, "session_history_validate", history_read_start, msg)
-    })?;
+    validate_session_history(session_history)
+        .map_err(|msg| history_failure("session_history_validate", history_read_start, msg))?;
 
     let line_count = session_history.lines().count();
     log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
@@ -757,17 +731,15 @@ fn prepare_raw_session_history(
 }
 
 fn prepare_reused_zstd_session_history(
-    mode: CheckpointMode,
     history_read_start: std::time::Instant,
     zstd_bytes: Vec<u8>,
     checkpoint_max_bytes: u64,
 ) -> Result<PreparedSessionHistory, AgentError> {
     let analysis = analyze_zstd_session_history(&zstd_bytes, checkpoint_max_bytes)
-        .map_err(|e| fail_preserving_error(mode, "session_history_read", history_read_start, e))?;
+        .map_err(|e| fail_preserving_error("session_history_read", history_read_start, e))?;
 
     if let Some(msg) = &analysis.invalid_utf8 {
         return Err(history_failure(
-            mode,
             "session_history_read",
             history_read_start,
             msg,
@@ -776,7 +748,6 @@ fn prepare_reused_zstd_session_history(
 
     if analysis.is_empty {
         return Err(history_failure(
-            mode,
             "session_history_read",
             history_read_start,
             "Session history is empty",
@@ -785,22 +756,17 @@ fn prepare_reused_zstd_session_history(
 
     if let Some(msg) = analysis.validation_error {
         return Err(history_failure(
-            mode,
             "session_history_validate",
             history_read_start,
             msg,
         ));
     }
 
-    if let Some(line_count) = analysis.line_count {
-        log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
-    } else {
-        log_info!(
-            LOG_TAG,
-            "Session history loaded ({} raw bytes, invalid UTF-8)",
-            analysis.raw_size
-        );
-    }
+    log_info!(
+        LOG_TAG,
+        "Session history loaded ({} lines)",
+        analysis.line_count
+    );
     record_sandbox_op(
         "session_history_read",
         history_read_start.elapsed(),
@@ -900,7 +866,7 @@ fn analyze_decoded_session_history_reader(
     Ok(DecodedSessionHistoryAnalysis {
         raw_size,
         sha256_hex: hex::encode(hasher.finalize()),
-        line_count: invalid_utf8.is_none().then_some(line_count),
+        line_count,
         invalid_utf8,
         is_empty,
         validation_error,
@@ -924,7 +890,6 @@ fn prepare_checkpoint_session_history(
     } = inputs;
     if cli_agent_session_id.is_empty() {
         return Err(history_failure(
-            mode,
             "session_id_read",
             std::time::Instant::now(),
             "Session ID is empty",
@@ -932,7 +897,6 @@ fn prepare_checkpoint_session_history(
     }
     let history_source = history_source.ok_or_else(|| {
         history_failure(
-            mode,
             "session_history_read",
             std::time::Instant::now(),
             "Session history source is unavailable",
@@ -983,7 +947,6 @@ pub(super) async fn prepare_and_upload_session_history(
 ) -> Result<CheckpointSessionHistory, AgentError> {
     if inputs.cli_agent_session_id.is_empty() {
         return Err(history_failure(
-            inputs.mode,
             "session_id_read",
             std::time::Instant::now(),
             "Session ID is empty",
@@ -1175,14 +1138,12 @@ fn validate_session_history_line(index: usize, line: &str) -> Result<(), String>
 
 #[cfg(test)]
 mod tests {
-    use super::super::CheckpointMode;
     use super::*;
     use crate::error::AgentError;
 
     #[test]
     fn checkpoint_failure_recording_preserves_typed_history_limit_error() {
         let error = fail_preserving_error(
-            CheckpointMode::Success,
             "session_history_read",
             std::time::Instant::now(),
             AgentError::CheckpointHistoryTooLarge { max_bytes: 1 },
@@ -1232,15 +1193,11 @@ mod tests {
     }
 
     #[test]
-    fn pi_recovery_checkpoint_validates_official_jsonl() {
+    fn pi_history_validates_official_jsonl() {
         let history = br#"{"type":"session","id":"00000000-0000-4000-8000-000000000001"}
 {"type":"message","id":"message-1","parentId":null}"#;
-        let prepared = prepare_raw_session_history(
-            CheckpointMode::Recovery,
-            std::time::Instant::now(),
-            history.to_vec(),
-        )
-        .expect("Pi JSONL should pass recovery validation");
+        let prepared = prepare_raw_session_history(std::time::Instant::now(), history.to_vec())
+            .expect("Pi JSONL should pass recovery validation");
 
         assert_eq!(prepared.raw_size, history.len() as u64);
         assert_eq!(prepared.hash, hex::encode(Sha256::digest(history)));
