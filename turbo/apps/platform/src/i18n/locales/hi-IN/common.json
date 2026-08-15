@@ -978,6 +978,8 @@
         "currentMember": "मौजूदा सदस्य",
         "management": {
           "comparison": "वर्तमान और नई सदस्यता की तुलना",
+          "comparisonDescription": "आपका मौजूदा सब्सक्रिप्शन और यह चयन, साथ-साथ",
+          "comparisonTitle": "सब्सक्रिप्शन की तुलना",
           "current": "वर्तमान",
           "downgradeDescription": "कम पैकेज अगली बिलिंग तारीख से शुरू होगा। मौजूदा क्रेडिट अपनी समाप्ति तक उपलब्ध रहेंगे।",
           "downgradesToDate": "{{date}} को {{package}} पर डाउनग्रेड होगा।",

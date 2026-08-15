@@ -978,6 +978,8 @@
         "currentMember": "Aktuelles Mitglied",
         "management": {
           "comparison": "Vergleich des aktuellen und neuen Abonnements",
+          "comparisonDescription": "Ihr aktuelles Abonnement und diese Auswahl im direkten Vergleich",
+          "comparisonTitle": "Abonnementvergleich",
           "current": "Aktuell",
           "downgradeDescription": "Das kleinere Paket beginnt am nächsten Abrechnungstag. Vorhandene Credits bleiben bis zu ihrem Ablauf verfügbar.",
           "downgradesToDate": "Downgrade auf {{package}} am {{date}}.",

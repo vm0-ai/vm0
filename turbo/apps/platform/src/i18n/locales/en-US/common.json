@@ -978,6 +978,8 @@
         "currentMember": "Current member",
         "management": {
           "comparison": "Current and new subscription comparison",
+          "comparisonDescription": "Your current subscription and this selection, side by side",
+          "comparisonTitle": "Subscription comparison",
           "current": "Current",
           "downgradeDescription": "The lower package starts at the next billing date. Existing credits remain available until they expire.",
           "downgradesToDate": "Downgrades to {{package}} on {{date}}.",
