@@ -26,7 +26,7 @@ import {
   zeroChatThreadDraftIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
-import { zeroChatSearch } from "../services/zero-chat-search.service";
+import { chatSearch } from "../services/chat-search.service";
 import {
   zeroChatThreadEventRows,
   zeroChatThreadEventSnapshot,
@@ -297,7 +297,7 @@ const searchChatInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatSearchContract.search));
   const result = await get(
-    zeroChatSearch({
+    chatSearch({
       userId: auth.userId,
       orgId: auth.orgId,
       keyword: query.keyword,
