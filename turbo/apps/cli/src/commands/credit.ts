@@ -6,16 +6,16 @@ import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero
 import {
   createZeroCreditCheckout,
   getZeroBillingStatus,
-} from "../../lib/api/domains/zero-billing";
-import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
-import { getPlatformOrigin } from "../doctor/platform-url";
+} from "../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../lib/command/with-error-handler";
+import { decodeZeroTokenPayload } from "../lib/api/zero-token";
+import { getPlatformOrigin } from "./doctor/platform-url";
 import {
   currentPlanAllowsVideo,
   currentPlanCanBuyCredits,
   currentTokenCanReadBilling,
-} from "../shared/billing-capabilities";
-import { planUpgradeUrl } from "../shared/billing-links";
+} from "./shared/billing-capabilities";
+import { planUpgradeUrl } from "./shared/billing-links";
 
 function parseCredits(value: string): number {
   const credits = Number(value.replaceAll(",", ""));
@@ -25,7 +25,7 @@ function parseCredits(value: string): number {
   return credits;
 }
 
-function requireZeroCapabilityForCreditAction(
+function requireCapabilityForCreditAction(
   capability: ZeroCapability,
   message: string,
 ): void {
@@ -112,7 +112,7 @@ function printCreditStatus(billing: BillingStatusResponse): void {
 }
 
 async function showCreditStatus(options: CreditOptions): Promise<void> {
-  requireZeroCapabilityForCreditAction(
+  requireCapabilityForCreditAction(
     "billing:read",
     "checking credit status requires billing:read capability",
   );
@@ -130,7 +130,7 @@ async function buyCredits(
   credits: number,
   options: CreditOptions,
 ): Promise<void> {
-  requireZeroCapabilityForCreditAction(
+  requireCapabilityForCreditAction(
     "billing:write",
     "buying credits requires billing:write capability",
   );
@@ -161,7 +161,7 @@ async function buyCredits(
   console.log(result.url);
 }
 
-export const zeroCreditCommand = new Command()
+export const creditCommand = new Command()
   .name("credit")
   .description("View credit balance or create a checkout link to buy credits")
   .argument("[credits]", "Number of credits to buy", parseCredits)
