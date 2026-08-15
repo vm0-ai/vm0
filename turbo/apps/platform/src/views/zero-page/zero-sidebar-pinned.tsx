@@ -229,6 +229,42 @@ export function PinnedAgentListSection({
     routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
 
   if (layout === "horizontal") {
+    const pinnedAgentCards =
+      pinnedAgentsLoadable.state === "hasData"
+        ? displayedPinnedAgents.map((agent) => {
+            const isPrimarySelected =
+              isChatRoute(activeRoute) && selectedAgentId === agent.id;
+            const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
+            return (
+              <Link
+                key={agent.id}
+                pathname="/agents/:agentId/chat"
+                options={{ pathParams: { agentId: agent.id } }}
+                data-testid="pinned-agent-card"
+                className={`group flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
+                  isPrimarySelected
+                    ? "bg-state-selected text-sidebar-foreground"
+                    : "text-sidebar-foreground hover:bg-state-hover"
+                }`}
+              >
+                <span className="relative">
+                  <AgentAvatarImg
+                    name={agent.id}
+                    alt={agent.displayName ?? agent.id}
+                    className="h-9 w-9 rounded-full object-cover object-top"
+                  />
+                  {hasUnread && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
+                  )}
+                </span>
+                <span className="w-full truncate text-center text-[11px] leading-tight">
+                  {agent.displayName ?? agent.id}
+                </span>
+              </Link>
+            );
+          })
+        : [];
+
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
         <span className="block px-1 pb-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
@@ -236,40 +272,11 @@ export function PinnedAgentListSection({
             return $.sidebar.pinnedAgents;
           })}
         </span>
-        <div className="flex items-start gap-1 overflow-x-auto pb-1">
-          {pinnedAgentsLoadable.state === "hasData" &&
-            displayedPinnedAgents.map((agent) => {
-              const isPrimarySelected =
-                isChatRoute(activeRoute) && selectedAgentId === agent.id;
-              const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
-              return (
-                <Link
-                  key={agent.id}
-                  pathname="/agents/:agentId/chat"
-                  options={{ pathParams: { agentId: agent.id } }}
-                  data-testid="pinned-agent-card"
-                  className={`group flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
-                    isPrimarySelected
-                      ? "bg-state-selected text-sidebar-foreground"
-                      : "text-sidebar-foreground hover:bg-state-hover"
-                  }`}
-                >
-                  <span className="relative">
-                    <AgentAvatarImg
-                      name={agent.id}
-                      alt={agent.displayName ?? agent.id}
-                      className="h-9 w-9 rounded-full object-cover object-top"
-                    />
-                    {hasUnread && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
-                    )}
-                  </span>
-                  <span className="w-full truncate text-center text-[11px] leading-tight">
-                    {agent.displayName ?? agent.id}
-                  </span>
-                </Link>
-              );
-            })}
+        <div
+          className="grid min-w-0 grid-cols-4 items-start gap-1 pb-1"
+          data-testid="pinned-agents-grid"
+        >
+          {pinnedAgentCards.slice(0, 3)}
           <button
             type="button"
             onClick={() => {
@@ -278,7 +285,7 @@ export function PinnedAgentListSection({
             aria-label={t(($) => {
               return $.sidebar.openConversation;
             })}
-            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
+            className="col-start-4 row-start-1 flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <Plus size={16} />
@@ -289,6 +296,7 @@ export function PinnedAgentListSection({
               })}
             </span>
           </button>
+          {pinnedAgentCards.slice(3)}
         </div>
         <AgentListDialogContainer />
       </div>
