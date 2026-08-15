@@ -43,7 +43,10 @@ async function negotiatedChatEventHeaders(
   if (version === null) {
     throw new Error("Chat Event request is missing its schema version");
   }
-  return { [chatEventSchemaVersionHeader]: version };
+  return {
+    "Access-Control-Expose-Headers": chatEventSchemaVersionHeader,
+    [chatEventSchemaVersionHeader]: version,
+  };
 }
 
 function deferred(): { readonly promise: Promise<void>; resolve(): void } {
