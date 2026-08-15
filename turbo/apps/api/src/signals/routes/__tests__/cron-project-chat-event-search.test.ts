@@ -13,7 +13,10 @@ import {
   readChatEventSearchProjectionFixture,
   rejectSearchablePromptFixture,
 } from "../../../test-fixtures/chat-event-search";
-import { holdChatEventInsertTransactionFixture } from "../../../test-fixtures/chat-events";
+import {
+  holdChatEventInsertTransactionFixture,
+  holdChatThreadDeleteTransactionFixture,
+} from "../../../test-fixtures/chat-events";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { createBddApi } from "./helpers/api-bdd";
@@ -170,6 +173,43 @@ describe("GET /api/cron/project-chat-event-search", () => {
         text: appendedText,
       }),
     );
+  });
+
+  it("skips a thread whose deletion commits during projection", async () => {
+    const actor = bdd.user();
+    const compose = await chat.createComposeForChatThread(actor);
+    const thread = await chat.createThread(actor, {
+      agentId: compose.composeId,
+      title: `Projection deletion ${randomUUID()}`,
+    });
+    await insertChatSearchProjectionCoverageFixture({
+      chatThreadId: thread.id,
+      promptText: `deleting prompt ${randomUUID()}`,
+      assistantText: `deleting assistant ${randomUUID()}`,
+      errorText: `deleting error ${randomUUID()}`,
+      terminalText: `deleting terminal ${randomUUID()}`,
+    });
+    const heldDeletion = await holdChatThreadDeleteTransactionFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    const tick = projectOwnedChatEventSearch([thread.id]);
+    onTestFinished(async () => {
+      heldDeletion.release();
+      await Promise.allSettled([heldDeletion.done, tick]);
+    });
+
+    await expect
+      .poll(heldDeletion.firstBlockedStatementKind)
+      .toBe("select_for_key_share");
+    heldDeletion.release();
+    await heldDeletion.done;
+
+    const projected = await tick;
+    expect(projected.success).toBeTruthy();
+    expect(projected.threads).toBe(0);
+    const deleted = await chat.requestReadThread(actor, thread.id, [404]);
+    expect(deleted.status).toBe(404);
   });
 
   it("bounds each projection tick to the configured thread batch", async () => {

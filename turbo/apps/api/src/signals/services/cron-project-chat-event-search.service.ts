@@ -207,14 +207,18 @@ async function visibleSearchEventIds(
   );
 }
 
-async function loadProjectionThread(
+async function lockProjectionThreadAgainstDelete(
   tx: Tx,
   chatThreadId: string,
 ): Promise<{ readonly lastChatEventSeqId: number } | null> {
+  // Keep the FK parent alive until its projection writes commit. KEY SHARE
+  // blocks deletion without conflicting with non-key updates such as event
+  // sequence advancement.
   const [thread] = await tx
     .select({ lastChatEventSeqId: chatThreads.lastChatEventSeqId })
     .from(chatThreads)
     .where(eq(chatThreads.id, chatThreadId))
+    .for("key share")
     .limit(1);
   return thread ?? null;
 }
@@ -400,7 +404,7 @@ async function projectThread(
   thread: CandidateThread,
 ): Promise<ThreadProjectionStats> {
   return await db.transaction(async (tx) => {
-    const projectionThread = await loadProjectionThread(
+    const projectionThread = await lockProjectionThreadAgainstDelete(
       tx,
       thread.chatThreadId,
     );

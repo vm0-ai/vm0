@@ -78,7 +78,11 @@ const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
 const blockedQueryRowSchema = z.object({ query: z.string() });
 
-type ChatThreadBlockedStatementKind = "select_for_update" | "update" | "other";
+type ChatThreadBlockedStatementKind =
+  | "select_for_key_share"
+  | "select_for_update"
+  | "update"
+  | "other";
 
 interface ChatEventBlockedStatementCounts {
   readonly hotSnapshotReads: number;
@@ -1366,6 +1370,13 @@ async function firstDirectBlockedStatementKind(
   if (
     query.startsWith("select") &&
     query.includes('from "chat_threads"') &&
+    query.includes("for key share")
+  ) {
+    return "select_for_key_share";
+  }
+  if (
+    query.startsWith("select") &&
+    query.includes('from "chat_threads"') &&
     query.includes("for update")
   ) {
     return "select_for_update";
@@ -1428,6 +1439,58 @@ export async function holdChatThreadRowLockFixture(args: {
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(holderPid);
     },
+    firstBlockedStatementKind: async () => {
+      return await firstDirectBlockedStatementKind(holderPid);
+    },
+  };
+}
+
+/**
+ * Deletes one test-owned thread and pauses before commit. Product APIs cannot
+ * pause after DELETE has locked the parent but before the transaction commits,
+ * so this fixture exposes that exact projection/deletion concurrency boundary.
+ */
+export async function holdChatThreadDeleteTransactionFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly firstBlockedStatementKind: () => Promise<ChatThreadBlockedStatementKind | null>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const deleted = await tx
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .returning({ id: chatThreads.id });
+    if (deleted.length !== 1) {
+      throw new Error("Expected one chat thread to delete");
+    }
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat thread delete holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
     firstBlockedStatementKind: async () => {
       return await firstDirectBlockedStatementKind(holderPid);
     },
