@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.451.5](https://github.com/vm0-ai/vm0/compare/api-v1.451.4...api-v1.451.5) (2026-08-15)
+
+
+### Bug Fixes
+
+* assign a preset avatar to agents created without one ([#24922](https://github.com/vm0-ai/vm0/issues/24922)) ([2d35842](https://github.com/vm0-ai/vm0/commit/2d35842bcde8818dc5fadf7248067f11aec339b1))
+
+
+### Refactoring
+
+* **chat:** remove chat event compatibility fallbacks ([#27335](https://github.com/vm0-ai/vm0/issues/27335)) ([6aa5065](https://github.com/vm0-ai/vm0/commit/6aa5065796c906a9e52d0fa2f292493f492e79fe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.5
+    * @okouai/core bumped to 8.562.2
+    * @okouai/db bumped to 1.200.5
+
 ## [1.451.4](https://github.com/vm0-ai/vm0/compare/api-v1.451.3...api-v1.451.4) (2026-08-15)
 
 

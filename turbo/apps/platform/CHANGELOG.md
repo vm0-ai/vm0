@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.757.0](https://github.com/vm0-ai/vm0/compare/app-v0.756.0...app-v0.757.0) (2026-08-15)
+
+
+### Features
+
+* **platform:** add shared worker observability ([#27339](https://github.com/vm0-ai/vm0/issues/27339)) ([8b296fb](https://github.com/vm0-ai/vm0/commit/8b296fb865ae89f477b03ebb2135fee56a3f1e37))
+* **platform:** show workflow visibility on hover ([#27358](https://github.com/vm0-ai/vm0/issues/27358)) ([14f5ba6](https://github.com/vm0-ai/vm0/commit/14f5ba6811d993bac077df5b87deeab7196eb61b))
+
+
+### Bug Fixes
+
+* assign a preset avatar to agents created without one ([#24922](https://github.com/vm0-ai/vm0/issues/24922)) ([2d35842](https://github.com/vm0-ai/vm0/commit/2d35842bcde8818dc5fadf7248067f11aec339b1))
+* **billing:** clarify concurrency add-on hierarchy ([#27337](https://github.com/vm0-ai/vm0/issues/27337)) ([b21f350](https://github.com/vm0-ai/vm0/commit/b21f350720738c5b4a055fefc36dbacffcddd39c))
+* **billing:** refine subscription comparison layout ([#27331](https://github.com/vm0-ai/vm0/issues/27331)) ([b9513ec](https://github.com/vm0-ai/vm0/commit/b9513ec914687e440815bf0ef101604e50baa641))
+* **platform:** hide rejected automation replacements ([#27359](https://github.com/vm0-ai/vm0/issues/27359)) ([f2a10cf](https://github.com/vm0-ai/vm0/commit/f2a10cf9e76e53dd1b1cde98fe7d14633dfb12db))
+* **platform:** simplify credit balance card ([#27341](https://github.com/vm0-ai/vm0/issues/27341)) ([29569ab](https://github.com/vm0-ai/vm0/commit/29569abdb4569516e69b7c649e265ee30da96477))
+* **platform:** unify billing payment dialogs ([#27336](https://github.com/vm0-ai/vm0/issues/27336)) ([f5ad76b](https://github.com/vm0-ai/vm0/commit/f5ad76bc481e9a7f861342654f4ff46eef406bd9))
+
+
+### Refactoring
+
+* **chat:** remove chat event compatibility fallbacks ([#27335](https://github.com/vm0-ai/vm0/issues/27335)) ([6aa5065](https://github.com/vm0-ai/vm0/commit/6aa5065796c906a9e52d0fa2f292493f492e79fe))
+* **platform:** refine models settings layout ([#27360](https://github.com/vm0-ai/vm0/issues/27360)) ([437bd29](https://github.com/vm0-ai/vm0/commit/437bd29f3db62b0b1ef97e505b1a0e99b986975c))
+* **platform:** unify loops and timers ([#27354](https://github.com/vm0-ai/vm0/issues/27354)) ([018f4af](https://github.com/vm0-ai/vm0/commit/018f4aff7e99d7cbfe0dd20967c9df854fc69dfa))
+* remove composer connector permissions feature switch ([#27357](https://github.com/vm0-ai/vm0/issues/27357)) ([c5a74f0](https://github.com/vm0-ai/vm0/commit/c5a74f01738e3a6340c96022107780c2b1fe474d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.5
+    * @okouai/core bumped to 8.562.2
+
 ## [0.756.0](https://github.com/vm0-ai/vm0/compare/app-v0.755.0...app-v0.756.0) (2026-08-15)
 
 
