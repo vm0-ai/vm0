@@ -850,6 +850,7 @@ mod tests {
         .with_session_history_status(SessionHistoryStatus::Missing);
 
         let json = serde_json::to_value(&diagnostic).unwrap();
+        assert!(json.get("schemaVersion").is_none());
         assert_eq!(json["failureClass"], "claude_zero_turn_no_history");
         assert_eq!(json["framework"], "claude_code");
         assert_eq!(json["cliExitCode"], 0);
