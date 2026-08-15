@@ -695,9 +695,12 @@ fn apply_workload_resource_limit(
         return message;
     }
 
+    let has_classified_failure = failure_diagnostic
+        .as_ref()
+        .is_some_and(|diagnostic| diagnostic.failure_reason.is_some());
     if error_message.is_empty() {
         error_message.clone_from(&message);
-    } else {
+    } else if !has_classified_failure {
         error_message.push_str("; ");
         error_message.push_str(&message);
     }
@@ -1056,7 +1059,7 @@ mod tests {
     use super::*;
     use guest_contracts::diagnostics::{
         AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationSignal,
-        PromptMetadata, SessionHistoryStatus,
+        FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };
     use httpmock::prelude::*;
     use serde_json::json;
@@ -1665,6 +1668,153 @@ mod tests {
             .build()
             .unwrap()
             .block_on(complete_execution_writes_checkpoint_failure_diagnostic_inner());
+    }
+
+    #[test]
+    fn complete_execution_preserves_workload_resource_failure_semantics() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_preserves_workload_resource_failure_semantics_inner());
+    }
+
+    async fn complete_execution_preserves_workload_resource_failure_semantics_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
+        let _runtime_root_guard = TestEnvGuard;
+        let hard_limit = WorkloadResourceLimitDiagnostic {
+            memory_max_events: 1_882_956,
+            memory_oom_events: 3,
+            memory_oom_kill_events: 3,
+            memory_oom_group_kill_events: 0,
+            pids_max_events: 0,
+        };
+        let provider_message = "Selected model is at capacity. Please try a different model.";
+        let provider_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::CodexJsonl)
+        .with_failure_reason(FailureReason::ProviderOverloaded);
+
+        let (exit_code, error, diagnostic) = complete_after_workload_resource_limit(
+            server,
+            1,
+            provider_message,
+            Some(provider_diagnostic),
+            hard_limit,
+        )
+        .await;
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(error.as_deref(), Some(provider_message));
+        let diagnostic = diagnostic.expect("expected classified failure diagnostic");
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(diagnostic.workload_resource_limit, Some(hard_limit));
+
+        let generic_message = "Agent exited with code 137";
+        let generic_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(137)
+        .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
+        .with_failure_detail_source(FailureDetailSource::FallbackExitCode);
+
+        let (exit_code, error, diagnostic) = complete_after_workload_resource_limit(
+            server,
+            137,
+            generic_message,
+            Some(generic_diagnostic),
+            hard_limit,
+        )
+        .await;
+
+        assert_eq!(exit_code, 137);
+        assert_eq!(
+            error.as_deref(),
+            Some(
+                "Agent exited with code 137; workload resource limit reached (memory_max=1882956, memory_oom=3, memory_oom_kill=3, memory_oom_group_kill=0, pids_max=0)"
+            )
+        );
+        let diagnostic = diagnostic.expect("expected generic failure diagnostic");
+        assert_eq!(diagnostic.failure_reason, None);
+        assert_eq!(diagnostic.workload_resource_limit, Some(hard_limit));
+
+        let (exit_code, error, diagnostic) =
+            complete_after_workload_resource_limit(server, 0, "", None, hard_limit).await;
+
+        assert_eq!(exit_code, 0);
+        assert_eq!(error, None);
+        assert_eq!(diagnostic, None);
+    }
+
+    async fn complete_after_workload_resource_limit(
+        server: &MockServer,
+        cli_exit_code: i32,
+        initial_error_message: &str,
+        mut failure_diagnostic: Option<FailureDiagnostic>,
+        hard_limit: WorkloadResourceLimitDiagnostic,
+    ) -> (i32, Option<String>, Option<FailureDiagnostic>) {
+        let guest_paths = test_guest_paths();
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let mut config = test_guest_config(server, Some("plain prompt"));
+        config.framework = env::Framework::Codex;
+        config.cli_agent_type = "codex".to_string();
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = HttpClient::new().unwrap();
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
+        let runtime = test_guest_runtime(config, http);
+        let mut error_message = initial_error_message.to_string();
+        apply_workload_resource_limit(
+            cli_exit_code,
+            &mut error_message,
+            &mut failure_diagnostic,
+            hard_limit,
+        );
+        let exit_code = complete_execution(
+            cli_exit_code,
+            cli_exit_code,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: (cli_exit_code != 0).then_some(error_message.as_str()),
+                failure_diagnostic,
+                skip_recovery_checkpoint_for_no_history: false,
+                active_input_delivery_ids: &[],
+            },
+            &telemetry,
+            &runtime,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        let error_path = std::path::Path::new(guest_paths.checkpoint_error_file());
+        let written_error = error_path
+            .exists()
+            .then(|| std::fs::read_to_string(error_path).unwrap());
+        let diagnostic_path = std::path::Path::new(guest_paths.failure_diagnostic_file());
+        let written_diagnostic = diagnostic_path
+            .exists()
+            .then(|| serde_json::from_slice(&std::fs::read(diagnostic_path).unwrap()).unwrap());
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+        (exit_code, written_error, written_diagnostic)
     }
 
     async fn complete_execution_writes_checkpoint_failure_diagnostic_inner() {
