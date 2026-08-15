@@ -2,10 +2,10 @@
 -- with a NULL avatar_url and render with no avatar at all. Give each of them
 -- one of the built-in preset avatars (preset:0 .. preset:4).
 --
+-- DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
 -- The draining API release explicitly inserts NULL for omitted avatars. Keep
 -- this bridge until every API version that can make that write, plus its
--- rollback window, has drained; then remove the trigger and function in a
--- follow-up migration.
+-- rollback window, has drained. Remove the trigger and function in #27356.
 CREATE OR REPLACE FUNCTION "bridge_zero_agent_default_avatar_0927"()
 RETURNS trigger AS $$
 BEGIN

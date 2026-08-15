@@ -1987,9 +1987,9 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
-  // DB/API rollout fallback; observed maximum version-skew window: ~4 seconds.
+  // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
   // Previous API revisions explicitly insert NULL for omitted avatars. Remove
-  // after those writers and their rollback window drain.
+  // in #27356 after those writers and their rollback window drain.
   {
     definition:
       "CREATE TRIGGER bridge_zero_agent_default_avatar_0927 BEFORE INSERT ON public.zero_agents FOR EACH ROW EXECUTE FUNCTION bridge_zero_agent_default_avatar_0927()",
@@ -2014,7 +2014,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  // Same DB/API rollout fallback and removal gate as its trigger.
+  // Same DB/API rollout fallback and #27356 removal gate as its trigger.
   {
     bodyHash: "b93914b9cf86141a4b0b4b803a3bfe6f",
     functionName: "bridge_zero_agent_default_avatar_0927",
