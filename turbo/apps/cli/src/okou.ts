@@ -226,7 +226,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "intro",
     description: "Print Okou's self-introduction and capability guide",
     load: async () => {
-      return (await import("./commands/zero/intro")).zeroIntroCommand;
+      return (await import("./commands/intro")).introCommand;
     },
   },
   {

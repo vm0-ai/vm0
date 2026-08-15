@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { zeroIntroCommand } from "../intro";
+import { introCommand } from "../intro";
 
 describe("okou intro", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
@@ -15,7 +15,7 @@ describe("okou intro", () => {
   });
 
   it("prints the cloud capability guide for agents", async () => {
-    await zeroIntroCommand.parseAsync([], { from: "user" });
+    await introCommand.parseAsync([], { from: "user" });
 
     expect(logSpy).toHaveBeenCalledOnce();
     const output = logSpy.mock.calls[0]?.[0] as string;
