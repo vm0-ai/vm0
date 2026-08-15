@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { transcribeCommand } from "../transcribe";
 
 const STT_URL = "http://localhost:3000/api/okou/voice-io/stt";
@@ -87,6 +87,27 @@ describe("okou video transcribe command", () => {
       expect(output).toContain("## Transcript");
       expect(output).toContain("[00:02-00:05] Hello world.");
       expect(output).toContain("[00:06-00:07] Second sentence.");
+
+      const { execFileSync } = await import("child_process");
+      const execCalls = vi.mocked(execFileSync).mock.calls;
+      const curlCall = execCalls.find((c) => {
+        return c[0] === "curl";
+      });
+      expect(curlCall?.[1]).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/[/\\]video-input-\d+\.mp4$/),
+        ]),
+      );
+
+      const ffmpegCall = execCalls.find((c) => {
+        return c[0] === "ffmpeg";
+      });
+      expect(ffmpegCall?.[1]).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/[/\\]video-input-\d+\.mp4$/),
+          expect.stringMatching(/[/\\]video-audio-\d+\.wav$/),
+        ]),
+      );
     });
   });
 

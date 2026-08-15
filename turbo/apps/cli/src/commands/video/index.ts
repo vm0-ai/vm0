@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { transcribeCommand } from "./transcribe";
 import { framesCommand } from "./frames";
 
-export const zeroVideoCommand = new Command()
+export const videoCommand = new Command()
   .name("video")
   .description("Video processing utilities")
   .addCommand(transcribeCommand)

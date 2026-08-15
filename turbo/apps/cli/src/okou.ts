@@ -277,7 +277,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "video",
     description: "Video processing utilities",
     load: async () => {
-      return (await import("./commands/zero/video")).zeroVideoCommand;
+      return (await import("./commands/video")).videoCommand;
     },
   },
   {

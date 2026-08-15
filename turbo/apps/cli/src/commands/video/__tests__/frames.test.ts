@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "child_process";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { framesCommand } from "../frames";
 
 const DOWNLOAD_URL = "http://localhost:3000/api/okou/web/download-file";
@@ -72,11 +72,32 @@ describe("okou video frames command", () => {
     const result = JSON.parse(readStdout()) as {
       frames: { at: string; path: string }[];
     };
-    expect(result.frames).toHaveLength(2);
-    expect(result.frames[0]?.at).toBe("00:21");
-    expect(result.frames[1]?.at).toBe("01:40");
-    expect(result.frames[0]?.path).toContain("frame-001.jpg");
-    expect(result.frames[1]?.path).toContain("frame-002.jpg");
+    expect(result).toEqual({
+      frames: [
+        {
+          at: "00:21",
+          path: expect.stringMatching(
+            /[/\\]video-frames-\d+[/\\]frame-001\.jpg$/,
+          ),
+        },
+        {
+          at: "01:40",
+          path: expect.stringMatching(
+            /[/\\]video-frames-\d+[/\\]frame-002\.jpg$/,
+          ),
+        },
+      ],
+    });
+
+    const curlCalls = vi.mocked(execFileSync).mock.calls.filter((c) => {
+      return c[0] === "curl";
+    });
+    expect(curlCalls).toHaveLength(1);
+    expect(curlCalls[0]?.[1]).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/[/\\]video-input-\d+\.mp4$/),
+      ]),
+    );
 
     const ffmpegCalls = vi.mocked(execFileSync).mock.calls.filter((c) => {
       return c[0] === "ffmpeg";

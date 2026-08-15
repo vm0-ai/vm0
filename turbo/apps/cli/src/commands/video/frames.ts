@@ -3,8 +3,8 @@ import { mkdirSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { downloadWebFile } from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { downloadWebFile } from "../../lib/api/domains/web";
 
 interface ExtractedFrame {
   readonly at: string;
@@ -29,7 +29,7 @@ Examples:
 
 Output:
   Prints a JSON object to stdout, one entry per timestamp:
-    {"frames":[{"at":"00:21","path":"/tmp/zero-frames-.../frame-001.jpg"}]}
+    {"frames":[{"at":"00:21","path":"/tmp/video-frames-.../frame-001.jpg"}]}
 
 Tip:
   Pair with "okou video transcribe": read the timestamped transcript to find the
@@ -63,10 +63,10 @@ Notes:
           process.exit(1);
         }
 
-        const outDir = join(tmpdir(), `zero-frames-${Date.now()}`);
+        const outDir = join(tmpdir(), `video-frames-${Date.now()}`);
         mkdirSync(outDir, { recursive: true });
 
-        const tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
+        const tmpVideo = join(tmpdir(), `video-input-${Date.now()}.mp4`);
 
         try {
           if (options.url) {
