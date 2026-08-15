@@ -2824,6 +2824,58 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("wraps pinned agents after New in the four-column layout", async () => {
+    const team = prepareAgentTeam();
+    const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
+    context.mocks.data.team([
+      ...team,
+      {
+        ...team[1]!,
+        id: operationsAgentId,
+        displayName: "Operations Agent",
+        headVersionId: "version_4",
+      },
+    ]);
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID, operationsAgentId],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
+    const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(4);
+    });
+
+    const newAgent = queryAllByRoleFast("button", grid).find((candidate) => {
+      return candidate.getAttribute("aria-label") === "Open a conversation";
+    });
+    if (!newAgent) {
+      throw new Error("New agent button not found");
+    }
+    const supportAgent = pinnedAgentLink(grid, "Support Agent");
+    const operationsAgent = pinnedAgentLink(grid, "Operations Agent");
+
+    expect(grid).toHaveClass("grid", "grid-cols-4");
+    expect(grid).not.toHaveClass("overflow-x-auto");
+    expect(newAgent).toHaveClass("col-start-4", "row-start-1", "w-full");
+    expect(
+      supportAgent.compareDocumentPosition(newAgent) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      newAgent.compareDocumentPosition(operationsAgent) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("keeps the single-column sidebar when the three-column flag is off", async () => {
     prepareDefaultAgent();
 
