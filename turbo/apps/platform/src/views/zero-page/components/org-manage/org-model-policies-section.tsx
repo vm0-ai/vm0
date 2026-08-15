@@ -409,7 +409,7 @@ function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex h-7 min-w-10 shrink-0 cursor-help items-center justify-center rounded-lg bg-gray-50 px-2 text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 transition-colors hover:bg-state-hover hover:text-foreground hover:decoration-muted-foreground dark:bg-gray-100">
+          <span className="inline-flex h-7 min-w-10 shrink-0 cursor-help items-center justify-center rounded-lg px-2 text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 transition-colors hover:bg-state-hover hover:text-foreground hover:decoration-muted-foreground">
             {tier}
           </span>
         </TooltipTrigger>
@@ -693,7 +693,7 @@ function PolicyRow({
       </div>
       <div className="col-start-1 row-start-2 flex min-w-0 flex-col justify-center lg:col-start-2 lg:row-start-1">
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-100">
+          <span className="flex size-7 shrink-0 items-center justify-center">
             <ProviderIcon type={routeSummary.iconType} size={16} />
           </span>
           <span className="min-w-0 truncate">{routeSummary.label}</span>
