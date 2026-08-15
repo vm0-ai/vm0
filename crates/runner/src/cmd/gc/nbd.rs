@@ -133,7 +133,12 @@ mod tests {
     async fn gc_nbd_orphans_counts_only_disconnected_outcomes() {
         let report = gc_nbd_orphans_with(
             false,
-            || (8, vec![(0, 100), (1, 101), (2, 102), (3, 103), (4, 104)]),
+            || {
+                (
+                    8,
+                    vec![(0, 100), (1, 101), (2, 102), (3, 103), (4, 104), (5, 105)],
+                )
+            },
             |device_index, owner_tid| match device_index {
                 0 | 4 => disconnected(device_index, owner_tid),
                 1 => NbdOrphanDisconnect::Locked,
@@ -144,6 +149,7 @@ mod tests {
                         "netlink failed",
                     )),
                 }),
+                5 => NbdOrphanDisconnect::Live,
                 other => panic!("unexpected device index {other}"),
             },
         )
