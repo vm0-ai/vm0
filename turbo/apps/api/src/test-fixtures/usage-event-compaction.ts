@@ -3,7 +3,10 @@ import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
-import { lockUsageEventCompaction } from "../signals/services/usage-event-compaction-lock.service";
+import {
+  lockUsageEventCompaction,
+  withUsageEventCompactionLockAttemptTrackingForTest,
+} from "../signals/services/usage-event-compaction-lock.service";
 import { createDeferredPromise } from "../signals/utils";
 
 const databasePidRowSchema = z.object({ pid: z.int() });
@@ -18,10 +21,15 @@ export async function holdUsageEventCompactionLockFixture(
 ): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
+  readonly acquisitionAttempted: Promise<void>;
+  readonly withAcquisitionAttemptTracking: <T>(
+    work: () => Promise<T>,
+  ) => Promise<T>;
   readonly waiterCount: () => Promise<number>;
 }> {
   const started = createDeferredPromise<number>(signal);
   const released = createDeferredPromise<void>(signal);
+  const acquisitionAttempted = createDeferredPromise<void>(signal);
   const done = db().transaction(async (tx) => {
     await lockUsageEventCompaction(tx);
     const rows = await executeRawRows(
@@ -45,6 +53,16 @@ export async function holdUsageEventCompactionLockFixture(
       }
     },
     done,
+    acquisitionAttempted: acquisitionAttempted.promise,
+    withAcquisitionAttemptTracking: async <T>(
+      work: () => Promise<T>,
+    ): Promise<T> => {
+      return await withUsageEventCompactionLockAttemptTrackingForTest(() => {
+        if (!acquisitionAttempted.settled()) {
+          acquisitionAttempted.resolve(undefined);
+        }
+      }, work);
+    },
     waiterCount: async () => {
       const rows = await executeRawRows(
         db(),
