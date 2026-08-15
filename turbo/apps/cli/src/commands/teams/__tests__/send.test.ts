@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { sendCommand } from "../message/send";
 
 const TEAMS_MESSAGE_URL =

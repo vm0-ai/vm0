@@ -4,8 +4,8 @@ import { Command } from "commander";
 import {
   completeTeamsFileUpload,
   initTeamsFileUpload,
-} from "../../../lib/api/domains/integrations-teams";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/integrations-teams";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",

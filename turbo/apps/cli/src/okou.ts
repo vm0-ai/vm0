@@ -176,7 +176,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Send Microsoft Teams messages, upload files, and download files",
     load: async () => {
-      return (await import("./commands/zero/teams")).zeroTeamsCommand;
+      return (await import("./commands/teams")).teamsCommand;
     },
   },
   {
