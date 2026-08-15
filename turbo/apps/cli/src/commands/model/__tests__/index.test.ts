@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
-import { switchCommand, zeroModelCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { switchCommand, modelCommand } from "../index";
 
 const MODEL_POLICIES_RESPONSE = {
   workspaceDefaultModel: "claude-sonnet-4-6",
@@ -52,12 +52,12 @@ describe("okou model command", () => {
   });
 
   it("should expose model discovery and switching subcommands", () => {
-    expect(zeroModelCommand.name()).toBe("model");
-    expect(zeroModelCommand.description()).toBe(
+    expect(modelCommand.name()).toBe("model");
+    expect(modelCommand.description()).toBe(
       "List available models and model-switching guidance",
     );
     expect(
-      zeroModelCommand.commands.map((command) => {
+      modelCommand.commands.map((command) => {
         return command.name();
       }),
     ).toEqual(["list", "switch"]);
@@ -70,7 +70,7 @@ describe("okou model command", () => {
       }),
     );
 
-    await zeroModelCommand.parseAsync(["node", "cli", "ls"]);
+    await modelCommand.parseAsync(["node", "cli", "ls"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("Allowed Models:");

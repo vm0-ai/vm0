@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import {
   MODEL_PROVIDER_SET_GUIDANCE,
   setCommand,
-  zeroModelProviderCommand,
+  modelProviderCommand,
 } from "../index";
 
 const MODEL_POLICIES_RESPONSE = {
@@ -69,12 +69,12 @@ describe("okou model-provider command", () => {
   });
 
   it("should expose provider routing subcommands", () => {
-    expect(zeroModelProviderCommand.name()).toBe("model-provider");
-    expect(zeroModelProviderCommand.description()).toBe(
+    expect(modelProviderCommand.name()).toBe("model-provider");
+    expect(modelProviderCommand.description()).toBe(
       "Inspect model provider routing",
     );
     expect(
-      zeroModelProviderCommand.commands.map((command) => {
+      modelProviderCommand.commands.map((command) => {
         return command.name();
       }),
     ).toEqual(["list", "set"]);
@@ -87,7 +87,7 @@ describe("okou model-provider command", () => {
       }),
     );
 
-    await zeroModelProviderCommand.parseAsync(["node", "cli", "ls"]);
+    await modelProviderCommand.parseAsync(["node", "cli", "ls"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("Model Provider Routes:");

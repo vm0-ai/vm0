@@ -1,13 +1,13 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getVm0ModelPriceTier } from "@okouai/api-contracts/contracts/model-providers";
-import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { listZeroModelPolicies } from "../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   formatModelPolicyStatus,
   formatModelProviderRoute,
   getModelProviderRouteKind,
-} from "../../../lib/domain/model-policy-display";
+} from "../../lib/domain/model-policy-display";
 
 function formatPriceTier(tier: string | undefined): string {
   return tier ?? "unknown";
@@ -66,7 +66,7 @@ export const switchCommand = new Command()
     );
   });
 
-export const zeroModelCommand = new Command()
+export const modelCommand = new Command()
   .name("model")
   .description("List available models and model-switching guidance")
   .addCommand(listCommand)

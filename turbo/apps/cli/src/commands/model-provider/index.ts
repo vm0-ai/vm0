@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { listZeroModelPolicies } from "../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   formatModelPolicyStatus,
   getModelProviderRouteKind,
   getModelProviderTypeLabel,
-} from "../../../lib/domain/model-policy-display";
+} from "../../lib/domain/model-policy-display";
 
 export const MODEL_PROVIDER_SET_GUIDANCE = [
   "Model provider routing is configured in the web app.",
@@ -64,7 +64,7 @@ export const setCommand = new Command()
     console.log(MODEL_PROVIDER_SET_GUIDANCE);
   });
 
-export const zeroModelProviderCommand = new Command()
+export const modelProviderCommand = new Command()
   .name("model-provider")
   .description("Inspect model provider routing")
   .addCommand(listCommand)
