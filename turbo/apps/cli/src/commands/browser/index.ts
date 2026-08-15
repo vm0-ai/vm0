@@ -13,8 +13,8 @@ import {
   getCurrentZeroBrowser,
   leaseZeroBrowser,
   useZeroBrowser,
-} from "../../../lib/api/domains/zero-browser";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-browser";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const DEFAULT_AGENT_BROWSER_SESSION = "zero-browser";
 
@@ -202,7 +202,7 @@ const viewCommand = new Command()
     }),
   );
 
-export const zeroBrowserCommand = new Command()
+export const browserCommand = new Command()
   .name("browser")
   .description("Use a managed remote browser through agent-browser")
   .addCommand(useCommand)
