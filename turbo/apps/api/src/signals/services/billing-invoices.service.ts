@@ -172,7 +172,7 @@ async function assembleReceiptArchive(
   return await Promise.race([done.promise, finalized]);
 }
 
-export function zeroOrgInvoices(
+export function orgInvoices(
   orgId: string,
 ): Computed<Promise<BillingInvoicesResponse>> {
   return computed(async (get): Promise<BillingInvoicesResponse> => {
@@ -206,7 +206,7 @@ export function zeroOrgInvoices(
   });
 }
 
-export const downloadZeroOrgReceiptArchive$ = command(
+export const downloadOrgReceiptArchive$ = command(
   async (
     { get },
     args: {

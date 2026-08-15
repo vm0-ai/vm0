@@ -5,9 +5,9 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import {
-  downloadZeroOrgReceiptArchive$,
-  zeroOrgInvoices,
-} from "../services/zero-billing-invoices.service";
+  downloadOrgReceiptArchive$,
+  orgInvoices,
+} from "../services/billing-invoices.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -25,7 +25,7 @@ const getInvoicesInner$ = computed(async (get) => {
   if (auth.orgRole !== "admin") {
     return adminRequired;
   }
-  const invoices = await get(zeroOrgInvoices(auth.orgId));
+  const invoices = await get(orgInvoices(auth.orgId));
   return { status: 200 as const, body: invoices };
 });
 
@@ -37,7 +37,7 @@ const downloadReceiptsInner$ = command(
     }
     const query = get(queryOf(zeroBillingInvoicesContract.downloadReceipts));
     const result = await set(
-      downloadZeroOrgReceiptArchive$,
+      downloadOrgReceiptArchive$,
       {
         orgId: auth.orgId,
         startMonth: query.startMonth,
