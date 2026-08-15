@@ -1,13 +1,229 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const pinnedAgentStory = [
+  {
+    id: "c0000000-0000-4000-a000-000000000701",
+    displayName: "Research Agent",
+  },
+  {
+    id: "c0000000-0000-4000-a000-000000000702",
+    displayName: "Support Agent",
+  },
+  {
+    id: "c0000000-0000-4000-a000-000000000703",
+    displayName: "Operations Agent",
+  },
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function mockPinnedAgentGrid(
+  page: Page,
+  defaultAgentId: string,
+): Promise<void> {
+  await page.route("**/api/okou/feature-switches", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
+      throw new Error("Feature switches returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        effectiveSwitches: {
+          ...body.effectiveSwitches,
+          threeColumnNav: true,
+        },
+      },
+    });
+  });
+
+  await page.route("**/api/okou/team", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!Array.isArray(body) || !body.every(isRecord)) {
+      throw new Error("Team returned an unexpected response");
+    }
+    const defaultAgent = body.find((agent) => {
+      return agent.id === defaultAgentId;
+    });
+    if (!defaultAgent) {
+      throw new Error("Default agent is missing from the team response");
+    }
+    await route.fulfill({
+      response,
+      json: [
+        defaultAgent,
+        ...pinnedAgentStory.map((agent, index) => {
+          return {
+            ...defaultAgent,
+            ...agent,
+            headVersionId: `playwright-version-${index + 1}`,
+          };
+        }),
+      ],
+    });
+  });
+
+  await page.route("**/api/okou/user-preferences", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body)) {
+      throw new Error("User preferences returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        pinnedAgentIds: pinnedAgentStory.map((agent) => {
+          return agent.id;
+        }),
+      },
+    });
+  });
+}
 
 test("navigate to agents page and verify heading", async ({ page }) => {
   await page.goto(`${appUrl}/agents`);
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({
     timeout: 20_000,
   });
+});
+
+test("pinned agents use four equal columns without horizontal overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  const defaultAgentId = new URL(page.url()).pathname.match(
+    /^\/agents\/([^/]+)\/chat\/?$/,
+  )?.[1];
+  if (!defaultAgentId) {
+    throw new Error("Could not resolve the default agent from the sidebar");
+  }
+
+  await mockPinnedAgentGrid(page, defaultAgentId);
+  await page.reload();
+
+  const grid = page.getByTestId("pinned-agents-grid");
+  const cards = grid.getByTestId("pinned-agent-card");
+  const newAgent = grid.getByRole("button", {
+    name: "Open a conversation",
+  });
+  await expect(cards).toHaveCount(4);
+  await expect(newAgent).toBeVisible();
+
+  await expect
+    .poll(async () => {
+      const boxes = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(1).boundingBox(),
+        cards.nth(2).boundingBox(),
+        newAgent.boundingBox(),
+      ]);
+      if (boxes.some((box) => box === null)) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const tops = boxes.map((box) => box!.y);
+      return Math.max(...tops) - Math.min(...tops);
+    })
+    .toBeLessThan(2);
+
+  await expect
+    .poll(async () => {
+      const boxes = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(1).boundingBox(),
+        cards.nth(2).boundingBox(),
+        newAgent.boundingBox(),
+      ]);
+      if (boxes.some((box) => box === null)) {
+        return 0;
+      }
+      return Math.min(
+        boxes[1]!.x - boxes[0]!.x,
+        boxes[2]!.x - boxes[1]!.x,
+        boxes[3]!.x - boxes[2]!.x,
+      );
+    })
+    .toBeGreaterThan(1);
+
+  await expect
+    .poll(async () => {
+      const boxes = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(1).boundingBox(),
+        cards.nth(2).boundingBox(),
+        cards.nth(3).boundingBox(),
+        newAgent.boundingBox(),
+      ]);
+      if (boxes.some((box) => box === null)) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const widths = boxes.map((box) => box!.width);
+      return Math.max(...widths) - Math.min(...widths);
+    })
+    .toBeLessThan(2);
+
+  await expect
+    .poll(async () => {
+      const [gridBox, newAgentBox] = await Promise.all([
+        grid.boundingBox(),
+        newAgent.boundingBox(),
+      ]);
+      if (!gridBox || !newAgentBox) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(
+        newAgentBox.x + newAgentBox.width - (gridBox.x + gridBox.width),
+      );
+    })
+    .toBeLessThan(2);
+
+  await expect
+    .poll(async () => {
+      const [firstCardBox, wrappedCardBox] = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(3).boundingBox(),
+      ]);
+      if (!firstCardBox || !wrappedCardBox) {
+        return 0;
+      }
+      return wrappedCardBox.y - firstCardBox.y;
+    })
+    .toBeGreaterThan(1);
+
+  await expect
+    .poll(async () => {
+      const [firstCardBox, wrappedCardBox] = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(3).boundingBox(),
+      ]);
+      if (!firstCardBox || !wrappedCardBox) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(wrappedCardBox.x - firstCardBox.x);
+    })
+    .toBeLessThan(2);
+
+  await expect
+    .poll(async () => {
+      return grid.evaluate((element) => {
+        return Math.max(0, element.scrollWidth - element.clientWidth);
+      });
+    })
+    .toBe(0);
 });
 
 test("reveal the default agent unread action from the whole row", async ({

@@ -2824,7 +2824,7 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("wraps pinned agents after New in the four-column layout", async () => {
+  it("keeps New fourth in the pinned agent navigation order", async () => {
     const team = prepareAgentTeam();
     const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
     context.mocks.data.team([
@@ -2863,9 +2863,6 @@ describe("zero sidebar", () => {
     const supportAgent = pinnedAgentLink(grid, "Support Agent");
     const operationsAgent = pinnedAgentLink(grid, "Operations Agent");
 
-    expect(grid).toHaveClass("grid", "grid-cols-4");
-    expect(grid).not.toHaveClass("overflow-x-auto");
-    expect(newAgent).toHaveClass("col-start-4", "row-start-1", "w-full");
     expect(
       supportAgent.compareDocumentPosition(newAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
