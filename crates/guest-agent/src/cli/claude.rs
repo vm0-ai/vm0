@@ -2,7 +2,148 @@
 
 use crate::events;
 use std::collections::HashMap;
+use std::fmt;
 use tokio::time::Instant;
+
+/// Maximum number of network tool calls retained by the stuck-tool watchdog.
+///
+/// This is intentionally higher than the normal parallelism of Claude Code,
+/// while keeping the control-process allocation bounded if a child emits
+/// unmatched tool-use events indefinitely.
+pub(super) const MAX_TRACKED_STUCK_TOOLS: usize = 256;
+
+/// Maximum number of bytes in one tool-use ID retained by the watchdog.
+pub(super) const MAX_TRACKED_STUCK_TOOL_ID_BYTES: usize = 1024;
+
+/// Network tools whose unmatched calls are handled by the stuck-tool watchdog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StuckToolName {
+    /// Claude's web search tool.
+    WebSearch,
+
+    /// Claude's web fetch tool.
+    WebFetch,
+}
+
+impl StuckToolName {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "WebSearch" => Some(Self::WebSearch),
+            "WebFetch" => Some(Self::WebFetch),
+            _ => None,
+        }
+    }
+
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::WebSearch => "WebSearch",
+            Self::WebFetch => "WebFetch",
+        }
+    }
+}
+
+/// An admission failure while adding a network tool call to the watchdog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StuckToolTrackingError {
+    /// The tool-use ID is too large to retain safely.
+    ToolUseIdTooLong { max_bytes: usize },
+
+    /// The tracker already contains its maximum number of calls.
+    CapacityExceeded { max_entries: usize },
+}
+
+impl fmt::Display for StuckToolTrackingError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ToolUseIdTooLong { max_bytes } => write!(
+                formatter,
+                "Claude tool tracking rejected a tool-use ID larger than {max_bytes} bytes"
+            ),
+            Self::CapacityExceeded { max_entries } => write!(
+                formatter,
+                "Claude tool tracking capacity exceeded at {max_entries} in-flight calls"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for StuckToolTrackingError {}
+
+/// Bounded in-flight state used by the stuck-tool watchdog.
+pub(super) struct StuckToolTracker {
+    entries: HashMap<String, (StuckToolName, Instant)>,
+}
+
+impl StuckToolTracker {
+    pub(super) fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    pub(super) fn track_event(
+        &mut self,
+        event: &serde_json::Value,
+    ) -> Result<(), StuckToolTrackingError> {
+        for tool_event in events::extract_claude_tool_info(event) {
+            match tool_event {
+                events::ClaudeToolEvent::Use { id, name } => self.track_use(id, name)?,
+                events::ClaudeToolEvent::Result { tool_use_id } => {
+                    self.entries.remove(tool_use_id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn track_use(&mut self, id: &str, name: &str) -> Result<(), StuckToolTrackingError> {
+        let Some(name) = StuckToolName::parse(name) else {
+            return Ok(());
+        };
+
+        if id.len() > MAX_TRACKED_STUCK_TOOL_ID_BYTES {
+            return Err(StuckToolTrackingError::ToolUseIdTooLong {
+                max_bytes: MAX_TRACKED_STUCK_TOOL_ID_BYTES,
+            });
+        }
+
+        if let Some((tracked_name, started)) = self.entries.get_mut(id) {
+            *tracked_name = name;
+            *started = Instant::now();
+            return Ok(());
+        }
+
+        if self.entries.len() >= MAX_TRACKED_STUCK_TOOLS {
+            return Err(StuckToolTrackingError::CapacityExceeded {
+                max_entries: MAX_TRACKED_STUCK_TOOLS,
+            });
+        }
+
+        self.entries.insert(id.to_owned(), (name, Instant::now()));
+        Ok(())
+    }
+
+    pub(super) fn oldest_expired(&self, timeout_secs: u64) -> Option<(StuckToolName, u64)> {
+        self.entries
+            .values()
+            .filter_map(|(name, started)| {
+                let elapsed = started.elapsed().as_secs();
+                (elapsed >= timeout_secs).then_some((*name, elapsed, *started))
+            })
+            .min_by_key(|(_, _, started)| *started)
+            .map(|(name, elapsed, _)| (name, elapsed))
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[cfg(test)]
+    fn contains_key(&self, id: &str) -> bool {
+        self.entries.contains_key(id)
+    }
+}
 
 /// Summary of Claude Code's terminal `type=result` event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,18 +208,9 @@ impl ClaudeResultStatus {
 
 pub(super) fn track_claude_tool_events(
     event: &serde_json::Value,
-    tracker: &mut HashMap<String, (String, Instant)>,
-) {
-    for tool_event in events::extract_claude_tool_info(event) {
-        match tool_event {
-            events::ClaudeToolEvent::Use { id, name } => {
-                tracker.insert(id.to_string(), (name.to_string(), Instant::now()));
-            }
-            events::ClaudeToolEvent::Result { tool_use_id } => {
-                tracker.remove(tool_use_id);
-            }
-        }
-    }
+    tracker: &mut StuckToolTracker,
+) -> Result<(), StuckToolTrackingError> {
+    tracker.track_event(event)
 }
 
 #[cfg(test)]
@@ -161,15 +293,139 @@ mod tests {
                 "content": [{"type": "tool_result", "tool_use_id": "tool-1"}]
             }
         });
-        let mut tracker = HashMap::new();
+        let mut tracker = StuckToolTracker::new();
 
-        track_claude_tool_events(&tool_use, &mut tracker);
+        track_claude_tool_events(&tool_use, &mut tracker).unwrap();
+        assert!(tracker.contains_key("tool-1"));
+
+        track_claude_tool_events(&tool_result, &mut tracker).unwrap();
+        assert_eq!(tracker.len(), 0);
+    }
+
+    #[test]
+    fn non_watchdog_tools_do_not_consume_tracker_capacity() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{
+                    "type": "tool_use",
+                    "id": "x".repeat(MAX_TRACKED_STUCK_TOOL_ID_BYTES + 1),
+                    "name": "Bash"
+                }]
+            }
+        });
+        let mut tracker = StuckToolTracker::new();
+
+        track_claude_tool_events(&event, &mut tracker).unwrap();
+
+        assert_eq!(tracker.len(), 0);
+    }
+
+    #[test]
+    fn oversized_watchdog_tool_id_is_rejected_before_retention() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{
+                    "type": "tool_use",
+                    "id": "x".repeat(MAX_TRACKED_STUCK_TOOL_ID_BYTES + 1),
+                    "name": "WebFetch"
+                }]
+            }
+        });
+        let mut tracker = StuckToolTracker::new();
+
+        let error = track_claude_tool_events(&event, &mut tracker).unwrap_err();
+
         assert_eq!(
-            tracker.get("tool-1").map(|(name, _)| name.as_str()),
-            Some("WebFetch")
+            error,
+            StuckToolTrackingError::ToolUseIdTooLong {
+                max_bytes: MAX_TRACKED_STUCK_TOOL_ID_BYTES
+            }
         );
+        assert_eq!(tracker.len(), 0);
+    }
 
-        track_claude_tool_events(&tool_result, &mut tracker);
-        assert!(tracker.is_empty());
+    #[test]
+    fn tracker_rejects_new_entries_at_capacity() {
+        let mut tracker = StuckToolTracker::new();
+        for index in 0..MAX_TRACKED_STUCK_TOOLS {
+            let event = serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "content": [{
+                        "type": "tool_use",
+                        "id": format!("tool-{index}"),
+                        "name": "WebSearch"
+                    }]
+                }
+            });
+            track_claude_tool_events(&event, &mut tracker).unwrap();
+        }
+
+        let overflow = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tool-overflow",
+                    "name": "WebFetch"
+                }]
+            }
+        });
+        let error = track_claude_tool_events(&overflow, &mut tracker).unwrap_err();
+
+        assert_eq!(
+            error,
+            StuckToolTrackingError::CapacityExceeded {
+                max_entries: MAX_TRACKED_STUCK_TOOLS
+            }
+        );
+        assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
+    }
+
+    #[test]
+    fn duplicate_tool_ids_refresh_without_consuming_capacity() {
+        let mut tracker = StuckToolTracker::new();
+        let first = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "id": "tool-0", "name": "WebFetch"}]
+            }
+        });
+        track_claude_tool_events(&first, &mut tracker).unwrap();
+        let first_started = tracker
+            .entries
+            .get("tool-0")
+            .map(|(_, started)| *started)
+            .unwrap();
+
+        for index in 1..MAX_TRACKED_STUCK_TOOLS {
+            let event = serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "content": [{
+                        "type": "tool_use",
+                        "id": format!("tool-{index}"),
+                        "name": "WebSearch"
+                    }]
+                }
+            });
+            track_claude_tool_events(&event, &mut tracker).unwrap();
+        }
+
+        let duplicate = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "id": "tool-0", "name": "WebSearch"}]
+            }
+        });
+        track_claude_tool_events(&duplicate, &mut tracker).unwrap();
+
+        assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
+        let (name, refreshed_started) = tracker.entries.get("tool-0").copied().unwrap();
+        assert_eq!(name, StuckToolName::WebSearch);
+        assert!(refreshed_started >= first_started);
+        assert!(tracker.oldest_expired(u64::MAX).is_none());
     }
 }
