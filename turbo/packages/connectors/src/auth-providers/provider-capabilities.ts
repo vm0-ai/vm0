@@ -1403,7 +1403,6 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
           "accessToken",
           "accountId",
           "idToken",
-          "npsso",
           "onlineId",
           "refreshToken",
         ],

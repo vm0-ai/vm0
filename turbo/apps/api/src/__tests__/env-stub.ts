@@ -6,12 +6,23 @@ export function stubTestTimezone(
   vi.stubEnv("TZ", timezone);
 }
 
-if (!process.env.DATABASE_URL) {
-  vi.stubEnv(
-    "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/vm0_test",
+function stubTestDatabaseUrl(): void {
+  const vitestWorkerId = process.env.VITEST_WORKER_ID;
+  if (!vitestWorkerId) {
+    throw new Error("Expected VITEST_WORKER_ID in the API test environment");
+  }
+  const databaseUrl = new URL(
+    process.env.DATABASE_URL ??
+      "postgresql://postgres:postgres@localhost:5432/vm0_test",
   );
+  databaseUrl.searchParams.set(
+    "application_name",
+    `vm0-api-test-${process.pid}-${vitestWorkerId}`,
+  );
+  vi.stubEnv("DATABASE_URL", databaseUrl.toString());
 }
+
+stubTestDatabaseUrl();
 vi.stubEnv("CLERK_SECRET_KEY", "sk_test_dummy_for_unit_tests");
 vi.stubEnv("CLERK_PUBLISHABLE_KEY", "pk_test_dummy_for_unit_tests");
 vi.stubEnv(

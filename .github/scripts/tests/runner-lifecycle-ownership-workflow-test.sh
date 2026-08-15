@@ -13,6 +13,18 @@ def named_step(job, name)
 end
 
 cleanup_workflow = YAML.load_file(ARGV.fetch(0))
+workflow_triggers = cleanup_workflow["on"] || cleanup_workflow.fetch(true)
+pull_request_target = workflow_triggers.fetch("pull_request_target")
+unless pull_request_target.fetch("types").sort == %w[closed reopened]
+  raise "cleanup must invalidate close-event runs when a pull request is reopened"
+end
+
+cleanup_workflow.fetch("jobs").each do |job_name, job|
+  unless job.fetch("if", "").include?("github.event.action == 'closed'")
+    raise "cleanup job #{job_name} must run only for closed pull requests"
+  end
+end
+
 cleanup_concurrency = cleanup_workflow.fetch("concurrency")
 unless cleanup_concurrency == {
   "group" => "cleanup-pr-${{ github.event.pull_request.number }}",

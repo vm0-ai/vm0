@@ -819,10 +819,12 @@
       "dueNow": "अभी देय",
       "emptyDescription": "इस वर्कस्पेस के लिए अतिरिक्त समवर्ती रन खरीदें।",
       "emptyTitle": "कोई समवर्ती सदस्यता नहीं",
+      "includedWithPlan": "आपके प्लान में शामिल",
       "increaseAria": "अतिरिक्त समवर्ती मात्रा बढ़ाएँ",
       "monthlyTotal": "मासिक कुल",
       "newQuantity": "स्लॉट की नई कुल संख्या",
       "orderSummary": "ऑर्डर सारांश",
+      "paidAddOn": "सशुल्क ऐड-ऑन",
       "quantityRange": "{{minimum}} से {{maximum}} तक की संख्या दर्ज करें। अभी आपके पास {{current}} स्लॉट हैं।",
       "restoreDescription": "यह इस समवर्ती सदस्यता के लिए नवीनीकरण फिर से शुरू करता है।",
       "restoreSubscription": "सदस्यता बहाल करें",
@@ -1089,11 +1091,9 @@
       "creditsRemaining_other": "{{value}} क्रेडिट शेष",
       "expires": "{{date}} समाप्त हो रहा है",
       "grantsTable": {
-        "added": "जोड़ा गया",
-        "amount": "राशि",
-        "expires": "समाप्ति",
-        "left": "शेष",
-        "source": "स्रोत"
+        "credits": "क्रेडिट",
+        "date": "तारीख",
+        "left": "शेष"
       },
       "left": "{{value}} शेष",
       "member": "सदस्य",

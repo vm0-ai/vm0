@@ -93,6 +93,9 @@ export const fetchChatEventSnapshotRows$ = command(
       L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
       return null;
     }
+    if (download.body.lastEventId === undefined) {
+      throw new Error("ChatEvent snapshot response is missing lastEventId");
+    }
 
     const response = await fetch(download.body.url, { signal });
     if (!response.ok) {
@@ -118,10 +121,7 @@ export const fetchChatEventSnapshotRows$ = command(
     });
     return {
       rows,
-      // The previous API omits lastEventId. Derive it from the immutable body
-      // only during the backend rollout/rollback window (observed maximum:
-      // 102 minutes); require the response field through #27194 afterward.
-      lastEventId: download.body.lastEventId ?? rows.at(-1)?.id ?? null,
+      lastEventId: download.body.lastEventId,
       lastSeqId: download.body.lastSeqId,
     };
   },

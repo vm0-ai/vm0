@@ -920,6 +920,9 @@ export class SharedDatabaseWorkerRuntime {
     if (snapshot.status !== 200) {
       throw new SharedDatabaseHttpError(snapshot.status);
     }
+    if (snapshot.body.lastEventId === undefined) {
+      throw new Error("ChatEvent snapshot response is missing lastEventId");
+    }
     const response = await fetch(snapshot.body.url, { signal });
     if (!response.ok) {
       throw new SharedDatabaseHttpError(response.status);
@@ -939,7 +942,7 @@ export class SharedDatabaseWorkerRuntime {
     return {
       rows,
       cursor: {
-        lastEventId: snapshot.body.lastEventId ?? rows.at(-1)?.id ?? null,
+        lastEventId: snapshot.body.lastEventId,
         lastSeqId: snapshot.body.lastSeqId,
       },
     };

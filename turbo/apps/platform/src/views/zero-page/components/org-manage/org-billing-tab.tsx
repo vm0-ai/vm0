@@ -99,6 +99,7 @@ import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { openSettingsUsagePackUpgrade$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
   UsagePackMigrationPage,
+  UsagePackMigrationDialogs,
   UsagePackMigrationPlanSelectionPage,
   UsagePackPricingDialogs,
 } from "./usage-pack-pricing-page.tsx";
@@ -1474,6 +1475,11 @@ function ConcurrencySubscriptionRow({
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
+        <p className="mb-0.5 text-[12px] font-medium text-muted-foreground first-letter:uppercase">
+          {i18n.t(($) => {
+            return $.billing.concurrency.paidAddOn;
+          })}
+        </p>
         <p className="text-sm font-medium text-foreground">
           {slotCountLabel(subscription.quantity)}
         </p>
@@ -2237,30 +2243,54 @@ function ConcurrencyBillingSection({
   const openConfirmDialog = useSet(openConcurrencyConfirmDialog$);
   const subscriptions = status?.concurrencySubscriptions ?? [];
   const concurrencyLimit = status?.concurrencyLimit ?? 0;
+  const paidConcurrency = subscriptions.reduce((total, subscription) => {
+    return total + subscription.quantity;
+  }, 0);
+  const includedConcurrency = concurrencyLimit - paidConcurrency;
   const purchaseReviewAvailable =
     status?.concurrencyPurchaseReviewAvailable === true;
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-medium text-foreground">
-          {i18n.t(($) => {
-            return $.billing.concurrency.title;
-          })}
-        </h3>
-        <p className="text-[13px] text-muted-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.concurrency.concurrentRun;
-            },
-            {
-              count: concurrencyLimit,
-              value: formatLocalizedNumber(concurrencyLimit),
-            },
-          )}
-        </p>
-      </div>
+      <h3 className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.concurrency.title;
+        })}
+      </h3>
       <div className="overflow-hidden rounded-xl bg-card zero-border">
+        <div className="px-5 py-4">
+          <p className="text-2xl font-medium tracking-tight text-foreground tabular-nums">
+            {i18n.t(
+              ($) => {
+                return $.billing.concurrency.concurrentRun;
+              },
+              {
+                count: concurrencyLimit,
+                value: formatLocalizedNumber(concurrencyLimit),
+              },
+            )}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[13px] text-muted-foreground">
+            <span className="tabular-nums">
+              {formatLocalizedNumber(includedConcurrency)}{" "}
+              {i18n.t(($) => {
+                return $.billing.concurrency.includedWithPlan;
+              })}
+            </span>
+            {paidConcurrency > 0 ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="tabular-nums">
+                  {formatLocalizedNumber(paidConcurrency)}{" "}
+                  {i18n.t(($) => {
+                    return $.billing.concurrency.paidAddOn;
+                  })}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="h-0 zero-border-t mx-5" />
         {subscriptions.length === 0 ? (
           <div className="px-5 py-4">
             <p className="text-sm font-medium text-foreground">
@@ -2450,9 +2480,8 @@ function BillingPricingPage({
   readonly periodEnd: string | null | undefined;
   readonly scheduledChange: ScheduledBillingChange;
 }) {
-  const migrationInProgress = usagePackMigrationInProgress(migration);
-  const scheduledMigrationMissingConfiguration =
-    migration?.status === "scheduled" && !migration.configuration;
+  const migrationNeedsProgressPage =
+    usagePackMigrationNeedsProgressPage(migration);
   return (
     <>
       {migrationLoading ? (
@@ -2460,8 +2489,7 @@ function BillingPricingPage({
           role="status"
           className="h-80 animate-pulse rounded-xl bg-muted/40"
         />
-      ) : migration &&
-        (migrationInProgress || scheduledMigrationMissingConfiguration) ? (
+      ) : migration && migrationNeedsProgressPage ? (
         <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
       ) : migrationOpen &&
         migration &&
@@ -2518,15 +2546,28 @@ function usagePackMigrationInProgress(
   return migration?.status === "applying";
 }
 
-/* The usage pack plans live in their own dialog over the billing tab.
-   Everything else -- the legacy pricing page and the legacy plan conversion --
-   still takes the tab over, so those keep the sub-page. */
+function usagePackMigrationNeedsProgressPage(
+  migration: UsagePackMigrationStateResponse | null,
+): boolean {
+  return (
+    usagePackMigrationInProgress(migration) ||
+    (migration?.status === "scheduled" && !migration.configuration)
+  );
+}
+
+/* All actionable usage pack pricing steps live in a dialog over the billing
+   tab, including conversion from a legacy plan. The legacy pricing page and a
+   migration that can only report progress still keep the tab sub-page. */
 function showsUsagePackPlanDialogs(
   enabled: boolean,
   migrationLoading: boolean,
   migration: UsagePackMigrationStateResponse | null,
 ): boolean {
-  return enabled && !migrationLoading && migration === null;
+  return (
+    enabled &&
+    !migrationLoading &&
+    !usagePackMigrationNeedsProgressPage(migration)
+  );
 }
 
 function usagePackMigrationConfigurable(
@@ -2587,6 +2628,46 @@ function CurrentPlanTitle({
         </span>
       )}
     </p>
+  );
+}
+
+function UsagePackPricingFlowDialogs({
+  checkoutAllowed,
+  currentTier,
+  migration,
+  migrationOpen,
+  migrationTargetTier,
+  onMigrationBack,
+  onClose,
+  onSelectMigration,
+}: {
+  readonly checkoutAllowed: boolean;
+  readonly currentTier: BillingTier;
+  readonly migration: UsagePackMigrationStateResponse | null;
+  readonly migrationOpen: boolean;
+  readonly migrationTargetTier: "pro" | "team" | null;
+  readonly onMigrationBack: () => void;
+  readonly onClose: () => void;
+  readonly onSelectMigration: (tier: "pro" | "team") => void;
+}) {
+  if (migration) {
+    return (
+      <UsagePackMigrationDialogs
+        migration={migration}
+        migrationOpen={migrationOpen}
+        migrationTargetTier={migrationTargetTier}
+        onBack={onMigrationBack}
+        onClose={onClose}
+        onSelect={onSelectMigration}
+      />
+    );
+  }
+  return (
+    <UsagePackPricingDialogs
+      checkoutAllowed={checkoutAllowed}
+      currentTier={currentTier}
+      onClose={onClose}
+    />
   );
 }
 
@@ -2871,14 +2952,19 @@ export function OrgBillingTab() {
 
       {showConcurrency && <ConcurrencyBillingSection status={status} />}
 
-      {/* Past the early return above, an open billing sub-page can only be the
-          usage pack plan flow. Mount it only while it is open so its catalog
+      {/* Past the early return above, an open billing sub-page is an actionable
+          usage pack pricing flow. Mount it only while it is open so its catalog
           and subscription load with the flow, not with every tab visit. */}
       {pricingOpen && (
-        <UsagePackPricingDialogs
+        <UsagePackPricingFlowDialogs
           checkoutAllowed={canStartUsagePackCheckout(status)}
           currentTier={currentTier}
+          migration={migration}
+          migrationOpen={migrationOpen}
+          migrationTargetTier={migrationTargetTier}
+          onMigrationBack={closeMigrationSubPage}
           onClose={closeBillingSubPage}
+          onSelectMigration={openMigrationPage}
         />
       )}
 

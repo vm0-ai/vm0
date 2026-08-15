@@ -1,0 +1,13 @@
+import { Command } from "commander";
+import { listCommand } from "./list";
+
+export const telegramBotCommand = new Command()
+  .name("bot")
+  .description("Inspect Telegram bots")
+  .addCommand(listCommand)
+  .addHelpText(
+    "after",
+    `
+Examples:
+  okou telegram bot list`,
+  );

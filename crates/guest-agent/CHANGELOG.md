@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.2...guest-agent-v0.74.3) (2026-08-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve classified failure messages ([#27311](https://github.com/vm0-ai/vm0/issues/27311)) ([936474b](https://github.com/vm0-ai/vm0/commit/936474b06350f8a93c2d4f73b7d87c518eec389c))
+
 ## [0.74.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.1...guest-agent-v0.74.2) (2026-08-14)
 
 

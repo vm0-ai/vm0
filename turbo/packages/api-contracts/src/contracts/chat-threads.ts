@@ -1538,8 +1538,8 @@ export const chatThreadEventsContract = c.router({
       200: z.object({
         url: z.string().url(),
         expiresInSeconds: z.number().int().positive(),
-        // Optional only while a new app/CLI may reach the previous API during
-        // its rollback window. Require this through #27194 afterward.
+        // Optional only while a current CLI context may reach the previous API
+        // during its rollback window. Require this through #27194 afterward.
         lastEventId: z.string().uuid().optional(),
         lastSeqId: z.number().int().positive(),
       }),

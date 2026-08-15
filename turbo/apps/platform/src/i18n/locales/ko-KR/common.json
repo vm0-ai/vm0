@@ -819,10 +819,12 @@
       "dueNow": "지금 결제",
       "emptyDescription": "이 워크스페이스에 추가 동시 실행을 구매하세요.",
       "emptyTitle": "동시 실행 구독 없음",
+      "includedWithPlan": "요금제에 포함",
       "increaseAria": "추가 동시 실행 수 증가",
       "monthlyTotal": "월 합계",
       "newQuantity": "새 총 슬롯 수",
       "orderSummary": "주문 요약",
+      "paidAddOn": "유료 추가 옵션",
       "quantityRange": "{{minimum}}에서 {{maximum}} 사이의 값을 입력하세요. 현재 {{current}}개 슬롯이 있습니다.",
       "restoreDescription": "이 동시 실행 구독의 갱신을 재개합니다.",
       "restoreSubscription": "구독 복원",
@@ -1089,11 +1091,9 @@
       "creditsRemaining_other": "{{value}} 크레딧 남음",
       "expires": "{{date}}에 만료",
       "grantsTable": {
-        "added": "추가일",
-        "amount": "금액",
-        "expires": "만료",
-        "left": "남음",
-        "source": "출처"
+        "credits": "크레딧",
+        "date": "날짜",
+        "left": "남음"
       },
       "left": "{{value}} 남음",
       "member": "멤버",

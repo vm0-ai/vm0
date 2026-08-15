@@ -819,10 +819,12 @@
       "dueNow": "Jatuh tempo sekarang",
       "emptyDescription": "Beli eksekusi concurrent tambahan untuk ruang kerja ini.",
       "emptyTitle": "Tidak ada langganan concurrency",
+      "includedWithPlan": "termasuk dalam paket Anda",
       "increaseAria": "Tambah jumlah concurrency tambahan",
       "monthlyTotal": "Total bulanan",
       "newQuantity": "Jumlah total slot baru",
       "orderSummary": "Ringkasan pesanan",
+      "paidAddOn": "add-on berbayar",
       "quantityRange": "Masukkan angka {{minimum}} hingga {{maximum}}. Saat ini Anda memiliki {{current}} slot.",
       "restoreDescription": "Ini melanjutkan perpanjangan untuk langganan concurrency ini.",
       "restoreSubscription": "Pulihkan langganan",
@@ -1089,11 +1091,9 @@
       "creditsRemaining_other": "{{value}} kredit tersisa",
       "expires": "Kedaluwarsa {{date}}",
       "grantsTable": {
-        "added": "Ditambahkan",
-        "amount": "Jumlah",
-        "expires": "Kedaluwarsa",
-        "left": "Sisa",
-        "source": "Sumber"
+        "credits": "Kredit",
+        "date": "Tanggal",
+        "left": "Sisa"
       },
       "left": "Sisa {{value}}",
       "member": "Anggota",

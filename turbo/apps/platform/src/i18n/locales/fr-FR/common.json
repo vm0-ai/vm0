@@ -839,10 +839,12 @@
       "dueNow": "À payer maintenant",
       "emptyDescription": "Acheter des exécutions concurrentes supplémentaires pour cet espace de travail.",
       "emptyTitle": "Aucun abonnement de concurrence",
+      "includedWithPlan": "inclus dans votre forfait",
       "increaseAria": "Augmenter la quantité de concurrence supplémentaire",
       "monthlyTotal": "Total mensuel",
       "newQuantity": "Nouveau nombre total de créneaux",
       "orderSummary": "Récapitulatif de la commande",
+      "paidAddOn": "option payante",
       "quantityRange": "Saisissez une valeur comprise entre {{minimum}} et {{maximum}}. Vous avez actuellement {{current}} créneaux.",
       "restoreDescription": "Cela reprend le renouvellement de cet abonnement de concurrence.",
       "restoreSubscription": "Restaurer l'abonnement",
@@ -1111,11 +1113,9 @@
       "creditsRemaining_other": "{{value}} crédits restants",
       "expires": "Expire le {{date}}",
       "grantsTable": {
-        "added": "Ajouté",
-        "amount": "Montant",
-        "expires": "Expire",
-        "left": "Restant",
-        "source": "Source"
+        "credits": "Crédits",
+        "date": "Date",
+        "left": "Restant"
       },
       "left": "{{value}} restant",
       "member": "Membre",

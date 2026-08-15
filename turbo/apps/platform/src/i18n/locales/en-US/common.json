@@ -819,10 +819,12 @@
       "dueNow": "Due now",
       "emptyDescription": "Buy additional concurrent runs for this workspace.",
       "emptyTitle": "No concurrency subscriptions",
+      "includedWithPlan": "included with your plan",
       "increaseAria": "Increase additional concurrency quantity",
       "monthlyTotal": "Monthly total",
       "newQuantity": "New total slot quantity",
       "orderSummary": "Order summary",
+      "paidAddOn": "paid add-on",
       "quantityRange": "Enter {{minimum}}–{{maximum}}. You currently have {{current}} slots.",
       "restoreDescription": "This resumes renewal for this concurrency subscription.",
       "restoreSubscription": "Restore subscription",
@@ -1089,11 +1091,9 @@
       "creditsRemaining_other": "{{value}} credits remaining",
       "expires": "Expires {{date}}",
       "grantsTable": {
-        "added": "Added",
-        "amount": "Amount",
-        "expires": "Expires",
-        "left": "Left",
-        "source": "Source"
+        "credits": "Credits",
+        "date": "Date",
+        "left": "Left"
       },
       "left": "{{value}} left",
       "member": "Member",
