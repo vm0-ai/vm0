@@ -22,12 +22,12 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import {
   runMcpConnector,
   stubRunMcpConnectors,
-} from "../../__tests__/helpers/custom-connectors";
-import { zeroMcpCommand } from "../index";
+} from "../../zero/__tests__/helpers/custom-connectors";
+import { mcpCommand } from "../index";
 
 const CONNECTOR_ID = "44444444-4444-4444-8444-444444444444";
 const MCP_ENDPOINT = "https://mcp.example.test/server";
@@ -215,13 +215,13 @@ describe("okou mcp command", () => {
   let inputDirectory: string;
 
   beforeAll(async () => {
-    inputDirectory = await mkdtemp(join(process.cwd(), ".zero-mcp-test-"));
+    inputDirectory = await mkdtemp(join(process.cwd(), ".mcp-test-"));
   });
 
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -250,7 +250,7 @@ describe("okou mcp command", () => {
       ]),
     );
 
-    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
+    await mcpCommand.parseAsync(["node", "okou", "list", "--json"]);
 
     expect(consoleLog).toHaveBeenCalledWith(
       JSON.stringify({
@@ -300,7 +300,7 @@ describe("okou mcp command", () => {
       pages: [[searchTool], [fetchTool]],
     });
 
-    await zeroMcpCommand.parseAsync([
+    await mcpCommand.parseAsync([
       "node",
       "okou",
       "list-tools",
@@ -344,14 +344,14 @@ describe("okou mcp command", () => {
       callResult,
     });
 
-    await zeroMcpCommand.parseAsync([
+    await mcpCommand.parseAsync([
       "node",
       "okou",
       "call",
       "_acme-mcp",
       "search",
       "--input",
-      '{"query":"vm0"}',
+      '{"query":"okou"}',
       "--json",
     ]);
 
@@ -374,7 +374,7 @@ describe("okou mcp command", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.params).toMatchObject({
       name: "search",
-      arguments: { query: "vm0" },
+      arguments: { query: "okou" },
     });
     expect(
       seen.every((request) => {
@@ -399,7 +399,7 @@ describe("okou mcp command", () => {
       ],
     });
 
-    await zeroMcpCommand.parseAsync([
+    await mcpCommand.parseAsync([
       "node",
       "okou",
       "call",
@@ -443,7 +443,7 @@ describe("okou mcp command", () => {
     });
 
     try {
-      await zeroMcpCommand.parseAsync([
+      await mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -475,7 +475,7 @@ describe("okou mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -496,7 +496,7 @@ describe("okou mcp command", () => {
     const seen = stubMcpServer({ era: "modern" });
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -518,7 +518,7 @@ describe("okou mcp command", () => {
     const seen = stubMcpServer({ era: "modern" });
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -554,7 +554,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -591,7 +591,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -624,7 +624,7 @@ describe("okou mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("MCP server request failed");
@@ -633,7 +633,7 @@ describe("okou mcp command", () => {
   it("treats an empty discovery response as an ordinary empty result", async () => {
     server.use(stubRunMcpConnectors([]));
 
-    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
+    await mcpCommand.parseAsync(["node", "okou", "list", "--json"]);
 
     expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
   });
@@ -654,7 +654,7 @@ describe("okou mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
+      mcpCommand.parseAsync(["node", "okou", "list"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("Discovery failed");
@@ -668,7 +668,7 @@ describe("okou mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
+      mcpCommand.parseAsync(["node", "okou", "list"]),
     ).rejects.toThrow("process.exit called");
   });
 
@@ -677,12 +677,7 @@ describe("okou mcp command", () => {
     const seen = stubMcpServer({ era: "modern" });
 
     await expect(
-      zeroMcpCommand.parseAsync([
-        "node",
-        "okou",
-        "list-tools",
-        "_not-admitted",
-      ]),
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_not-admitted"]),
     ).rejects.toThrow("process.exit called");
 
     expect(seen).toHaveLength(0);
@@ -699,7 +694,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -734,7 +729,7 @@ describe("okou mcp command", () => {
       callResult: toolError,
     });
 
-    await zeroMcpCommand.parseAsync([
+    await mcpCommand.parseAsync([
       "node",
       "okou",
       "call",
@@ -770,7 +765,7 @@ describe("okou mcp command", () => {
       },
     });
 
-    await zeroMcpCommand.parseAsync([
+    await mcpCommand.parseAsync([
       "node",
       "okou",
       "call",
@@ -807,7 +802,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",
@@ -847,7 +842,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(listRequests).toBe(2);
@@ -865,7 +860,7 @@ describe("okou mcp command", () => {
     stubMcpServer({ era: "modern", pages: [tools] });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("2,000 tool limit");
@@ -893,7 +888,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(listRequests).toBe(100);
@@ -924,7 +919,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("16 MiB aggregate limit");
@@ -949,7 +944,7 @@ describe("okou mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain(
@@ -967,7 +962,7 @@ describe("okou mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync([
+      mcpCommand.parseAsync([
         "node",
         "okou",
         "call",

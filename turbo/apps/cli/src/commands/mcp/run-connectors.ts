@@ -1,6 +1,6 @@
 import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 
-import { listZeroRunMcpConnectors } from "../../../lib/api/domains/zero-connectors";
+import { listZeroRunMcpConnectors } from "../../lib/api/domains/zero-connectors";
 
 export function listRunMcpConnectors(): Promise<McpConnector[]> {
   return listZeroRunMcpConnectors();

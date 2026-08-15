@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { Command, Option } from "commander";
 
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { callMcpTool, listMcpTools } from "./client";
 import {
   DEFAULT_TIMEOUT_SECONDS,
@@ -172,7 +172,7 @@ const callCommand = new Command()
     ),
   );
 
-export const zeroMcpCommand = new Command()
+export const mcpCommand = new Command()
   .name("mcp")
   .description("Use MCP Custom Connectors authorized for this Agent")
   .addCommand(listCommand)
@@ -184,8 +184,8 @@ export const zeroMcpCommand = new Command()
 Examples:
   List authorized MCP connectors: okou mcp list
   List connector tools:          okou mcp list-tools _acme-mcp --json
-  Call a tool:                   okou mcp call _acme-mcp search --input '{"query":"vm0"}' --json
-  Pipe tool input:               printf '{"query":"vm0"}' | okou mcp call _acme-mcp search
+  Call a tool:                   okou mcp call _acme-mcp search --input '{"query":"okou"}' --json
+  Pipe tool input:               printf '{"query":"okou"}' | okou mcp call _acme-mcp search
 
 Notes:
   - Available only inside an Agent Run and scoped to its Agent's current authorization
