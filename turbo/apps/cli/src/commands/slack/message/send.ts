@@ -1,8 +1,8 @@
 import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
-import { sendSlackMessage } from "../../../../lib/api/domains/integrations-slack";
-import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import { sendSlackMessage } from "../../../lib/api/domains/integrations-slack";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const sendCommand = new Command()
   .name("send")
