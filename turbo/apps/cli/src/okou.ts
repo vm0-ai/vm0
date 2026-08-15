@@ -245,8 +245,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "computer-use",
     description: "Desktop app computer use through Okou CLI",
     load: async () => {
-      return (await import("./commands/zero/computer-use"))
-        .zeroComputerUseCommand;
+      return (await import("./commands/computer-use")).computerUseCommand;
     },
   },
   {
