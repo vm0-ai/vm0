@@ -117,7 +117,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "mcp",
     description: "Use MCP Custom Connectors authorized for this Agent",
     load: async () => {
-      return (await import("./commands/zero/mcp")).zeroMcpCommand;
+      return (await import("./commands/mcp")).mcpCommand;
     },
   },
   {

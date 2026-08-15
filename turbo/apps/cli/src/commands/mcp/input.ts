@@ -4,7 +4,7 @@ import type { JSONObject } from "@modelcontextprotocol/client";
 import { InvalidArgumentError } from "commander";
 import { z } from "zod";
 
-import { parseDurationSeconds } from "../../shared/duration";
+import { parseDurationSeconds } from "../shared/duration";
 
 const MAX_TOOL_INPUT_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_SECONDS = 60;
